@@ -1,0 +1,72 @@
+npm error Lifecycle script `start` failed with error:
+npm error code 4294967295
+npm error path C:\AYAN PRACTICE CODES\BugSafari\testing-core
+npm error workspace testing-core@2.0.0
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+Error [TransformError]: Transform failed with 1 error:
+C:\AYAN PRACTICE CODES\BugSafari\testing-core\src\domain\services\AutonomousExplorationEngine.ts:293:5: ERROR: Unexpected ")"
+    at failureErrorWithLog (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1748:15)
+    at C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1017:50
+    at responseCallbacks.<computed> (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:884:9)
+    at handleIncomingPacket (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:939:12)
+    at Socket.readFromStdout (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:862:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+
+Node.js v24.13.0
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+[BugSafari] Port 3000 is already in use. Stop the existing process or set BUGSAFARI_PORT.
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+Error [TransformError]: Transform failed with 1 error:
+C:\AYAN PRACTICE CODES\BugSafari\testing-core\src\domain\services\AutonomousExplorationEngine.ts:190:4: ERROR: Expected "finally" but found "return"
+    at failureErrorWithLog (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1748:15)
+    at C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1017:50
+    at responseCallbacks.<computed> (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:884:9)
+    at handleIncomingPacket (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:939:12)
+    at Socket.readFromStdout (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:862:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+
+Node.js v24.13.0
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+Error [TransformError]: Transform failed with 1 error:
+C:\AYAN PRACTICE CODES\BugSafari\testing-core\src\domain\services\AutonomousExplorationEngine.ts:90:10: ERROR: The symbol "handleFramenavigated" has already been declared
+    at failureErrorWithLog (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1748:15)
+    at C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:1017:50
+    at responseCallbacks.<computed> (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:884:9)
+    at handleIncomingPacket (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:939:12)
+    at Socket.readFromStdout (C:\AYAN PRACTICE CODES\BugSafari\testing-core\node_modules\esbuild\lib\main.js:862:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+
+Node.js v24.13.0

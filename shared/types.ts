@@ -1,0 +1,122 @@
+export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE';
+
+export type SemanticRole =
+  | 'LOGIN'
+  | 'SEARCH'
+  | 'SUBMIT'
+  | 'CANCEL'
+  | 'DESTRUCTIVE'
+  | 'NAVIGATE'
+  | 'INPUT'
+  | 'UNKNOWN';
+
+export interface ExceptionDetails {
+  message: string;
+  stackTrace: string;
+}
+
+export interface TelemetryMeta {
+  selector?: string;
+  actionExecuted?: string;
+  statusCode?: number;
+  url?: string;
+  method?: string;
+  durationMs?: number;
+  score?: number;
+  tagName?: string;
+  semanticRole?: SemanticRole;
+  stateHash?: string;
+  message?: string;
+  blockedUrl?: string;
+  exceptionDetails?: ExceptionDetails;
+  reproductionSteps?: string[];
+}
+
+export interface TelemetryEvent {
+  timestamp: string;
+  type: TelemetryType;
+  meta: TelemetryMeta;
+}
+
+export interface ActionBreadcrumb {
+  timestamp: string;
+  selector: string;
+  action: string;
+  payload?: string;
+  score?: number;
+}
+
+export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION';
+
+export interface ActionRecord {
+  timestamp: string;
+  type: ActionType;
+  selector: string;
+  url: string;
+  payload?: string;
+  fallbackLabel?: string;
+}
+
+export interface IncidentReport {
+  timestamp: string;
+  reason: string;
+  url: string;
+  statusCode?: number;
+  stackTrace?: string;
+  steps: ActionRecord[];
+}
+
+export interface ForensicCrashReport {
+  timestamp: string;
+  reason: string;
+  statusCode?: number;
+  url: string;
+  stackTrace?: string;
+  breadcrumbs: ActionBreadcrumb[];
+}
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DiscoveredElement {
+  tagName: string;
+  id: string;
+  className: string;
+  type: string;
+  name: string;
+  text: string;
+  selector: string;
+  semanticRole: SemanticRole;
+  score: number;
+  isVisible: boolean;
+  boundingBox: BoundingBox;
+}
+
+// ---- Engine Milestones ----
+
+export type EngineMilestonePhase =
+  | 'SAFARI_INITIALIZED'
+  | 'VISION_ACTIVE'
+  | 'PRIORITIZATION'
+  | 'STRESS_TEST_START'
+  | 'PAYLOAD_INJECTION'
+  | 'INCIDENT_INTERCEPTED'
+  | 'REPORT_FINALIZED'
+  | 'FATAL_ENGINE_ERROR';
+
+export type EngineMilestoneStatus = 'pending' | 'active' | 'done' | 'error';
+
+export interface EngineMilestoneEvent {
+  phase: EngineMilestonePhase;
+  title: string;
+  timestamp: string;
+  status: EngineMilestoneStatus;
+  message?: string;
+}
+
+export type EngineMilestone = EngineMilestoneEvent;
+

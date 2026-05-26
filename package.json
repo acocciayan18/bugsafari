@@ -1,0 +1,16 @@
+{
+  "name": "bugsafari-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "testing-core",
+    "developer-dashboard",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w testing-core && npm run build -w developer-dashboard",
+    "typecheck": "npm run typecheck -w testing-core && npm run build -w developer-dashboard",
+    "dev:server": "npm run dev -w testing-core",
+    "dev:client": "npm run dev -w developer-dashboard"
+  }
+}

@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  /* In v4, variables defined here automatically EXTEND the theme */
+  --color-primary: #0F172A;
+  --color-secondary: #64748B;
+  --color-sage: #059669;
+  --color-background: #F8FAFC;
+  
+  --radius-genesis: 8px;
+  --shadow-genesis: 0 4px 16px rgba(15, 23, 42, 0.07);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-primary font-sans;
+  }
+}
