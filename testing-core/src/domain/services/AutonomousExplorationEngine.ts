@@ -183,7 +183,7 @@ export class AutonomousExplorationEngine {
           }
 
           // Trigger the full loop penalty on the 3rd consecutive identical hash.
-          if (stagnationCounter >= 2) {
+          if (stagnationCounter >= 3) {
             this.emitMilestone(
               telemetry,
               '🚨 Logic Loop detected. Penalizing current UI branch to force deeper exploration.',
