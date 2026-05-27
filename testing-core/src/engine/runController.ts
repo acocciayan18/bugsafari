@@ -32,10 +32,14 @@ export function createRunController(telemetryHub: TelemetryHub, targetUrl: strin
       resumeResolver = null;
     }
 
-    telemetryHub.emitTelemetry('ACTION', {
-      actionExecuted: 'engine-halt',
-      url: targetUrl,
-      message: 'Stop requested by dashboard.',
+    telemetryHub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: {
+        actionExecuted: 'engine-halt',
+        url: targetUrl,
+        message: 'Stop requested by dashboard.',
+      },
     });
   };
 
@@ -70,4 +74,3 @@ export function createRunController(telemetryHub: TelemetryHub, targetUrl: strin
   return controller;
 
 }
-

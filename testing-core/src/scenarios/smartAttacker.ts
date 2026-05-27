@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { ScoredElement } from '../heuristics/scorer.js';
 import type { ActionRecorder } from '../reporters/actionBuffer.js';
+import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
 import { fuzzTextInput } from './dataFuzzer.js';
 import { executeSpam } from './buttonSpammer.js';
 
@@ -21,7 +22,7 @@ export async function smartActionChain(
   );
 
   if (inputTarget) {
-    const payload = await fuzzTextInput(page, inputTarget, seed);
+    const payload = await fuzzTextInput(page, inputTarget as unknown as InteractiveElement, seed);
     actionRecorder?.record({
       type: 'INPUT',
       selector: inputTarget.selector,

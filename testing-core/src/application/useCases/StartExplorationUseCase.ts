@@ -39,7 +39,7 @@ export class StartExplorationUseCase {
 
     const { EngineMilestoneEmitter } = await import('../../reporters/engineMilestoneEmitter.js');
     const { makeMilestone } = await import('../../reporters/engineMilestones.js');
-    const milestoneEmitter = new EngineMilestoneEmitter(this.telemetry as any);
+    const milestoneEmitter = new EngineMilestoneEmitter(this.telemetry);
 
     try {
       const result = await this.browserEngine.run(targetUrl, this.telemetry);

@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../contracts.js';
-import type { EngineMilestoneEvent, IncidentReport, ForensicCrashReport } from '../../../shared/types.ts';
+import type { DiscoveredElement, EngineMilestoneEvent, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../shared/types.ts';
 
 
 
@@ -26,7 +26,38 @@ export class TelemetryHub {
     });
   }
 
-  emitTelemetry(type: TelemetryType, meta: TelemetryMeta): TelemetryEvent {
+  // TelemetryGateway interface implementation
+  emitTelemetry(event: TelemetryEventType): void {
+    this.io.emit('telemetry', event);
+    this.io.emit('engine-log', event);
+  }
+
+  emitTargets(targets: DiscoveredElement[]): void {
+    this.io.emit('discovered-elements', targets);
+  }
+
+  emitLiveFrame(base64Jpeg: string): void {
+    this.io.emit('live-frame', base64Jpeg);
+  }
+
+  emitForensicReport(report: ForensicCrashReport): void {
+    this.io.emit('forensic-report', report);
+  }
+
+  emitIncidentReport(report: IncidentReport): void {
+    this.io.emit('incident-report', report);
+  }
+
+  emitUrlChanged(url: string): void {
+    this.io.emit('url-changed', url);
+  }
+
+  emitEngineMilestone(event: EngineMilestoneEvent): void {
+    this.io.emit('engine-milestone', event);
+  }
+
+  // Legacy methods for backward compatibility
+  emitTelemetryLegacy(type: TelemetryType, meta: TelemetryMeta): TelemetryEvent {
     const event: TelemetryEvent = {
       timestamp: new Date().toISOString(),
       type,
@@ -42,21 +73,7 @@ export class TelemetryHub {
     this.io.emit('live-frame', base64Image);
   }
 
-  emitTargets(targets: readonly unknown[]): void {
+  emitTargetsLegacy(targets: readonly unknown[]): void {
     this.io.emit('discovered-elements', targets);
   }
-
-  emitIncidentReport(report: IncidentReport): void {
-    this.io.emit('incident-report', report);
-  }
-
-  emitForensicReport(report: ForensicCrashReport): void {
-    this.io.emit('forensic-report', report);
-  }
-
-  emitEngineMilestone(event: EngineMilestoneEvent): void {
-    this.io.emit('engine-milestone', event);
-  }
 }
-
-

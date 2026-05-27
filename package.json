@@ -12,5 +12,8 @@
     "typecheck": "npm run typecheck -w testing-core && npm run build -w developer-dashboard",
     "dev:server": "npm run dev -w testing-core",
     "dev:client": "npm run dev -w developer-dashboard"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }

@@ -1,85 +1,137 @@
 import type { Page } from 'playwright';
+import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
+import type { StressScenario } from './types.js';
 
-export async function stripConstraints(page: Page, selector: string): Promise<void> {
-  const selectorLiteral = JSON.stringify(selector);
+/**
+ * Attributes stripped by FormBypasser to force interactions.
+ */
+const STRIPPED_ATTRIBUTES = ['disabled', 'readonly', 'required', 'maxlength', 'minlength'] as const;
 
-  await page.evaluate(`
-    (() => {
-      const node = document.querySelector(${selectorLiteral});
+/**
+ * Error signatures that are safe to ignore.
+ */
+const NON_FATAL_ERRORS = {
+  TARGET_CLOSED: 'target closed',
+  EXECUTION_CONTEXT: 'execution context was destroyed',
+  NAVIGATING: 'navigating',
+  BROWSER_CLOSED: 'browser has been closed',
+  CONTEXT_DESTROYED: 'context destroyed',
+} satisfies Record<string, string>;
 
-      if (!node) {
+function isNonFatalError(error: Error): boolean {
+  const msg = error.message.toLowerCase();
+  return Object.values(NON_FATAL_ERRORS).some((signature) => msg.includes(signature.toLowerCase()));
+}
+
+/**
+ * Form Bypasser scenario:
+ * - Scans target and siblings
+ * - Strips HTML constraints (disabled, readonly, required, maxlength, minlength)
+ * - Forces disabled buttons enabled and input maxlength removed
+ * - Emits ACTION telemetry log
+ */
+export const formBypasser: StressScenario = {
+  name: 'FormBypasser',
+
+  async execute(page: Page, target?: InteractiveElement): Promise<void> {
+    const selector = target?.selector ?? 'input, textarea, select, button';
+
+    try {
+      const affectedSelector = await page.evaluate(
+        ({ sel, attrs }) => {
+          const targetEl = document.querySelector(sel);
+
+          // Build candidate set: target + siblings
+          const candidates = new Set<Element>();
+          if (targetEl) {
+            candidates.add(targetEl);
+
+            const parent = targetEl.parentElement;
+            if (parent) {
+              for (const sibling of Array.from(parent.children)) {
+                candidates.add(sibling);
+              }
+            }
+          } else {
+            // Fallback: first matching form-ish element
+            const fallback = document.querySelector('input, textarea, select, button');
+            if (fallback) {
+              candidates.add(fallback);
+              const parent = fallback.parentElement;
+              if (parent) {
+                for (const sibling of Array.from(parent.children)) {
+                  candidates.add(sibling);
+                }
+              }
+            }
+          }
+
+          for (const el of candidates) {
+            for (const attr of attrs) {
+              if (el.hasAttribute(attr)) {
+                el.removeAttribute(attr);
+              }
+            }
+
+            // Force-enable button-like controls
+            if (el instanceof HTMLButtonElement) {
+              el.disabled = false;
+              el.removeAttribute('disabled');
+            } else if (el instanceof HTMLInputElement) {
+              if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') {
+                el.disabled = false;
+                el.removeAttribute('disabled');
+              }
+
+              // Explicitly remove any maxlength cap for giant payloads
+              el.removeAttribute('maxlength');
+              el.maxLength = 524288;
+            } else if (el instanceof HTMLTextAreaElement) {
+              el.removeAttribute('maxlength');
+              el.maxLength = 524288;
+            }
+
+            // Remove readOnly property-level lock where applicable
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+              el.readOnly = false;
+            }
+          }
+
+          const chosen =
+            targetEl && (targetEl as HTMLElement).id
+              ? `#${(targetEl as HTMLElement).id}`
+              : targetEl && (targetEl as HTMLElement).className
+                ? `${targetEl.tagName.toLowerCase()}.${String(
+                    (targetEl as HTMLElement).className
+                  ).trim().replace(/\s+/g, '.')}`
+                : targetEl?.tagName?.toLowerCase() ?? sel;
+
+          return chosen;
+        },
+        { sel: selector, attrs: [...STRIPPED_ATTRIBUTES] }
+      );
+
+      console.log(
+        `[Telemetry:ACTION] 🔓 Form Bypasser: Programmatically stripped HTML constraints from ${affectedSelector ?? selector} to force interaction.`
+      );
+    } catch (error) {
+      if (error instanceof Error && isNonFatalError(error)) {
+        console.log(`[StressScenario:FormBypasser] Non-fatal error ignored: ${error.message}`);
         return;
       }
 
-      const targets = [node, ...Array.from(node.querySelectorAll('input, textarea, select, button'))];
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[StressScenario:FormBypasser] Failed during constraint stripping: ${message}`);
+    }
+  },
+};
 
-      for (const target of targets) {
-        target.removeAttribute('disabled');
-        target.removeAttribute('required');
-        target.removeAttribute('readonly');
-        target.removeAttribute('maxlength');
-        target.removeAttribute('minlength');
-        target.removeAttribute('pattern');
-        target.removeAttribute('aria-disabled');
-
-        if (target instanceof HTMLInputElement) {
-          target.disabled = false;
-          target.required = false;
-          target.readOnly = false;
-          const nextMaxLength = -1;
-          if (nextMaxLength < 0) {
-            // Safety: avoid IndexSizeError from negative maxLength assignment.
-            console.warn('[BugSafari] stripConstraints: aborting negative maxLength assignment');
-            return;
-          }
-          target.maxLength = nextMaxLength;
-
-
-          if (target.type === 'hidden') {
-            target.type = 'text';
-          }
-        }
-
-        if (target instanceof HTMLTextAreaElement) {
-          target.disabled = false;
-          target.required = false;
-          target.readOnly = false;
-          const nextMaxLength = -1;
-          if (nextMaxLength < 0) {
-            // Safety: avoid IndexSizeError from negative maxLength assignment.
-            console.warn('[BugSafari] stripConstraints: aborting negative maxLength assignment');
-            return;
-          }
-          target.maxLength = nextMaxLength;
-        }
-
-        if (target instanceof HTMLSelectElement || target instanceof HTMLButtonElement) {
-          target.disabled = false;
-        }
-      }
-    })();
-  `);
+/**
+ * Backwards-compatible helper used by autonomousLoop.
+ * Strips constraints for the provided selector and emits ACTION telemetry.
+ */
+export async function stripConstraints(page: Page, selector: string): Promise<void> {
+  await formBypasser.execute(page, { selector } as InteractiveElement);
 }
 
-export async function forceSubmitNearestForm(page: Page, selector: string): Promise<boolean> {
-  const selectorLiteral = JSON.stringify(selector);
-
-  return page.evaluate<boolean>(`
-    (() => {
-      const node = document.querySelector(${selectorLiteral});
-      const form = node ? node.closest('form') : null;
-
-      if (!form) {
-        return false;
-      }
-
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-
-      if (typeof form.requestSubmit === 'function') {
-        form.requestSubmit();
-      }
-
-      return true;
-    })();
-  `);
-}
+export type FormBypasser = typeof formBypasser;

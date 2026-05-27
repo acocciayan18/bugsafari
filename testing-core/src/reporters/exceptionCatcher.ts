@@ -61,13 +61,17 @@ export async function setupExceptionCatcher(
       })),
     };
 
-    hub.emitTelemetry('EXCEPTION', {
-      message,
-      exceptionDetails: {
+hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'EXCEPTION',
+      meta: {
         message,
-        stackTrace,
+        exceptionDetails: {
+          message,
+          stackTrace,
+        },
+        reproductionSteps: actionRecorder.toReproductionSteps(),
       },
-      reproductionSteps: actionRecorder.toReproductionSteps(),
     });
 
     hub.emitIncidentReport(incidentReport);
@@ -121,13 +125,17 @@ export async function setupExceptionCatcher(
       return;
     }
 
-    hub.emitTelemetry('EXCEPTION', {
-      message: text,
-      exceptionDetails: {
+hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'EXCEPTION',
+      meta: {
         message: text,
-        stackTrace: text,
+        exceptionDetails: {
+          message: text,
+          stackTrace: text,
+        },
+        reproductionSteps: actionRecorder.toReproductionSteps(),
       },
-      reproductionSteps: actionRecorder.toReproductionSteps(),
     });
     hub.emitIncidentReport({
       timestamp: new Date().toISOString(),
@@ -153,14 +161,18 @@ export async function setupExceptionCatcher(
     const url = response.url();
     const method = request.method();
 
-    // Only emit NETWORK telemetry for failures (>= 500).
+// Only emit NETWORK telemetry for failures (>= 500).
     if (statusCode >= 500) {
-      hub.emitTelemetry('NETWORK', {
-        url,
-        method,
-        statusCode,
-        durationMs,
-        message: `${method} ${statusCode} ${url}`,
+      hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'NETWORK',
+        meta: {
+          url,
+          method,
+          statusCode,
+          durationMs,
+          message: `${method} ${statusCode} ${url}`,
+        },
       });
       emitException(`Server failure ${statusCode} from ${url}`, `HTTP ${statusCode} ${method} ${url}`, true, statusCode);
     }
@@ -170,10 +182,14 @@ export async function setupExceptionCatcher(
   page.on('requestfailed', (request) => {
     const failureText = request.failure()?.errorText ?? 'Request failed';
 
-    hub.emitTelemetry('NETWORK', {
-      url: request.url(),
-      method: request.method(),
-      message: failureText,
+    hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'NETWORK',
+      meta: {
+        url: request.url(),
+        method: request.method(),
+        message: failureText,
+      },
     });
   });
 

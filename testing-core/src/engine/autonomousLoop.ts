@@ -17,6 +17,7 @@ import { makeMilestone } from '../reporters/engineMilestones.js';
 import { restoreDomainIfNeeded } from './domainGuard.js';
 import { getAllBugFinders } from '../bugs/registry.js';
 import type { BugContext } from '../bugs/types.js';
+import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
 
 
 
@@ -68,10 +69,14 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
   let previousActionSignature = '';
   let stepsExecuted = 0;
 
-  options.hub.emitTelemetry('ACTION', {
-    actionExecuted: 'session-start',
-    url: options.targetUrl,
-    message: `Starting BugSafari session for ${options.targetUrl}`,
+  options.hub.emitTelemetry({
+    timestamp: new Date().toISOString(),
+    type: 'ACTION',
+    meta: {
+      actionExecuted: 'session-start',
+      url: options.targetUrl,
+      message: `Starting BugSafari session for ${options.targetUrl}`,
+    },
   });
 
   milestoneEmitter.emit(
@@ -135,20 +140,28 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
     if (stateVisit.isRepeat && previousActionSignature) {
       const penalty = memory.penalizeAction(previousActionSignature, 28 + stateVisit.visitCount * 8);
-      options.hub.emitTelemetry('ACTION', {
-        actionExecuted: 'state-repeat-penalty',
-        stateHash,
-        message: `Repeated state detected; penalty for prior action is now ${penalty}`,
+      options.hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'state-repeat-penalty',
+          stateHash,
+          message: `Repeated state detected; penalty for prior action is now ${penalty}`,
+        },
       });
     }
 
     const parsedElements = await scanInteractiveElements(page);
 
     if (parsedElements.length === 0) {
-      options.hub.emitTelemetry('ACTION', {
-        actionExecuted: 'dead-end',
-        stateHash,
-        message: 'No interactive elements found on the current page.',
+      options.hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'dead-end',
+          stateHash,
+          message: 'No interactive elements found on the current page.',
+        },
       });
       return { completed: true, reason: 'No interactive elements found.', stepsExecuted };
     }
@@ -165,13 +178,17 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
 
     for (const target of rankedTargets) {
-      options.hub.emitTelemetry('HEURISTIC_SCORE', {
-        selector: target.selector,
-        score: target.score,
-        tagName: target.tagName,
-        semanticRole: target.semanticRole,
-        stateHash,
-        message: `Scored ${target.selector} at ${target.score}`,
+      options.hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'HEURISTIC_SCORE',
+        meta: {
+          selector: target.selector,
+          score: target.score,
+          tagName: target.tagName,
+          semanticRole: target.semanticRole,
+          stateHash,
+          message: `Scored ${target.selector} at ${target.score}`,
+        },
       });
     }
 
@@ -204,10 +221,14 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
     if (!target) {
 
-      options.hub.emitTelemetry('ACTION', {
-        actionExecuted: 'no-visible-targets',
-        stateHash,
-        message: 'No visible interactive elements survived scoring.',
+      options.hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'no-visible-targets',
+          stateHash,
+          message: 'No visible interactive elements survived scoring.',
+        },
       });
       return { completed: true, reason: 'No visible scored targets.', stepsExecuted };
     }
@@ -232,13 +253,17 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
 
 
-    options.hub.emitTelemetry('ACTION', {
-      selector: target.selector,
-      actionExecuted: actionName,
-      stateHash,
-      tagName: target.tagName,
-      semanticRole: target.semanticRole,
-      message: `Executing ${actionName} on ${target.selector}`,
+    options.hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: {
+        selector: target.selector,
+        actionExecuted: actionName,
+        stateHash,
+        tagName: target.tagName,
+        semanticRole: target.semanticRole,
+        message: `Executing ${actionName} on ${target.selector}`,
+      },
     });
 
     const feedback = await monitorAction(page, async () => {
@@ -254,12 +279,16 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
     const adaptiveWeight = scorer.applyFeedback(target, feedback);
 
-    options.hub.emitTelemetry('HEURISTIC_SCORE', {
-      selector: target.selector,
-      score: adaptiveWeight,
-      tagName: target.tagName,
-      semanticRole: target.semanticRole,
-      message: `Adaptive weight for ${target.selector} adjusted to ${adaptiveWeight}`,
+    options.hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'HEURISTIC_SCORE',
+      meta: {
+        selector: target.selector,
+        score: adaptiveWeight,
+        tagName: target.tagName,
+        semanticRole: target.semanticRole,
+        message: `Adaptive weight for ${target.selector} adjusted to ${adaptiveWeight}`,
+      },
     });
 
     await restoreDomainIfNeeded(page, options.targetUrl, options.hub).catch(() => undefined);
@@ -285,10 +314,14 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
   }
 
-  options.hub.emitTelemetry('ACTION', {
-    actionExecuted: 'session-complete',
-    url: options.targetUrl,
-    message: `Autonomous Safari completed ${stepsExecuted} steps.`,
+  options.hub.emitTelemetry({
+    timestamp: new Date().toISOString(),
+    type: 'ACTION',
+    meta: {
+      actionExecuted: 'session-complete',
+      url: options.targetUrl,
+      message: `Autonomous Safari completed ${stepsExecuted} steps.`,
+    },
   });
 
     milestoneEmitter.emit(
@@ -318,7 +351,19 @@ async function executeTargetAction(
 ): Promise<void> {
   if (['input', 'textarea', 'select'].includes(target.tagName) || target.semanticRole === 'INPUT' || target.semanticRole === 'LOGIN') {
     // Payload injection milestone is emitted by caller to preserve phase ordering + throttle.
-    const payload = await fuzzTextInput(page, target, step);
+    const interactiveTarget: InteractiveElement = {
+      selector: target.selector,
+      id: target.id,
+      className: target.className,
+      innerText: target.text,
+      type: target.type,
+      tagName: target.tagName,
+      isVisible: target.isVisible,
+      isPointer: false,
+      featureVector: {},
+      riskScore: target.score,
+    };
+    const payload = await fuzzTextInput(page, interactiveTarget, step);
 
     actionRecorder.record({
       type: 'INPUT',
@@ -359,7 +404,7 @@ async function executeTargetAction(
     return;
   }
 
-  await executeSpam(page, target.selector, 50);
+  await executeSpam(page, target.selector);
   actionRecorder.record({
     type: 'CLICK',
     selector: target.selector,
@@ -430,13 +475,17 @@ async function streamLiveFrame(page: Page, hub: TelemetryHub): Promise<void> {
     hub.emitFrame(buffer.toString('base64'));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    hub.emitTelemetry('EXCEPTION', {
-      message: `Live frame capture failed: ${message}`,
-      exceptionDetails: {
-        message,
-        stackTrace: message,
+    hub.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'EXCEPTION',
+      meta: {
+        message: `Live frame capture failed: ${message}`,
+        exceptionDetails: {
+          message,
+          stackTrace: message,
+        },
+        reproductionSteps: [],
       },
-      reproductionSteps: [],
     });
   }
 }
@@ -521,23 +570,31 @@ async function dispatchBugFinders(params: {
 
       const findings = await finder.run({ ...ctxBase, crashHalted: params.crashHalted });
       for (const finding of findings) {
-        params.hub.emitTelemetry('HEURISTIC_SCORE', {
-          actionExecuted: 'bug-finding',
-          message: `${finding.title} (${finding.severity})`,
-          stateHash: finding.evidence?.stateHash ?? params.stateHash,
-          selector: finding.evidence?.selector ?? params.element?.selector,
-          score: finding.severity === 'CRITICAL' ? 999 : finding.severity === 'HIGH' ? 200 : 100,
+        params.hub.emitTelemetry({
+          timestamp: new Date().toISOString(),
+          type: 'HEURISTIC_SCORE',
+          meta: {
+            actionExecuted: 'bug-finding',
+            message: `${finding.title} (${finding.severity})`,
+            stateHash: finding.evidence?.stateHash ?? params.stateHash,
+            selector: finding.evidence?.selector ?? params.element?.selector,
+            score: finding.severity === 'CRITICAL' ? 999 : finding.severity === 'HIGH' ? 200 : 100,
+          },
         });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      params.hub.emitTelemetry('EXCEPTION', {
-        message: `Bug finder failed (${finder.bugClass}): ${message}`,
-        exceptionDetails: {
-          message,
-          stackTrace: message,
+      params.hub.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'EXCEPTION',
+        meta: {
+          message: `Bug finder failed (${finder.bugClass}): ${message}`,
+          exceptionDetails: {
+            message,
+            stackTrace: message,
+          },
+          reproductionSteps: [],
         },
-        reproductionSteps: [],
       });
     }
   }

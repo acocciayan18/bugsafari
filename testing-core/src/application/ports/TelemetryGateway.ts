@@ -1,4 +1,4 @@
-import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { DiscoveredElement, EngineMilestoneEvent, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 
 export interface TelemetryGateway {
   emitTelemetry(event: TelemetryEvent): void;
@@ -9,5 +9,8 @@ export interface TelemetryGateway {
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;
+
+  /** Emit engine milestone event for dashboard tracking. */
+  emitEngineMilestone(event: EngineMilestoneEvent): void;
 }
 

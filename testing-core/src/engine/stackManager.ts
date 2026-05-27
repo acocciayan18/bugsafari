@@ -1,5 +1,6 @@
 // src/engine/stackManager.ts
 import { type Page, type BrowserContext } from 'playwright';
+import type { TelemetryEvent, TelemetryMeta } from '../../../shared/types.ts';
 import { TelemetryHub } from '../reporters/socketServer.js';
 
 export class PageStackManager {
@@ -25,6 +26,15 @@ export class PageStackManager {
     return this.stack[this.stack.length - 1];
   }
 
+  private emitTelemetry(type: TelemetryEvent['type'], meta: TelemetryMeta): void {
+    const event: TelemetryEvent = {
+      timestamp: new Date().toISOString(),
+      type,
+      meta,
+    };
+    this.telemetry.emitTelemetry(event);
+  }
+
   private push(page: Page) {
     this.stack.push(page);
 
@@ -33,7 +43,7 @@ export class PageStackManager {
       const index = this.stack.indexOf(page);
       if (index > -1) {
         this.stack.splice(index, 1);
-        this.telemetry.emitTelemetry('ACTION', {
+        this.emitTelemetry('ACTION', {
           actionExecuted: 'window-closed',
           message: 'Tab closed. Reverting focus to previous page in stack.',
         });
@@ -43,7 +53,7 @@ export class PageStackManager {
 
   private setupContextListener() {
     this.context.on('page', async (newPage) => {
-      this.telemetry.emitTelemetry('ACTION', {
+      this.emitTelemetry('ACTION', {
         actionExecuted: 'new-window-detected',
         url: newPage.url(),
         message: 'Detected a new tab. Pushing to Page Stack.',
