@@ -101,6 +101,14 @@ export class AutonomousExplorationEngine {
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
 
+      // --- 3-Strike Logic Loop State ---
+      // Tracks consecutive steps where the DOM fingerprint did not change.
+      let previousHash = '';
+      let stagnationCounter = 0;
+      // When > 0, the engine is in "escape mode": picks the lowest-scored target
+      // instead of the highest, and all current-page elements carry a score penalty.
+      let penaltyStepsRemaining = 0;
+
       for (let step = 1; step <= maxSteps; step += 1) {
         try {
           if (runtimeCrashReason) {
@@ -145,28 +153,65 @@ export class AutonomousExplorationEngine {
             })),
           );
 
-          const hash = await this.hashManager.hash(page);
-          const loop = this.hashManager.register(hash);
+          // --- 3-Strike Logic Loop Detection ---
+          // The hash represents the structural fingerprint of the page AFTER the
+          // previous action. If it stays identical for 3 consecutive steps the
+          // engine is stuck clicking elements that have no effect on app state.
+          const currentHash = await this.hashManager.hash(page);
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'dom-state-hash',
-            stateHash: hash,
-            message: `DOM fingerprint captured. repeats=${loop.repeatCount}`,
+            stateHash: currentHash,
+            message: `DOM fingerprint captured. stagnation=${stagnationCounter}/3`,
           }));
 
-          const target = ranked[0];
+          // Track state changes.
+          // Only increment the strike counter when no penalty is already active —
+          // during escape mode the engine is deliberately trying new paths, so we
+          // give it room to manoeuvre before counting fresh strikes.
+          if (currentHash !== previousHash) {
+            // Page state changed — bot successfully moved to a new state.
+            stagnationCounter = 0;
+            previousHash = currentHash;
+          } else if (penaltyStepsRemaining === 0) {
+            stagnationCounter++;
+          }
+
+          // Tick down the penalty window each step.
+          if (penaltyStepsRemaining > 0) {
+            penaltyStepsRemaining--;
+          }
+
+          // Trigger the full loop penalty on the 3rd consecutive identical hash.
+          if (stagnationCounter >= 2) {
+            this.emitMilestone(
+              telemetry,
+              '🚨 Logic Loop detected. Penalizing current UI branch to force deeper exploration.',
+            );
+
+            // Zero-out effective risk scores for every visible element on this
+            // page for the next 5 steps by adding a penalty that exceeds each
+            // element's current riskScore.
+            for (const element of ranked) {
+              this.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
+            }
+
+            penaltyStepsRemaining = 5;
+            stagnationCounter = 0; // reset strike counter; fresh window after escape
+          }
+
+          // Target selection:
+          //   • Normal mode  → highest-scored element (ranked[0])
+          //   • Escape mode  → lowest-scored element (ranked[last]) to force the
+          //                    engine down an unexplored branch of the UI tree.
+          const target = penaltyStepsRemaining > 0
+            ? ranked[ranked.length - 1]   // Random escape: least-risky path
+            : ranked[0];                   // Normal: highest-priority target
+
           if (!target) {
             return { completed: true, reason: 'No ranked target found.' };
           }
           lastTarget = target;
-
-          if (loop.logicLoop) {
-            this.scorer.penalize(target.selector, 1.5);
-            telemetry.emitTelemetry(this.event('ACTION', {
-              actionExecuted: 'logic-loop-detected',
-              selector: target.selector,
-              message: 'Detected same state hash 3 times in a row; applying selector penalty.',
-            }));
-          }
 
           this.logHighImpact(target, telemetry);
 
@@ -241,10 +286,6 @@ export class AutonomousExplorationEngine {
   }
 
 
-
-
-
-
   private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): void {
     page.on('dialog', async (dialog: Dialog) => {
       telemetry.emitTelemetry(this.event('ACTION', {
@@ -258,25 +299,19 @@ export class AutonomousExplorationEngine {
   private async handleResponse(response: Response, currentUrl: string, telemetry: TelemetryGateway): Promise<string | null> {
     const status = response.status();
 
-    // Primary filter: only emit network telemetry for HTTP >= 400
     const shouldEmitByStatus = status >= 400;
 
-    // Secondary filter: treat certain successful responses as failures (e.g. GraphQL soft errors)
-    // Only attempt body inspection for non-4xx/5xx statuses to avoid wasted work.
     let shouldEmitByBody = false;
     if (!shouldEmitByStatus) {
       try {
         const body = await response.text().catch(() => '');
         const bodyLower = body.toLowerCase();
 
-        // Heuristic keywords for soft-failure payloads.
-        // Examples: GraphQL errors with {"error":true} or {"status":"fail"}
         const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
         const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
 
         shouldEmitByBody = hasErrorFlag || hasStatusFail;
       } catch {
-        // If body cannot be read, ignore secondary check.
         shouldEmitByBody = false;
       }
     }
@@ -292,7 +327,6 @@ export class AutonomousExplorationEngine {
 
     if (status >= 500) {
       const report = {
-
         timestamp: new Date().toISOString(),
         reason: `HTTP ${response.status()} detected on ${response.url()}`,
         statusCode: response.status(),
@@ -386,10 +420,8 @@ export class AutonomousExplorationEngine {
           input.readOnly = false;
           input.required = false;
 
-          // Engine Suicide Prevention: never assign negative maxLength.
           const nextMaxLength = -1;
           if (nextMaxLength < 0) {
-            // Avoid IndexSizeError from negative maxLength assignment.
             input.removeAttribute('maxLength');
             continue;
           }
@@ -397,7 +429,6 @@ export class AutonomousExplorationEngine {
           input.maxLength = nextMaxLength;
         }
       } catch (err) {
-        // Ensure browser-side DOM errors do not crash the Node.js process.
         console.warn('[BugSafari] stripConstraints evaluate failed', err);
       }
     });
