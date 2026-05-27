@@ -18,6 +18,21 @@ export class AutonomousExplorationEngine {
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private targetOrigin = '';
 
+  private isPaused = false;
+  private isStopRequested = false;
+
+  public pause() {
+    this.isPaused = true;
+  }
+
+  public resume() {
+    this.isPaused = false;
+  }
+
+  public stop() {
+    this.isStopRequested = true;
+  }
+
   private emitMilestone(telemetry: TelemetryGateway, message: string): void {
     telemetry.emitTelemetry(
       this.event('ACTION', {
@@ -109,7 +124,16 @@ export class AutonomousExplorationEngine {
       // instead of the highest, and all current-page elements carry a score penalty.
       let penaltyStepsRemaining = 0;
 
-      for (let step = 1; step <= maxSteps; step += 1) {
+     for (let step = 1; step <= maxSteps; step++) {
+
+          if (this.isStopRequested) {
+          this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
+          break;
+        }
+        while (this.isPaused) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
         try {
           if (runtimeCrashReason) {
             return { completed: false, reason: runtimeCrashReason };

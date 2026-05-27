@@ -1,5 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
+import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js'; // 👈 Import the setter
 
 interface RunState {
   active: boolean;
@@ -22,6 +23,9 @@ export class StartExplorationUseCase {
     ReproductionPlaybookStore.reset();
 
     this.state.active = true;
+    
+    // Register the active engine so sockets can control it
+    setActiveEngine(this.browserEngine); 
 
     this.telemetry.emitTelemetry({
       timestamp: new Date().toISOString(),
@@ -44,7 +48,7 @@ export class StartExplorationUseCase {
         timestamp: new Date().toISOString(),
         type: result.completed ? 'ACTION' : 'EXCEPTION',
         meta: {
-          actionExecuted: result.completed ? 'engine-finished' : 'engine-halted',
+          actionExecuted: 'engine-stopped',
           url: targetUrl,
           message: result.reason,
         },
@@ -53,8 +57,6 @@ export class StartExplorationUseCase {
       const message = error instanceof Error ? error.message : String(error);
       const stackTrace = error instanceof Error ? error.stack ?? message : message;
 
-      // Emergency flush: attach the last 20 actions captured so far.
-      const { ReproductionPlaybookStore } = await import('../../reporters/reproductionPlaybookStore.js');
       const lastActions = ReproductionPlaybookStore.snapshot();
 
       this.telemetry.emitTelemetry({
@@ -66,7 +68,6 @@ export class StartExplorationUseCase {
         },
       });
 
-      // Emit fatal milestone for UI red state.
       milestoneEmitter.emit(
         makeMilestone('FATAL_ENGINE_ERROR', {
           status: 'error',
@@ -91,7 +92,7 @@ export class StartExplorationUseCase {
       });
     } finally {
       this.state.active = false;
+      setActiveEngine(null); // 👈 Clear the reference so it doesn't leak memory
     }
   }
 }
-

@@ -6,6 +6,7 @@ export interface DashboardState {
   isConnected: boolean;
   isLaunching: boolean;
   isTestRunning: boolean;
+  status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
@@ -14,125 +15,103 @@ export interface DashboardState {
   currentUrl: string;
 }
 
-// These are the telemetry action values the backend emits at the end of every
-// run — whether it completes cleanly, is stopped by the user, or crashes.
 const ENGINE_TERMINAL_ACTIONS = new Set([
-  'engine-finished',  // run() completed all steps
-  'engine-halted',    // crash / stop-requested path
+  'engine-stopped',
+  'engine-finished',
+  'engine-halted',
 ]);
 
-export function useDashboardController(gatewayFactory: () => EngineGateway): {
-  state: DashboardState;
-  startTest: (targetUrl: string) => Promise<void>;
-} {
+export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [isTestRunning, setIsTestRunning] = useState(false);
+  const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED'>('IDLE');
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [engineMilestones, setEngineMilestones] = useState<EngineMilestone[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(false);
-  const [isTestRunning, setIsTestRunning] = useState(false);
 
   useEffect(() => {
     gateway.onConnected((connected) => setIsConnected(connected));
-
     gateway.onTelemetry((event) => {
       setTelemetry((previous) => {
         const next = [...previous, event];
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
 
-      // The engine always emits one of these two action strings as its very last
-      // telemetry event, covering every exit path: normal completion, user stop,
-      // or unhandled crash bubbled up through StartExplorationUseCase.
-      if (ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted ?? '')) {
-        setIsLaunching(false);
+      // 🚨 Auto-reset status if the engine crashes or stops naturally
+      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
+        setStatus('IDLE');
+      }
+      if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
+        setCurrentUrl(event.meta.message);
       }
     });
 
-    // A forensic report is emitted on fatal crashes that bypass the normal
-    // engine-halted telemetry path (e.g. an unhandled throw in the use-case
-    // catch block).  Treat receiving one as a terminal signal too.
-    gateway.onForensicReport((report) => {
-      setReports((previous) => [report, ...previous].slice(0, 20));
-      setIsLaunching(false);
-      setIsTestRunning(false);
-    });
-
-    gateway.onIncidentReport((report) => {
-      setIncidents((previous) => [report, ...previous].slice(0, 20));
-      // Incidents do NOT terminate the run on their own — the engine keeps
-      // exploring after capturing an incident.  Only update launching state.
-      setIsLaunching(false);
-    });
-
-    gateway.onEngineMilestone((milestone) => {
-      setEngineMilestones((previous) => [...previous, milestone].slice(-50));
-    });
-
+    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 20)));
+    gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 20)));
+    gateway.onEngineMilestone((milestone) => setEngineMilestones((prev) => [...prev, milestone].slice(-50)));
     gateway.onLiveFrame((frame) => setLatestFrame(`data:image/jpeg;base64,${frame}`));
-    gateway.onUrlChanged((url) => setCurrentUrl(url));
-    gateway.connect();
 
-    return () => {
-      gateway.disconnect();
-    };
+    gateway.connect();
+    return () => gateway.disconnect();
   }, [gateway]);
 
   const startTest = async (targetUrl: string): Promise<void> => {
     if (!targetUrl.trim()) return;
 
-    // Lock the button immediately — before any async work — so there is zero
-    // window where a double-click could fire a second run.
     setIsLaunching(true);
     setIsTestRunning(true);
+    setStatus('RUNNING'); // 👈 Set running status
     setTelemetry([]);
     setReports([]);
     setIncidents([]);
     setEngineMilestones([]);
+    setCurrentUrl(targetUrl);
 
     try {
-      // POST /api/start-test.  The server responds as soon as it accepts the
-      // run; the actual engine lifecycle continues asynchronously over the
-      // socket connection.  isTestRunning therefore stays true until one of
-      // the socket handlers above receives a terminal event.
       await gateway.startTest(targetUrl.trim());
-
-      // The HTTP request resolved — the engine is booting.  Clear the
-      // "Launching..." phase but leave isTestRunning true.
       setIsLaunching(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setTelemetry((previous) => [
-        ...previous,
-        {
-          timestamp: new Date().toISOString(),
-          type: 'EXCEPTION',
-          meta: { message: `Launch failed: ${message}` },
-        },
-      ]);
-      // The engine never started — release both locks.
+      setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
       setIsLaunching(false);
       setIsTestRunning(false);
+      setStatus('IDLE');
+    }
+  };
+
+  // 👇 ADDED: Exposed Control Actions
+  const pauseTest = () => {
+    if (status === 'RUNNING') {
+      (gateway as any).pauseTest();
+      setStatus('PAUSED');
+    }
+  };
+
+  const resumeTest = () => {
+    if (status === 'PAUSED') {
+      (gateway as any).resumeTest();
+      setStatus('RUNNING');
+    }
+  };
+
+  const stopTest = () => {
+    if (status === 'RUNNING' || status === 'PAUSED') {
+      (gateway as any).stopTest();
+      // We don't manually set to IDLE here, we wait for the terminal telemetry event to confirm it stopped
     }
   };
 
   return {
-    state: {
-      isConnected,
-      isLaunching,
-      isTestRunning,
-      telemetry,
-      reports,
-      incidents,
-      engineMilestones,
-      latestFrame,
-      currentUrl,
-    },
+    state: { isConnected, isLaunching, isTestRunning, status, telemetry, reports, incidents, engineMilestones, latestFrame, currentUrl },
     startTest,
+    pauseTest,
+    resumeTest,
+    stopTest,
   };
 }
