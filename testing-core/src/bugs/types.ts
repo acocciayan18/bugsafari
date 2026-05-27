@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
-import type { ScoredElement } from '../heuristics/scorer.js';
-import type { ActionBuffer } from '../reporters/actionBuffer.js';
-import type { TelemetryHub } from '../reporters/socketServer.js';
+import type { ScoredElement } from '../domain/heuristics/scorer.js';
+import type { ActionBuffer } from '../infrastructure/monitoring/actionBuffer.js';
+import type { TelemetryHub } from '../infrastructure/monitoring/socketServer.js';
 
 export type BugClass =
   | 'INPUT_SANITIZATION_FAILURE'

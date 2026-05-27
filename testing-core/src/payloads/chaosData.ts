@@ -1,4 +1,4 @@
-import type { ParsedElement } from '../heuristics/domParser.js';
+import type { ParsedElement } from '../domain/heuristics/domParser.js';
 
 const BOUNDARY_TOKENS = ['"', "'", '`', '\\', '/', '<', '>', '{', '}', '[', ']', '(', ')', ';', '--'];
 const QUERY_TOKENS = [' OR 1=1 ', ' UNION SELECT NULL ', '$gt', '$ne', '../', '%00', '{{constructor}}'];

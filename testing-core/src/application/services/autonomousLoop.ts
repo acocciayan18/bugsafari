@@ -1,23 +1,21 @@
 import type { BrowserContext, Page, Response } from 'playwright';
-import type { DiscoveredElement } from '../contracts.js';
-import { createStructuralFingerprint, MemoryTracker } from '../heuristics/hashUtils.js';
-import { RiskScorer, type ActionFeedback, type ScoredElement } from '../heuristics/scorer.js';
-import { scanInteractiveElements } from '../heuristics/domParser.js';
-import { executeSpam } from '../scenarios/buttonSpammer.js';
-import { concurrentEventSpam } from '../scenarios/concurrentClicker.js';
-import { fuzzTextInput } from '../scenarios/dataFuzzer.js';
-import { stripConstraints } from '../scenarios/formBypasser.js';
-import { trashRoutes } from '../scenarios/routeTrasher.js';
-import { ActionRecorder } from '../reporters/actionBuffer.js';
-import { CrashSignal, setupExceptionCatcher } from '../reporters/exceptionCatcher.js';
-import { TelemetryHub } from '../reporters/socketServer.js';
-import { EngineMilestoneEmitter } from '../reporters/engineMilestoneEmitter.js';
-import { makeMilestone } from '../reporters/engineMilestones.js';
+import type { DiscoveredElement } from '../../contracts.js';
+import { createStructuralFingerprint, MemoryTracker } from '../../domain/heuristics/hashUtils.js';
+import { RiskScorer, type ActionFeedback, type ScoredElement } from '../../domain/heuristics/scorer.js';
+import { scanInteractiveElements } from '../../domain/heuristics/domParser.js';
+import { executeSpam } from '../../domain/scenarios/buttonSpammer.js';
+import { concurrentEventSpam } from '../../domain/scenarios/concurrentClicker.js';
+import { fuzzTextInput } from '../../domain/scenarios/dataFuzzer.js';
+import { stripConstraints } from '../../domain/scenarios/formBypasser.js';
+import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
+import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
+import { CrashSignal, setupExceptionCatcher } from '../../infrastructure/monitoring/exceptionCatcher.js';
+import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
 
 import { restoreDomainIfNeeded } from './domainGuard.js';
-import { getAllBugFinders } from '../bugs/registry.js';
-import type { BugContext } from '../bugs/types.js';
-import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
+import { getAllBugFinders } from '../../bugs/registry.js';
+import type { BugContext } from '../../bugs/types.js';
+import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 
 
@@ -63,7 +61,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
   const actionBuffer = new ActionRecorder(20);
   const maxSteps = options.maxSteps ?? 40;
   let page = options.page;
-  const milestoneEmitter = new EngineMilestoneEmitter(options.hub);
   let crashSignal = await setupExceptionCatcher(page, options.hub, actionBuffer);
 
   let previousActionSignature = '';
@@ -198,24 +195,9 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
     // Mark stress-test/payload phases aligned with the action we are about to perform.
     if (target) {
-      milestoneEmitter.emit(
-        makeMilestone('STRESS_TEST_START', {
-          status: 'active',
-          title: 'Stress Test Start',
-          message: "Executing 'Button Spammer' behavior on Login component...",
-        }),
-      );
-
       if (['input', 'textarea', 'select'].includes(target.tagName) ||
       target.semanticRole === 'INPUT' ||
       target.semanticRole === 'LOGIN') {
-        milestoneEmitter.emit(
-          makeMilestone('PAYLOAD_INJECTION', {
-            status: 'active',
-            title: 'Payload Injection',
-            message: 'LSTM synthesizing mutated XSS/SQLi strings for input fields...',
-          }),
-        );
       }
     }
 

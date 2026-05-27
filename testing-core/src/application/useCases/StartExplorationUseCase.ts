@@ -19,7 +19,7 @@ export class StartExplorationUseCase {
 
   public async execute(targetUrl: string): Promise<void> {
     // Reset persistent reproduction store at the beginning of each Safari run.
-    const { ReproductionPlaybookStore } = await import('../../reporters/reproductionPlaybookStore.js');
+    const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
     ReproductionPlaybookStore.reset();
 
     this.state.active = true;
@@ -37,8 +37,8 @@ export class StartExplorationUseCase {
       },
     });
 
-    const { EngineMilestoneEmitter } = await import('../../reporters/engineMilestoneEmitter.js');
-    const { makeMilestone } = await import('../../reporters/engineMilestones.js');
+    const { EngineMilestoneEmitter } = await import('../../infrastructure/monitoring/engineMilestoneEmitter.js');
+    const { makeMilestone } = await import('../../infrastructure/monitoring/engineMilestones.js');
     const milestoneEmitter = new EngineMilestoneEmitter(this.telemetry);
 
     try {

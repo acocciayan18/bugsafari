@@ -3,10 +3,10 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { readPort } from './serverUtils.js';
-import { PlaywrightBrowserEngine } from './infrastructure/browser/PlaywrightBrowserEngine.js';
+import { PlaywrightBrowserEngine } from './infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { SocketTelemetryGateway } from './infrastructure/socket/SocketTelemetryGateway.js';
 import { StartExplorationUseCase } from './application/useCases/StartExplorationUseCase.js';
-import { registerRoutes } from './presentation/http/registerRoutes.js';
+import { registerRoutes } from './presentation/api/registerRoutes.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);

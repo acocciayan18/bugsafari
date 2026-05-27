@@ -1,5 +1,5 @@
 import type { BrowserContext, Page, Route } from 'playwright';
-import { TelemetryHub } from '../reporters/socketServer.js';
+import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
 
 export async function installDomainGuard(
   context: BrowserContext,

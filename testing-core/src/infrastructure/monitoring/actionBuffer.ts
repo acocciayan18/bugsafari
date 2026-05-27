@@ -1,4 +1,4 @@
-import type { ActionRecord, ActionType } from '../../../shared/types.ts';
+import type { ActionRecord, ActionType } from '../../../../shared/types.ts';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 

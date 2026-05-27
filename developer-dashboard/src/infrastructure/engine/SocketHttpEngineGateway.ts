@@ -1,13 +1,12 @@
 import { io, type Socket } from 'socket.io-client';
 import type { EngineGateway } from '../../application/ports/EngineGateway';
-import type { EngineMilestone, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
 type ForensicHandler = (report: ForensicCrashReport) => void;
 type IncidentHandler = (report: IncidentReport) => void;
 type FrameHandler = (base64Jpeg: string) => void;
-type EngineMilestoneHandler = (milestone: EngineMilestone) => void;
 type UrlChangedHandler = (url: string) => void;
 
 export class SocketHttpEngineGateway implements EngineGateway {
@@ -19,7 +18,6 @@ export class SocketHttpEngineGateway implements EngineGateway {
   private forensicHandler: ForensicHandler | null = null;
   private incidentHandler: IncidentHandler | null = null;
   private frameHandler: FrameHandler | null = null;
-  private engineMilestoneHandler: EngineMilestoneHandler | null = null;
   private urlChangedHandler: UrlChangedHandler | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
@@ -38,9 +36,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.socket.on('telemetry', this.handleTelemetry);
     this.socket.on('forensic-report', this.handleForensicReport);
     this.socket.on('incident-report', this.handleIncidentReport);
-    this.socket.on('engine-milestone', this.handleEngineMilestone);
     this.socket.on('live-frame', this.handleLiveFrame);
-    
+    this.socket.on('url-changed', this.handleUrlChanged);
+
     this.socket.connect();
   }
 
@@ -50,8 +48,8 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.socket.off('telemetry', this.handleTelemetry);
     this.socket.off('forensic-report', this.handleForensicReport);
     this.socket.off('incident-report', this.handleIncidentReport);
-    this.socket.off('engine-milestone', this.handleEngineMilestone);
     this.socket.off('live-frame', this.handleLiveFrame);
+    this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.disconnect();
   }
 
@@ -100,12 +98,12 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.incidentHandler?.(report);
   };
 
-  private readonly handleEngineMilestone = (milestone: EngineMilestone): void => {
-    this.engineMilestoneHandler?.(milestone);
-  };
-
   private readonly handleLiveFrame = (base64Jpeg: string): void => {
     this.frameHandler?.(base64Jpeg);
+  };
+
+  private readonly handleUrlChanged = (url: string): void => {
+    this.urlChangedHandler?.(url);
   };
 
   public onConnected(handler: ConnectedHandler): void {
@@ -120,9 +118,6 @@ export class SocketHttpEngineGateway implements EngineGateway {
   public onIncidentReport(handler: IncidentHandler): void {
     this.incidentHandler = handler;
   }
-  public onEngineMilestone(handler: EngineMilestoneHandler): void {
-    this.engineMilestoneHandler = handler;
-  }
   public onLiveFrame(handler: FrameHandler): void {
     this.frameHandler = handler;
   }
@@ -136,7 +131,6 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.forensicHandler = null;
     this.incidentHandler = null;
     this.frameHandler = null;
-    this.engineMilestoneHandler = null;
     this.urlChangedHandler = null;
   }
 }

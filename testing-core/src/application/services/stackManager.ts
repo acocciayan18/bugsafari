@@ -1,7 +1,7 @@
 // src/engine/stackManager.ts
 import { type Page, type BrowserContext } from 'playwright';
-import type { TelemetryEvent, TelemetryMeta } from '../../../shared/types.ts';
-import { TelemetryHub } from '../reporters/socketServer.js';
+import type { TelemetryEvent, TelemetryMeta } from '../../../../shared/types.ts';
+import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
 
 export class PageStackManager {
   private stack: Page[] = [];

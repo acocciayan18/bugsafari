@@ -1,5 +1,5 @@
 import type { Page, Route, Request } from 'playwright';
-import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
+import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
 
 type SabotageMode = 'Delayed' | 'Aborted';

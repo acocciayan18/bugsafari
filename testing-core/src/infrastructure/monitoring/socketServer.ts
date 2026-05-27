@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
-import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../contracts.js';
-import type { DiscoveredElement, EngineMilestoneEvent, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../shared/types.ts';
+import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../contracts.js';
+import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
 
 
 
@@ -50,10 +50,6 @@ export class TelemetryHub {
 
   emitUrlChanged(url: string): void {
     this.io.emit('url-changed', url);
-  }
-
-  emitEngineMilestone(event: EngineMilestoneEvent): void {
-    this.io.emit('engine-milestone', event);
   }
 
   // Legacy methods for backward compatibility

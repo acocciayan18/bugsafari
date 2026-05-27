@@ -31,6 +31,7 @@ export class AutonomousExplorationEngine {
 
   public stop() {
     this.isStopRequested = true;
+    this.isPaused = false;
   }
 
   private emitMilestone(telemetry: TelemetryGateway, message: string): void {
@@ -124,14 +125,18 @@ export class AutonomousExplorationEngine {
       // instead of the highest, and all current-page elements carry a score penalty.
       let penaltyStepsRemaining = 0;
 
-     for (let step = 1; step <= maxSteps; step++) {
-
-          if (this.isStopRequested) {
+      for (let step = 1; step <= maxSteps; step++) {
+        if (this.isStopRequested) {
           this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
-          break;
+          return { completed: false, reason: 'Safari session manually stopped by user.' };
         }
+
         while (this.isPaused) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          if (this.isStopRequested) {
+            this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
+            return { completed: false, reason: 'Safari session manually stopped by user.' };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
         try {

@@ -1,5 +1,5 @@
-import type { TelemetryGateway } from '../application/ports/TelemetryGateway.js';
-import type { EngineMilestoneEvent } from '../../../shared/types.ts';
+import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import type { EngineMilestoneEvent } from '../../../../shared/types.ts';
 
 export class EngineMilestoneEmitter {
   private lastEmittedAt = 0;

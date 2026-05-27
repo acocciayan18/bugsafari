@@ -1,10 +1,10 @@
 import type { Page } from 'playwright';
 import type { BugFinder } from './types.js';
-import type { ScoredElement } from '../heuristics/scorer.js';
+import type { ScoredElement } from '../domain/heuristics/scorer.js';
 import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
 
-import { fuzzTextInput } from '../scenarios/dataFuzzer.js';
-import { stripConstraints } from '../scenarios/formBypasser.js';
+import { fuzzTextInput } from '../domain/scenarios/dataFuzzer.js';
+import { stripConstraints } from '../domain/scenarios/formBypasser.js';
 
 export type FuzzAttackProfile = 'xss_sql_unicode';
 

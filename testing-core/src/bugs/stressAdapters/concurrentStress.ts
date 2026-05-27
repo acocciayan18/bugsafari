@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
-import { concurrentEventSpam } from '../../scenarios/concurrentClicker.js';
-import { trashRoutes } from '../../scenarios/routeTrasher.js';
+import { concurrentEventSpam } from '../../domain/scenarios/concurrentClicker.js';
+import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
 
 export interface ConcurrentStressResult {
   attempted: number;

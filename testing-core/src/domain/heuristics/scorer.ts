@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { SemanticRole } from '../contracts.js';
+import type { SemanticRole } from '../../contracts.js';
 import type { MemoryTracker } from './hashUtils.js';
 import type { ParsedElement } from './domParser.js';
 

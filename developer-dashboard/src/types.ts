@@ -14,8 +14,6 @@ export type {
   SemanticRole,
   BoundingBox,
   DiscoveredElement,
-  EngineMilestone,
-  EngineMilestoneEvent,
 } from '../../shared/types';
 
 

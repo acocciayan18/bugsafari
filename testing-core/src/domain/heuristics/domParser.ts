@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { BoundingBox } from '../contracts.js';
+import type { BoundingBox } from '../../contracts.js';
 
 export interface ParsedElement {
   tagName: string;

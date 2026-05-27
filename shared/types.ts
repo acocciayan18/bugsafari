@@ -96,27 +96,4 @@ export interface DiscoveredElement {
   boundingBox: BoundingBox;
 }
 
-// ---- Engine Milestones ----
-
-export type EngineMilestonePhase =
-  | 'SAFARI_INITIALIZED'
-  | 'VISION_ACTIVE'
-  | 'PRIORITIZATION'
-  | 'STRESS_TEST_START'
-  | 'PAYLOAD_INJECTION'
-  | 'INCIDENT_INTERCEPTED'
-  | 'REPORT_FINALIZED'
-  | 'FATAL_ENGINE_ERROR';
-
-export type EngineMilestoneStatus = 'pending' | 'active' | 'done' | 'error';
-
-export interface EngineMilestoneEvent {
-  phase: EngineMilestonePhase;
-  title: string;
-  timestamp: string;
-  status: EngineMilestoneStatus;
-  message?: string;
-}
-
-export type EngineMilestone = EngineMilestoneEvent;
 

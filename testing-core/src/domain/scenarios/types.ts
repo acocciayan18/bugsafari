@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
+import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 /**
  * Common interface for stress testing scenarios.

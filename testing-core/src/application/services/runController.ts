@@ -1,4 +1,4 @@
-import type { TelemetryHub } from '../reporters/socketServer.js';
+import type { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
 import type { RunController } from './autonomousLoop.js';
 
 export function createRunController(telemetryHub: TelemetryHub, targetUrl: string): RunController {

@@ -1,4 +1,4 @@
-import type { ActionRecord } from '../../../shared/types.ts';
+import type { ActionRecord } from '../../../../shared/types.ts';
 
 /**
  * Persistent per-Safari-run action history.

@@ -1,543 +1,225 @@
 # BugSafari Codebase Documentation
 
-This document summarizes the structure and purpose of the files in this repository so another AI (or developer) can quickly understand what each module does.
+This document is the architectural narrative companion to `ALL_FILES_CODEBASE.md`.
 
-> Note: Several files referenced by the runtime exist as `.js` + `.ts` pairs (e.g., `inputSanitization.js` and `inputSanitization.ts`). This repo is authored in TypeScript; most `.js` are build outputs.
-
----
-
-## Repository layout
-
-### Top-level
-- `BUGSAFARI_BLUEPRINT.md` — architecture + design goals.
-- `TODO.md` — phased implementation plan.
-- `developer-dashboard/` — React dashboard that connects to the engine via Socket.IO and triggers sessions via HTTP API.
-- `shared/` — shared types (telemetry, element discovery data, etc.).
-- `testing-core/` — the autonomous headless testing engine (Playwright + Express + Socket.IO).
+- `ALL_FILES_CODEBASE.md` answers: **where modules are and what each module does**
+- `CODEBASE_DOCUMENTATION.md` answers: **why the architecture exists and how behavior flows end-to-end**
 
 ---
 
-## Shared types
+## 1) Soul of BugSafari (The Why)
 
-### `shared/types.ts`
-Defines shared data structures used across services.
+BugSafari exists to automate adversarial exploration of web applications and convert runtime chaos into actionable engineering evidence.
 
-Key exports:
-- `TelemetryType`: `'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE'`
-- `SemanticRole`: `'LOGIN' | 'SEARCH' | 'SUBMIT' | 'CANCEL' | 'DESTRUCTIVE' | 'NAVIGATE' | 'INPUT' | 'UNKNOWN'`
-- `TelemetryMeta` + `TelemetryEvent`: message/selector/state hash/etc. carried in telemetry.
-- `BoundingBox`: `{x, y, width, height}`
-- `DiscoveredElement`: element features used by the engine + sent to the dashboard.
+Its design intent is built around three outcomes:
 
----
+1. **Find issues humans miss manually** by running sustained, strategy-driven exploratory behavior.
+2. **Preserve explainability** by emitting milestones, traces, and reproduction artifacts—not just pass/fail signals.
+3. **Close feedback loops quickly** by streaming real-time telemetry into an operator dashboard.
 
-## Developer dashboard (React)
-
-### `developer-dashboard/package.json`
-- Vite + React app.
-- Uses `socket.io-client` to receive telemetry streams.
-
-### `developer-dashboard/index.html`
-Vite entry HTML.
-
-### `developer-dashboard/src/main.tsx`
-React entry bootstrapping (standard Vite/React pattern).
-
-### `developer-dashboard/src/App.tsx`
-Main UI container.
-
-Responsibilities:
-- Holds session UI state: target URL, connection state, whether a test is running, latest engine status, telemetry list.
-- Connects to Socket.IO using `VITE_BUGSAFARI_SOCKET_URL` (fallback `http://localhost:3005`).
-- Calls the engine HTTP API at `VITE_BUGSAFARI_API_URL` (fallback `http://localhost:3000`) endpoint:
-  - `POST /api/start-test` with `{ url }`.
-- Renders:
-  - `LiveFeed` (browser screenshot stream)
-  - `TelemetryStream` (timeline of events)
-  - `ControlPanel` (URL input + Launch button)
-
-### `developer-dashboard/src/types.ts`
-Dashboard-side telemetry types.
-
-Exports similar to `shared/types.ts` (duplicated for frontend convenience).
-
-### `developer-dashboard/src/components/ControlPanel.tsx`
-UI for entering a target staging URL and launching the engine.
-
-- Disables launch when offline or a test is running.
-- On submit calls `onLaunch()`.
-
-### `developer-dashboard/src/components/LiveFeed.tsx`
-Receives `live-frame` Socket.IO events.
-
-- Each event contains a base64 JPEG string.
-- Renders an `<img>` with `src=data:image/jpeg;base64,...`.
-
-### `developer-dashboard/src/components/TelemetryStream.tsx`
-Renders an ordered list of telemetry events.
-
-- Sorts by `timestamp` (newest first).
-- Each list entry shows a computed title/subtitle depending on telemetry `type`.
-
-### Styling assets
-- `developer-dashboard/src/App.css`, `developer-dashboard/src/index.css` — Tailwind/CSS.
-- `developer-dashboard/tailwind.config.js`, `postcss.config.js` — build config.
+This is why the codebase is split into:
+- an operator-facing **Watchtower** (`developer-dashboard`)
+- an autonomous execution core with detectors (**Intelligence + Arsenal**) (`testing-core`)
+- a shared contract bridge (`shared`)
 
 ---
 
-## Testing core (autonomous engine)
+## 2) Three Pillars Narrative
 
-### `testing-core/package.json`
-Backend service package.
+## Pillar A — Intelligence (Understanding and Decisioning)
 
-- `main`: `src/index.ts`
-- Uses:
-  - `express` + `cors`
-  - `playwright` (Chromium headless)
-  - `socket.io`
-  - `cheerio` (present; not inspected here)
+**Primary home:** `testing-core/src/domain` and parts of `testing-core/src/application`
 
-### `testing-core/src/index.ts`
-The backend process entry.
+Intelligence is responsible for:
+- extracting interaction surfaces from DOM state,
+- scoring/prioritizing targets,
+- remembering structural state to avoid blind repetition,
+- selecting next actions strategically.
 
-Responsibilities:
-1. Start two servers:
-   - HTTP/Express server for API
-     - `GET /api/health`
-     - `POST /api/start-test`
-   - Socket.IO server for telemetry + live frames
-2. Enforce single-run concurrency via `isTestRunning` (returns `429` if already running).
-3. `runBugSafari(targetUrl)`:
-   - Emits `ACTION` telemetry `engine-boot`.
-   - Launches Playwright Chromium (headless) and creates a browser context.
-   - Installs navigation sandboxing via `installDomainGuard`.
-   - Creates a new page and calls `runAutonomousSafari`.
-   - Emits completion telemetry:
-     - `ACTION` with `engine-finished` when completed
-     - `EXCEPTION` with `engine-halted`-style reasoning when halted.
-   - Closes context/browser in `finally`.
+Key modules in this pillar:
+- Heuristics: `domain/heuristics/domParser.ts`, `scorer.ts`, `hashUtils.ts`
+- Domain services: `AutonomousExplorationEngine.ts`, `ElementScorer.ts`, `StructuralHashManager.ts`
+- Decision strategy support: `domain/scenarios/smartAttacker.ts`
 
-Key helpers:
-- `parseTargetUrl(body)`: validates body contains a usable http/https URL.
-- `readPort(value, fallback)`: reads port env vars with bounds.
-
-### `testing-core/src/contracts.ts`
-Types used internally for telemetry + discovery data.
-
-Key exports:
-- `TelemetryType`, `SemanticRole`
-- `TelemetryMeta`, `TelemetryEvent`
-- `BoundingBox`, `DiscoveredElement`
-
-### `testing-core/src/reporters/socketServer.ts`
-Socket.IO telemetry hub.
-
-Exports:
-- `TelemetryHub`:
-  - constructor wires `connection` / `disconnect` logs
-  - `emitTelemetry(type, meta)` emits:
-    - `telemetry` (used by dashboard)
-    - `engine-log` (additional channel)
-    - returns the constructed `TelemetryEvent`
-  - `emitFrame(base64Image)` emits `live-frame`
-  - `emitTargets(targets)` emits `discovered-elements` (current dashboard may or may not consume it)
-
-### `testing-core/src/reporters/actionBuffer.ts`
-Circular action record buffer.
-
-Exports:
-- `ActionBuffer(capacity=20)`
-  - `push(record)` keeps last N records
-  - `snapshot()` returns records
-  - `toReproductionSteps()` converts records into a human-readable step list used in crash telemetry.
-
-### `testing-core/src/reporters/exceptionCatcher.ts`
-Captures page runtime exceptions and network-level 500 failures.
-
-Exports:
-- `CrashSignal`
-  - `halt(reason)`
-  - `isHalted()`, `getReason()`
-- `setupExceptionCatcher(page, hub, actionBuffer)`
-  - Exposes `__bugSafariReportException` for browser-side reporting.
-  - `addInitScript` registers handlers in page context for:
-    - `window.error`
-    - `unhandledrejection`
-  - Hooks Playwright events:
-    - `pageerror` => halt
-    - `console` (error only) => emits EXCEPTION telemetry (ignores `net::ERR`)
-    - `request` / `response` => computes `durationMs`, emits NETWORK telemetry
-    - if `statusCode >= 500`, emits EXCEPTION and halts
-    - `requestfailed` => emits NETWORK telemetry with `request.failure().errorText`
-
-### `testing-core/src/engine/domainGuard.ts`
-Sandbox domain enforcement.
-
-Exports:
-- `installDomainGuard(context, targetUrl, hub)`:
-  - Uses `context.route('**/*', handler)`.
-  - Blocks external HTTP(S) navigation requests that would leave `targetOrigin`.
-  - Emits `ACTION` telemetry `blocked-external-navigation`.
-  - Aborts route via `route.abort('blockedbyclient')`.
-- `restoreDomainIfNeeded(page, targetUrl, hub)`:
-  - If the current `page.url()` is external, navigates back to the target origin and emits `restore-target-domain`.
-
-### `testing-core/src/engine/autonomousLoop.ts`
-Core exploration loop.
-
-Exports:
-- `runAutonomousSafari(options)`.
-
-Major responsibilities:
-1. Initialize core modules:
-   - `MemoryTracker` (state repetition + penalties)
-   - `RiskScorer` (adaptive element scoring)
-   - `ActionBuffer(20)`
-   - `setupExceptionCatcher(page, hub, actionBuffer)` to get a `CrashSignal`.
-2. Navigate to the target:
-   - `page.goto(targetUrl, waitUntil: 'domcontentloaded', timeout 15000)`
-   - Wait for `networkidle` (best-effort)
-   - Start streaming frames with `streamLiveFrame`.
-3. For each step up to `maxSteps` (default 40):
-   - If `crashSignal.isHalted()`, stop and return `{completed:false}`.
-   - Ensure page is alive, otherwise create a new page + attach exception catcher (`ensurePage`).
-   - Compute a structural DOM fingerprint:
-     - `createStructuralFingerprint(page)`
-   - Track repeats:
-     - `memory.recordState(stateHash)`
-     - if repeat, emit `state-repeat-penalty`.
-   - Discover interactive elements:
-     - `scanInteractiveElements(page)`
-   - If none, finish with reason `No interactive elements found.`
-   - Score elements:
-     - `scorer.scoreElements(page, parsedElements, memory, stateVisit.visitCount)`
-     - emit `HEURISTIC_SCORE` for each target
-     - send top candidates to clients via `hub.emitTargets(...)`.
-   - Choose and execute an action:
-     - Selects action name via `chooseActionName(target, step)`.
-     - Pushes an action record into `ActionBuffer`.
-     - Runs bug finders:
-       - `dispatchBugFinders(...)` tries each module from `getAllBugFinders()`.
-     - Executes the action via `executeTargetAction`.
-     - Monitors action outcomes via `monitorAction`:
-       - watches `page.on('response')` to detect high latency / network
-       - detects route changes (URL changed)
-       - catches thrown exceptions (does not throw)
-     - Applies feedback to update scorer weights:
-       - `scorer.applyFeedback(target, feedback)`
-   - Restores domain if needed.
-   - Streams another live frame.
-4. End conditions:
-   - Completed after reaching `maxSteps` or no elements.
-
-Internal helpers (high-level):
-- `executeTargetAction(page, target, step)`
-  - For inputs/text/selection/input roles: fuzz with `fuzzTextInput`.
-  - Otherwise:
-    - strip constraints
-    - sometimes run concurrent spam + route trash
-    - otherwise rapid-fire click
-    - occasionally run route trash.
-- `dispatchBugFinders(...)`
-  - Iterates `getAllBugFinders()` and for each finder:
-    - checks `finder.isApplicable(ctx)`
-    - runs `finder.run(ctx)`
-    - emits HEURISTIC_SCORE telemetry for each returned finding.
-  - Finder errors are caught and emitted as EXCEPTION telemetry.
-
-### `testing-core/src/heuristics/domParser.ts`
-Discovers interactive DOM elements.
-
-Exports:
-- `ParsedElement` interface:
-  - tagName, id, className, type, name, text
-  - selector (custom selector builder)
-  - role, href
-  - isDisabled
-  - boundingBox: `{x,y,width,height}`
-  - featureSignature: stable signature used by the scorer + finders
-- `scanInteractiveElements(page)`
-  - `page.evaluate` executes in-browser JS.
-  - Queries elements matching:
-    - `button`
-    - `input:not([type="hidden"])`
-    - `textarea`, `select`
-    - `a[href]`
-    - `[role="button"]`, `[role="link"]`
-    - `[tabindex]` not `-1`
-  - Builds selectors using:
-    - `#id` when possible
-    - `data-testid` when possible
-    - `name` / `aria-label`
-    - otherwise computes an `nth-of-type`-based path from body
-  - Extracts text/content with special handling per element type.
-  - Computes `featureSignature` as a truncated normalized join of key attributes.
-
-### `testing-core/src/heuristics/hashUtils.ts`
-Computes structural state hashes and tracks repetition.
-
-Exports:
-- `createStructuralFingerprint(page)`
-  - Serializes DOM tree from `document.body`.
-  - Normalizes text and removes volatile attributes matching patterns (e.g. `data-react`, `data-v-*`, aria-busy, style, value).
-  - Truncates overly long text.
-  - Hashes serialized string via SHA-256.
-- `MemoryTracker`
-  - `recordState(hash)` returns `{hash, visitCount, isRepeat}`
-  - `penalizeAction(actionSignature, amount)` stores penalty per action signature
-  - `getActionPenalty(actionSignature)`
-
-### `testing-core/src/heuristics/scorer.ts`
-Scores and ranks discovered elements.
-
-Exports:
-- `ScoredElement` = `ParsedElement` + `score`, `isVisible`, `semanticRole`.
-- `RiskScorer`
-  - `scoreElements(page, elements, memory, stateVisitCount)`:
-    - For each element (up to 120):
-      - checks visibility
-      - classifies semantic role
-      - computes:
-        - base feature score from tag/type/keywords
-        - layout score (uses bounding box)
-        - constraint score (adds when disabled)
-        - adaptive score based on prior feedback weights
-        - penalties from memory/action repetition
-      - returns elements sorted by descending score.
-  - `applyFeedback(element, feedback)` updates adaptive weights.
-
-- `classifySemanticRole(element)` heuristic:
-  - Uses regexes against concatenated clues (type/name/text/id/class/role/href)
-  - Returns `LOGIN`, `SEARCH`, `DESTRUCTIVE`, `SUBMIT`, `CANCEL`, `NAVIGATE`, `INPUT`, else `UNKNOWN`.
-
-### `testing-core/src/scenarios/*`
-Scenario modules implement the “muscle” (interaction patterns and payload injection).
-
-#### `dataFuzzer.ts`
-Exports:
-- `fuzzTextInput(page, target, seed)`
-  - Creates mutated payload via `generatePayloads` from `payloads/chaosData.ts`.
-  - Removes constraints via `stripConstraints`.
-  - Scrolls into view and clicks target.
-  - Fills payload and presses Enter.
-  - Returns the payload string.
-
-#### `formBypasser.ts`
-Exports:
-- `stripConstraints(page, selector)`
-  - Removes `disabled`, `required`, `readonly`, `maxlength`/`minlength`, `pattern`, `aria-disabled`.
-  - For input/textarea removes limits and converts hidden input to text.
-- `forceSubmitNearestForm(page, selector)`
-  - Finds closest `form` and dispatches a submit event.
-
-#### `buttonSpammer.ts`
-Exports:
-- `rapidFireClick(page, selector, clickCount=50)`
-  - Calls `burstClickElement` with duration 1000ms.
-- `burstClickElement(page, selector, clickCount, durationMs)`
-  - Schedules `click` calls at staggered timeouts.
-- `concurrentEventSpam(page, maxTargets=12)`
-  - Clicks multiple visible locators in parallel.
-
-#### `concurrentClicker.ts`
-Implements the “burstClickElement” concurrency logic.
-
-#### `routeTrasher.ts`
-Exports:
-- `trashRoutes(page, repetitions=2)`
-  - Repeats navigation shaking by:
-    - goBack
-    - goForward
-    - reload
-  - Uses `safeNavigation()` to catch failures.
-
-#### `smartAttacker.ts`
-Exports:
-- `smartActionChain(page, targets, seed)`
-  - Chooses either:
-    - fuzz input target (via `fuzzTextInput`)
-    - or rapid-fire click a clickable target.
-
-### `testing-core/src/payloads/chaosData.ts`
-Token-based payload generator.
-
-Exports:
-- `generatePayloads({ element, seed })`
-  - Generates contextual prefix (email/password/search heuristics) and appends mutated tokens.
-  - Token categories:
-    - boundary tokens
-    - query/injection tokens
-    - script tokens
-    - primitive type tokens
-  - Uses a deterministic PRNG seeded from element feature signature + seed.
-  - Adds one extra “very long” payload with `A` padding.
-- `getRandomPayload()` convenience function.
-
-### `testing-core/src/bugs/*`
-Bug finder modules discover suspicious behaviors relevant to specific bug classes.
-
-#### `testing-core/src/bugs/types.ts`
-Defines engine bug-finder contracts.
-
-Exports:
-- `BugClass` union of bug identifiers:
-  - `INPUT_SANITIZATION_FAILURE`
-  - `CLIENT_SIDE_CONSTRAINT_BYPASS`
-  - `NOSQL_INJECTION`
-  - `SPA_STATE_RACE_CONDITION`
-  - `STRUCTURAL_NAVIGATION_LOGIC`
-  - `RUNTIME_STABILITY_EXCEPTION`
-  - `BOUNDARY_STRESS_FAILURE`
-- `BugFinding` with `bugClass`, `title`, `severity`, optional `evidence`.
-- `BugContext` passed into `run()`:
-  - `page`, `hub`, `actionBuffer`, `targetUrl`, `step`, `stateHash`, `crashHalted`, optional `element`.
-- `BugFinder` interface:
-  - `bugClass` constant
-  - `isApplicable(ctx)`
-  - `run(ctx)` returns `BugFinding[]` and must not throw.
-
-#### `testing-core/src/bugs/registry.ts`
-Registers all finders.
-
-Exports:
-- `getAllBugFinders()` returns the array:
-  - `inputSanitizationFinder`
-  - `clientSideConstraintBypassFinder`
-  - `noSqlInjectionFinder`
-  - `spaRaceConditionsFinder`
-  - `structuralNavigationFinder`
-  - `runtimeStabilityFinder`
-  - `boundaryStressFinder`
-
-#### `testing-core/src/bugs/scenarioAdapters.ts`
-Adapter functions that bug finders call for payload injection + constraint stripping.
-
-Exports:
-- `fuzzTextWithAttackSurface(page, element, step, options)`
-  - strips constraints then calls `fuzzTextInput`.
-- `ensureConstraintsStripped(page, elementSelector)`
-- `fuzzAndReturnPayload(page, element, seed)`
-
-#### Bug finders (`testing-core/src/bugs/finders/*.ts`)
-Each module exports a constant implementing `BugFinder`.
-
-1) `finders/inputSanitization.ts`
-- Applicable when current element is `semanticRole` `INPUT` or `LOGIN`.
-- In `run()`:
-  - fuzzes element using `fuzzTextWithAttackSurface`.
-  - returns a `BugFinding` about input sanitization failure (mutated payloads).
-
-2) `finders/clientSideBypass.ts`
-- Applicable when element is disabled or semantic role is `INPUT`/`LOGIN`.
-- In `run()`:
-  - calls `ensureConstraintsStripped` to remove client-side restrictions.
-  - fuzzes element.
-  - returns a `CLIENT_SIDE_CONSTRAINT_BYPASS` finding (HIGH severity).
-
-3) `finders/noSqlInjection.ts`
-- Applicable for INPUT/LOGIN elements whose type/name/text/id/class clues match NoSQL-ish targets:
-  - regex: `(search|query|filter|email|username|account|id)`
-- In `run()`:
-  - fuzzes with injection token profiles.
-  - returns a `NOSQL_INJECTION` finding (HIGH severity).
-
-4) `finders/spaRaceConditions.ts`
-- Applicable always (returns `true`).
-- In `run()`:
-  - calls `burstConcurrentStress(page, step)` from stress adapters.
-  - returns a `SPA_STATE_RACE_CONDITION` finding.
-
-5) `finders/structuralNavigation.ts`
-- Applicable always.
-- In `run()`:
-  - calls `probeStructuralNavigation(page, step)` from stress adapters.
-  - returns `STRUCTURAL_NAVIGATION_LOGIC` finding.
-
-6) `finders/runtimeStability.ts`
-- Applicable always.
-- In `run()`:
-  - only returns a finding when `ctx.crashHalted` is true.
-  - emits a `RUNTIME_STABILITY_EXCEPTION` finding (CRITICAL severity).
-
-7) `finders/boundaryStress.ts`
-- Applicable always.
-- In `run()`:
-  - calls `boundaryOverloadProbe(page, step)`.
-  - marks severity CRITICAL when `unresponsive`.
-
-#### Stress adapters (`testing-core/src/bugs/stressAdapters/*.ts`)
-These are invoked by race/structural/boundary bug finders.
-
-- `stressAdapters/index.ts` re-exports:
-  - `concurrentStress`, `structuralProbe`, `boundaryOverload`
-
-1) `stressAdapters/concurrentStress.ts`
-- `burstConcurrentStress(page, step)`:
-  - runs `concurrentEventSpam(page, 12)` and `trashRoutes(page, 1)`.
-  - returns attempted/completed aggregate counts.
-
-2) `stressAdapters/structuralProbe.ts`
-- `probeStructuralNavigation(page, step)`:
-  - captures `beforeUrl` and a slice of `beforeText`.
-  - performs goBack + goForward (best-effort).
-  - compares URL + visible text.
-  - if nothing changed, flags potential dead-end/loop-like behavior.
-
-3) `stressAdapters/boundaryOverload.ts`
-- `boundaryOverloadProbe(page, step)`:
-  - builds a very long string with optional Zalgo-like combining marks.
-  - attempts to find common text input selectors and click+fill with large payload.
-  - uses a “ping” via `page.waitForFunction` to check if the app remains responsive.
-  - returns `{ unresponsive, durationMs, attempted }`.
+**Why this pillar exists:**  
+Without a decision layer, automation is random click replay. Intelligence turns raw DOM and feedback into guided exploration.
 
 ---
 
-## Control flow summary (end-to-end)
+## Pillar B — Arsenal (Execution and Attack Surface Probing)
 
-1. Dashboard calls `POST /api/start-test` with a URL.
-2. Engine (testing-core):
-   - launches headless Chromium
-   - installs a domain guard
-   - starts `runAutonomousSafari` loop
-3. In each step:
-   - discover interactive elements (`scanInteractiveElements`)
-   - score/rank (`RiskScorer`)
-   - emit heuristic telemetry
-   - execute selected action (fuzz or rapid clicks + route trash)
-   - monitor action for network/route changes/exceptions
-   - update adaptive weights
-   - run bug finders; each emits a finding telemetry frame
-   - stream screenshot frame
-4. Exceptions and 5xx responses are captured via `setupExceptionCatcher`.
+**Primary home:** `testing-core/src/domain/scenarios`, `testing-core/src/bugs`, `testing-core/src/payloads`, `testing-core/src/ml`
 
----
+Arsenal is responsible for:
+- executing stress/fuzz scenarios,
+- probing boundary and validation assumptions,
+- adapting scenario outputs into detector-friendly evidence,
+- classifying suspicious behavior into structured findings.
 
-## Telemetry contract used by the system
+Key modules in this pillar:
+- Scenario library: `buttonSpammer`, `dataFuzzer`, `routeTrasher`, `networkSaboteur`, etc.
+- Detection layer: `bugs/finders/*`
+- Bridging logic: `bugs/scenarioAdapters.ts`, `bugs/stressAdapters/*`
+- Input generation helpers: `payloads/chaosData.ts`, `ml/payloadSynthesizer.ts`
 
-Telemetry is emitted as objects shaped like:
-- `TelemetryEvent = { timestamp, type, meta }`
-- `type` in `'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE'`
-- `meta` includes optional fields such as `selector`, `actionExecuted`, `statusCode`, `url`, `score`, `exceptionDetails`, `reproductionSteps`, etc.
-
-Dashboard subscribes to Socket.IO event name:
-- `telemetry` for event list
-- `live-frame` for screenshot frames
+**Why this pillar exists:**  
+Discovery quality depends on diversity of behavior. Arsenal gives Intelligence multiple attack vectors and evidence-producing probes.
 
 ---
 
-## Scripts / commands
+## Pillar C — Watchtower (Visibility and Human Control)
 
-This repo contains two packages; typical workflows:
-- Backend (testing-core):
-  - `npm -C testing-core run typecheck`
-  - `npm -C testing-core run start`
-- Frontend (developer-dashboard):
-  - `npm -C developer-dashboard install`
-  - `npm -C developer-dashboard run dev`
+**Primary home:** `developer-dashboard/src` and backend monitoring/presentation adapters
+
+Watchtower is responsible for:
+- accepting operator intent (target/run controls),
+- displaying live telemetry and milestones,
+- presenting forensic traces and reproduction paths,
+- keeping humans in the loop while automation runs continuously.
+
+Key modules in this pillar:
+- Dashboard control/view components (`ControlPanel`, `TelemetryStream`, `EngineMilestones`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`)
+- UI orchestration hook (`useDashboardController.ts`)
+- Gateway adapter (`SocketHttpEngineGateway.ts`)
+- Backend telemetry and socket infrastructure (`infrastructure/monitoring/*`, `presentation/socket/*`)
+
+**Why this pillar exists:**  
+Automation without observability becomes untrustworthy. Watchtower makes findings inspectable, traceable, and operationally useful.
 
 ---
 
-## Files not fully inspected
+## 3) DDD and Layered Architectural Context
 
-Some files present in the repository were not read directly in this documentation generation pass (e.g., some `.ts` utilities under `testing-core/src/bugs/finders/*.ts` beyond what was already loaded, plus any remaining UI/css/static assets). The core modules relevant to engine operation and bug finding are covered above.
+BugSafari’s backend (`testing-core`) follows a layered pattern close to DDD-style boundaries.
 
+## Domain Layer (`testing-core/src/domain`)
+Contains business behavior independent of transport/framework:
+- entities (interactive element model),
+- heuristics and scoring logic,
+- scenarios,
+- core orchestration services.
+
+**Rule:** Domain expresses exploration intelligence and behavior policy; it should not depend on HTTP/socket mechanics.
+
+## Application Layer (`testing-core/src/application`)
+Coordinates use-cases and lifecycle:
+- starts/stops runs,
+- sequences domain services,
+- depends on abstractions (ports), not concrete frameworks.
+
+**Rule:** Application decides *when* domain behavior executes and through which abstract capabilities.
+
+## Infrastructure Layer (`testing-core/src/infrastructure`)
+Implements technical adapters:
+- Playwright browser engine,
+- socket telemetry gateway,
+- monitoring buffers/stores/emitters.
+
+**Rule:** Infrastructure satisfies ports and operational concerns; it does not own business intent.
+
+## Presentation Layer (`testing-core/src/presentation`)
+Exposes interfaces to outside actors:
+- HTTP route registration,
+- socket event handler registration.
+
+**Rule:** Presentation maps external requests/events into application use-cases.
+
+---
+
+## 4) Wiring: End-to-End Control and Data Flow
+
+## Flow A — Run Startup (Command Path)
+
+1. Operator enters target and clicks run in `ControlPanel.tsx`.
+2. `useDashboardController.ts` normalizes intent and invokes `EngineGateway`.
+3. `SocketHttpEngineGateway.ts` sends HTTP start request to backend route.
+4. Backend presentation (`registerRoutes.ts`) forwards to `StartExplorationUseCase.ts`.
+5. Use-case initializes lifecycle services (`runController`, `stackManager`) and domain engine.
+6. Autonomous loop starts.
+
+**Outcome:** A controlled, traceable run begins from explicit human intent.
+
+---
+
+## Flow B — Autonomous Exploration Loop (Execution Path)
+
+1. Domain parser extracts interactive elements from current state.
+2. Scoring heuristics rank candidates.
+3. Smart strategy selects scenario/action path.
+4. Interaction simulator executes selected operations through browser engine adapter.
+5. Structural hash/memory and guards evaluate state transitions and boundaries.
+6. Loop repeats with updated telemetry and state context.
+
+**Outcome:** Stateful exploration that adapts instead of blindly repeating actions.
+
+---
+
+## Flow C — Detection and Evidence (Analysis Path)
+
+1. Scenario outputs and runtime signals are fed through stress adapters.
+2. Finder modules classify patterns (sanitization gaps, race conditions, stability faults, etc.).
+3. Findings are normalized via bug contracts.
+4. Reproduction and forensic modules persist actionable traces.
+
+**Outcome:** Raw runtime behavior becomes structured bug intelligence.
+
+---
+
+## Flow D — Telemetry Return (Observability Path)
+
+1. Milestones/actions/exceptions/findings are emitted via telemetry gateway.
+2. Socket infrastructure broadcasts events to connected dashboard clients.
+3. Dashboard components update live (timeline, milestones, forensic/reproduction trails, feed).
+4. Operator observes progress and can intervene/control subsequent runs.
+
+**Outcome:** Closed loop between autonomous execution and human decision-making.
+
+---
+
+## 5) Package-Level Responsibilities and Boundaries
+
+## `developer-dashboard/`
+- Owns operator experience and runtime observability.
+- Depends on backend contracts and transport gateways.
+- Should not implement backend exploration logic.
+
+## `testing-core/`
+- Owns autonomous exploration, scenario execution, detection, and telemetry emission.
+- Exposes control/stream interfaces via presentation adapters.
+- Should not contain UI rendering responsibilities.
+
+## `shared/`
+- Owns cross-package contract stability.
+- Minimizes semantic drift between producer (engine) and consumer (dashboard).
+
+---
+
+## 6) Why This Split Works Operationally
+
+This architecture intentionally optimizes for:
+- **Autonomy:** domain + scenario engine can run deep explorations.
+- **Safety/Control:** application services and guards constrain behavior.
+- **Observability:** monitoring + socket stream turns opaque runs into inspectable evidence.
+- **Extensibility:** new scenarios/finders/adapters can be added without rewriting UI or transport surfaces.
+- **Team parallelism:** frontend, domain logic, and infrastructure can evolve with clear boundaries.
+
+---
+
+## 7) Reading Path for New Contributors
+
+Recommended order for understanding the system quickly:
+
+1. `testing-core/src/index.ts` and `presentation/*` (entrypoints and interfaces)
+2. `application/useCases/StartExplorationUseCase.ts` (run orchestration)
+3. `domain/services/AutonomousExplorationEngine.ts` + heuristics/scenarios (core behavior)
+4. `bugs/*` + monitoring modules (detection and evidence)
+5. `developer-dashboard/src/application/useCases/useDashboardController.ts` + components (operator-facing loop)
+6. `shared/types.ts` (contract language binding both sides)
+
+---
+
+## 8) Relationship to Other Docs
+
+- `BUGSAFARI_BLUEPRINT.md` captures strategic architecture principles and design direction.
+- `ALL_FILES_CODEBASE.md` provides module-by-module narrative references.
+- This file (`CODEBASE_DOCUMENTATION.md`) provides the system-level intent and wiring map connecting those details into a coherent mental model.

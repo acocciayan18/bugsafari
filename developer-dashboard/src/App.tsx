@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import ForensicTrail from './components/ForensicTrail';
-import EngineMilestones from './components/EngineMilestones';
 import LiveFeed from './components/LiveFeed';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -101,7 +100,6 @@ export default function App() {
               </div>
             </div>
 
-            <EngineMilestones milestones={state.engineMilestones} />
             <ForensicTrail reports={state.reports} />
           </div>
         </section>

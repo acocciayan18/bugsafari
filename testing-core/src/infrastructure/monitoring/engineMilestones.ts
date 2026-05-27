@@ -1,4 +1,4 @@
-import type { EngineMilestoneEvent } from '../../../shared/types.ts';
+import type { EngineMilestoneEvent } from '../../../../shared/types.ts';
 
 export const enginePhases: Record<EngineMilestoneEvent['phase'], { title: string; emoji: string }> = {
   SAFARI_INITIALIZED: { emoji: '🏁', title: 'Safari Initialized' },

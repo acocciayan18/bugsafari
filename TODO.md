@@ -1,7 +1,7 @@
-- [x] Create stabilityMonitor.ts in testing-core/src/bugs/finders with catastrophic-failure monitoring hooks
-- [x] Implement unhandled JS exception monitoring via page.on('pageerror') and emit EXCEPTION telemetry
-- [x] Implement server collapse monitoring via page.on('response') for 500+ and deep body scan signatures
-- [x] Implement heartbeat-based main-thread lock-up detection (2s interval, 5s timeout) with EXCEPTION telemetry
-- [x] Return cleanup/dispose logic so monitoring runs silently in background and can be safely stopped
-- [x] Run TypeScript check for testing-core (attempted; terminal output stream was inconclusive in this environment)
-- [x] Mark all steps complete after implementation
+# Milestone Removal Cleanup TODO
+
+- [ ] Remove EngineMilestoneEmitter and makeMilestone usage from `testing-core/src/application/services/autonomousLoop.ts`
+- [ ] Delete `testing-core/src/infrastructure/monitoring/engineMilestoneEmitter.ts`
+- [ ] Delete `testing-core/src/infrastructure/monitoring/engineMilestones.ts`
+- [ ] Run `npm run build -w testing-core`
+- [ ] Run `npm run build -w developer-dashboard`

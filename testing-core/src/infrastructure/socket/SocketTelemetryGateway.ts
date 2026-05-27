@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { DiscoveredElement, EngineMilestoneEvent, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 export class SocketTelemetryGateway implements TelemetryGateway {
@@ -42,9 +42,5 @@ export class SocketTelemetryGateway implements TelemetryGateway {
 
   public emitIncidentReport(report: IncidentReport): void {
     this.io.emit('incident-report', report);
-  }
-
-  public emitEngineMilestone(event: EngineMilestoneEvent): void {
-    this.io.emit('engine-milestone', event);
   }
 }

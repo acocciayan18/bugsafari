@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EngineGateway } from '../ports/EngineGateway';
-import type { EngineMilestone, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
 
 export interface DashboardState {
   isConnected: boolean;
@@ -10,7 +10,6 @@ export interface DashboardState {
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
-  engineMilestones: EngineMilestone[];
   latestFrame: string | null;
   currentUrl: string;
 }
@@ -19,6 +18,14 @@ const ENGINE_TERMINAL_ACTIONS = new Set([
   'engine-stopped',
   'engine-finished',
   'engine-halted',
+]);
+
+const ENGINE_PAUSE_ACTIONS = new Set([
+  'engine-paused',
+]);
+
+const ENGINE_RESUME_ACTIONS = new Set([
+  'engine-resumed',
 ]);
 
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
@@ -30,7 +37,6 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-  const [engineMilestones, setEngineMilestones] = useState<EngineMilestone[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
 
@@ -47,6 +53,15 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
         setIsTestRunning(false);
         setStatus('IDLE');
       }
+
+      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_PAUSE_ACTIONS.has(event.meta.actionExecuted)) {
+        setStatus('PAUSED');
+      }
+
+      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_RESUME_ACTIONS.has(event.meta.actionExecuted)) {
+        setStatus('RUNNING');
+      }
+
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
         setCurrentUrl(event.meta.message);
       }
@@ -54,7 +69,6 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 20)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 20)));
-    gateway.onEngineMilestone((milestone) => setEngineMilestones((prev) => [...prev, milestone].slice(-50)));
     gateway.onLiveFrame((frame) => setLatestFrame(`data:image/jpeg;base64,${frame}`));
 
     gateway.connect();
@@ -70,7 +84,6 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     setTelemetry([]);
     setReports([]);
     setIncidents([]);
-    setEngineMilestones([]);
     setCurrentUrl(targetUrl);
 
     try {
@@ -89,14 +102,12 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const pauseTest = () => {
     if (status === 'RUNNING') {
       (gateway as any).pauseTest();
-      setStatus('PAUSED');
     }
   };
 
   const resumeTest = () => {
     if (status === 'PAUSED') {
       (gateway as any).resumeTest();
-      setStatus('RUNNING');
     }
   };
 
@@ -108,7 +119,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   };
 
   return {
-    state: { isConnected, isLaunching, isTestRunning, status, telemetry, reports, incidents, engineMilestones, latestFrame, currentUrl },
+    state: { isConnected, isLaunching, isTestRunning, status, telemetry, reports, incidents, latestFrame, currentUrl },
     startTest,
     pauseTest,
     resumeTest,

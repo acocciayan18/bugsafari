@@ -1,5 +1,5 @@
 import type { Page, Request } from 'playwright';
-import type { ForensicCrashReport, IncidentReport } from '../../../shared/types.ts';
+import type { ForensicCrashReport, IncidentReport } from '../../../../shared/types.ts';
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
 
