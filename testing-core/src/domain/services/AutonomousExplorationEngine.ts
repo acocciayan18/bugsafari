@@ -8,6 +8,14 @@ import { StructuralHashManager } from './StructuralHashManager.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
 import { ElementScorer } from './ElementScorer.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
+import { stressScenarioMap, securityVulnerabilityScout } from '../scenarios/index.js';
+import {
+  generateLargeString,
+  generateNullPayload,
+  generateSpecialChars,
+  getRandomPayloadType,
+  getPayload,
+} from '../scenarios/dataFuzzer.js';
 
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
@@ -16,10 +24,13 @@ export class AutonomousExplorationEngine {
   private readonly scorer = new ElementScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
+  private readonly visitedUrls = new Set<string>();
+  private readonly visitedHashes = new Set<string>();
   private targetOrigin = '';
 
   private isPaused = false;
   private isStopRequested = false;
+  private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
 
   public pause() {
     this.isPaused = true;
@@ -198,6 +209,11 @@ export class AutonomousExplorationEngine {
           // Only increment the strike counter when no penalty is already active —
           // during escape mode the engine is deliberately trying new paths, so we
           // give it room to manoeuvre before counting fresh strikes.
+          const currentUrl = page.url();
+          const revisitedPage = this.visitedUrls.has(currentUrl) || this.visitedHashes.has(currentHash);
+          this.visitedUrls.add(currentUrl);
+          this.visitedHashes.add(currentHash);
+
           if (currentHash !== previousHash) {
             // Page state changed — bot successfully moved to a new state.
             stagnationCounter = 0;
@@ -244,29 +260,7 @@ export class AutonomousExplorationEngine {
 
           this.logHighImpact(target, telemetry);
 
-          if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
-            const payload = this.payloadSynthesizer.nextPayload();
-            this.actions.push({
-              timestamp: new Date().toISOString(),
-              selector: target.selector,
-              action: 'payload-injection',
-              payload,
-              score: Number(target.riskScore.toFixed(4)),
-            });
-
-            await this.stripConstraints(page);
-            await this.injectPayload(page, target.selector, payload);
-          } else {
-            this.actions.push({
-              timestamp: new Date().toISOString(),
-              selector: target.selector,
-              action: 'button-spammer',
-              score: Number(target.riskScore.toFixed(4)),
-            });
-
-            await this.safeButtonSpammer(page, target, telemetry);
-            await this.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));
-          }
+          await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
 
           telemetry.emitTelemetry(this.event('HEURISTIC_SCORE', {
             selector: target.selector,
@@ -373,7 +367,7 @@ export class AutonomousExplorationEngine {
       }));
       return report.reason;
     }
-    return null;
+return null;
   }
 
   private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
@@ -381,21 +375,8 @@ export class AutonomousExplorationEngine {
     if (!current) {
       return;
     }
-
-    try {
-      const currentOrigin = new URL(current).origin;
-      if (currentOrigin !== this.targetOrigin) {
-        telemetry.emitTelemetry(this.event('ACTION', {
-          actionExecuted: 'external-redirect-detected',
-          url: current,
-          message: `Detected external redirect to ${currentOrigin}; navigating back.`,
-        }));
-        await page.goBack({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => undefined);
-      }
-    } catch {
-      return;
-    }
   }
+
 
   private async ensureDomReady(page: Page, telemetry: TelemetryGateway): Promise<void> {
     try {
@@ -408,6 +389,156 @@ export class AutonomousExplorationEngine {
         message: 'No interactive selector found during 5s wait window.',
       }));
     }
+  }
+
+  private async executeWeightedAction(
+    page: Page,
+    telemetry: TelemetryGateway,
+    target: InteractiveElement,
+    ranked: InteractiveElement[],
+    revisitedPage: boolean,
+  ): Promise<void> {
+    const isStressAction = Math.random() < 0.3;
+
+    if (!isStressAction) {
+      await this.executeStandardInteraction(page, telemetry, target, ranked);
+      return;
+    }
+
+    const scenario = this.pickStressScenario(target, revisitedPage);
+    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${target.selector}`;
+
+    telemetry.emitTelemetry(this.event('ACTION', {
+      actionExecuted: 'stress-scenario-escalation',
+      selector: target.selector,
+      message: escalationMessage,
+    }));
+
+    this.emitMilestone(telemetry, escalationMessage);
+
+    this.actions.push({
+      timestamp: new Date().toISOString(),
+      selector: target.selector,
+      action: `scenario-${scenario.name}`,
+      score: Number(target.riskScore.toFixed(4)),
+    });
+
+// For security scenarios on text inputs, strip constraints first
+    if (scenario.name === 'SecurityVulnerabilityScout') {
+      try {
+        await this.stripConstraints(page);
+        telemetry.emitTelemetry(this.event('ACTION', {
+          actionExecuted: 'security-constraints-stripped',
+          selector: target.selector,
+          message: `🔓 Stripped HTML5 constraints from ${target.selector} before security injection.`,
+        }));
+      } catch (error) {
+        console.warn('[AutonomousExplorationEngine] Constraint stripping failed before security scenario:', error);
+      }
+
+      // Enhance security testing with data fuzzer payloads
+      await this.executeSecurityFuzzerPayloads(page, telemetry, target);
+    }
+
+    await scenario.execute(page, target);
+  }
+
+  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean) {
+    const tag = target.tagName.toLowerCase();
+    const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
+    const buttonLike =
+      tag === 'button' ||
+      source.includes('role="button"') ||
+      source.includes('[role="button"]') ||
+      target.type.toLowerCase() === 'button' ||
+      target.type.toLowerCase() === 'submit';
+
+    // Check for text input fields (input[type="text"], textarea, input[type="password"])
+    const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';
+
+    // If it's a text input field and chaos threshold allows, delegate to security scout
+    if (isTextInput) {
+      const chaosRoll = Math.random();
+      if (chaosRoll < this.chaosThreshold) {
+        console.log(`[AutonomousExplorationEngine] Chaos threshold triggered (${(chaosRoll * 100).toFixed(1)}% < ${(this.chaosThreshold * 100).toFixed(1)}%) - activating security audit on ${target.selector}`);
+        return securityVulnerabilityScout;
+      }
+    }
+
+    if (revisitedPage) {
+      return stressScenarioMap.RouteTrasher;
+    }
+
+    if (buttonLike) {
+      return stressScenarioMap.ButtonSpammer;
+    }
+
+    return stressScenarioMap.CoordinateBombing;
+  }
+
+  private async executeStandardInteraction(
+    page: Page,
+    telemetry: TelemetryGateway,
+    target: InteractiveElement,
+    ranked: InteractiveElement[],
+  ): Promise<void> {
+    if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
+      // 50% chance to escalate from "Standard typing" to "Data Fuzzing" for INPUT/TEXTAREA
+      const useDataFuzzer = (target.tagName === 'input' || target.tagName === 'textarea') && Math.random() < 0.5;
+
+      if (useDataFuzzer) {
+        // Use Data Fuzzer: Generate fuzz payload
+        const payloadType = getRandomPayloadType();
+        const payload = getPayload(payloadType);
+
+        this.actions.push({
+          timestamp: new Date().toISOString(),
+          selector: target.selector,
+          action: 'data-fuzzer-injection',
+          payload: payloadType,
+          score: Number(target.riskScore.toFixed(4)),
+        });
+
+        // Strip constraints first (maxlength, pattern) to allow large payloads
+        await this.stripConstraints(page);
+
+        // Inject the fuzz payload
+        await this.injectPayload(page, target.selector, payload);
+
+        // Emit telemetry with the required format
+        telemetry.emitTelemetry(this.event('ACTION', {
+          actionExecuted: 'data-fuzzer-injection',
+          selector: target.selector,
+          message: `⚡ Data Fuzzer: Injecting ${payloadType} into ${target.selector} to test data validation limits.`,
+        }));
+
+        return;
+      }
+
+      // Standard payload injection
+      const payload = this.payloadSynthesizer.nextPayload();
+      this.actions.push({
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'payload-injection',
+        payload,
+        score: Number(target.riskScore.toFixed(4)),
+      });
+
+      await this.stripConstraints(page);
+      await this.injectPayload(page, target.selector, payload);
+      return;
+    }
+
+    this.actions.push({
+      timestamp: new Date().toISOString(),
+      selector: target.selector,
+      action: 'button-spammer',
+      score: Number(target.riskScore.toFixed(4)),
+    });
+
+    await this.safeButtonSpammer(page, target, telemetry);
+    await this.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));
   }
 
   private async safeButtonSpammer(page: Page, target: InteractiveElement, telemetry: TelemetryGateway): Promise<void> {
@@ -485,7 +616,7 @@ export class AutonomousExplorationEngine {
     telemetry.emitLiveFrame(screenshot.toString('base64'));
   }
 
-  private logHighImpact(target: InteractiveElement, telemetry: TelemetryGateway): void {
+private logHighImpact(target: InteractiveElement, telemetry: TelemetryGateway): void {
     const source = `${target.id} ${target.className} ${target.innerText}`.toLowerCase();
     if (source.includes('delete account') || source.includes('delete')) {
       telemetry.emitTelemetry(this.event('ACTION', {
@@ -494,6 +625,67 @@ export class AutonomousExplorationEngine {
         message: `High impact action detected: ${target.innerText || target.selector}`,
       }));
     }
+  }
+
+  /**
+   * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
+   * Uses the previously unused data fuzzer functions to enhance security testing:
+   * - generateLargeString: Tests payload size limits (DoS vulnerability)
+   * - generateNullPayload: Tests null/empty validation bypass
+   * - generateSpecialChars: Tests character encoding issues
+   */
+  private async executeSecurityFuzzerPayloads(
+    page: Page,
+    telemetry: TelemetryGateway,
+    target: InteractiveElement,
+  ): Promise<void> {
+    const selector = target.selector;
+
+    // 1. Inject large string payload for size limit testing
+    const largePayload = generateLargeString();
+    try {
+      await this.injectPayload(page, selector, largePayload);
+      telemetry.emitTelemetry(this.event('ACTION', {
+        actionExecuted: 'security-large-payload-injection',
+        selector,
+        message: `📏 Security: Injected large payload (${largePayload.length} chars) to test size limits.`,
+      }));
+    } catch (error) {
+      console.warn('[AutonomousExplorationEngine] Large payload injection failed:', error);
+    }
+
+    // 2. Inject null payload for validation bypass testing
+    const nullPayload = generateNullPayload();
+    try {
+      await this.injectPayload(page, selector, nullPayload);
+      telemetry.emitTelemetry(this.event('ACTION', {
+        actionExecuted: 'security-null-bypass-injection',
+        selector,
+        message: `� null Security: Injected null payload to test validation bypass.`,
+      }));
+    } catch (error) {
+      console.warn('[AutonomousExplorationEngine] Null payload injection failed:', error);
+    }
+
+    // 3. Inject special characters for encoding testing
+    const specialCharsPayload = generateSpecialChars();
+    try {
+      await this.injectPayload(page, selector, specialCharsPayload);
+      telemetry.emitTelemetry(this.event('ACTION', {
+        actionExecuted: 'security-special-chars-injection',
+        selector,
+        message: `🔣 Security: Injected special characters to test encoding issues.`,
+      }));
+    } catch (error) {
+      console.warn('[AutonomousExplorationEngine] Special chars injection failed:', error);
+    }
+
+    // Trace all payloads injected for security audit
+    console.log(
+      `[SecurityFuzzerPayloads] Enhanced security testing complete on ${selector}: ` +
+      `largePayload(${largePayload.length}), nullPayload("${nullPayload}"), ` +
+      `specialChars(${specialCharsPayload.length})`,
+    );
   }
 
   private event(type: TelemetryEvent['type'], meta: TelemetryEvent['meta']): TelemetryEvent {

@@ -76,15 +76,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
     },
   });
 
-  milestoneEmitter.emit(
-    makeMilestone('SAFARI_INITIALIZED', {
-      status: 'active',
-      title: 'Scanning DOM',
-      message: `Target established at ${options.targetUrl}. Launching Puppeteer...`,
-    }),
-    { force: true },
-  );
-
   await page.goto(options.targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined);
@@ -100,14 +91,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
     }
 
     if (crashSignal.isHalted()) {
-      milestoneEmitter.emit(
-        makeMilestone('INCIDENT_INTERCEPTED', {
-          status: 'error',
-          title: 'Incident Intercepted',
-          message: `Forensic Exception Catcher has detected a crash. Freezing state...`,
-        }),
-      );
-
       return {
         completed: false,
         reason: crashSignal.getReason(),
@@ -117,14 +100,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
 
 
     await controller.waitIfPaused();
-
-    milestoneEmitter.emit(
-      makeMilestone('VISION_ACTIVE', {
-        status: 'active',
-        title: 'Scanning DOM',
-        message: 'Dynamic DOM Parser scanning for interactive elements...',
-      }),
-    );
 
     const pageState = await ensurePage(page, options.context, options.targetUrl, options.hub, actionBuffer);
 
@@ -162,14 +137,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
       });
       return { completed: true, reason: 'No interactive elements found.', stepsExecuted };
     }
-
-    milestoneEmitter.emit(
-      makeMilestone('PRIORITIZATION', {
-        status: 'active',
-        title: 'Prioritization',
-        message: `Single-Layer Perceptron ranking ${parsedElements.length} elements based on learned risk weights.`,
-      }),
-    );
 
     const rankedTargets = await scorer.scoreElements(page, parsedElements, memory, stateVisit.visitCount);
 
@@ -279,14 +246,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
     stepsExecuted = step;
 
     if (crashSignal.isHalted()) {
-      milestoneEmitter.emit(
-        makeMilestone('INCIDENT_INTERCEPTED', {
-          status: 'error',
-          title: 'Incident Intercepted',
-          message: crashSignal.getReason(),
-        }),
-      );
-
       return {
         completed: false,
         reason: crashSignal.getReason(),
@@ -305,16 +264,6 @@ export async function runAutonomousSafari(options: AutonomousRunOptions): Promis
       message: `Autonomous Safari completed ${stepsExecuted} steps.`,
     },
   });
-
-    milestoneEmitter.emit(
-      makeMilestone('REPORT_FINALIZED', {
-        status: 'done',
-        title: 'Forensic Playbook generated',
-        message: 'Forensic Playbook generated. Safari session complete.',
-      }),
-    );
-
-
 
   return {
     completed: true,

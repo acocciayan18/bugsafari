@@ -5,13 +5,13 @@ import type { StressScenario } from './types.js';
 /**
  * Payload types for fuzzing
  */
-type PayloadType = 'large' | 'null' | 'special';
+export type PayloadType = 'Large Strings' | 'Null/Empty' | 'Special Characters';
 
 /**
  * Configuration constants for data fuzzer
  */
 const LARGE_STRING_LENGTH = 50000;
-const SPECIAL_CHARACTERS = '~!@#$%^&*()_+{}[]|:;"\'<>,.?/';
+const SPECIAL_CHARACTERS = '~!@#$%^&*()_+|}{[]\\:";\'<>?,./';
 
 /**
  * Error messages to handle gracefully
@@ -30,7 +30,7 @@ const ERROR_MESSAGES = {
  * This can trigger "Payload Too Large" (413) errors or memory exhaustion.
  * @returns A 50,000-character repeating string
  */
-function generateLargeString(): string {
+export function generateLargeString(): string {
   const base = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const repeatCount = Math.ceil(LARGE_STRING_LENGTH / base.length);
   return base.repeat(repeatCount).slice(0, LARGE_STRING_LENGTH);
@@ -40,9 +40,8 @@ function generateLargeString(): string {
  * Generates a null-like payload to bypass "required" validation.
  * @returns Empty string or null-formatted string
  */
-function generateNullPayload(): string {
-  // Randomly choose between empty string or various null representations
-  const nullVariants = ['', '\0', 'null', 'NULL', 'undefined', 'NaN', ' ', '\n', '\t'];
+export function generateNullPayload(): string {
+  const nullVariants = ['', ' ', 'null', 'undefined', 'undefined'] as const;
   return nullVariants[Math.floor(Math.random() * nullVariants.length)];
 }
 
@@ -50,21 +49,16 @@ function generateNullPayload(): string {
  * Generates a string with special characters to test encoding issues.
  * @returns String containing complex symbols
  */
-function generateSpecialChars(): string {
-  // Generate a string with mixed special characters
-  let result = '';
-  for (let i = 0; i < 1000; i++) {
-    result += SPECIAL_CHARACTERS[Math.floor(Math.random() * SPECIAL_CHARACTERS.length)];
-  }
-  return result;
+export function generateSpecialChars(): string {
+  return SPECIAL_CHARACTERS;
 }
 
 /**
  * Gets a random payload type
  * @returns A randomly selected payload type
  */
-function getRandomPayloadType(): PayloadType {
-  const types: PayloadType[] = ['large', 'null', 'special'];
+export function getRandomPayloadType(): PayloadType {
+  const types: PayloadType[] = ['Large Strings', 'Null/Empty', 'Special Characters'];
   return types[Math.floor(Math.random() * types.length)];
 }
 
@@ -73,13 +67,13 @@ function getRandomPayloadType(): PayloadType {
  * @param type The type of payload to generate
  * @returns The generated payload string
  */
-function getPayload(type: PayloadType): string {
+export function getPayload(type: PayloadType): string {
   switch (type) {
-    case 'large':
+    case 'Large Strings':
       return generateLargeString();
-    case 'null':
+    case 'Null/Empty':
       return generateNullPayload();
-    case 'special':
+    case 'Special Characters':
       return generateSpecialChars();
     default:
       return generateSpecialChars();
@@ -187,7 +181,7 @@ export const dataFuzzer: StressScenario = {
 
     try {
       // Inject the payload using fill() or type()
-      if (payloadType === 'large') {
+      if (payloadType === 'Large Strings') {
         // For large payloads, use evaluate to avoid Playwright's input limits
         await page.evaluate(
           ({ sel, val }: { sel: string; val: string }) => {
@@ -273,13 +267,18 @@ export type DataFuzzer = typeof dataFuzzer;
  * Re-export for backwards compatibility
  * @deprecated Use the `dataFuzzer` export instead
  */
+export function getRandomFuzzPayload(): { payloadType: PayloadType; payload: string } {
+  const payloadType = getRandomPayloadType();
+  const payload = getPayload(payloadType);
+  return { payloadType, payload };
+}
+
 export async function fuzzTextInput(
   page: Page,
   target: InteractiveElement,
   _seed?: number
 ): Promise<string> {
-  const payloadType = getRandomPayloadType();
-  const payload = getPayload(payloadType);
+  const { payload } = getRandomFuzzPayload();
   await dataFuzzer.execute(page, target);
   return payload;
 }

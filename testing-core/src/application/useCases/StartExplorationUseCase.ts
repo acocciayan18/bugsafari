@@ -37,10 +37,6 @@ export class StartExplorationUseCase {
       },
     });
 
-    const { EngineMilestoneEmitter } = await import('../../infrastructure/monitoring/engineMilestoneEmitter.js');
-    const { makeMilestone } = await import('../../infrastructure/monitoring/engineMilestones.js');
-    const milestoneEmitter = new EngineMilestoneEmitter(this.telemetry);
-
     try {
       const result = await this.browserEngine.run(targetUrl, this.telemetry);
 
@@ -67,15 +63,6 @@ export class StartExplorationUseCase {
           exceptionDetails: { message, stackTrace },
         },
       });
-
-      milestoneEmitter.emit(
-        makeMilestone('FATAL_ENGINE_ERROR', {
-          status: 'error',
-          title: 'Fatal Engine Error',
-          message: `Fatal engine error: ${message}`,
-        }),
-        { force: true },
-      );
 
       this.telemetry.emitForensicReport({
         timestamp: new Date().toISOString(),

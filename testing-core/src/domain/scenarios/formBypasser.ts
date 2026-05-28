@@ -5,7 +5,7 @@ import type { StressScenario } from './types.js';
 /**
  * Attributes stripped by FormBypasser to force interactions.
  */
-const STRIPPED_ATTRIBUTES = ['disabled', 'readonly', 'required', 'maxlength', 'minlength'] as const;
+const STRIPPED_ATTRIBUTES = ['disabled', 'readonly', 'required', 'maxlength', 'minlength', 'pattern'] as const;
 
 /**
  * Error signatures that are safe to ignore.
