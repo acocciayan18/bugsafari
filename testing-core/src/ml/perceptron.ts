@@ -67,6 +67,10 @@ export class SingleLayerPerceptron {
   public exportWeights(): Record<string, number> {
     return Object.fromEntries(this.weights.entries());
   }
+
+  public getBias(): number {
+    return this.bias;
+  }
 }
 
 export function buildFeatureVectorFromElement(input: {

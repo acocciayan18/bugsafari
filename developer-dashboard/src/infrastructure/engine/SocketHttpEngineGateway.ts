@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { EngineGateway } from '../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -12,6 +12,7 @@ type UrlChangedHandler = (url: string) => void;
 export class SocketHttpEngineGateway implements EngineGateway {
   private readonly apiBaseUrl: string;
   private readonly socket: Socket;
+  private authToken: string | null = null;
 
   private connectedHandler: ConnectedHandler | null = null;
   private telemetryHandler: TelemetryHandler | null = null;
@@ -28,6 +29,18 @@ export class SocketHttpEngineGateway implements EngineGateway {
       reconnectionAttempts: 20,
       timeout: 10000,
     });
+  }
+
+  public setAuthToken(token: string | null): void {
+    this.authToken = token;
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+    return headers;
   }
 
   public connect(): void {
@@ -56,7 +69,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
   public async startTest(targetUrl: string): Promise<void> {
     const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({ url: targetUrl }),
     });
 
@@ -65,7 +78,30 @@ export class SocketHttpEngineGateway implements EngineGateway {
     }
   }
 
-  // 👇 ADDED: Flow Control Methods
+  public async saveSession(targetUrl: string): Promise<void> {
+    const response = await fetch(`${this.apiBaseUrl}/api/history/save-session`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ targetUrl }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Could not save session (${response.status})`);
+    }
+  }
+
+  public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
+    const response = await fetch(`${this.apiBaseUrl}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Could not fetch session history (${response.status})`);
+    }
+    const data = (await response.json()) as { sessions?: SessionHistoryEntry[] };
+    return Array.isArray(data.sessions) ? data.sessions : [];
+  }
+
+  // Flow Control Methods
   public pauseTest(): void {
     this.socket.emit('pause-test');
   }

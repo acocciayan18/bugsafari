@@ -1,24 +1,10 @@
-# TODO - Security Vulnerability Scout Implementation
+# Database Fixes TODO
 
-## Task Overview
-Fully implement securityVulnerabilityScout.ts and wire it into AutonomousExplorationEngine.ts
+## Task: Fix and improve database files for BugSafari
 
-## Edit Plan
-
-### 1. securityVulnerabilityScout.ts - Update Payload Values
-- [ ] Update XSS payloads to exact values: `<script>alert("BugSafari_XSS")</script>`, `<img src=x onerror=alert(1)>`, `<svg onload=alert(1)>`
-- [ ] Update Injection payloads to exact values: `' OR 1=1 --`, `{"$gt": ""}`, `'; DROP TABLE users;`
-
-### 2. formBypasser.ts - Add pattern attribute stripping
-- [ ] Add 'pattern' to STRIPPED_ATTRIBUTES array
-
-### 3. AutonomousExplorationEngine.ts - Integration
-- [ ] Import securityVulnerabilityScout from scenarios
-- [ ] Add chaosThreshold property for conditional weight check
-- [ ] Update pickStressScenario to delegate to securityVulnerabilityScout for text inputs when chaos threshold allows
-- [ ] Ensure stripConstraints is called before injection
-
-## Dependencies
-- testing-core/src/domain/scenarios/securityVulnerabilityScout.ts
-- testing-core/src/domain/scenarios/formBypasser.ts
-- testing-core/src/domain/services/AutonomousExplorationEngine.ts
+- [x] 1. Create FindingType enum for type safety
+- [x] 2. Fix mongo.ts - remove @ts-ignore, add proper error handling
+- [x] 3. Update ActionTraceModel.ts - modern mongoose patterns with validation
+- [x] 4. Update FindingModel.ts - modern mongoose patterns with validation
+- [x] 5. Update SessionModel.ts - add useful fields (config, error, stats)
+- [x] 6. Update MongoFindingRepository.ts - fix imports, add query methods

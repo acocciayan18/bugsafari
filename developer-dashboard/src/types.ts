@@ -16,5 +16,18 @@ export type {
   DiscoveredElement,
 } from '../../shared/types';
 
+export interface SessionHistoryEntry {
+  id: string;
+  targetUrl: string;
+  status: 'Running' | 'Completed' | 'Crashed';
+  startedAt: string;
+  finishedAt?: string;
+  endedReason?: string;
+  savedManually: boolean;
+  findingCount: number;
+  actionTraceCount: number;
+  brainSnapshots: number;
+}
+
 
 

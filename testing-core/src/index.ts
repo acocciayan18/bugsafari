@@ -7,7 +7,10 @@ import { PlaywrightBrowserEngine } from './infrastructure/playwright/PlaywrightB
 import { SocketTelemetryGateway } from './infrastructure/socket/SocketTelemetryGateway.js';
 import { StartExplorationUseCase } from './application/useCases/StartExplorationUseCase.js';
 import { registerRoutes } from './presentation/api/registerRoutes.js';
+import { registerAuthRoutes } from './presentation/api/authController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
+import { connectDB } from './infrastructure/database/mongo.js';
+import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -23,13 +26,15 @@ const io = new Server(httpServer, {
 registerSocketHandlers(io);
 
 const telemetryGateway = new SocketTelemetryGateway(io);
-const browserEngine = new PlaywrightBrowserEngine();
-const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false });
-
-registerRoutes(app, useCase, port);
-
-httpServer.listen(port, () => {
-  console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
+void connectDB().then((dbReady) => {
+  const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
+  const browserEngine = new PlaywrightBrowserEngine(findingRepository);
+  const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false });
+  registerAuthRoutes(app);
+  registerRoutes(app, useCase, port, findingRepository);
+  httpServer.listen(port, () => {
+    console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
+  });
 });
 
 httpServer.on('error', (error: NodeJS.ErrnoException) => {

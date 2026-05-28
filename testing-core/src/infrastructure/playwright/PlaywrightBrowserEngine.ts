@@ -2,8 +2,11 @@ import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
+import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 
 export class PlaywrightBrowserEngine implements BrowserEngine {
+  constructor(private readonly findingRepo?: FindingRepository) {}
+
   private activeEngine: AutonomousExplorationEngine | null = null;
   private activePage: import('playwright').Page | null = null;
   private activeContext: import('playwright').BrowserContext | null = null;
@@ -33,7 +36,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   }
 
   public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ completed: boolean; reason: string }> {
-    this.activeEngine = new AutonomousExplorationEngine();
+    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo);
     this.activeBrowser = await chromium.launch({ headless: true });
     this.activeContext = await this.activeBrowser.newContext({
       viewport: { width: 1440, height: 900 },

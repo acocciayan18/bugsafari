@@ -78,7 +78,7 @@ Watchtower is responsible for:
 - keeping humans in the loop while automation runs continuously.
 
 Key modules in this pillar:
-- Dashboard control/view components (`ControlPanel`, `TelemetryStream`, `EngineMilestones`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`)
+- Dashboard control/view components (`ControlPanel`, `TelemetryStream`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`)
 - UI orchestration hook (`useDashboardController.ts`)
 - Gateway adapter (`SocketHttpEngineGateway.ts`)
 - Backend telemetry and socket infrastructure (`infrastructure/monitoring/*`, `presentation/socket/*`)

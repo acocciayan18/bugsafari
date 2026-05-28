@@ -1,4 +1,4 @@
-import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
 
 export interface EngineGateway {
   connect(): void;
@@ -11,5 +11,7 @@ export interface EngineGateway {
   onUrlChanged(handler: (url: string) => void): void;
   removeAllListeners(): void;
   startTest(targetUrl: string): Promise<void>;
+  saveSession(targetUrl: string): Promise<void>;
+  fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
 }
 

@@ -35,4 +35,11 @@ export class ElementScorer {
   public rewardFromNetworkSignal(element: InteractiveElement): void {
     this.perceptron.boostFromNetworkSignal(element.featureVector);
   }
+
+  public exportBrainState(): { bias: number; weights: Record<string, number> } {
+    return {
+      bias: this.perceptron.getBias(),
+      weights: this.perceptron.exportWeights(),
+    };
+  }
 }

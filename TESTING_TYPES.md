@@ -13,11 +13,11 @@ BugSafari is not script-based. It continuously extracts interactive elements fro
 
 ### Where in code
 - DOM extraction / target discovery:
-  - `testing-core/src/heuristics/domParser.ts`
+  - `testing-core/src/domain/heuristics/domParser.ts`
 - Element scoring:
-  - `testing-core/src/heuristics/scorer.ts`
+  - `testing-core/src/domain/heuristics/scorer.ts`
 - Engine loop:
-  - `testing-core/src/engine/autonomousLoop.ts`
+  - `testing-core/src/application/services/autonomousLoop.ts`
   - `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
 
 ### Typical effects
@@ -48,7 +48,7 @@ This forces the application to handle inputs that would normally be blocked by f
 
 ### Where in code
 - Form constraint stripping:
-  - `testing-core/src/scenarios/formBypasser.ts`
+  - `testing-core/src/domain/scenarios/formBypasser.ts`
 - Payload injection orchestrated in:
   - `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
 
@@ -76,7 +76,7 @@ This tests:
 
 ### Where in code
 - Fuzz text input scenario:
-  - `testing-core/src/scenarios/dataFuzzer.ts`
+  - `testing-core/src/domain/scenarios/dataFuzzer.ts`
 - Payload generation engine:
   - `testing-core/src/ml/payloadSynthesizer.ts`
   - (support) `testing-core/src/payloads/chaosData.ts`
@@ -156,7 +156,7 @@ BugSafari deliberately spams concurrent interactions to force:
 - Bug finder:
   - `testing-core/src/bugs/finders/spaRaceConditions.ts`
 - Scenario components for concurrency:
-  - `testing-core/src/scenarios/concurrentClicker.ts`
+  - `testing-core/src/domain/scenarios/concurrentClicker.ts`
 
 ### Common testing outcomes
 - UI inconsistent state
@@ -230,7 +230,7 @@ BugSafari watches for crash/halts and reports them as critical runtime stability
 - Bug finder:
   - `testing-core/src/bugs/finders/runtimeStability.ts`
 - Crash interception and halt management:
-  - `testing-core/src/reporters/exceptionCatcher.ts`
+  - `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts`
 
 ### Common testing outcomes
 - Unhandled runtime errors
@@ -273,7 +273,7 @@ BugSafari captures:
 
 ### Where in code
 - Exception capture + halt criteria:
-  - `testing-core/src/reporters/exceptionCatcher.ts`
+  - `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts`
 - Network interception + failure gating:
   - `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
 
@@ -288,20 +288,20 @@ This reduces noisy 200-series traffic and keeps focus on bug-relevant network ac
 
 ## Summary: Testing Types vs Core Modules
 
-- **Front-end constraint stripping**: `scenarios/formBypasser.ts` (+ engine orchestration)
-- **Exploratory DOM testing**: `heuristics/domParser.ts` + `engine/*`
-- **Input fuzzing**: `scenarios/dataFuzzer.ts` + `ml/payloadSynthesizer.ts`
+- **Front-end constraint stripping**: `domain/scenarios/formBypasser.ts` (+ engine orchestration)
+- **Exploratory DOM testing**: `domain/heuristics/domParser.ts` + `application/services/autonomousLoop.ts`
+- **Input fuzzing**: `domain/scenarios/dataFuzzer.ts` + `ml/payloadSynthesizer.ts`
 - **Bypass disabled/front-end restrictions**: `bugs/finders/clientSideBypass.ts`
 - **NoSQL injection style**: `bugs/finders/noSqlInjection.ts`
 - **Race/concurrency stress**: `bugs/stressAdapters/concurrentStress.ts`
 - **Navigation correctness**: `bugs/stressAdapters/structuralProbe.ts`
 - **Boundary overload**: `bugs/stressAdapters/boundaryOverload.ts`
-- **Runtime stability**: `bugs/finders/runtimeStability.ts` + `reporters/exceptionCatcher.ts`
+- **Runtime stability**: `bugs/finders/runtimeStability.ts` + `infrastructure/monitoring/exceptionCatcher.ts`
 
 ---
 
 ## Where to add future “testing types”
 1. Add a new **bug finder** under `testing-core/src/bugs/finders/`.
-2. If it needs a new kind of behavior, add a **scenario adapter** under `testing-core/src/bugs/stressAdapters/` or `testing-core/src/scenarios/`.
+2. If it needs a new kind of behavior, add a **scenario adapter** under `testing-core/src/bugs/stressAdapters/` or `testing-core/src/domain/scenarios/`.
 3. Ensure it emits evidence via existing telemetry types (`ACTION`, `NETWORK`, `EXCEPTION`, `HEURISTIC_SCORE`).
 

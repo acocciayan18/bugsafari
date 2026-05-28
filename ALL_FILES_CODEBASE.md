@@ -78,11 +78,6 @@ BugSafari is a two-part runtime:
 - Triggered when reproduction playbook entries are available.
 - Depends on backend `reproductionPlaybookStore` output semantics.
 
-### `developer-dashboard/src/components/EngineMilestones.tsx`
-- Progress/milestone visualization across run phases.
-- Triggered by milestone telemetry events.
-- Mirrors backend milestone emission structure.
-
 ---
 
 ## `developer-dashboard/src/infrastructure/` — Watchtower Transport Adapter
@@ -441,16 +436,6 @@ BugSafari is a two-part runtime:
 - Buffers recent action traces for forensic introspection.
 - Triggered whenever scenario actions execute.
 - Feeds forensic and reproduction outputs.
-
-### `testing-core/src/infrastructure/monitoring/engineMilestoneEmitter.ts`
-- Emits milestone updates for progress visibility.
-- Triggered at key run lifecycle checkpoints.
-- Consumed by socket server and dashboard milestone UI.
-
-### `testing-core/src/infrastructure/monitoring/engineMilestones.ts`
-- Milestone state/types helper definitions.
-- Referenced by emitters and UI-facing payload formatting.
-- Supports emitter + dashboard milestone rendering.
 
 ### `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts`
 - Captures runtime anomalies/exceptions.

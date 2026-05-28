@@ -15,6 +15,8 @@ import { dataFuzzer } from './dataFuzzer.js';
 import { buttonSpammer } from './buttonSpammer.js';
 import { coordinateBombing } from './coordinateBombing.js';
 import { routeTrasher } from './routeTrasher.js';
+import { formBypasser } from './formBypasser.js';
+import { networkSaboteur } from './networkSaboteur.js';
 
 type RouteTrasherCompatibleScenario = {
   name: string;
@@ -34,6 +36,8 @@ export const stressScenarioRegistry: StressScenario[] = [
   buttonSpammer,
   coordinateBombing,
   routeTrasherScenario,
+  formBypasser,
+  networkSaboteur,
 ];
 
 export const stressScenarioMap: Record<string, StressScenario> = {
@@ -42,6 +46,8 @@ export const stressScenarioMap: Record<string, StressScenario> = {
   ButtonSpammer: buttonSpammer,
   CoordinateBombing: coordinateBombing,
   RouteTrasher: routeTrasherScenario,
+  FormBypasser: formBypasser,
+  NetworkSaboteur: networkSaboteur,
 };
 
 export type { StressScenario };

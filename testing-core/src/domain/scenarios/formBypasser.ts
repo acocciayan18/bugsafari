@@ -5,7 +5,41 @@ import type { StressScenario } from './types.js';
 /**
  * Attributes stripped by FormBypasser to force interactions.
  */
-const STRIPPED_ATTRIBUTES = ['disabled', 'readonly', 'required', 'maxlength', 'minlength', 'pattern'] as const;
+const STRIPPED_ATTRIBUTES = [
+  'disabled',
+  'readonly',
+  'required',
+  'maxlength',
+  'minlength',
+  'pattern',
+  'novalidate',
+  'formnovalidate',
+] as const;
+
+/**
+ * Extended attributes to remove for comprehensive bypassing.
+ */
+const EXTENDED_ATTRIBUTES = [
+  'data-val',
+  'data-val-required',
+  'data-val-number',
+  'data-val-date',
+  'data-val-email',
+  'data-val-equalto',
+  'data-val-regex',
+  'data-val-length',
+  'data-val-range',
+  'data-val-min',
+  'data-val-max',
+  'aria-required',
+  'aria-readonly',
+  'aria-disabled',
+] as const;
+
+/**
+ * Maximum length value to set when removing constraints.
+ */
+const MAX_LENGTH_LIMIT = 999999;
 
 /**
  * Error signatures that are safe to ignore.
@@ -18,6 +52,9 @@ const NON_FATAL_ERRORS = {
   CONTEXT_DESTROYED: 'context destroyed',
 } satisfies Record<string, string>;
 
+/**
+ * Checks if an error is non-fatal and can be safely ignored.
+ */
 function isNonFatalError(error: Error): boolean {
   const msg = error.message.toLowerCase();
   return Object.values(NON_FATAL_ERRORS).some((signature) => msg.includes(signature.toLowerCase()));
@@ -26,9 +63,17 @@ function isNonFatalError(error: Error): boolean {
 /**
  * Form Bypasser scenario:
  * - Scans target and siblings
- * - Strips HTML constraints (disabled, readonly, required, maxlength, minlength)
+ * - Strips HTML constraints (disabled, readonly, required, maxlength, minlength, pattern)
+ * - Handles form-level constraints
  * - Forces disabled buttons enabled and input maxlength removed
  * - Emits ACTION telemetry log
+ *
+ * This comprehensive form bypasser:
+ * - Strips all HTML5 validation constraints
+ * - Removes data-* validation attributes (ASP.NET MVC, jQuery Validate, etc.)
+ * - Handles contenteditable elements
+ * - Removes aria-* accessibility constraints
+ * - Emits proper telemetry for monitoring
  */
 export const formBypasser: StressScenario = {
   name: 'FormBypasser',
@@ -38,7 +83,7 @@ export const formBypasser: StressScenario = {
 
     try {
       const affectedSelector = await page.evaluate(
-        ({ sel, attrs }) => {
+        ({ sel, attrs, extendedAttrs, maxLen }) => {
           const targetEl = document.querySelector(sel);
 
           // Build candidate set: target + siblings
@@ -66,10 +111,25 @@ export const formBypasser: StressScenario = {
             }
           }
 
+          // Track all affected elements for reporting
+          const affectedElements: string[] = [];
+
           for (const el of candidates) {
+            let modified = false;
+
+            // Strip basic HTML attributes
             for (const attr of attrs) {
               if (el.hasAttribute(attr)) {
                 el.removeAttribute(attr);
+                modified = true;
+              }
+            }
+
+            // Strip extended validation attributes (data-*, aria-*)
+            for (const attr of extendedAttrs) {
+              if (el.hasAttribute(attr)) {
+                el.removeAttribute(attr);
+                modified = true;
               }
             }
 
@@ -77,26 +137,61 @@ export const formBypasser: StressScenario = {
             if (el instanceof HTMLButtonElement) {
               el.disabled = false;
               el.removeAttribute('disabled');
+              modified = true;
             } else if (el instanceof HTMLInputElement) {
               if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') {
                 el.disabled = false;
                 el.removeAttribute('disabled');
+                modified = true;
               }
 
-              // Explicitly remove any maxlength cap for giant payloads
+              // Remove any maxlength cap for giant payloads
               el.removeAttribute('maxlength');
-              el.maxLength = 524288;
+              el.maxLength = maxLen;
+              modified = true;
             } else if (el instanceof HTMLTextAreaElement) {
               el.removeAttribute('maxlength');
-              el.maxLength = 524288;
+              el.maxLength = maxLen;
+              modified = true;
             }
 
             // Remove readOnly property-level lock where applicable
             if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
               el.readOnly = false;
+              modified = true;
+            }
+
+            // Handle contenteditable elements
+            if (el.hasAttribute('contenteditable')) {
+              el.removeAttribute('contenteditable');
+              if (el instanceof HTMLElement) {
+                el.contentEditable = 'true';
+              }
+              modified = true;
+            }
+
+            // Handle select elements - remove validation
+            if (el instanceof HTMLSelectElement) {
+              el.removeAttribute('required');
+              modified = true;
+            }
+
+            // Handle form-level constraints
+            const form = el.closest('form');
+            if (form) {
+              form.removeAttribute('novalidate');
+              (form as HTMLFormElement).noValidate = false;
+              modified = true;
+            }
+
+            if (modified) {
+              const elId = el.id || el.tagName.toLowerCase();
+              const elClass = el.className ? `.${String(el.className).trim().replace(/\s+/g, '.').slice(0, 20)}` : '';
+              affectedElements.push(`${elId}${elClass}`);
             }
           }
 
+          // Build selector string for the main target
           const chosen =
             targetEl && (targetEl as HTMLElement).id
               ? `#${(targetEl as HTMLElement).id}`
@@ -106,13 +201,36 @@ export const formBypasser: StressScenario = {
                   ).trim().replace(/\s+/g, '.')}`
                 : targetEl?.tagName?.toLowerCase() ?? sel;
 
-          return chosen;
+          return JSON.stringify({
+            selector: chosen,
+            affectedCount: affectedElements.length,
+            affectedSelectors: affectedElements.slice(0, 10), // Limit to 10 for reporting
+          });
         },
-        { sel: selector, attrs: [...STRIPPED_ATTRIBUTES] }
+        {
+          sel: selector,
+          attrs: [...STRIPPED_ATTRIBUTES],
+          extendedAttrs: [...EXTENDED_ATTRIBUTES],
+          maxLen: MAX_LENGTH_LIMIT,
+        }
       );
 
+      const result = JSON.parse(affectedSelector);
       console.log(
-        `[Telemetry:ACTION] 🔓 Form Bypasser: Programmatically stripped HTML constraints from ${affectedSelector ?? selector} to force interaction.`
+        `[Telemetry:ACTION] 🔓 FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
+      );
+
+      // Emit detailed telemetry
+      console.log(
+        `[Telemetry:ACTION] ${JSON.stringify({
+          event: 'ACTION',
+          actionExecuted: 'form-bypass',
+          message: `FormBypasser: Stripped constraints from ${result.selector}`,
+          selector: result.selector,
+          affectedElements: result.affectedSelectors,
+          affectedCount: result.affectedCount,
+          timestamp: new Date().toISOString(),
+        })}`
       );
     } catch (error) {
       if (error instanceof Error && isNonFatalError(error)) {
@@ -132,6 +250,56 @@ export const formBypasser: StressScenario = {
  */
 export async function stripConstraints(page: Page, selector: string): Promise<void> {
   await formBypasser.execute(page, { selector } as InteractiveElement);
+}
+
+/**
+ * Bypass form validation comprehensively.
+ * This is a more aggressive version that targets the entire form.
+ */
+export async function bypassForm(page: Page, formSelector: string): Promise<void> {
+  try {
+    await page.evaluate((sel) => {
+      const form = document.querySelector(sel) as HTMLFormElement | null;
+      if (!form) return;
+
+      // Disable HTML5 validation
+      form.noValidate = false;
+
+// Get all form elements
+      const elements = form.elements;
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+
+        // Skip submit/button elements
+        if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
+          const type = (el as HTMLInputElement).type?.toLowerCase();
+          if (type === 'submit' || type === 'button' || type === 'reset') {
+            continue;
+          }
+        }
+
+        // Remove validation attributes
+        el.removeAttribute?.('required');
+        el.removeAttribute?.('disabled');
+        el.removeAttribute?.('readonly');
+        el.removeAttribute?.('maxlength');
+        el.removeAttribute?.('minlength');
+        el.removeAttribute?.('pattern');
+
+        // Remove property-level constraints for input/textarea elements
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+          (el as HTMLInputElement | HTMLTextAreaElement).readOnly = false;
+          (el as HTMLInputElement | HTMLTextAreaElement).required = false;
+          (el as HTMLInputElement | HTMLTextAreaElement).maxLength = 999999;
+          (el as HTMLInputElement).disabled = false;
+        }
+      }
+    }, formSelector);
+
+    console.log(`[FormBypasser] Bypassed form validation for ${formSelector}`);
+  } catch (error) {
+    console.warn(`[FormBypasser] Failed to bypass form: ${error}`);
+  }
 }
 
 export type FormBypasser = typeof formBypasser;

@@ -8,7 +8,8 @@ import { StructuralHashManager } from './StructuralHashManager.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
 import { ElementScorer } from './ElementScorer.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
-import { stressScenarioMap, securityVulnerabilityScout } from '../scenarios/index.js';
+import type { StressScenario } from '../scenarios/types.js';
+import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, formBypasser, networkSaboteur } from '../scenarios/index.js';
 import {
   generateLargeString,
   generateNullPayload,
@@ -16,6 +17,8 @@ import {
   getRandomPayloadType,
   getPayload,
 } from '../scenarios/dataFuzzer.js';
+import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
+import type { FindingRepository } from '../repositories/FindingRepository.js';
 
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
@@ -26,11 +29,20 @@ export class AutonomousExplorationEngine {
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
+  private readonly recentActionTraceIds: string[] = [];
+  private sessionId: string | null = null;
+  private freezeActionTraceRecording = false;
+  private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
 
-  private isPaused = false;
+private isPaused = false;
   private isStopRequested = false;
   private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
+
+  // Stability monitoring cleanup function - disposed in finally block
+  private cleanupStabilityMonitor: (() => void) | null = null;
+
+  constructor(private readonly findingRepo?: FindingRepository) {}
 
   public pause() {
     this.isPaused = true;
@@ -56,7 +68,12 @@ export class AutonomousExplorationEngine {
 
 
   public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
+    telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
+    this.freezeActionTraceRecording = false;
+    this.lastBrainSnapshotStep = 0;
+    this.sessionId = await this.createSession(targetUrl);
+    await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;
     let runtimeCrashReason: string | null = null;
@@ -67,7 +84,7 @@ export class AutonomousExplorationEngine {
     // 🏁 Safari Initialized (milestone)
     this.emitMilestone(telemetry, '🏁 Safari Initialized');
 
-    this.configureDialogAutoDismiss(page, telemetry);
+this.configureDialogAutoDismiss(page, telemetry);
 
 
     page.on('request', (request: Request) => {
@@ -84,35 +101,6 @@ export class AutonomousExplorationEngine {
         }));
       }
     });
-    page.on('response', async (response: Response) => {
-      const crashReason = await this.handleResponse(response, page.url(), telemetry);
-      if (crashReason && !serverCrashReason) {
-        serverCrashReason = crashReason;
-      }
-    });
-
-
-    page.on('pageerror', (error: Error) => {
-      if (runtimeCrashReason) {
-        return;
-      }
-      runtimeCrashReason = `Unhandled runtime error: ${error.message}`;
-      const stackTrace = error.stack ?? error.message;
-      telemetry.emitForensicReport({
-        timestamp: new Date().toISOString(),
-        reason: runtimeCrashReason,
-        url: page.url(),
-        stackTrace,
-        breadcrumbs: this.actions.snapshot(),
-      });
-      telemetry.emitTelemetry(this.event('EXCEPTION', {
-        message: runtimeCrashReason,
-        exceptionDetails: { message: error.message, stackTrace },
-        reproductionSteps: this.actions
-          .snapshot()
-          .map((item, index) => `Step ${index + 1}: ${item.action} on ${item.selector}`),
-      }));
-    });
 
     handleFramenavigated = (): void => {
       const url = page.url();
@@ -123,10 +111,14 @@ export class AutonomousExplorationEngine {
 
     page.on('framenavigated', handleFramenavigated);
 
-    try {
+try {
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
+
+      // 🛡️ Initialize stability monitoring - runs silently in background
+      // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
+      this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry);
 
       // --- 3-Strike Logic Loop State ---
       // Tracks consecutive steps where the DOM fingerprint did not change.
@@ -145,7 +137,7 @@ export class AutonomousExplorationEngine {
         while (this.isPaused) {
           if (this.isStopRequested) {
             this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
-            return { completed: false, reason: 'Safari session manually stopped by user.' };
+return { completed: false, reason: 'Safari session manually stopped by user.' };
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
@@ -155,11 +147,23 @@ export class AutonomousExplorationEngine {
             return { completed: false, reason: runtimeCrashReason };
           }
 
-
           if (serverCrashReason) {
             return { completed: false, reason: serverCrashReason };
           }
 
+
+          // 📡 Network Sabotage: 10% random chance to sabotage network requests
+          // This tests if the UI breaks when network calls are delayed/aborted
+          const sabotageDice = Math.random();
+          if (sabotageDice < 0.1) {
+            this.emitMilestone(telemetry, '📡 Chaos Mode: Sabotaging network requests for this step...');
+            telemetry.emitTelemetry(this.event('ACTION', {
+              actionExecuted: 'network-sabotage',
+              message: '📡 Chaos Mode: Sabotaging network requests for this step...',
+            }));
+            // Execute the network sabotage - note: this remains active for subsequent interactions
+            await networkSaboteur.execute(page);
+          }
 
           // 🧠 Prioritization (milestone comes right after parse/scoring)
           this.emitMilestone(telemetry, '👁️ Vision Active');
@@ -261,6 +265,7 @@ export class AutonomousExplorationEngine {
           this.logHighImpact(target, telemetry);
 
           await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+          await this.persistBrainSnapshot('runtime', step);
 
           telemetry.emitTelemetry(this.event('HEURISTIC_SCORE', {
             selector: target.selector,
@@ -289,6 +294,8 @@ export class AutonomousExplorationEngine {
               url: lastKnownUrl || page.url(),
             }),
           );
+          this.freezeActionTraceRecording = true;
+          await this.persistBrainSnapshot('crash');
 
 
 
@@ -300,11 +307,135 @@ export class AutonomousExplorationEngine {
         }
       }
 
-      return { completed: true, reason: 'Maximum exploration steps reached.' };
+return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
+      // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
+      if (this.cleanupStabilityMonitor) {
+        this.cleanupStabilityMonitor();
+        this.cleanupStabilityMonitor = null;
+      }
+
       if (handleFramenavigated) {
         page.off('framenavigated', handleFramenavigated);
       }
+      if (!this.freezeActionTraceRecording) {
+        await this.persistBrainSnapshot('finish');
+      }
+      await this.completeSession();
+      this.sessionId = null;
+      this.recentActionTraceIds.length = 0;
+    }
+  }
+
+private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
+    return {
+      emitTelemetry: (event: TelemetryEvent) => {
+        telemetry.emitTelemetry(event);
+        void this.persistFinding(event);
+      },
+      emitUrlChanged: (url: string) => telemetry.emitUrlChanged(url),
+      emitTargets: (targets) => telemetry.emitTargets(targets),
+      emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
+      emitForensicReport: (report) => telemetry.emitForensicReport(report),
+      emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
+    };
+  }
+
+  private async createSession(targetUrl: string): Promise<string | null> {
+    if (!this.findingRepo) {
+      return null;
+    }
+
+    try {
+      return await this.findingRepo.createSession({
+        targetUrl,
+        startedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to create Safari session:', error);
+      return null;
+    }
+  }
+
+  private async completeSession(): Promise<void> {
+    if (!this.findingRepo || !this.sessionId) {
+      return;
+    }
+
+    try {
+      if (this.freezeActionTraceRecording) {
+        await this.findingRepo.markSessionCrashed(this.sessionId, new Date().toISOString(), 'Unhandled exception detected');
+      } else {
+        await this.findingRepo.markSessionCompleted(this.sessionId, new Date().toISOString());
+      }
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to complete Safari session:', error);
+    }
+  }
+
+  private async persistFinding(event: TelemetryEvent): Promise<void> {
+    if (!this.findingRepo || !this.sessionId) {
+      return;
+    }
+
+    try {
+      const findingId = await this.findingRepo.save({
+        sessionId: this.sessionId,
+        event,
+      });
+
+      if (event.type === 'EXCEPTION' && this.recentActionTraceIds.length > 0) {
+        this.freezeActionTraceRecording = true;
+        await this.findingRepo.linkActionTracesToFinding(findingId, [...this.recentActionTraceIds]);
+      }
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to persist finding:', error);
+    }
+  }
+
+  private recordActionTrace(trace: ActionBreadcrumb): void {
+    this.actions.push(trace);
+
+    if (!this.findingRepo || !this.sessionId || this.freezeActionTraceRecording) {
+      return;
+    }
+
+    void this.findingRepo
+      .saveActionTrace({ sessionId: this.sessionId, trace })
+      .then((actionTraceId) => {
+        this.recentActionTraceIds.push(actionTraceId);
+        while (this.recentActionTraceIds.length > 20) {
+          this.recentActionTraceIds.shift();
+        }
+      })
+      .catch((error) => {
+        console.error('[AutonomousExplorationEngine] Failed to persist action trace:', error);
+      });
+  }
+
+  private async persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void> {
+    if (!this.findingRepo || !this.sessionId) {
+      return;
+    }
+
+    if (source === 'runtime') {
+      const currentStep = step ?? 0;
+      if (currentStep - this.lastBrainSnapshotStep < 10) {
+        return;
+      }
+      this.lastBrainSnapshotStep = currentStep;
+    }
+
+    const brainState = this.scorer.exportBrainState();
+    try {
+      await this.findingRepo.saveBrainConfig({
+        sessionId: this.sessionId,
+        source,
+        bias: brainState.bias,
+        weights: brainState.weights,
+      });
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to persist brain snapshot:', error);
     }
   }
 
@@ -416,7 +547,7 @@ return null;
 
     this.emitMilestone(telemetry, escalationMessage);
 
-    this.actions.push({
+    this.recordActionTrace({
       timestamp: new Date().toISOString(),
       selector: target.selector,
       action: `scenario-${scenario.name}`,
@@ -440,10 +571,10 @@ return null;
       await this.executeSecurityFuzzerPayloads(page, telemetry, target);
     }
 
-    await scenario.execute(page, target);
+await scenario.execute(page, target);
   }
 
-  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean) {
+  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
     const buttonLike =
@@ -463,6 +594,9 @@ return null;
         console.log(`[AutonomousExplorationEngine] Chaos threshold triggered (${(chaosRoll * 100).toFixed(1)}% < ${(this.chaosThreshold * 100).toFixed(1)}%) - activating security audit on ${target.selector}`);
         return securityVulnerabilityScout;
       }
+      // Use formBypasser for text inputs when not using security scout
+      // This ensures constraints are stripped before payload injection
+      return formBypasser;
     }
 
     if (revisitedPage) {
@@ -470,7 +604,9 @@ return null;
     }
 
     if (buttonLike) {
-      return stressScenarioMap.ButtonSpammer;
+      // Use formBypasser for buttons to ensure they can be clicked
+      // This helps bypass disabled/readonly button states
+      return formBypasser;
     }
 
     return stressScenarioMap.CoordinateBombing;
@@ -491,7 +627,7 @@ return null;
         const payloadType = getRandomPayloadType();
         const payload = getPayload(payloadType);
 
-        this.actions.push({
+        this.recordActionTrace({
           timestamp: new Date().toISOString(),
           selector: target.selector,
           action: 'data-fuzzer-injection',
@@ -517,7 +653,7 @@ return null;
 
       // Standard payload injection
       const payload = this.payloadSynthesizer.nextPayload();
-      this.actions.push({
+      this.recordActionTrace({
         timestamp: new Date().toISOString(),
         selector: target.selector,
         action: 'payload-injection',
@@ -530,7 +666,7 @@ return null;
       return;
     }
 
-    this.actions.push({
+    this.recordActionTrace({
       timestamp: new Date().toISOString(),
       selector: target.selector,
       action: 'button-spammer',
@@ -566,32 +702,40 @@ return null;
   }
 
 
-  private async stripConstraints(page: Page): Promise<void> {
-    await page.evaluate(() => {
-      try {
-        const fields = Array.from(document.querySelectorAll('input, textarea, select'));
-        for (const field of fields) {
-          field.removeAttribute('required');
-          field.removeAttribute('disabled');
-          field.removeAttribute('readonly');
+private async stripConstraints(page: Page): Promise<void> {
+    // Use formBypasser for comprehensive constraint stripping
+    // This leverages the full power of formBypasser for all input types
+    try {
+      await formBypasser.execute(page, undefined);
+    } catch (error) {
+      // Fallback to inline implementation if formBypasser fails
+      console.warn('[AutonomousExplorationEngine] formBypasser failed, using fallback stripConstraints');
+      await page.evaluate(() => {
+        try {
+          const fields = Array.from(document.querySelectorAll('input, textarea, select'));
+          for (const field of fields) {
+            field.removeAttribute('required');
+            field.removeAttribute('disabled');
+            field.removeAttribute('readonly');
 
-          const input = field as HTMLInputElement;
-          input.disabled = false;
-          input.readOnly = false;
-          input.required = false;
+            const input = field as HTMLInputElement;
+            input.disabled = false;
+            input.readOnly = false;
+            input.required = false;
 
-          const nextMaxLength = -1;
-          if (nextMaxLength < 0) {
-            input.removeAttribute('maxLength');
-            continue;
+            const nextMaxLength = -1;
+            if (nextMaxLength < 0) {
+              input.removeAttribute('maxLength');
+              continue;
+            }
+
+            input.maxLength = nextMaxLength;
           }
-
-          input.maxLength = nextMaxLength;
+        } catch (err) {
+          console.warn('[BugSafari] stripConstraints evaluate failed', err);
         }
-      } catch (err) {
-        console.warn('[BugSafari] stripConstraints evaluate failed', err);
-      }
-    });
+      });
+    }
   }
 
 
