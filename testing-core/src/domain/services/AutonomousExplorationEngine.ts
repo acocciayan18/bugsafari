@@ -4,7 +4,7 @@ import type { ActionBreadcrumb, TelemetryEvent } from '../../../../shared/types.
 import { CircularBuffer } from '../../lib/circularBuffer.js';
 import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
 import { RecursiveDomParser } from './RecursiveDomParser.js';
-import { StructuralHashManager } from './StructuralHashManager.js';
+import { DomHasher } from '../../ml/domHasher.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
 import { ElementScorer } from './ElementScorer.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
@@ -22,7 +22,7 @@ import type { FindingRepository } from '../repositories/FindingRepository.js';
 
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
-  private readonly hashManager = new StructuralHashManager();
+  private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new ElementScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();

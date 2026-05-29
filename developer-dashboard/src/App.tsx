@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import ForensicTrail from './components/ForensicTrail';
@@ -178,18 +178,18 @@ export default function App() {
             />
           </div>
 
-          <div className="grid min-h-[420px] grid-rows-[1fr_1fr_1fr] gap-6">
+          <div className="grid min-h-105 grid-rows-[1fr_1fr_1fr] gap-6">
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium">
                 Real-time Telemetry Terminal
                 {state.status === 'PAUSED' && <span className="text-xs text-amber-600 animate-pulse font-bold">PAUSED</span>}
               </div>
-              <div className="h-[280px] overflow-auto bg-slate-950 p-3 font-mono text-xs text-slate-100">
+              <div className="h-70 overflow-auto bg-slate-950 p-3 font-mono text-xs text-slate-100">
                 {state.telemetry.length === 0 ? (
                   <p className="text-slate-400">No telemetry events yet.</p>
                 ) : (
                   state.telemetry.map((event, index) => (
-                    <div key={`${event.timestamp}-${index}`} className="mb-1 break-words">
+                    <div key={`${event.timestamp}-${index}`} className="mb-1 wrap-break-word">
                       <span className="text-slate-500">[{new Date(event.timestamp).toLocaleTimeString()}]</span> <span className={event.type === 'EXCEPTION' ? 'text-rose-400' : 'text-emerald-400'}>[{event.type}]</span>{' '}
                       {event.meta.message ?? event.meta.actionExecuted ?? 'event'}
                     </div>
@@ -208,7 +208,7 @@ export default function App() {
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium">
                   Session History
                 </div>
-                <div className="flex h-[140px] items-center justify-center bg-slate-50 p-4">
+                <div className="flex h-35 items-center justify-center bg-slate-50 p-4">
                   <div className="text-center">
                     <p className="text-sm text-slate-500">Sign in to view history</p>
                     <button

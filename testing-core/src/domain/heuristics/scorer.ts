@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { SemanticRole } from '../../contracts.js';
-import type { MemoryTracker } from './hashUtils.js';
+import type { MemoryTracker } from '../../ml/domHasher.js';
 import type { ParsedElement } from './domParser.js';
 
 export interface ScoredElement extends ParsedElement {
