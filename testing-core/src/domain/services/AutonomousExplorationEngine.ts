@@ -7,6 +7,7 @@ import { RecursiveDomParser } from './RecursiveDomParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
 import { ElementScorer } from './ElementScorer.js';
+import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { StressScenario } from '../scenarios/types.js';
 import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, formBypasser, networkSaboteur } from '../scenarios/index.js';
@@ -19,6 +20,7 @@ import {
 } from '../scenarios/dataFuzzer.js';
 import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
+import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
@@ -26,6 +28,7 @@ export class AutonomousExplorationEngine {
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new ElementScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();
+  private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
@@ -85,6 +88,7 @@ private isPaused = false;
     this.emitMilestone(telemetry, '🏁 Safari Initialized');
 
 this.configureDialogAutoDismiss(page, telemetry);
+    this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
 
     page.on('request', (request: Request) => {
@@ -450,6 +454,54 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
     });
   }
 
+  private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKnownUrl: string): void {
+    // Monitor uncaught JavaScript exceptions
+    page.on('pageerror', (error: Error) => {
+      const message = error?.message ?? 'Unknown page error';
+      const stackTrace = error?.stack ?? message;
+      
+      telemetry.emitTelemetry(this.event('EXCEPTION', {
+        message: `🔴 Unhandled JS Exception: ${message}`,
+        exceptionDetails: { message, stackTrace },
+      }));
+
+      telemetry.emitForensicReport({
+        timestamp: new Date().toISOString(),
+        reason: `Unhandled JS Exception: ${message}`,
+        url: lastKnownUrl || page.url(),
+        stackTrace,
+        breadcrumbs: this.actions.snapshot(),
+      });
+    });
+
+    // Monitor unhandled promise rejections via console errors
+    page.on('console', (message) => {
+      if (message.type() !== 'error') {
+        return;
+      }
+
+      const text = message.text();
+
+      // Skip network-related console errors (these are already handled by response monitoring)
+      if (text.includes('net::ERR') || text.includes('ERR_')) {
+        return;
+      }
+
+      telemetry.emitTelemetry(this.event('EXCEPTION', {
+        message: `🔴 Console Error: ${text}`,
+        exceptionDetails: { message: text, stackTrace: text },
+      }));
+
+      telemetry.emitForensicReport({
+        timestamp: new Date().toISOString(),
+        reason: `Console Error: ${text}`,
+        url: lastKnownUrl || page.url(),
+        stackTrace: text,
+        breadcrumbs: this.actions.snapshot(),
+      });
+    });
+  }
+
   private async handleResponse(response: Response, currentUrl: string, telemetry: TelemetryGateway): Promise<string | null> {
     const status = response.status();
 
@@ -618,6 +670,9 @@ await scenario.execute(page, target);
     target: InteractiveElement,
     ranked: InteractiveElement[],
   ): Promise<void> {
+    // Highlight the target element being interacted with
+    await this.highlighter.flashHighlight(page, target.selector);
+
     if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
       // 50% chance to escalate from "Standard typing" to "Data Fuzzing" for INPUT/TEXTAREA
       const useDataFuzzer = (target.tagName === 'input' || target.tagName === 'textarea') && Math.random() < 0.5;

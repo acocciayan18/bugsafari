@@ -1,7 +1,13 @@
 import type { Page } from 'playwright';
+import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 
 export class InteractionSimulator {
+  private readonly highlighter = new BoundingBoxHighlighter();
+
   public async buttonSpammer(page: Page, selector: string): Promise<void> {
+    // Highlight the element being clicked
+    await this.highlighter.flashHighlight(page, selector);
+
     const durationMs = 300;
     const start = Date.now();
 
@@ -20,6 +26,10 @@ export class InteractionSimulator {
 
   public async concurrentClicker(page: Page, selectors: string[]): Promise<void> {
     const targetSelectors = selectors.slice(0, 5);
+
+    // Highlight all elements before clicking
+    await this.highlighter.highlightElements(page, targetSelectors, 600);
+
     const clickTasks = targetSelectors.map(async (selector: string) => {
       try {
         await page.click(selector, { timeout: 1000 });
@@ -31,6 +41,13 @@ export class InteractionSimulator {
       }
     });
     await Promise.all(clickTasks);
+  }
+
+  /**
+   * Gets the highlighter instance for custom highlighting
+   */
+  public getHighlighter(): BoundingBoxHighlighter {
+    return this.highlighter;
   }
 }
 
