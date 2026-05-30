@@ -6,6 +6,7 @@ export interface DashboardState {
   isConnected: boolean;
   isLaunching: boolean;
   isTestRunning: boolean;
+  isThinking: boolean; // 👈 Thinking indicator state
   status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
@@ -35,6 +36,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
+  const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
   const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED'>('IDLE');
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
@@ -44,9 +46,20 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
 
-  useEffect(() => {
-    gateway.onConnected((connected) => setIsConnected(connected));
-    gateway.onTelemetry((event) => {
+useEffect(() => {
+    gateway.onConnected((connected) => {
+      setIsConnected(connected);
+      // Reset thinking state on disconnect to prevent infinite loading trap
+      if (!connected) {
+        setIsThinking(false);
+      }
+    });
+gateway.onTelemetry((event) => {
+      // Note: We do NOT clear isThinking here because the first telemetry 
+      // arrives instantly (e.g., "Launching Playwright...") and would prematurely 
+      // dismiss the indicator. We keep isThinking true until the first live 
+      // frame arrives (visual proof of browser startup).
+      
       setTelemetry((previous) => {
         const next = [...previous, event];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -74,16 +87,22 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 20)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 20)));
-    gateway.onLiveFrame((frame) => setLatestFrame(`data:image/jpeg;base64,${frame}`));
+    gateway.onLiveFrame((frame) => {
+      // Clear thinking state when first live frame is received
+      setIsThinking(false);
+      setLatestFrame(`data:image/jpeg;base64,${frame}`)
+    });
 
     gateway.connect();
     void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
     return () => gateway.disconnect();
   }, [gateway]);
 
-  const startTest = async (targetUrl: string): Promise<void> => {
+const startTest = async (targetUrl: string): Promise<void> => {
     if (!targetUrl.trim()) return;
 
+    // Set thinking state to true immediately when button is clicked
+    setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
     setStatus('RUNNING'); // 👈 Set running status
@@ -96,6 +115,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       await gateway.startTest(targetUrl.trim());
       setIsLaunching(false);
     } catch (error) {
+      // CRUCIAL SAFETY GATE: Clear thinking state on API error to prevent infinite loading trap
+      setIsThinking(false);
       const message = error instanceof Error ? error.message : String(error);
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
       setIsLaunching(false);
@@ -160,11 +181,12 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
   };
 
-  return {
+return {
     state: {
       isConnected,
       isLaunching,
       isTestRunning,
+      isThinking,
       status,
       telemetry,
       reports,
