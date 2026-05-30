@@ -2,18 +2,26 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
 
+// Consolidated rapid clicker exports
+export {
+  buttonSpammer,
+  coordinateBombing,
+  burstClickElement,
+  concurrentEventSpam,
+  executeSpam,
+  InteractionSimulator,
+  type BurstClickResult,
+} from './rapidClickerStress.js';
+
 export { securityVulnerabilityScout } from './securityVulnerabilityScout.js';
 export { formBypasser } from './formBypasser.js';
 export { networkSaboteur } from './networkSaboteur.js';
 export { dataFuzzer } from './dataFuzzer.js';
-export { buttonSpammer } from './buttonSpammer.js';
-export { coordinateBombing } from './coordinateBombing.js';
 export { routeTrasher } from './routeTrasher.js';
 
 import { securityVulnerabilityScout } from './securityVulnerabilityScout.js';
 import { dataFuzzer } from './dataFuzzer.js';
-import { buttonSpammer } from './buttonSpammer.js';
-import { coordinateBombing } from './coordinateBombing.js';
+import { buttonSpammer, coordinateBombing } from './rapidClickerStress.js';
 import { routeTrasher } from './routeTrasher.js';
 import { formBypasser } from './formBypasser.js';
 import { networkSaboteur } from './networkSaboteur.js';
