@@ -8,7 +8,7 @@ import { fuzzTextInput } from '../../domain/scenarios/dataFuzzer.js';
 import { stripConstraints } from '../../domain/scenarios/formBypasser.js';
 import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
-import { CrashSignal, setupExceptionCatcher } from '../../infrastructure/monitoring/exceptionCatcher.js';
+import { CrashSignal, setupExceptionCatcher } from '../../infrastructure/monitoring/RuntimeMonitor.js';
 import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
 
 import { restoreDomainIfNeeded } from './domainGuard.js';

@@ -18,7 +18,7 @@ import {
   getRandomPayloadType,
   getPayload,
 } from '../scenarios/dataFuzzer.js';
-import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
+import { setupStabilityMonitoring } from '../../infrastructure/monitoring/RuntimeMonitor.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
