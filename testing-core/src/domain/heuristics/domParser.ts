@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import type { BoundingBox } from '../../contracts.js';
+import type { InteractiveElement } from '../entities/InteractiveElement.js';
 
 export interface ParsedElement {
   tagName: string;
@@ -14,6 +15,29 @@ export interface ParsedElement {
   isDisabled: boolean;
   boundingBox: BoundingBox;
   featureSignature: string;
+}
+
+/**
+ * Backward-compatible wrapper class that provides the same interface as the removed RecursiveDomParser.
+ * Uses the advanced scanInteractiveElements() which supports Shadow DOM, IFrames, and Z-index overlay checks.
+ */
+export class RecursiveDomParser {
+  public async parse(page: Page): Promise<InteractiveElement[]> {
+    const parsedElements = await scanInteractiveElements(page);
+    
+    return parsedElements.map((element) => ({
+      selector: element.selector,
+      id: element.id,
+      className: element.className,
+      innerText: element.text,
+      type: element.type,
+      tagName: element.tagName,
+      isVisible: element.boundingBox.width > 0 && element.boundingBox.height > 0,
+      isPointer: false, // Not computed in advanced parser, but can be added if needed
+      featureVector: {},
+      riskScore: 0,
+    }));
+  }
 }
 
 export async function scanInteractiveElements(page: Page): Promise<ParsedElement[]> {

@@ -3,7 +3,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { ActionBreadcrumb, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
 import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
-import { RecursiveDomParser } from './RecursiveDomParser.js';
+import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
 import { ElementScorer } from './ElementScorer.js';
