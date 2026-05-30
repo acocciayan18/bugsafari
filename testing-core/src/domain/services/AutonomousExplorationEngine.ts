@@ -6,7 +6,7 @@ import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { InteractionSimulator } from './InteractionSimulator.js';
-import { ElementScorer } from './ElementScorer.js';
+import { RiskScorer } from './RiskScorer.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { StressScenario } from '../scenarios/types.js';
@@ -26,7 +26,7 @@ export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-  private readonly scorer = new ElementScorer();
+private readonly scorer = new RiskScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);

@@ -1,7 +1,7 @@
 import type { BrowserContext, Page, Response } from 'playwright';
 import type { DiscoveredElement } from '../../contracts.js';
 import { DomHasher, type DomHashState, createStructuralFingerprint, MemoryTracker } from '../../ml/domHasher.js';
-import { RiskScorer, type ActionFeedback, type ScoredElement } from '../../domain/heuristics/scorer.js';
+import { RiskScorer, type ActionFeedback, type ScoredElement } from '../../domain/services/RiskScorer.js';
 import { scanInteractiveElements } from '../../domain/heuristics/domParser.js';
 import { executeSpam } from '../../domain/scenarios/buttonSpammer.js';
 import { concurrentEventSpam } from '../../domain/scenarios/concurrentClicker.js';

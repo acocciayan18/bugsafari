@@ -11,8 +11,6 @@ interface User {
 
 interface ControlPanelProps {
   targetUrl: string;
-  setTargetUrl: (url: string) => void;
-  isConnected: boolean;
   isTestRunning: boolean;
   testStatus: 'IDLE' | 'RUNNING' | 'PAUSED';
   authToken: string | null;
@@ -21,14 +19,11 @@ interface ControlPanelProps {
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
-  onSaveSession?: () => void;
   onShowLoginPrompt?: () => void;
 }
 
 export default function ControlPanel({
   targetUrl: initialTargetUrl,
-  setTargetUrl,
-  isConnected,
   isTestRunning,
   testStatus,
   authToken,
@@ -37,14 +32,11 @@ export default function ControlPanel({
   onPause,
   onResume,
   onStop,
-  onSaveSession,
   onShowLoginPrompt,
 }: ControlPanelProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-
-  const isLoggedIn = !!user && !!authToken;
 
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();

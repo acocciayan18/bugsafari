@@ -33,7 +33,6 @@ const copyToClipboard = async (text: string, label = 'Content') => {
  * Extract metadata from error objects for structured grid display
  */
 const extractErrorMetadata = (error: IncidentReport | ForensicCrashReport): Record<string, string> => {
-  const isIncident = 'steps' in error && Array.isArray(error.steps) && error.steps.length > 0;
   const isCrashReport = 'breadcrumbs' in error && Array.isArray(error.breadcrumbs) && error.breadcrumbs.length > 0;
   
   return {

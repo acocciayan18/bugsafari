@@ -180,10 +180,8 @@ export default function App() {
       <div className="flex flex-1">
         {/* SUB-COLUMN 2A: CONTROL PANEL (27%)
             URL input, test controls, optimization settings */}
-        <ControlPanel
+<ControlPanel
           targetUrl={targetUrl}
-          setTargetUrl={() => {}}
-          isConnected={state.isConnected}
           isTestRunning={state.isTestRunning}
           testStatus={state.status}
           authToken={token}
@@ -192,7 +190,6 @@ export default function App() {
           onPause={pauseTest}
           onResume={resumeTest}
           onStop={stopTest}
-          onSaveSession={() => {}}
           onShowLoginPrompt={handleShowLoginPrompt}
         />
 

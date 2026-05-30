@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { ScoredElement } from '../domain/heuristics/scorer.js';
+import type { ScoredElement } from '../domain/services/RiskScorer.js';
 import type { ActionBuffer } from '../infrastructure/monitoring/actionBuffer.js';
 import type { TelemetryHub } from '../infrastructure/monitoring/socketServer.js';
 
