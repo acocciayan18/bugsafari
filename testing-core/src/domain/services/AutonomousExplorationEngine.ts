@@ -5,7 +5,7 @@ import { CircularBuffer } from '../../lib/circularBuffer.js';
 import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
-import { InteractionSimulator } from './InteractionSimulator.js';
+import { InteractionSimulator } from '../scenarios/rapidClickerStress.js';
 import { RiskScorer } from './RiskScorer.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';

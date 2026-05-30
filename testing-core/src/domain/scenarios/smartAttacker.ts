@@ -3,7 +3,7 @@ import type { ScoredElement } from '../../domain/services/RiskScorer.js';
 import type { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import { fuzzTextInput } from './dataFuzzer.js';
-import { executeSpam } from './buttonSpammer.js';
+import { executeSpam } from './rapidClickerStress.js';
 
 export interface SmartActionResult {
   actionExecuted: string;
