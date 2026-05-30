@@ -15,6 +15,7 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HttpServer } from 'http';
+import type { AddressInfo } from 'net';
 
 interface FrameClient {
   id: string;
@@ -66,12 +67,14 @@ export class BinaryFrameServer {
         if (c) c.isAlive = true;
       });
 
-      // Send welcome message with server info
+// Send welcome message with server info
+      const address = this.wss.address();
+      const port = (address && typeof address !== 'string') ? (address as AddressInfo).port : undefined;
       socket.send(JSON.stringify({
         type: 'connected',
         clientId,
         message: 'Binary frame stream connected',
-        port: this.wss.address()?.port
+        port
       }));
     });
 
@@ -186,7 +189,7 @@ export class BinaryFrameServer {
  */
 export class OptimizedTelemetryHub {
   private readonly binaryServer: BinaryFrameServer;
-  private readonly io: any; // Socket.IO Server
+  private io: any; // Socket.IO Server
 
   // Frame quality settings - balance between quality and bandwidth
   private frameQuality = 70; // JPEG quality (0-100)

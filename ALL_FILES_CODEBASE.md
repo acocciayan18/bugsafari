@@ -53,6 +53,30 @@ BugSafari is a two-part runtime:
 
 ## `developer-dashboard/src/components/` — Watchtower Visual Modules
 
+### `developer-dashboard/src/components/ClinicalForensicsDashboard.tsx`
+- **Primary composite dashboard** — unified operator surface replacing separate ControlPanel, TelemetryStream, ForensicTrail, and ReproductionTrail.
+- Provides three-column layout: sidebar navigation (18%), target control panel (27%), and live output studio (55%).
+- Integrates target URL input, optimization toggles, live feed viewport, and multi-tab terminal (telemetry/errors/network/console/history).
+- Handles state management for tabs, expanded stack traces, and action trail expansion.
+- Accepts telemetry events, error incidents/reports, session history, and frame buffers for real-time display.
+
+### `developer-dashboard/src/components/AuthForm.tsx`
+- Authentication form with login/signup modes.
+- Connects to backend auth endpoints for token-based authentication.
+- Supports guest access for unauthenticated exploration.
+- Stores auth tokens in localStorage for session persistence.
+
+### `developer-dashboard/src/components/SessionHistoryTable.tsx`
+- Displays historical exploration sessions in expandable table format.
+- Shows status, target URL, findings count, action trace count, and timestamps.
+- Supports row expansion to reveal brain snapshots and finish reason.
+- Used within dashboard history tab and standalone views.
+
+### `developer-dashboard/src/components/LiveFeed.tsx`
+- Displays live execution frame/screenshot context.
+- Triggered by latest feed updates from backend stream.
+- Couples with telemetry and milestone updates for operator context.
+
 ### `developer-dashboard/src/components/ControlPanel.tsx`
 - Operator command surface (target URL + run lifecycle controls).
 - User actions trigger controller methods to start/stop/adjust session.
@@ -63,11 +87,6 @@ BugSafari is a two-part runtime:
 - Triggered by incoming telemetry state updates; re-renders event stream.
 - Consumes structured events from controller/gateway flow.
 
-### `developer-dashboard/src/components/LiveFeed.tsx`
-- Displays live execution frame/screenshot context.
-- Triggered by latest feed updates from backend stream.
-- Couples with telemetry and milestone updates for operator context.
-
 ### `developer-dashboard/src/components/ForensicTrail.tsx`
 - Surfaces forensic breadcrumbs for diagnosing failures.
 - Triggered by exception/reproduction telemetry slices.
@@ -77,6 +96,11 @@ BugSafari is a two-part runtime:
 - Presents reproducible step sequence for bug validation.
 - Triggered when reproduction playbook entries are available.
 - Depends on backend `reproductionPlaybookStore` output semantics.
+
+### `developer-dashboard/src/components/ThinkingIndicator.tsx`
+- Visual indicator showing engine processing state.
+- Displays when BugSafari is actively analyzing/exploring.
+- Provides visual feedback during autonomous decision cycles.
 
 ---
 
@@ -522,10 +546,10 @@ BugSafari is a two-part runtime:
 
 ## End-to-End Wiring (Operator Intent to Forensic Insight)
 
-1. Operator acts in **ControlPanel**.
+1. Operator enters target URL and clicks "INITIALIZE EXPLORATORY SAFARI" in **ClinicalForensicsDashboard**.
 2. Dashboard controller calls **EngineGateway** (HTTP start/control + socket subscribe).
 3. Backend **StartExplorationUseCase** initializes autonomous run.
 4. **AutonomousExplorationEngine** loops through parse → score → scenario action → observe.
 5. **Bug finders + stress adapters** interpret evidence into findings/signals.
 6. **Monitoring infrastructure** captures milestones, exceptions, action traces, and reproduction steps.
-7. **Socket telemetry** streams everything back to dashboard panels (Telemetry, Milestones, Forensic, Reproduction, LiveFeed).
+7. **Socket telemetry** streams everything back to dashboard: tabs display telemetry live-feed, errors, network, console, and session history.

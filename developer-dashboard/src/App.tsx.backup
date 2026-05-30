@@ -1,0 +1,179 @@
+// App.tsx - Main Entry Hub
+// Orchestrates all top-level components: Login, Sidebar, Control Panel, Forensic Dashboard
+// Manages global session state and 2-column layout structure
+
+import { useCallback, useState } from 'react';
+import { useDashboardController } from './application/useCases/useDashboardController';
+import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
+import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
+import LoginForm from './components/LoginForm';
+import SignupForm from './components/SignupForm';
+import Sidebar from './components/Sidebar';
+import ControlPanel from './components/ControlPanel';
+
+const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
+
+interface User {
+  id: string;
+  email: string;
+}
+
+// View type for navigation
+type ViewType = 'dashboard' | 'history' | 'settings';
+
+function getStoredUser(): User | null {
+  const stored = localStorage.getItem('bugsafari_user');
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
+function getStoredToken(): string | null {
+  return localStorage.getItem('bugsafari_token');
+}
+
+export default function App() {
+  // Global session state lifted to App.tsx
+  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [token, setToken] = useState<string | null>(() => getStoredToken());
+  
+  // Auth modal state
+  const [showAuthModal, setShowAuthModal] = useState(!token && !getStoredToken());
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  
+  // Navigation state
+  const [activeView, setActiveView] = useState<ViewType>('dashboard');
+
+  // Create gateway with auth token
+  const createGateway = useCallback(() => {
+    const gateway = new SocketHttpEngineGateway(API_BASE_URL, SOCKET_URL);
+    gateway.setAuthToken(token);
+    return gateway;
+  }, [token]);
+
+  // Dashboard controller for test orchestration
+  const { state, startTest, pauseTest, resumeTest, stopTest } = useDashboardController(createGateway);
+
+  const isAuthenticated = !!token && !!user;
+
+  // ─────────────────────────────────────────────────────────────
+  // AUTH HANDLERS
+  // ─────────────────────────────────────────────────────────────
+  
+  const handleLoginSuccess = (newToken: string, newUser: User) => {
+    setToken(newToken);
+    setUser(newUser);
+    setShowAuthModal(false);
+  };
+
+  const handleSignupSuccess = (newToken: string, newUser: User) => {
+    setToken(newToken);
+    setUser(newUser);
+    setShowAuthModal(false);
+  };
+
+  const handleGuestAccess = () => {
+    setToken(null);
+    setUser(null);
+    setShowAuthModal(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('bugsafari_user');
+    localStorage.removeItem('bugsafari_token');
+    setToken(null);
+    setUser(null);
+  };
+
+  const handleSwitchToLogin = () => setAuthMode('login');
+  const handleSwitchToSignup = () => setAuthMode('signup');
+  const handleShowLoginPrompt = () => {
+    setAuthMode('login');
+    setShowAuthModal(true);
+  };
+
+  // ───────────────────────────────────────────��─────────────────
+  // RENDER: Authentication Screen (when not authenticated)
+  // ─────────────────────────────────────────────────────────────
+  
+  if (showAuthModal || (!user && !getStoredToken())) {
+    return (
+      <>
+        {authMode === 'login' ? (
+          <LoginForm
+            onLoginSuccess={handleLoginSuccess}
+            onSwitchToSignup={handleSwitchToSignup}
+            onGuestAccess={handleGuestAccess}
+          />
+        ) : (
+          <SignupForm
+            onSignupSuccess={handleSignupSuccess}
+            onSwitchToLogin={handleSwitchToLogin}
+          />
+        )}
+      </>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RENDER: Main Application Layout
+  // 2-Column Structure: Sidebar (18%) | Main Content (82%)
+  // ─────────────────────────────────────────────────────────────
+  
+  return (
+    <div className="flex h-screen w-screen bg-white">
+      {/* COLUMN 1: Sidebar Navigation (18%) */}
+      <Sidebar
+        user={user}
+        isLoggedIn={isAuthenticated}
+        onLogout={handleLogout}
+        activeView={activeView}
+        onViewChange={setActiveView}
+      />
+
+      {/* COLUMN 2: Main Content Area (82%) */}
+      <div className="flex flex-1">
+        {/* Control Panel (27% of main area) */}
+        <ControlPanel
+          targetUrl={targetUrl}
+          setTargetUrl={() => {}}
+          isConnected={state.isConnected}
+          isTestRunning={state.isTestRunning}
+          testStatus={state.status}
+          authToken={token}
+          user={user}
+          onStart={(url) => startTest(url)}
+          onPause={pauseTest}
+          onResume={resumeTest}
+          onStop={stopTest}
+          onSaveSession={() => {}}
+          onShowLoginPrompt={handleShowLoginPrompt}
+        />
+
+        {/* Forensic Dashboard (55% of main area - pure telemetry view) */}
+        <ClinicalForensicsDashboard
+          targetUrl={targetUrl}
+          frameBuffer={state.latestFrame}
+          telemetry={state.telemetry}
+          sessionHistory={state.sessionHistory}
+          errors={{
+            incidents: state.incidents,
+            reports: state.reports,
+          }}
+          isConnected={state.isConnected}
+          isTestRunning={state.isTestRunning}
+          testStatus={state.status}
+          onStart={(url) => startTest(url)}
+          onPause={pauseTest}
+          onResume={resumeTest}
+          onStop={stopTest}
+        />
+      </div>
+    </div>
+  );
+}

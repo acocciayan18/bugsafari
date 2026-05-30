@@ -78,7 +78,8 @@ Watchtower is responsible for:
 - keeping humans in the loop while automation runs continuously.
 
 Key modules in this pillar:
-- Dashboard control/view components (`ControlPanel`, `TelemetryStream`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`)
+- **Primary composite dashboard:** `ClinicalForensicsDashboard.tsx` — unified operator surface combining sidebar navigation, target control panel, live feed viewport, and multi-tab terminal
+- Legacy/auxiliary components (`ControlPanel`, `TelemetryStream`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`, `AuthForm`, `SessionHistoryTable`)
 - UI orchestration hook (`useDashboardController.ts`)
 - Gateway adapter (`SocketHttpEngineGateway.ts`)
 - Backend telemetry and socket infrastructure (`infrastructure/monitoring/*`, `presentation/socket/*`)
@@ -130,7 +131,7 @@ Exposes interfaces to outside actors:
 
 ## Flow A — Run Startup (Command Path)
 
-1. Operator enters target and clicks run in `ControlPanel.tsx`.
+1. Operator enters target URL and clicks "INITIALIZE EXPLORATORY SAFARI" in `ClinicalForensicsDashboard.tsx`.
 2. `useDashboardController.ts` normalizes intent and invokes `EngineGateway`.
 3. `SocketHttpEngineGateway.ts` sends HTTP start request to backend route.
 4. Backend presentation (`registerRoutes.ts`) forwards to `StartExplorationUseCase.ts`.

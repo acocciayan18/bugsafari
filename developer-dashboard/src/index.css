@@ -16,3 +16,51 @@
     @apply bg-background text-primary font-sans;
   }
 }
+
+@layer utilities {
+  /* Custom scrollbar styling for improved visual hierarchy */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+    border: 2px solid #f1f5f9;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Terminal monospace scrolling container - tighter spacing */
+  .terminal-log {
+    @apply whitespace-pre-wrap break-words leading-relaxed font-mono;
+  }
+
+  /* Metadata grid - responsive key-value pairs */
+  .metadata-grid {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-3;
+  }
+
+  /* Error message container with proper wrapping */
+  .error-message {
+    @apply text-xs font-mono whitespace-pre-wrap break-words leading-relaxed;
+  }
+
+  /* Expandable code block container */
+  .code-block {
+    @apply text-xs font-mono whitespace-pre-wrap break-words text-slate-700 leading-relaxed p-3 bg-white rounded border border-slate-200 overflow-x-auto;
+  }
+}
