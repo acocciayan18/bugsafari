@@ -1,6 +1,6 @@
 import type { Page, Request, Response } from 'playwright';
-import type { ForensicCrashReport, IncidentReport } from '../../../../shared/types.ts';
-import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
+import type { ForensicCrashReport, IncidentReport, TelemetryMeta, TelemetryType } from '../../../../shared/types.ts';
+import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
 
@@ -73,10 +73,10 @@ export function setupRuntimeMonitor(
   let heartbeatInFlight = false;
   let lastHeartbeatAlertAt = 0;
 
-  // Helper to emit telemetry - works with both TelemetryGateway and TelemetryHub
-  const emitTelemetry = (event: { timestamp: string; type: string; meta: unknown }): void => {
+// Helper to emit telemetry - works with both TelemetryGateway and TelemetryHub
+  const emitTelemetry = (event: { timestamp: string; type: TelemetryType; meta: TelemetryMeta }): void => {
     if (hub) {
-      hub.emitTelemetry(event as { timestamp: string; type: string; meta: unknown });
+      hub.emitTelemetry(event as { timestamp: string; type: TelemetryType; meta: TelemetryMeta });
     } else if (telemetry) {
       telemetry.emitTelemetry(event as never);
     }

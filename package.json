@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
+    "framer-motion": "^12.40.0",
     "mongoose": "^9.6.3"
   }
 }

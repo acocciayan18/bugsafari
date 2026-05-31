@@ -22,11 +22,67 @@ import { setupStabilityMonitoring } from '../../infrastructure/monitoring/Runtim
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
+/**
+ * Generates a technical "thought" phrase based on the current action context.
+ * Used to broadcast AI intent to the frontend for the "Thinking" UI status bar.
+ */
+function getThoughtVocabulary(
+  action: 'parsing' | 'scoring' | 'clicking' | 'fuzzing' | 'security' | 'dom-ready',
+  targetSelector?: string,
+): string {
+  const vocabularyByAction: Record<string, string[]> = {
+    parsing: [
+      'Discovering interactive elements...',
+      'Mapping DOM structure...',
+      'Scanning for clickable targets...',
+      'Enumerating form fields...',
+      'Analyzing page hierarchy...',
+    ],
+    scoring: [
+      `Evaluating ${targetSelector || 'elements'} for interaction priority...`,
+      'Computing heuristic weights...',
+      `Prioritizing #${targetSelector?.replace('#', '') || 'target'} due to high heuristic weight...`,
+      'Ranking targets by risk score...',
+      'Calculating exploration value...',
+    ],
+    clicking: [
+      `Clicking ${targetSelector || 'target'}...`,
+      'Triggering interaction...',
+      'Emulating user click...',
+      'Executing button press...',
+      'Navigating via link...',
+    ],
+    fuzzing: [
+      'Injecting fuzz payloads...',
+      'Testing data boundaries...',
+      `Injecting Chaos Payload into ${targetSelector || 'field'}...`,
+      'Generating test data...',
+      'Bypassing input validation...',
+    ],
+    security: [
+      'Executing security probe...',
+      'Testing SQL injection vectors...',
+      'Attempting XSS payload injection...',
+      'Validating input sanitization...',
+      'Scanning for vulnerabilities...',
+    ],
+    'dom-ready': [
+      'Waiting for DOM hydration...',
+      'Ensuring page stability...',
+      'Validating document ready state...',
+      'Preparing for interaction...',
+    ],
+  };
+
+  const phrases = vocabularyByAction[action] || vocabularyByAction['parsing'];
+  return phrases[Math.floor(Math.random() * phrases.length)];
+}
+
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-private readonly scorer = new RiskScorer();
+  private readonly scorer = new RiskScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
@@ -38,7 +94,7 @@ private readonly scorer = new RiskScorer();
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
 
-private isPaused = false;
+  private isPaused = false;
   private isStopRequested = false;
   private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
 
@@ -60,7 +116,7 @@ private isPaused = false;
     this.isPaused = false;
   }
 
-  private emitMilestone(telemetry: TelemetryGateway, message: string): void {
+private emitMilestone(telemetry: TelemetryGateway, message: string): void {
     telemetry.emitTelemetry(
       this.event('ACTION', {
         actionExecuted: 'engine-milestone',
@@ -69,8 +125,26 @@ private isPaused = false;
     );
   }
 
+  /**
+   * Emits a THOUGHT telemetry event with a technical phrase.
+   * Called before major operations to broadcast AI intent to the frontend.
+   */
+  private emitThought(
+    telemetry: TelemetryGateway,
+    action: 'parsing' | 'scoring' | 'clicking' | 'fuzzing' | 'security' | 'dom-ready',
+    targetSelector?: string,
+  ): void {
+    const thoughtMessage = getThoughtVocabulary(action, targetSelector);
+    telemetry.emitTelemetry(
+      this.event('THOUGHT', {
+        message: thoughtMessage,
+        selector: targetSelector,
+      }),
+    );
+  }
 
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
+
+public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
     this.freezeActionTraceRecording = false;
@@ -87,9 +161,11 @@ private isPaused = false;
     // 🏁 Safari Initialized (milestone)
     this.emitMilestone(telemetry, '🏁 Safari Initialized');
 
-this.configureDialogAutoDismiss(page, telemetry);
+    this.configureDialogAutoDismiss(page, telemetry);
     this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
+    // 🧠 Emit initial thought state
+    this.emitThought(telemetry, 'dom-ready');
 
     page.on('request', (request: Request) => {
       if (!lastTarget) {
@@ -169,12 +245,14 @@ return { completed: false, reason: 'Safari session manually stopped by user.' };
             await networkSaboteur.execute(page);
           }
 
-          // 🧠 Prioritization (milestone comes right after parse/scoring)
+// 🧠 Prioritization (milestone comes right after parse/scoring)
           this.emitMilestone(telemetry, '👁️ Vision Active');
 
           await this.ensureTargetDomain(page, telemetry);
           await this.ensureDomReady(page, telemetry);
 
+          // Emit thought about DOM parsing
+          this.emitThought(telemetry, 'parsing');
           const elements = await this.parser.parse(page);
           if (elements.length === 0) {
             telemetry.emitTelemetry(this.event('ACTION', {
@@ -184,7 +262,9 @@ return { completed: false, reason: 'Safari session manually stopped by user.' };
             return { completed: true, reason: 'DOM has no interactive elements.' };
           }
 
-          const ranked = this.scorer.score(elements);
+const ranked = this.scorer.score(elements);
+          // Emit thought about scoring/prioritizing
+          this.emitThought(telemetry, 'scoring', ranked[0]?.selector);
           telemetry.emitTargets(
             ranked.slice(0, 12).map((element) => ({
               tagName: element.tagName,
@@ -574,13 +654,16 @@ return null;
     }
   }
 
-  private async executeWeightedAction(
+private async executeWeightedAction(
     page: Page,
     telemetry: TelemetryGateway,
     target: InteractiveElement,
     ranked: InteractiveElement[],
     revisitedPage: boolean,
   ): Promise<void> {
+    // Emit thought about the action being executed
+    this.emitThought(telemetry, 'clicking', target.selector);
+    
     const isStressAction = Math.random() < 0.3;
 
     if (!isStressAction) {

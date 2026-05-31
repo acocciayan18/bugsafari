@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry } from '../types';
 import LiveFeed from './LiveFeed';
+import ThoughtStream from './ThoughtStream';
 
 // Tab state type for the bottom terminal
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'history';
@@ -155,6 +156,56 @@ export default function ClinicalForensicsDashboard({
   const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
   const [expandedStackTrace, setExpandedStackTrace] = useState<Record<string, boolean>>({});
   const [expandedActionTrail, setExpandedActionTrail] = useState<Record<string, boolean>>({});
+  
+  // ─────────────────────────────────────────────────────────────
+  // THOUGHT STREAM STATE - Extract latest thought from telemetry
+  // ─────────────────────────────────────────────────────────────
+  const [currentThought, setCurrentThought] = useState<string>('');
+
+  // Extract the latest thought from telemetry events
+  // Looks for THOUGHT type events or ACTION events with relevant messages
+  useEffect(() => {
+    if (!telemetry || telemetry.length === 0) {
+      setCurrentThought('');
+      return;
+    }
+    
+    // Find the latest THOUGHT event or relevant ACTION message
+    for (let i = telemetry.length - 1; i >= 0; i--) {
+      const event = telemetry[i];
+      if (typeof event === 'string') continue;
+      
+      const evt = event as TelemetryEvent;
+      
+      // Look for THOUGHT type events
+      if (evt.type === 'THOUGHT' && evt.meta?.message) {
+        setCurrentThought(evt.meta.message);
+        return;
+      }
+      
+      // Also capture important.ACTION messages for thought display
+      if (evt.type === 'ACTION' && evt.meta?.message) {
+        const msg = evt.meta.message;
+        // Filter for meaningful thought messages
+        if (msg.includes('Evaluating') || 
+            msg.includes('Parsing') || 
+            msg.includes('Scoring') ||
+            msg.includes('Targeting') ||
+            msg.includes('Injecting') ||
+            msg.includes('Prioritizing') ||
+            msg.includes('Executing') ||
+            msg.includes('Fuzzing')) {
+          setCurrentThought(msg);
+          return;
+        }
+      }
+    }
+    
+    // If test is running but no explicit thought, show default
+    if (isTestRunning && testStatus === 'RUNNING') {
+      setCurrentThought('Analyzing DOM and selecting targets...');
+    }
+  }, [telemetry, isTestRunning, testStatus]);
 
   const errorIncidents = errors?.incidents ?? [];
   const errorReports = errors?.reports ?? [];
@@ -216,6 +267,14 @@ return (
             />
           </div>
           
+{/* ═══════════════════════════════════════════════════════════════
+              THOUGHT STREAM - Real-time fading AI intent display
+              ═══════════════════════════════════════════════════════════════ */}
+          <ThoughtStream 
+            thought={currentThought} 
+            isActive={isTestRunning && testStatus === 'RUNNING'} 
+          />
+
           {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">

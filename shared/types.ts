@@ -1,4 +1,4 @@
-export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE';
+export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE' | 'THOUGHT';
 
 export type SemanticRole =
   | 'LOGIN'

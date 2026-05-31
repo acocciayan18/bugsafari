@@ -13,6 +13,7 @@ export interface DashboardState {
   incidents: IncidentReport[];
   latestFrame: string | null;
   currentUrl: string;
+  currentThought: string; // 👈 Current AI thought for Thinking status bar
   sessionHistory: SessionHistoryEntry[];
   isSavingSession: boolean;
 }
@@ -43,6 +44,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
+  const [currentThought, setCurrentThought] = useState<string>(''); // 👈 Current AI thought
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
 
@@ -80,8 +82,13 @@ gateway.onTelemetry((event) => {
         setStatus('RUNNING');
       }
 
-      if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
+if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
         setCurrentUrl(event.meta.message);
+      }
+
+      // 👈 Handle THOUGHT telemetry - update current thought message
+      if (event.type === 'THOUGHT' && event.meta.message) {
+        setCurrentThought(event.meta.message);
       }
     });
 
@@ -193,6 +200,7 @@ return {
       incidents,
       latestFrame,
       currentUrl,
+      currentThought,
       sessionHistory,
       isSavingSession,
     },
