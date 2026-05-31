@@ -2,7 +2,7 @@
 // "Ghostly" thinking status bar component with fading text animations
 // Displays real-time AI intent streamed from testing-core backend
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from "framer-motion";
 
 interface ThoughtStreamProps {
   /** The current thought message from the AI engine */
@@ -13,14 +13,17 @@ interface ThoughtStreamProps {
 
 /**
  * ThoughtStream - Monochrome "ghostly" status bar for AI thinking
- * 
+ *
  * Features:
  * - Fades out old text, slides up
  * - Fades in new text, slides up from bottom
  * - Pulsing dot indicator for "Active Reasoning"
  * - Monochrome aesthetic (white/light gray on dark)
  */
-export default function ThoughtStream({ thought, isActive = false }: ThoughtStreamProps) {
+export default function ThoughtStream({
+  thought,
+  isActive = false,
+}: ThoughtStreamProps) {
   // Don't render if no thought and not active
   if (!thought && !isActive) {
     return null;
@@ -30,7 +33,7 @@ export default function ThoughtStream({ thought, isActive = false }: ThoughtStre
     <div className="w-full px-4 py-2 bg-[#0D0D0D] border-b border-[#1F1F1F]">
       <div className="flex items-center gap-3">
         {/* Pulsing dot indicator */}
-        <div className="relative flex-shrink-0">
+        <div className="relative shrink-0">
           {/* Outer pulse ring */}
           <motion.div
             className="absolute -inset-1 rounded-full border border-white/20"
@@ -103,7 +106,7 @@ export default function ThoughtStream({ thought, isActive = false }: ThoughtStre
 
         {/* Active indicator label */}
         {isActive && (
-          <div className="flex-shrink-0">
+          <div className="shrink-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
               Reasoning
             </span>

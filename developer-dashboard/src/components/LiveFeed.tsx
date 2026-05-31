@@ -84,9 +84,9 @@ export default function LiveFeed({
       <div className="flex items-center gap-4 border-b border-slate-200 bg-white px-4 py-2 sm:px-5">
         {/* Window Controls - 3 small gray dots */}
         <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-slate-300" aria-hidden="true" />
-          <span className="h-3 w-3 rounded-full bg-slate-300" aria-hidden="true" />
-          <span className="h-3 w-3 rounded-full bg-slate-300" aria-hidden="true" />
+          <span className="h-3 w-3 rounded-full bg-rose-500" aria-hidden="true" />
+          <span className="h-3 w-3 rounded-full bg-yellow-300 " aria-hidden="true" />
+          <span className="h-3 w-3 rounded-full bg-green-400" aria-hidden="true" />
         </div>
 
         {/* Navigation Buttons (Purely Visual) */}
@@ -125,7 +125,7 @@ export default function LiveFeed({
       </div>
 
 {/* VIEWPORT - Full vertical expansion, removing rigid height bounds */}
-      <div className="min-h-[400px] h-auto flex-1 bg-white overflow-auto">
+      <div className="min-h-100 h-auto flex-1 bg-white overflow-auto">
         <canvas
           ref={canvasRef}
           width={VIEWPORT_WIDTH}

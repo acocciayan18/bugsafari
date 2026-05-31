@@ -60,11 +60,16 @@ BugSafari is a two-part runtime:
 - Handles state management for tabs, expanded stack traces, and action trail expansion.
 - Accepts telemetry events, error incidents/reports, session history, and frame buffers for real-time display.
 
-### `developer-dashboard/src/components/AuthForm.tsx`
-- Authentication form with login/signup modes.
+### `developer-dashboard/src/components/LoginForm.tsx`
+- Login form for user authentication.
 - Connects to backend auth endpoints for token-based authentication.
-- Supports guest access for unauthenticated exploration.
 - Stores auth tokens in localStorage for session persistence.
+- Supports guest access for unauthenticated exploration.
+
+### `developer-dashboard/src/components/SignupForm.tsx`
+- Registration form for new user accounts.
+- Connects to backend registration endpoints.
+- Integrates with authentication flow after successful signup.
 
 ### `developer-dashboard/src/components/SessionHistoryTable.tsx`
 - Displays historical exploration sessions in expandable table format.
@@ -101,6 +106,16 @@ BugSafari is a two-part runtime:
 - Visual indicator showing engine processing state.
 - Displays when BugSafari is actively analyzing/exploring.
 - Provides visual feedback during autonomous decision cycles.
+
+### `developer-dashboard/src/components/ThoughtStream.tsx`
+- Real-time stream showing engine thought process.
+- Displays reasoning steps, decisions, and selected strategies.
+- Provides insight into autonomous decision-making during exploration.
+
+### `developer-dashboard/src/components/Sidebar.tsx`
+- Navigation sidebar with app sections and tabs.
+- Provides quick access to different dashboard views.
+- Manages active tab state for the operator.
 
 ---
 
@@ -225,77 +240,40 @@ BugSafari is a two-part runtime:
 
 ## `testing-core/src/bugs/finders/` — Pattern-Specific Detectors
 
-> For each finder, `.ts` is the source implementation and `.js` is its JS counterpart present in the repository.
-
 ### `testing-core/src/bugs/finders/boundaryStress.ts`
 - Detects boundary-limit failure patterns.
 - Triggered by stress outputs and interaction anomalies.
 - Uses bug contracts and stress adapter outputs.
-
-### `testing-core/src/bugs/finders/boundaryStress.js`
-- JavaScript counterpart of boundary stress finder.
-- Loaded when JS module path is used.
-- Mirrors TS finder behavior.
 
 ### `testing-core/src/bugs/finders/clientSideBypass.ts`
 - Detects client-side validation/control bypass indicators.
 - Triggered by form/constraint scenario outcomes.
 - Relies on scenario adapter evidence streams.
 
-### `testing-core/src/bugs/finders/clientSideBypass.js`
-- JavaScript counterpart of client-side bypass finder.
-- JS runtime/module resolution path.
-- Mirrors TS implementation.
-
 ### `testing-core/src/bugs/finders/inputSanitization.ts`
 - Detects weak or missing sanitization behavior.
 - Triggered by fuzz payload responses and output signatures.
 - Uses payload/scenario evidence and bug types.
-
-### `testing-core/src/bugs/finders/inputSanitization.js`
-- JavaScript counterpart of input sanitization finder.
-- JS module path runtime.
-- Mirrors TS implementation.
 
 ### `testing-core/src/bugs/finders/noSqlInjection.ts`
 - Detects NoSQL-injection-like response and behavior signals.
 - Triggered by crafted payload execution and backend response patterns.
 - Works with payload synthesizer/fuzzer-derived evidence.
 
-### `testing-core/src/bugs/finders/noSqlInjection.js`
-- JavaScript counterpart of NoSQL injection finder.
-- JS module path runtime.
-- Mirrors TS implementation.
-
 ### `testing-core/src/bugs/finders/runtimeStability.ts`
 - Detects crash/exception/stability degradation signs.
 - Triggered by exception catcher and run-time anomaly traces.
 - Cooperates with monitoring stack.
-
-### `testing-core/src/bugs/finders/runtimeStability.js`
-- JavaScript counterpart of runtime stability finder.
-- JS module path runtime.
-- Mirrors TS implementation.
 
 ### `testing-core/src/bugs/finders/spaRaceConditions.ts`
 - Detects SPA race and async timing hazards.
 - Triggered during rapid navigation/action overlaps.
 - Uses route/action traces and scenario outputs.
 
-### `testing-core/src/bugs/finders/spaRaceConditions.js`
-- JavaScript counterpart of SPA race finder.
-- JS module path runtime.
-- Mirrors TS implementation.
-
 ### `testing-core/src/bugs/finders/structuralNavigation.ts`
 - Detects structural navigation inconsistencies and state drift.
 - Triggered by structural hash/state transitions across navigation.
 - Coupled to heuristics hashing and navigation scenarios.
-
-### `testing-core/src/bugs/finders/structuralNavigation.js`
-- JavaScript counterpart of structural navigation finder.
-- JS module path runtime.
-- Mirrors TS implementation.
 
 ---
 
@@ -311,30 +289,15 @@ BugSafari is a two-part runtime:
 - Triggered during boundary-focused test bursts.
 - Feeds corresponding finders.
 
-### `testing-core/src/bugs/stressAdapters/boundaryOverload.js`
-- JavaScript counterpart of boundary overload adapter.
-- JS module path runtime.
-- Mirrors TS implementation.
-
 ### `testing-core/src/bugs/stressAdapters/concurrentStress.ts`
 - Concurrent action stress mapping logic.
 - Triggered in multi-action overlap scenarios.
 - Supports race/stability detector inputs.
 
-### `testing-core/src/bugs/stressAdapters/concurrentStress.js`
-- JavaScript counterpart of concurrent stress adapter.
-- JS module path runtime.
-- Mirrors TS implementation.
-
 ### `testing-core/src/bugs/stressAdapters/structuralProbe.ts`
 - Structural probing stress adapter.
 - Triggered by structure-sensitive scenario outputs.
 - Works with structural navigation detection/hashing.
-
-### `testing-core/src/bugs/stressAdapters/structuralProbe.js`
-- JavaScript counterpart of structural probe adapter.
-- JS module path runtime.
-- Mirrors TS implementation.
 
 ---
 
@@ -354,34 +317,17 @@ BugSafari is a two-part runtime:
 - Triggered each exploration cycle before candidate ranking.
 - Produces entities for scorer and scenario engines.
 
-### `testing-core/src/domain/heuristics/hashUtils.ts`
-- Structural hash utilities for state memory and repetition detection.
-- Triggered after DOM parse/state transition.
-- Supports structural hash manager and navigation detectors.
-
-### `testing-core/src/domain/heuristics/scorer.ts`
-- Heuristic risk/priority scoring for discovered elements.
-- Triggered after candidate extraction; influences next action selection.
-- Collaborates with `ElementScorer` and autonomous orchestration.
-
 ---
 
 ## `testing-core/src/domain/scenarios/` — Arsenal Behavior Library
 
-### `testing-core/src/domain/scenarios/buttonSpammer.ts`
-- High-frequency click stress scenario.
-- Triggered when action strategy selects aggressive click burst behavior.
-- Uses interaction simulator and telemetry monitoring.
-
-### `testing-core/src/domain/scenarios/concurrentClicker.ts`
-- Concurrent click helper behavior for overlap stress.
-- Triggered by concurrency-focused paths.
-- Supports race-condition discovery and concurrent stress adapters.
-
-### `testing-core/src/domain/scenarios/coordinateBombing.ts`
-- Coordinate-based bombardment scenario for layout/event edge cases.
-- Triggered when positional stress strategy is selected.
-- Interacts with simulator and structural monitoring.
+### `testing-core/src/domain/scenarios/rapidClickerStress.ts`
+- Consolidated rapid click stress testing module.
+- Includes buttonSpammer: rapid button clicking (15 clicks, 50ms delay)
+- Includes coordinateBombing: random coordinate bombardment
+- Includes burstClickElement: concurrent burst clicking utility
+- Includes concurrentEventSpam: concurrent clicking on multiple targets
+- Includes InteractionSimulator class for execution
 
 ### `testing-core/src/domain/scenarios/dataFuzzer.ts`
 - Mutated data/payload injection scenario.
@@ -396,7 +342,7 @@ BugSafari is a two-part runtime:
 ### `testing-core/src/domain/scenarios/index.ts`
 - Scenario export/index composition.
 - Triggered when scenario registry imports behavior set.
-- Aggregates all scenario modules.
+- Aggregates all scenario modules and stressScenarioRegistry.
 
 ### `testing-core/src/domain/scenarios/networkSaboteur.ts`
 - Network disruption/latency/error-behavior probing scenario.
@@ -432,25 +378,11 @@ BugSafari is a two-part runtime:
 - Triggered by start use-case; repeatedly parse → score → act → observe.
 - Uses parser/scorer/simulator/scenario stack and telemetry emissions.
 
-### `testing-core/src/domain/services/ElementScorer.ts`
-- Service-level scoring coordinator around heuristic ranking.
-- Triggered when candidate elements are available for prioritization.
-- Built on heuristics scorer; feeds smart attacker decisions.
-
-### `testing-core/src/domain/services/InteractionSimulator.ts`
-- Executes low-level interactions against targets.
-- Triggered by selected scenario actions.
-- Relies on browser engine capabilities and informs monitoring channels.
-
-### `testing-core/src/domain/services/RecursiveDomParser.ts`
-- Recursive DOM analysis/traversal support.
-- Triggered during deep interaction-surface discovery.
-- Supports domParser and interactive entity creation.
-
-### `testing-core/src/domain/services/StructuralHashManager.ts`
-- Maintains structural state memory using hashing.
-- Triggered on each state snapshot to detect loops/drift.
-- Uses hash utils and informs structural/routing detectors.
+### `testing-core/src/domain/services/RiskScorer.ts`
+- Unified scoring service combining heuristic and ML-based risk assessment.
+- Triggered after candidate element extraction; influences next action selection.
+- Computes element scores using tag/type/keyword weights + perceptron ML model.
+- Provides feedback-based adaptive scoring and penalty management.
 
 ---
 
@@ -460,11 +392,6 @@ BugSafari is a two-part runtime:
 - Buffers recent action traces for forensic introspection.
 - Triggered whenever scenario actions execute.
 - Feeds forensic and reproduction outputs.
-
-### `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts`
-- Captures runtime anomalies/exceptions.
-- Triggered by errors, failed interactions, and runtime instability events.
-- Supports stability finders and forensic trail generation.
 
 ### `testing-core/src/infrastructure/monitoring/reproductionPlaybookStore.ts`
 - Persists reproducible action sequences.
@@ -476,10 +403,16 @@ BugSafari is a two-part runtime:
 - Triggered after backend startup; streams events to connected clients.
 - Works with telemetry gateway and presentation socket handlers.
 
-### `testing-core/src/infrastructure/monitoring/stabilityMonitor.ts`
-- Tracks stability indicators over run lifecycle.
-- Triggered continuously as action/outcome data arrives.
-- Supports runtime stability detection and milestone/alert emission.
+### `testing-core/src/infrastructure/monitoring/RuntimeMonitor.ts`
+- Monitors runtime behavior and health metrics.
+- Tracks execution time, memory usage, and error rates.
+- Emits runtime health events to telemetry channel.
+
+### `testing-core/src/infrastructure/monitoring/BinaryFrameServer.ts`
+- Optimized WebSocket server for raw binary frame streaming.
+- Streams JPEG/WebP frames directly without Base64 encoding.
+- Provides ~30-40% latency reduction vs traditional encoding.
+- Includes heartbeat monitoring for client connections.
 
 ### `testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts`
 - Concrete browser automation adapter (Playwright).

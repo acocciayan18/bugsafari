@@ -6,7 +6,7 @@ import { scanInteractiveElements } from '../../domain/heuristics/domParser.js';
 import { executeSpam, concurrentEventSpam } from '../../domain/scenarios/rapidClickerStress.js';
 import { fuzzTextInput } from '../../domain/scenarios/dataFuzzer.js';
 import { stripConstraints } from '../../domain/scenarios/formBypasser.js';
-import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
+import { routeTrasher } from '../../domain/scenarios/routeTrasher.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { CrashSignal, setupExceptionCatcher } from '../../infrastructure/monitoring/RuntimeMonitor.js';
 import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
@@ -330,7 +330,7 @@ async function executeTargetAction(
       selector: 'browser:reload',
       url: page.url(),
     });
-    await trashRoutes(page, 1);
+await routeTrasher.execute(page, 1);
     return;
   }
 
@@ -358,7 +358,7 @@ async function executeTargetAction(
       selector: 'browser:reload',
       url: page.url(),
     });
-    await trashRoutes(page, 1);
+    await routeTrasher.execute(page, 1);
   }
 }
 

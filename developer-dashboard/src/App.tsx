@@ -193,13 +193,14 @@ export default function App() {
           onShowLoginPrompt={handleShowLoginPrompt}
         />
 
-        {/* SUB-COLUMN 2B: FORENSIC DASHBOARD (55%)
+{/* SUB-COLUMN 2B: FORENSIC DASHBOARD (55%)
             Pure telemetry view: LiveFeed + Terminal (telemetry/errors/network/console/history) */}
         <ClinicalForensicsDashboard
           targetUrl={targetUrl}
           frameBuffer={state.latestFrame}
           telemetry={state.telemetry}
           sessionHistory={state.sessionHistory}
+          thought={state.currentThought}
           errors={{
             incidents: state.incidents,
             reports: state.reports,

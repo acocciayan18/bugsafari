@@ -37,8 +37,8 @@ Intelligence is responsible for:
 - selecting next actions strategically.
 
 Key modules in this pillar:
-- Heuristics: `domain/heuristics/domParser.ts`, `scorer.ts`, `hashUtils.ts`
-- Domain services: `AutonomousExplorationEngine.ts`, `ElementScorer.ts`, `StructuralHashManager.ts`
+- Heuristics: `domain/heuristics/domParser.ts`
+- Domain services: `AutonomousExplorationEngine.ts`, `RiskScorer.ts`
 - Decision strategy support: `domain/scenarios/smartAttacker.ts`
 
 **Why this pillar exists:**  
@@ -57,7 +57,7 @@ Arsenal is responsible for:
 - classifying suspicious behavior into structured findings.
 
 Key modules in this pillar:
-- Scenario library: `buttonSpammer`, `dataFuzzer`, `routeTrasher`, `networkSaboteur`, etc.
+- Scenario library: `rapidClickerStress`, `dataFuzzer`, `routeTrasher`, `networkSaboteur`, `formBypasser`, `securityVulnerabilityScout`, etc.
 - Detection layer: `bugs/finders/*`
 - Bridging logic: `bugs/scenarioAdapters.ts`, `bugs/stressAdapters/*`
 - Input generation helpers: `payloads/chaosData.ts`, `ml/payloadSynthesizer.ts`
@@ -79,7 +79,8 @@ Watchtower is responsible for:
 
 Key modules in this pillar:
 - **Primary composite dashboard:** `ClinicalForensicsDashboard.tsx` — unified operator surface combining sidebar navigation, target control panel, live feed viewport, and multi-tab terminal
-- Legacy/auxiliary components (`ControlPanel`, `TelemetryStream`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`, `AuthForm`, `SessionHistoryTable`)
+- Authentication components (`LoginForm`, `SignupForm`)
+- UI components (`ControlPanel`, `TelemetryStream`, `ForensicTrail`, `ReproductionTrail`, `LiveFeed`, `SessionHistoryTable`, `ThinkingIndicator`, `ThoughtStream`, `Sidebar`)
 - UI orchestration hook (`useDashboardController.ts`)
 - Gateway adapter (`SocketHttpEngineGateway.ts`)
 - Backend telemetry and socket infrastructure (`infrastructure/monitoring/*`, `presentation/socket/*`)

@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import { concurrentEventSpam } from '../../domain/scenarios/rapidClickerStress.js';
-import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
+import { routeTrasher } from '../../domain/scenarios/routeTrasher.js';
 
 export interface ConcurrentStressResult {
   attempted: number;
@@ -10,7 +10,7 @@ export interface ConcurrentStressResult {
 export async function burstConcurrentStress(page: Page, step: number): Promise<ConcurrentStressResult> {
   void step;
   const a = await concurrentEventSpam(page, 12);
-  const b = await trashRoutes(page, 1);
+  const b = await routeTrasher.execute(page, 1);
 
   return {
     attempted: a.attempted + b.attempted,

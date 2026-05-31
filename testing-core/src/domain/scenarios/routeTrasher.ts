@@ -139,24 +139,6 @@ export const routeTrasher = {
       `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions`
     );
 
-    return { attempted, completed };
+return { attempted, completed };
   },
 };
-
-/**
- * Type for the executeTrashRoutes function (backwards compatibility)
- */
-export type RouteTrasher = typeof routeTrasher;
-
-/**
- * Re-export for backwards compatibility with existing code
- * @deprecated Use the `routeTrasher` export instead
- */
-export async function trashRoutes(
-  page: Page,
-  target?: InteractiveElement | number
-): Promise<RouteTrashResult> {
-  return routeTrasher.execute(page, target);
-}
-
-export { routeTrasher as executeTrashRoutes };
