@@ -8,6 +8,8 @@ export interface DashboardState {
   isTestRunning: boolean;
   isThinking: boolean; // 👈 Thinking indicator state
   status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
+  hasRunCompleted: boolean; // 👈 True after first test run completes
+  currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
@@ -38,6 +40,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
   const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED'>('IDLE');
+  const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -45,8 +48,9 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
 
-useEffect(() => {
+  useEffect(() => {
     gateway.onConnected((connected) => {
       setIsConnected(connected);
       // Reset thinking state on disconnect to prevent infinite loading trap
@@ -54,12 +58,12 @@ useEffect(() => {
         setIsThinking(false);
       }
     });
-gateway.onTelemetry((event) => {
+    gateway.onTelemetry((event) => {
       // Note: We do NOT clear isThinking here because the first telemetry 
       // arrives instantly (e.g., "Launching Playwright...") and would prematurely 
       // dismiss the indicator. We keep isThinking true until the first live 
       // frame arrives (visual proof of browser startup).
-      
+
       setTelemetry((previous) => {
         const next = [...previous, event];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -69,6 +73,7 @@ gateway.onTelemetry((event) => {
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
         setStatus('IDLE');
+        setHasRunCompleted(true); // Mark run as completed for Save button gating
         void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
       }
 
@@ -82,6 +87,11 @@ gateway.onTelemetry((event) => {
 
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
         setCurrentUrl(event.meta.message);
+      }
+
+      // Task 3: Extract system-status for dynamic UI
+      if (event.type === 'ACTION' && event.meta.actionExecuted === 'system-status' && event.meta.message) {
+        setCurrentEngineAction(event.meta.message);
       }
     });
 
@@ -98,7 +108,7 @@ gateway.onTelemetry((event) => {
     return () => gateway.disconnect();
   }, [gateway]);
 
-const startTest = async (targetUrl: string): Promise<void> => {
+  const startTest = async (targetUrl: string): Promise<void> => {
     if (!targetUrl.trim()) return;
 
     // Set thinking state to true immediately when button is clicked
@@ -181,13 +191,15 @@ const startTest = async (targetUrl: string): Promise<void> => {
     }
   };
 
-return {
+  return {
     state: {
       isConnected,
       isLaunching,
       isTestRunning,
       isThinking,
       status,
+      hasRunCompleted,
+      currentEngineAction,
       telemetry,
       reports,
       incidents,

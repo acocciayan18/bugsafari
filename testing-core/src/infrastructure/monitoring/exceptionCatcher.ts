@@ -61,7 +61,7 @@ export async function setupExceptionCatcher(
       })),
     };
 
-hub.emitTelemetry({
+    hub.emitTelemetry({
       timestamp: new Date().toISOString(),
       type: 'EXCEPTION',
       meta: {
@@ -125,7 +125,7 @@ hub.emitTelemetry({
       return;
     }
 
-hub.emitTelemetry({
+    hub.emitTelemetry({
       timestamp: new Date().toISOString(),
       type: 'EXCEPTION',
       meta: {
@@ -151,7 +151,7 @@ hub.emitTelemetry({
     requestStartedAt.set(request, Date.now());
   });
 
-  page.on('response', (response) => {
+  page.on('response', async (response) => {
     const request = response.request();
     const startedAt = requestStartedAt.get(request) ?? Date.now();
     requestStartedAt.delete(request);
@@ -161,8 +161,8 @@ hub.emitTelemetry({
     const url = response.url();
     const method = request.method();
 
-// Only emit NETWORK telemetry for failures (>= 500).
-    if (statusCode >= 500) {
+    // Emit NETWORK telemetry for failures (>= 400) per TESTING_TYPES.md
+    if (statusCode >= 400) {
       hub.emitTelemetry({
         timestamp: new Date().toISOString(),
         type: 'NETWORK',
@@ -174,7 +174,36 @@ hub.emitTelemetry({
           message: `${method} ${statusCode} ${url}`,
         },
       });
-      emitException(`Server failure ${statusCode} from ${url}`, `HTTP ${statusCode} ${method} ${url}`, true, statusCode);
+      // Only halt on 5xx server errors
+      if (statusCode >= 500) {
+        emitException(`Server failure ${statusCode} from ${url}`, `HTTP ${statusCode} ${method} ${url}`, true, statusCode);
+      }
+      return;
+    }
+
+    // Soft-fail detection: Check response body for error keywords
+    // This catches 2xx responses with error: true or status: "fail"
+    try {
+      const body = await response.text().catch(() => '');
+      const bodyLower = body.toLowerCase();
+      const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
+      const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
+
+      if (hasErrorFlag || hasStatusFail) {
+        hub.emitTelemetry({
+          timestamp: new Date().toISOString(),
+          type: 'NETWORK',
+          meta: {
+            url,
+            method,
+            statusCode,
+            durationMs,
+            message: `Soft-fail detected in ${url}: ${body.slice(0, 200)}`,
+          },
+        });
+      }
+    } catch {
+      // Ignore body parse errors - don't emit anything
     }
   });
 

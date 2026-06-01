@@ -13,6 +13,7 @@ interface ControlPanelProps {
   targetUrl: string;
   isTestRunning: boolean;
   testStatus: 'IDLE' | 'RUNNING' | 'PAUSED';
+  hasRunCompleted: boolean; // 👈 Gating: Save button disabled until a test run completes
   authToken: string | null;
   user: User | null;
   onStart: (url: string) => void;
@@ -26,6 +27,7 @@ export default function ControlPanel({
   targetUrl: initialTargetUrl,
   isTestRunning,
   testStatus,
+  hasRunCompleted,
   authToken,
   user,
   onStart,
@@ -92,14 +94,12 @@ export default function ControlPanel({
           <h2 className="text-sm font-bold tracking-wider text-slate-900">
             INFILTRATION TARGET
           </h2>
-          <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
-            isTestRunning
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-              : 'border-slate-300 bg-white text-slate-600'
-          }`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${
-              isTestRunning ? 'bg-emerald-500' : 'bg-slate-400'
-            }`} />
+          <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${isTestRunning
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+            : 'border-slate-300 bg-white text-slate-600'
+            }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${isTestRunning ? 'bg-emerald-500' : 'bg-slate-400'
+              }`} />
             {isTestRunning ? '● LIVE' : '● READY'}
           </span>
         </div>
@@ -133,7 +133,7 @@ export default function ControlPanel({
         {/* Save to History Button */}
         <button
           onClick={handleSaveSession}
-          disabled={isSaving}
+          disabled={isSaving || !hasRunCompleted}
           className="mt-2 flex w-full items-center justify-center gap-2 rounded-none border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -144,11 +144,10 @@ export default function ControlPanel({
 
         {/* Save Message Feedback */}
         {saveMessage && (
-          <div className={`mt-2 p-2 rounded text-xs font-medium ${
-            saveMessage.includes('success')
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}>
+          <div className={`mt-2 p-2 rounded text-xs font-medium ${saveMessage.includes('success')
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
             {saveMessage}
           </div>
         )}

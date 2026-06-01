@@ -34,7 +34,7 @@ const copyToClipboard = async (text: string, label = 'Content') => {
  */
 const extractErrorMetadata = (error: IncidentReport | ForensicCrashReport): Record<string, string> => {
   const isCrashReport = 'breadcrumbs' in error && Array.isArray(error.breadcrumbs) && error.breadcrumbs.length > 0;
-  
+
   return {
     type: isCrashReport ? 'CrashReport' : 'Incident',
     timestamp: error.timestamp || new Date().toISOString(),
@@ -48,13 +48,13 @@ const extractErrorMetadata = (error: IncidentReport | ForensicCrashReport): Reco
  */
 const CopyButton = ({ text, label }: { text: string; label?: string }) => {
   const [copied, setCopied] = useState(false);
-  
+
   const handleClick = async () => {
     await copyToClipboard(text, label || 'Content');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  
+
   return (
     <button
       onClick={handleClick}
@@ -72,22 +72,22 @@ const CopyButton = ({ text, label }: { text: string; label?: string }) => {
 /**
  * Expandable code block component
  */
-const ExpandableCodeBlock = ({ 
-  title, 
-  content, 
-  isExpanded, 
+const ExpandableCodeBlock = ({
+  title,
+  content,
+  isExpanded,
   onToggle,
   className = ''
-}: { 
-  title: string; 
-  content: string; 
-  isExpanded: boolean; 
+}: {
+  title: string;
+  content: string;
+  isExpanded: boolean;
   onToggle: () => void;
   className?: string;
 }) => {
   return (
     <div>
-      <button 
+      <button
         onClick={onToggle}
         className="w-full flex items-center gap-2 px-4 py-3 text-slate-700 hover:bg-slate-50 transition-colors text-xs font-semibold border-b border-slate-200"
       >
@@ -125,6 +125,7 @@ interface ClinicalForensicsDashboardProps {
   isConnected: boolean;
   isTestRunning: boolean;
   testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED';
+  currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
@@ -143,15 +144,16 @@ export default function ClinicalForensicsDashboard({
   isConnected = false,
   isTestRunning = false,
   testStatus = 'IDLE',
+  currentEngineAction = '',
   onPause,
   onResume,
   onStop,
 }: ClinicalForensicsDashboardProps) {
-  
+
   // ─────────────────────────────────────────────────────────────
   // STATE MANAGEMENT - Terminal tabs & expandable sections
   // ─────────────────────────────────────────────────────────────
-  
+
   const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
   const [expandedStackTrace, setExpandedStackTrace] = useState<Record<string, boolean>>({});
   const [expandedActionTrail, setExpandedActionTrail] = useState<Record<string, boolean>>({});
@@ -170,18 +172,18 @@ export default function ClinicalForensicsDashboard({
   const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
       ? telemetry.map((event): string => {
-          if (typeof event === 'string') {
-            return event;
-          }
-          const timestamp = event.timestamp
-            ? new Date(event.timestamp).toTimeString().slice(0, 8)
-            : new Date().toTimeString().slice(0, 8);
-          const type = event.type ?? 'EVENT';
-          const message = (event as TelemetryEvent).meta?.message
-            ?? (event as TelemetryEvent).meta?.actionExecuted
-            ?? 'event';
-          return `${timestamp} [${type}] ${message}`;
-        })
+        if (typeof event === 'string') {
+          return event;
+        }
+        const timestamp = event.timestamp
+          ? new Date(event.timestamp).toTimeString().slice(0, 8)
+          : new Date().toTimeString().slice(0, 8);
+        const type = event.type ?? 'EVENT';
+        const message = (event as TelemetryEvent).meta?.message
+          ?? (event as TelemetryEvent).meta?.actionExecuted
+          ?? 'event';
+        return `${timestamp} [${type}] ${message}`;
+      })
       : [];
     return events.slice(-100);
   }, [telemetry]);
@@ -199,10 +201,10 @@ export default function ClinicalForensicsDashboard({
   // RENDER: Forensic View (55% of screen)
   // ─────────────────────────────────────────────────────────────
 
-return (
+  return (
     <section className="w-[55%] flex flex-1 flex-col overflow-y-auto bg-white">
-      
-{/* ═══════════════════════════════════════════════════════════════
+
+      {/* ═══════════════════════════════════════════════════════════════
           TOP HALF: Browser Frame (Live Feed)
           ═══════════════════════════════════════════════════════════════ */}
       <div className="flex-1 min-h-125 overflow-hidden border-b border-slate-200">
@@ -215,27 +217,25 @@ return (
               isTestRunning={isTestRunning}
             />
           </div>
-          
+
           {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-600">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                testStatus === 'RUNNING' 
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                  : testStatus === 'PAUSED'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'RUNNING'
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                : testStatus === 'PAUSED'
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
                   : 'border-slate-300 bg-slate-50 text-slate-600'
-              }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${
-                  testStatus === 'RUNNING' ? 'bg-emerald-500 animate-pulse' 
+                }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'RUNNING' ? 'bg-emerald-500 animate-pulse'
                   : testStatus === 'PAUSED' ? 'bg-amber-500'
-                  : 'bg-slate-400'
-                }`} />
+                    : 'bg-slate-400'
+                  }`} />
                 {testStatus}
               </span>
             </div>
-            
+
             {/* Control Buttons - Pause/Resume/Stop */}
             {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
               <div className="flex items-center gap-2">
@@ -283,34 +283,34 @@ return (
           BOTTOM HALF: Terminal with Telemetry Tabs
           ═══════════════════════════════════════════════════════════════ */}
       <div className="flex h-1/2 shrink-0 flex-col overflow-hidden">
-        
+
         {/* Tab Headers */}
         <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
-          <button 
+          <button
             onClick={() => setActiveTab('telemetry')}
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             telemetry live-feed
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('errors')}
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             errors
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('network')}
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             network
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('console')}
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             console
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('history')}
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
@@ -319,12 +319,12 @@ return (
         </div>
 
         {/* Terminal Output Container */}
-        <div 
+        <div
           ref={logContainerRef}
           className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-slate-200 border-t-0"
           style={{ scrollBehavior: 'smooth' }}
         >
-          
+
           {/* ════════════════════════════════════════
               TAB: TELEMETRY LIVE-FEED
               ════════════════════════════════════════ */}
@@ -335,22 +335,23 @@ return (
                   {formattedTelemetry.map((log, index) => (
                     <div
                       key={index}
-                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${
-                        log.includes('[SYSTEM]')
-                          ? 'text-slate-600'
-                          : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
+                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${log.includes('[SYSTEM]')
+                        ? 'text-slate-600'
+                        : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
                           ? 'text-red-600 font-semibold'
                           : log.includes('[NETWORK]')
-                          ? 'text-blue-600'
-                          : 'text-slate-800'
-                      }`}
+                            ? 'text-blue-600'
+                            : 'text-slate-800'
+                        }`}
                     >
                       {log}
                     </div>
                   ))}
                   <div className="flex items-center gap-2 py-2 text-slate-500">
                     <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
-                    <span className="font-mono text-xs">BugSafari Engine is thinking... parsing DOM trees</span>
+                    <span className="font-mono text-xs">
+                      {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
+                    </span>
                   </div>
                 </>
               ) : formattedTelemetry.length === 0 ? (
@@ -362,15 +363,14 @@ return (
                   {formattedTelemetry.map((log, index) => (
                     <div
                       key={index}
-                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${
-                        log.includes('[SYSTEM]')
-                          ? 'text-slate-600'
-                          : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
+                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${log.includes('[SYSTEM]')
+                        ? 'text-slate-600'
+                        : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
                           ? 'text-red-600 font-semibold'
                           : log.includes('[NETWORK]')
-                          ? 'text-blue-600'
-                          : 'text-slate-800'
-                      }`}
+                            ? 'text-blue-600'
+                            : 'text-slate-800'
+                        }`}
                     >
                       {log}
                     </div>
@@ -397,9 +397,9 @@ return (
                     const incidentKey = `incident-${idx}`;
                     const metadata = extractErrorMetadata(incident);
                     const isExpanded = expandedStackTrace[incidentKey];
-                    
+
                     return (
-                      <div 
+                      <div
                         key={incidentKey}
                         className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                       >
@@ -461,9 +461,9 @@ return (
                     const reportKey = `report-${idx}`;
                     const metadata = extractErrorMetadata(report);
                     const isExpanded = expandedStackTrace[reportKey];
-                    
+
                     return (
-                      <div 
+                      <div
                         key={reportKey}
                         className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                       >
@@ -527,14 +527,85 @@ return (
           {/* ════════════════════════════════════════
               TAB: NETWORK
               ════════════════════════════════════════ */}
-          {activeTab === 'network' && (
-            <div className="text-slate-500 py-4">
-              <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
-              <div className="text-slate-400 italic text-xs leading-relaxed">
-                Waiting for network activity...
+          {activeTab === 'network' && (() => {
+            // Filter for NETWORK telemetry events
+            const networkEvents = telemetry
+              .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
+              .slice(-50);
+
+            if (networkEvents.length === 0) {
+              return (
+                <div className="text-slate-500 py-4">
+                  <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
+                  <div className="text-slate-400 italic text-xs leading-relaxed">
+                    Waiting for network activity...
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3 p-2">
+                <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
+                {networkEvents.map((event, idx) => {
+                  const meta = event.meta;
+                  const statusCode = meta?.statusCode;
+                  const url = meta?.url || 'unknown';
+                  const method = meta?.method || 'GET';
+                  const duration = meta?.durationMs;
+                  const message = meta?.message || '';
+
+                  // Determine severity based on status code
+                  const isError = statusCode && statusCode >= 400;
+                  const isServerError = statusCode && statusCode >= 500;
+                  const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
+
+                  const borderColor = isServerError
+                    ? 'border-red-300'
+                    : isClientError
+                      ? 'border-amber-300'
+                      : 'border-slate-300';
+                  const bgColor = isServerError
+                    ? 'bg-red-50'
+                    : isClientError
+                      ? 'bg-amber-50'
+                      : 'bg-white';
+                  const textColor = isError ? 'text-red-700' : 'text-blue-600';
+
+                  return (
+                    <div
+                      key={`network-${idx}`}
+                      className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
+                    >
+                      <div className="px-3 py-2 flex items-center justify-between border-b border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-mono text-xs font-bold ${textColor}`}>
+                            {method} {statusCode || 'ERR'}
+                          </span>
+                          {duration !== undefined && (
+                            <span className="text-[10px] text-slate-500">
+                              {duration}ms
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {event.timestamp ? new Date(event.timestamp).toTimeString().slice(0, 8) : ''}
+                        </span>
+                      </div>
+                      <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
+                        {url}
+                      </div>
+                      {message && (
+                        <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
+                          {message}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ════════════════════════════════════════
               TAB: CONSOLE (Raw Action Trail)
@@ -636,13 +707,12 @@ return (
                           {entry.targetUrl}
                         </td>
                         <td className="border border-slate-200 px-3 py-2">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                            entry.status === 'Completed' 
-                              ? 'bg-green-100 text-green-700'
-                              : entry.status === 'Crashed'
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${entry.status === 'Completed'
+                            ? 'bg-green-100 text-green-700'
+                            : entry.status === 'Crashed'
                               ? 'bg-red-100 text-red-700'
                               : 'bg-gray-100 text-gray-700'
-                          }`}>
+                            }`}>
                             {entry.status}
                           </span>
                         </td>

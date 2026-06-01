@@ -106,11 +106,11 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(!token && !getStoredToken());
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
-// ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   // NAVIGATION STATE
   // ─────────────────────────────────────────────────────────────
 
-const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // ─────────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ const [activeView, setActiveView] = useState<ViewType>('dashboard');
   // DASHBOARD CONTROLLER - Test orchestration & telemetry management
   // ─────────────────────────────────────────────────────────────
 
-const { state, startTest, pauseTest, resumeTest, stopTest } =
+  const { state, startTest, pauseTest, resumeTest, stopTest } =
     useDashboardController(createGateway);
 
   const isAuthenticated = !!token && !!user;
@@ -218,7 +218,7 @@ const { state, startTest, pauseTest, resumeTest, stopTest } =
   //   → Main Content splits: ControlPanel (27%) | ForensicDashboard (55%)
   // ─────────────────────────────────────────────────────────────
 
-return (
+  return (
     <div className="flex h-screen w-screen bg-white">
       {/* Sidebar */}
       <Sidebar
@@ -231,9 +231,9 @@ return (
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
-{/* Main Content Area */}
+      {/* Main Content Area */}
       <div className="flex flex-1">
-{activeView === 'history' ? (
+        {activeView === 'history' ? (
           /* History View: Saved Evaluation Safaris */
           <SavedEvaluationSafaris
             evaluations={evaluations}
@@ -246,6 +246,7 @@ return (
               targetUrl={targetUrl}
               isTestRunning={state.isTestRunning}
               testStatus={state.status}
+              hasRunCompleted={state.hasRunCompleted}
               authToken={token}
               user={user}
               onStart={(url) => startTest(url)}
@@ -266,6 +267,7 @@ return (
               isConnected={state.isConnected}
               isTestRunning={state.isTestRunning}
               testStatus={state.status}
+              currentEngineAction={state.currentEngineAction}
               onPause={pauseTest}
               onResume={resumeTest}
               onStop={stopTest}

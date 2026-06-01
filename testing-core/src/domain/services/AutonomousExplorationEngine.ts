@@ -22,30 +22,176 @@ import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabil
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
+/**
+ * State Graph for directed path finding and loop prevention.
+ * Nodes = Unique DOM Hashes, Edges = Selectors that transition between states.
+ */
+class StateGraph {
+  // Map of state hash -> Map of selector -> target state hash
+  private readonly adjacency = new Map<string, Map<string, string>>();
+  // Track visit counts for nodes
+  private readonly nodeVisits = new Map<string, number>();
+  // Track which edges have been explored from each node
+  private readonly exploredEdges = new Map<string, Set<string>>();
+  // History for cycle detection (recent hash sequence)
+  private readonly history: string[] = [];
+  private readonly maxHistory = 20;
+
+  /**
+   * Add an edge from state A to state B via a selector
+   */
+  addEdge(fromHash: string, selector: string, toHash: string): void {
+    if (!this.adjacency.has(fromHash)) {
+      this.adjacency.set(fromHash, new Map());
+    }
+    const edges = this.adjacency.get(fromHash)!;
+    edges.set(selector, toHash);
+
+    // Track explored edges
+    if (!this.exploredEdges.has(fromHash)) {
+      this.exploredEdges.set(fromHash, new Set());
+    }
+    // Note: selector is marked as explored when actually clicked, not here
+  }
+
+  /**
+   * Record that an edge has been explored (clicked)
+   */
+  markEdgeExplored(fromHash: string, selector: string): void {
+    if (!this.exploredEdges.has(fromHash)) {
+      this.exploredEdges.set(fromHash, new Set());
+    }
+    this.exploredEdges.get(fromHash)!.add(selector);
+  }
+
+  /**
+   * Check if an edge has been explored
+   */
+  isEdgeExplored(fromHash: string, selector: string): boolean {
+    return this.exploredEdges.get(fromHash)?.has(selector) ?? false;
+  }
+
+  /**
+   * Get unexplored edges from a given state
+   */
+  getUnexploredEdges(fromHash: string, allSelectors: string[]): string[] {
+    const explored = this.exploredEdges.get(fromHash) ?? new Set();
+    return allSelectors.filter(sel => !explored.has(sel));
+  }
+
+  /**
+   * Record a node visit
+   */
+  recordVisit(hash: string): void {
+    const visits = (this.nodeVisits.get(hash) ?? 0) + 1;
+    this.nodeVisits.set(hash, visits);
+  }
+
+  /**
+   * Get visit count for a node
+   */
+  getVisitCount(hash: string): number {
+    return this.nodeVisits.get(hash) ?? 0;
+  }
+
+  /**
+   * Add hash to history for cycle detection
+   */
+  addToHistory(hash: string): void {
+    this.history.push(hash);
+    if (this.history.length > this.maxHistory) {
+      this.history.shift();
+    }
+  }
+
+  /**
+   * Check if transitioning to hash creates a cycle (recent return to same state)
+   */
+  isCycle(toHash: string): boolean {
+    // Check last 5 entries for the same hash (recent cycle)
+    const recent = this.history.slice(-5);
+    return recent.includes(toHash);
+  }
+
+  /**
+   * BFS to find shortest path to a node with unexplored edges
+   */
+  findEscapePath(startHash: string, allSelectors: string[]): string[] | null {
+    interface QueueItem {
+      hash: string;
+      path: string[];
+    }
+
+    const visited = new Set<string>();
+    const queue: QueueItem[] = [{ hash: startHash, path: [] }];
+    visited.add(startHash);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const currentHash = current.hash;
+
+      // Check if this node has unexplored edges
+      const unexplored = this.getUnexploredEdges(currentHash, allSelectors);
+      if (unexplored.length > 0 && currentHash !== startHash) {
+        // Found a node with unexplored edges
+        return current.path;
+      }
+
+      // Explore neighbors
+      const edges = this.adjacency.get(currentHash);
+      if (edges) {
+        for (const [selector, targetHash] of edges) {
+          if (!visited.has(targetHash)) {
+            visited.add(targetHash);
+            queue.push({
+              hash: targetHash,
+              path: [...current.path, selector],
+            });
+          }
+        }
+      }
+    }
+
+    return null; // No escape path found
+  }
+
+  /**
+   * Clear the graph for a new session
+   */
+  clear(): void {
+    this.adjacency.clear();
+    this.nodeVisits.clear();
+    this.exploredEdges.clear();
+    this.history.length = 0;
+  }
+}
+
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-private readonly scorer = new RiskScorer();
+  private readonly scorer = new RiskScorer();
   private readonly payloadSynthesizer = new PayloadSynthesizer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
   private readonly recentActionTraceIds: string[] = [];
+  // State Graph for directed path finding and loop prevention (Task 2)
+  private readonly stateGraph = new StateGraph();
   private sessionId: string | null = null;
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
 
-private isPaused = false;
+  private isPaused = false;
   private isStopRequested = false;
   private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
 
   // Stability monitoring cleanup function - disposed in finally block
   private cleanupStabilityMonitor: (() => void) | null = null;
 
-  constructor(private readonly findingRepo?: FindingRepository) {}
+  constructor(private readonly findingRepo?: FindingRepository) { }
 
   public pause() {
     this.isPaused = true;
@@ -69,6 +215,18 @@ private isPaused = false;
     );
   }
 
+  /**
+   * Emit granular system status for dynamic UI (Task 3).
+   * Sends specific status updates like "Navigating to URL...", "Hashing DOM state...", etc.
+   */
+  private emitSystemStatus(telemetry: TelemetryGateway, status: string): void {
+    telemetry.emitTelemetry(
+      this.event('ACTION', {
+        actionExecuted: 'system-status',
+        message: status,
+      }),
+    );
+  }
 
   public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
     telemetry = this.createPersistentTelemetryGateway(telemetry);
@@ -76,6 +234,8 @@ private isPaused = false;
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
+    // Clear StateGraph for new session (Task 2: State Graph initialization)
+    this.stateGraph.clear();
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;
@@ -87,7 +247,7 @@ private isPaused = false;
     // 🏁 Safari Initialized (milestone)
     this.emitMilestone(telemetry, '🏁 Safari Initialized');
 
-this.configureDialogAutoDismiss(page, telemetry);
+    this.configureDialogAutoDismiss(page, telemetry);
     this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
 
@@ -106,6 +266,37 @@ this.configureDialogAutoDismiss(page, telemetry);
       }
     });
 
+    // Task 1 Fix: Add response handler for NETWORK telemetry
+    page.on('response', async (response: Response) => {
+      const status = response.status();
+      const url = response.url();
+      const method = response.request().method();
+
+      // Emit NETWORK for failures (>=400 per TESTING_TYPES.md) or soft-fail body
+      let shouldEmit = status >= 400;
+
+      if (!shouldEmit) {
+        try {
+          const body = await response.text().catch(() => '');
+          const bodyLower = body.toLowerCase();
+          const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
+          const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
+          shouldEmit = hasErrorFlag || hasStatusFail;
+        } catch {
+          // Ignore body parse errors
+        }
+      }
+
+      if (shouldEmit) {
+        telemetry.emitTelemetry(this.event('NETWORK', {
+          statusCode: status,
+          url,
+          method,
+          message: `Network ${status} ${method} ${url}`,
+        }));
+      }
+    });
+
     handleFramenavigated = (): void => {
       const url = page.url();
       if (!url) return;
@@ -115,7 +306,10 @@ this.configureDialogAutoDismiss(page, telemetry);
 
     page.on('framenavigated', handleFramenavigated);
 
-try {
+    try {
+      // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
+      this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
+
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
@@ -141,7 +335,7 @@ try {
         while (this.isPaused) {
           if (this.isStopRequested) {
             this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
-return { completed: false, reason: 'Safari session manually stopped by user.' };
+            return { completed: false, reason: 'Safari session manually stopped by user.' };
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
@@ -201,6 +395,9 @@ return { completed: false, reason: 'Safari session manually stopped by user.' };
             })),
           );
 
+          // Task 3: Emit granular status for dynamic UI - "Hashing DOM state..."
+          this.emitSystemStatus(telemetry, 'Hashing DOM state...');
+
           // --- 3-Strike Logic Loop Detection ---
           // The hash represents the structural fingerprint of the page AFTER the
           // previous action. If it stays identical for 3 consecutive steps the
@@ -253,13 +450,57 @@ return { completed: false, reason: 'Safari session manually stopped by user.' };
             stagnationCounter = 0; // reset strike counter; fresh window after escape
           }
 
-          // Target selection:
-          //   • Normal mode  → highest-scored element (ranked[0])
-          //   • Escape mode  → lowest-scored element (ranked[last]) to force the
-          //                    engine down an unexplored branch of the UI tree.
-          const target = penaltyStepsRemaining > 0
-            ? ranked[ranked.length - 1]   // Random escape: least-risky path
-            : ranked[0];                   // Normal: highest-priority target
+          // Target selection with State Graph (Task 2: Rules 1-3):
+          // Collect all selectors for StateGraph operations
+          const allSelectors = ranked.map(e => e.selector);
+
+          // Rule 1: Explore Unseen - prioritize elements never clicked from this state
+          const unexplored = this.stateGraph.getUnexploredEdges(previousHash, allSelectors);
+
+          // Rule 2: Cycle Penalty - check if clicking would cause a cycle
+          let target: InteractiveElement;
+
+          if (penaltyStepsRemaining > 0 || stagnationCounter >= 3) {
+            // Already in escape mode, pick lowest scored (least explored path)
+            target = ranked[ranked.length - 1];
+          } else if (unexplored.length > 0) {
+            // Rule 1: Find unexplored elements and prioritize them
+            const unseenElement = ranked.find(e => unexplored.includes(e.selector));
+            if (unseenElement) {
+              target = unseenElement;
+              this.emitMilestone(telemetry, `🎯 Rule 1: Exploring unseen edge ${target.selector}`);
+            } else {
+              target = ranked[0];
+            }
+          } else {
+            // All elements explored - check for cycles (Rule 2)
+            const hasCycleCandidate = ranked.find(e => this.stateGraph.isCycle(currentHash));
+            if (hasCycleCandidate) {
+              // Apply cycle penalty by deprioritizing but still allow exploring
+              this.scorer.penalize(hasCycleCandidate.selector, 0.5);
+              this.emitMilestone(telemetry, `⚠️ Rule 2: Cycle detected for ${hasCycleCandidate.selector}, applying penalty`);
+            }
+            target = ranked[0];
+          }
+
+          // Rule 3: Escape Routing - if all exhausted, find path to unexplored node
+          if (this.stateGraph.getVisitCount(currentHash) > 10 && unexplored.length === 0) {
+            const escapePath = this.stateGraph.findEscapePath(currentHash, allSelectors);
+            if (escapePath && escapePath.length > 0) {
+              this.emitSystemStatus(telemetry, `Running BFS Escape Route...`);
+              this.emitMilestone(telemetry, `🧭 Rule 3: Escape routing to unexplored state via [${escapePath.join(' → ')}]`);
+            }
+          }
+
+          // Task 3: Emit granular status before action execution
+          this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
+
+          // Record this state visit and mark edge as explored
+          this.stateGraph.recordVisit(previousHash);
+          if (previousHash && target.selector) {
+            this.stateGraph.markEdgeExplored(previousHash, target.selector);
+          }
+          this.stateGraph.addToHistory(previousHash);
 
           if (!target) {
             return { completed: true, reason: 'No ranked target found.' };
@@ -311,7 +552,7 @@ return { completed: false, reason: 'Safari session manually stopped by user.' };
         }
       }
 
-return { completed: true, reason: 'Maximum exploration steps reached.' };
+      return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
       // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
@@ -331,7 +572,7 @@ return { completed: true, reason: 'Maximum exploration steps reached.' };
     }
   }
 
-private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
+  private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
     return {
       emitTelemetry: (event: TelemetryEvent) => {
         telemetry.emitTelemetry(event);
@@ -459,7 +700,7 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
     page.on('pageerror', (error: Error) => {
       const message = error?.message ?? 'Unknown page error';
       const stackTrace = error?.stack ?? message;
-      
+
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         message: `🔴 Unhandled JS Exception: ${message}`,
         exceptionDetails: { message, stackTrace },
@@ -550,7 +791,7 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
       }));
       return report.reason;
     }
-return null;
+    return null;
   }
 
   private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
@@ -606,7 +847,7 @@ return null;
       score: Number(target.riskScore.toFixed(4)),
     });
 
-// For security scenarios on text inputs, strip constraints first
+    // For security scenarios on text inputs, strip constraints first
     if (scenario.name === 'SecurityVulnerabilityScout') {
       try {
         await this.stripConstraints(page);
@@ -623,7 +864,7 @@ return null;
       await this.executeSecurityFuzzerPayloads(page, telemetry, target);
     }
 
-await scenario.execute(page, target);
+    await scenario.execute(page, target);
   }
 
   private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario {
@@ -757,7 +998,7 @@ await scenario.execute(page, target);
   }
 
 
-private async stripConstraints(page: Page): Promise<void> {
+  private async stripConstraints(page: Page): Promise<void> {
     // Use formBypasser for comprehensive constraint stripping
     // This leverages the full power of formBypasser for all input types
     try {
@@ -810,7 +1051,7 @@ private async stripConstraints(page: Page): Promise<void> {
       .catch(() => undefined);
   }
 
-private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
+  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     /**
      * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
      * 
@@ -822,19 +1063,19 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
      * to clients via WebSocket binary frames - no encoding overhead.
      */
     const screenshot = await page.screenshot({ type: 'jpeg', quality: 55 });
-    
+
     // Emit via optimized binary path if available
     // The binary frame server receives raw Buffer and broadcasts directly
     if ('emitLiveFrameBinary' in telemetry) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (telemetry as any).emitLiveFrameBinary(screenshot);
     }
-    
+
     // Fallback to legacy Base64 for backward compatibility
     telemetry.emitLiveFrame(screenshot.toString('base64'));
   }
 
-private logHighImpact(target: InteractiveElement, telemetry: TelemetryGateway): void {
+  private logHighImpact(target: InteractiveElement, telemetry: TelemetryGateway): void {
     const source = `${target.id} ${target.className} ${target.innerText}`.toLowerCase();
     if (source.includes('delete account') || source.includes('delete')) {
       telemetry.emitTelemetry(this.event('ACTION', {
