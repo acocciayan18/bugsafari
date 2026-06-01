@@ -23,8 +23,11 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
   let lastHeartbeatAlertAt = 0;
 
   const emitUnhandledJsException = (errorMessage: string, stackTrace: string): void => {
+    const timestamp = new Date().toISOString();
+    const url = page.url();
+
     telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
+      timestamp,
       type: 'EXCEPTION',
       meta: {
         message: `❌ Unhandled JS Exception: ${errorMessage}. The user's screen is likely frozen or non-functional.`,
@@ -34,12 +37,32 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
         },
       },
     });
+
+    // Emit as incident report for error tab display
+    telemetry.emitIncidentReport({
+      timestamp,
+      reason: errorMessage,
+      url,
+      stackTrace,
+      steps: [],
+    });
+
+    // Emit as forensic report
+    telemetry.emitForensicReport({
+      timestamp,
+      reason: `JS Exception: ${errorMessage}`,
+      url,
+      stackTrace,
+      breadcrumbs: [],
+    });
   };
 
   const emitServerCollapse = (statusCode: number, url: string, method?: string, evidence?: string): void => {
+    const timestamp = new Date().toISOString();
     const detailSuffix = evidence ? ` Evidence: ${evidence}` : '';
+
     telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
+      timestamp,
       type: 'NETWORK',
       meta: {
         url,
@@ -48,20 +71,62 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
         message: `🔥 Server Collapse: Backend returned a ${statusCode} error. The application's data layer is failing.${detailSuffix}`,
       },
     });
+
+    // Emit as incident report for error tab display
+    telemetry.emitIncidentReport({
+      timestamp,
+      reason: `HTTP ${statusCode} from ${url}`,
+      url,
+      statusCode,
+      stackTrace: evidence ?? `HTTP ${statusCode}`,
+      steps: [],
+    });
+
+    // Emit as forensic report
+    telemetry.emitForensicReport({
+      timestamp,
+      reason: `HTTP ${statusCode}: Backend returned a ${statusCode} error.${detailSuffix}`,
+      url,
+      statusCode,
+      stackTrace: evidence ?? `HTTP ${statusCode}`,
+      breadcrumbs: [],
+    });
   };
 
   const emitMainThreadLockup = (): void => {
+    const timestamp = new Date().toISOString();
+    const url = page.url();
+    const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
+
     telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
+      timestamp,
       type: 'EXCEPTION',
       meta: {
         message:
           "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.",
         exceptionDetails: {
           message: 'Main Thread heartbeat timeout',
-          stackTrace: 'Heartbeat evaluate call exceeded 5000ms timeout.',
+          stackTrace,
         },
       },
+    });
+
+    // Emit as incident report for error tab display
+    telemetry.emitIncidentReport({
+      timestamp,
+      reason: 'Main Thread Lock-up Detected',
+      url,
+      stackTrace,
+      steps: [],
+    });
+
+    // Emit as forensic report
+    telemetry.emitForensicReport({
+      timestamp,
+      reason: "System Lock-up Detected: The browser's Main Thread is unresponsive.",
+      url,
+      stackTrace,
+      breadcrumbs: [],
     });
   };
 
