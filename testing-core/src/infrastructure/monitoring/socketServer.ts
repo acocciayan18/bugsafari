@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
-import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../contracts.js';
+import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
 import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
 
 

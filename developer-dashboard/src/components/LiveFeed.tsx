@@ -2,7 +2,7 @@
 // Optimized for ClinicalForensicsDashboard integration
 // Refactored with fluid responsive layout and aspect-ratio safe constraints
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LiveFeedRenderer } from '../infrastructure/socket/BinaryFrameReceiver';
 
 interface LiveFeedProps {

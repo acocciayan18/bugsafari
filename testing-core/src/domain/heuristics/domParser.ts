@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { BoundingBox } from '../../contracts.js';
+import type { BoundingBox } from '@bugsafari/shared';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 
 export interface ParsedElement {
