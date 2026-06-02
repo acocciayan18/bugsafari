@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { concurrentEventSpam } from '../../domain/scenarios/concurrentClicker.js';
+import { concurrentEventSpam } from '../../domain/scenarios/rapidClickerStress.js';
 import { trashRoutes } from '../../domain/scenarios/routeTrasher.js';
 
 export interface ConcurrentStressResult {
@@ -17,4 +17,3 @@ export async function burstConcurrentStress(page: Page, step: number): Promise<C
     completed: a.completed + b.completed,
   };
 }
-

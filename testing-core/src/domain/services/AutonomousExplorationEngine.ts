@@ -22,149 +22,13 @@ import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabil
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
-/**
- * State Graph for directed path finding and loop prevention.
- * Nodes = Unique DOM Hashes, Edges = Selectors that transition between states.
- */
-class StateGraph {
-  // Map of state hash -> Map of selector -> target state hash
-  private readonly adjacency = new Map<string, Map<string, string>>();
-  // Track visit counts for nodes
-  private readonly nodeVisits = new Map<string, number>();
-  // Track which edges have been explored from each node
-  private readonly exploredEdges = new Map<string, Set<string>>();
-  // History for cycle detection (recent hash sequence)
-  private readonly history: string[] = [];
-  private readonly maxHistory = 20;
-
-  /**
-   * Add an edge from state A to state B via a selector
-   */
-  addEdge(fromHash: string, selector: string, toHash: string): void {
-    if (!this.adjacency.has(fromHash)) {
-      this.adjacency.set(fromHash, new Map());
-    }
-    const edges = this.adjacency.get(fromHash)!;
-    edges.set(selector, toHash);
-
-    // Track explored edges
-    if (!this.exploredEdges.has(fromHash)) {
-      this.exploredEdges.set(fromHash, new Set());
-    }
-    // Note: selector is marked as explored when actually clicked, not here
-  }
-
-  /**
-   * Record that an edge has been explored (clicked)
-   */
-  markEdgeExplored(fromHash: string, selector: string): void {
-    if (!this.exploredEdges.has(fromHash)) {
-      this.exploredEdges.set(fromHash, new Set());
-    }
-    this.exploredEdges.get(fromHash)!.add(selector);
-  }
-
-  /**
-   * Check if an edge has been explored
-   */
-  isEdgeExplored(fromHash: string, selector: string): boolean {
-    return this.exploredEdges.get(fromHash)?.has(selector) ?? false;
-  }
-
-  /**
-   * Get unexplored edges from a given state
-   */
-  getUnexploredEdges(fromHash: string, allSelectors: string[]): string[] {
-    const explored = this.exploredEdges.get(fromHash) ?? new Set();
-    return allSelectors.filter(sel => !explored.has(sel));
-  }
-
-  /**
-   * Record a node visit
-   */
-  recordVisit(hash: string): void {
-    const visits = (this.nodeVisits.get(hash) ?? 0) + 1;
-    this.nodeVisits.set(hash, visits);
-  }
-
-  /**
-   * Get visit count for a node
-   */
-  getVisitCount(hash: string): number {
-    return this.nodeVisits.get(hash) ?? 0;
-  }
-
-  /**
-   * Add hash to history for cycle detection
-   */
-  addToHistory(hash: string): void {
-    this.history.push(hash);
-    if (this.history.length > this.maxHistory) {
-      this.history.shift();
-    }
-  }
-
-  /**
-   * Check if transitioning to hash creates a cycle (recent return to same state)
-   */
-  isCycle(toHash: string): boolean {
-    // Check last 5 entries for the same hash (recent cycle)
-    const recent = this.history.slice(-5);
-    return recent.includes(toHash);
-  }
-
-  /**
-   * BFS to find shortest path to a node with unexplored edges
-   */
-  findEscapePath(startHash: string, allSelectors: string[]): string[] | null {
-    interface QueueItem {
-      hash: string;
-      path: string[];
-    }
-
-    const visited = new Set<string>();
-    const queue: QueueItem[] = [{ hash: startHash, path: [] }];
-    visited.add(startHash);
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const currentHash = current.hash;
-
-      // Check if this node has unexplored edges
-      const unexplored = this.getUnexploredEdges(currentHash, allSelectors);
-      if (unexplored.length > 0 && currentHash !== startHash) {
-        // Found a node with unexplored edges
-        return current.path;
-      }
-
-      // Explore neighbors
-      const edges = this.adjacency.get(currentHash);
-      if (edges) {
-        for (const [selector, targetHash] of edges) {
-          if (!visited.has(targetHash)) {
-            visited.add(targetHash);
-            queue.push({
-              hash: targetHash,
-              path: [...current.path, selector],
-            });
-          }
-        }
-      }
-    }
-
-    return null; // No escape path found
-  }
-
-  /**
-   * Clear the graph for a new session
-   */
-  clear(): void {
-    this.adjacency.clear();
-    this.nodeVisits.clear();
-    this.exploredEdges.clear();
-    this.history.length = 0;
-  }
-}
+// Import StateGraphNavigator and types from DIrectedPathFinder
+import { StateGraphNavigator } from './StateGraphNavigator.js';
+import type {
+  PathfinderDecision,
+  PathfinderElement,
+  EdgeSelector,
+} from './DIrectedPathFinder.js';
 
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
@@ -177,8 +41,8 @@ export class AutonomousExplorationEngine {
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
   private readonly recentActionTraceIds: string[] = [];
-  // State Graph for directed path finding and loop prevention (Task 2)
-  private readonly stateGraph = new StateGraph();
+// State Graph Navigator for directed path finding and loop prevention (Task 2)
+  private readonly pathNavigator = new StateGraphNavigator();
   private sessionId: string | null = null;
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
@@ -234,8 +98,7 @@ export class AutonomousExplorationEngine {
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
-    // Clear StateGraph for new session (Task 2: State Graph initialization)
-    this.stateGraph.clear();
+// StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;
@@ -251,16 +114,17 @@ export class AutonomousExplorationEngine {
     this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
 
-    page.on('request', (request: Request) => {
+page.on('request', (request: Request) => {
       if (!lastTarget) {
         return;
       }
+      const t: InteractiveElement = lastTarget;
       const resourceType = request.resourceType();
       if (resourceType === 'xhr' || resourceType === 'fetch') {
-        this.scorer.rewardFromNetworkSignal(lastTarget);
+        this.scorer.rewardFromNetworkSignal(t);
         telemetry.emitTelemetry(this.event('ACTION', {
           actionExecuted: 'dynamic-weight-update',
-          selector: lastTarget.selector,
+          selector: t.selector,
           message: `Boosted feature weights after ${resourceType.toUpperCase()} network signal.`,
         }));
       }
@@ -450,67 +314,67 @@ export class AutonomousExplorationEngine {
             stagnationCounter = 0; // reset strike counter; fresh window after escape
           }
 
-          // Target selection with State Graph (Task 2: Rules 1-3):
-          // Collect all selectors for StateGraph operations
-          const allSelectors = ranked.map(e => e.selector);
+// Convert ranked elements to PathfinderElement format for StateGraphNavigator
+          const pathfinderElements: PathfinderElement[] = ranked.map(el => ({
+            selector: el.selector,
+            score: el.riskScore,
+          }));
 
-          // Rule 1: Explore Unseen - prioritize elements never clicked from this state
-          const unexplored = this.stateGraph.getUnexploredEdges(previousHash, allSelectors);
+// Use StateGraphNavigator to make decision
+          const decision = this.pathNavigator.registerStateAndDecide(
+            currentHash,
+            currentUrl,
+            pathfinderElements,
+            penaltyStepsRemaining > 0 || stagnationCounter >= 3,
+          );
 
-          // Rule 2: Cycle Penalty - check if clicking would cause a cycle
-          let target: InteractiveElement;
+          // Initialize with default to satisfy TypeScript
+          let target: InteractiveElement = ranked[0];
 
-          if (penaltyStepsRemaining > 0 || stagnationCounter >= 3) {
-            // Already in escape mode, pick lowest scored (least explored path)
-            target = ranked[ranked.length - 1];
-          } else if (unexplored.length > 0) {
-            // Rule 1: Find unexplored elements and prioritize them
-            const unseenElement = ranked.find(e => unexplored.includes(e.selector));
-            if (unseenElement) {
-              target = unseenElement;
-              this.emitMilestone(telemetry, `🎯 Rule 1: Exploring unseen edge ${target.selector}`);
-            } else {
-              target = ranked[0];
-            }
-          } else {
-            // All elements explored - check for cycles (Rule 2)
-            const hasCycleCandidate = ranked.find(e => this.stateGraph.isCycle(currentHash));
-            if (hasCycleCandidate) {
-              // Apply cycle penalty by deprioritizing but still allow exploring
-              this.scorer.penalize(hasCycleCandidate.selector, 0.5);
-              this.emitMilestone(telemetry, `⚠️ Rule 2: Cycle detected for ${hasCycleCandidate.selector}, applying penalty`);
-            }
-            target = ranked[0];
+          if (decision.kind === 'exhausted') {
+            this.emitMilestone(telemetry, '🔚 Graph exhausted. Exploration complete.');
+            return { completed: true, reason: 'Full reachable graph exhausted.' };
           }
 
-          // Rule 3: Escape Routing - if all exhausted, find path to unexplored node
-          if (this.stateGraph.getVisitCount(currentHash) > 10 && unexplored.length === 0) {
-            const escapePath = this.stateGraph.findEscapePath(currentHash, allSelectors);
-            if (escapePath && escapePath.length > 0) {
-              this.emitSystemStatus(telemetry, `Running BFS Escape Route...`);
-              this.emitMilestone(telemetry, `🧭 Rule 3: Escape routing to unexplored state via [${escapePath.join(' → ')}]`);
-            }
+if (decision.kind === 'backtrack') {
+            // Emit backtrack telemetry and navigate to target URL
+            this.emitMilestone(telemetry, `↩️ Backtracking to ${decision.targetUrl}`);
+            this.emitSystemStatus(telemetry, `Backtracking to ${decision.targetHash.substring(0, 8)}...`);
+            await page.goto(decision.targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await wait(350);
+            continue;
           }
 
-          // Task 3: Emit granular status before action execution
-          this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
-
-          // Record this state visit and mark edge as explored
-          this.stateGraph.recordVisit(previousHash);
-          if (previousHash && target.selector) {
-            this.stateGraph.markEdgeExplored(previousHash, target.selector);
-          }
-          this.stateGraph.addToHistory(previousHash);
+          // decision.kind === 'explore-edge' - handle explicitly for TypeScript
+          const exploreDecision = decision as { kind: 'explore-edge'; selector: string; score: number; pathTrace: string };
+          const selectedSelector = exploreDecision.selector;
+          const foundTarget = ranked.find(el => el.selector === selectedSelector);
+          target = foundTarget ?? ranked[0];
 
           if (!target) {
             return { completed: true, reason: 'No ranked target found.' };
           }
-          lastTarget = target;
 
+          // Store score for telemetry
+          const targetScore = exploreDecision.score;
+
+// Emit exploration milestone
+          this.emitMilestone(telemetry, `🎯 Exploring edge: ${target.selector} (score: ${decision.score.toFixed(3)})`);
+          this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
+
+          // Execute the action
           this.logHighImpact(target, telemetry);
+          const previousHashBeforeAction = currentHash;
 
           await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
           await this.persistBrainSnapshot('runtime', step);
+
+          // Confirm edge traversal in the navigator
+          this.pathNavigator.confirmEdgeTraversal(
+            previousHashBeforeAction,
+            target.selector,
+            currentHash,
+          );
 
           telemetry.emitTelemetry(this.event('HEURISTIC_SCORE', {
             selector: target.selector,
