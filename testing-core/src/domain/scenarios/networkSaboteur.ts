@@ -67,9 +67,9 @@ export const networkSaboteur: StressScenario = {
         return;
       }
 
-      // Prefer API/XHR/fetch/doc requests as candidate network calls
+      // Only sabotage API calls (XHR/fetch), NOT the main document
       const type = request.resourceType();
-      if (!['xhr', 'fetch', 'document'].includes(type)) {
+      if (!['xhr', 'fetch'].includes(type)) {
         await safeContinue(route);
         return;
       }

@@ -109,6 +109,51 @@ const ExpandableCodeBlock = ({
   );
 };
 
+/**
+ * 🧠 REVISED REUSABLE COMPONENT: AI Expert System Diagnostic Card Render 
+ */
+const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
+  if (!ai) return null;
+  return (
+    <div className="mt-3 bg-slate-900 border-l-4 border-blue-500 rounded-r p-4 text-slate-200 shadow-md font-mono text-xs">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+        <div className="flex items-center gap-1.5 text-blue-400 font-bold tracking-wider uppercase text-[10px]">
+          <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
+        </div>
+        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
+          ai.severity === 'CRITICAL' 
+            ? 'bg-red-950/80 border-red-800 text-red-400' 
+            : 'bg-amber-950/80 border-amber-800 text-amber-400'
+        }`}>
+          {ai.severity}
+        </span>
+      </div>
+      
+      <div className="space-y-2 text-[11px] leading-relaxed">
+        <div>
+          <span className="text-slate-400 font-bold">Vulnerability Class:</span>{' '}
+          <span className="text-white font-bold">{ai.vulnerabilityClass}</span>
+        </div>
+        <div>
+          <span className="text-slate-400 font-bold">Standard Profile:</span>{' '}
+          <span className="text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded text-[10px] font-bold">{ai.cwe}</span>
+        </div>
+        <div className="text-slate-300 text-justify italic font-light mt-1">
+          <span className="text-slate-400 not-italic font-bold">Inference Deduction:</span> {ai.explanation}
+        </div>
+        
+        {/* Highlighted Clean Actionable Remediation Box */}
+        <div className="mt-3 p-2.5 bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded font-sans text-xs">
+          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-emerald-400 mb-1">
+            💡 Actionable Remediation Patch Strategy:
+          </span>
+          <p className="leading-normal">{ai.suggestedFix}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE - Purely telemetry-focused
 // ─────────────────────────────────────────────────────────────
@@ -127,8 +172,8 @@ interface ClinicalForensicsDashboardProps {
   testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED';
   currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
   onPause?: () => void;
-  onResume?: () => void;
   onStop?: () => void;
+  onResume?: () => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -171,19 +216,21 @@ export default function ClinicalForensicsDashboard({
    */
   const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
-      ? telemetry.map((event): string => {
-        if (typeof event === 'string') {
-          return event;
-        }
-        const timestamp = event.timestamp
-          ? new Date(event.timestamp).toTimeString().slice(0, 8)
-          : new Date().toTimeString().slice(0, 8);
-        const type = event.type ?? 'EVENT';
-        const message = (event as TelemetryEvent).meta?.message
-          ?? (event as TelemetryEvent).meta?.actionExecuted
-          ?? 'event';
-        return `${timestamp} [${type}] ${message}`;
-      })
+      ? telemetry.map((event) => {
+          if (typeof event === 'string') {
+            return { rawText: event, aiDiagnostics: null };
+          }
+          const timestamp = event.timestamp
+            ? new Date(event.timestamp).toTimeString().slice(0, 8)
+            : new Date().toTimeString().slice(0, 8);
+          const type = event.type ?? 'EVENT';
+          const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+          
+          return {
+            rawText: `${timestamp} [${type}] ${message}`,
+            aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+          };
+        })
       : [];
     return events.slice(-100);
   }, [telemetry]);
@@ -332,19 +379,23 @@ export default function ClinicalForensicsDashboard({
             <>
               {isTestRunning ? (
                 <>
-                  {formattedTelemetry.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${log.includes('[SYSTEM]')
-                        ? 'text-slate-600'
-                        : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
-                          ? 'text-red-600 font-semibold'
-                          : log.includes('[NETWORK]')
-                            ? 'text-blue-600'
-                            : 'text-slate-800'
-                        }`}
-                    >
-                      {log}
+                  {formattedTelemetry.map((logObj, index) => (
+                    <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
+                      <div
+                        className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
+                          ? 'text-slate-600'
+                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                            ? 'text-red-600 font-semibold'
+                            : logObj.rawText.includes('[NETWORK]')
+                              ? 'text-blue-600'
+                              : 'text-slate-800'
+                          }`}
+                      >
+                        {logObj.rawText}
+                      </div>
+                      
+                      {/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
+                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
                   <div className="flex items-center gap-2 py-2 text-slate-500">
@@ -360,19 +411,21 @@ export default function ClinicalForensicsDashboard({
                 </div>
               ) : (
                 <>
-                  {formattedTelemetry.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`py-1 leading-relaxed whitespace-pre-wrap break-words ${log.includes('[SYSTEM]')
-                        ? 'text-slate-600'
-                        : log.includes('[ERROR]') || log.includes('[EXCEPTION]')
-                          ? 'text-red-600 font-semibold'
-                          : log.includes('[NETWORK]')
-                            ? 'text-blue-600'
-                            : 'text-slate-800'
-                        }`}
-                    >
-                      {log}
+                  {formattedTelemetry.map((logObj, index) => (
+                    <div key={index} className="py-1">
+                      <div
+                        className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
+                          ? 'text-slate-600'
+                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                            ? 'text-red-600 font-semibold'
+                            : logObj.rawText.includes('[NETWORK]')
+                              ? 'text-blue-600'
+                              : 'text-slate-800'
+                          }`}
+                      >
+                        {logObj.rawText}
+                      </div>
+                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
                   <div className="py-2 text-slate-800">
@@ -397,6 +450,9 @@ export default function ClinicalForensicsDashboard({
                     const incidentKey = `incident-${idx}`;
                     const metadata = extractErrorMetadata(incident);
                     const isExpanded = expandedStackTrace[incidentKey];
+                    
+                    // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
+                    const aiDiagnostics = (incident as any).aiDiagnostics;
 
                     return (
                       <div
@@ -441,6 +497,9 @@ export default function ClinicalForensicsDashboard({
                           <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
                             {incident.reason}
                           </div>
+                          
+                          {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
+                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
                         </div>
 
                         {incident.stackTrace && (
@@ -461,6 +520,7 @@ export default function ClinicalForensicsDashboard({
                     const reportKey = `report-${idx}`;
                     const metadata = extractErrorMetadata(report);
                     const isExpanded = expandedStackTrace[reportKey];
+                    const aiDiagnostics = (report as any).aiDiagnostics;
 
                     return (
                       <div
@@ -505,6 +565,8 @@ export default function ClinicalForensicsDashboard({
                           <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
                             {report.reason}
                           </div>
+                          
+                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
                         </div>
 
                         {report.stackTrace && (
@@ -528,7 +590,6 @@ export default function ClinicalForensicsDashboard({
               TAB: NETWORK
               ════════════════════════════════════════ */}
           {activeTab === 'network' && (() => {
-            // Filter for NETWORK telemetry events
             const networkEvents = telemetry
               .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
               .slice(-50);
@@ -554,8 +615,8 @@ export default function ClinicalForensicsDashboard({
                   const method = meta?.method || 'GET';
                   const duration = meta?.durationMs;
                   const message = meta?.message || '';
+                  const aiDiagnostics = meta?.aiDiagnostics || null;
 
-                  // Determine severity based on status code
                   const isError = statusCode && statusCode >= 400;
                   const isServerError = statusCode && statusCode >= 500;
                   const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
@@ -595,9 +656,10 @@ export default function ClinicalForensicsDashboard({
                       <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
                         {url}
                       </div>
-                      {message && (
+                      {(message || aiDiagnostics) && (
                         <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
                           {message}
+                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
                         </div>
                       )}
                     </div>

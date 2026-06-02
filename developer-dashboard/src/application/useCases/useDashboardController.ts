@@ -95,8 +95,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       }
     });
 
-    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 20)));
-    gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 20)));
+    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
+    gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
     gateway.onLiveFrame((frame) => {
       // Clear thinking state when first live frame is received
       setIsThinking(false);

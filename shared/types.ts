@@ -1,3 +1,7 @@
+// ═══════════════════════════════════════════════════════════════
+// shared/types.ts - SHARED DATA MODEL BLUEPRINT
+// ═══════════════════════════════════════════════════════════════
+
 export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE';
 
 export type SemanticRole =
@@ -9,6 +13,18 @@ export type SemanticRole =
   | 'NAVIGATE'
   | 'INPUT'
   | 'UNKNOWN';
+
+// ─────────────────────────────────────────────────────────────
+// 🧠 BUGSAFARI AI EXPERT SYSTEM TYPE GATES
+// ─────────────────────────────────────────────────────────────
+
+export interface IntelligentDiagnosis {
+  vulnerabilityClass: string;
+  cwe: string;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  explanation: string;
+  suggestedFix: string;
+}
 
 export interface ExceptionDetails {
   message: string;
@@ -30,6 +46,8 @@ export interface TelemetryMeta {
   blockedUrl?: string;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
+  // 🧠 Optional parameter allowing the React client state logic to read inference mappings
+  aiDiagnostics?: IntelligentDiagnosis;
 }
 
 export interface TelemetryEvent {
@@ -95,5 +113,3 @@ export interface DiscoveredElement {
   isVisible: boolean;
   boundingBox: BoundingBox;
 }
-
-

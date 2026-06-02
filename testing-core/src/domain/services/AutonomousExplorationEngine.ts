@@ -1,6 +1,6 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { ActionBreadcrumb, TelemetryEvent } from '../../../../shared/types.ts';
+import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
 import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
 import { RecursiveDomParser } from '../heuristics/domParser.js';
@@ -68,6 +68,16 @@ export class AutonomousExplorationEngine {
   public stop() {
     this.isStopRequested = true;
     this.isPaused = false;
+  }
+
+  private breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[] {
+    return breadcrumbs.map((crumb) => ({
+      timestamp: crumb.timestamp,
+      type: (crumb.action.toUpperCase() as unknown as ActionType) || 'CLICK',
+      selector: crumb.selector,
+      url: this.targetOrigin || 'unknown',
+      payload: crumb.payload,
+    }));
   }
 
   private emitMilestone(telemetry: TelemetryGateway, message: string): void {
@@ -161,6 +171,38 @@ page.on('request', (request: Request) => {
       }
     });
 
+    // Catch network request failures (timeouts, connection errors, aborts)
+    page.on('requestfailed', (request: Request) => {
+      const timestamp = new Date().toISOString();
+      const url = request.url();
+      const method = request.method();
+      const failure = request.failure();
+      const reason = failure?.errorText ?? 'Unknown network failure';
+      const breadcrumbs = this.actions.snapshot();
+
+      telemetry.emitTelemetry(this.event('EXCEPTION', {
+        url,
+        method,
+        message: `Network Request Failed: ${reason} for ${method} ${url}`,
+      }));
+
+      telemetry.emitIncidentReport({
+        timestamp,
+        reason: `Network Request Failed: ${reason}`,
+        url: lastKnownUrl || page.url(),
+        stackTrace: `${method} ${url} - ${reason}`,
+        steps: this.breadcrumbsToActionRecords(breadcrumbs),
+      });
+
+      telemetry.emitForensicReport({
+        timestamp,
+        reason: `Network Request Failed: ${reason}`,
+        url: lastKnownUrl || page.url(),
+        stackTrace: `${method} ${url} - ${reason}`,
+        breadcrumbs,
+      });
+    });
+
     handleFramenavigated = (): void => {
       const url = page.url();
       if (!url) return;
@@ -234,6 +276,12 @@ page.on('request', (request: Request) => {
           await this.ensureDomReady(page, telemetry);
 
           const elements = await this.parser.parse(page);
+          
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'dom-elements-parsed',
+            message: `Parsed ${elements.length} interactive elements from DOM`,
+          }));
+
           if (elements.length === 0) {
             telemetry.emitTelemetry(this.event('ACTION', {
               actionExecuted: 'empty-dom',
@@ -336,6 +384,17 @@ page.on('request', (request: Request) => {
             return { completed: true, reason: 'Full reachable graph exhausted.' };
           }
 
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'element-selected',
+            selector: target.selector,
+            score: Number(target.riskScore.toFixed(4)),
+            message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
+          }));
+
+          // Record this state visit and mark edge as explored
+          this.stateGraph.recordVisit(previousHash);
+          if (previousHash && target.selector) {
+            this.stateGraph.markEdgeExplored(previousHash, target.selector);
 if (decision.kind === 'backtrack') {
             // Emit backtrack telemetry and navigate to target URL
             this.emitMilestone(telemetry, `↩️ Backtracking to ${decision.targetUrl}`);
@@ -367,6 +426,13 @@ if (decision.kind === 'backtrack') {
           const previousHashBeforeAction = currentHash;
 
           await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+          
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'action-executed',
+            selector: target.selector,
+            message: `Step ${step}: Action executed on ${target.selector}`,
+          }));
+
           await this.persistBrainSnapshot('runtime', step);
 
           // Confirm edge traversal in the navigator
@@ -416,6 +482,7 @@ if (decision.kind === 'backtrack') {
         }
       }
 
+      this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
       // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
@@ -564,18 +631,29 @@ if (decision.kind === 'backtrack') {
     page.on('pageerror', (error: Error) => {
       const message = error?.message ?? 'Unknown page error';
       const stackTrace = error?.stack ?? message;
+      const url = lastKnownUrl || page.url();
+      const timestamp = new Date().toISOString();
+      const breadcrumbs = this.actions.snapshot();
 
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         message: `🔴 Unhandled JS Exception: ${message}`,
         exceptionDetails: { message, stackTrace },
       }));
 
-      telemetry.emitForensicReport({
-        timestamp: new Date().toISOString(),
+      telemetry.emitIncidentReport({
+        timestamp,
         reason: `Unhandled JS Exception: ${message}`,
-        url: lastKnownUrl || page.url(),
+        url,
         stackTrace,
-        breadcrumbs: this.actions.snapshot(),
+        steps: this.breadcrumbsToActionRecords(breadcrumbs),
+      });
+
+      telemetry.emitForensicReport({
+        timestamp,
+        reason: `Unhandled JS Exception: ${message}`,
+        url,
+        stackTrace,
+        breadcrumbs,
       });
     });
 
@@ -592,31 +670,48 @@ if (decision.kind === 'backtrack') {
         return;
       }
 
+      const url = lastKnownUrl || page.url();
+      const timestamp = new Date().toISOString();
+      const breadcrumbs = this.actions.snapshot();
+
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         message: `🔴 Console Error: ${text}`,
         exceptionDetails: { message: text, stackTrace: text },
       }));
 
-      telemetry.emitForensicReport({
-        timestamp: new Date().toISOString(),
+      telemetry.emitIncidentReport({
+        timestamp,
         reason: `Console Error: ${text}`,
-        url: lastKnownUrl || page.url(),
+        url,
         stackTrace: text,
-        breadcrumbs: this.actions.snapshot(),
+        steps: this.breadcrumbsToActionRecords(breadcrumbs),
+      });
+
+      telemetry.emitForensicReport({
+        timestamp,
+        reason: `Console Error: ${text}`,
+        url,
+        stackTrace: text,
+        breadcrumbs,
       });
     });
   }
 
   private async handleResponse(response: Response, currentUrl: string, telemetry: TelemetryGateway): Promise<string | null> {
     const status = response.status();
+    const url = response.url();
+    const method = response.request().method();
+    const timestamp = new Date().toISOString();
+    const breadcrumbs = this.actions.snapshot();
 
     const shouldEmitByStatus = status >= 400;
 
     let shouldEmitByBody = false;
+    let bodyContent = '';
     if (!shouldEmitByStatus) {
       try {
-        const body = await response.text().catch(() => '');
-        const bodyLower = body.toLowerCase();
+        bodyContent = await response.text().catch(() => '');
+        const bodyLower = bodyContent.toLowerCase();
 
         const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
         const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
@@ -630,31 +725,36 @@ if (decision.kind === 'backtrack') {
     if (shouldEmitByStatus || shouldEmitByBody) {
       telemetry.emitTelemetry(this.event('NETWORK', {
         statusCode: status,
-        url: response.url(),
-        method: response.request().method(),
-        message: `Network ${status} ${response.url()}`,
+        url,
+        method,
+        message: `Network ${status} ${method} ${url}`,
       }));
+
+      // Emit incident and forensic reports for ALL error statuses (4xx and 5xx)
+      const reason = `HTTP ${status}: ${method} ${url}`;
+      const stackTrace = `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`;
+
+      telemetry.emitIncidentReport({
+        timestamp,
+        reason,
+        url: currentUrl,
+        statusCode: status,
+        stackTrace,
+        steps: this.breadcrumbsToActionRecords(breadcrumbs),
+      });
+
+      telemetry.emitForensicReport({
+        timestamp,
+        reason,
+        statusCode: status,
+        url: currentUrl,
+        stackTrace,
+        breadcrumbs,
+      });
+
+      return reason;
     }
 
-    if (status >= 500) {
-      const report = {
-        timestamp: new Date().toISOString(),
-        reason: `HTTP ${response.status()} detected on ${response.url()}`,
-        statusCode: response.status(),
-        url: currentUrl,
-        breadcrumbs: this.actions.snapshot(),
-      };
-      telemetry.emitForensicReport(report);
-      telemetry.emitTelemetry(this.event('EXCEPTION', {
-        statusCode: response.status(),
-        url: response.url(),
-        message: report.reason,
-        reproductionSteps: report.breadcrumbs.map(
-          (item, index) => `Step ${index + 1}: ${item.action} on ${item.selector}`,
-        ),
-      }));
-      return report.reason;
-    }
     return null;
   }
 
