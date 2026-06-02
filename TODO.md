@@ -1,22 +1,21 @@
-# Implementation TODO - Completed
+# TODO: LiveFeed Layout Refactoring
 
-## Task 1: Connect Directed Path Finding & DOM Hashing
-- [x] Add emitSystemStatus calls in AutonomousExplorationEngine.ts
-  - "Navigating to URL..." - before navigation
-  - "Hashing DOM state..." - before DOM hashing
-  - "Clicking element [selector]..." - before action execution
-  - "Running BFS Escape Route..." - during escape routing
+## Task
+Refactor responsive layout geometry of the live stream view container component using Tailwind CSS
 
-## Task 2: Strict Session Saving Lifecycle
-- [x] Verify backend lifecycle (already implemented)
-  - Session marked "Completed" only when run finishes legitimately
-  - Session marked "Crashed" only on exception
-- [x] Frontend gating already in place
-  - hasRunCompleted prop gates the Save button
+## Current Issues Identified
+1. Outer wrapper uses `shrink-0` which prevents proper flex scaling
+2. Lack of explicit aspect-ratio for dynamic fitting
+3. Hardcoded pixel dimensions (VIEWPORT_WIDTH = 1440, VIEWPORT_HEIGHT = 900) causing 16:10 ratio vs standard 16:9
+4. Missing overflow-hidden boundaries on outer wrapper
 
-## Task 3: Dynamic Engine Status UI
-- [x] Backend emits system-status telemetry events
-- [x] Frontend captures currentEngineAction state from telemetry
-- [x] ClinicalForensicsDashboard renders dynamic status text
+## Plan
+1. [x] Analyze LiveFeed.tsx component
+2. [x] Analyze parent ClinicalForensicsDashboard.tsx context
+3. [x] Implement layout corrections:
+   - Bounded Fluid Parent Wrapper with w-full h-full, overflow-hidden
+   - Aspect-Ratio Safe Dynamic Fitting with aspect-video (16:9)
+   - Resize-Observer Listening Integration with flex utilities
+4. [x] Save refactored LiveFeed.tsx
 
-All tasks completed successfully.
+## Status: COMPLETED

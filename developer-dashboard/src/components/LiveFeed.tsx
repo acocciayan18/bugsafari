@@ -1,5 +1,6 @@
 // Live Feed Component - Light Theme Browser Frame
 // Optimized for ClinicalForensicsDashboard integration
+// Refactored with fluid responsive layout and aspect-ratio safe constraints
 
 import { useEffect, useRef, useState } from 'react';
 import { LiveFeedRenderer } from '../infrastructure/socket/BinaryFrameReceiver';
@@ -13,8 +14,10 @@ interface LiveFeedProps {
   binaryWsUrl?: string;
 }
 
-const VIEWPORT_WIDTH = 1440;
-const VIEWPORT_HEIGHT = 900;
+// Native viewport resolution for canvas rendering (internal coordinate system)
+// This does NOT dictate display size - only the rendering resolution
+const NATIVE_VIEWPORT_WIDTH = 1440;
+const NATIVE_VIEWPORT_HEIGHT = 900;
 
 export default function LiveFeed({ 
   frame, 
@@ -25,9 +28,67 @@ export default function LiveFeed({
   binaryWsUrl = 'ws://localhost:8765'
 }: LiveFeedProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LiveFeedRenderer | null>(null);
   const [isBinaryConnected, setIsBinaryConnected] = useState(false);
   const [fps, setFps] = useState(0);
+  const [canvasStyle, setCanvasStyle] = useState({ width: '100%', height: '100%' });
+
+  // Initialize canvas dimensions on mount and handle responsive resizing
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    
+    // Set internal canvas resolution (rendering coordinates, not display size)
+    canvasRef.current.width = NATIVE_VIEWPORT_WIDTH;
+    canvasRef.current.height = NATIVE_VIEWPORT_HEIGHT;
+    
+    // Handle responsive sizing via ResizeObserver
+    const updateCanvasSize = () => {
+      if (!containerRef.current || !canvasRef.current) return;
+      
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
+      
+      // Calculate display dimensions maintaining aspect ratio
+      const sourceAspect = NATIVE_VIEWPORT_WIDTH / NATIVE_VIEWPORT_HEIGHT;
+      const containerAspect = containerWidth / containerHeight;
+      
+      let displayWidth: number;
+      let displayHeight: number;
+      
+      if (containerAspect > sourceAspect) {
+        // Container is wider than source - fit by height
+        displayHeight = containerHeight;
+        displayWidth = containerHeight * sourceAspect;
+      } else {
+        // Container is taller than source - fit by width
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / sourceAspect;
+      }
+      
+      setCanvasStyle({
+        width: `${displayWidth}px`,
+        height: `${displayHeight}px`,
+      });
+    };
+    
+    // Initial measurement
+    updateCanvasSize();
+    
+    // Set up ResizeObserver for responsive updates
+    const resizeObserver = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!useBinaryStream || !canvasRef.current || rendererRef.current) {
@@ -38,8 +99,8 @@ export default function LiveFeed({
       rendererRef.current = new LiveFeedRenderer({
         canvasElement: canvasRef.current,
         wsUrl: binaryWsUrl,
-        frameWidth: VIEWPORT_WIDTH,
-        frameHeight: VIEWPORT_HEIGHT,
+        frameWidth: NATIVE_VIEWPORT_WIDTH,
+        frameHeight: NATIVE_VIEWPORT_HEIGHT,
       });
 
       rendererRef.current.connect();
@@ -70,8 +131,8 @@ export default function LiveFeed({
       img.onload = () => {
         const ctx = canvasRef.current?.getContext('2d');
         if (ctx) {
-          ctx.clearRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-          ctx.drawImage(img, 0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+          ctx.clearRect(0, 0, NATIVE_VIEWPORT_WIDTH, NATIVE_VIEWPORT_HEIGHT);
+          ctx.drawImage(img, 0, 0, NATIVE_VIEWPORT_WIDTH, NATIVE_VIEWPORT_HEIGHT);
         }
       };
       img.src = frame.startsWith('data:') ? frame : `data:image/jpeg;base64,${frame}`;
@@ -79,9 +140,9 @@ export default function LiveFeed({
   }, [frame, useBinaryStream]);
 
   return (
-    <div className="w-full max-w-5xl shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-col w-full h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       {/* BROWSER HEADER */}
-      <div className="flex items-center gap-4 border-b border-slate-200 bg-white px-4 py-2 sm:px-5">
+      <div className="flex items-center gap-4 border-b border-slate-200 bg-white px-4 py-2 sm:px-5 shrink-0">
         {/* Window Controls - 3 small gray dots */}
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-slate-300" aria-hidden="true" />
@@ -124,13 +185,20 @@ export default function LiveFeed({
         </div>
       </div>
 
-{/* VIEWPORT - Full vertical expansion, removing rigid height bounds */}
-      <div className="min-h-[400px] h-auto flex-1 bg-white overflow-auto">
+      {/* VIEWPORT - Full fluid expansion with aspect-ratio safe dynamic fitting */}
+      <div 
+        ref={containerRef}
+        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-zinc-950 overflow-hidden p-0"
+      >
         <canvas
           ref={canvasRef}
-          width={VIEWPORT_WIDTH}
-          height={VIEWPORT_HEIGHT}
-          className="h-auto w-full object-contain"
+          style={{
+            width: canvasStyle.width,
+            height: canvasStyle.height,
+            maxWidth: '100%',
+            maxHeight: '100%',
+          }}
+          className="block object-contain"
         />
       </div>
     </div>

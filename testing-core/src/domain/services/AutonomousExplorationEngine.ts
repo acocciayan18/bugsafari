@@ -391,11 +391,9 @@ page.on('request', (request: Request) => {
             message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
           }));
 
-          // Record this state visit and mark edge as explored
-          this.stateGraph.recordVisit(previousHash);
-          if (previousHash && target.selector) {
-            this.stateGraph.markEdgeExplored(previousHash, target.selector);
-if (decision.kind === 'backtrack') {
+// StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
+
+          if (decision.kind === 'backtrack') {
             // Emit backtrack telemetry and navigate to target URL
             this.emitMilestone(telemetry, `↩️ Backtracking to ${decision.targetUrl}`);
             this.emitSystemStatus(telemetry, `Backtracking to ${decision.targetHash.substring(0, 8)}...`);
