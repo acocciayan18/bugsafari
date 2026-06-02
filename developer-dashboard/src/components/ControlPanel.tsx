@@ -104,30 +104,34 @@ export default function ControlPanel({
           </span>
         </div>
 
-        {/* Target URL Input */}
+{/* Target URL Input */}
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-1.343 3-3m0-3c0-1.657-1.343-3-3-3m0 3c-1.657 0-3 1.343-3 3m3-3c0 1.657 1.343 3 3 3m0-3c0-1.657-1.343-3-3-3" />
           </svg>
           <input
             type="text"
-            className="flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            className={`flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400 ${isTestRunning ? 'text-slate-400 cursor-not-allowed' : 'text-slate-900'}`}
             placeholder="Enter target URL..."
             value={localTargetUrl}
-            onChange={(e) => setLocalTargetUrl(e.target.value)}
+            onChange={(e) => !isTestRunning && setLocalTargetUrl(e.target.value)}
+            disabled={isTestRunning}
+            title={isTestRunning ? 'Action Locked: Testing session is currently executing.' : undefined}
           />
         </div>
 
-        {/* Main Action Button */}
+{/* Main Action Button */}
         <button
           onClick={() => handleStartTest()}
-          className="flex w-full items-center justify-center gap-2 rounded-none bg-black px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
+          disabled={isTestRunning}
+          className={`flex w-full items-center justify-center gap-2 rounded-none px-4 py-3 text-sm font-bold ${isTestRunning ? 'bg-slate-400 text-slate-200 cursor-not-allowed' : 'bg-black text-white hover:bg-slate-800'}`}
+          title={isTestRunning ? 'Action Locked: Testing session is currently executing.' : undefined}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M10 8l6 4-6 4V8z" fill="currentColor" />
           </svg>
-          INITIALIZE EXPLORATORY SAFARI
+          {isTestRunning ? 'TESTING IN PROGRESS...' : 'INITIALIZE EXPLORATORY SAFARI'}
         </button>
 
         {/* Save to History Button */}

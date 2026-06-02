@@ -12,6 +12,7 @@ const NON_FATAL_ERRORS = {
   ROUTE_NOT_FOUND: 'route is not found',
   CONTEXT_CLOSED: 'browser context closed',
   PAGE_CLOSED: 'page has been closed',
+  ROUTE_HANDLED: 'route is already handled',
 } satisfies Record<string, string>;
 
 function isNonFatalError(error: Error): boolean {
@@ -63,7 +64,7 @@ export const networkSaboteur: StressScenario = {
 
     const handler = async (route: Route, request: Request): Promise<void> => {
       if (sabotaged) {
-        await safeContinue(route);
+        // Already sabotaged a request, let subsequent requests pass through naturally
         return;
       }
 

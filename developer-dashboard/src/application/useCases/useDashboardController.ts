@@ -10,6 +10,8 @@ export interface DashboardState {
   status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
   hasRunCompleted: boolean; // 👈 True after first test run completes
   currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
+  isInitializing: boolean; // 👈 True when test started but no frame received yet
+  liveFrame: string | null; // 👈 Active frame buffer - MUST clear on test conclusion
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
@@ -44,11 +46,13 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-  const [latestFrame, setLatestFrame] = useState<string | null>(null);
+const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
+const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
+  const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
 
   useEffect(() => {
     gateway.onConnected((connected) => {
@@ -69,11 +73,13 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
 
-      // 🚨 Auto-reset status if the engine crashes or stops naturally
+// 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
         setStatus('IDLE');
         setHasRunCompleted(true); // Mark run as completed for Save button gating
+        setLiveFrame(null); // 🚨 CRITICAL: Clear frame buffer on test conclusion to prevent stale screenshot
+        setIsInitializing(false); // Reset initializing state
         void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
       }
 
@@ -95,11 +101,14 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       }
     });
 
-    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
+gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
-    gateway.onLiveFrame((frame) => {
+    gateway.onUrlChanged((url) => setCurrentUrl(url)); // FIX: Wire up url-changed socket event to update currentUrl state
+gateway.onLiveFrame((frame) => {
       // Clear thinking state when first live frame is received
       setIsThinking(false);
+      setIsInitializing(false); // 👈 First frame received - no longer initializing
+      setLiveFrame(`data:image/jpeg;base64,${frame}`); // 👈 Set active frame buffer
       setLatestFrame(`data:image/jpeg;base64,${frame}`)
     });
 
@@ -111,11 +120,13 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const startTest = async (targetUrl: string): Promise<void> => {
     if (!targetUrl.trim()) return;
 
-    // Set thinking state to true immediately when button is clicked
+// Set thinking state to true immediately when button is clicked
     setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
     setStatus('RUNNING'); // 👈 Set running status
+    setIsInitializing(true); // 👈 Mark as initializing - waiting for first frame
+    setLiveFrame(null); // 👈 Clear any stale frames
     setTelemetry([]);
     setReports([]);
     setIncidents([]);
@@ -191,7 +202,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
   };
 
-  return {
+return {
     state: {
       isConnected,
       isLaunching,
@@ -200,6 +211,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       status,
       hasRunCompleted,
       currentEngineAction,
+      isInitializing,
+      liveFrame,
       telemetry,
       reports,
       incidents,

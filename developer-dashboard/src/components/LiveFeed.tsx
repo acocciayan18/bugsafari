@@ -2,7 +2,7 @@
 // Optimized for ClinicalForensicsDashboard integration
 // Refactored with fluid responsive layout and aspect-ratio safe constraints
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { LiveFeedRenderer } from '../infrastructure/socket/BinaryFrameReceiver';
 
 interface LiveFeedProps {
@@ -12,6 +12,9 @@ interface LiveFeedProps {
   currentUrl: string;
   useBinaryStream?: boolean;
   binaryWsUrl?: string;
+  hasRunCompleted?: boolean;
+  isInitializing?: boolean;
+  liveFrame?: string | null;
 }
 
 // Native viewport resolution for canvas rendering (internal coordinate system)
@@ -25,7 +28,10 @@ export default function LiveFeed({
   isTestRunning, 
   currentUrl, 
   useBinaryStream = false,
-  binaryWsUrl = 'ws://localhost:8765'
+  binaryWsUrl = 'ws://localhost:8765',
+  hasRunCompleted = false,
+  isInitializing = false,
+  liveFrame = null
 }: LiveFeedProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,6 +39,20 @@ export default function LiveFeed({
   const [isBinaryConnected, setIsBinaryConnected] = useState(false);
   const [fps, setFps] = useState(0);
   const [canvasStyle, setCanvasStyle] = useState({ width: '100%', height: '100%' });
+
+  // ─────────────────────────────────────────────────────────────
+  // DETERMINE STATUS FOR FALLBACK OVERLAYS
+  // Status logic: idle (no test run yet) → initializing (test started but no frame) → running/complete
+  // ─────────────────────────────────────────────────────────────
+  
+  // Scene A: If test has not been initialized yet (status === 'idle' and no run completed yet)
+  const isIdle = !isTestRunning && !hasRunCompleted && !isInitializing;
+  
+  // Scene B: If test has been started but initial WebSocket frame packet has not arrived yet
+  const isInitializingScreen = isInitializing || (isTestRunning && !liveFrame);
+  
+  // Scene C: If test concludes normally
+  const isCompleted = hasRunCompleted && !isTestRunning;
 
   // Initialize canvas dimensions on mount and handle responsive resizing
   useEffect(() => {
@@ -125,8 +145,13 @@ export default function LiveFeed({
     }
   }, [useBinaryStream, binaryWsUrl]);
 
+// Render frame: prefer liveFrame for lifecycle control, fallback to frame prop
+  // When liveFrame is set, it means the test has started and we have active frames
+  // When test concludes, liveFrame is cleared to prevent stale screenshots
+  const renderFrame = liveFrame || frame;
+  
   useEffect(() => {
-    if (frame && !useBinaryStream && canvasRef.current) {
+    if (renderFrame && !useBinaryStream && canvasRef.current) {
       const img = new Image();
       img.onload = () => {
         const ctx = canvasRef.current?.getContext('2d');
@@ -135,9 +160,9 @@ export default function LiveFeed({
           ctx.drawImage(img, 0, 0, NATIVE_VIEWPORT_WIDTH, NATIVE_VIEWPORT_HEIGHT);
         }
       };
-      img.src = frame.startsWith('data:') ? frame : `data:image/jpeg;base64,${frame}`;
+      img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
     }
-  }, [frame, useBinaryStream]);
+  }, [renderFrame, useBinaryStream]);
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -185,11 +210,62 @@ export default function LiveFeed({
         </div>
       </div>
 
-      {/* VIEWPORT - Full fluid expansion with aspect-ratio safe dynamic fitting */}
+{/* VIEWPORT - Full fluid expansion with aspect-ratio safe dynamic fitting */}
       <div 
         ref={containerRef}
-        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-zinc-950 overflow-hidden p-0"
+        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-white overflow-hidden p-0 relative"
       >
+        {/* ─────────────────────────────────────────────────────────────
+            SCENE A: IDLE - Test has not been initialized yet
+            Text constrained to canvas bounds only
+        ───────────────────────────────────────────────────────────── */}
+        {isIdle && (
+          <div 
+            className="absolute flex items-center justify-center z-10 bg-white"
+            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+          >
+            <p className="whitespace-pre-wrap px-4 text-center font-mono text-sm tracking-wider uppercase text-zinc-600">
+              READY TO INFILTRATE — ENTER TARGET URL TO START SAFARI
+            </p>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            SCENE B: INITIALIZING - Test started but no frame received yet
+            Text constrained to canvas bounds only
+        ───────────────────────────────────────────────────────────── */}
+        {isInitializingScreen && (
+          <div 
+            className="absolute flex flex-col items-center justify-center z-10 bg-white"
+            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+          >
+            <div className="mb-4 flex items-center justify-center gap-1">
+              <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-600" style={{ animationDelay: '0ms' }} />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-600" style={{ animationDelay: '150ms' }} />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-600" style={{ animationDelay: '300ms' }} />
+            </div>
+            <p className="whitespace-pre-wrap px-4 text-center font-mono text-sm tracking-wider uppercase text-zinc-600">
+              SPINNING UP HEADLESS ENVIRONMENT — ESTABLISHING TELEMETRY STREAM...
+            </p>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            SCENE C: COMPLETED - Test concludes normally
+            Text constrained to canvas bounds only
+        ───────────────────────────────────────────────────────────── */}
+        {isCompleted && (
+          <div 
+            className="absolute flex items-center justify-center z-10 bg-white"
+            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+          >
+            <p className="whitespace-pre-wrap px-4 text-center font-mono text-sm tracking-wider uppercase text-zinc-600">
+              EXPLORATION COMPLETE — FORENSIC EVIDENCE COLLECTED. READY FOR NEXT INSTANCE.
+            </p>
+          </div>
+        )}
+
+        {/* Always render canvas - text overlays appear on top when triggered */}
         <canvas
           ref={canvasRef}
           style={{
@@ -197,6 +273,8 @@ export default function LiveFeed({
             height: canvasStyle.height,
             maxWidth: '100%',
             maxHeight: '100%',
+            transform: 'translate3d(0,0,0)',
+            backfaceVisibility: 'hidden',
           }}
           className="block object-contain"
         />

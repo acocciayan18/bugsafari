@@ -255,8 +255,9 @@ export default function App() {
               onStop={stopTest}
               onShowLoginPrompt={handleShowLoginPrompt}
             />
-            <ClinicalForensicsDashboard
+<ClinicalForensicsDashboard
               targetUrl={targetUrl}
+              currentUrl={state.currentUrl}
               frameBuffer={state.latestFrame}
               telemetry={state.telemetry}
               sessionHistory={state.sessionHistory}
@@ -268,6 +269,9 @@ export default function App() {
               isTestRunning={state.isTestRunning}
               testStatus={state.status}
               currentEngineAction={state.currentEngineAction}
+              hasRunCompleted={state.hasRunCompleted}
+              isInitializing={state.isInitializing}
+              liveFrame={state.liveFrame}
               onPause={pauseTest}
               onResume={resumeTest}
               onStop={stopTest}

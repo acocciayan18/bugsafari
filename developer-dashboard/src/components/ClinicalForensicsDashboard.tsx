@@ -160,6 +160,7 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
 
 interface ClinicalForensicsDashboardProps {
   targetUrl: string;
+  currentUrl?: string; // FIX: Dynamic URL from backend (updates in real-time as browser navigates)
   frameBuffer: string | null;
   telemetry: TelemetryEvent[] | string[];
   sessionHistory: SessionHistoryEntry[];
@@ -171,6 +172,9 @@ interface ClinicalForensicsDashboardProps {
   isTestRunning: boolean;
   testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED';
   currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
+  hasRunCompleted?: boolean; // 👈 True after first test run completes
+  isInitializing?: boolean; // 👈 True when test started but no frame received yet
+  liveFrame?: string | null; // 👈 Active frame buffer - cleared on test conclusion
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
@@ -182,6 +186,7 @@ interface ClinicalForensicsDashboardProps {
 
 export default function ClinicalForensicsDashboard({
   targetUrl = 'https://cafesplatform.elementfx.com/',
+  currentUrl,
   frameBuffer = null,
   telemetry = [],
   sessionHistory = [],
@@ -190,6 +195,9 @@ export default function ClinicalForensicsDashboard({
   isTestRunning = false,
   testStatus = 'IDLE',
   currentEngineAction = '',
+  hasRunCompleted = false,
+  isInitializing = false,
+  liveFrame = null,
   onPause,
   onResume,
   onStop,
@@ -256,12 +264,15 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="flex-1 min-h-125 overflow-hidden border-b border-slate-200">
         <div className="h-full overflow-hidden bg-slate-50 p-4">
-          <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <LiveFeed
-              currentUrl={targetUrl}
+<div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+<LiveFeed
+              currentUrl={currentUrl || targetUrl}
               frame={frameBuffer}
               isConnected={isConnected}
               isTestRunning={isTestRunning}
+              hasRunCompleted={hasRunCompleted}
+              isInitializing={isInitializing}
+              liveFrame={liveFrame}
             />
           </div>
 

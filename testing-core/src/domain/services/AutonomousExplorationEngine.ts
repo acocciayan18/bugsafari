@@ -55,6 +55,12 @@ export class AutonomousExplorationEngine {
   // Stability monitoring cleanup function - disposed in finally block
   private cleanupStabilityMonitor: (() => void) | null = null;
 
+  // Independent frame capture loop state
+  private page: Page | null = null;
+  private frameCaptureInterval: ReturnType<typeof setInterval> | null = null;
+  private isFrameBroadcastInFlight = false;
+  private currentTelemetry: TelemetryGateway | null = null;
+
   constructor(private readonly findingRepo?: FindingRepository) { }
 
   public pause() {
@@ -220,9 +226,12 @@ page.on('request', (request: Request) => {
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
 
-      // 🛡️ Initialize stability monitoring - runs silently in background
+// 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
       this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry);
+
+      // 🚀 Start independent frame capture loop for 30fps streaming
+      this.startFrameCaptureLoop(page, telemetry);
 
       // --- 3-Strike Logic Loop State ---
       // Tracks consecutive steps where the DOM fingerprint did not change.
@@ -483,11 +492,14 @@ page.on('request', (request: Request) => {
       this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
-      // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
+// 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
         this.cleanupStabilityMonitor = null;
       }
+
+      // 🚀 Stop frame capture loop
+      this.stopFrameCaptureLoop();
 
       if (handleFramenavigated) {
         page.off('framenavigated', handleFramenavigated);
@@ -1013,28 +1025,72 @@ page.on('request', (request: Request) => {
       .catch(() => undefined);
   }
 
-  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
+private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     /**
      * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
-     * 
-     * Performance gains vs legacy Base64:
-     * - ~30-40% reduction in encoding latency (no Base64 conversion)
-     * - ~50% reduction in data transfer size (raw bytes vs base64 string)
-     * 
-     * The raw Buffer is sent to BinaryFrameServer which streams it directly
-     * to clients via WebSocket binary frames - no encoding overhead.
+     * Uses lower quality JPEG (35) for reduced bandwidth.
+     * Frame-skipping guard prevents backpressure when previous broadcast is still in-flight.
      */
-    const screenshot = await page.screenshot({ type: 'jpeg', quality: 55 });
-
-    // Emit via optimized binary path if available
-    // The binary frame server receives raw Buffer and broadcasts directly
-    if ('emitLiveFrameBinary' in telemetry) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (telemetry as any).emitLiveFrameBinary(screenshot);
+    if (this.isFrameBroadcastInFlight) {
+      return;
     }
+    this.isFrameBroadcastInFlight = true;
 
-    // Fallback to legacy Base64 for backward compatibility
-    telemetry.emitLiveFrame(screenshot.toString('base64'));
+    try {
+      const screenshot = await page.screenshot({ type: 'jpeg', quality: 35 });
+
+      if (telemetry.emitLiveFrameBinary) {
+        telemetry.emitLiveFrameBinary(screenshot);
+      } else {
+        telemetry.emitLiveFrame(screenshot.toString('base64'));
+      }
+    } finally {
+      this.isFrameBroadcastInFlight = false;
+    }
+  }
+
+  private startFrameCaptureLoop(page: Page, telemetry: TelemetryGateway): void {
+    this.page = page;
+    this.currentTelemetry = telemetry;
+
+    this.frameCaptureInterval = setInterval(async () => {
+      if (!this.page || !this.currentTelemetry || this.isStopRequested || this.isPaused) {
+        return;
+      }
+      await this.captureAndEmitFrame();
+    }, 33);
+  }
+
+  private async captureAndEmitFrame(): Promise<void> {
+    if (!this.page || !this.currentTelemetry) {
+      return;
+    }
+    if (this.isFrameBroadcastInFlight) {
+      return;
+    }
+    this.isFrameBroadcastInFlight = true;
+
+    try {
+      const screenshot = await this.page.screenshot({ type: 'jpeg', quality: 35 });
+
+      if (this.currentTelemetry.emitLiveFrameBinary) {
+        this.currentTelemetry.emitLiveFrameBinary(screenshot);
+      } else {
+        this.currentTelemetry.emitLiveFrame(screenshot.toString('base64'));
+      }
+    } catch {
+    } finally {
+      this.isFrameBroadcastInFlight = false;
+    }
+  }
+
+  private stopFrameCaptureLoop(): void {
+    if (this.frameCaptureInterval) {
+      clearInterval(this.frameCaptureInterval);
+      this.frameCaptureInterval = null;
+    }
+    this.page = null;
+    this.currentTelemetry = null;
   }
 
   private logHighImpact(target: InteractiveElement, telemetry: TelemetryGateway): void {
