@@ -34,3 +34,16 @@ export interface ExplorerHooks {
   emitLiveFrame: (base64Jpeg: string) => void;
   emitForensicReport: (report: ForensicCrashReport) => void;
 }
+
+/**
+ * Run Controller interface for managing the autonomous exploration loop.
+ * Provides pause/resume/stop controls for the exploration engine.
+ */
+export interface RunController {
+  waitIfPaused: () => Promise<void>;
+  requestStop: () => void;
+  isStopRequested: () => boolean;
+  getPaused: () => boolean;
+  setPaused: (paused: boolean) => void;
+  togglePaused: () => void;
+}

@@ -1,5 +1,5 @@
 import type { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
-import type { RunController } from './autonomousLoop.js';
+import type { RunController } from '../../types.js';
 
 export function createRunController(telemetryHub: TelemetryHub, targetUrl: string): RunController {
 
