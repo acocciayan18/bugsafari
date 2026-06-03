@@ -1,0 +1,147 @@
+name: bugsafari-local
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: bugsafari-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - bugsafari-local
+
+  mongodb:
+    image: mongo:latest
+    container_name: bugsafari-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: bugsafari
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - db.adminCommand('ping').ok
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - bugsafari-local
+
+# Local development with volume mapping and auto-recompilation
+  api:
+    container_name: bugsafari-api
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM mcr.microsoft.com/playwright:v1.60.0-noble
+        WORKDIR /app
+        ENV NODE_ENV=development
+        COPY package.json package-lock.json ./
+        COPY testing-core/package.json ./testing-core/package.json
+        COPY shared/package.json ./shared/package.json
+        RUN npm ci --workspace testing-core --include-workspace-root
+        COPY testing-core ./testing-core
+        COPY shared ./shared
+        RUN npm run build --workspace shared
+        RUN npm run build --workspace testing-core
+        EXPOSE 3000
+    # Volume mapping for local development - host changes reflect instantly in container
+    volumes:
+      - ./testing-core:/app/testing-core
+      - ./shared:/app/shared
+    environment:
+      NODE_ENV: development
+      BUGSAFARI_PORT: "3000"
+      BUGSAFARI_API_PORT: "3000"
+      MONGODB_URI: mongodb://mongodb:27017/bugsafari
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: bugsafari-local-development-secret
+      JWT_EXPIRES_IN: 7d
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - bugsafari-local
+    # Auto-recompilation: watches for file changes and restarts automatically
+    command: >
+      sh -c "npx tsc-watch --project testing-core/tsconfig.json --onSuccess \"node testing-core/dist/testing-core/src/index.js\""
+
+# Local development with volume mapping and auto-recompilation
+  worker:
+    container_name: bugsafari-worker
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM mcr.microsoft.com/playwright:v1.60.0-noble
+        WORKDIR /app
+        ENV NODE_ENV=development
+        COPY package.json package-lock.json ./
+        COPY testing-core/package.json ./testing-core/package.json
+        COPY shared/package.json ./shared/package.json
+        RUN npm ci --workspace testing-core --include-workspace-root
+        COPY testing-core ./testing-core
+        COPY shared ./shared
+        RUN npm run build --workspace shared
+        RUN npm run build --workspace testing-core
+    # Volume mapping for local development - host changes reflect instantly in container
+    volumes:
+      - ./testing-core:/app/testing-core
+      - ./shared:/app/shared
+    environment:
+      NODE_ENV: development
+      MONGODB_URI: mongodb://mongodb:27017/bugsafari
+      REDIS_URL: redis://redis:6379
+      BUGSAFARI_WORKER_CONCURRENCY: "1"
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - bugsafari-local
+    # Auto-recompilation: watches for file changes and restarts automatically
+    command: >
+      sh -c "npx tsx watch testing-core/src/worker-entry.ts"
+
+volumes:
+  redis-data:
+    name: bugsafari-redis-data
+  mongodb-data:
+    name: bugsafari-mongodb-data
+  mongodb-config:
+    name: bugsafari-mongodb-config
+
+networks:
+  bugsafari-local:
+    name: bugsafari-local
+    driver: bridge
