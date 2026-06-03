@@ -1,25 +1,10 @@
 import { useState, type FormEvent } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+import { useAuth } from '../hooks/useAuth';
 
 interface LoginFormProps {
   onLoginSuccess: (token: string, user: { id: string; email: string }) => void;
   onSwitchToSignup: () => void;
   onGuestAccess: () => void;
-}
-
-interface AuthError {
-  error: string;
-}
-
-interface AuthResponse {
-  ok?: boolean;
-  token: string;
-  user: {
-    id: string;
-    email: string;
-  };
-  error?: string;
 }
 
 export default function LoginForm({
@@ -30,44 +15,39 @@ export default function LoginForm({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const { login, isLoading } = useAuth();
 
-  const handleSubmit = async (e: FormEvent) => {
+const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
     if (!email.trim() || !password) {
       setError('Email and password are required');
-      setIsLoading(false);
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-
-      const data: AuthResponse | AuthError = await response.json();
-
-      if (!response.ok) {
-        setError((data as AuthError).error ?? 'Login failed');
-        setIsLoading(false);
-        return;
+      const success = await login({ email, password });
+      if (success) {
+        // Get user from hook state (no need to read from localStorage)
+        // The login function already sets the user state via setUser
+        const storedUser = localStorage.getItem('bugsafari_user');
+        const storedToken = localStorage.getItem('bugsafari_token');
+        if (storedUser && storedToken) {
+          const user = JSON.parse(storedUser);
+          onLoginSuccess(storedToken, user);
+        } else {
+          // Fallback: use email from input
+          onLoginSuccess(storedToken || '', { id: '', email });
+        }
+      } else {
+        // Error is handled by the hook with toast
+        setError('Login failed. Please check your credentials.');
       }
-
-      const authData = data as AuthResponse;
-      if (authData.token && authData.user) {
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-        onLoginSuccess(authData.token, authData.user);
-      }
-    } catch {
-      setError('Unable to connect to server');
-    } finally {
-      setIsLoading(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(errorMessage);
+      console.error('[LoginForm] Login error:', err);
     }
   };
 

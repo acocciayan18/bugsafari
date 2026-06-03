@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EngineGateway } from '../ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import { saveSessionToHistory } from '../../services/historyService';
 
 export interface DashboardState {
   isConnected: boolean;
@@ -171,13 +172,14 @@ gateway.onLiveFrame((frame) => {
     setSessionHistory(history);
   };
 
-  const saveSession = async (targetUrl: string): Promise<void> => {
+const saveSession = async (targetUrl: string): Promise<void> => {
     if (isSavingSession) {
       return;
     }
     setIsSavingSession(true);
     try {
-      await gateway.saveSession(targetUrl.trim());
+      // Use the new historyService for better logging and error handling
+      await saveSessionToHistory(targetUrl.trim());
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,

@@ -6,6 +6,7 @@
 // Single source of truth for socket.io connections and telemetry distribution
 
 import { useCallback, useMemo, useState } from 'react';
+import { Toaster, toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
@@ -129,8 +130,19 @@ export default function App() {
   // DASHBOARD CONTROLLER - Test orchestration & telemetry management
   // ─────────────────────────────────────────────────────────────
 
-  const { state, startTest, pauseTest, resumeTest, stopTest } =
+const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory } =
     useDashboardController(createGateway);
+
+  const handleSaveSessionToHistory = () => {
+    toast.promise(
+      saveSessionToHistory(targetUrl),
+      {
+        loading: 'Saving session...',
+        success: 'Session saved to history!',
+        error: 'Failed to save session',
+      }
+    );
+  };
 
   const isAuthenticated = !!token && !!user;
 
@@ -182,12 +194,8 @@ export default function App() {
     setUser(null);
   };
 
-  const handleSwitchToLogin = () => setAuthMode('login');
-  const handleSwitchToSignup = () => setAuthMode('signup');
-  const handleShowLoginPrompt = () => {
-    setAuthMode('login');
-    setShowAuthModal(true);
-  };
+const handleSwitchToLogin = () => setAuthMode('login');
+const handleSwitchToSignup = () => setAuthMode('signup');
 
   // ─────────────────────────────────────────────────────────────
   // CONDITIONAL RENDER: Authentication Screen
@@ -218,8 +226,9 @@ export default function App() {
   //   → Main Content splits: ControlPanel (27%) | ForensicDashboard (55%)
   // ─────────────────────────────────────────────────────────────
 
-  return (
+return (
     <div className="flex h-screen w-screen bg-white">
+      <Toaster position="bottom-right" theme="dark" />
       {/* Sidebar */}
       <Sidebar
         user={user}
@@ -242,18 +251,15 @@ export default function App() {
         ) : (
           /* Dashboard View: Control Panel + Forensic Dashboard */
           <>
-            <ControlPanel
+<ControlPanel
               targetUrl={targetUrl}
               isTestRunning={state.isTestRunning}
               testStatus={state.status}
-              hasRunCompleted={state.hasRunCompleted}
-              authToken={token}
-              user={user}
               onStart={(url) => startTest(url)}
               onPause={pauseTest}
               onResume={resumeTest}
               onStop={stopTest}
-              onShowLoginPrompt={handleShowLoginPrompt}
+              onSaveSessionToHistory={handleSaveSessionToHistory}
             />
 <ClinicalForensicsDashboard
               targetUrl={targetUrl}
@@ -275,6 +281,7 @@ export default function App() {
               onPause={pauseTest}
               onResume={resumeTest}
               onStop={stopTest}
+              onSaveSessionToHistory={handleSaveSessionToHistory}
             />
           </>
         )}

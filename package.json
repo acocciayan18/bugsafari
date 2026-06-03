@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "dotenv": "^17.4.2",
-    "mongoose": "^9.6.3"
+    "mongoose": "^9.6.3",
+    "sonner": "^2.0.7"
   }
 }

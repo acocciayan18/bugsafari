@@ -137,12 +137,32 @@ export class MongoFindingRepository implements FindingRepository {
     await SessionModel.updateOne({ _id: objectId }, { $set: { savedManually: true } });
   }
 
-  public async markLatestSessionSaved(targetUrl?: string): Promise<string | null> {
-    const filter = targetUrl ? { targetUrl } : {};
-    const latest = await SessionModel.findOne(filter).sort({ startedAt: -1 }).lean();
-    if (!latest?._id) return null;
-    await this.markSessionSaved(latest._id.toString());
-    return latest._id.toString();
+public async markLatestSessionSaved(targetUrl?: string): Promise<string | null> {
+    console.log('[Repository] markLatestSessionSaved called with targetUrl:', targetUrl);
+    
+    try {
+      const filter = targetUrl ? { targetUrl } : {};
+      console.log('[Repository] Query filter:', JSON.stringify(filter));
+      
+      const latest = await SessionModel.findOne(filter).sort({ startedAt: -1 }).lean();
+      console.log('[Repository] Found session:', latest ? { _id: latest._id, targetUrl: latest.targetUrl, status: latest.status } : null);
+      
+      if (!latest?._id) {
+        console.warn('[Repository] No session found to save');
+        return null;
+      }
+
+      const sessionId = latest._id.toString();
+      console.log('[Repository] Marking session as saved:', sessionId);
+      
+      await this.markSessionSaved(sessionId);
+      console.log('[Repository] Session marked as saved successfully');
+      
+      return sessionId;
+    } catch (error) {
+      console.error('[Repository] Error in markLatestSessionSaved:', error);
+      throw error;
+    }
   }
 
   public async listSessionHistory(limit = 50): Promise<SessionHistoryRecord[]> {

@@ -3,7 +3,7 @@ import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryE
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { MongoFindingRepository } from '../database/repositories/MongoFindingRepository.js';
-import { connectDB } from '../database/mongo.js';
+import { connectDatabase } from '../database/mongooseClient.js';
 import { PlaywrightBrowserEngine } from '../playwright/PlaywrightBrowserEngine.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
 
@@ -69,7 +69,7 @@ function validatePayload(job: Job<SafariTaskPayload>): SafariTaskPayload {
 export async function createSafariWorker(
   redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
 ): Promise<SafariWorkerRuntime> {
-  const dbReady = await connectDB();
+  const dbReady = await connectDatabase();
   const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,

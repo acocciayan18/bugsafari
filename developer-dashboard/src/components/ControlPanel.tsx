@@ -4,84 +4,33 @@
 
 import { useState, type FormEvent } from 'react';
 
-interface User {
-  id: string;
-  email: string;
-}
-
 interface ControlPanelProps {
   targetUrl: string;
   isTestRunning: boolean;
-  testStatus: 'IDLE' | 'RUNNING' | 'PAUSED';
-  hasRunCompleted: boolean; // 👈 Gating: Save button disabled until a test run completes
-  authToken: string | null;
-  user: User | null;
+  testStatus: 'IDLE' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CRASHED' | 'STOPPED' | 'EXHAUSTED';
   onStart: (url: string) => void;
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
-  onShowLoginPrompt?: () => void;
+  onSaveSessionToHistory?: () => void;
 }
 
 export default function ControlPanel({
   targetUrl: initialTargetUrl,
   isTestRunning,
   testStatus,
-  hasRunCompleted,
-  authToken,
-  user,
   onStart,
   onPause,
   onResume,
   onStop,
-  onShowLoginPrompt,
+  onSaveSessionToHistory,
 }: ControlPanelProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();
     if (localTargetUrl && onStart) {
       onStart(localTargetUrl);
-    }
-  };
-
-  const handleSaveSession = async () => {
-    if (!authToken || !user) {
-      if (onShowLoginPrompt) {
-        onShowLoginPrompt();
-      }
-      return;
-    }
-
-    setIsSaving(true);
-    setSaveMessage(null);
-
-    try {
-      const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-      const response = await fetch(`${API_BASE_URL}/api/history/save-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ targetUrl: localTargetUrl }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setSaveMessage(data.error || 'Failed to save session');
-        return;
-      }
-
-      setSaveMessage('Session saved successfully!');
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch {
-      setSaveMessage('Unable to connect to server');
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -134,29 +83,9 @@ export default function ControlPanel({
           {isTestRunning ? 'TESTING IN PROGRESS...' : 'INITIALIZE EXPLORATORY SAFARI'}
         </button>
 
-        {/* Save to History Button */}
-        <button
-          onClick={handleSaveSession}
-          disabled={isSaving || !hasRunCompleted}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-none border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-          {isSaving ? 'Saving...' : 'Save to History'}
-        </button>
 
-        {/* Save Message Feedback */}
-        {saveMessage && (
-          <div className={`mt-2 p-2 rounded text-xs font-medium ${saveMessage.includes('success')
-            ? 'bg-green-50 text-green-700 border border-green-200'
-            : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
-            {saveMessage}
-          </div>
-        )}
 
-        {/* Test Control Buttons - Pause/Resume/Stop */}
+{/* Test Control Buttons - Pause/Resume/Stop */}
         {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
           <div className="mt-3 flex gap-2">
             {testStatus === 'RUNNING' && onPause && (
@@ -194,6 +123,19 @@ export default function ControlPanel({
               </button>
             )}
           </div>
+        )}
+
+        {/* Save to History Button - Shows when test engine is NOT running (terminal states: completed, crashed, stopped, exhausted) */}
+        {!isTestRunning && testStatus !== 'RUNNING' && testStatus !== 'PAUSED' && onSaveSessionToHistory && (
+          <button
+            onClick={onSaveSessionToHistory}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5m4 0h3m4 0v3m0-3v3m4-7v3m0 3h3m-4 0h3m5-7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Save to History
+          </button>
         )}
       </div>
 

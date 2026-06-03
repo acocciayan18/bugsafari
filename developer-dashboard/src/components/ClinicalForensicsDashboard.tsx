@@ -178,6 +178,7 @@ interface ClinicalForensicsDashboardProps {
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
+  onSaveSessionToHistory?: () => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -197,8 +198,8 @@ export default function ClinicalForensicsDashboard({
   currentEngineAction = '',
   hasRunCompleted = false,
   isInitializing = false,
-  liveFrame = null,
-  onPause,
+liveFrame = null,
+onPause,
   onResume,
   onStop,
 }: ClinicalForensicsDashboardProps) {
@@ -276,7 +277,7 @@ export default function ClinicalForensicsDashboard({
             />
           </div>
 
-          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
+          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */} 
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-600">Status:</span>
@@ -319,7 +320,7 @@ export default function ClinicalForensicsDashboard({
                     Resume
                   </button>
                 )}
-                {onStop && (
+{onStop && (
                   <button
                     onClick={onStop}
                     className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
