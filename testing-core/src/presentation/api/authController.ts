@@ -34,6 +34,8 @@ function sanitizeString(value: unknown, fieldName: string): string | null {
  * Register auth routes with the Express app
  */
 export function registerAuthRoutes(app: Express): void {
+  // Registration routes - /api/auth/register is primary, /api/auth/send-email-verification kept for compatibility
+  app.post('/api/auth/register', handleSignup);
   app.post('/api/auth/signup', handleSignup);
   app.post('/api/auth/login', handleLogin);
 }

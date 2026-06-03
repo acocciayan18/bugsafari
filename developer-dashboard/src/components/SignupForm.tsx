@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 interface SignupFormProps {
-  onSignupSuccess: (token: string, user: { id: string; email: string }) => void;
+  onSignupSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
   onSwitchToLogin: () => void;
 }
 
@@ -13,46 +14,57 @@ export default function SignupForm({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const { signup, isLoading } = useAuth();
+  const [formError, setFormError] = useState('');
+  const navigate = useNavigate();
+  const { signup, isLoading, setNavigate: setAuthNavigate } = useAuth();
+
+  // Set up navigate callback once on mount
+  useEffect(() => {
+    setAuthNavigate(navigate);
+  }, [navigate, setAuthNavigate]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setFormError('');
 
     if (!email.trim() || !password) {
-      setError('Email and password are required');
+      setFormError('Email and password are required');
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setFormError('Passwords do not match');
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setFormError('Password must be at least 8 characters');
       return;
     }
 
-    try {
+try {
       const success = await signup({ email, password });
-      if (success) {
-        // Get stored user data after signup
+      if (!success) {
+        // Error is already handled by useAuth with toast.promise
+        // Set empty to let toast show the actual server error
+        setFormError('');
+      } else if (onSignupSuccess) {
+        // Get stored token and user for callback
+        const token = localStorage.getItem('bugsafari_token');
         const storedUser = localStorage.getItem('bugsafari_user');
-        const storedToken = localStorage.getItem('bugsafari_token');
-        if (storedUser && storedToken) {
-          const user = JSON.parse(storedUser);
-          onSignupSuccess(storedToken, user);
+        if (token && storedUser) {
+          try {
+            const user = JSON.parse(storedUser);
+            onSignupSuccess(token, user);
+          } catch {
+            // Ignore parse errors
+          }
         }
-      } else {
-        // Error is handled by the hook with toast
-        setError('Signup failed. Please try again.');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
-      setError(errorMessage);
-      console.error('[SignupForm] Signup error:', err);
+      console.error('[SignupForm] Signup error - network path mismatch or server unavailable:', err);
+      setFormError(errorMessage);
     }
   };
 
@@ -110,9 +122,9 @@ export default function SignupForm({
             />
           </div>
 
-          {error && (
+          {formError && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-              <p className="text-sm text-rose-700">{error}</p>
+              <p className="text-sm text-rose-700">{formError}</p>
             </div>
           )}
 

@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 interface LoginFormProps {
-  onLoginSuccess: (token: string, user: { id: string; email: string }) => void;
+  onLoginSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
   onSwitchToSignup: () => void;
   onGuestAccess: () => void;
 }
@@ -14,39 +15,45 @@ export default function LoginForm({
 }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login, isLoading } = useAuth();
+  const [formError, setFormError] = useState('');
+  const navigate = useNavigate();
+  const { login, isLoading, setNavigate: setAuthNavigate } = useAuth();
 
-const handleSubmit = async (e: FormEvent) => {
+  // Set up navigate callback once on mount
+  useEffect(() => {
+    setAuthNavigate(navigate);
+  }, [navigate, setAuthNavigate]);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setFormError('');
 
     if (!email.trim() || !password) {
-      setError('Email and password are required');
+      setFormError('Email and password are required');
       return;
     }
 
-    try {
+try {
       const success = await login({ email, password });
-      if (success) {
-        // Get user from hook state (no need to read from localStorage)
-        // The login function already sets the user state via setUser
-        const storedUser = localStorage.getItem('bugsafari_user');
-        const storedToken = localStorage.getItem('bugsafari_token');
-        if (storedUser && storedToken) {
-          const user = JSON.parse(storedUser);
-          onLoginSuccess(storedToken, user);
-        } else {
-          // Fallback: use email from input
-          onLoginSuccess(storedToken || '', { id: '', email });
-        }
-      } else {
+      if (!success) {
         // Error is handled by the hook with toast
-        setError('Login failed. Please check your credentials.');
+        setFormError('Login failed. Please check your credentials.');
+      } else if (onLoginSuccess) {
+        // Get stored token and user for callback
+        const token = localStorage.getItem('bugsafari_token');
+        const storedUser = localStorage.getItem('bugsafari_user');
+        if (token && storedUser) {
+          try {
+            const user = JSON.parse(storedUser);
+            onLoginSuccess(token, user);
+          } catch {
+            // Ignore parse errors
+          }
+        }
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
-      setError(errorMessage);
+      setFormError(errorMessage);
       console.error('[LoginForm] Login error:', err);
     }
   };
@@ -90,9 +97,9 @@ const handleSubmit = async (e: FormEvent) => {
             />
           </div>
 
-          {error && (
+          {formError && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-              <p className="text-sm text-rose-700">{error}</p>
+              <p className="text-sm text-rose-700">{formError}</p>
             </div>
           )}
 

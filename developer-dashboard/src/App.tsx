@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-// App.tsx - MAIN ENTRY HUB
+// App.tsx - MAIN ENTRY HUB with React Router
 // ═══════════════════════════════════════════════════════════════
 // Orchestrates all top-level components: Login, Sidebar, Control Panel, Forensic Dashboard
 // Manages global session state, auth flow, and 2-column layout structure
 // Single source of truth for socket.io connections and telemetry distribution
 
 import { useCallback, useMemo, useState } from 'react';
+// Router imports removed - using simple conditional rendering instead
 import { Toaster, toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';

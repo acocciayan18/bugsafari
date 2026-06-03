@@ -1,7 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+
+// Navigation callback type - injected by components using useNavigate
+export type NavigateCallback = (path: string) => void;
+
+// Auth options interface for configuring auth behavior
+export interface AuthOptions {
+  onNavigateSuccess?: NavigateCallback;
+}
 
 export interface AuthUser {
   id: string;
@@ -40,6 +48,9 @@ export function useAuth() {
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  // Ref to store navigate callback injected by component
+  const navigateRef = useRef<NavigateCallback | null>(null);
+
   // Initialize user from localStorage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem('bugsafari_user');
@@ -55,6 +66,19 @@ export function useAuth() {
         setToken(null);
         setUser(null);
       }
+    }
+  }, []);
+
+  // Set navigate callback - called by component with useNavigate
+  const setNavigate = useCallback((fn: NavigateCallback | null) => {
+    navigateRef.current = fn;
+  }, []);
+
+  // Helper to call navigate if available
+  const doNavigate = useCallback((path: string) => {
+    if (navigateRef.current) {
+      console.log('[useAuth] Navigating to:', path);
+      navigateRef.current(path);
     }
   }, []);
 
@@ -91,6 +115,10 @@ export function useAuth() {
         setUser(authData.user);
         toast.success(`Welcome back, ${authData.user.email}!`, { id: 'auth-login' });
         console.log('[useAuth] Login successful:', authData.user.email);
+        
+        // Navigate to dashboard on success
+        doNavigate('/dashboard');
+        
         setIsLoading(false);
         return true;
       }
@@ -106,30 +134,31 @@ export function useAuth() {
       setIsLoading(false);
       return false;
     }
-  }, []);
+  }, [doNavigate]);
 
   /**
    * Signup with email and password
+   * Uses toast.promise for clean feedback loops per task requirements
    */
   const signup = useCallback(async (credentials: SignupCredentials): Promise<boolean> => {
     setIsLoading(true);
-    toast.loading('Creating account...', { id: 'auth-signup' });
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
+    // Wrap in toast.promise for clean loading/success/error feedback per requirements
+    const signupPromise = (async () => {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
+        body: JSON.stringify({
+          email: credentials.email.trim(),
+          password: credentials.password,
+        }),
       });
 
       const data: AuthResponse | AuthError = await response.json();
 
       if (!response.ok) {
         const errorMessage = (data as AuthError).error ?? 'Signup failed';
-        toast.error(errorMessage, { id: 'auth-signup' });
-        console.error('[useAuth] Signup failed:', errorMessage);
-        setIsLoading(false);
-        return false;
+        throw new Error(errorMessage);
       }
 
       const authData = data as AuthResponse;
@@ -139,24 +168,36 @@ export function useAuth() {
         localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
         setToken(authData.token);
         setUser(authData.user);
-        toast.success(`Account created for ${authData.user.email}!`, { id: 'auth-signup' });
         console.log('[useAuth] Signup successful:', authData.user.email);
-        setIsLoading(false);
-        return true;
+        return authData;
       }
 
-      toast.error('Signup failed - unexpected response', { id: 'auth-signup' });
-      console.error('[useAuth] Signup failed - unexpected response:', data);
+      throw new Error('Unexpected response from server');
+    })();
+
+    try {
+      await toast.promise(signupPromise, {
+        loading: 'Provisioning operator account...',
+        success: 'Account created successfully! Redirecting...',
+        error: (err: Error) => {
+          const errorMessage = err instanceof Error ? err.message : 'Signup failed';
+          console.error('[useAuth] Signup error:', errorMessage);
+          return errorMessage;
+        },
+      });
+      
+      // Navigate to dashboard on success
+      doNavigate('/dashboard');
+      
       setIsLoading(false);
-      return false;
+      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
-      toast.error(errorMessage, { id: 'auth-signup' });
-      console.error('[useAuth] Signup error:', error);
+      console.error('[useAuth] Signup error:', errorMessage);
       setIsLoading(false);
       return false;
     }
-  }, []);
+  }, [doNavigate]);
 
   /**
    * Logout and clear session
@@ -185,5 +226,6 @@ export function useAuth() {
     signup,
     logout,
     isAuthenticated,
+    setNavigate,
   };
 }
