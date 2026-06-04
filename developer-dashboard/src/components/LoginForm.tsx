@@ -1,16 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 interface LoginFormProps {
   onLoginSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
-  onSwitchToSignup: () => void;
   onGuestAccess: () => void;
 }
 
 export default function LoginForm({
   onLoginSuccess,
-  onSwitchToSignup,
   onGuestAccess,
 }: LoginFormProps) {
   const [email, setEmail] = useState('');
@@ -126,30 +124,17 @@ try {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={onSwitchToSignup}
+<div className="mt-6 text-center">
+          <Link
+            to="/signup"
             className="text-sm text-slate-600 hover:text-slate-900"
           >
             Don&apos;t have an account?{' '}
             <span className="font-semibold text-slate-900">Sign up</span>
-          </button>
+          </Link>
         </div>
 
-        <div className="mt-8 p-4 bg-slate-50 rounded-lg">
-          <h3 className="text-sm font-medium text-slate-700 mb-2">Guest Access</h3>
-          <ul className="text-xs text-slate-600 space-y-1">
-            <li>• Run exploratory tests immediately</li>
-            <li>• View real-time telemetry</li>
-            <li>• Access forensic reports</li>
-          </ul>
-          <div className="mt-2 pt-2 border-t border-slate-200">
-            <p className="text-xs text-slate-500">
-              <span className="font-medium">Sign in</span> to save sessions and view history
-            </p>
-          </div>
-        </div>
+        
       </div>
     </div>
   );

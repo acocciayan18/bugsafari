@@ -13,19 +13,43 @@ export interface AuthRequest extends Request {
 /**
  * Server-side password complexity validation - mirrors frontend regex criteria
  * Defense-in-Depth: Validates against 4 regex checks applied on frontend client
+ * Uses regex pattern lookup approach for string complexity verification
  * Returns true if password meets ALL complexity requirements
  */
-function validatePasswordComplexity(password: string): boolean {
-  // Criterion 1: Minimum 8 characters
-  const hasMinLength = password.length >= 8;
-  // Criterion 2: At least one uppercase letter (A-Z)
-  const hasUppercase = /[A-Z]/.test(password);
-  // Criterion 3: At least one numeric character (0-9)
-  const hasNumber = /[0-9]/.test(password);
-  // Criterion 4: At least one special character (non-alphanumeric)
-  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+const PASSWORD_COMPLEXITY_PATTERNS: { name: string; regex: RegExp; errorMessage: string }[] = [
+  {
+    name: 'minLength',
+    regex: /^.{8,}$/,
+    errorMessage: 'Password must be at least 8 characters long',
+  },
+  {
+    name: 'uppercase',
+    regex: /[A-Z]/,
+    errorMessage: 'Password must contain at least one uppercase letter (A-Z)',
+  },
+  {
+    name: 'number',
+    regex: /[0-9]/,
+    errorMessage: 'Password must contain at least one numeric character (0-9)',
+  },
+  {
+    name: 'specialChar',
+    regex: /[^A-Za-z0-9]/,
+    errorMessage: 'Password must contain at least one special character',
+  },
+];
 
-  return hasMinLength && hasUppercase && hasNumber && hasSpecialChar;
+/**
+ * Validate password using regex pattern lookup approach
+ * Returns the error message if validation fails, null if valid
+ */
+function validatePasswordComplexity(password: string): string | null {
+  for (const pattern of PASSWORD_COMPLEXITY_PATTERNS) {
+    if (!pattern.regex.test(password)) {
+      return pattern.errorMessage;
+    }
+  }
+  return null;
 }
 
 /**
@@ -99,11 +123,13 @@ export async function handleSignup(
       return;
     }
 
-    // Defense-in-Depth: Run server-side mirror verification
+// Defense-in-Depth: Run server-side mirror verification
     // Early-Abort Rejection: If bot bypasses frontend controls, halt execution
-    if (!validatePasswordComplexity(trimmedPassword)) {
+    // Recreated identical string complexity regex pattern lookup tool
+    const complexityError = validatePasswordComplexity(trimmedPassword);
+    if (complexityError) {
       response.status(400).json({
-        error: 'Security validation error: Password does not meet system complexity criteria standards.',
+        error: 'Security validation failure: Input credentials parameters violate complexity guidelines.',
       });
       return;
     }

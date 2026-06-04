@@ -10,11 +10,7 @@ You need to free up port 27017 so your container can stream out to your desktop 
 
 **On Windows:** Open your Start Menu, search for Services, locate MongoDB Server, right-click it, and choose Stop.
 
-**On macOS:** Open a terminal and run:
 
-```bash
-brew services stop mongodb-community
-```
 
 ### Step 2: Clean and Rebuild the Stack Cluster
 
@@ -30,15 +26,7 @@ podman compose -f docker-compose.local.yml down
 podman compose -f docker-compose.local.yml up -d
 ```
 
-**Git Bash:**
 
-```bash
-# Bring down the active instances safely
-podman compose -f docker-compose.local.yml down
-
-# Clear out any stuck sockets and spin the stack back up freshly
-podman compose -f docker-compose.local.yml up -d
-```
 
 > **Note:** If using standard Docker instead of Podman, replace `podman` with `docker` in the commands above.
 
@@ -67,11 +55,6 @@ Before starting the stack, verify that port 27017 is not in use by another proce
 Get-NetTCPConnection -LocalPort 27017 -ErrorAction SilentlyContinue
 ```
 
-**Git Bash:**
-
-```bash
-netstat -ano | grep :27017
-```
 
 If something is using the port, identify and stop the process before proceeding.
 
@@ -85,11 +68,7 @@ Confirm the MongoDB container is healthy and running:
 docker compose -f docker-compose.local.yml ps mongodb
 ```
 
-**Git Bash:**
 
-```bash
-docker compose -f docker-compose.local.yml ps mongodb
-```
 
 Expected result: `bugsafari-mongodb` should show as "healthy" in the status.
 
@@ -103,9 +82,6 @@ If you prefer command-line access or Compass isn't working, you can inspect the 
 docker compose -f docker-compose.local.yml exec mongodb mongosh "mongodb://localhost:27017/bugsafari"
 ```
 
-```bash
-docker compose -f docker-compose.local.yml exec mongodb mongosh "mongodb://localhost:27017/bugsafari"
-```
 
 **List all databases:**
 

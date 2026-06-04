@@ -6,10 +6,11 @@
 // Single source of truth for socket.io connections and telemetry distribution
 
 import { useCallback, useMemo, useState } from 'react';
-// Router imports removed - using simple conditional rendering instead
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
+import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
@@ -34,7 +35,6 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 // ─────────────────────────────────────────────────────────────
 
 function transformToEvaluation(session: SessionHistoryEntry, index: number): EvaluationSafari {
-  // Determine severity based on findings count and status
   let severity: 'CRITICAL' | 'HIGH' | 'CLEAR' = 'CLEAR';
   let severityCount = 0;
 
@@ -46,7 +46,6 @@ function transformToEvaluation(session: SessionHistoryEntry, index: number): Eva
     severityCount = session.findingCount;
   }
 
-  // Format date from ISO string
   const dateObj = new Date(session.startedAt);
   const formattedDate = dateObj.toLocaleDateString('en-US', {
     month: 'short',
@@ -54,8 +53,6 @@ function transformToEvaluation(session: SessionHistoryEntry, index: number): Eva
     year: 'numeric',
   }).toUpperCase();
 
-  // Calculate coverage percentage from action trace count (estimate)
-  // More actions = higher coverage, capped at 95%
   const coverage = Math.min(95, Math.max(30, Math.round((session.actionTraceCount / 150) * 100)));
 
   return {
@@ -93,31 +90,12 @@ function getStoredToken(): string | null {
 // ═══════════════════════════════════════════════════════════════
 
 export default function App() {
-  // ─────────────────────────────────────────────────────────────
-  // GLOBAL SESSION STATE - Lifted to App.tsx
-  // ─────────────────────────────────────────────────────────────
-
   const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
-
-  // ─────────────────────────────────────────────────────────────
-  // AUTH MODAL STATE
-  // ─────────────────────────────────────────────────────────────
-
-  const [showAuthModal, setShowAuthModal] = useState(!token && !getStoredToken());
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-
-  // ─────────────────────────────────────────────────────────────
-  // NAVIGATION STATE
-  // ─────────────────────────────────────────────────────────────
-
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
-
-  // ─────────────────────────────────────────────────────────────
-  // SOCKET & GATEWAY SETUP - Centralized connection management
-  // ─────────────────────────────────────────────────────────────
 
   const createGateway = useCallback(() => {
     const gateway = new SocketHttpEngineGateway(API_BASE_URL, SOCKET_URL);
@@ -127,11 +105,7 @@ export default function App() {
     return gateway;
   }, [token]);
 
-  // ─────────────────────────────────────────────────────────────
-  // DASHBOARD CONTROLLER - Test orchestration & telemetry management
-  // ─────────────────────────────────────────────────────────────
-
-const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory } =
+  const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory } =
     useDashboardController(createGateway);
 
   const handleSaveSessionToHistory = () => {
@@ -147,29 +121,18 @@ const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSess
 
   const isAuthenticated = !!token && !!user;
 
-  // ─────────────────────────────────────────────────────────────
-  // TRANSFORM SESSION HISTORY → EVALUATIONS
-  // ─────────────────────────────────────────────────────────────
-
   const evaluations = useMemo(() => {
-    // Only show saved (manually saved) sessions in history view
     const savedSessions = state.sessionHistory.filter((s) => s.savedManually);
     return savedSessions
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
       .map((session, idx) => transformToEvaluation(session, idx));
   }, [state.sessionHistory]);
 
-  // Total count for pagination display
   const totalEvaluations = state.sessionHistory.filter((s) => s.savedManually).length;
-
-  // ─────────────────────────────────────────────────────────────
-  // AUTH EVENT HANDLERS
-  // ─────────────────────────────────────────────────────────────
 
   const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
-    setShowAuthModal(false);
     localStorage.setItem('bugsafari_token', newToken);
     localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
   };
@@ -177,7 +140,6 @@ const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSess
   const handleSignupSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
-    setShowAuthModal(false);
     localStorage.setItem('bugsafari_token', newToken);
     localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
   };
@@ -185,7 +147,6 @@ const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSess
   const handleGuestAccess = () => {
     setToken(null);
     setUser(null);
-    setShowAuthModal(false);
   };
 
   const handleLogout = () => {
@@ -195,98 +156,130 @@ const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSess
     setUser(null);
   };
 
-const handleSwitchToLogin = () => setAuthMode('login');
-const handleSwitchToSignup = () => setAuthMode('signup');
+const location = useLocation();
+  const hasValidSession = !!token && !!user;
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
 
+// ─────────────────────────────────────────────────────────────
+  // Public Auth Routes: /login and /signup
   // ─────────────────────────────────────────────────────────────
-  // CONDITIONAL RENDER: Authentication Screen
-  // ─────────────────────────────────────────────────────────────
-
-  if (showAuthModal || (!user && !getStoredToken())) {
+  if (isAuthRoute || !hasValidSession) {
     return (
       <>
-        {authMode === 'login' ? (
-          <LoginForm
-            onLoginSuccess={handleLoginSuccess}
-            onSwitchToSignup={handleSwitchToSignup}
-            onGuestAccess={handleGuestAccess}
+        <Toaster position="top-center" theme="dark" />
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              <LoginForm
+                onLoginSuccess={handleLoginSuccess}
+                onGuestAccess={handleGuestAccess}
+              />
+            }
           />
-        ) : (
-          <SignupForm
-            onSignupSuccess={handleSignupSuccess}
-            onSwitchToLogin={handleSwitchToLogin}
+          <Route
+            path="/signup"
+            element={
+              <SignupForm onSignupSuccess={handleSignupSuccess} />
+            }
           />
-        )}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
       </>
     );
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PRIMARY RENDER: Application Layout
-  // 2-Column Structure: Sidebar (18%) | Main Content (82%)
-  //   → Main Content splits: ControlPanel (27%) | ForensicDashboard (55%)
+  // Protected Routes: /dashboard and /history
   // ─────────────────────────────────────────────────────────────
-
-return (
-    <div className="flex h-screen w-screen bg-white">
-      <Toaster position="bottom-right" theme="dark" />
-      {/* Sidebar */}
-      <Sidebar
-        user={user}
-        isLoggedIn={isAuthenticated}
-        onLogout={handleLogout}
-        activeView={activeView}
-        onViewChange={setActiveView}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
-
-      {/* Main Content Area */}
-      <div className="flex flex-1">
-        {activeView === 'history' ? (
-          /* History View: Saved Evaluation Safaris */
-          <SavedEvaluationSafaris
-            evaluations={evaluations}
-            totalCount={totalEvaluations}
-          />
-        ) : (
-          /* Dashboard View: Control Panel + Forensic Dashboard */
-          <>
-<ControlPanel
-              targetUrl={targetUrl}
-              isTestRunning={state.isTestRunning}
-              testStatus={state.status}
-              onStart={(url) => startTest(url)}
-              onPause={pauseTest}
-              onResume={resumeTest}
-              onStop={stopTest}
-              onSaveSessionToHistory={handleSaveSessionToHistory}
-            />
-<ClinicalForensicsDashboard
-              targetUrl={targetUrl}
-              currentUrl={state.currentUrl}
-              frameBuffer={state.latestFrame}
-              telemetry={state.telemetry}
-              sessionHistory={state.sessionHistory}
-              errors={{
-                incidents: state.incidents,
-                reports: state.reports,
-              }}
-              isConnected={state.isConnected}
-              isTestRunning={state.isTestRunning}
-              testStatus={state.status}
-              currentEngineAction={state.currentEngineAction}
-              hasRunCompleted={state.hasRunCompleted}
-              isInitializing={state.isInitializing}
-              liveFrame={state.liveFrame}
-              onPause={pauseTest}
-              onResume={resumeTest}
-              onStop={stopTest}
-              onSaveSessionToHistory={handleSaveSessionToHistory}
-            />
-          </>
-        )}
-      </div>
-    </div>
+  return (
+    <AuthGuard>
+      <Routes>
+        <Route
+          path="/dashboard"
+          element={
+<div className="flex h-screen w-screen bg-white">
+              <Toaster position="top-center" theme="dark" />
+              <Sidebar
+                user={user}
+                isLoggedIn={isAuthenticated}
+                onLogout={handleLogout}
+                activeView={activeView}
+                onViewChange={setActiveView}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              />
+              <div className="flex flex-1">
+                {activeView === 'history' ? (
+                  <SavedEvaluationSafaris evaluations={evaluations} totalCount={totalEvaluations} />
+                ) : (
+                  <>
+                    <ControlPanel
+                      targetUrl={targetUrl}
+                      isTestRunning={state.isTestRunning}
+                      testStatus={state.status}
+                      onStart={(url) => startTest(url)}
+                      onPause={pauseTest}
+                      onResume={resumeTest}
+                      onStop={stopTest}
+                      onSaveSessionToHistory={handleSaveSessionToHistory}
+                    />
+                    <ClinicalForensicsDashboard
+                      targetUrl={targetUrl}
+                      currentUrl={state.currentUrl}
+                      frameBuffer={state.latestFrame}
+                      telemetry={state.telemetry}
+                      sessionHistory={state.sessionHistory}
+                      errors={{ incidents: state.incidents, reports: state.reports }}
+                      isConnected={state.isConnected}
+                      isTestRunning={state.isTestRunning}
+                      testStatus={state.status}
+                      currentEngineAction={state.currentEngineAction}
+                      hasRunCompleted={state.hasRunCompleted}
+                      isInitializing={state.isInitializing}
+                      liveFrame={state.liveFrame}
+                      onPause={pauseTest}
+                      onResume={resumeTest}
+                      onStop={stopTest}
+                      onSaveSessionToHistory={handleSaveSessionToHistory}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          }
+        />
+<Route
+          path="/history"
+          element={
+            <div className="flex h-screen w-screen bg-white">
+              <Toaster position="top-center" theme="dark" />
+              <Sidebar
+                user={user}
+                isLoggedIn={isAuthenticated}
+                onLogout={handleLogout}
+                activeView={activeView}
+                onViewChange={setActiveView}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              />
+              <div className="flex flex-1">
+                <SavedEvaluationSafaris evaluations={evaluations} totalCount={totalEvaluations} />
+              </div>
+            </div>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            hasValidSession ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+      </Routes>
+    </AuthGuard>
   );
 }

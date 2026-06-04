@@ -47,6 +47,7 @@ export function useAuth() {
     return localStorage.getItem('bugsafari_token');
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string>('');
 
   // Ref to store navigate callback injected by component
   const navigateRef = useRef<NavigateCallback | null>(null);
@@ -85,9 +86,8 @@ export function useAuth() {
   /**
    * Login with email and password
    */
-  const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
+const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
-    toast.loading('Signing in...', { id: 'auth-login' });
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -106,14 +106,13 @@ export function useAuth() {
         return false;
       }
 
-      const authData = data as AuthResponse;
-      if (authData.token && authData.user) {
+const authData = data as AuthResponse;
+if (authData.token && authData.user) {
         // Store token and user
         localStorage.setItem('bugsafari_token', authData.token);
         localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
         setToken(authData.token);
         setUser(authData.user);
-        toast.success(`Welcome back, ${authData.user.email}!`, { id: 'auth-login' });
         console.log('[useAuth] Login successful:', authData.user.email);
         
         // Navigate to dashboard on success
@@ -136,15 +135,15 @@ export function useAuth() {
     }
   }, [doNavigate]);
 
-  /**
+/**
    * Signup with email and password
-   * Uses toast.promise for clean feedback loops per task requirements
+   * Uses in-button loading spinner (no toast.promise loading toast)
    */
   const signup = useCallback(async (credentials: SignupCredentials): Promise<boolean> => {
     setIsLoading(true);
 
-    // Wrap in toast.promise for clean loading/success/error feedback per requirements
-    const signupPromise = (async () => {
+    try {
+      // Direct API call without toast.promise wrapper
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -173,40 +172,36 @@ export function useAuth() {
       const data: AuthResponse | AuthError = await response.json();
 
       if (!response.ok) {
+        // Check for 409 Conflict (email already exists)
+        if (response.status === 409) {
+          const errorMessage = (data as AuthError).error ?? 'Email already exists';
+          setEmailError(errorMessage);
+          throw new Error(errorMessage);
+        }
         const errorMessage = (data as AuthError).error ?? `Signup failed: ${response.status}`;
         throw new Error(errorMessage);
       }
 
       const authData = data as AuthResponse;
-      if (authData.token && authData.user) {
-        // Store token and user
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-        setToken(authData.token);
-        setUser(authData.user);
-        console.log('[useAuth] Signup successful:', authData.user.email);
-        return authData;
-      }
+     if (authData.token && authData.user) {
+  // Store token and user
+  localStorage.setItem('bugsafari_token', authData.token);
+  localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
+  setToken(authData.token);
+  setUser(authData.user);
+console.log('[useAuth] Signup successful:', authData.user.email);
+  console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
+  
+  // Graceful 2-second timeout delay for optimal user experience
+  setTimeout(() => {
+    doNavigate('/login');
+    setIsLoading(false);
+  }, 2000); 
+
+  return true;
+}
 
       throw new Error('Unexpected response from server');
-    })();
-
-    try {
-      await toast.promise(signupPromise, {
-        loading: 'Provisioning operator account...',
-        success: 'Account created successfully! Redirecting...',
-        error: (err: Error) => {
-          const errorMessage = err instanceof Error ? err.message : 'Signup failed';
-          console.error('[useAuth] Signup error:', errorMessage);
-          return errorMessage;
-        },
-      });
-      
-      // Navigate to dashboard on success
-      doNavigate('/dashboard');
-      
-      setIsLoading(false);
-      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
       console.error('[useAuth] Signup error:', errorMessage);
@@ -227,17 +222,26 @@ export function useAuth() {
     console.log('[useAuth] User logged out');
   }, []);
 
-  /**
+/**
    * Check if user is authenticated
    */
   const isAuthenticated = useCallback((): boolean => {
     return !!token && !!user;
   }, [token, user]);
 
+  /**
+   * Clear email error state
+   */
+  const clearEmailError = useCallback(() => {
+    setEmailError('');
+  }, []);
+
   return {
     user,
     token,
     isLoading,
+    emailError,
+    clearEmailError,
     login,
     signup,
     logout,
