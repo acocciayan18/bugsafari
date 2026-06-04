@@ -226,7 +226,7 @@ export default function SignupForm({
                 >
                   {rule.isValid ? (
                     <svg
-                      className="w-3 h-3 flex-shrink-0"
+                      className="w-3 h-3 shrink-0"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -238,7 +238,7 @@ export default function SignupForm({
                     </svg>
                   ) : (
                     <svg
-                      className="w-3 h-3 flex-shrink-0"
+                      className="w-3 h-3 shrink-0"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >

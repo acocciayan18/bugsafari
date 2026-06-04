@@ -93,7 +93,7 @@ export default function App() {
   const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  // const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
