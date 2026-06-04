@@ -27,7 +27,7 @@ const userSchema = new Schema(
   },
   {
     timestamps: true,
-    collection: 'safari_users',
+    collection: 'users',
   },
 );
 
@@ -55,8 +55,8 @@ userSchema.pre<IUser>('save', async function (next) {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     next();
-  } catch (error) {
-    console.error('[UserModel] Password hashing error:', error);
+  } catch (error: any) {
+    console.error('[UserModel] Password hashing error:', error.message, error.stack);
     next(error as CallbackError);
   }
 });

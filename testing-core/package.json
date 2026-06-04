@@ -6,7 +6,7 @@
   "main": "./dist/testing-core/src/index.js",
   "scripts": {
     "start": "node dist/testing-core/src/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\"",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
@@ -28,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/mongoose": "^5.11.96",
     "@types/node": "^20.19.41",
+    "tsc-watch": "^6.2.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3"
   }

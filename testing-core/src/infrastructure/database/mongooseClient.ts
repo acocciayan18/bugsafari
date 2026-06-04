@@ -13,10 +13,13 @@ const isLocal = (uri: string): boolean => uri.includes('localhost') || uri.inclu
  */
 function getMongooseOptions(): ConnectOptions {
   const isProduction = process.env.NODE_ENV === 'production';
-  const uri = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/bugsafari';
+  const uri = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/';
   const isLocalEnv = isLocal(uri);
 
   const options: ConnectOptions = {
+    // Explicitly force the database name to prevent falling back to system databases
+    dbName: 'bugsafari',
+
     // Connection pool size - bounded for free-tier databases
     maxPoolSize: 10,
 
@@ -28,12 +31,13 @@ function getMongooseOptions(): ConnectOptions {
     // Buffer commands during connection drops
     bufferCommands: true,
 
-    // Production: Disable auto-indexing to prevent performance blocks on Atlas
+// Production: Disable auto-indexing to prevent performance blocks on Atlas
     // Local development: Keep enabled for convenience
     ...(isProduction ? { autoIndex: false } : { autoIndex: true }),
 
-    // Compression for cloud connections
-    ...(!isLocalEnv ? { compressors: ['zstd'] } : {}),
+    // Force disable all compression to avoid MongoMissingDependencyError
+    // The @mongodb-js/zstd optional module may not be installed
+    compressors: [],
   };
 
   return options;
@@ -42,14 +46,14 @@ function getMongooseOptions(): ConnectOptions {
 /**
  * URI with smart fallback defaults.
  * - Use MONGODB_URI env var if set
- * - Local fallback: mongodb://localhost:27017/bugsafari
+ * - Local fallback: mongodb://localhost:27017/
  * - Docker Compose fallback: mongodb://mongo:27017/bugsafari
  */
 function getDatabaseUri(): string {
   return (
     process.env.MONGODB_URI ??
     process.env.MONGO_URI ??
-    'mongodb://localhost:27017/bugsafari'
+    'mongodb://localhost:27017/'
   );
 }
 
@@ -168,4 +172,12 @@ export async function ensureConnected(): Promise<boolean> {
     return true;
   }
   return connectDatabase();
+}
+
+/**
+ * Check if database connection is ready for requests.
+ * Returns true if connected and in ready state.
+ */
+export function isReady(): boolean {
+  return isConnected && mongoose.connection.readyState === 1;
 }

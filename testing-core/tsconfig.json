@@ -11,7 +11,8 @@
     "outDir": "./dist",
     "rootDir": "..",
     "declaration": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "../shared/types.ts"]
 }

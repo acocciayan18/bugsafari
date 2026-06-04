@@ -154,10 +154,26 @@ export function useAuth() {
         }),
       });
 
+      // Safety check: Log exact status code if response.ok is false
+      if (!response.ok) {
+        console.error('[useAuth] Signup response not OK:', response.status, response.statusText);
+      }
+
+      // Safety check: Verify response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        // Server returned non-JSON response (likely 404 HTML page)
+        console.error('[useAuth] Non-JSON response received:', contentType);
+        const errorMessage = response.ok 
+          ? 'Invalid server response' 
+          : `Server error: ${response.status} ${response.statusText}`;
+        throw new Error(errorMessage);
+      }
+
       const data: AuthResponse | AuthError = await response.json();
 
       if (!response.ok) {
-        const errorMessage = (data as AuthError).error ?? 'Signup failed';
+        const errorMessage = (data as AuthError).error ?? `Signup failed: ${response.status}`;
         throw new Error(errorMessage);
       }
 

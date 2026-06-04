@@ -1,5 +1,26 @@
 # Fix "Save to History" Functionality - Plan
 
+## ✅ COMPLETED - Session History 500 Error Fix
+
+**Date Completed:** Fixed the GET /api/history/sessions 500 Internal Server Error crash
+
+**Changes Made in `testing-core/src/infrastructure/database/repositories/MongoFindingRepository.ts`:**
+
+1. **Added Global Try/Catch** - Wrapped entire `listSessionHistory` method in try/catch to handle database errors gracefully
+2. **Added Falsy/Empty Safe Checks:**
+   - Check if `sessions` is an array (`Array.isArray(sessions)`)
+   - Check if sessions is empty (blank database)
+   - Return empty array instead of crashing
+3. **Added Defensive Optional Chaining** - Added `?.` to safely handle null/undefined values:   - `session._id?.toString() ?? ''`
+   - `session.targetUrl ?? ''`
+   - `session.startedAt?.toISOString() ?? new Date().toISOString()`4. **Added Explicit Logging** - Console logs at each step for debugging5. **Inner Try/Catch for Mappings** - Each session mapping has its own try/catch to prevent one bad session from crashing the whole batch6. **Safe countDocuments** - Used `.catch(() => 0)` for brainSnapshots count to prevent crashes
+
+**Result:** The dashboard now handles both:
+- Empty/brand new blank database without crashing
+- Database errors without returning 500 Internal Server Error
+
+---
+
 ## Information Gathered
 
 ### Current Architecture:

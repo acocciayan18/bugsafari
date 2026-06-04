@@ -77,21 +77,37 @@ console.log('[API] Auth user:', request.userId ?? 'none');
     }
   });
 
-  // Session history - optional auth (shows prompt for guests)
+// Session history - optional auth (shows prompt for guests)
   app.get('/api/history/sessions', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    if (!findingRepo) {
-      response.json({ sessions: [], requiresAuth: request.isGuest });
-      return;
-    }
+    console.log('[API] GET /api/history/sessions called with query:', request.query);
+    console.log('[API] Auth user:', request.userId ?? 'none');
 
+    // Wrap entire endpoint in try/catch for comprehensive error handling
     try {
+      if (!findingRepo) {
+        console.warn('[API] findingRepo is undefined - database not connected');
+        response.json({ sessions: [], requiresAuth: request.isGuest });
+        return;
+      }
+
       const rawLimit = Number(request.query.limit ?? 50);
-      const limit = Number.isFinite(rawLimit) ? rawLimit : 50;
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : 50;
+      console.log('[API] Querying session history with limit:', limit);
+
       const sessions = await findingRepo.listSessionHistory(limit);
-      response.json({ sessions, requiresAuth: request.isGuest });
+      console.log('[API] Raw sessions from repository:', sessions?.length ?? 0);
+
+      // Falsy/empty safe check - ensure sessions is an array before returning
+      const safeSessions = Array.isArray(sessions) ? sessions : [];
+      console.log('[API] Returning safe sessions count:', safeSessions.length);
+
+      response.json({ sessions: safeSessions, requiresAuth: request.isGuest });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      response.status(500).json({ error: message });
+      // Comprehensive error handling with explicit log message
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[API] Error in /api/history/sessions:', error);
+      console.error('[API] Error stack:', error instanceof Error ? error.stack : 'no stack');
+      response.status(500).json({ error: `Failed to fetch session history: ${errorMessage}` });
     }
   });
 }

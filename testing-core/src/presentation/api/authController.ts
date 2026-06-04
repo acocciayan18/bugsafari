@@ -11,6 +11,24 @@ export interface AuthRequest extends Request {
 }
 
 /**
+ * Server-side password complexity validation - mirrors frontend regex criteria
+ * Defense-in-Depth: Validates against 4 regex checks applied on frontend client
+ * Returns true if password meets ALL complexity requirements
+ */
+function validatePasswordComplexity(password: string): boolean {
+  // Criterion 1: Minimum 8 characters
+  const hasMinLength = password.length >= 8;
+  // Criterion 2: At least one uppercase letter (A-Z)
+  const hasUppercase = /[A-Z]/.test(password);
+  // Criterion 3: At least one numeric character (0-9)
+  const hasNumber = /[0-9]/.test(password);
+  // Criterion 4: At least one special character (non-alphanumeric)
+  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+
+  return hasMinLength && hasUppercase && hasNumber && hasSpecialChar;
+}
+
+/**
  * Helper: Validate string input and prevent NoSQL injection attacks
  * Ensures input is a plain string, not an object like {"$gt": ""}
  */
@@ -18,6 +36,13 @@ function sanitizeString(value: unknown, fieldName: string): string | null {
   // Check if value is a primitive string
   if (typeof value !== 'string') {
     console.error(`[Auth] ${fieldName} is not a valid string type:`, typeof value);
+    return null;
+  }
+
+  // Check for empty or whitespace-only strings
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    console.error(`[Auth] ${fieldName} is empty or whitespace-only`);
     return null;
   }
 
@@ -74,9 +99,11 @@ export async function handleSignup(
       return;
     }
 
-    if (trimmedPassword.length < 8) {
+    // Defense-in-Depth: Run server-side mirror verification
+    // Early-Abort Rejection: If bot bypasses frontend controls, halt execution
+    if (!validatePasswordComplexity(trimmedPassword)) {
       response.status(400).json({
-        error: 'Password must be at least 8 characters',
+        error: 'Security validation error: Password does not meet system complexity criteria standards.',
       });
       return;
     }
@@ -114,13 +141,13 @@ export async function handleSignup(
         },
         token,
       });
-    } catch (dbError) {
-      console.error('[Auth] Database error during signup:', dbError);
-      throw dbError;
+    } catch (dbError: any) {
+      console.error('❌ [BACKEND SIGNUP CRASH]:', dbError.message, dbError.stack);
+      response.status(500).json({ error: 'Registration database fault', details: dbError.message });
     }
-  } catch (err) {
-    console.error('[Auth] Signup error:', err);
-    next(err);
+  } catch (err: any) {
+    console.error('❌ [BACKEND SIGNUP CRASH]:', err.message, err.stack);
+    response.status(500).json({ error: 'Registration failed', details: err.message });
   }
 }
 
@@ -153,10 +180,20 @@ export async function handleLogin(
     try {
       // Find user by email
       const user = await UserModel.findOne({ email: trimmedEmail });
+
+      // EXPLICIT VALIDATION GUARD: Ensure user document exists before proceeding
+      // This prevents any bypass where user could be null/undefined
       if (!user) {
-        // Use timing-safe delay to prevent timing attacks
-        // Even on "user not found", we compare to prevent timing leak
-        console.warn(`[Auth] Login attempt for non-existent user: ${trimmedEmail}`);
+        console.log(`[AUTH FAILED]: No user document matched for input criteria.`);
+        response.status(401).json({
+          error: 'Invalid email or password',
+        });
+        return;
+      }
+
+      // Additional guard: Verify user object has required properties
+      if (!user._id || !user.email || !user.password) {
+        console.error(`[AUTH FAILED]: User document missing required properties.`);
         response.status(401).json({
           error: 'Invalid email or password',
         });

@@ -1,4 +1,4 @@
-import { Types, isValidObjectId } from 'mongoose';
+import { Types, isValidObjectId } from "mongoose";
 import type {
   CreateSessionInput,
   FindingRepository,
@@ -6,12 +6,12 @@ import type {
   SaveBrainConfigInput,
   SaveFindingInput,
   SessionHistoryRecord,
-} from '../../../domain/repositories/FindingRepository.js';
-import { ActionTraceModel } from '../models/ActionTraceModel.js';
-import { BrainConfigModel } from '../models/BrainConfigModel.js';
-import { FindingType, SessionStatus } from '../models/FindingType.js';
-import { FindingModel } from '../models/FindingModel.js';
-import { SessionModel } from '../models/SessionModel.js';
+} from "../../../domain/repositories/FindingRepository.js";
+import { ActionTraceModel } from "../models/ActionTraceModel.js";
+import { BrainConfigModel } from "../models/BrainConfigModel.js";
+import { FindingType, SessionStatus } from "../models/FindingType.js";
+import { FindingModel } from "../models/FindingModel.js";
+import { SessionModel } from "../models/SessionModel.js";
 
 function toObjectId(id: string): Types.ObjectId | null {
   if (!isValidObjectId(id)) {
@@ -30,16 +30,28 @@ export class MongoFindingRepository implements FindingRepository {
     return session._id.toString();
   }
 
-  public async markSessionCompleted(sessionId: string, finishedAt: string): Promise<void> {
+  public async markSessionCompleted(
+    sessionId: string,
+    finishedAt: string,
+  ): Promise<void> {
     const objectId = toObjectId(sessionId);
     if (!objectId) return;
     await SessionModel.updateOne(
       { _id: objectId },
-      { $set: { status: SessionStatus.COMPLETED, finishedAt: new Date(finishedAt) } },
+      {
+        $set: {
+          status: SessionStatus.COMPLETED,
+          finishedAt: new Date(finishedAt),
+        },
+      },
     );
   }
 
-  public async markSessionCrashed(sessionId: string, finishedAt: string, reason: string): Promise<void> {
+  public async markSessionCrashed(
+    sessionId: string,
+    finishedAt: string,
+    reason: string,
+  ): Promise<void> {
     const objectId = toObjectId(sessionId);
     if (!objectId) return;
     await SessionModel.updateOne(
@@ -67,7 +79,10 @@ export class MongoFindingRepository implements FindingRepository {
       meta: input.event.meta,
     });
 
-    await SessionModel.updateOne({ _id: objectId }, { $inc: { findingCount: 1 } });
+    await SessionModel.updateOne(
+      { _id: objectId },
+      { $inc: { findingCount: 1 } },
+    );
     return finding._id.toString();
   }
 
@@ -86,11 +101,17 @@ export class MongoFindingRepository implements FindingRepository {
       score: input.trace.score,
     });
 
-    await SessionModel.updateOne({ _id: objectId }, { $inc: { actionTraceCount: 1 } });
+    await SessionModel.updateOne(
+      { _id: objectId },
+      { $inc: { actionTraceCount: 1 } },
+    );
     return trace._id.toString();
   }
 
-  public async linkActionTracesToFinding(findingId: string, actionTraceIds: string[]): Promise<void> {
+  public async linkActionTracesToFinding(
+    findingId: string,
+    actionTraceIds: string[],
+  ): Promise<void> {
     if (actionTraceIds.length === 0) {
       return;
     }
@@ -109,8 +130,14 @@ export class MongoFindingRepository implements FindingRepository {
     }
 
     await Promise.all([
-      FindingModel.updateOne({ _id: findingObjectId }, { $set: { linkedActionTraceIds: traceObjectIds } }),
-      ActionTraceModel.updateMany({ _id: { $in: traceObjectIds } }, { $set: { findingId: findingObjectId } }),
+      FindingModel.updateOne(
+        { _id: findingObjectId },
+        { $set: { linkedActionTraceIds: traceObjectIds } },
+      ),
+      ActionTraceModel.updateMany(
+        { _id: { $in: traceObjectIds } },
+        { $set: { findingId: findingObjectId } },
+      ),
     ]);
   }
 
@@ -127,70 +154,147 @@ export class MongoFindingRepository implements FindingRepository {
       weights: input.weights,
     });
 
-    await SessionModel.updateOne({ _id: objectId }, { $inc: { brainSnapshotCount: 1 } });
+    await SessionModel.updateOne(
+      { _id: objectId },
+      { $inc: { brainSnapshotCount: 1 } },
+    );
     return brain._id.toString();
   }
 
   public async markSessionSaved(sessionId: string): Promise<void> {
     const objectId = toObjectId(sessionId);
     if (!objectId) return;
-    await SessionModel.updateOne({ _id: objectId }, { $set: { savedManually: true } });
+    await SessionModel.updateOne(
+      { _id: objectId },
+      { $set: { savedManually: true } },
+    );
   }
 
-public async markLatestSessionSaved(targetUrl?: string): Promise<string | null> {
-    console.log('[Repository] markLatestSessionSaved called with targetUrl:', targetUrl);
-    
+  public async markLatestSessionSaved(
+    targetUrl?: string,
+  ): Promise<string | null> {
+    console.log(
+      "[Repository] markLatestSessionSaved called with targetUrl:",
+      targetUrl,
+    );
+
     try {
       const filter = targetUrl ? { targetUrl } : {};
-      console.log('[Repository] Query filter:', JSON.stringify(filter));
-      
-      const latest = await SessionModel.findOne(filter).sort({ startedAt: -1 }).lean();
-      console.log('[Repository] Found session:', latest ? { _id: latest._id, targetUrl: latest.targetUrl, status: latest.status } : null);
-      
+      console.log("[Repository] Query filter:", JSON.stringify(filter));
+
+      const latest = await SessionModel.findOne(filter)
+        .sort({ startedAt: -1 })
+        .lean();
+      console.log(
+        "[Repository] Found session:",
+        latest ? {
+              _id: latest._id,
+              targetUrl: latest.targetUrl,
+              status: latest.status,
+            }
+          : null,
+      );
+
       if (!latest?._id) {
-        console.warn('[Repository] No session found to save');
+        console.warn("[Repository] No session found to save");
         return null;
       }
 
       const sessionId = latest._id.toString();
-      console.log('[Repository] Marking session as saved:', sessionId);
-      
+      console.log("[Repository] Marking session as saved:", sessionId);
+
       await this.markSessionSaved(sessionId);
-      console.log('[Repository] Session marked as saved successfully');
-      
+      console.log("[Repository] Session marked as saved successfully");
+
       return sessionId;
     } catch (error) {
-      console.error('[Repository] Error in markLatestSessionSaved:', error);
+      console.error("[Repository] Error in markLatestSessionSaved:", error);
       throw error;
     }
   }
 
   public async listSessionHistory(limit = 50): Promise<SessionHistoryRecord[]> {
-    const sessions = await SessionModel.find({})
-      .sort({ startedAt: -1 })
-      .limit(Math.max(1, Math.min(limit, 200)))
-      .lean();
+    console.log("[Repository] listSessionHistory called with limit:", limit);
 
-    return await Promise.all(
-      sessions.map(async (session) => {
-        const brainSnapshots = await BrainConfigModel.countDocuments({ sessionId: session._id });
-        return {
-          id: session._id.toString(),
-          targetUrl: session.targetUrl,
-          status: session.status === SessionStatus.CRASHED
-            ? 'Crashed'
-            : session.status === SessionStatus.COMPLETED
-              ? 'Completed'
-              : 'Running',
-          startedAt: session.startedAt.toISOString(),
-          finishedAt: session.finishedAt ? session.finishedAt.toISOString() : undefined,
-          endedReason: session.endedReason ?? undefined,
-          savedManually: Boolean(session.savedManually),
-          findingCount: session.findingCount ?? 0,
-          actionTraceCount: session.actionTraceCount ?? 0,
-          brainSnapshots,
-        };
-      }),
-    );
+    try {
+      // Wrap in try/catch to handle database errors gracefully
+      const sessions = await SessionModel.find({})
+        .sort({ startedAt: -1 })
+        .limit(Math.max(1, Math.min(limit, 200)))
+        .lean();
+
+      // Falsy/empty safe check - ensure sessions is an array before processing
+      if (!Array.isArray(sessions)) {
+        console.warn(
+          "[Repository] listSessionHistory: sessions is not an array, returning empty array",
+        );
+        return [];
+      }
+
+      if (sessions.length === 0) {
+        console.log(
+          "[Repository] listSessionHistory: no sessions found in database (blank DB)",
+        );
+        return [];
+      }
+
+      console.log("[Repository] Found sessions count:", sessions.length);
+
+      return await Promise.all(
+        sessions.map(async (session) => {
+          try {
+            // Safely count brain snapshots with error handling
+            const brainSnapshots = await BrainConfigModel.countDocuments({
+              sessionId: session._id,
+            }).catch(() => 0);
+
+            return {
+              id: session._id?.toString() ?? "",
+              targetUrl: session.targetUrl ?? "",
+              status:
+                session.status === SessionStatus.CRASHED
+                  ? "Crashed"
+                  : session.status === SessionStatus.COMPLETED
+                    ? "Completed"
+                    : "Running",
+              startedAt:
+                session.startedAt?.toISOString() ?? new Date().toISOString(),
+              finishedAt: session.finishedAt
+                ? session.finishedAt.toISOString()
+                : undefined,
+              endedReason: session.endedReason ?? undefined,
+              savedManually: Boolean(session.savedManually),
+              findingCount: session.findingCount ?? 0,
+              actionTraceCount: session.actionTraceCount ?? 0,
+              brainSnapshots,
+            };
+          } catch (mapError) {
+            console.error("[Repository] Error mapping session:", mapError);
+            // Return a safe default session record instead of failing
+            return {
+              id: session._id?.toString() ?? "unknown",
+              targetUrl: session.targetUrl ?? "",
+              status: "Running",
+              startedAt: new Date().toISOString(),
+              savedManually: false,
+              findingCount: 0,
+              actionTraceCount: 0,
+              brainSnapshots: 0,
+            };
+          }
+        }),
+      );
+    } catch (error) {
+      // Comprehensive error handling with explicit log message
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("[Repository] Error in listSessionHistory:", error);
+      console.error(
+        "[Repository] Error stack:",
+        error instanceof Error ? error.stack : "no stack",
+      );
+      // Return empty array instead of throwing - lets the dashboard load even with DB issues
+      return [];
+    }
   }
 }

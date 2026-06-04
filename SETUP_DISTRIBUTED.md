@@ -53,6 +53,12 @@ podman stop $(podman ps -q)
 podman rm $(podman ps -aq)
 ```
 
+# Bring down resources and wipe out state cache cleanly
+podman compose -f docker-compose.local.yml down
+
+# Spin the services back up with hot-reloading active
+podman compose -f docker-compose.local.yml up --build -d
+
 ## Access Points
 
 | Service | URL |

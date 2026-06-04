@@ -112,7 +112,7 @@ const sessionSchema = new Schema(
   },
   {
     timestamps: true,
-    collection: 'safari_sessions',
+    collection: 'sessions',
   },
 );
 
