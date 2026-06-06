@@ -1,9 +1,22 @@
-import type { ParsedElement } from '../domain/heuristics/domParser.js';
+/**
+ * Chaos Data - LSTM-Powered Payload Generation
+ * 
+ * REPLACED: Static token arrays with LSTM neural network for
+ * character-level sequence prediction and dynamic mutations.
+ */
 
+import type { ParsedElement } from '../domain/heuristics/domParser.js';
+import { getSequenceGenerator, quickGenerate, generatePayloadBatch } from '../ml/sequenceGenerator.js';
+import { getPreTrainedNetwork } from '../ml/lstmTrainer.js';
+
+// Legacy token arrays for fallback
 const BOUNDARY_TOKENS = ['"', "'", '`', '\\', '/', '<', '>', '{', '}', '[', ']', '(', ')', ';', '--'];
 const QUERY_TOKENS = [' OR 1=1 ', ' UNION SELECT NULL ', '$gt', '$ne', '../', '%00', '{{constructor}}'];
 const SCRIPT_TOKENS = ['<script>', '</script>', 'onerror=', 'console.error(', 'javascript:'];
 const TYPE_TOKENS = ['null', 'undefined', 'NaN', '-0', 'Infinity', 'true', 'false'];
+
+// Use LSTM-based generation
+let useLSTM = true;
 
 export interface PayloadRequest {
   element: ParsedElement;
@@ -11,8 +24,26 @@ export interface PayloadRequest {
 }
 
 export function generatePayloads(request: PayloadRequest): string[] {
-  const generator = createGenerator(hashSeed(`${request.element.featureSignature}:${request.seed}`));
   const contextualPrefix = createContextualPrefix(request.element);
+  
+  // Try LSTM-based generation
+  if (useLSTM) {
+    try {
+      const lstmPayloads = generatePayloadBatch(4);
+      if (lstmPayloads.length > 0) {
+        return lstmPayloads.map(p => contextualPrefix + p);
+      }
+    } catch {
+      // Fall back to legacy
+    }
+  }
+  
+  // Legacy fallback
+  return legacyGeneratePayloads(request, contextualPrefix);
+}
+
+function legacyGeneratePayloads(request: PayloadRequest, contextualPrefix: string): string[] {
+  const generator = createGenerator(hashSeed(`${request.element.featureSignature}:${request.seed}`));
   const payloads: string[] = [];
 
   for (let index = 0; index < 4; index += 1) {
@@ -31,6 +62,19 @@ export function generatePayloads(request: PayloadRequest): string[] {
 }
 
 export function getRandomPayload(): string {
+  // Try LSTM generation
+  if (useLSTM) {
+    try {
+      const payload = quickGenerate(100, 0.85);
+      if (payload && payload.length > 0) {
+        return payload;
+      }
+    } catch {
+      // Fall back to legacy
+    }
+  }
+  
+  // Legacy fallback
   const payloads = generatePayloads({
     element: {
       tagName: 'input',

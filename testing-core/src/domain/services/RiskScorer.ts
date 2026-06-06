@@ -240,7 +240,7 @@ export class RiskScorer {
     }
   }
 
-  /**
+/**
    * Export brain state for persistence
    */
   exportBrainState(): { bias: number; weights: Record<string, number> } {
@@ -248,6 +248,14 @@ export class RiskScorer {
       bias: this.perceptron.getBias(),
       weights: this.perceptron.exportWeights(),
     };
+  }
+
+  /**
+   * Import brain state from persistence (load on session start)
+   */
+  importBrainState(bias: number, weights: Record<string, number>): void {
+    this.perceptron.importWeights(weights);
+    this.perceptron.setBias(bias);
   }
 
   // ============ PRIVATE HELPER METHODS ============

@@ -1,3 +1,17 @@
+/**
+ * PayloadSynthesizer - LSTM-Powered Character-Level Sequence Prediction
+ * 
+ * REPLACED: Static Markov Chain with true LSTM Neural Network
+ * Now uses character-level sequence prediction for dynamic payload generation.
+ */
+
+import { LSTMNetwork, createLSTMNetwork } from './lstmNetwork.js';
+import { LSTMTrainer, getPreTrainedNetwork } from './lstmTrainer.js';
+import { SequenceGenerator, getSequenceGenerator, PayloadLSTMGenerator } from './sequenceGenerator.js';
+
+// Export the new LSTM-based generator for external use
+export { PayloadLSTMGenerator };
+
 const TRAINING_CORPUS = [
   `"><script>alert(1)</script>`,
   `' OR 1=1 --`,
@@ -30,21 +44,52 @@ const CHAOS_TOKENS = [
   '%00',
 ];
 
-type TransitionMap = Map<string, string[]>;
+// Lazy-initialized LSTM generator
+let lstmGenerator: PayloadLSTMGenerator | null = null;
+let sequenceGenerator: SequenceGenerator | null = null;
+
+function getLSTMGenerator(): PayloadLSTMGenerator {
+  if (!lstmGenerator) {
+    lstmGenerator = new PayloadLSTMGenerator();
+  }
+  return lstmGenerator;
+}
+
+function getSeqGenerator(): SequenceGenerator {
+  if (!sequenceGenerator) {
+    sequenceGenerator = getSequenceGenerator();
+  }
+  return sequenceGenerator;
+}
 
 export class PayloadSynthesizer {
-  private readonly transitions: TransitionMap;
+  private readonly useLSTM: boolean;
+  private readonly fallbackTransitions: Map<string, string[]>;
   private readonly seeds: string[];
 
   constructor(corpus = TRAINING_CORPUS) {
-    this.transitions = buildTransitions(corpus);
     this.seeds = corpus;
+    this.fallbackTransitions = buildTransitions(corpus);
+    // Try to initialize LSTM, fallback to false if it fails
+    this.useLSTM = true;
   }
 
   public nextPayload(maxLength = 220): string {
-    const seed = this.seeds[Math.floor(Math.random() * this.seeds.length)] ?? 'bugsafari';
-    const generated = this.recurrentSample(seed.slice(0, 3), maxLength);
-    return mutatePayload(generated);
+    // Try LSTM-based generation first
+    if (this.useLSTM) {
+      try {
+        const lstmPayload = getLSTMGenerator().generatePayload(maxLength);
+        if (lstmPayload && lstmPayload.length > 0) {
+          // Apply chaos mutation for variation
+          return mutatePayload(lstmPayload);
+        }
+      } catch {
+        // Fall back to legacy method
+      }
+    }
+    
+    // Fallback to Markov chain
+    return this.legacyNextPayload(maxLength);
   }
 
   public generateBatch(count = 4): string[] {
@@ -57,6 +102,34 @@ export class PayloadSynthesizer {
     return [...payloads];
   }
 
+  /**
+   * Generate using LSTM with specific seed text
+   */
+  public generateFromSeed(seed: string, maxLength = 60): string {
+    try {
+      const result = getLSTMGenerator().generateFromSeed(seed, maxLength);
+      return mutatePayload(result);
+    } catch {
+      return this.legacyNextPayload(maxLength);
+    }
+  }
+
+  /**
+   * Generate batch using LSTM with temperature control
+   */
+  public generateWithTemperature(count: number, temperature: number): string[] {
+    const generator = getSeqGenerator();
+    generator.setConfig({ temperature });
+    const batch = generator.generateBatch(count);
+    return batch.map(seq => mutatePayload(seq.text));
+  }
+
+  private legacyNextPayload(maxLength: number): string {
+    const seed = this.seeds[Math.floor(Math.random() * this.seeds.length)] ?? 'bugsafari';
+    const generated = this.recurrentSample(seed.slice(0, 3), maxLength);
+    return mutatePayload(generated);
+  }
+
   private recurrentSample(primer: string, maxLength: number): string {
     if (primer.length < 2) {
       return primer;
@@ -66,7 +139,7 @@ export class PayloadSynthesizer {
     let state = primer.slice(-2);
 
     while (output.length < maxLength) {
-      const candidates = this.transitions.get(state);
+      const candidates = this.fallbackTransitions.get(state);
       if (!candidates || candidates.length === 0) {
         break;
       }
@@ -84,8 +157,8 @@ export class PayloadSynthesizer {
   }
 }
 
-function buildTransitions(corpus: string[]): TransitionMap {
-  const map: TransitionMap = new Map();
+function buildTransitions(corpus: string[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
 
   for (const sample of corpus) {
     const source = sample.padEnd(3, '_');

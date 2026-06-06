@@ -284,7 +284,7 @@ export class MongoFindingRepository implements FindingRepository {
           }
         }),
       );
-    } catch (error) {
+} catch (error) {
       // Comprehensive error handling with explicit log message
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -295,6 +295,78 @@ export class MongoFindingRepository implements FindingRepository {
       );
       // Return empty array instead of throwing - lets the dashboard load even with DB issues
       return [];
+    }
+  }
+
+public async loadLatestBrainConfig(targetUrl?: string): Promise<{ sessionId: string; bias: number; weights: Record<string, number>; source: 'start' | 'runtime' | 'finish' | 'crash'; capturedAt: Date } | null> {
+    try {
+      // Find the latest COMPLETED session for the target URL (exclude running sessions)
+      // This ensures we load brain config from previous sessions, not the current one
+      const sessionFilter = targetUrl 
+        ? { targetUrl, status: { $ne: SessionStatus.RUNNING } } 
+        : { status: { $ne: SessionStatus.RUNNING } };
+      const latestSession = await SessionModel.findOne(sessionFilter)
+        .sort({ startedAt: -1 })
+        .lean();
+
+      if (!latestSession?._id) {
+        console.log("[Repository] No session found for loadLatestBrainConfig");
+        return null;
+      }
+
+      // Then, find the latest brain config for that session
+      const brainConfig = await BrainConfigModel.findOne({ sessionId: latestSession._id })
+        .sort({ capturedAt: -1 })
+        .lean();
+
+      if (!brainConfig) {
+        console.log("[Repository] No brain config found for session", latestSession._id.toString());
+        return null;
+      }
+
+// Convert Map to plain object for weights
+      // Each weight key maps to a single number
+      let weightsObj: Record<string, number> = {};
+      if (brainConfig.weights) {
+        try {
+          // Handle MongoDB Map - convert to plain object
+          const rawWeights = brainConfig.weights as unknown;
+          if (rawWeights instanceof Map) {
+            // Convert Map entries to object, extracting single number from array
+            rawWeights.forEach((value: any, key: string) => {
+              // Value is an array - extract first element as number
+              weightsObj[key] = Array.isArray(value) ? value[0] ?? 0 : Number(value);
+            });
+          } else if (rawWeights && typeof rawWeights === 'object') {
+            // Convert plain object, ensure each value is a number
+            const entries = rawWeights as Record<string, any>;
+            for (const [key, value] of Object.entries(entries)) {
+              weightsObj[key] = Array.isArray(value) ? value[0] ?? 0 : Number(value);
+            }
+          }
+        } catch (e) {
+          console.warn("[Repository] Failed to convert weights Map:", e);
+          weightsObj = {};
+        }
+      }
+
+      console.log("[Repository] Loaded brain config:", {
+        sessionId: brainConfig.sessionId?.toString(),
+        source: brainConfig.source,
+        bias: brainConfig.bias,
+        weightCount: Object.keys(weightsObj).length,
+      });
+
+      return {
+        sessionId: brainConfig.sessionId?.toString() ?? "",
+        bias: brainConfig.bias ?? 0,
+        weights: weightsObj,
+        source: brainConfig.source as 'start' | 'runtime' | 'finish' | 'crash',
+        capturedAt: brainConfig.capturedAt ?? new Date(),
+      };
+    } catch (error) {
+      console.error("[Repository] Error in loadLatestBrainConfig:", error);
+      return null;
     }
   }
 }

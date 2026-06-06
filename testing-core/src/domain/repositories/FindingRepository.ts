@@ -22,6 +22,14 @@ export interface SaveBrainConfigInput {
   source: 'start' | 'runtime' | 'finish' | 'crash';
 }
 
+export interface LoadedBrainConfig {
+  sessionId: string;
+  bias: number;
+  weights: Record<string, number>;
+  source: 'start' | 'runtime' | 'finish' | 'crash';
+  capturedAt: Date;
+}
+
 export interface SessionHistoryRecord {
   id: string;
   targetUrl: string;
@@ -46,4 +54,5 @@ export interface FindingRepository {
   markSessionSaved(sessionId: string): Promise<void>;
   markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
   listSessionHistory(limit?: number): Promise<SessionHistoryRecord[]>;
+  loadLatestBrainConfig(targetUrl?: string): Promise<LoadedBrainConfig | null>;
 }

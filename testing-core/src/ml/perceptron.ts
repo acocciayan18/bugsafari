@@ -64,12 +64,22 @@ export class SingleLayerPerceptron {
     this.applyDeltaRule(vector, 0, 0.18);
   }
 
-  public exportWeights(): Record<string, number> {
+public exportWeights(): Record<string, number> {
     return Object.fromEntries(this.weights.entries());
   }
 
   public getBias(): number {
     return this.bias;
+  }
+
+  public setBias(bias: number): void {
+    this.bias = bias;
+  }
+
+  public importWeights(weights: Record<string, number>): void {
+    for (const [key, value] of Object.entries(weights)) {
+      this.weights.set(key, value);
+    }
   }
 }
 

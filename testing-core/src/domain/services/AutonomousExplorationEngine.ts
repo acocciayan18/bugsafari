@@ -108,13 +108,38 @@ export class AutonomousExplorationEngine {
     );
   }
 
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
+public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
-// StateGraphNavigator handles its own state management - no clear() needed
+
+    // 🧠 Load brain state from previous session if available
+    if (this.findingRepo) {
+      try {
+        const loadedBrain = await this.findingRepo.loadLatestBrainConfig(targetUrl);
+        if (loadedBrain) {
+          console.log('[AutonomousExplorationEngine] Loading brain state from previous session:', {
+            sessionId: loadedBrain.sessionId,
+            source: loadedBrain.source,
+            bias: loadedBrain.bias,
+            weightCount: Object.keys(loadedBrain.weights).length,
+          });
+          this.scorer.importBrainState(loadedBrain.bias, loadedBrain.weights);
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'brain-state-loaded',
+            message: `Loaded brain state from previous session (${loadedBrain.source})`,
+          }));
+        } else {
+          console.log('[AutonomousExplorationEngine] No previous brain state found, using fresh weights');
+        }
+      } catch (error) {
+        console.warn('[AutonomousExplorationEngine] Failed to load brain state:', error);
+      }
+    }
+
+    // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;

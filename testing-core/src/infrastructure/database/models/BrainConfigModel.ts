@@ -28,11 +28,11 @@ const brainConfigSchema = new Schema(
     },
     weights: {
       type: Map,
-      of: Number,
+      of: [Number],
       required: true,
       default: {},
       validate: {
-        validator: (value: Map<string, number>) => value.size > 0,
+        validator: (value: Map<string, number[]>) => value.size > 0,
         message: 'At least one weight must be captured',
       },
     },
@@ -50,7 +50,7 @@ export interface IBrainConfig extends Document {
   capturedAt: Date;
   source: 'start' | 'runtime' | 'finish' | 'crash';
   bias: number;
-  weights: Map<string, number>;
+  weights: Map<string, number[]>;
 }
 
 export const BrainConfigModel = model<IBrainConfig>('BrainConfig', brainConfigSchema);
