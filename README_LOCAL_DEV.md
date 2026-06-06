@@ -26,11 +26,11 @@ docker compose version
 All infrastructure commands must be run from the workspace root:
 
 ```powershell
-cd "C:\AYAN PRACTICE CODES\Bugsafari - trash branch Backup\bugsafari"
+cd "C:\bugsafari"
 ```
 
 ```bash
-cd "/c/AYAN PRACTICE CODES/Bugsafari - trash branch Backup/bugsafari"
+cd "C:\bugsafari"
 ```
 
 ### Pull Redis and MongoDB Images
