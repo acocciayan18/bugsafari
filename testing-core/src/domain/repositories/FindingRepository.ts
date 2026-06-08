@@ -35,6 +35,20 @@ export interface SessionHistoryRecord {
   brainSnapshots: number;
 }
 
+/**
+ * Bug finding output from the Domain layer.
+ * Represents a confirmed bug that should be counted in exploration results.
+ */
+export interface BugFinding {
+  bugId: string;
+  type: string;
+  message: string;
+  selector: string;
+  payloadUsed: string;
+  advice: string;
+  timestamp: Date;
+}
+
 export interface FindingRepository {
   createSession(input: CreateSessionInput): Promise<string>;
   markSessionCompleted(sessionId: string, finishedAt: string): Promise<void>;
@@ -46,4 +60,10 @@ export interface FindingRepository {
   markSessionSaved(sessionId: string): Promise<void>;
   markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
   listSessionHistory(limit?: number): Promise<SessionHistoryRecord[]>;
+  /**
+   * Collect bug findings for the most recent session associated with the target URL.
+   * Applies proper domain filtering to return only actual bugs (EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, NETWORK with status >= 400).
+   * This correctly belongs in the Domain layer per Clean Architecture.
+   */
+  collectBugFindings(targetUrl: string): Promise<BugFinding[]>;
 }

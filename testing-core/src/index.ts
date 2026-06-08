@@ -63,7 +63,8 @@ if (!dbReady) {
 const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
 const browserEngine = new PlaywrightBrowserEngine(findingRepository);
 // Default userId for server-side execution (would be replaced with authenticated user ID in production)
-const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false }, '000000000000000000000000');
+// Pass findingRepository to use case for domain-level bug filtering
+const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false }, findingRepository, '000000000000000000000000');
 registerAuthRoutes(app);
 registerRoutes(app, useCase, port, findingRepository);
 httpServer.listen(port, () => {

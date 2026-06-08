@@ -1,5 +1,6 @@
 import { Types, isValidObjectId } from "mongoose";
 import type {
+  BugFinding,
   CreateSessionInput,
   FindingRepository,
   SaveActionTraceInput,
@@ -342,7 +343,90 @@ public async save(input: SaveFindingInput): Promise<string> {
         "[Repository] Error stack:",
         error instanceof Error ? error.stack : "no stack",
       );
-      // Return empty array instead of throwing - lets the dashboard load even with DB issues
+// Return empty array instead of throwing - lets the dashboard load even with DB issues
+      return [];
+    }
+  }
+
+  /**
+   * Check if a finding type represents an actual bug (reusable helper).
+   * Filters out ACTION, HEURISTIC_SCORE, and NETWORK with status < 400.
+   */
+  private isActualBug(type: string, meta?: TelemetryMeta): boolean {
+    const bugType = type?.toUpperCase();
+
+    // Always exclude non-bug types
+    if (bugType && NON_BUG_TYPES.includes(bugType as typeof NON_BUG_TYPES[number])) {
+      return false;
+    }
+
+    // For NETWORK type, check status code
+    if (bugType === "NETWORK") {
+      const statusCode = meta?.statusCode ?? meta?.status;
+      if (typeof statusCode === "number") {
+        return statusCode >= 400;
+      }
+      // If no status code found, assume it's an unhandled network error
+      return true;
+    }
+
+    // Include only valid bug types
+    return Boolean(bugType && VALID_BUG_TYPES.has(bugType));
+  }
+
+  /**
+   * Collect bug findings from the most recent session for the target URL.
+   * Applies proper domain filtering - only returns actual bugs.
+   * This correctly belongs in the Domain layer per Clean Architecture.
+   */
+  public async collectBugFindings(targetUrl: string): Promise<BugFinding[]> {
+    try {
+      // Find the most recent session for this target URL
+      const session = await SessionModel.findOne({ targetUrl })
+        .sort({ startedAt: -1 })
+        .lean()
+        .exec();
+
+      if (!session || !session._id) {
+        console.log("[MongoFindingRepository] No session found for target URL");
+        return [];
+      }
+
+      // Query ALL findings for this session first
+      const allFindings = await FindingModel.find({ sessionId: session._id })
+        .lean()
+        .exec();
+
+      if (allFindings.length === 0) {
+        console.log("[MongoFindingRepository] No findings for session:", session._id);
+        return [];
+      }
+
+      console.log("[MongoFindingRepository] Raw findings count:", allFindings.length);
+
+      // Filter to only include ACTUAL BUGS using the reusable helper
+      const filteredFindings = allFindings.filter((finding) =>
+        this.isActualBug(finding.type as string, finding.meta as TelemetryMeta | undefined)
+      );
+
+      console.log("[MongoFindingRepository] Filtered findings:", allFindings.length, "->", filteredFindings.length);
+
+      // Transform filtered findings to BugFinding format
+      const bugFindings: BugFinding[] = filteredFindings.map((finding) => ({
+        bugId: finding._id?.toString() || new Types.ObjectId().toString(),
+        type: String(finding.type || "UNKNOWN"),
+        message: String(finding.meta?.message || JSON.stringify(finding.meta || {})),
+        selector: String(finding.meta?.selector || ""),
+        payloadUsed: String(finding.meta?.payloadUsed || ""),
+        advice: String(finding.meta?.advice || "Review and remediate based on findings."),
+        timestamp: finding.timestamp || new Date(),
+      }));
+
+      console.log("[MongoFindingRepository] Collected", bugFindings.length, "actual bug findings after filtering");
+      return bugFindings;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[MongoFindingRepository] Error collecting bug findings:", errorMessage);
       return [];
     }
   }
