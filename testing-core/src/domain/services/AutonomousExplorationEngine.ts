@@ -2,7 +2,6 @@ import type { Dialog, Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
-import { PayloadSynthesizer } from '../../ml/payloadSynthesizer.js';
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { InteractionSimulator } from '../scenarios/rapidClickerStress.js';
@@ -11,13 +10,8 @@ import { BoundingBoxHighlighter } from '../../infrastructure/playwright/Bounding
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { StressScenario } from '../scenarios/types.js';
 import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, formBypasser, networkSaboteur } from '../scenarios/index.js';
-import {
-  generateLargeString,
-  generateNullPayload,
-  generateSpecialChars,
-  getRandomPayloadType,
-  getPayload,
-} from '../scenarios/dataFuzzer.js';
+import { classifyInputElement } from '../scenarios/fuzzing/elementClassifier.js';
+import { getStrategyByCategory } from '../scenarios/fuzzing/strategies/index.js';
 import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
@@ -34,8 +28,7 @@ export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-  private readonly scorer = new RiskScorer();
-  private readonly payloadSynthesizer = new PayloadSynthesizer();
+private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
@@ -879,7 +872,7 @@ page.on('request', (request: Request) => {
     return stressScenarioMap.CoordinateBombing;
   }
 
-  private async executeStandardInteraction(
+private async executeStandardInteraction(
     page: Page,
     telemetry: TelemetryGateway,
     target: InteractiveElement,
@@ -893,15 +886,16 @@ page.on('request', (request: Request) => {
       const useDataFuzzer = (target.tagName === 'input' || target.tagName === 'textarea') && Math.random() < 0.5;
 
       if (useDataFuzzer) {
-        // Use Data Fuzzer: Generate fuzz payload
-        const payloadType = getRandomPayloadType();
-        const payload = getPayload(payloadType);
+        // Use Data Fuzzer: Delegate to strategy pattern
+        const category = classifyInputElement(target);
+        const strategyPayload = getStrategyByCategory(category);
+        const payload = strategyPayload.value;
 
         this.recordActionTrace({
           timestamp: new Date().toISOString(),
           selector: target.selector,
           action: 'data-fuzzer-injection',
-          payload: payloadType,
+          payload: category,
           score: Number(target.riskScore.toFixed(4)),
         });
 
@@ -915,14 +909,17 @@ page.on('request', (request: Request) => {
         telemetry.emitTelemetry(this.event('ACTION', {
           actionExecuted: 'data-fuzzer-injection',
           selector: target.selector,
-          message: `⚡ Data Fuzzer: Injecting ${payloadType} into ${target.selector} to test data validation limits.`,
+          message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
         }));
 
         return;
       }
 
-      // Standard payload injection
-      const payload = this.payloadSynthesizer.nextPayload();
+      // Standard payload injection using strategy pattern
+      const category = classifyInputElement(target);
+      const strategyPayload = getStrategyByCategory(category);
+      const payload = strategyPayload.value;
+
       this.recordActionTrace({
         timestamp: new Date().toISOString(),
         selector: target.selector,
@@ -1104,12 +1101,9 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
     }
   }
 
-  /**
+/**
    * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
-   * Uses the previously unused data fuzzer functions to enhance security testing:
-   * - generateLargeString: Tests payload size limits (DoS vulnerability)
-   * - generateNullPayload: Tests null/empty validation bypass
-   * - generateSpecialChars: Tests character encoding issues
+   * Uses the strategy pattern to enhance security testing with categorized fuzzing strategies.
    */
   private async executeSecurityFuzzerPayloads(
     page: Page,
@@ -1118,50 +1112,26 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
   ): Promise<void> {
     const selector = target.selector;
 
-    // 1. Inject large string payload for size limit testing
-    const largePayload = generateLargeString();
-    try {
-      await this.injectPayload(page, selector, largePayload);
-      telemetry.emitTelemetry(this.event('ACTION', {
-        actionExecuted: 'security-large-payload-injection',
-        selector,
-        message: `📏 Security: Injected large payload (${largePayload.length} chars) to test size limits.`,
-      }));
-    } catch (error) {
-      console.warn('[AutonomousExplorationEngine] Large payload injection failed:', error);
-    }
+    // Use strategy pattern - classify the input element and get targeted fuzzing strategy
+    const category = classifyInputElement(target);
+    const strategyPayload = getStrategyByCategory(category);
+    const payload = strategyPayload.value;
 
-    // 2. Inject null payload for validation bypass testing
-    const nullPayload = generateNullPayload();
     try {
-      await this.injectPayload(page, selector, nullPayload);
+      await this.injectPayload(page, selector, payload);
       telemetry.emitTelemetry(this.event('ACTION', {
-        actionExecuted: 'security-null-bypass-injection',
+        actionExecuted: 'security-fuzzer-injection',
         selector,
-        message: `� null Security: Injected null payload to test validation bypass.`,
+        message: `🔐 Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${selector}`,
       }));
     } catch (error) {
-      console.warn('[AutonomousExplorationEngine] Null payload injection failed:', error);
-    }
-
-    // 3. Inject special characters for encoding testing
-    const specialCharsPayload = generateSpecialChars();
-    try {
-      await this.injectPayload(page, selector, specialCharsPayload);
-      telemetry.emitTelemetry(this.event('ACTION', {
-        actionExecuted: 'security-special-chars-injection',
-        selector,
-        message: `🔣 Security: Injected special characters to test encoding issues.`,
-      }));
-    } catch (error) {
-      console.warn('[AutonomousExplorationEngine] Special chars injection failed:', error);
+      console.warn('[AutonomousExplorationEngine] Security fuzzer injection failed:', error);
     }
 
     // Trace all payloads injected for security audit
     console.log(
       `[SecurityFuzzerPayloads] Enhanced security testing complete on ${selector}: ` +
-      `largePayload(${largePayload.length}), nullPayload("${nullPayload}"), ` +
-      `specialChars(${specialCharsPayload.length})`,
+      `strategy=${category}, payloadLength=${payload.length}`,
     );
   }
 

@@ -161,13 +161,23 @@ function describeEvent(event: TelemetryEvent): DescribeResult {
     const msg = (event.meta.message ?? '').toLowerCase();
     const isFatal = msg.includes('fatal') || msg.includes('halt') || event.meta.actionExecuted?.toLowerCase().includes('engine-halted');
 
+    // Extract AI diagnostics for remediation display
+    const aiDiagnostics = event.meta.aiDiagnostics;
+    let sub = event.meta.actionExecuted ? event.meta.actionExecuted : 'Runtime exception captured';
+    
+    // If AI diagnostics available, show the suggested fix
+    if (aiDiagnostics) {
+      const fixPreview = aiDiagnostics.suggestedFix?.slice(0, 100);
+      sub = fixPreview ? `${fixPreview}...` : sub;
+    }
+
     return {
       pill: {
         label: isFatal ? 'ERROR' : 'WARNING',
         color: isFatal ? 'bg-[#EF4444] text-white' : 'bg-[#F59E0B] text-white',
       },
       title: event.meta.message ? event.meta.message : 'Exception',
-      sub: event.meta.actionExecuted ? event.meta.actionExecuted : 'Runtime exception captured',
+      sub,
     };
   }
 

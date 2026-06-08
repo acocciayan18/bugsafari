@@ -1,17 +1,152 @@
 import type { Page } from 'playwright';
-import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
-import type { StressScenario } from './types.js';
+import type { InteractiveElement } from '../../entities/InteractiveElement.js';
+import type { ScoredElement } from '../../services/RiskScorer.js';
+import type { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
+import type { StressScenario } from '../types.js';
+import { classifyInputElement } from './elementClassifier.js';
+import { getStrategyByCategory } from './strategies/index.js';
+
+// ============================================================================
+// Smart Attacker - Intelligent Action Chain (merged from smartAttacker.ts)
+// ============================================================================
 
 /**
- * Payload types for fuzzing
+ * Result of a smart action chain execution.
  */
-export type PayloadType = 'Large Strings' | 'Null/Empty' | 'Special Characters';
+export interface SmartActionResult {
+  actionExecuted: string;
+  selector: string;
+  payload?: string;
+}
 
 /**
- * Configuration constants for data fuzzer
+ * Generates a fuzzed text input for an input element.
+ * This is a simplified wrapper using the strategy-based fuzzer.
  */
-const LARGE_STRING_LENGTH = 50000;
-const SPECIAL_CHARACTERS = '~!@#$%^&*()_+|}{[]\\:";\'<>?,./';
+export async function fuzzTextInput(
+  page: Page,
+  element: InteractiveElement,
+  _seed: number,
+): Promise<string> {
+  // Use strategy-based payload generation
+  const category = classifyInputElement(element);
+  const strategyPayload = getStrategyByCategory(category);
+  return strategyPayload.value;
+}
+
+/**
+ * Intelligent action chain that performs input field fuzzing.
+ * Analyzes scored elements and executes the optimal fuzzing strategy.
+ *
+ * @param page Playwright Page object
+ * @param targets Scored elements to analyze
+ * @param seed Random seed for payload generation
+ * @param actionRecorder Optional action recorder for telemetry
+ * @returns SmartActionResult or null if no input target found
+ */
+export async function smartActionChain(
+  page: Page,
+  targets: ScoredElement[],
+  seed: number,
+  actionRecorder?: ActionRecorder,
+): Promise<SmartActionResult | null> {
+  // Find input element target
+  const inputTarget = targets.find((target) =>
+    ['input', 'textarea', 'select'].includes(target.tagName) || target.semanticRole === 'INPUT',
+  );
+
+  if (inputTarget) {
+    const payload = await fuzzTextInput(page, inputTarget as unknown as InteractiveElement, seed);
+    actionRecorder?.record({
+      type: 'INPUT',
+      selector: inputTarget.selector,
+      url: page.url(),
+      payload,
+      fallbackLabel: inputTarget.text || inputTarget.name || inputTarget.id,
+    });
+    return {
+      actionExecuted: 'fuzz-input',
+      selector: inputTarget.selector,
+      payload,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * FuzzerTelemetryWrapper - Streams fuzzing milestones over event brokers.
+ * This interface provides telemetry functions for the data fuzzer to emit events.
+ * Integrates with the master WebSocket pipeline handler to broadcast action telemetry
+ * to the dark/monochrome React dashboard Watchtower.
+ */
+export interface FuzzerTelemetryFunctions {
+  emitMilestone: (message: string) => void;
+  emitHeuristicScore: (selector: string, score: number, category: string) => void;
+  emitException: (message: string, stackTrace: string) => void;
+  emitNetworkStatus: (statusCode: number, url: string) => void;
+}
+
+/**
+ * Creates a FuzzerTelemetryWrapper bound to a TelemetryGateway.
+ * This allows the data fuzzer to stream milestones to the dashboard.
+ * 
+ * @param telemetry - Optional TelemetryGateway for broadcasting events
+ * @returns FuzzerTelemetryFunctions wrapper interface
+ */
+export function createFuzzerTelemetryWrapper(telemetry?: {
+  emitTelemetry: (event: { timestamp: string; type: string; meta: Record<string, unknown> }) => void;
+}): FuzzerTelemetryFunctions {
+  return {
+    emitMilestone: (message: string) => {
+      if (!telemetry) return;
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'fuzzer-milestone',
+          message,
+        },
+      });
+    },
+    emitHeuristicScore: (selector: string, score: number, category: string) => {
+      if (!telemetry) return;
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'HEURISTIC_SCORE',
+        meta: {
+          selector,
+          score,
+          message: `Heuristic Fuzz Score: ${score.toFixed(4)} for ${category}`,
+        },
+      });
+    },
+    emitException: (message: string, stackTrace: string) => {
+      if (!telemetry) return;
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'EXCEPTION',
+        meta: {
+          message,
+          exceptionDetails: { message, stackTrace },
+          reproductionSteps: [],
+        },
+      });
+    },
+    emitNetworkStatus: (statusCode: number, url: string) => {
+      if (!telemetry) return;
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'NETWORK',
+        meta: {
+          statusCode,
+          url,
+          message: `Fuzzer HTTP Response: ${statusCode} from ${url}`,
+        },
+      });
+    },
+  };
+}
 
 /**
  * Error messages to handle gracefully
@@ -24,61 +159,6 @@ const ERROR_MESSAGES = {
   OUT_OF_MEMORY: 'out of memory',
   INVALID_STATE: 'invalid state',
 } satisfies Record<string, string>;
-
-/**
- * Generates a large string (50,000 characters) to test payload size limits.
- * This can trigger "Payload Too Large" (413) errors or memory exhaustion.
- * @returns A 50,000-character repeating string
- */
-export function generateLargeString(): string {
-  const base = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-  const repeatCount = Math.ceil(LARGE_STRING_LENGTH / base.length);
-  return base.repeat(repeatCount).slice(0, LARGE_STRING_LENGTH);
-}
-
-/**
- * Generates a null-like payload to bypass "required" validation.
- * @returns Empty string or null-formatted string
- */
-export function generateNullPayload(): string {
-  const nullVariants = ['', ' ', 'null', 'undefined', 'undefined'] as const;
-  return nullVariants[Math.floor(Math.random() * nullVariants.length)];
-}
-
-/**
- * Generates a string with special characters to test encoding issues.
- * @returns String containing complex symbols
- */
-export function generateSpecialChars(): string {
-  return SPECIAL_CHARACTERS;
-}
-
-/**
- * Gets a random payload type
- * @returns A randomly selected payload type
- */
-export function getRandomPayloadType(): PayloadType {
-  const types: PayloadType[] = ['Large Strings', 'Null/Empty', 'Special Characters'];
-  return types[Math.floor(Math.random() * types.length)];
-}
-
-/**
- * Gets the payload based on type
- * @param type The type of payload to generate
- * @returns The generated payload string
- */
-export function getPayload(type: PayloadType): string {
-  switch (type) {
-    case 'Large Strings':
-      return generateLargeString();
-    case 'Null/Empty':
-      return generateNullPayload();
-    case 'Special Characters':
-      return generateSpecialChars();
-    default:
-      return generateSpecialChars();
-  }
-}
 
 /**
  * Checks if error is non-fatal and should be handled gracefully.
@@ -124,8 +204,12 @@ export const dataFuzzer: StressScenario = {
       return;
     }
 
-    const tagName = target.tagName?.toLowerCase() ?? '';
+const tagName = target.tagName?.toLowerCase() ?? '';
     const selector = target.selector;
+
+// Classify the input element using heuristic-driven classifier
+    const category = classifyInputElement(target);
+    console.log(`🔍 [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
 
     console.log(
       `[StressScenario:DataFuzzer] Starting fuzzing on '${selector}' (${tagName})`
@@ -171,17 +255,20 @@ export const dataFuzzer: StressScenario = {
       );
     }
 
-    // Select random payload
-    const payloadType = getRandomPayloadType();
-    const payload = getPayload(payloadType);
+// Get strategy-based payload using heuristic classification
+    const strategyPayload = getStrategyByCategory(category);
+    const payload = strategyPayload.value;
+    const strategyDescription = strategyPayload.description;
 
+console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector into field selector: ${selector}`);
     console.log(
-      `[StressScenario:DataFuzzer] Selected payload type: ${payloadType}, length: ${payload.length}`
+      `[StressScenario:DataFuzzer] Strategy: ${strategyDescription}, payload length: ${payload.length}`
     );
 
     try {
       // Inject the payload using fill() or type()
-      if (payloadType === 'Large Strings') {
+      // For large payloads (over 10000 chars), use evaluate to avoid Playwright's input limits
+      if (payload.length > 10000) {
         // For large payloads, use evaluate to avoid Playwright's input limits
         await page.evaluate(
           ({ sel, val }: { sel: string; val: string }) => {
@@ -262,25 +349,3 @@ export const dataFuzzer: StressScenario = {
  * Type for backwards compatibility
  */
 export type DataFuzzer = typeof dataFuzzer;
-
-/**
- * Re-export for backwards compatibility
- * @deprecated Use the `dataFuzzer` export instead
- */
-export function getRandomFuzzPayload(): { payloadType: PayloadType; payload: string } {
-  const payloadType = getRandomPayloadType();
-  const payload = getPayload(payloadType);
-  return { payloadType, payload };
-}
-
-export async function fuzzTextInput(
-  page: Page,
-  target: InteractiveElement,
-  _seed?: number
-): Promise<string> {
-  const { payload } = getRandomFuzzPayload();
-  await dataFuzzer.execute(page, target);
-  return payload;
-}
-
-export { dataFuzzer as executeFuzz };

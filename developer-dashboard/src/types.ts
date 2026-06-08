@@ -14,6 +14,7 @@ export type {
   SemanticRole,
   BoundingBox,
   DiscoveredElement,
+  IntelligentDiagnosis,
 } from '../../shared/types';
 
 export interface SessionHistoryEntry {
