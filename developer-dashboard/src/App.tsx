@@ -34,13 +34,31 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 // DATA TRANSFORMATION: SessionHistory → EvaluationSafari
 // ─────────────────────────────────────────────────────────────
 
+// Empty forensic trace for mock data
+const emptyForensicTrace = {
+  finalBreadcrumbSteps: [] as string[],
+  caughtBugs: [] as Array<{
+    bugId: string;
+    type: string;
+    message: string;
+    selector: string;
+    payloadUsed: string;
+    advice: string;
+    timestamp: string;
+  }>,
+};
+
 function transformToEvaluation(session: SessionHistoryEntry, index: number): EvaluationSafari {
   let severity: 'CRITICAL' | 'HIGH' | 'CLEAR' = 'CLEAR';
   let severityCount = 0;
+  let status: 'COMPLETED' | 'CRASHED' | 'HALTED' = 'COMPLETED';
 
   if (session.status === 'Crashed') {
     severity = 'CRITICAL';
     severityCount = 1;
+    status = 'CRASHED';
+  } else if (session.status === 'Running') {
+    status = 'HALTED';
   } else if (session.findingCount > 0) {
     severity = 'HIGH';
     severityCount = session.findingCount;
@@ -55,6 +73,11 @@ function transformToEvaluation(session: SessionHistoryEntry, index: number): Eva
 
   const coverage = Math.min(95, Math.max(30, Math.round((session.actionTraceCount / 150) * 100)));
 
+  // Calculate approximate time elapsed
+  const startTime = new Date(session.startedAt).getTime();
+  const endTime = session.finishedAt ? new Date(session.finishedAt).getTime() : Date.now();
+  const timeElapsed = session.finishedAt ? endTime - startTime : endTime - startTime;
+
   return {
     id: session.id || `SAFARI-${String(index + 1).padStart(3, '0')}`,
     targetUrl: session.targetUrl,
@@ -63,6 +86,10 @@ function transformToEvaluation(session: SessionHistoryEntry, index: number): Eva
     coverage,
     severity,
     severityCount,
+    status,
+    timeElapsed,
+    bugsByCategory: {},
+    forensicTrace: emptyForensicTrace,
     isExpanded: false,
   };
 }
@@ -211,13 +238,14 @@ const location = useLocation();
               />
               <div className="flex flex-1">
                 {activeView === 'history' ? (
-                  <SavedEvaluationSafaris evaluations={evaluations} totalCount={totalEvaluations} />
+                  <SavedEvaluationSafaris />
                 ) : (
                   <>
-                    <ControlPanel
+<ControlPanel
                       targetUrl={targetUrl}
                       isTestRunning={state.isTestRunning}
                       testStatus={state.status}
+                      hasRunCompleted={state.hasRunCompleted}
                       onStart={(url) => startTest(url)}
                       onPause={pauseTest}
                       onResume={resumeTest}
@@ -263,7 +291,7 @@ const location = useLocation();
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
               <div className="flex flex-1">
-                <SavedEvaluationSafaris evaluations={evaluations} totalCount={totalEvaluations} />
+                <SavedEvaluationSafaris />
               </div>
             </div>
           }

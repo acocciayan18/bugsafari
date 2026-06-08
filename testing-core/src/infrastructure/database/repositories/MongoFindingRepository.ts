@@ -7,6 +7,7 @@ import type {
   SaveFindingInput,
   SessionHistoryRecord,
 } from "../../../domain/repositories/FindingRepository.js";
+import type { TelemetryMeta } from "../../../types.js";
 import { ActionTraceModel } from "../models/ActionTraceModel.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { FindingType, SessionStatus } from "../models/FindingType.js";
@@ -18,6 +19,48 @@ function toObjectId(id: string): Types.ObjectId | null {
     return null;
   }
   return new Types.ObjectId(id);
+}
+
+/**
+ * Non-bug types that should NOT be saved as findings.
+ * These are healthy system telemetry, not actual bugs.
+ */
+const NON_BUG_TYPES = ["ACTION", "HEURISTIC_SCORE"] as const;
+
+/**
+ * Valid bug types that should be saved.
+ */
+const VALID_BUG_TYPES = new Set([
+  "EXCEPTION",
+  "RUNTIME_UI_FREEZE",
+  "SESSION_SYNC_FAULT",
+  "NETWORK",
+]);
+
+/**
+ * Check if a finding type represents an actual bug that should be saved.
+ * For NETWORK type, only save if status code >= 400.
+ */
+function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
+  const findingType = type?.toUpperCase();
+
+  // Skip non-bug types
+  if (findingType && NON_BUG_TYPES.includes(findingType as typeof NON_BUG_TYPES[number])) {
+    return false;
+  }
+
+  // For NETWORK type, only save errors (status >= 400)
+  if (findingType === "NETWORK") {
+    const statusCode = meta?.statusCode ?? meta?.status;
+    if (typeof statusCode === "number") {
+      return statusCode >= 400;
+    }
+    // No status code = unhandled network issue, save it
+    return true;
+  }
+
+  // Include only valid bug types
+  return Boolean(findingType && VALID_BUG_TYPES.has(findingType));
 }
 
 export class MongoFindingRepository implements FindingRepository {
@@ -66,10 +109,16 @@ export class MongoFindingRepository implements FindingRepository {
     );
   }
 
-  public async save(input: SaveFindingInput): Promise<string> {
+public async save(input: SaveFindingInput): Promise<string> {
     const objectId = toObjectId(input.sessionId);
     if (!objectId) {
       throw new Error(`Invalid session ID: ${input.sessionId}`);
+    }
+
+    // Filter out non-bug types before saving
+    if (!shouldSaveFinding(input.event.type, input.event.meta)) {
+      console.log(`[MongoFindingRepository] Skipping non-bug finding: ${input.event.type}`);
+      return "";
     }
 
     const finding = await FindingModel.create({

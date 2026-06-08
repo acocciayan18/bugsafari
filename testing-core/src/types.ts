@@ -1,4 +1,6 @@
-import type { DiscoveredElement, ForensicCrashReport, TelemetryEvent } from '../../shared/types.ts';
+import type { DiscoveredElement, ForensicCrashReport, TelemetryEvent, TelemetryMeta } from '../../shared/types.js';
+
+export type { TelemetryMeta };
 
 export interface FeatureVector {
   [feature: string]: number;

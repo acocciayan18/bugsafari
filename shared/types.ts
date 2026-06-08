@@ -35,6 +35,7 @@ export interface TelemetryMeta {
   selector?: string;
   actionExecuted?: string;
   statusCode?: number;
+  status?: number;
   url?: string;
   method?: string;
   durationMs?: number;

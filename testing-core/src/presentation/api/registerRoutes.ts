@@ -3,6 +3,7 @@ import { parseTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from './authMiddleware.js';
+import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
 
 export function registerRoutes(
   app: Express,
@@ -20,8 +21,9 @@ export function registerRoutes(
     });
   });
 
-  // Start test - allowed for guests (optional auth)
-  app.post('/api/start-test', optionalAuth, async (request: Request, response: Response): Promise<void> => {
+// Start test - allowed for guests (optional auth)
+  // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
+  app.post('/api/start-test', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const targetUrl = parseTargetUrl(request.body);
     if (!targetUrl) {
       response.status(400).json({ error: 'A valid url is required.' });
@@ -33,6 +35,14 @@ export function registerRoutes(
       return;
     }
 
+    // Set the userId from auth middleware - this ensures saved documents use the real operator ID
+    if (request.userId) {
+      useCase.setUserId(request.userId);
+      console.log(`[API] Set userId for exploration session: ${request.userId}`);
+    } else {
+      console.log(`[API] No authenticated userId - using default for guest session`);
+    }
+
     response.json({ accepted: true, url: targetUrl });
     void useCase.execute(targetUrl);
   });
@@ -41,11 +51,11 @@ export function registerRoutes(
   app.post('/api/history/save-session', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/history/save-session called');
     console.log('[API] Request body:', JSON.stringify(request.body));
-console.log('[API] Auth user:', request.userId ?? 'none');
+    console.log('[API] Auth user:', request.userId ?? 'none');
 
-    if (!findingRepo) {
-      console.error('[API] findingRepo is undefined - database not connected');
-      response.status(503).json({ error: 'Persistence is currently unavailable.' });
+    const userId = request.userId;
+    if (!userId) {
+      response.status(401).json({ error: 'Authentication required.' });
       return;
     }
 
@@ -59,17 +69,17 @@ console.log('[API] Auth user:', request.userId ?? 'none');
         return;
       }
 
-      const sessionId = await findingRepo.markLatestSessionSaved(targetUrl);
-      console.log('[API] markLatestSessionSaved result:', sessionId);
-
-      if (!sessionId) {
-        console.warn('[API] No session found to save for targetUrl:', targetUrl);
-        response.status(404).json({ error: 'No session found to save.' });
+      // Call manualSaveToHistory to save to savedsafaris collection
+      const result = await useCase.manualSaveToHistory(targetUrl, userId);
+      
+      if (!result.success) {
+        console.warn('[API] Manual save failed:', result.message);
+        response.status(500).json({ error: result.message });
         return;
       }
 
-      console.log('[API] Session saved successfully! Session ID:', sessionId);
-      response.json({ ok: true, sessionId });
+      console.log('[API] Saved to savedsafaris:', result.message);
+      response.json({ ok: true, message: result.message });
     } catch (error) {
       console.error('[API] Error saving session:', error);
       const message = error instanceof Error ? error.message : String(error);
@@ -108,6 +118,38 @@ console.log('[API] Auth user:', request.userId ?? 'none');
       console.error('[API] Error in /api/history/sessions:', error);
       console.error('[API] Error stack:', error instanceof Error ? error.stack : 'no stack');
       response.status(500).json({ error: `Failed to fetch session history: ${errorMessage}` });
+    }
+  });
+
+// Safari run history - requires authentication
+  app.get('/api/history', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    console.log('[API] GET /api/history called');
+    console.log('[API] Auth header:', request.headers.authorization?.substring(0, 30) + '...');
+    console.log('[API] Authenticated user:', request.userId ?? 'none');
+    console.log('[API] Auth email:', request.userEmail ?? 'none');
+
+    try {
+      const userId = request.userId;
+      if (!userId) {
+        console.warn('[API] No userId in authenticated request');
+        response.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+
+      console.log('[API] Fetching safari history for userId:', userId);
+      const history = await savedSafariRepository.getSafariHistoryByUserId(userId);
+      console.log('[API] Safari history raw retrieved count:', history?.length ?? 0);
+      
+      if (history && history.length > 0) {
+        console.log('[API] First document sample:', JSON.stringify(history[0]).substring(0, 200));
+      }
+
+      // Return documents sorted by executionDate: -1 (newest first) - repository handles sorting
+      response.json(history);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[API] Error in /api/history:', error);
+      response.status(500).json({ error: `Failed to fetch safari history: ${errorMessage}` });
     }
   });
 }

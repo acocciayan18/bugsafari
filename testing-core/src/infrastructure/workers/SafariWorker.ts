@@ -73,11 +73,21 @@ export async function createSafariWorker(
   const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
-    async (job) => {
+async (job) => {
       const payload = validatePayload(job);
-      const telemetry = new ConsoleTelemetryGateway();
+const telemetry = new ConsoleTelemetryGateway();
       const browserEngine = new PlaywrightBrowserEngine(findingRepository);
+      // Use requestedBy from job payload as userId, or default to placeholder for worker execution
+      const requestedByUserId = payload.requestedBy;
       const useCase = new StartExplorationUseCase(browserEngine, telemetry, { active: false });
+
+      // Set the userId from job payload - ensures saved documents use the real operator ID
+      if (requestedByUserId) {
+        useCase.setUserId(requestedByUserId);
+        console.log(`[SafariWorker] Set userId for job: ${requestedByUserId}`);
+      } else {
+        console.log(`[SafariWorker] No requestedBy in job payload - using default userId`);
+      }
 
       console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} target=${payload.targetUrl}`);
       await useCase.execute(payload.targetUrl);

@@ -53,6 +53,12 @@ podman stop $(podman ps -q)
 podman rm $(podman ps -aq)
 ```
 
+# Initialize podman machine and start
+
+podman machine init
+
+podman machine start
+
 # Bring down resources and wipe out state cache cleanly
 podman compose -f docker-compose.local.yml down
 

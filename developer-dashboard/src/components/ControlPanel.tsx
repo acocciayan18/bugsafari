@@ -8,6 +8,7 @@ interface ControlPanelProps {
   targetUrl: string;
   isTestRunning: boolean;
   testStatus: 'IDLE' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CRASHED' | 'STOPPED' | 'EXHAUSTED';
+  hasRunCompleted?: boolean;
   onStart: (url: string) => void;
   onPause?: () => void;
   onResume?: () => void;
@@ -19,6 +20,7 @@ export default function ControlPanel({
   targetUrl: initialTargetUrl,
   isTestRunning,
   testStatus,
+  hasRunCompleted,
   onStart,
   onPause,
   onResume,
@@ -125,8 +127,8 @@ export default function ControlPanel({
           </div>
         )}
 
-        {/* Save to History Button - Shows when test engine is NOT running (terminal states: completed, crashed, stopped, exhausted) */}
-        {!isTestRunning && testStatus !== 'RUNNING' && testStatus !== 'PAUSED' && onSaveSessionToHistory && (
+{/* Save to History Button - Shows when test engine is NOT running (terminal states: completed, crashed, stopped, exhausted) */}
+        {!isTestRunning && hasRunCompleted && testStatus !== 'RUNNING' && testStatus !== 'PAUSED' && onSaveSessionToHistory && (
           <button
             onClick={onSaveSessionToHistory}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
