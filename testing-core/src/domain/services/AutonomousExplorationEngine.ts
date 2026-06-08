@@ -511,7 +511,7 @@ page.on('request', (request: Request) => {
     }
   }
 
-  private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
+private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
     return {
       emitTelemetry: (event: TelemetryEvent) => {
         telemetry.emitTelemetry(event);
@@ -522,6 +522,9 @@ page.on('request', (request: Request) => {
       emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
       emitForensicReport: (report) => telemetry.emitForensicReport(report),
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
+      emitBrowserConsole: telemetry.emitBrowserConsole 
+        ? (message) => telemetry.emitBrowserConsole!(message) 
+        : undefined,
     };
   }
 

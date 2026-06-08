@@ -1,28 +1,17 @@
 import type { Page } from 'playwright';
 import type { TelemetryEvent } from '../../../../shared/types.ts';
-import { TelemetryHub } from './socketServer.js';
-
-/**
- * BrowserConsoleMessage type for capturing console output from the target browser
- */
-export interface BrowserConsoleMessage {
-  timestamp: string;
-  level: 'log' | 'error' | 'warn' | 'info';
-  message: string;
-  url?: string;
-  line?: number;
-}
+import type { TelemetryGateway, BrowserConsoleMessage } from '../../application/ports/TelemetryGateway.js';
 
 /**
  * Setup a dedicated Playwright page listener to capture browser console logs.
  * This isolates real browser console output from BugSafari's internal backend telemetry.
  * 
  * @param page - The Playwright Page instance
- * @param hub - The TelemetryHub for emitting events
+ * @param gateway - The TelemetryGateway for emitting events
  */
 export async function setupBrowserConsoleListener(
   page: Page,
-  hub: TelemetryHub,
+  gateway: TelemetryGateway,
 ): Promise<void> {
   // Listen to all console messages from the browser context
   page.on('console', (message) => {
@@ -48,8 +37,10 @@ export async function setupBrowserConsoleListener(
       browserConsoleMessage.line = location.lineNumber;
     }
 
-    // Emit to dedicated browser-console channel
-    hub.emitBrowserConsole(browserConsoleMessage);
+    // Emit to dedicated browser-console channel if supported
+    if (gateway.emitBrowserConsole) {
+      gateway.emitBrowserConsole(browserConsoleMessage);
+    }
   });
 
   // Also capture page errors that might not appear in console
@@ -61,6 +52,8 @@ export async function setupBrowserConsoleListener(
       url: page.url(),
     };
 
-    hub.emitBrowserConsole(browserConsoleMessage);
+    if (gateway.emitBrowserConsole) {
+      gateway.emitBrowserConsole(browserConsoleMessage);
+    }
   });
 }

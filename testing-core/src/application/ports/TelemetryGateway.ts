@@ -1,5 +1,13 @@
 import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 
+export interface BrowserConsoleMessage {
+  timestamp: string;
+  level: 'log' | 'error' | 'warn' | 'info';
+  message: string;
+  url?: string;
+  line?: number;
+}
+
 export interface TelemetryGateway {
   emitTelemetry(event: TelemetryEvent): void;
   emitTargets(targets: DiscoveredElement[]): void;
@@ -11,6 +19,7 @@ export interface TelemetryGateway {
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;
 
-
+  /** Emit browser console message from target page */
+  emitBrowserConsole?(message: BrowserConsoleMessage): void;
 }
 
