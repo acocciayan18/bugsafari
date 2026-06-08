@@ -90,11 +90,9 @@ function getStoredToken(): string | null {
 // ═══════════════════════════════════════════════════════════════
 
 export default function App() {
-  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
-  // const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const createGateway = useCallback(() => {
@@ -159,6 +157,9 @@ export default function App() {
 const location = useLocation();
   const hasValidSession = !!token && !!user;
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
+  
+  // Derive activeView from URL path for sidebar highlighting
+  const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
 // ─────────────────────────────────────────────────────────────
   // Public Auth Routes: /login and /signup
@@ -200,12 +201,11 @@ const location = useLocation();
           element={
 <div className="flex h-screen w-screen bg-white">
               <Toaster position="top-center" theme="dark" />
-              <Sidebar
+<Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
                 onLogout={handleLogout}
                 activeView={activeView}
-                onViewChange={setActiveView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
@@ -224,12 +224,12 @@ const location = useLocation();
                       onStop={stopTest}
                       onSaveSessionToHistory={handleSaveSessionToHistory}
                     />
-                    <ClinicalForensicsDashboard
+<ClinicalForensicsDashboard
                       targetUrl={targetUrl}
                       currentUrl={state.currentUrl}
                       frameBuffer={state.latestFrame}
                       telemetry={state.telemetry}
-                      sessionHistory={state.sessionHistory}
+                      browserConsole={state.browserConsole}
                       errors={{ incidents: state.incidents, reports: state.reports }}
                       isConnected={state.isConnected}
                       isTestRunning={state.isTestRunning}
@@ -259,7 +259,6 @@ const location = useLocation();
                 isLoggedIn={isAuthenticated}
                 onLogout={handleLogout}
                 activeView={activeView}
-                onViewChange={setActiveView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />

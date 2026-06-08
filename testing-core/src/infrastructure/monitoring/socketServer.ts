@@ -3,7 +3,13 @@ import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
 import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
 
-
+interface BrowserConsoleMessage {
+  timestamp: string;
+  level: 'log' | 'error' | 'warn' | 'info';
+  message: string;
+  url?: string;
+  line?: number;
+}
 
 export class TelemetryHub {
   private readonly io: Server;
@@ -24,6 +30,10 @@ export class TelemetryHub {
         console.log(`[Socket] Dashboard disconnected: ${socket.id}`);
       });
     });
+  }
+
+  emitBrowserConsole(message: BrowserConsoleMessage): void {
+    this.io.emit('browser-console', message);
   }
 
   // TelemetryGateway interface implementation
@@ -48,7 +58,7 @@ export class TelemetryHub {
     this.io.emit('incident-report', report);
   }
 
-  emitUrlChanged(url: string): void {
+emitUrlChanged(url: string): void {
     this.io.emit('url-changed', url);
   }
 

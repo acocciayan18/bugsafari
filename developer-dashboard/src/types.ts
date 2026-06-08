@@ -17,6 +17,14 @@ export type {
   IntelligentDiagnosis,
 } from '../../shared/types';
 
+export interface BrowserConsoleMessage {
+  timestamp: string;
+  level: 'log' | 'error' | 'warn' | 'info';
+  message: string;
+  url?: string;
+  line?: number;
+}
+
 export interface SessionHistoryEntry {
   id: string;
   targetUrl: string;

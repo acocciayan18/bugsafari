@@ -13,6 +13,7 @@ import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, 
 import { classifyInputElement } from '../scenarios/fuzzing/elementClassifier.js';
 import { getStrategyByCategory } from '../scenarios/fuzzing/strategies/index.js';
 import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
+import { setupBrowserConsoleListener } from '../../infrastructure/monitoring/browserConsoleListener.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
@@ -222,6 +223,10 @@ page.on('request', (request: Request) => {
 // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
       this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry);
+
+      // 🖥️ Setup isolated browser console listener for dedicated Console Tab in dashboard
+      // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
+      await setupBrowserConsoleListener(page, telemetry);
 
       // 🚀 Start independent frame capture loop for 30fps streaming
       this.startFrameCaptureLoop(page, telemetry);

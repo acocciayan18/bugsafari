@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { EngineGateway } from '../ports/EngineGateway';
+import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
 import { saveSessionToHistory } from '../../services/historyService';
 
@@ -20,6 +20,7 @@ export interface DashboardState {
   currentUrl: string;
   sessionHistory: SessionHistoryEntry[];
   isSavingSession: boolean;
+  browserConsole: BrowserConsoleMessage[]; // 👈 Browser console messages
 }
 
 const ENGINE_TERMINAL_ACTIONS = new Set([
@@ -54,6 +55,7 @@ const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
 const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
   const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
+  const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
 
   useEffect(() => {
     gateway.onConnected((connected) => {
@@ -111,6 +113,14 @@ gateway.onLiveFrame((frame) => {
       setIsInitializing(false); // 👈 First frame received - no longer initializing
       setLiveFrame(`data:image/jpeg;base64,${frame}`); // 👈 Set active frame buffer
       setLatestFrame(`data:image/jpeg;base64,${frame}`)
+    });
+
+    // 👈 Listen for browser console messages from the target browser
+    gateway.onBrowserConsole((message) => {
+      setBrowserConsole((prev) => {
+        const next = [...prev, message];
+        return next.length > 100 ? next.slice(next.length - 100) : next;
+      });
     });
 
     gateway.connect();
@@ -222,6 +232,7 @@ return {
       currentUrl,
       sessionHistory,
       isSavingSession,
+      browserConsole,
     },
     startTest,
     pauseTest,

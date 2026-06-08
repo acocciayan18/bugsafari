@@ -3,6 +3,7 @@
 // Handles navigation only - no telemetry logic
 
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface User {
   id: string;
@@ -14,7 +15,6 @@ interface SidebarProps {
   isLoggedIn: boolean;
   onLogout?: () => void;
   activeView?: 'dashboard' | 'history' | 'settings';
-  onViewChange?: (view: 'dashboard' | 'history' | 'settings') => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   children?: ReactNode;
@@ -25,10 +25,10 @@ export default function Sidebar({
   isLoggedIn,
   onLogout,
   activeView = 'dashboard',
-  onViewChange,
   isCollapsed = false,
   onToggleCollapse,
 }: SidebarProps) {
+  const navigate = useNavigate();
   const sidebarWidth = isCollapsed ? 'w-16' : 'w-[18%]';
 
   return (
@@ -60,9 +60,9 @@ export default function Sidebar({
       {/* Navigation Links - Always showing, clipped when collapsed */}
       <nav className={`flex-1 ${isCollapsed ? 'p-1' : 'p-4'}`}>
         <ul className={`${isCollapsed ? 'space-y-2' : 'space-y-1'}`}>
-          <li>
+<li>
             <button
-              onClick={() => onViewChange?.('dashboard')}
+              onClick={() => navigate('/dashboard')}
               className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
                 activeView === 'dashboard'
                   ? 'bg-slate-200 text-slate-900'
@@ -78,9 +78,9 @@ export default function Sidebar({
               </span>
             </button>
           </li>
-          <li>
+<li>
             <button
-              onClick={() => onViewChange?.('history')}
+              onClick={() => navigate('/history')}
               className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
                 activeView === 'history'
                   ? 'bg-slate-200 text-slate-900'
@@ -96,9 +96,9 @@ export default function Sidebar({
               </span>
             </button>
           </li>
-          <li>
+<li>
             <button
-              onClick={() => onViewChange?.('settings')}
+              onClick={() => navigate('/settings')}
               className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
                 activeView === 'settings'
                   ? 'bg-slate-200 text-slate-900'

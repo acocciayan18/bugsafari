@@ -7,11 +7,11 @@
 // Receives all telemetry data via props from App.tsx
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../types';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry, BrowserConsoleMessage } from '../types';
 import LiveFeed from './LiveFeed';
 
 // Tab state type for the bottom terminal
-type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
+type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'history';
 
 // ═══════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS: Clipboard, Formatting, Text Processing
@@ -164,6 +164,7 @@ interface ClinicalForensicsDashboardProps {
   frameBuffer: string | null;
   telemetry: TelemetryEvent[] | string[];
   browserConsole: BrowserConsoleMessage[]; // Browser console output from target browser
+  sessionHistory: SessionHistoryEntry[];
   errors: {
     incidents: IncidentReport[];
     reports: ForensicCrashReport[];
@@ -191,6 +192,7 @@ export default function ClinicalForensicsDashboard({
   frameBuffer = null,
   telemetry = [],
   browserConsole = [],
+  sessionHistory = [],
   errors = { incidents: [], reports: [] },
   isConnected = false,
   isTestRunning = false,
@@ -198,8 +200,8 @@ export default function ClinicalForensicsDashboard({
   currentEngineAction = '',
   hasRunCompleted = false,
   isInitializing = false,
-  liveFrame = null,
-  onPause,
+liveFrame = null,
+onPause,
   onResume,
   onStop,
 }: ClinicalForensicsDashboardProps) {
@@ -343,7 +345,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="flex h-1/2 shrink-0 flex-col overflow-hidden">
 
-{/* Tab Headers */}
+        {/* Tab Headers */}
         <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
           <button
             onClick={() => setActiveTab('telemetry')}
@@ -368,6 +370,12 @@ export default function ClinicalForensicsDashboard({
             className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             console
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            history
           </button>
         </div>
 
@@ -684,59 +692,96 @@ TAB: CONSOLE (Browser Console Output)
                 <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">📋</span>
-                  <div className="text-xs font-bold text-slate-900">Browser Console Output</div>
+<div className="text-xs font-bold text-slate-900">Browser Console Output</div>
                   </div>
                   <span className="text-[10px] text-slate-500">Last 50 logs</span>
                 </div>
 
-<div className="max-h-96 overflow-y-auto custom-scrollbar bg-white">
-                  {browserConsole.length === 0 ? (
+                <div className="max-h-96 overflow-y-auto custom-scrollbar bg-white">
+{browserConsole.length === 0 ? (
                     <div className="text-slate-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
-                  ) : (
+) : (
                     <div className="p-3 space-y-2">
                       <div className="grid grid-cols-1 gap-2 mb-3">
                         {browserConsole.slice(-50).map((log, idx) => (
-                          <div key={idx} className="text-xs font-mono bg-slate-50 p-3 rounded border border-slate-200 hover:bg-slate-100 transition-colors group">
-                            <div className="flex items-start gap-2 justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-slate-700 flex-shrink-0 w-6">#{idx + 1}</span>
-<span className={`font-semibold whitespace-pre-wrap break-words ${
-                                    log.level === 'error' ? 'text-red-600' :
-                                    log.level === 'warn' ? 'text-amber-600' :
-                                    'text-slate-900'
-                                  }`}>
-                                    {log.message}
-                                  </span>
-                                </div>
-                                {log.url && (
-                                  <div className="text-slate-600 text-[11px] mt-1 whitespace-pre-wrap break-words font-mono ml-8">
-                                    URL: {log.url}
+key={idx}
+                              <div className="flex items-start gap-2 justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-bold text-slate-700 flex-shrink-0 w-6">{step.index}.</span>
+                                    <span className="font-semibold text-slate-900 whitespace-pre-wrap break-words">
+                                      {step.action}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-<CopyButton text={`[${log.level}] ${log.message}`} label="Log" />
+                                  <div className="text-slate-600 text-[11px] mt-1 whitespace-pre-wrap break-words font-mono ml-8">
+                                    Selector: {step.target}
+                                  </div>
+                                </div>
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                  <CopyButton text={`${step.action}\nSelector: ${step.target}`} label="Action" />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
 
-                      <ExpandableCodeBlock
-                        title="View Full Console Logs JSON"
-                        content={JSON.stringify(browserConsole.slice(-50), null, 2)}
-                        isExpanded={expandedActionTrail['console']}
-                        onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
-                      />
-                    </div>
-)}
+<ExpandableCodeBlock
+                          title="View Full Console Logs JSON"
+                          content={JSON.stringify(browserConsole.slice(-50), null, 2)}
+                          isExpanded={expandedActionTrail['console']}
+                          onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
           )}
 
-</div>
+          {/* ════════════════════════════════════════
+              TAB: HISTORY (Session History Table)
+              ════════════════════════════════════════ */}
+          {activeTab === 'history' && (
+            <div className="overflow-auto max-h-96 custom-scrollbar">
+              {sessionHistory.length === 0 ? (
+                <div className="text-slate-500 italic text-xs py-4 px-4">No session history available.</div>
+              ) : (
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 bg-slate-100 border-b border-slate-300">
+                    <tr>
+                      <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Timestamp</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Target URL</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessionHistory.map((entry, idx) => (
+                      <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                        <td className="border border-slate-200 px-3 py-2 text-slate-600 font-mono">
+                          {new Date(entry.startedAt || 0).toLocaleTimeString()}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-slate-700 truncate max-w-xs">
+                          {entry.targetUrl}
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2">
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${entry.status === 'Completed'
+                            ? 'bg-green-100 text-green-700'
+                            : entry.status === 'Crashed'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-gray-100 text-gray-700'
+                            }`}>
+                            {entry.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

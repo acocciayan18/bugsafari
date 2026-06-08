@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { EngineGateway } from '../../application/ports/EngineGateway';
+import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
@@ -8,6 +8,7 @@ type ForensicHandler = (report: ForensicCrashReport) => void;
 type IncidentHandler = (report: IncidentReport) => void;
 type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
+type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 
 export class SocketHttpEngineGateway implements EngineGateway {
   private readonly apiBaseUrl: string;
@@ -20,6 +21,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
   private incidentHandler: IncidentHandler | null = null;
   private frameHandler: FrameHandler | null = null;
   private urlChangedHandler: UrlChangedHandler | null = null;
+  private browserConsoleHandler: BrowserConsoleHandler | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     this.apiBaseUrl = apiBaseUrl;
@@ -43,7 +45,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
     return headers;
   }
 
-  public connect(): void {
+public connect(): void {
     this.socket.on('connect', this.handleConnect);
     this.socket.on('disconnect', this.handleDisconnect);
     this.socket.on('telemetry', this.handleTelemetry);
@@ -51,6 +53,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.socket.on('incident-report', this.handleIncidentReport);
     this.socket.on('live-frame', this.handleLiveFrame);
     this.socket.on('url-changed', this.handleUrlChanged);
+    this.socket.on('browser-console', this.handleBrowserConsole);
 
     this.socket.connect();
   }
@@ -63,6 +66,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.socket.off('incident-report', this.handleIncidentReport);
     this.socket.off('live-frame', this.handleLiveFrame);
     this.socket.off('url-changed', this.handleUrlChanged);
+    this.socket.off('browser-console', this.handleBrowserConsole);
     this.socket.disconnect();
   }
 
@@ -138,8 +142,12 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.frameHandler?.(base64Jpeg);
   };
 
-  private readonly handleUrlChanged = (url: string): void => {
+private readonly handleUrlChanged = (url: string): void => {
     this.urlChangedHandler?.(url);
+  };
+
+  private readonly handleBrowserConsole = (message: BrowserConsoleMessage): void => {
+    this.browserConsoleHandler?.(message);
   };
 
   public onConnected(handler: ConnectedHandler): void {
@@ -160,6 +168,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   public onUrlChanged(handler: UrlChangedHandler): void {
     this.urlChangedHandler = handler;
   }
+  public onBrowserConsole(handler: BrowserConsoleHandler): void {
+    this.browserConsoleHandler = handler;
+  }
 
   public removeAllListeners(): void {
     this.connectedHandler = null;
@@ -168,5 +179,6 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.incidentHandler = null;
     this.frameHandler = null;
     this.urlChangedHandler = null;
+    this.browserConsoleHandler = null;
   }
 }

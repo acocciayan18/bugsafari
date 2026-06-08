@@ -304,8 +304,14 @@ export async function setupExceptionCatcher(
     }
   });
 
-  page.on('requestfailed', (request) => {
-    const failureText = request.failure()?.errorText ?? 'Request failed';
+page.on('requestfailed', (request) => {
+    const failure = request.failure();
+    // Ignore aborted requests - these occur when navigation is cancelled or page is closed, not actual bugs
+    if (failure && failure.errorText === 'net::ERR_ABORTED') {
+      return;
+    }
+
+    const failureText = failure?.errorText ?? 'Request failed';
     const aiDeduction = runExpertInference(failureText);
 
     hub.emitTelemetry({
