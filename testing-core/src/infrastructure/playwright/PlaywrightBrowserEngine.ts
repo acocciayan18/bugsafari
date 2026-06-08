@@ -12,6 +12,15 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   private activeContext: import('playwright').BrowserContext | null = null;
   private activeBrowser: import('playwright').Browser | null = null;
   private isStopping = false;
+  // Store confirmed bugs before cleanup so they're accessible after engine runs
+  private capturedConfirmedBugs: Array<{
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }> = [];
 
   public pause(): void {
     this.activeEngine?.pause();
@@ -35,7 +44,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ completed: boolean; reason: string }> {
+public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ completed: boolean; reason: string }> {
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo);
     this.activeBrowser = await chromium.launch({ headless: true });
     this.activeContext = await this.activeBrowser.newContext({
@@ -44,12 +53,27 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     });
     this.activePage = await this.activeContext.newPage();
 
+    let result: { completed: boolean; reason: string };
     try {
-      return await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60);
+      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60);
     } finally {
+      // Capture confirmed bugs before cleanup so they're accessible after engine runs
+      this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugs() ?? [];
       await this.cleanupResources();
       this.activeEngine = null;
     }
+    return result;
+  }
+
+  public getConfirmedBugs(): Array<{
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }> {
+    return this.capturedConfirmedBugs;
   }
 
   private async cleanupResources(): Promise<void> {

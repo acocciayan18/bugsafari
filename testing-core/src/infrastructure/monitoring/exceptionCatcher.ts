@@ -1,11 +1,49 @@
 import type { Page, Request } from 'playwright';
-import type { ForensicCrashReport, IncidentReport } from '../../../../shared/types.ts';
+import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
 
 interface BrowserExceptionPayload {
   message: string;
   stackTrace: string;
+}
+
+/**
+ * Non-bug types that should NOT be counted as bugs.
+ * These are healthy system telemetry, not actual bugs.
+ */
+const NON_BUG_TYPES = new Set(['ACTION', 'HEURISTIC_SCORE']);
+
+/**
+ * Valid bug types that should be counted as actual bugs.
+ */
+const VALID_BUG_TYPES = new Set(['EXCEPTION', 'RUNTIME_UI_FREEZE', 'SESSION_SYNC_FAULT', 'NETWORK']);
+
+/**
+ * Filter out non-bug telemetry before registering as a confirmed bug.
+ * Only EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, and NETWORK (status >= 400) are actual bugs.
+ */
+function shouldRegisterAsBug(type: string, meta?: Record<string, unknown>): boolean {
+  const bugType = type?.toUpperCase();
+
+  // Always exclude non-bug types
+  if (bugType && NON_BUG_TYPES.has(bugType)) {
+    return false;
+  }
+
+  // For NETWORK type, check status code
+  if (bugType === 'NETWORK') {
+    const statusCode = meta?.statusCode ?? meta?.status;
+    if (typeof statusCode === 'number') {
+      return statusCode >= 400;
+    }
+    // If no status code found, assume it's an unhandled network error
+    return true;
+  }
+
+  // Include only valid bug types
+  return !!(bugType && VALID_BUG_TYPES.has(bugType));
 }
 
 // Knowledge Base Definition for the Symbolic AI Expert System
@@ -106,6 +144,7 @@ export async function setupExceptionCatcher(
   page: Page,
   hub: TelemetryHub,
   actionRecorder: ActionRecorder,
+  engine?: AutonomousExplorationEngine,
 ): Promise<CrashSignal> {
   const crashSignal = new CrashSignal();
   const requestStartedAt = new Map<Request, number>();
@@ -159,8 +198,21 @@ export async function setupExceptionCatcher(
       },
     });
 
-    hub.emitIncidentReport(incidentReport);
+hub.emitIncidentReport(incidentReport);
     hub.emitForensicReport(forensicReport);
+
+// Register confirmed bug in the isolated bug registry when a true system fault is detected
+    // Only register EXCEPTION type bugs (filtered through shouldRegisterAsBug)
+    if (engine && shouldHalt && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+      engine.registerConfirmedBug({
+        timestamp: new Date().toISOString(),
+        type: 'EXCEPTION',
+        message: contextualReason,
+        url,
+        stackTrace: stackTrace + diagnosticFootnote,
+        severity: aiDeduction.severity,
+      });
+    }
 
     if (shouldHalt) {
       crashSignal.halt(contextualReason);
@@ -228,13 +280,26 @@ export async function setupExceptionCatcher(
       },
     });
 
-    hub.emitIncidentReport({
+hub.emitIncidentReport({
       timestamp: new Date().toISOString(),
       reason: contextualReason,
       url: page.url(),
       stackTrace: text + diagnosticFootnote,
       steps: actionRecorder.snapshot(),
     });
+
+// Register confirmed bug in the isolated bug registry for console errors (true system faults)
+    // Only register EXCEPTION type bugs that pass the filter (excludes non-bug types like ACTION/HEURISTIC_SCORE)
+    if (engine && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+      engine.registerConfirmedBug({
+        timestamp: new Date().toISOString(),
+        type: 'EXCEPTION',
+        message: contextualReason,
+        url: page.url(),
+        stackTrace: text + diagnosticFootnote,
+        severity: aiDeduction.severity,
+      });
+    }
 
     crashSignal.halt(contextualReason);
   });

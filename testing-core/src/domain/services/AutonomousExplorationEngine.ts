@@ -55,7 +55,47 @@ private readonly scorer = new RiskScorer();
   private isFrameBroadcastInFlight = false;
   private currentTelemetry: TelemetryGateway | null = null;
 
+  // Bug Registry: In-memory storage for confirmed true vulnerabilities
+  private confirmedBugs: Array<{
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }> = [];
+
   constructor(private readonly findingRepo?: FindingRepository) { }
+
+  /**
+   * Public accessor for the isolated bug registry.
+   * Returns confirmed vulnerabilities captured during runtime exploration.
+   */
+  public getConfirmedBugs(): Array<{
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }> {
+    return this.confirmedBugs;
+  }
+
+  /**
+   * Push a confirmed bug into the isolated registry.
+   * Called by exceptionCatcher when true system faults are detected.
+   */
+  public registerConfirmedBug(bug: {
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }): void {
+    this.confirmedBugs.push(bug);
+  }
 
   public pause() {
     this.isPaused = true;

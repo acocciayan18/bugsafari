@@ -139,13 +139,11 @@ export class SavedSafariRepository {
       recalculatedBugsByCategory[category] = (recalculatedBugsByCategory[category] || 0) + 1;
     }
 
-    // ── 6. Derive totalBugsFound: use filtered count, not raw count ─────────────
-    //    If caller explicitly provided totalBugsFound, trust it was already calculated with filtering,
-    //    otherwise derive from filtered bugs
-    const derivedTotalBugs =
-      data.metrics?.totalBugsFound != null
-        ? data.metrics.totalBugsFound
-        : filteredBugs.length;
+// ── 6. Derive totalBugsFound: ALWAYS use filtered count ─────────────────────
+    //    CRITICAL FIX: Always recalculate from filtered bugs to ensure metrics match actual bug count.
+    //    The caller's totalBugsFound may be based on unfiltered raw data (e.g., 33 vs actual 3).
+    //    We MUST use filteredBugs.length to report the correct count.
+    const derivedTotalBugs = filteredBugs.length;
 
     // ── 7. Compose the write payload ─────────────────────────────────────────
     const writePayload: Partial<ISavedSafari> = {

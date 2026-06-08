@@ -5,4 +5,12 @@ export interface BrowserEngine {
   pause?(): void;
   resume?(): void;
   stop?(): Promise<void> | void;
+  getConfirmedBugs?(): Array<{
+    timestamp: string;
+    type: string;
+    message: string;
+    url: string;
+    stackTrace?: string;
+    severity?: string;
+  }>;
 }
