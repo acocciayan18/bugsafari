@@ -48,12 +48,12 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-const [latestFrame, setLatestFrame] = useState<string | null>(null);
+  const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
-const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
+  const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
   const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
 
@@ -63,6 +63,9 @@ const [isInitializing, setIsInitializing] = useState(false); // 👈 True when t
       // Reset thinking state on disconnect to prevent infinite loading trap
       if (!connected) {
         setIsThinking(false);
+        // 🚨 CRITICAL: Clear frame buffer on WebSocket disconnect to prevent stale screenshot memory leak (Issue #3)
+        setLiveFrame(null);
+        setLatestFrame(null);
       }
     });
     gateway.onTelemetry((event) => {
@@ -76,7 +79,7 @@ const [isInitializing, setIsInitializing] = useState(false); // 👈 True when t
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
 
-// 🚨 Auto-reset status if the engine crashes or stops naturally
+      // 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
         setStatus('IDLE');
@@ -104,10 +107,10 @@ const [isInitializing, setIsInitializing] = useState(false); // 👈 True when t
       }
     });
 
-gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
+    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
     gateway.onUrlChanged((url) => setCurrentUrl(url)); // FIX: Wire up url-changed socket event to update currentUrl state
-gateway.onLiveFrame((frame) => {
+    gateway.onLiveFrame((frame) => {
       // Clear thinking state when first live frame is received
       setIsThinking(false);
       setIsInitializing(false); // 👈 First frame received - no longer initializing
@@ -131,7 +134,7 @@ gateway.onLiveFrame((frame) => {
   const startTest = async (targetUrl: string): Promise<void> => {
     if (!targetUrl.trim()) return;
 
-// Set thinking state to true immediately when button is clicked
+    // Set thinking state to true immediately when button is clicked
     setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
@@ -182,7 +185,7 @@ gateway.onLiveFrame((frame) => {
     setSessionHistory(history);
   };
 
-const saveSession = async (targetUrl: string): Promise<void> => {
+  const saveSession = async (targetUrl: string): Promise<void> => {
     if (isSavingSession) {
       return;
     }
@@ -214,7 +217,7 @@ const saveSession = async (targetUrl: string): Promise<void> => {
     }
   };
 
-return {
+  return {
     state: {
       isConnected,
       isLaunching,

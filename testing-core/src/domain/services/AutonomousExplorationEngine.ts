@@ -29,13 +29,13 @@ export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-private readonly scorer = new RiskScorer();
+  private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
   private readonly recentActionTraceIds: string[] = [];
-// State Graph Navigator for directed path finding and loop prevention (Task 2)
+  // State Graph Navigator for directed path finding and loop prevention (Task 2)
   private readonly pathNavigator = new StateGraphNavigator();
   private sessionId: string | null = null;
   private freezeActionTraceRecording = false;
@@ -54,6 +54,19 @@ private readonly scorer = new RiskScorer();
   private frameCaptureInterval: ReturnType<typeof setInterval> | null = null;
   private isFrameBroadcastInFlight = false;
   private currentTelemetry: TelemetryGateway | null = null;
+
+  // 🚨 FIX: Task 5 - Track registered page event listeners for proper cleanup
+  // This array stores listener reference info: { eventName, handler }
+  private registeredPageListeners: Array<{ eventName: string; handler: Function }> = [];
+
+  // Named handler references for page event listeners so they can be properly removed
+  private handlePageRequest: ((request: Request) => void) | null = null;
+  private handlePageResponse: ((response: Response) => void) | null = null;
+  private handlePageRequestFailed: ((request: Request) => void) | null = null;
+  private handlePageFrameNavigated: (() => void) | null = null;
+  private handlePageDialog: ((dialog: Dialog) => void) | null = null;
+  private handlePageError: ((error: Error) => void) | null = null;
+  private handlePageConsole: ((message: import('playwright').ConsoleMessage) => void) | null = null;
 
   private confirmedBugsMemory: Array<{
     bugId: string;
@@ -142,7 +155,7 @@ private readonly scorer = new RiskScorer();
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
-// StateGraphNavigator handles its own state management - no clear() needed
+    // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;
@@ -154,11 +167,15 @@ private readonly scorer = new RiskScorer();
     // 🏁 Safari Initialized (milestone)
     this.emitMilestone(telemetry, '🏁 Safari Initialized');
 
+    // 🚨 FIX: Task 5 - Initialize listener tracking array
+    this.registeredPageListeners = [];
+
     this.configureDialogAutoDismiss(page, telemetry);
     this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
 
-page.on('request', (request: Request) => {
+    // 🚨 FIX: Task 5 - Use named handler for 'request' event that can be properly removed
+    this.handlePageRequest = (request: Request) => {
       if (!lastTarget) {
         return;
       }
@@ -172,10 +189,13 @@ page.on('request', (request: Request) => {
           message: `Boosted feature weights after ${resourceType.toUpperCase()} network signal.`,
         }));
       }
-    });
+    };
+    page.on('request', this.handlePageRequest);
+    this.registeredPageListeners.push({ eventName: 'request', handler: this.handlePageRequest });
 
     // Task 1 Fix: Add response handler for NETWORK telemetry
-    page.on('response', async (response: Response) => {
+    // 🚨 FIX: Task 5 - Use named handler for 'response' event that can be properly removed
+    this.handlePageResponse = async (response: Response) => {
       const status = response.status();
       const url = response.url();
       const method = response.request().method();
@@ -203,10 +223,13 @@ page.on('request', (request: Request) => {
           message: `Network ${status} ${method} ${url}`,
         }));
       }
-    });
+    };
+    page.on('response', this.handlePageResponse);
+    this.registeredPageListeners.push({ eventName: 'response', handler: this.handlePageResponse });
 
     // Catch network request failures (timeouts, connection errors, aborts)
-    page.on('requestfailed', (request: Request) => {
+    // 🚨 FIX: Task 5 - Use named handler for 'requestfailed' event that can be properly removed
+    this.handlePageRequestFailed = (request: Request) => {
       const timestamp = new Date().toISOString();
       const url = request.url();
       const method = request.method();
@@ -235,26 +258,29 @@ page.on('request', (request: Request) => {
         stackTrace: `${method} ${url} - ${reason}`,
         breadcrumbs,
       });
-    });
+    };
+    page.on('requestfailed', this.handlePageRequestFailed);
+    this.registeredPageListeners.push({ eventName: 'requestfailed', handler: this.handlePageRequestFailed });
 
-    handleFramenavigated = (): void => {
+    // 🚨 FIX: Task 5 - Use named handler for 'framenavigated' event that can be properly removed
+    this.handlePageFrameNavigated = (): void => {
       const url = page.url();
       if (!url) return;
       lastKnownUrl = url;
       telemetry.emitUrlChanged(url);
     };
-
-    page.on('framenavigated', handleFramenavigated);
+    page.on('framenavigated', this.handlePageFrameNavigated);
+    this.registeredPageListeners.push({ eventName: 'framenavigated', handler: this.handlePageFrameNavigated });
 
     try {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
 
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      handleFramenavigated(); // initial capture so dashboard doesn't start blank
+      this.handlePageFrameNavigated?.(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
 
-// 🛡️ Initialize stability monitoring - runs silently in background
+      // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
       this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry);
 
@@ -317,7 +343,7 @@ page.on('request', (request: Request) => {
           await this.ensureDomReady(page, telemetry);
 
           const elements = await this.parser.parse(page);
-          
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'dom-elements-parsed',
             message: `Parsed ${elements.length} interactive elements from DOM`,
@@ -403,13 +429,13 @@ page.on('request', (request: Request) => {
             stagnationCounter = 0; // reset strike counter; fresh window after escape
           }
 
-// Convert ranked elements to PathfinderElement format for StateGraphNavigator
+          // Convert ranked elements to PathfinderElement format for StateGraphNavigator
           const pathfinderElements: PathfinderElement[] = ranked.map(el => ({
             selector: el.selector,
             score: el.riskScore,
           }));
 
-// Use StateGraphNavigator to make decision
+          // Use StateGraphNavigator to make decision
           const decision = this.pathNavigator.registerStateAndDecide(
             currentHash,
             currentUrl,
@@ -432,7 +458,7 @@ page.on('request', (request: Request) => {
             message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
           }));
 
-// StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
+          // StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
 
           if (decision.kind === 'backtrack') {
             // Emit backtrack telemetry and navigate to target URL
@@ -456,7 +482,7 @@ page.on('request', (request: Request) => {
           // Store score for telemetry
           const targetScore = exploreDecision.score;
 
-// Emit exploration milestone
+          // Emit exploration milestone
           this.emitMilestone(telemetry, `🎯 Exploring edge: ${target.selector} (score: ${decision.score.toFixed(3)})`);
           this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
 
@@ -465,7 +491,7 @@ page.on('request', (request: Request) => {
           const previousHashBeforeAction = currentHash;
 
           await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
-          
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'action-executed',
             selector: target.selector,
@@ -524,7 +550,7 @@ page.on('request', (request: Request) => {
       this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
-// 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
+      // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
         this.cleanupStabilityMonitor = null;
@@ -533,9 +559,25 @@ page.on('request', (request: Request) => {
       // 🚀 Stop frame capture loop
       this.stopFrameCaptureLoop();
 
-      if (handleFramenavigated) {
-        page.off('framenavigated', handleFramenavigated);
+      // 🚨 FIX: Task 5 - Remove all registered page event listeners using tracking array
+      if (page && this.registeredPageListeners.length > 0) {
+        for (const { eventName, handler } of this.registeredPageListeners) {
+          try {
+            // Use dual type assertion to fix TypeScript overload error
+            (page.off as any)(eventName, handler);
+          } catch (e) {
+            // Ignore listener removal errors during cleanup
+          }
+        }
+        this.registeredPageListeners = [];
       }
+
+      // Also clean up the named handler references
+      this.handlePageRequest = null;
+      this.handlePageResponse = null;
+      this.handlePageRequestFailed = null;
+      this.handlePageFrameNavigated = null;
+
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }
@@ -545,7 +587,7 @@ page.on('request', (request: Request) => {
     }
   }
 
-private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
+  private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
     return {
       emitTelemetry: (event: TelemetryEvent) => {
         telemetry.emitTelemetry(event);
@@ -556,8 +598,8 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
       emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
       emitForensicReport: (report) => telemetry.emitForensicReport(report),
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
-      emitBrowserConsole: telemetry.emitBrowserConsole 
-        ? (message) => telemetry.emitBrowserConsole!(message) 
+      emitBrowserConsole: telemetry.emitBrowserConsole
+        ? (message) => telemetry.emitBrowserConsole!(message)
         : undefined,
     };
   }
@@ -914,7 +956,7 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
     return stressScenarioMap.CoordinateBombing;
   }
 
-private async executeStandardInteraction(
+  private async executeStandardInteraction(
     page: Page,
     telemetry: TelemetryGateway,
     target: InteractiveElement,
@@ -1064,7 +1106,7 @@ private async executeStandardInteraction(
       .catch(() => undefined);
   }
 
-private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
+  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     /**
      * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
      * Uses lower quality JPEG (35) for reduced bandwidth.
@@ -1143,10 +1185,10 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
     }
   }
 
-/**
-   * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
-   * Uses the strategy pattern to enhance security testing with categorized fuzzing strategies.
-   */
+  /**
+     * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
+     * Uses the strategy pattern to enhance security testing with categorized fuzzing strategies.
+     */
   private async executeSecurityFuzzerPayloads(
     page: Page,
     telemetry: TelemetryGateway,
