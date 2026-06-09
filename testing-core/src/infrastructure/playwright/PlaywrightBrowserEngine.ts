@@ -12,14 +12,14 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   private activeContext: import('playwright').BrowserContext | null = null;
   private activeBrowser: import('playwright').Browser | null = null;
   private isStopping = false;
-  // Store confirmed bugs before cleanup so they're accessible after engine runs
   private capturedConfirmedBugs: Array<{
-    timestamp: string;
+    bugId: string;
     type: string;
     message: string;
-    url: string;
-    stackTrace?: string;
-    severity?: string;
+    selector: string;
+    payloadUsed: string;
+    advice: string;
+    timestamp: Date;
   }> = [];
 
   public pause(): void {
@@ -57,21 +57,21 @@ public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ comp
     try {
       result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60);
     } finally {
-      // Capture confirmed bugs before cleanup so they're accessible after engine runs
-      this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugs() ?? [];
+      this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       await this.cleanupResources();
       this.activeEngine = null;
     }
     return result;
   }
 
-  public getConfirmedBugs(): Array<{
-    timestamp: string;
+  public getConfirmedBugsFromMemory(): Array<{
+    bugId: string;
     type: string;
     message: string;
-    url: string;
-    stackTrace?: string;
-    severity?: string;
+    selector: string;
+    payloadUsed: string;
+    advice: string;
+    timestamp: Date;
   }> {
     return this.capturedConfirmedBugs;
   }

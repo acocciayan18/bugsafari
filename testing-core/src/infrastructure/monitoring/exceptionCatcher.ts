@@ -3,6 +3,7 @@ import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../
 import type { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
+import { randomBytes } from 'crypto';
 
 interface BrowserExceptionPayload {
   message: string;
@@ -198,19 +199,19 @@ export async function setupExceptionCatcher(
       },
     });
 
-hub.emitIncidentReport(incidentReport);
+    hub.emitIncidentReport(incidentReport);
     hub.emitForensicReport(forensicReport);
 
-// Register confirmed bug in the isolated bug registry when a true system fault is detected
-    // Only register EXCEPTION type bugs (filtered through shouldRegisterAsBug)
     if (engine && shouldHalt && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+      const bugId = `bug_${Date.now()}_${randomBytes(4).toString('hex')}`;
       engine.registerConfirmedBug({
-        timestamp: new Date().toISOString(),
+        bugId,
         type: 'EXCEPTION',
         message: contextualReason,
-        url,
-        stackTrace: stackTrace + diagnosticFootnote,
-        severity: aiDeduction.severity,
+        selector: url,
+        payloadUsed: stackTrace + diagnosticFootnote,
+        advice: `Severity: ${aiDeduction.severity} - ${aiDeduction.suggestedFix}`,
+        timestamp: new Date(),
       });
     }
 
@@ -280,7 +281,7 @@ hub.emitIncidentReport(incidentReport);
       },
     });
 
-hub.emitIncidentReport({
+    hub.emitIncidentReport({
       timestamp: new Date().toISOString(),
       reason: contextualReason,
       url: page.url(),
@@ -288,16 +289,16 @@ hub.emitIncidentReport({
       steps: actionRecorder.snapshot(),
     });
 
-// Register confirmed bug in the isolated bug registry for console errors (true system faults)
-    // Only register EXCEPTION type bugs that pass the filter (excludes non-bug types like ACTION/HEURISTIC_SCORE)
     if (engine && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+      const bugId = `bug_${Date.now()}_${randomBytes(4).toString('hex')}`;
       engine.registerConfirmedBug({
-        timestamp: new Date().toISOString(),
+        bugId,
         type: 'EXCEPTION',
         message: contextualReason,
-        url: page.url(),
-        stackTrace: text + diagnosticFootnote,
-        severity: aiDeduction.severity,
+        selector: page.url(),
+        payloadUsed: text + diagnosticFootnote,
+        advice: `Severity: ${aiDeduction.severity} - ${aiDeduction.suggestedFix}`,
+        timestamp: new Date(),
       });
     }
 

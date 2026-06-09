@@ -99,90 +99,6 @@ export class StartExplorationUseCase {
         });
     }
 
-    private aggregateBugsByCategory(bugs: Array<{ type?: string }>): Record<string, number> {
-        const categoryMap: Record<string, number> = {};
-        for (const bug of bugs) {
-            const category = bug.type || 'UNKNOWN';
-            categoryMap[category] = (categoryMap[category] || 0) + 1;
-        }
-        return categoryMap;
-    }
-
-    /**
-     * Collects bug findings from the FindingModel for the most recent session
-     * associated with the target URL. Only returns actual bugs, filtering out
-     * ACTION and HEURISTIC_SCORE telemetry.
-     * 
-     * Note: This private method is kept as a fallback for backward compatibility.
-     * The preferred approach is to use findingRepository.collectBugFindings() from the Domain layer.
-     */
-    private async collectBugFindings(targetUrl: string): Promise<Array<{
-        bugId: string;
-        type: string;
-        message: string;
-        selector: string;
-        payloadUsed: string;
-        advice: string;
-        timestamp: Date;
-    }>> {
-        try {
-            // Import models lazily to avoid circular dependencies
-            const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
-            const { FindingModel } = await import('../../infrastructure/database/models/FindingModel.js');
-            
-            // Find the most recent session for this target URL
-            const session = await SessionModel.findOne({ targetUrl })
-                .sort({ startedAt: -1 })
-                .lean()
-                .exec();
-
-            if (!session || !session._id) {
-                console.log('[StartExplorationUseCase] No session found for target URL');
-                return [];
-            }
-
-            // Query ALL findings for this session first
-            const allFindings = await FindingModel.find({ sessionId: session._id })
-                .lean()
-                .exec();
-
-            if (allFindings.length === 0) {
-                console.log('[StartExplorationUseCase] No findings for session:', session._id);
-                return [];
-            }
-
-            console.log('[StartExplorationUseCase] Raw findings count:', allFindings.length);
-
-            // Filter to only include ACTUAL BUGS using isActualBug
-            const filteredFindings = allFindings.filter((finding: any) => 
-                isActualBug({ 
-                    type: finding.type as string, 
-                    meta: finding.meta as Record<string, unknown> 
-                })
-            );
-
-            console.log('[StartExplorationUseCase] Filtered findings:', allFindings.length, '->', filteredFindings.length);
-
-            // Transform filtered findings to the caughtBugs format
-            const caughtBugs = filteredFindings.map((finding: any) => ({
-                bugId: finding._id?.toString() || new Types.ObjectId().toString(),
-                type: String(finding.type || 'UNKNOWN'),
-                message: String(finding.meta?.message || JSON.stringify(finding.meta || {})),
-                selector: String(finding.meta?.selector || ''),
-                payloadUsed: String(finding.meta?.payloadUsed || ''),
-                advice: String(finding.meta?.advice || 'Review and remediate based on findings.'),
-                timestamp: finding.timestamp || new Date(),
-            }));
-
-            console.log('[StartExplorationUseCase] Collected', caughtBugs.length, 'actual bug findings after filtering');
-            return caughtBugs;
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error('[StartExplorationUseCase] Error collecting bug findings:', errorMessage);
-            return [];
-        }
-    }
-
     /**
      * Manual save triggered by user clicking "Save to History" button.
      * Called externally via the API endpoint /api/history/save-session
@@ -192,72 +108,43 @@ export class StartExplorationUseCase {
         userId: string,
     ): Promise<{ success: boolean; message: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
-        const breadcrumbRecords = ReproductionPlaybookStore.snapshot();
-        const finalBreadcrumbSteps = this.buildBreadcrumbSteps(breadcrumbRecords);
+        const actionRecords = ReproductionPlaybookStore.snapshot();
+        const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
 
-        // Fetch confirmed bugs directly from the engine's verified bug registry
-        const getConfirmedBugsFn = this.browserEngine.getConfirmedBugs;
-        let realBugs = getConfirmedBugsFn ? getConfirmedBugsFn() : [];
+        // Fetch only verified bugs from the engine's confirmed memory
+        const realBugsFound = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
 
-        // If no confirmed bugs from engine (fallback case), collect from FindingModel with filtering
-        // Use the injected FindingRepository from Domain layer (proper position per Clean Architecture)
-        if (realBugs.length === 0) {
-            if (this.findingRepository) {
-                // Domain layer: Use FindingRepository.collectBugFindings() - proper architecture
-                console.log('[StartExplorationUseCase] Using FindingRepository.collectBugFindings() for domain-level filtering...');
-                const findings = await this.findingRepository.collectBugFindings(targetUrl);
-                realBugs = findings.map(f => ({
-                    timestamp: f.timestamp.toISOString(),
-                    type: f.type,
-                    message: f.message,
-                    url: f.selector,
-                    stackTrace: f.payloadUsed,
-                    severity: f.advice.includes('Severity:') ? f.advice.split('Severity:')[1]?.trim() : undefined,
-                }));
-                console.log(`[StartExplorationUseCase] Repository findings: ${findings.length} -> ${realBugs.length} filtered`);
-            } else {
-                // Fallback: Use private method (legacy, kept for backward compatibility)
-                console.log('[StartExplorationUseCase] No FindingRepository injected, using legacy collectBugFindings...');
-                const findings = await this.collectBugFindings(targetUrl);
-                realBugs = findings.map(f => ({
-                    timestamp: f.timestamp.toISOString(),
-                    type: f.type,
-                    message: f.message,
-                    url: f.selector,
-                    stackTrace: f.payloadUsed,
-                    severity: f.advice.includes('Severity:') ? f.advice.split('Severity:')[1]?.trim() : undefined,
-                }));
-                console.log(`[StartExplorationUseCase] Filtered findings: ${findings.length} raw -> ${realBugs.length} filtered`);
+        // Map categories cleanly using the isolated memory fields
+        const breakdownCategories: Record<string, number> = {
+            EXCEPTION: 0,
+            NETWORK: 0,
+            RUNTIME_UI_FREEZE: 0,
+            SESSION_SYNC_FAULT: 0,
+        };
+        realBugsFound.forEach((bug: { type?: string }) => {
+            if (bug.type && breakdownCategories[bug.type] !== undefined) {
+                breakdownCategories[bug.type]++;
             }
-        } else {
-            console.log(`[StartExplorationUseCase] >>> confirmedBugs has values: ${realBugs.length} bugs confirmed`);
-            console.log(`[StartExplorationUseCase] confirmedBugs details:`, JSON.stringify(realBugs, null, 2));
-        }
+        });
 
-        // Transform realBugs to match the MongoDB ICaughtBug[] schema
-        const caughtBugs = realBugs.map((bug: {
-            timestamp: string;
+        // Transform confirmed bugs to caughtBugs format for MongoDB
+        const caughtBugs = realBugsFound.map((bug: {
+            bugId: string;
             type: string;
             message: string;
-            url: string;
-            stackTrace?: string;
-            severity?: string;
+            selector: string;
+            payloadUsed: string;
+            advice: string;
+            timestamp: Date;
         }) => ({
-            bugId: new Types.ObjectId().toString(),
-            type: bug.type || 'UNKNOWN',
-            message: bug.message || '',
-            selector: bug.url || '', // Map url to selector for compatibility
-            payloadUsed: bug.stackTrace || '', // Map stackTrace to payloadUsed
-            advice: bug.severity ? `Severity: ${bug.severity}` : 'Review and remediate based on findings.',
-            timestamp: new Date(bug.timestamp),
+            bugId: bug.bugId,
+            type: bug.type,
+            message: bug.message,
+            selector: bug.selector,
+            payloadUsed: bug.payloadUsed,
+            advice: bug.advice,
+            timestamp: bug.timestamp,
         }));
-
-        // Recalculate metrics strictly from the confirmed bug registry
-        const totalBugsFound = realBugs.length;
-        const bugsByCategory = this.aggregateBugsByCategory(realBugs);
-
-        // Calculate timeElapsed - would need proper timing from execution context
-        const timeElapsed = Date.now() - Date.now();
 
         // Validate userId
         if (!userId || !isValidObjectId(userId)) {
@@ -266,17 +153,18 @@ export class StartExplorationUseCase {
 
         try {
             const userObjectId = new Types.ObjectId(userId);
-            
+            const totalDuration = Date.now();
+
             const savedDocument = await savedSafariRepository.saveSafariRun({
                 userId: userObjectId,
                 targetUrl,
                 executionDate: new Date(),
-                timeElapsed,
+                timeElapsed: totalDuration,
                 status: 'COMPLETED',
                 metrics: {
-                    totalActions: breadcrumbRecords.length,
-                    totalBugsFound,
-                    bugsByCategory,
+                    totalActions: actionRecords.length,
+                    totalBugsFound: realBugsFound.length,
+                    bugsByCategory: breakdownCategories,
                 },
                 forensicTrace: {
                     finalBreadcrumbSteps,
@@ -284,7 +172,7 @@ export class StartExplorationUseCase {
                 },
             });
 
-            console.log(`[StartExplorationUseCase] ✓ Manual save: ${savedDocument._id} | Actions: ${breadcrumbRecords.length} | Bugs: ${totalBugsFound}`);
+            console.log(`[StartExplorationUseCase] ✓ Manual save: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length}`);
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
