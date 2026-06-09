@@ -12,11 +12,14 @@ import { useDashboardController } from './application/useCases/useDashboardContr
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
+import LandingPage from './components/LandingPage';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
 import Sidebar from './components/Sidebar';
 import ControlPanel from './components/ControlPanel';
 import SavedEvaluationSafaris, { type EvaluationSafari } from './components/SavedEvaluationSafaris';
+import BrowserPanel from './components/BrowserPanel';
+import TelemetryPanel from './components/TelemetryPanel';
 import type { SessionHistoryEntry } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -117,7 +120,7 @@ function getStoredToken(): string | null {
 // ═══════════════════════════════════════════════════════════════
 
 export default function App() {
-const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -181,21 +184,25 @@ const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
     setUser(null);
   };
 
-const location = useLocation();
+  const location = useLocation();
   const hasValidSession = !!token && !!user;
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
-  
+
   // Derive activeView from URL path for sidebar highlighting
   const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
-// ─────────────────────────────────────────────────────────────
-  // Public Auth Routes: /login and /signup
   // ─────────────────────────────────────────────────────────────
-  if (isAuthRoute || !hasValidSession) {
+  // Public Routes: LandingPage, /login, /signup
+  // ─────────────────────────────────────────────────────────────
+  if (location.pathname === '/' || isAuthRoute || !hasValidSession) {
     return (
       <>
         <Toaster position="top-center" theme="dark" />
         <Routes>
+          <Route
+            path="/"
+            element={<LandingPage />}
+          />
           <Route
             path="/login"
             element={
@@ -211,7 +218,7 @@ const location = useLocation();
               <SignupForm onSignupSuccess={handleSignupSuccess} />
             }
           />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </>
     );
@@ -226,9 +233,9 @@ const location = useLocation();
         <Route
           path="/dashboard"
           element={
-<div className="flex h-screen w-screen bg-white">
+            <div className="flex h-screen w-screen bg-white">
               <Toaster position="top-center" theme="dark" />
-<Sidebar
+              <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
                 onLogout={handleLogout}
@@ -236,12 +243,12 @@ const location = useLocation();
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              <div className="flex flex-1">
+              <main className="flex-1 flex flex-col p-6 gap-6 bg-gray-50 overflow-hidden">
                 {activeView === 'history' ? (
                   <SavedEvaluationSafaris />
                 ) : (
                   <>
-<ControlPanel
+                    <ControlPanel
                       targetUrl={targetUrl}
                       isTestRunning={state.isTestRunning}
                       testStatus={state.status}
@@ -252,32 +259,37 @@ const location = useLocation();
                       onStop={stopTest}
                       onSaveSessionToHistory={handleSaveSessionToHistory}
                     />
-<ClinicalForensicsDashboard
-                      targetUrl={targetUrl}
-                      currentUrl={state.currentUrl}
-                      frameBuffer={state.latestFrame}
-                      telemetry={state.telemetry}
-                      browserConsole={state.browserConsole}
-                      errors={{ incidents: state.incidents, reports: state.reports }}
-                      isConnected={state.isConnected}
-                      isTestRunning={state.isTestRunning}
-                      testStatus={state.status}
-                      currentEngineAction={state.currentEngineAction}
-                      hasRunCompleted={state.hasRunCompleted}
-                      isInitializing={state.isInitializing}
-                      liveFrame={state.liveFrame}
-                      onPause={pauseTest}
-                      onResume={resumeTest}
-                      onStop={stopTest}
-                      onSaveSessionToHistory={handleSaveSessionToHistory}
-                    />
+                    {/* 50/50 Split View - Browser + Telemetry */}
+                    <div className="grid grid-cols-2 gap-6 flex-1 min-h-0">
+                      <BrowserPanel
+                        currentUrl={state.currentUrl || targetUrl}
+                        frame={state.latestFrame}
+                        isConnected={state.isConnected}
+                        isTestRunning={state.isTestRunning}
+                        testStatus={state.status}
+                        hasRunCompleted={state.hasRunCompleted}
+                        isInitializing={state.isInitializing}
+                        liveFrame={state.liveFrame}
+                        onPause={pauseTest}
+                        onResume={resumeTest}
+                        onStop={stopTest}
+                      />
+                      <TelemetryPanel
+                        telemetry={state.telemetry}
+                        browserConsole={state.browserConsole}
+                        errors={{ incidents: state.incidents, reports: state.reports }}
+                        isTestRunning={state.isTestRunning}
+                        testStatus={state.status}
+                        currentEngineAction={state.currentEngineAction}
+                      />
+                    </div>
                   </>
                 )}
-              </div>
+              </main>
             </div>
           }
         />
-<Route
+        <Route
           path="/history"
           element={
             <div className="flex h-screen w-screen bg-white">
@@ -290,21 +302,15 @@ const location = useLocation();
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              <div className="flex flex-1">
+              <main className="flex-1 flex flex-col p-6 gap-6 bg-gray-50 overflow-hidden">
                 <SavedEvaluationSafaris />
-              </div>
+              </main>
             </div>
           }
         />
         <Route
           path="*"
-          element={
-            hasValidSession ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
+          element={<Navigate to="/dashboard" replace />}
         />
       </Routes>
     </AuthGuard>
