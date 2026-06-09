@@ -3,6 +3,7 @@ import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
+import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
 
 export class PlaywrightBrowserEngine implements BrowserEngine {
   constructor(private readonly findingRepo?: FindingRepository) {}
@@ -46,6 +47,12 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
 public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ completed: boolean; reason: string }> {
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo);
+    
+    // 🚨 FIX: Register the actual AutonomousExplorationEngine with socket handlers
+    // so pause/stop/resume commands work correctly when user clicks buttons
+    setActiveEngine(this.activeEngine);
+    console.log('[PlaywrightBrowserEngine] ✅ Registered activeEngine with socket handlers');
+    
     this.activeBrowser = await chromium.launch({ headless: true });
     this.activeContext = await this.activeBrowser.newContext({
       viewport: { width: 1440, height: 900 },
@@ -59,6 +66,9 @@ public async run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ comp
     } finally {
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       await this.cleanupResources();
+      // 🚨 FIX: Clear the registered engine after run completes
+      setActiveEngine(null);
+      console.log('[PlaywrightBrowserEngine] 🧹 Cleared activeEngine from socket handlers');
       this.activeEngine = null;
     }
     return result;

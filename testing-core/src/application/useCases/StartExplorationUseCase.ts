@@ -193,12 +193,12 @@ export class StartExplorationUseCase {
             bugsByCategory: {},
         };
 
-        this.state.active = true;
+this.state.active = true;
 
-        // Register the active engine so sockets can control it
-        console.log('[UseCase] 🔧 Calling setActiveEngine with browserEngine');
-        setActiveEngine(this.browserEngine);
-        console.log('[UseCase] ✅ setActiveEngine call complete');
+        // 🚨 FIX: Don't register engine here - PlaywrightBrowserEngine.run() will register
+        // the actual AutonomousExplorationEngine after it's created internally.
+        // The previous code was registering the wrong reference (before inner engine existed).
+        console.log('[UseCase] 🔧 Engine will be registered inside run() after initialization');
 
         this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),
