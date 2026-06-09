@@ -8,7 +8,7 @@ export interface DashboardState {
   isLaunching: boolean;
   isTestRunning: boolean;
   isThinking: boolean; // 👈 Thinking indicator state
-  status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
+  status: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'CRASHED' | 'EXHAUSTED'; // Full test status
   hasRunCompleted: boolean; // 👈 True after first test run completes
   currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
   isInitializing: boolean; // 👈 True when test started but no frame received yet
@@ -43,7 +43,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
-  const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED'>('IDLE');
+const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'CRASHED' | 'EXHAUSTED'>('IDLE');
   const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
@@ -160,23 +160,34 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
   };
 
-  // 👇 ADDED: Exposed Control Actions
+// 👇 ADDED: Exposed Control Actions
   const pauseTest = () => {
+    console.log('[Controller] pauseTest called, status:', status);
     if (status === 'RUNNING') {
-      (gateway as any).pauseTest();
+      console.log('[Controller] Status is RUNNING, emitting pause-test');
+      gateway.pauseTest();
+    } else {
+      console.log('[Controller] ❌ pauseTest called but status is', status, '(need RUNNING)');
     }
   };
 
   const resumeTest = () => {
+    console.log('[Controller] resumeTest called, status:', status);
     if (status === 'PAUSED') {
-      (gateway as any).resumeTest();
+      console.log('[Controller] Status is PAUSED, emitting resume-test');
+      gateway.resumeTest();
+    } else {
+      console.log('[Controller] ❌ resumeTest called but status is', status, '(need PAUSED)');
     }
   };
 
   const stopTest = () => {
+    console.log('[Controller] stopTest called, status:', status);
     if (status === 'RUNNING' || status === 'PAUSED') {
-      (gateway as any).stopTest();
-      // We don't manually set to IDLE here, we wait for the terminal telemetry event to confirm it stopped
+      console.log('[Controller] Status is', status, ', emitting stop-test');
+      gateway.stopTest();
+    } else {
+      console.log('[Controller] ❌ stopTest called but status is', status, '(need RUNNING or PAUSED)');
     }
   };
 

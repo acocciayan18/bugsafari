@@ -107,14 +107,17 @@ public connect(): void {
 
   // Flow Control Methods
   public pauseTest(): void {
+    console.log('[Gateway] pauseTest: emitting pause-test, socket connected:', this.socket.connected);
     this.socket.emit('pause-test');
   }
 
   public resumeTest(): void {
+    console.log('[Gateway] resumeTest: emitting resume-test, socket connected:', this.socket.connected);
     this.socket.emit('resume-test');
   }
 
   public stopTest(): void {
+    console.log('[Gateway] stopTest: emitting stop-test, socket connected:', this.socket.connected);
     this.socket.emit('stop-test');
   }
 

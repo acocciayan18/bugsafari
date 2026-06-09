@@ -12,8 +12,8 @@ import type { StressScenario } from '../scenarios/types.js';
 import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, formBypasser, networkSaboteur } from '../scenarios/index.js';
 import { classifyInputElement } from '../scenarios/fuzzing/elementClassifier.js';
 import { getStrategyByCategory } from '../scenarios/fuzzing/strategies/index.js';
-import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
-import { setupBrowserConsoleListener } from '../../infrastructure/monitoring/browserConsoleListener.js';
+import { setupStabilityMonitoring } from '../../bugs/listeners/stabilityMonitor.js';
+import { setupBrowserConsoleListener } from '../../bugs/listeners/browserConsoleListener.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 

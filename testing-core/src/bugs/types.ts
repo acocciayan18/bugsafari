@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { ScoredElement } from '../domain/services/RiskScorer.js';
-import type { ActionBuffer } from '../infrastructure/monitoring/actionBuffer.js';
+import type { ActionBuffer } from './listeners/actionBuffer.js';
 import type { TelemetryHub } from '../infrastructure/monitoring/socketServer.js';
 
 export type BugClass =
@@ -48,4 +48,3 @@ export interface BugFinder {
    */
   run(ctx: BugContext): Promise<BugFinding[]>;
 }
-

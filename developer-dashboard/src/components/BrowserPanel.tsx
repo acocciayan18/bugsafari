@@ -10,7 +10,7 @@ interface BrowserPanelProps {
     frame: string | null;
     isConnected: boolean;
     isTestRunning: boolean;
-    testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED';
+    testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'CRASHED' | 'EXHAUSTED';
     hasRunCompleted?: boolean;
     isInitializing?: boolean;
     liveFrame?: string | null;
@@ -180,7 +180,7 @@ export default function BrowserPanel({
 
     return (
         <div className="flex flex-col h-full w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            {/* HEADER */}
+{/* HEADER */}
             <div className="flex items-center justify-between shrink-0 border-b border-gray-200 bg-white px-4 py-2">
                 <div className="flex items-center gap-3">
                     {/* Window Controls */}
@@ -190,10 +190,27 @@ export default function BrowserPanel({
                         <span className="h-3 w-3 rounded-full bg-gray-300" />
                     </div>
 
-                    {/* Title */}
-                    <span className="text-sm font-semibold text-gray-900">
-                        HEADLESS BROWSER
-                    </span>
+                    {/* URL Bar */}
+                    <div className="flex items-center gap-2 flex-1 max-w-md">
+                        <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 flex-1 min-w-0">
+                            {/* Lock icon for HTTPS */}
+                            {currentUrl && currentUrl.startsWith('https://') && (
+                                <svg className="h-3.5 w-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                            )}
+                            {/* Globe icon for HTTP */}
+                            {currentUrl && !currentUrl.startsWith('https://') && (
+                                <svg className="h-3.5 w-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                                </svg>
+                            )}
+                            {/* URL Display */}
+                            <span className="text-xs font-mono text-gray-700 truncate">
+                                {currentUrl || 'Enter target URL to start'}
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -271,7 +288,7 @@ export default function BrowserPanel({
                 />
             </div>
 
-            {/* CONTROL BAR */}
+{/* CONTROL BAR - Status display only, controls are in ControlPanel */}
             <div className="flex items-center justify-between shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-2">
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-gray-600">
@@ -282,46 +299,6 @@ export default function BrowserPanel({
                         {testStatus}
                     </span>
                 </div>
-
-                {/* Control Buttons */}
-                {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
-                    <div className="flex items-center gap-2">
-                        {testStatus === 'RUNNING' && onPause && (
-                            <button
-                                onClick={onPause}
-                                className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                            >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                                Pause
-                            </button>
-                        )}
-                        {testStatus === 'PAUSED' && onResume && (
-                            <button
-                                onClick={onResume}
-                                className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
-                            >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                </svg>
-                                Resume
-                            </button>
-                        )}
-                        {onStop && (
-                            <button
-                                onClick={onStop}
-                                className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
-                            >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                                </svg>
-                                Stop
-                            </button>
-                        )}
-                    </div>
-                )}
             </div>
         </div>
     );

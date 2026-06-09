@@ -194,9 +194,11 @@ export class StartExplorationUseCase {
         };
 
         this.state.active = true;
-        
+
         // Register the active engine so sockets can control it
-        setActiveEngine(this.browserEngine); 
+        console.log('[UseCase] 🔧 Calling setActiveEngine with browserEngine');
+        setActiveEngine(this.browserEngine);
+        console.log('[UseCase] ✅ setActiveEngine call complete');
 
         this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),

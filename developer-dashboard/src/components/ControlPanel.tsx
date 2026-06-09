@@ -150,12 +150,15 @@ export default function ControlPanel({
             {isTestRunning ? 'RUNNING' : testStatus === 'PAUSED' ? 'PAUSED' : 'READY'}
           </span>
 
-          {/* Control Buttons - Show when test is running or paused */}
+{/* Engine Control Buttons - Show based on testStatus, not isTestRunning */}
           {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
             <>
               {testStatus === 'RUNNING' && onPause && (
                 <button
-                  onClick={onPause}
+                  onClick={() => {
+                    console.log('[UI] PAUSE button clicked, calling onPause handler');
+                    onPause();
+                  }}
                   className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -166,7 +169,10 @@ export default function ControlPanel({
               )}
               {testStatus === 'PAUSED' && onResume && (
                 <button
-                  onClick={onResume}
+                  onClick={() => {
+                    console.log('[UI] RESUME button clicked, calling onResume handler');
+                    onResume();
+                  }}
                   className="flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 hover:bg-green-100 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -177,7 +183,10 @@ export default function ControlPanel({
               )}
               {onStop && (
                 <button
-                  onClick={onStop}
+                  onClick={() => {
+                    console.log('[UI] STOP button clicked, calling onStop handler');
+                    onStop();
+                  }}
                   className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

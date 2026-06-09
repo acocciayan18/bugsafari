@@ -78,7 +78,7 @@ interface TelemetryPanelProps {
         reports: ForensicCrashReport[];
     };
     isTestRunning: boolean;
-    testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED';
+    testStatus?: 'IDLE' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CRASHED' | 'STOPPED' | 'EXHAUSTED';
     currentEngineAction?: string;
 }
 

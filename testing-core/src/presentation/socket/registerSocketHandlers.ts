@@ -34,6 +34,7 @@ export let activeEngineInstance: EngineControl | null = null;
 export function setActiveEngine(engine: EngineControl | null, ownerSocketId: string | null = null) {
   activeEngineInstance = engine;
   activeEngineSession = engine ? { engine, ownerSocketId } : null;
+  console.log('[SocketHandlers] setActiveEngine called:', engine ? '✅ ENGINE SET' : '❌ ENGINE CLEARED');
 }
 
 function emitEngineAction(io: Server, actionExecuted: string, message: string): void {
@@ -64,40 +65,55 @@ export function registerSocketHandlers(io: Server): void {
 
     // Session Control Listeners
     socket.on('pause-test', async () => {
-      console.log('[Socket] Session PAUSED manually');
+      console.log('[Socket] 🔴 pause-test event received');
       await withEngineLock(() => {
-        // 🚨 FIX: Strict null-check at moment of execution (Task 4)
-        if (activeEngineSession?.engine && typeof activeEngineSession.engine.pause === 'function') {
-          activeEngineSession.engine.pause();
-          if (!activeEngineSession.ownerSocketId) {
+        // 🚨 FIX: Use activeEngineInstance instead (Task 4) - setActiveEngine sets this global
+        const engine = activeEngineInstance;
+        console.log('[Socket] activeEngineInstance:', engine ? 'SET' : 'NULL');
+        if (engine && typeof engine.pause === 'function') {
+          console.log('[Socket] 🚀 Calling engine.pause()');
+          engine.pause();
+          if (activeEngineSession && !activeEngineSession.ownerSocketId) {
             activeEngineSession.ownerSocketId = socket.id;
           }
           emitEngineAction(io, 'engine-paused', 'Safari session paused by user.');
+          console.log('[Socket] ✅ Emitted engine-paused telemetry');
+        } else {
+          console.log('[Socket] ❌ Engine pause failed - engine:', engine, 'has pause:', typeof engine?.pause);
         }
       });
     });
 
     socket.on('resume-test', async () => {
-      console.log('[Socket] Session RESUMED manually');
+      console.log('[Socket] 🔵 resume-test event received');
       await withEngineLock(() => {
-        // 🚨 FIX: Strict null-check at moment of execution (Task 4)
-        if (activeEngineSession?.engine && typeof activeEngineSession.engine.resume === 'function') {
-          activeEngineSession.engine.resume();
+        const engine = activeEngineInstance;
+        console.log('[Socket] activeEngineInstance:', engine ? 'SET' : 'NULL');
+        if (engine && typeof engine.resume === 'function') {
+          console.log('[Socket] 🚀 Calling engine.resume()');
+          engine.resume();
           emitEngineAction(io, 'engine-resumed', 'Safari session resumed by user.');
+          console.log('[Socket] ✅ Emitted engine-resumed telemetry');
+        } else {
+          console.log('[Socket] ❌ Engine resume failed - engine:', engine, 'has resume:', typeof engine?.resume);
         }
       });
     });
 
     socket.on('stop-test', async () => {
-      console.log('[Socket] Session STOPPED manually');
+      console.log('[Socket] 🛑 stop-test event received');
       await withEngineLock(async () => {
-        // 🚨 FIX: Strict null-check at moment of execution (Task 4)
-        const engine = activeEngineSession?.engine;
+        const engine = activeEngineInstance;
+        console.log('[Socket] activeEngineInstance:', engine ? 'SET' : 'NULL');
         if (engine && typeof engine.stop === 'function') {
+          console.log('[Socket] 🚀 Calling engine.stop()');
           await Promise.resolve(engine.stop());
           activeEngineSession = null;
           activeEngineInstance = null;
           emitEngineAction(io, 'engine-stopped', 'Safari session stopped by user.');
+          console.log('[Socket] ✅ Emitted engine-stopped telemetry');
+        } else {
+          console.log('[Socket] ❌ Engine stop failed - engine:', engine, 'has stop:', typeof engine?.stop);
         }
       });
     });
