@@ -55,6 +55,8 @@ function isActualBug(bug: { type?: string; meta?: Record<string, unknown> }): bo
 
 export class StartExplorationUseCase {
     private currentUserId: string;
+    private currentSessionId: string | null = null;
+    private executionStartTime: number = 0;
 
     constructor(
         private readonly browserEngine: BrowserEngine,
@@ -181,11 +183,11 @@ export class StartExplorationUseCase {
         }
     }
 
-    public async execute(targetUrl: string): Promise<void> {
+public async execute(targetUrl: string): Promise<void> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
 
-        const executionStartTime = new Date();
+        const executionStartTime = Date.now();
         let executionStatus: 'COMPLETED' | 'CRASHED' | 'HALTED' = 'COMPLETED';
         const metrics: ExecutionMetrics = {
             totalActions: 0,
@@ -193,17 +195,42 @@ export class StartExplorationUseCase {
             bugsByCategory: {},
         };
 
+// FIX: Create session in database BEFORE starting test
+        // CRITICAL: This operation MUST NOT block safari initialization
+        // If DB is down, we continue without forensic history - that's acceptable
+        this.currentSessionId = null;
+        if (this.findingRepository) {
+            try {
+                console.log(`[StartExplorationUseCase] Attempting to create session for ${targetUrl}...`);
+                this.currentSessionId = await this.findingRepository.createSession({
+                    targetUrl,
+                    startedAt: new Date().toISOString(),
+                });
+                console.log(`[StartExplorationUseCase] ✓ Session created: ${this.currentSessionId}`);
+            } catch (sessionError) {
+                const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+                console.error(`[StartExplorationUseCase] ⚠️ Session creation failed: ${errorMessage}`);
+                console.warn('[StartExplorationUseCase] Continuing launch WITHOUT forensic history - DB unavailable');
+                // DO NOT re-throw - continue without session tracking
+                // This ensures the safari can still launch even if DB is down
+            }
+        } else {
+            console.log('[StartExplorationUseCase] No findingRepository - running without forensic history');
+        }
+
         this.state.active = true;
         
         // Register the active engine so sockets can control it
         setActiveEngine(this.browserEngine); 
 
-        this.telemetry.emitTelemetry({
+this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),
             type: 'ACTION',
             meta: {
                 actionExecuted: 'engine-started',
                 url: targetUrl,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                sessionId: this.currentSessionId as any,
                 message: `Launching Playwright headless session for ${targetUrl}`,
             },
         });
@@ -258,9 +285,59 @@ export class StartExplorationUseCase {
                 })),
             });
         } finally {
+            const executionDuration = Date.now() - executionStartTime;
+            
+            // FIX: Auto-complete the session with execution duration
+            // This ensures the session record is always persisted, even if user doesn't click Save
+            if (this.currentSessionId && this.findingRepository) {
+                try {
+                    const completedAt = new Date().toISOString();
+                    console.log(`[StartExplorationUseCase] Marking session ${this.currentSessionId} as ${executionStatus}, duration: ${executionDuration}ms`);
+                    
+                    if (executionStatus === 'CRASHED') {
+                        await this.findingRepository.markSessionCrashed(
+                            this.currentSessionId,
+                            completedAt,
+                            `Test ${executionStatus.toLowerCase()} - ${metrics.totalActions} actions executed`
+                        );
+                    } else {
+                        await this.findingRepository.markSessionCompleted(
+                            this.currentSessionId,
+                            completedAt
+                        );
+                    }
+                    
+// Also update the stats with runtime and calculate coverage percentage
+                    const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
+                    const { Types } = await import('mongoose');
+                    
+                    // Get maxActions from config (default 100 if not specified)
+                    const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
+                    
+                    // Calculate coverage percentage (actions executed / maxActions * 100)
+                    const coveragePercentage = Math.min(100, Math.round((metrics.totalActions / maxActions) * 100));
+                    
+                    console.log(`[StartExplorationUseCase] Coverage: ${metrics.totalActions}/${maxActions} = ${coveragePercentage}%`);
+                    
+                    await SessionModel.updateOne(
+                        { _id: new Types.ObjectId(this.currentSessionId) },
+                        { 
+                            $set: { 
+                                'stats.runtimeMs': executionDuration,
+                                'stats.actionsExecuted': metrics.totalActions,
+                                'stats.coveragePercentage': coveragePercentage,
+                                'stats.maxActions': maxActions,
+                            }
+                        }
+                    );
+                } catch (completionError) {
+                    console.error('[StartExplorationUseCase] Failed to complete session:', completionError);
+                }
+            }
+
             this.state.active = false;
+            this.currentSessionId = null;
             setActiveEngine(null);
-            // Auto-save removed - user must manually click "Save to History" button
         }
     }
 }

@@ -1,5 +1,9 @@
 import type { TelemetryGateway } from './TelemetryGateway.js';
 
+export interface BrowserEngineConfig {
+  maxActions?: number;
+}
+
 export interface BrowserEngine {
   run(targetUrl: string, telemetry: TelemetryGateway): Promise<{ completed: boolean; reason: string }>;
   pause?(): void;
@@ -14,4 +18,5 @@ export interface BrowserEngine {
     advice: string;
     timestamp: Date;
   }>;
+  getConfig?(): BrowserEngineConfig;
 }

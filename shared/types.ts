@@ -49,6 +49,8 @@ export interface TelemetryMeta {
   reproductionSteps?: string[];
   // 🧠 Optional parameter allowing the React client state logic to read inference mappings
   aiDiagnostics?: IntelligentDiagnosis;
+  // Session tracking for forensic history
+  sessionId?: string;
 }
 
 export interface TelemetryEvent {

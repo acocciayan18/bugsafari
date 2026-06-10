@@ -70,15 +70,47 @@ public connect(): void {
     this.socket.disconnect();
   }
 
-  public async startTest(targetUrl: string): Promise<void> {
-    const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ url: targetUrl }),
-    });
+public async startTest(targetUrl: string): Promise<void> {
+    console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
+    console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
 
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
+    let errorDetails = '';
+
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ url: targetUrl }),
+      });
+
+      console.log(`[Gateway] Response status: ${response.status}`);
+      console.log(`[Gateway] Response ok: ${response.ok}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Gateway] ❌ Start failed: ${response.status} - ${errorText}`);
+        throw new Error(`Server returned ${response.status} - ${errorText}`);
+      }
+
+      console.log(`[Gateway] ✅ Safari launch accepted`);
+    } catch (error) {
+      // Determine if it's a network/fetch error
+      if (error instanceof TypeError) {
+        // Check for common network errors
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {
+          // This usually means server is down or unreachable
+          console.error(`[Gateway] ❌ Network error - server may be unreachable: ${this.apiBaseUrl}`);
+          console.error(`[Gateway] ❌ Possible causes: Server not running, CORS error, or network issue`);
+          throw new Error(`Cannot reach server at ${this.apiBaseUrl}. Is the backend running?`);
+        }
+        
+        // Generic fetch error
+        console.error(`[Gateway] ❌ Fetch error:`, error.message);
+        throw new Error(`Network error: ${error.message}`);
+      }
+
+      // Re-throw other errors as-is
+      throw error;
     }
   }
 

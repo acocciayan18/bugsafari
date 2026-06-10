@@ -24,13 +24,19 @@ export function registerRoutes(
 // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
   app.post('/api/start-test', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    console.log(`[API] 📥 POST /api/start-test received`);
+    console.log(`[API] Request body:`, JSON.stringify(request.body));
+    console.log(`[API] Auth user: ${request.userId ?? 'guest'}`);
+
     const targetUrl = parseTargetUrl(request.body);
     if (!targetUrl) {
+      console.warn(`[API] ❌ Invalid URL in request`);
       response.status(400).json({ error: 'A valid url is required.' });
       return;
     }
 
     if (useCase.isActive()) {
+      console.warn(`[API] ❌ Safari already running - rejecting request`);
       response.status(429).json({ error: 'A BugSafari run is already active.' });
       return;
     }
@@ -38,12 +44,14 @@ export function registerRoutes(
     // Set the userId from auth middleware - this ensures saved documents use the real operator ID
     if (request.userId) {
       useCase.setUserId(request.userId);
-      console.log(`[API] Set userId for exploration session: ${request.userId}`);
+      console.log(`[API] ✓ Set userId for exploration session: ${request.userId}`);
     } else {
-      console.log(`[API] No authenticated userId - using default for guest session`);
+      console.log(`[API] ℹ️ No authenticated userId - using default for guest session`);
     }
 
+    console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
     response.json({ accepted: true, url: targetUrl });
+    console.log(`[API] 🚀 Starting safari in background...`);
     void useCase.execute(targetUrl);
   });
 

@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
-theme: {
+  theme: {
     extend: { // <--- THIS EXTEND KEY IS MANDATORY
       colors: {
         primary: '#0F172A',   // Navy
@@ -13,6 +13,10 @@ theme: {
       },
       borderRadius: {
         'genesis': '8px',
+      },
+      wordBreak: {
+        'word': 'break-word',
+        'all': 'break-all',
       },
       keyframes: {
         'fade-in': {

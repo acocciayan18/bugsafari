@@ -41,13 +41,13 @@ function getAuthHeaders(): Record<string, string> {
  * @returns Promise<void> - Resolves on success, rejects on failure
  */
 export async function saveSessionToHistory(targetUrl: string): Promise<void> {
-  console.log('[historyService] saveSessionToHistory called with targetUrl:', targetUrl);
+  console.log('[historyService] 📤 saveSessionToHistory called with targetUrl:', targetUrl);
   console.log('[historyService] API_BASE_URL:', API_BASE_URL);
-  
+
   // Validate targetUrl
   if (!targetUrl || typeof targetUrl !== 'string') {
     const error = 'Invalid targetUrl: must be a non-empty string';
-    console.error('[historyService] Validation error:', error);
+    console.error('[historyService] ❌ Validation error:', error);
     throw new Error(error);
   }
 
@@ -55,8 +55,8 @@ export async function saveSessionToHistory(targetUrl: string): Promise<void> {
   console.log('[historyService] Payload prepared:', JSON.stringify({ targetUrl: trimmedUrl }));
 
   try {
-    console.log('[historyService] Sending POST request to /api/history/save-session...');
-    
+    console.log('[historyService] 📤 Sending POST request to /api/history/save-session...');
+
     const response = await fetch(`${API_BASE_URL}/api/history/save-session`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -79,21 +79,21 @@ export async function saveSessionToHistory(targetUrl: string): Promise<void> {
     // Handle errors
     if (!response.ok) {
       const errorMessage = responseData?.error || `Server returned ${response.status}`;
-      console.error('[historyService] Save failed:', errorMessage);
+      console.error('[historyService] ❌ Save failed:', errorMessage);
       throw new Error(errorMessage);
     }
 
-    console.log('[historyService] Session saved successfully!', responseData);
+    console.log('[historyService] ✅ Session saved successfully!', responseData);
     return;
-    
+
   } catch (error) {
     // Log the actual error
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService] Network error - could not reach API:', error.message);
+      console.error('[historyService] ❌ Network error - could not reach API:', error.message);
     } else if (error instanceof Error) {
-      console.error('[historyService] Error:', error.message);
+      console.error('[historyService] ❌ Error:', error.message);
     } else {
-      console.error('[historyService] Unknown error:', error);
+      console.error('[historyService] ❌ Unknown error:', error);
     }
     throw error;
   }

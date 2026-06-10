@@ -15,6 +15,8 @@ export interface ISessionStats {
   pagesVisited: number;
   errorsEncountered: number;
   runtimeMs?: number;
+  coveragePercentage?: number;
+  maxActions?: number;
 }
 
 const sessionSchema = new Schema(
@@ -83,13 +85,15 @@ const sessionSchema = new Schema(
       required: false,
       default: { maxDepth: 5, maxActions: 100, timeout: 30000, headless: true, allowedDomains: [] },
     },
-    stats: {
+stats: {
       type: {
         actionsExecuted: { type: Number, default: 0 },
         findingsFound: { type: Number, default: 0 },
         pagesVisited: { type: Number, default: 0 },
         errorsEncountered: { type: Number, default: 0 },
         runtimeMs: { type: Number, default: 0 },
+        coveragePercentage: { type: Number, default: 0 },
+        maxActions: { type: Number, default: 100 },
       },
       required: false,
       default: {
@@ -98,6 +102,8 @@ const sessionSchema = new Schema(
         pagesVisited: 0,
         errorsEncountered: 0,
         runtimeMs: 0,
+        coveragePercentage: 0,
+        maxActions: 100,
       },
     },
     error: {

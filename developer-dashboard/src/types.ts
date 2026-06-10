@@ -36,6 +36,9 @@ export interface SessionHistoryEntry {
   findingCount: number;
   actionTraceCount: number;
   brainSnapshots: number;
+  runtimeMs?: number;
+  coveragePercentage?: number;
+  maxActions?: number;
 }
 
 

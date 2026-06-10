@@ -12,10 +12,10 @@ import { useDashboardController } from './application/useCases/useDashboardContr
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
+import CommandCenter from './components/CommandCenter';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
 import Sidebar from './components/Sidebar';
-import ControlPanel from './components/ControlPanel';
 import SavedEvaluationSafaris, { type EvaluationSafari } from './components/SavedEvaluationSafaris';
 import type { SessionHistoryEntry } from './types';
 
@@ -146,14 +146,15 @@ const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
 
   const isAuthenticated = !!token && !!user;
 
-  const evaluations = useMemo(() => {
+// Track saved sessions for potential future use (e.g., history view)
+  const _savedEvaluations = useMemo(() => {
     const savedSessions = state.sessionHistory.filter((s) => s.savedManually);
     return savedSessions
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
       .map((session, idx) => transformToEvaluation(session, idx));
   }, [state.sessionHistory]);
 
-  const totalEvaluations = state.sessionHistory.filter((s) => s.savedManually).length;
+  const _totalEvaluations = state.sessionHistory.filter((s) => s.savedManually).length;
 
   const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
@@ -220,15 +221,15 @@ const location = useLocation();
   // ─────────────────────────────────────────────────────────────
   // Protected Routes: /dashboard and /history
   // ─────────────────────────────────────────────────────────────
-  return (
+return (
     <AuthGuard>
       <Routes>
-        <Route
+<Route
           path="/dashboard"
           element={
-<div className="flex h-screen w-screen bg-white">
+            <div className="flex h-screen w-screen bg-white overflow-hidden">
               <Toaster position="top-center" theme="dark" />
-<Sidebar
+              <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
                 onLogout={handleLogout}
@@ -236,44 +237,37 @@ const location = useLocation();
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              <div className="flex flex-1">
-                {activeView === 'history' ? (
-                  <SavedEvaluationSafaris />
-                ) : (
-                  <>
-<ControlPanel
-                      targetUrl={targetUrl}
-                      isTestRunning={state.isTestRunning}
-                      testStatus={state.status}
-                      hasRunCompleted={state.hasRunCompleted}
-                      onStart={(url) => startTest(url)}
-                      onPause={pauseTest}
-                      onResume={resumeTest}
-                      onStop={stopTest}
-                      onSaveSessionToHistory={handleSaveSessionToHistory}
-                    />
-<ClinicalForensicsDashboard
-                      targetUrl={targetUrl}
-                      currentUrl={state.currentUrl}
-                      frameBuffer={state.latestFrame}
-                      telemetry={state.telemetry}
-                      browserConsole={state.browserConsole}
-                      errors={{ incidents: state.incidents, reports: state.reports }}
-                      isConnected={state.isConnected}
-                      isTestRunning={state.isTestRunning}
-                      testStatus={state.status}
-                      currentEngineAction={state.currentEngineAction}
-                      hasRunCompleted={state.hasRunCompleted}
-                      isInitializing={state.isInitializing}
-                      liveFrame={state.liveFrame}
-                      onPause={pauseTest}
-                      onResume={resumeTest}
-                      onStop={stopTest}
-                      onSaveSessionToHistory={handleSaveSessionToHistory}
-                    />
-                  </>
-                )}
-              </div>
+{/* COMMAND CENTER with 3-row layout */}
+              <CommandCenter
+                targetUrl={targetUrl}
+                isTestRunning={state.isTestRunning}
+                testStatus={state.status}
+                hasRunCompleted={state.hasRunCompleted}
+                onStart={startTest}
+                onPause={pauseTest}
+                onResume={resumeTest}
+                onStop={stopTest}
+                onSaveSessionToHistory={handleSaveSessionToHistory}
+              >
+{/* SINGLE: Headless Browser Viewport - Full flex fill */}
+                <div className="flex flex-col min-h-0">
+                  <ClinicalForensicsDashboard
+                    targetUrl={targetUrl}
+                    currentUrl={state.currentUrl}
+                    frameBuffer={state.latestFrame}
+                    telemetry={state.telemetry}
+                    browserConsole={state.browserConsole}
+                    errors={{ incidents: state.incidents, reports: state.reports }}
+                    isConnected={state.isConnected}
+                    isTestRunning={state.isTestRunning}
+                    testStatus={state.status}
+                    currentEngineAction={state.currentEngineAction}
+                    hasRunCompleted={state.hasRunCompleted}
+                    isInitializing={state.isInitializing}
+                    liveFrame={state.liveFrame}
+                  />
+                </div>
+              </CommandCenter>
             </div>
           }
         />

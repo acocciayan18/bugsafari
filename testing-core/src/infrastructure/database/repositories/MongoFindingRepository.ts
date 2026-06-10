@@ -65,12 +65,14 @@ function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
 }
 
 export class MongoFindingRepository implements FindingRepository {
-  public async createSession(input: CreateSessionInput): Promise<string> {
+public async createSession(input: CreateSessionInput): Promise<string> {
+    console.log(`[MongoFindingRepository] 📝 Creating session for: ${input.targetUrl}`);
     const session = await SessionModel.create({
       targetUrl: input.targetUrl,
       status: SessionStatus.RUNNING,
       startedAt: new Date(input.startedAt),
     });
+    console.log(`[MongoFindingRepository] ✅ Session created: ${session._id}`);
     return session._id.toString();
   }
 
@@ -307,7 +309,7 @@ public async save(input: SaveFindingInput): Promise<string> {
                   : session.status === SessionStatus.COMPLETED
                     ? "Completed"
                     : "Running",
-              startedAt:
+startedAt:
                 session.startedAt?.toISOString() ?? new Date().toISOString(),
               finishedAt: session.finishedAt
                 ? session.finishedAt.toISOString()
@@ -317,6 +319,9 @@ public async save(input: SaveFindingInput): Promise<string> {
               findingCount: session.findingCount ?? 0,
               actionTraceCount: session.actionTraceCount ?? 0,
               brainSnapshots,
+              runtimeMs: session.stats?.runtimeMs,
+              coveragePercentage: session.stats?.coveragePercentage,
+              maxActions: session.stats?.maxActions,
             };
           } catch (mapError) {
             console.error("[Repository] Error mapping session:", mapError);

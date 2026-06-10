@@ -8,7 +8,7 @@ export interface DashboardState {
   isLaunching: boolean;
   isTestRunning: boolean;
   isThinking: boolean; // 👈 Thinking indicator state
-  status: 'IDLE' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
+  status: 'READY' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
   hasRunCompleted: boolean; // 👈 True after first test run completes
   currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
   isInitializing: boolean; // 👈 True when test started but no frame received yet
@@ -43,7 +43,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
-  const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED'>('IDLE');
+const [status, setStatus] = useState<'READY' | 'RUNNING' | 'PAUSED'>('READY');
   const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
@@ -79,7 +79,7 @@ const [isInitializing, setIsInitializing] = useState(false); // 👈 True when t
 // 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
-        setStatus('IDLE');
+setStatus('READY');
         setHasRunCompleted(true); // Mark run as completed for Save button gating
         setLiveFrame(null); // 🚨 CRITICAL: Clear frame buffer on test conclusion to prevent stale screenshot
         setIsInitializing(false); // Reset initializing state
@@ -151,9 +151,9 @@ gateway.onLiveFrame((frame) => {
       setIsThinking(false);
       const message = error instanceof Error ? error.message : String(error);
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
-      setIsLaunching(false);
+setIsLaunching(false);
       setIsTestRunning(false);
-      setStatus('IDLE');
+      setStatus('READY');
     }
   };
 
