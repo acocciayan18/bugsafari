@@ -18,8 +18,6 @@ import SignupForm from './components/SignupForm';
 import Sidebar from './components/Sidebar';
 import ControlPanel from './components/ControlPanel';
 import SavedEvaluationSafaris, { type EvaluationSafari } from './components/SavedEvaluationSafaris';
-import BrowserPanel from './components/BrowserPanel';
-import TelemetryPanel from './components/TelemetryPanel';
 import type { SessionHistoryEntry } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -192,17 +190,14 @@ export default function App() {
   const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
   // ─────────────────────────────────────────────────────────────
-  // Public Routes: LandingPage, /login, /signup
+  // Public Routes: LandingPage, /login and /signup
   // ─────────────────────────────────────────────────────────────
   if (location.pathname === '/' || isAuthRoute || !hasValidSession) {
     return (
       <>
         <Toaster position="top-center" theme="dark" />
         <Routes>
-          <Route
-            path="/"
-            element={<LandingPage />}
-          />
+          <Route path="/" element={<LandingPage />} />
           <Route
             path="/login"
             element={
@@ -233,8 +228,11 @@ export default function App() {
         <Route
           path="/dashboard"
           element={
-            <div className="flex h-screen w-screen bg-white">
+            // Step 1: Global 2-column layout - Command Center
+            <div className="flex h-screen w-screen bg-gray-50 text-gray-900">
               <Toaster position="top-center" theme="dark" />
+
+              {/* Left Column: Sidebar - Fixed width, full height, white bg, right border */}
               <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
@@ -243,11 +241,14 @@ export default function App() {
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              <main className="flex-1 flex flex-col p-6 gap-6 bg-gray-50 overflow-hidden">
+
+              {/* Right Column: Main Content - flex-1, p-6, gap-6 */}
+              <div className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
                 {activeView === 'history' ? (
                   <SavedEvaluationSafaris />
                 ) : (
                   <>
+                    {/* Step 2: Control Panel - Top Control Bar */}
                     <ControlPanel
                       targetUrl={targetUrl}
                       isTestRunning={state.isTestRunning}
@@ -259,33 +260,26 @@ export default function App() {
                       onStop={stopTest}
                       onSaveSessionToHistory={handleSaveSessionToHistory}
                     />
-                    {/* 50/50 Split View - Browser + Telemetry */}
-                    <div className="grid grid-cols-2 gap-6 flex-1 min-h-0">
-                      <BrowserPanel
-                        currentUrl={state.currentUrl || targetUrl}
-                        frame={state.latestFrame}
-                        isConnected={state.isConnected}
-                        isTestRunning={state.isTestRunning}
-                        testStatus={state.status}
-                        hasRunCompleted={state.hasRunCompleted}
-                        isInitializing={state.isInitializing}
-                        liveFrame={state.liveFrame}
-                        onPause={pauseTest}
-                        onResume={resumeTest}
-                        onStop={stopTest}
-                      />
-                      <TelemetryPanel
-                        telemetry={state.telemetry}
-                        browserConsole={state.browserConsole}
-                        errors={{ incidents: state.incidents, reports: state.reports }}
-                        isTestRunning={state.isTestRunning}
-                        testStatus={state.status}
-                        currentEngineAction={state.currentEngineAction}
-                      />
-                    </div>
+
+                    {/* Step 3: Clinical Forensics - Split View (Browser + Telemetry) */}
+                    <ClinicalForensicsDashboard
+                      targetUrl={targetUrl}
+                      currentUrl={state.currentUrl}
+                      frameBuffer={state.latestFrame}
+                      telemetry={state.telemetry}
+                      browserConsole={state.browserConsole}
+                      errors={{ incidents: state.incidents, reports: state.reports }}
+                      isConnected={state.isConnected}
+                      isTestRunning={state.isTestRunning}
+                      testStatus={state.status}
+                      currentEngineAction={state.currentEngineAction}
+                      hasRunCompleted={state.hasRunCompleted}
+                      isInitializing={state.isInitializing}
+                      liveFrame={state.liveFrame}
+                    />
                   </>
                 )}
-              </main>
+              </div>
             </div>
           }
         />
@@ -302,9 +296,9 @@ export default function App() {
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              <main className="flex-1 flex flex-col p-6 gap-6 bg-gray-50 overflow-hidden">
+              <div className="flex flex-1">
                 <SavedEvaluationSafaris />
-              </main>
+              </div>
             </div>
           }
         />

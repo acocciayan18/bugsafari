@@ -64,40 +64,73 @@ export function registerSocketHandlers(io: Server): void {
 
     // Session Control Listeners
     socket.on('pause-test', async () => {
-      console.log('[Socket] Session PAUSED manually');
+      console.log('[Socket] Received pause-test from dashboard');
       await withEngineLock(() => {
         // 🚨 FIX: Strict null-check at moment of execution (Task 4)
         if (activeEngineSession?.engine && typeof activeEngineSession.engine.pause === 'function') {
+          console.log('[Socket] Executing pause on engine');
           activeEngineSession.engine.pause();
           if (!activeEngineSession.ownerSocketId) {
             activeEngineSession.ownerSocketId = socket.id;
           }
           emitEngineAction(io, 'engine-paused', 'Safari session paused by user.');
+        } else {
+          console.warn('[Socket] pause-test: No active engine session found or pause not a function');
+          console.warn('[Socket] activeEngineSession:', activeEngineSession);
+          console.warn('[Socket] activeEngineInstance:', activeEngineInstance);
+          // Try fallback to activeEngineInstance
+          if (activeEngineInstance && typeof activeEngineInstance.pause === 'function') {
+            console.log('[Socket] Using fallback activeEngineInstance for pause');
+            activeEngineInstance.pause();
+            emitEngineAction(io, 'engine-paused', 'Safari session paused by user (fallback).');
+          }
         }
       });
     });
 
     socket.on('resume-test', async () => {
-      console.log('[Socket] Session RESUMED manually');
+      console.log('[Socket] Received resume-test from dashboard');
       await withEngineLock(() => {
         // 🚨 FIX: Strict null-check at moment of execution (Task 4)
         if (activeEngineSession?.engine && typeof activeEngineSession.engine.resume === 'function') {
+          console.log('[Socket] Executing resume on engine');
           activeEngineSession.engine.resume();
           emitEngineAction(io, 'engine-resumed', 'Safari session resumed by user.');
+        } else {
+          console.warn('[Socket] resume-test: No active engine session found or resume not a function');
+          // Try fallback to activeEngineInstance
+          if (activeEngineInstance && typeof activeEngineInstance.resume === 'function') {
+            console.log('[Socket] Using fallback activeEngineInstance for resume');
+            activeEngineInstance.resume();
+            emitEngineAction(io, 'engine-resumed', 'Safari session resumed by user (fallback).');
+          }
         }
       });
     });
 
     socket.on('stop-test', async () => {
-      console.log('[Socket] Session STOPPED manually');
+      console.log('[Socket] Received stop-test from dashboard');
       await withEngineLock(async () => {
         // 🚨 FIX: Strict null-check at moment of execution (Task 4)
         const engine = activeEngineSession?.engine;
         if (engine && typeof engine.stop === 'function') {
+          console.log('[Socket] Executing stop on engine');
           await Promise.resolve(engine.stop());
           activeEngineSession = null;
           activeEngineInstance = null;
           emitEngineAction(io, 'engine-stopped', 'Safari session stopped by user.');
+        } else {
+          console.warn('[Socket] stop-test: No active engine session found or stop not a function');
+          console.warn('[Socket] activeEngineSession:', activeEngineSession);
+          console.warn('[Socket] activeEngineInstance:', activeEngineInstance);
+          // Try fallback to activeEngineInstance
+          if (activeEngineInstance && typeof activeEngineInstance.stop === 'function') {
+            console.log('[Socket] Using fallback activeEngineInstance for stop');
+            await Promise.resolve(activeEngineInstance.stop());
+            activeEngineSession = null;
+            activeEngineInstance = null;
+            emitEngineAction(io, 'engine-stopped', 'Safari session stopped by user (fallback).');
+          }
         }
       });
     });

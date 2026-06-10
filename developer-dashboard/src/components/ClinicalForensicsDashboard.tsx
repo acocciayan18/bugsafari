@@ -120,15 +120,14 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
         <div className="flex items-center gap-1.5 text-blue-400 font-bold tracking-wider uppercase text-[10px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
-        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
-          ai.severity === 'CRITICAL' 
-            ? 'bg-red-950/80 border-red-800 text-red-400' 
-            : 'bg-amber-950/80 border-amber-800 text-amber-400'
-        }`}>
+        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${ai.severity === 'CRITICAL'
+          ? 'bg-red-950/80 border-red-800 text-red-400'
+          : 'bg-amber-950/80 border-amber-800 text-amber-400'
+          }`}>
           {ai.severity}
         </span>
       </div>
-      
+
       <div className="space-y-2 text-[11px] leading-relaxed">
         <div>
           <span className="text-slate-400 font-bold">Vulnerability Class:</span>{' '}
@@ -141,7 +140,7 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
         <div className="text-slate-300 text-justify italic font-light mt-1">
           <span className="text-slate-400 not-italic font-bold">Inference Deduction:</span> {ai.explanation}
         </div>
-        
+
         {/* Highlighted Clean Actionable Remediation Box */}
         <div className="mt-3 p-2.5 bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded font-sans text-xs">
           <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-emerald-400 mb-1">
@@ -226,20 +225,20 @@ export default function ClinicalForensicsDashboard({
   const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
       ? telemetry.map((event) => {
-          if (typeof event === 'string') {
-            return { rawText: event, aiDiagnostics: null };
-          }
-          const timestamp = event.timestamp
-            ? new Date(event.timestamp).toTimeString().slice(0, 8)
-            : new Date().toTimeString().slice(0, 8);
-          const type = event.type ?? 'EVENT';
-          const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
-          
-          return {
-            rawText: `${timestamp} [${type}] ${message}`,
-            aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
-          };
-        })
+        if (typeof event === 'string') {
+          return { rawText: event, aiDiagnostics: null };
+        }
+        const timestamp = event.timestamp
+          ? new Date(event.timestamp).toTimeString().slice(0, 8)
+          : new Date().toTimeString().slice(0, 8);
+        const type = event.type ?? 'EVENT';
+        const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+
+        return {
+          rawText: `${timestamp} [${type}] ${message}`,
+          aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+        };
+      })
       : [];
     return events.slice(-100);
   }, [telemetry]);
@@ -254,19 +253,31 @@ export default function ClinicalForensicsDashboard({
   }, [formattedTelemetry]);
 
   // ─────────────────────────────────────────────────────────────
-  // RENDER: Forensic View (55% of screen)
+  // RENDER: Split View - Command Center Layout
+  // Left Panel: Headless Browser | Right Panel: Telemetry Stream
   // ─────────────────────────────────────────────────────────────
 
   return (
-    <section className="w-[55%] flex flex-1 flex-col overflow-y-auto bg-white">
+    // Step 5: Split View - Grid with 2 equal columns
+    <div className="grid grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
 
-      {/* ═══════════════════════════════════════════════════════════════
-          TOP HALF: Browser Frame (Live Feed)
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 min-h-125 overflow-hidden border-b border-slate-200">
-        <div className="h-full overflow-hidden bg-slate-50 p-4">
-<div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-<LiveFeed
+      {/* LEFT PANEL: Headless Browser */}
+      <div className="flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-900">HEADLESS BROWSER</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500">FPS: --</span>
+            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold border-slate-300 bg-white text-slate-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+              READY
+            </span>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
+          <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <LiveFeed
               currentUrl={currentUrl || targetUrl}
               frame={frameBuffer}
               isConnected={isConnected}
@@ -276,468 +287,414 @@ export default function ClinicalForensicsDashboard({
               liveFrame={liveFrame}
             />
           </div>
+        </div>
+      </div>
 
-          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */} 
-          <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-600">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'RUNNING'
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                : testStatus === 'PAUSED'
-                  ? 'border-amber-300 bg-amber-50 text-amber-700'
-                  : 'border-slate-300 bg-slate-50 text-slate-600'
-                }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'RUNNING' ? 'bg-emerald-500 animate-pulse'
-                  : testStatus === 'PAUSED' ? 'bg-amber-500'
-                    : 'bg-slate-400'
-                  }`} />
-                {testStatus}
-              </span>
-            </div>
+      {/* RIGHT PANEL: Telemetry Stream */}
+      <div className="flex flex-col bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50 shrink-0">
+          <span className="text-sm font-bold text-slate-900">LIVE FORENSIC TELEMETRY STREAM</span>
+        </div>
 
-            {/* Control Buttons - Pause/Resume/Stop */}
-            {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
-              <div className="flex items-center gap-2">
-                {testStatus === 'RUNNING' && onPause && (
-                  <button
-                    onClick={onPause}
-                    className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Pause
-                  </button>
+        {/* Terminal Container - fills remaining space */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+
+          {/* Tab Headers */}
+          <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
+            <button
+              onClick={() => setActiveTab('telemetry')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              telemetry live-feed
+            </button>
+            <button
+              onClick={() => setActiveTab('errors')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              errors
+            </button>
+            <button
+              onClick={() => setActiveTab('network')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              network
+            </button>
+            <button
+              onClick={() => setActiveTab('console')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              console
+            </button>
+          </div>
+
+          {/* Terminal Output Container */}
+          <div
+            ref={logContainerRef}
+            className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-slate-200 border-t-0"
+            style={{ scrollBehavior: 'smooth' }}
+          >
+
+            {/* ════════════════════════════════════════
+              TAB: TELEMETRY LIVE-FEED
+              ════════════════════════════════════════ */}
+            {activeTab === 'telemetry' && (
+              <>
+                {isTestRunning ? (
+                  <>
+                    {formattedTelemetry.map((logObj, index) => (
+                      <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
+                        <div
+                          className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
+                            ? 'text-slate-600'
+                            : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                              ? 'text-red-600 font-semibold'
+                              : logObj.rawText.includes('[NETWORK]')
+                                ? 'text-blue-600'
+                                : 'text-slate-800'
+                            }`}
+                        >
+                          {logObj.rawText}
+                        </div>
+
+                        {/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
+                        <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 py-2 text-slate-500">
+                      <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
+                      <span className="font-mono text-xs">
+                        {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
+                      </span>
+                    </div>
+                  </>
+                ) : formattedTelemetry.length === 0 ? (
+                  <div className="text-slate-600 py-4">
+                    <span className="text-slate-800">█</span> Ready for telemetry...
+                  </div>
+                ) : (
+                  <>
+                    {formattedTelemetry.map((logObj, index) => (
+                      <div key={index} className="py-1">
+                        <div
+                          className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
+                            ? 'text-slate-600'
+                            : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                              ? 'text-red-600 font-semibold'
+                              : logObj.rawText.includes('[NETWORK]')
+                                ? 'text-blue-600'
+                                : 'text-slate-800'
+                            }`}
+                        >
+                          {logObj.rawText}
+                        </div>
+                        <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
+                      </div>
+                    ))}
+                    <div className="py-2 text-slate-800">
+                      <span className="text-slate-800">█</span> Ready for telemetry...
+                    </div>
+                  </>
                 )}
-                {testStatus === 'PAUSED' && onResume && (
-                  <button
-                    onClick={onResume}
-                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    </svg>
-                    Resume
-                  </button>
-                )}
-{onStop && (
-                  <button
-                    onClick={onStop}
-                    className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                    </svg>
-                    Stop
-                  </button>
+              </>
+            )}
+
+            {/* ════════════════════════════════════════
+              TAB: ERRORS (Incidents & Crash Reports)
+              ════════════════════════════════════════ */}
+            {activeTab === 'errors' && (
+              <div className="space-y-4 p-2">
+                {errorIncidents.length === 0 && errorReports.length === 0 ? (
+                  <div className="text-slate-500 italic py-4">No errors captured yet.</div>
+                ) : (
+                  <>
+                    {/* INCIDENT CARDS */}
+                    {errorIncidents.map((incident, idx) => {
+                      const incidentKey = `incident-${idx}`;
+                      const metadata = extractErrorMetadata(incident);
+                      const isExpanded = expandedStackTrace[incidentKey];
+
+                      // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
+                      const aiDiagnostics = (incident as any).aiDiagnostics;
+
+                      return (
+                        <div
+                          key={incidentKey}
+                          className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
+                                ⚠
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-sm text-red-900">Forensics (Incident)</div>
+                                <div className="text-[11px] text-red-700 opacity-75">
+                                  {metadata.timestamp.split('T')[1]?.slice(0, 8) || 'Unknown'}
+                                </div>
+                              </div>
+                            </div>
+                            <CopyButton text={incident.reason} label="Error Message" />
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
+                              <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
+                              <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
+                              <div className="text-xs font-mono text-red-900">{metadata.source}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
+                              <div className="text-xs font-mono text-red-900">#{idx}</div>
+                            </div>
+                          </div>
+
+                          <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
+                            <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
+                              {incident.reason}
+                            </div>
+
+                            {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
+                            <AiForensicDiagnosticCard ai={aiDiagnostics} />
+                          </div>
+
+                          {incident.stackTrace && (
+                            <ExpandableCodeBlock
+                              title="Stack Trace"
+                              content={incident.stackTrace}
+                              isExpanded={isExpanded}
+                              onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [incidentKey]: !prev[incidentKey] }))}
+                              className="max-h-96"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* CRASH REPORT CARDS */}
+                    {errorReports.map((report, idx) => {
+                      const reportKey = `report-${idx}`;
+                      const metadata = extractErrorMetadata(report);
+                      const isExpanded = expandedStackTrace[reportKey];
+                      const aiDiagnostics = (report as any).aiDiagnostics;
+
+                      return (
+                        <div
+                          key={reportKey}
+                          className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
+                                🔥
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-sm text-red-900">Console Error</div>
+                                <div className="text-[11px] text-red-700 opacity-75">
+                                  {report.timestamp || 'Unknown'}
+                                </div>
+                              </div>
+                            </div>
+                            <CopyButton text={report.reason} label="Error Message" />
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
+                              <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
+                              <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
+                              <div className="text-xs font-mono text-red-900">{metadata.source}</div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
+                              <div className="text-xs font-mono text-red-900">#{idx}</div>
+                            </div>
+                          </div>
+
+                          <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
+                            <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
+                              {report.reason}
+                            </div>
+
+                            <AiForensicDiagnosticCard ai={aiDiagnostics} />
+                          </div>
+
+                          {report.stackTrace && (
+                            <ExpandableCodeBlock
+                              title="Stack Trace"
+                              content={report.stackTrace}
+                              isExpanded={isExpanded}
+                              onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [reportKey]: !prev[reportKey] }))}
+                              className="max-h-96"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             )}
+
+            {/* ════════════════════════════════════════
+              TAB: NETWORK
+              ════════════════════════════════════════ */}
+            {activeTab === 'network' && (() => {
+              const networkEvents = telemetry
+                .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
+                .slice(-50);
+
+              if (networkEvents.length === 0) {
+                return (
+                  <div className="text-slate-500 py-4">
+                    <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
+                    <div className="text-slate-400 italic text-xs leading-relaxed">
+                      Waiting for network activity...
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3 p-2">
+                  <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
+                  {networkEvents.map((event, idx) => {
+                    const meta = event.meta;
+                    const statusCode = meta?.statusCode;
+                    const url = meta?.url || 'unknown';
+                    const method = meta?.method || 'GET';
+                    const duration = meta?.durationMs;
+                    const message = meta?.message || '';
+                    const aiDiagnostics = meta?.aiDiagnostics || null;
+
+                    const isError = statusCode && statusCode >= 400;
+                    const isServerError = statusCode && statusCode >= 500;
+                    const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
+
+                    const borderColor = isServerError
+                      ? 'border-red-300'
+                      : isClientError
+                        ? 'border-amber-300'
+                        : 'border-slate-300';
+                    const bgColor = isServerError
+                      ? 'bg-red-50'
+                      : isClientError
+                        ? 'bg-amber-50'
+                        : 'bg-white';
+                    const textColor = isError ? 'text-red-700' : 'text-blue-600';
+
+                    return (
+                      <div
+                        key={`network-${idx}`}
+                        className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
+                      >
+                        <div className="px-3 py-2 flex items-center justify-between border-b border-slate-200">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono text-xs font-bold ${textColor}`}>
+                              {method} {statusCode || 'ERR'}
+                            </span>
+                            {duration !== undefined && (
+                              <span className="text-[10px] text-slate-500">
+                                {duration}ms
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {event.timestamp ? new Date(event.timestamp).toTimeString().slice(0, 8) : ''}
+                          </span>
+                        </div>
+                        <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
+                          {url}
+                        </div>
+                        {(message || aiDiagnostics) && (
+                          <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
+                            {message}
+                            <AiForensicDiagnosticCard ai={aiDiagnostics} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* ════════════════════════════════════════
+TAB: CONSOLE (Browser Console Output)
+              ════════════════════════════════════════ */}
+            {activeTab === 'console' && (
+              <div className="space-y-3 p-2">
+                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">📋</span>
+                      <div className="text-xs font-bold text-slate-900">Browser Console Output</div>
+                    </div>
+                    <span className="text-[10px] text-slate-500">Last 50 logs</span>
+                  </div>
+
+                  <div className="max-h-96 overflow-y-auto custom-scrollbar bg-white">
+                    {browserConsole.length === 0 ? (
+                      <div className="text-slate-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
+                    ) : (
+                      <div className="p-3 space-y-2">
+                        <div className="grid grid-cols-1 gap-2 mb-3">
+                          {browserConsole.slice(-50).map((log, idx) => (
+                            <div key={idx} className="text-xs font-mono bg-slate-50 p-3 rounded border border-slate-200 hover:bg-slate-100 transition-colors group">
+                              <div className="flex items-start gap-2 justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-bold text-slate-700 flex-shrink-0 w-6">#{idx + 1}</span>
+                                    <span className={`font-semibold whitespace-pre-wrap break-words ${log.level === 'error' ? 'text-red-600' :
+                                      log.level === 'warn' ? 'text-amber-600' :
+                                        'text-slate-900'
+                                      }`}>
+                                      {log.message}
+                                    </span>
+                                  </div>
+                                  {log.url && (
+                                    <div className="text-slate-600 text-[11px] mt-1 whitespace-pre-wrap break-words font-mono ml-8">
+                                      URL: {log.url}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                  <CopyButton text={`[${log.level}] ${log.message}`} label="Log" />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <ExpandableCodeBlock
+                          title="View Full Console Logs JSON"
+                          content={JSON.stringify(browserConsole.slice(-50), null, 2)}
+                          isExpanded={expandedActionTrail['console']}
+                          onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          BOTTOM HALF: Terminal with Telemetry Tabs
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex h-1/2 shrink-0 flex-col overflow-hidden">
-
-{/* Tab Headers */}
-        <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
-          <button
-            onClick={() => setActiveTab('telemetry')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            telemetry live-feed
-          </button>
-          <button
-            onClick={() => setActiveTab('errors')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            errors
-          </button>
-          <button
-            onClick={() => setActiveTab('network')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            network
-          </button>
-          <button
-            onClick={() => setActiveTab('console')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            console
-          </button>
-        </div>
-
-        {/* Terminal Output Container */}
-        <div
-          ref={logContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-slate-200 border-t-0"
-          style={{ scrollBehavior: 'smooth' }}
-        >
-
-          {/* ════════════════════════════════════════
-              TAB: TELEMETRY LIVE-FEED
-              ════════════════════════════════════════ */}
-          {activeTab === 'telemetry' && (
-            <>
-              {isTestRunning ? (
-                <>
-                  {formattedTelemetry.map((logObj, index) => (
-                    <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
-                      <div
-                        className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-slate-600'
-                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                            ? 'text-red-600 font-semibold'
-                            : logObj.rawText.includes('[NETWORK]')
-                              ? 'text-blue-600'
-                              : 'text-slate-800'
-                          }`}
-                      >
-                        {logObj.rawText}
-                      </div>
-                      
-                      {/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
-                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 py-2 text-slate-500">
-                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
-                    <span className="font-mono text-xs">
-                      {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
-                    </span>
-                  </div>
-                </>
-              ) : formattedTelemetry.length === 0 ? (
-                <div className="text-slate-600 py-4">
-                  <span className="text-slate-800">█</span> Ready for telemetry...
-                </div>
-              ) : (
-                <>
-                  {formattedTelemetry.map((logObj, index) => (
-                    <div key={index} className="py-1">
-                      <div
-                        className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-slate-600'
-                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                            ? 'text-red-600 font-semibold'
-                            : logObj.rawText.includes('[NETWORK]')
-                              ? 'text-blue-600'
-                              : 'text-slate-800'
-                          }`}
-                      >
-                        {logObj.rawText}
-                      </div>
-                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
-                    </div>
-                  ))}
-                  <div className="py-2 text-slate-800">
-                    <span className="text-slate-800">█</span> Ready for telemetry...
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* ════════════════════════════════════════
-              TAB: ERRORS (Incidents & Crash Reports)
-              ════════════════════════════════════════ */}
-          {activeTab === 'errors' && (
-            <div className="space-y-4 p-2">
-              {errorIncidents.length === 0 && errorReports.length === 0 ? (
-                <div className="text-slate-500 italic py-4">No errors captured yet.</div>
-              ) : (
-                <>
-                  {/* INCIDENT CARDS */}
-                  {errorIncidents.map((incident, idx) => {
-                    const incidentKey = `incident-${idx}`;
-                    const metadata = extractErrorMetadata(incident);
-                    const isExpanded = expandedStackTrace[incidentKey];
-                    
-                    // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
-                    const aiDiagnostics = (incident as any).aiDiagnostics;
-
-                    return (
-                      <div
-                        key={incidentKey}
-                        className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
-                              ⚠
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-red-900">Forensics (Incident)</div>
-                              <div className="text-[11px] text-red-700 opacity-75">
-                                {metadata.timestamp.split('T')[1]?.slice(0, 8) || 'Unknown'}
-                              </div>
-                            </div>
-                          </div>
-                          <CopyButton text={incident.reason} label="Error Message" />
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                            <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                            <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                            <div className="text-xs font-mono text-red-900">{metadata.source}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                            <div className="text-xs font-mono text-red-900">#{idx}</div>
-                          </div>
-                        </div>
-
-                        <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                          <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
-                            {incident.reason}
-                          </div>
-                          
-                          {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-
-                        {incident.stackTrace && (
-                          <ExpandableCodeBlock
-                            title="Stack Trace"
-                            content={incident.stackTrace}
-                            isExpanded={isExpanded}
-                            onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [incidentKey]: !prev[incidentKey] }))}
-                            className="max-h-96"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* CRASH REPORT CARDS */}
-                  {errorReports.map((report, idx) => {
-                    const reportKey = `report-${idx}`;
-                    const metadata = extractErrorMetadata(report);
-                    const isExpanded = expandedStackTrace[reportKey];
-                    const aiDiagnostics = (report as any).aiDiagnostics;
-
-                    return (
-                      <div
-                        key={reportKey}
-                        className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
-                              🔥
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-red-900">Console Error</div>
-                              <div className="text-[11px] text-red-700 opacity-75">
-                                {report.timestamp || 'Unknown'}
-                              </div>
-                            </div>
-                          </div>
-                          <CopyButton text={report.reason} label="Error Message" />
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                            <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                            <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                            <div className="text-xs font-mono text-red-900">{metadata.source}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                            <div className="text-xs font-mono text-red-900">#{idx}</div>
-                          </div>
-                        </div>
-
-                        <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                          <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
-                            {report.reason}
-                          </div>
-                          
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-
-                        {report.stackTrace && (
-                          <ExpandableCodeBlock
-                            title="Stack Trace"
-                            content={report.stackTrace}
-                            isExpanded={isExpanded}
-                            onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [reportKey]: !prev[reportKey] }))}
-                            className="max-h-96"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════
-              TAB: NETWORK
-              ════════════════════════════════════════ */}
-          {activeTab === 'network' && (() => {
-            const networkEvents = telemetry
-              .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
-              .slice(-50);
-
-            if (networkEvents.length === 0) {
-              return (
-                <div className="text-slate-500 py-4">
-                  <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
-                  <div className="text-slate-400 italic text-xs leading-relaxed">
-                    Waiting for network activity...
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div className="space-y-3 p-2">
-                <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
-                {networkEvents.map((event, idx) => {
-                  const meta = event.meta;
-                  const statusCode = meta?.statusCode;
-                  const url = meta?.url || 'unknown';
-                  const method = meta?.method || 'GET';
-                  const duration = meta?.durationMs;
-                  const message = meta?.message || '';
-                  const aiDiagnostics = meta?.aiDiagnostics || null;
-
-                  const isError = statusCode && statusCode >= 400;
-                  const isServerError = statusCode && statusCode >= 500;
-                  const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
-
-                  const borderColor = isServerError
-                    ? 'border-red-300'
-                    : isClientError
-                      ? 'border-amber-300'
-                      : 'border-slate-300';
-                  const bgColor = isServerError
-                    ? 'bg-red-50'
-                    : isClientError
-                      ? 'bg-amber-50'
-                      : 'bg-white';
-                  const textColor = isError ? 'text-red-700' : 'text-blue-600';
-
-                  return (
-                    <div
-                      key={`network-${idx}`}
-                      className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
-                    >
-                      <div className="px-3 py-2 flex items-center justify-between border-b border-slate-200">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-mono text-xs font-bold ${textColor}`}>
-                            {method} {statusCode || 'ERR'}
-                          </span>
-                          {duration !== undefined && (
-                            <span className="text-[10px] text-slate-500">
-                              {duration}ms
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {event.timestamp ? new Date(event.timestamp).toTimeString().slice(0, 8) : ''}
-                        </span>
-                      </div>
-                      <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
-                        {url}
-                      </div>
-                      {(message || aiDiagnostics) && (
-                        <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
-                          {message}
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* ════════════════════════════════════════
-TAB: CONSOLE (Browser Console Output)
-              ════════════════════════════════════════ */}
-          {activeTab === 'console' && (
-            <div className="space-y-3 p-2">
-              <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">📋</span>
-                  <div className="text-xs font-bold text-slate-900">Browser Console Output</div>
-                  </div>
-                  <span className="text-[10px] text-slate-500">Last 50 logs</span>
-                </div>
-
-<div className="max-h-96 overflow-y-auto custom-scrollbar bg-white">
-                  {browserConsole.length === 0 ? (
-                    <div className="text-slate-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
-                  ) : (
-                    <div className="p-3 space-y-2">
-                      <div className="grid grid-cols-1 gap-2 mb-3">
-                        {browserConsole.slice(-50).map((log, idx) => (
-                          <div key={idx} className="text-xs font-mono bg-slate-50 p-3 rounded border border-slate-200 hover:bg-slate-100 transition-colors group">
-                            <div className="flex items-start gap-2 justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-bold text-slate-700 flex-shrink-0 w-6">#{idx + 1}</span>
-<span className={`font-semibold whitespace-pre-wrap break-words ${
-                                    log.level === 'error' ? 'text-red-600' :
-                                    log.level === 'warn' ? 'text-amber-600' :
-                                    'text-slate-900'
-                                  }`}>
-                                    {log.message}
-                                  </span>
-                                </div>
-                                {log.url && (
-                                  <div className="text-slate-600 text-[11px] mt-1 whitespace-pre-wrap break-words font-mono ml-8">
-                                    URL: {log.url}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-<CopyButton text={`[${log.level}] ${log.message}`} label="Log" />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <ExpandableCodeBlock
-                        title="View Full Console Logs JSON"
-                        content={JSON.stringify(browserConsole.slice(-50), null, 2)}
-                        isExpanded={expandedActionTrail['console']}
-                        onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
-                      />
-                    </div>
-)}
-                </div>
-              </div>
-            </div>
-          )}
-
-</div>
-      </div>
-    </section>
+    </div>
+    // </div >
   );
 }

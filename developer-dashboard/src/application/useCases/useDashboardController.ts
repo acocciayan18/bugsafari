@@ -161,22 +161,39 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   };
 
   // 👇 ADDED: Exposed Control Actions
+  // FIX: Use isTestRunning as additional guard, and also check connected status for robustness
   const pauseTest = () => {
-    if (status === 'RUNNING') {
-      (gateway as any).pauseTest();
+    // Check both status and isTestRunning to handle edge cases
+    if ((status === 'RUNNING' || isTestRunning) && isConnected) {
+      console.log('[DashboardController] Sending pause-test to engine');
+      try {
+        (gateway as any).pauseTest();
+      } catch (err) {
+        console.error('[DashboardController] Failed to pause test:', err);
+      }
     }
   };
 
   const resumeTest = () => {
-    if (status === 'PAUSED') {
-      (gateway as any).resumeTest();
+    if ((status === 'PAUSED' || isTestRunning) && isConnected) {
+      console.log('[DashboardController] Sending resume-test to engine');
+      try {
+        (gateway as any).resumeTest();
+      } catch (err) {
+        console.error('[DashboardController] Failed to resume test:', err);
+      }
     }
   };
 
   const stopTest = () => {
-    if (status === 'RUNNING' || status === 'PAUSED') {
-      (gateway as any).stopTest();
-      // We don't manually set to IDLE here, we wait for the terminal telemetry event to confirm it stopped
+    if ((status === 'RUNNING' || status === 'PAUSED' || isTestRunning) && isConnected) {
+      console.log('[DashboardController] Sending stop-test to engine');
+      try {
+        (gateway as any).stopTest();
+        // We don't manually set to IDLE here, we wait for the terminal telemetry event to confirm it stopped
+      } catch (err) {
+        console.error('[DashboardController] Failed to stop test:', err);
+      }
     }
   };
 

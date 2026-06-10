@@ -194,9 +194,11 @@ export class StartExplorationUseCase {
         };
 
         this.state.active = true;
-        
+
         // Register the active engine so sockets can control it
-        setActiveEngine(this.browserEngine); 
+        // Note: browserEngine here is PlaywrightBrowserEngine which delegates to its internal activeEngine
+        setActiveEngine(this.browserEngine);
+        console.log('[StartExplorationUseCase] Engine registered for control');
 
         this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),
@@ -260,6 +262,7 @@ export class StartExplorationUseCase {
         } finally {
             this.state.active = false;
             setActiveEngine(null);
+            console.log('[StartExplorationUseCase] Engine unregistered');
             // Auto-save removed - user must manually click "Save to History" button
         }
     }

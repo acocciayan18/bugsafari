@@ -22,5 +22,9 @@ export interface EngineGateway {
   startTest(targetUrl: string): Promise<void>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
+  // Flow Control Methods
+  pauseTest(): void;
+  resumeTest(): void;
+  stopTest(): void;
 }
 
