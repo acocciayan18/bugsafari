@@ -1,6 +1,6 @@
 // Control Panel Component - Command Center Layout
-// Top control bar with Optimization Matrix dropdown + URL row + Engine controls
-// Part of the 2-column layout: Sidebar | ControlPanel + SplitView
+// Refactored to horizontal top bar with dropdown matrix
+// Part of 2-column layout: Sidebar | Main Content
 
 import { useState, type FormEvent } from 'react';
 
@@ -125,14 +125,20 @@ export default function ControlPanel({
           )}
         </div>
 
-        {/* Right Side: Engine Control Buttons */}
+        {/* Right: Engine Control Buttons */}
         <div className="flex items-center gap-3">
           {/* Status Badge */}
-          <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${isTestRunning
+          <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${isTestRunning
             ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-            : 'border-slate-300 bg-white text-slate-600'
+            : testStatus === 'PAUSED'
+              ? 'border-amber-300 bg-amber-50 text-amber-700'
+              : 'border-gray-300 bg-white text-gray-600'
             }`}>
-            <span className={`h-2 w-2 rounded-full ${isTestRunning ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+            <span className={`h-2 w-2 rounded-full ${isTestRunning
+              ? 'bg-emerald-500 animate-pulse'
+              : testStatus === 'PAUSED'
+                ? 'bg-amber-500'
+                : 'bg-gray-400'
               }`} />
             {isTestRunning ? 'RUNNING' : 'READY'}
           </span>
@@ -218,7 +224,10 @@ export default function ControlPanel({
         <button
           onClick={() => handleStartTest()}
           disabled={isTestRunning}
-          className={`w-72 flex items-center justify-center gap-2 rounded-none px-4 py-3 text-sm font-bold ${isTestRunning ? 'bg-slate-400 text-slate-200 cursor-not-allowed' : 'bg-black text-white hover:bg-slate-800'}`}
+          className={`flex items-center justify-center gap-2 rounded-lg px-6 py-3 text-sm font-bold ${isTestRunning
+            ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+            : 'bg-gray-900 text-white hover:bg-gray-800'
+            }`}
           title={isTestRunning ? 'Action Locked: Testing session is currently executing.' : undefined}
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

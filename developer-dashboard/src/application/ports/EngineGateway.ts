@@ -20,6 +20,9 @@ export interface EngineGateway {
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;
   removeAllListeners(): void;
   startTest(targetUrl: string): Promise<void>;
+  pauseTest(): void;
+  resumeTest(): void;
+  stopTest(): void;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   // Flow Control Methods
