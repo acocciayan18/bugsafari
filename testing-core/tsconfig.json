@@ -12,7 +12,13 @@
     "rootDir": "..",
     "declaration": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "../shared/types.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../shared/types.ts",
+    "src/domain/**/*.ts"
+  ]
 }

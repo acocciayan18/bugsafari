@@ -4,6 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { ReproducibleSteps } from './ReproducibleSteps';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
@@ -99,6 +100,63 @@ type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'CLEAR';
 
 const ARROW = '\u203A';
 
+// Action type icons for human-readable display
+const ACTION_ICONS: Record<string, string> = {
+  CLICK: '🔍',
+  INPUT: '⌨️',
+  HOVER: '👆',
+  NAVIGATION: '🌍',
+};
+
+// Parse step string into structured object for display
+interface ParsedStep {
+  stepNumber: number;
+  actionType: string;
+  actionIcon: string;
+  selector: string;
+  url: string;
+  payload?: string;
+}
+
+function parseStepString(stepStr: string): ParsedStep | null {
+  // Format: "Step N: ACTION selector at URL with payload X"
+  const match = stepStr.match(/Step (\d+): (\w+)\s+(.+?)\s+at\s+(.+?)(?:\s+with\s+payload\s+"(.+)")?$/i);
+  if (!match) return null;
+  const [, stepNum, action, selector, url, payload] = match;
+  return {
+    stepNumber: parseInt(stepNum, 10),
+    actionType: action.toUpperCase(),
+    actionIcon: ACTION_ICONS[action.toUpperCase()] || '•',
+    selector: selector.trim(),
+    url: url.trim(),
+    payload: payload?.trim(),
+  };
+}
+
+// Human-readable step row component
+function StepRow({ step, stepStr }: { step?: ParsedStep | null; stepStr: string }) {
+  if (!step) {
+    // Fallback: show raw step if parsing failed
+    return <div className="font-mono text-xs text-slate-400">{stepStr}</div>;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1">
+      <span className="text-sm">{step.actionIcon}</span>
+      <span className="font-semibold text-blue-400">{step.actionType}</span>
+      <span className="text-slate-500">on</span>
+      <span className="font-mono text-yellow-300">{step.selector}</span>
+      {step.payload && (
+        <>
+          <span className="text-slate-500">with</span>
+          <span className="font-mono text-red-300 max-w-[180px] truncate" title={step.payload}>
+            {step.payload.length > 40 ? step.payload.slice(0, 40) + '...' : step.payload}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SavedEvaluationSafaris() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<SeverityFilter>('ALL');
@@ -113,52 +171,65 @@ export default function SavedEvaluationSafaris() {
 
   const { token } = useAuth();
 
-useEffect(() => {
-    async function fetchHistory() {
-      try {
-        console.log('[SavedEvaluations] Starting fetch with token:', token ? 'token present' : 'NO TOKEN');
-        
-        const response = await fetch(`${API_BASE_URL}/api/history`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        console.log('[SavedEvaluations] Response status:', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('[SavedEvaluations] Error response:', errorText);
-          throw new Error(`Failed to fetch history: ${response.status}`);
-        }
-
-        const data: SavedSafariDocument[] = await response.json();
-        console.log('[SavedEvaluations] Raw API response count:', data?.length ?? 0);
-        
-        if (!data || data.length === 0) {
-          console.log('[SavedEvaluations] No history found for this user - showing empty state');
-        }
-        
-        const transformed = transformToEvaluations(data || []);
-        console.log('[SavedEvaluations] Transformed safaris:', transformed.length);
-        setSafariData(transformed);
-      } catch (err) {
-        setFetchError(err instanceof Error ? err.message : 'Unknown error');
-        console.error('[SavedEvaluations] Fetch error:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    if (token) {
-      fetchHistory();
-    } else {
-      console.log('[SavedEvaluations] No token, user not authenticated');
-      setIsLoading(false);
-    }
+  // Fetch from API on mount
+  useEffect(() => {
+    fetchHistory();
   }, [token]);
 
-// Use only API data (fetched from database)
+  // Refetch function exposed for manual refresh
+  const fetchHistory = async (showLoading = true) => {
+    if (!token) {
+      console.log('[SavedEvaluations] No token, user not authenticated');
+      setIsLoading(false);
+      return;
+    }
+
+    if (showLoading) {
+      setIsLoading(true);
+    }
+    setFetchError(null);
+
+    try {
+      console.log('[SavedEvaluations] Starting fetch with token:', token ? 'token present' : 'NO TOKEN');
+
+      const response = await fetch(`${API_BASE_URL}/api/history`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      console.log('[SavedEvaluations] Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[SavedEvaluations] Error response:', errorText);
+        throw new Error(`Failed to fetch history: ${response.status}`);
+      }
+
+      const data: SavedSafariDocument[] = await response.json();
+      console.log('[SavedEvaluations] Raw API response count:', data?.length ?? 0);
+
+      if (!data || data.length === 0) {
+        console.log('[SavedEvaluations] No history found for this user - showing empty state');
+      }
+
+      const transformed = transformToEvaluations(data || []);
+      console.log('[SavedEvaluations] Transformed safaris:', transformed.length);
+      setSafariData(transformed);
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Unknown error');
+      console.error('[SavedEvaluations] Fetch error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Expose refresh function for button
+  const handleRefresh = () => {
+    fetchHistory(true);
+  };
+
+  // Use only API data (fetched from database)
   const displayEvaluations = safariData;
   const displayTotalCount = safariData.length;
 
@@ -214,9 +285,21 @@ useEffect(() => {
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
-            <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.82a6.004 6.004 0 00-11.714 0c-.41.405-.714 1.007-.714 1.694v.783c0 2.633 2.146 4.77 4.786 4.77h4.285c2.64 0 4.786-2.137 4.786-4.77v-.783c0-.687-.304-1.289-.714-1.694zM9 17.25h.008v.75H9v-.75z" />
+          {/* Refresh Button */}
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50"
+            title="Refresh history"
+          >
+            <svg
+              className={`h-5 w-5 text-slate-600 ${isLoading ? 'animate-spin' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
           <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
@@ -253,11 +336,10 @@ useEffect(() => {
                   <button
                     key={filter}
                     onClick={() => setActiveFilter(filter)}
-                    className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                      activeFilter === filter
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                    className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${activeFilter === filter
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                   >
                     {filter}
                   </button>
@@ -265,7 +347,7 @@ useEffect(() => {
               </div>
             </div>
           </div>
-</div>
+        </div>
 
         <div className="divide-y divide-slate-200">
           {isLoading ? (
@@ -280,7 +362,7 @@ useEffect(() => {
               </svg>
               <span className="text-sm font-medium text-red-600">Failed to load history</span>
               <span className="text-xs text-slate-500">{fetchError}</span>
-              <button 
+              <button
                 onClick={() => window.location.reload()}
                 className="mt-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
               >
@@ -294,7 +376,7 @@ useEffect(() => {
               </svg>
               <span className="text-sm text-slate-600 font-medium">Please log in to view history</span>
               <span className="text-xs text-slate-500">Log in or sign up to access your saved evaluations</span>
-              <button 
+              <button
                 onClick={() => window.location.href = '/login'}
                 className="mt-2 rounded-md bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-700"
               >
@@ -335,21 +417,19 @@ useEffect(() => {
                       </div>
                       <div className="flex items-center gap-4">
                         <div
-                          className={`flex h-6 items-center rounded border px-2 text-xs font-medium ${
-                            evalItem.severity === 'CRITICAL'
-                              ? 'border-red-400 text-red-600'
-                              : evalItem.severity === 'HIGH'
+                          className={`flex h-6 items-center rounded border px-2 text-xs font-medium ${evalItem.severity === 'CRITICAL'
+                            ? 'border-red-400 text-red-600'
+                            : evalItem.severity === 'HIGH'
                               ? 'border-yellow-400 text-yellow-600'
                               : 'border-green-400 text-green-600'
-                          }`}
+                            }`}
                         >
                           {evalItem.severityCount} {evalItem.severity}
                         </div>
                         <div className="flex h-6 w-6 items-center justify-center">
                           <svg
-                            className={`h-4 w-4 text-slate-400 transition-transform ${
-                              isExpanded ? 'rotate-180' : ''
-                            }`}
+                            className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''
+                              }`}
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -365,19 +445,10 @@ useEffect(() => {
                       <div className="border-t border-slate-200 bg-slate-50 px-6 pb-6">
                         <div className="flex gap-6 pt-4">
                           <div className="flex-1">
-                            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              STEPS TO REPRODUCE
-                            </div>
-                            <div className="rounded-lg border border-slate-300 bg-slate-900 p-4 font-mono text-xs text-slate-300">
-                              <div>{ARROW} Navigate to {evalItem.targetUrl}</div>
-                              <div>{ARROW} Click on login button</div>
-                              <div>{ARROW} Enter malicious payload in search field</div>
-                              <div>{ARROW} Submit form</div>
-                              <div>{ARROW} Observe SQL injection response</div>
-                            </div>
+                            <ReproducibleSteps
+                              steps={evalItem.forensicTrace?.finalBreadcrumbSteps || []}
+                              findings={evalItem.forensicTrace?.caughtBugs || []}
+                            />
                           </div>
 
                           <div className="flex-1 border-l border-slate-300 pl-6">
@@ -388,20 +459,33 @@ useEffect(() => {
                               AI SUGGESTED FIX
                             </div>
                             <div className="space-y-3 text-xs text-slate-600">
-                              <p>
-                                <strong>SQL Injection Vulnerability Detected:</strong> The
-                                application does not properly sanitize user input in the
-                                search field, allowing malicious SQL commands to be executed
-                                directly against the database.
-                              </p>
-                              <blockquote className="border-l-2 border-slate-900 pl-3 italic text-slate-700">
-                                Use parameterized queries (prepared statements) for all
-                                database operations involving user input. Implement
-                                input validation and output encoding.
-                              </blockquote>
-                              <button className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">
-                                APPLY PATCH MANIFEST
-                              </button>
+                              {!evalItem.forensicTrace?.caughtBugs?.length ? (
+                                <div className="text-sm text-slate-500 italic">
+                                  No critical vulnerabilities detected in this trace.
+                                </div>
+                              ) : (
+                                evalItem.forensicTrace?.caughtBugs?.map((bug) => (
+                                  <div key={bug.bugId} className="p-3 border border-slate-200 rounded">
+                                    <div className="font-semibold text-red-600">{bug.type}</div>
+                                    <div className="text-slate-700">{bug.message}</div>
+                                    {bug.selector && (
+                                      <div className="text-xs text-slate-500 mt-1">
+                                        Selector: <code className="bg-slate-100 px-1 rounded">{bug.selector}</code>
+                                      </div>
+                                    )}
+                                    {bug.payloadUsed && (
+                                      <div className="text-xs text-slate-500 mt-1">
+                                        Payload: <code className="bg-slate-100 px-1 rounded truncate">{bug.payloadUsed}</code>
+                                      </div>
+                                    )}
+                                    {bug.advice && (
+                                      <div className="mt-2 text-xs text-slate-600">
+                                        <span className="font-medium">Advice: </span>{bug.advice}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
                             </div>
                           </div>
                         </div>
@@ -417,7 +501,7 @@ useEffect(() => {
         <div className="flex items-center justify-between border-t border-slate-200 px-6 py-3">
           <div className="flex items-center">
             <span className="font-mono text-xs text-slate-500">
-SHOWING {showingStart}-{showingEnd} OF {displayTotalCount} SAFARIS
+              SHOWING {showingStart}-{showingEnd} OF {displayTotalCount} SAFARIS
             </span>
           </div>
           <div className="flex h-8 gap-1">
@@ -444,9 +528,8 @@ SHOWING {showingStart}-{showingEnd} OF {displayTotalCount} SAFARIS
           {progressSegments.map((idx) => (
             <div
               key={idx}
-              className={`h-full flex-1 rounded-full ${
-                idx === 1 ? 'bg-slate-700' : 'bg-slate-200'
-              }`}
+              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-slate-700' : 'bg-slate-200'
+                }`}
             />
           ))}
         </div>

@@ -9,6 +9,7 @@ interface LiveFeedProps {
   frame: string | null;
   currentUrl?: string;
   targetUrl?: string;
+  isConnected?: boolean;
   isTestRunning: boolean;
   useBinaryStream?: boolean;
   binaryWsUrl?: string;
@@ -21,11 +22,11 @@ interface LiveFeedProps {
 const NATIVE_VIEWPORT_WIDTH = 1440;
 const NATIVE_VIEWPORT_HEIGHT = 900;
 
-export default function LiveFeed({ 
-  frame, 
+export default function LiveFeed({
+  frame,
   currentUrl,
   targetUrl,
-  isTestRunning, 
+  isTestRunning,
   useBinaryStream = false,
   binaryWsUrl = 'ws://localhost:8765',
   hasRunCompleted = false,
@@ -47,23 +48,23 @@ export default function LiveFeed({
   // Initialize canvas dimensions
   useEffect(() => {
     if (!canvasRef.current) return;
-    
+
     canvasRef.current.width = NATIVE_VIEWPORT_WIDTH;
     canvasRef.current.height = NATIVE_VIEWPORT_HEIGHT;
-    
+
     const updateCanvasSize = () => {
       if (!containerRef.current || !canvasRef.current) return;
-      
+
       const containerRect = containerRef.current.getBoundingClientRect();
       const containerWidth = containerRect.width;
       const containerHeight = containerRect.height;
-      
+
       const sourceAspect = NATIVE_VIEWPORT_WIDTH / NATIVE_VIEWPORT_HEIGHT;
       const containerAspect = containerWidth / containerHeight;
-      
+
       let displayWidth: number;
       let displayHeight: number;
-      
+
       if (containerAspect > sourceAspect) {
         displayHeight = containerHeight;
         displayWidth = containerHeight * sourceAspect;
@@ -71,23 +72,23 @@ export default function LiveFeed({
         displayWidth = containerWidth;
         displayHeight = containerWidth / sourceAspect;
       }
-      
+
       setCanvasStyle({
         width: `${displayWidth}px`,
         height: `${displayHeight}px`,
       });
     };
-    
+
     updateCanvasSize();
-    
+
     const resizeObserver = new ResizeObserver(() => {
       updateCanvasSize();
     });
-    
+
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
-    
+
     return () => {
       resizeObserver.disconnect();
     };
@@ -129,7 +130,7 @@ export default function LiveFeed({
 
   // Frame rendering
   const renderFrame = liveFrame || frame;
-  
+
   useEffect(() => {
     if (renderFrame && !useBinaryStream && canvasRef.current) {
       const img = new Image();
@@ -146,7 +147,7 @@ export default function LiveFeed({
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden bg-white shadow-md rounded-md border border-gray-200">
-      
+
       {/* BROWSER CHROME - Real browser look with traffic lights */}
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2 shrink-0 rounded-t-md">
         {/* LEFT: Browser traffic light buttons */}
@@ -155,12 +156,12 @@ export default function LiveFeed({
           <span className="h-3 w-3 rounded-full bg-yellow-400"></span>
           <span className="h-3 w-3 rounded-full bg-green-400"></span>
         </div>
-        
-{/* CENTER: URL display */}
+
+        {/* CENTER: URL display */}
         <div className="flex-1 mx-4 bg-gray-50 rounded-md px-3 py-1 text-xs text-gray-600 truncate shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
           {displayUrl}
         </div>
-        
+
         {/* RIGHT: Status indicator */}
         <div className="flex items-center gap-2">
           {(isTestRunning || useBinaryStream) && (
@@ -176,13 +177,13 @@ export default function LiveFeed({
       </div>
 
       {/* CANVAS CONTAINER - White Industrial */}
-      <div 
+      <div
         ref={containerRef}
         className="flex flex-col items-center justify-center flex-1 min-h-0 bg-white overflow-hidden p-0 relative"
       >
         {/* IDLE STATE */}
         {isIdle && (
-          <div 
+          <div
             className="absolute flex items-center justify-center z-10 bg-white"
             style={{ width: canvasStyle.width, height: canvasStyle.height }}
           >
@@ -194,7 +195,7 @@ export default function LiveFeed({
 
         {/* INITIALIZING STATE */}
         {isInitializingScreen && (
-          <div 
+          <div
             className="absolute flex flex-col items-center justify-center z-10 bg-white"
             style={{ width: canvasStyle.width, height: canvasStyle.height }}
           >
@@ -211,7 +212,7 @@ export default function LiveFeed({
 
         {/* COMPLETED STATE */}
         {isCompleted && (
-          <div 
+          <div
             className="absolute flex items-center justify-center z-10 bg-white"
             style={{ width: canvasStyle.width, height: canvasStyle.height }}
           >

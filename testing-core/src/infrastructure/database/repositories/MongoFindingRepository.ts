@@ -23,49 +23,46 @@ function toObjectId(id: string): Types.ObjectId | null {
 }
 
 /**
- * Non-bug types that should NOT be saved as findings.
- * These are healthy system telemetry, not actual bugs.
+ * Bug filtering constants - must match BugClassifier.ts exactly
+ * Note: Inlined for module resolution compatibility
  */
-const NON_BUG_TYPES = ["ACTION", "HEURISTIC_SCORE"] as const;
+const NON_BUG_TYPES = ['ACTION', 'HEURISTIC_SCORE'] as const;
+const VALID_BUG_TYPES = new Set(['EXCEPTION', 'RUNTIME_UI_FREEZE', 'SESSION_SYNC_FAULT', 'NETWORK']);
+const CRITICAL_NETWORK_STRINGS = ['server collapse', 'system lock-up', 'exception', 'fatal', 'crash'];
 
 /**
- * Valid bug types that should be saved.
- */
-const VALID_BUG_TYPES = new Set([
-  "EXCEPTION",
-  "RUNTIME_UI_FREEZE",
-  "SESSION_SYNC_FAULT",
-  "NETWORK",
-]);
-
-/**
- * Check if a finding type represents an actual bug that should be saved.
- * For NETWORK type, only save if status code >= 400.
+ * Check if a finding is an actual bug (inlined from BugClassifier)
  */
 function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
-  const findingType = type?.toUpperCase();
+  const bugType = type?.toUpperCase();
 
   // Skip non-bug types
-  if (findingType && NON_BUG_TYPES.includes(findingType as typeof NON_BUG_TYPES[number])) {
+  if (bugType && NON_BUG_TYPES.includes(bugType as typeof NON_BUG_TYPES[number])) {
     return false;
   }
 
-  // For NETWORK type, only save errors (status >= 400)
-  if (findingType === "NETWORK") {
+  // For NETWORK type, only save if status >= 400 or has critical strings
+  if (bugType === 'NETWORK') {
     const statusCode = meta?.statusCode ?? meta?.status;
-    if (typeof statusCode === "number") {
-      return statusCode >= 400;
+    if (typeof statusCode === 'number' && statusCode >= 400) {
+      return true;
     }
-    // No status code = unhandled network issue, save it
-    return true;
+    const message = meta?.message?.toLowerCase() ?? '';
+    const hasCriticalString = CRITICAL_NETWORK_STRINGS.some(critical => message.includes(critical.toLowerCase()));
+    if (hasCriticalString) {
+      return true;
+    }
+    return false;
   }
 
   // Include only valid bug types
-  return Boolean(findingType && VALID_BUG_TYPES.has(findingType));
+  return Boolean(bugType && VALID_BUG_TYPES.has(bugType));
 }
 
+
+
 export class MongoFindingRepository implements FindingRepository {
-public async createSession(input: CreateSessionInput): Promise<string> {
+  public async createSession(input: CreateSessionInput): Promise<string> {
     console.log(`[MongoFindingRepository] 📝 Creating session for: ${input.targetUrl}`);
     const session = await SessionModel.create({
       targetUrl: input.targetUrl,
@@ -112,7 +109,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     );
   }
 
-public async save(input: SaveFindingInput): Promise<string> {
+  public async save(input: SaveFindingInput): Promise<string> {
     const objectId = toObjectId(input.sessionId);
     if (!objectId) {
       throw new Error(`Invalid session ID: ${input.sessionId}`);
@@ -240,10 +237,10 @@ public async save(input: SaveFindingInput): Promise<string> {
       console.log(
         "[Repository] Found session:",
         latest ? {
-              _id: latest._id,
-              targetUrl: latest.targetUrl,
-              status: latest.status,
-            }
+          _id: latest._id,
+          targetUrl: latest.targetUrl,
+          status: latest.status,
+        }
           : null,
       );
 
@@ -309,7 +306,7 @@ public async save(input: SaveFindingInput): Promise<string> {
                   : session.status === SessionStatus.COMPLETED
                     ? "Completed"
                     : "Running",
-startedAt:
+              startedAt:
                 session.startedAt?.toISOString() ?? new Date().toISOString(),
               finishedAt: session.finishedAt
                 ? session.finishedAt.toISOString()
@@ -348,42 +345,16 @@ startedAt:
         "[Repository] Error stack:",
         error instanceof Error ? error.stack : "no stack",
       );
-// Return empty array instead of throwing - lets the dashboard load even with DB issues
+      // Return empty array instead of throwing - lets the dashboard load even with DB issues
       return [];
     }
   }
 
   /**
-   * Check if a finding type represents an actual bug (reusable helper).
-   * Filters out ACTION, HEURISTIC_SCORE, and NETWORK with status < 400.
-   */
-  private isActualBug(type: string, meta?: TelemetryMeta): boolean {
-    const bugType = type?.toUpperCase();
-
-    // Always exclude non-bug types
-    if (bugType && NON_BUG_TYPES.includes(bugType as typeof NON_BUG_TYPES[number])) {
-      return false;
-    }
-
-    // For NETWORK type, check status code
-    if (bugType === "NETWORK") {
-      const statusCode = meta?.statusCode ?? meta?.status;
-      if (typeof statusCode === "number") {
-        return statusCode >= 400;
-      }
-      // If no status code found, assume it's an unhandled network error
-      return true;
-    }
-
-    // Include only valid bug types
-    return Boolean(bugType && VALID_BUG_TYPES.has(bugType));
-  }
-
-  /**
-   * Collect bug findings from the most recent session for the target URL.
-   * Applies proper domain filtering - only returns actual bugs.
-   * This correctly belongs in the Domain layer per Clean Architecture.
-   */
+     * Collect bug findings from the most recent session for the target URL.
+     * Applies proper domain filtering - only returns actual bugs.
+     * Uses centralized BugClassifier - single source of truth.
+     */
   public async collectBugFindings(targetUrl: string): Promise<BugFinding[]> {
     try {
       // Find the most recent session for this target URL
@@ -409,9 +380,9 @@ startedAt:
 
       console.log("[MongoFindingRepository] Raw findings count:", allFindings.length);
 
-      // Filter to only include ACTUAL BUGS using the reusable helper
+      // Filter to only include ACTUAL BUGS
       const filteredFindings = allFindings.filter((finding) =>
-        this.isActualBug(finding.type as string, finding.meta as TelemetryMeta | undefined)
+        shouldSaveFinding(finding.type as string, finding.meta as TelemetryMeta | undefined)
       );
 
       console.log("[MongoFindingRepository] Filtered findings:", allFindings.length, "->", filteredFindings.length);

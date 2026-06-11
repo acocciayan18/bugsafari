@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
 import { saveSessionToHistory } from '../../services/historyService';
 
 export interface DashboardState {
@@ -43,19 +43,61 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
-const [status, setStatus] = useState<'READY' | 'RUNNING' | 'PAUSED'>('READY');
+  const [status, setStatus] = useState<'READY' | 'RUNNING' | 'PAUSED'>('READY');
   const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-const [latestFrame, setLatestFrame] = useState<string | null>(null);
+  const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
-const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
+  const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
   const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
+
+  // 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
+  const INITIALIZATION_TIMEOUT_MS = 15000; // 15 seconds timeout
+
+  useEffect(() => {
+    let initializationTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    // Start a timeout whenever isInitializing becomes true
+    if (isInitializing && isTestRunning) {
+      initializationTimeout = setTimeout(() => {
+        // If still initializing after 15 seconds, force-reset the states
+        console.warn('[useDashboardController] Initialization timeout reached - forcing reset');
+        setIsThinking(false);
+        setIsInitializing(false);
+        setIsTestRunning(false);
+        setStatus('READY');
+        // Add a timeout error to telemetry so user knows what happened
+        setTelemetry((prev) => [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            type: 'EXCEPTION',
+            meta: {
+              message: 'Engine initialization timeout: No live frame received within 15 seconds. The browser may have failed to start.',
+            },
+          },
+        ]);
+      }, INITIALIZATION_TIMEOUT_MS);
+    }
+
+    // Clear timeout if isInitializing becomes false (frame arrived)
+    if (!isInitializing && initializationTimeout) {
+      clearTimeout(initializationTimeout);
+      initializationTimeout = null;
+    }
+
+    return () => {
+      if (initializationTimeout) {
+        clearTimeout(initializationTimeout);
+      }
+    };
+  }, [isInitializing, isTestRunning]);
 
   useEffect(() => {
     gateway.onConnected((connected) => {
@@ -76,10 +118,10 @@ const [isInitializing, setIsInitializing] = useState(false); // 👈 True when t
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
 
-// 🚨 Auto-reset status if the engine crashes or stops naturally
+      // 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
-setStatus('READY');
+        setStatus('READY');
         setHasRunCompleted(true); // Mark run as completed for Save button gating
         setLiveFrame(null); // 🚨 CRITICAL: Clear frame buffer on test conclusion to prevent stale screenshot
         setIsInitializing(false); // Reset initializing state
@@ -104,10 +146,10 @@ setStatus('READY');
       }
     });
 
-gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
+    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
     gateway.onUrlChanged((url) => setCurrentUrl(url)); // FIX: Wire up url-changed socket event to update currentUrl state
-gateway.onLiveFrame((frame) => {
+    gateway.onLiveFrame((frame) => {
       // Clear thinking state when first live frame is received
       setIsThinking(false);
       setIsInitializing(false); // 👈 First frame received - no longer initializing
@@ -128,10 +170,10 @@ gateway.onLiveFrame((frame) => {
     return () => gateway.disconnect();
   }, [gateway]);
 
-  const startTest = async (targetUrl: string): Promise<void> => {
+  const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> => {
     if (!targetUrl.trim()) return;
 
-// Set thinking state to true immediately when button is clicked
+    // Set thinking state to true immediately when button is clicked
     setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
@@ -144,14 +186,14 @@ gateway.onLiveFrame((frame) => {
     setCurrentUrl(targetUrl);
 
     try {
-      await gateway.startTest(targetUrl.trim());
+      await gateway.startTest(targetUrl.trim(), optimizationSettings);
       setIsLaunching(false);
     } catch (error) {
       // CRUCIAL SAFETY GATE: Clear thinking state on API error to prevent infinite loading trap
       setIsThinking(false);
       const message = error instanceof Error ? error.message : String(error);
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
-setIsLaunching(false);
+      setIsLaunching(false);
       setIsTestRunning(false);
       setStatus('READY');
     }
@@ -182,14 +224,18 @@ setIsLaunching(false);
     setSessionHistory(history);
   };
 
-const saveSession = async (targetUrl: string): Promise<void> => {
+  const saveSession = async (inputTargetUrl: string): Promise<void> => {
     if (isSavingSession) {
       return;
     }
     setIsSavingSession(true);
     try {
-      // Use the new historyService for better logging and error handling
-      await saveSessionToHistory(targetUrl.trim());
+      // Use currentUrl (runtime URL from engine via url-changed events) if available
+      // Fall back to input URL if engine hasn't navigated anywhere yet
+      const runtimeUrl = currentUrl || inputTargetUrl;
+
+      // Use the new historyService signature that tracks both URLs
+      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,
@@ -214,7 +260,7 @@ const saveSession = async (targetUrl: string): Promise<void> => {
     }
   };
 
-return {
+  return {
     state: {
       isConnected,
       isLaunching,

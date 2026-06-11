@@ -51,6 +51,8 @@ export interface TelemetryMeta {
   aiDiagnostics?: IntelligentDiagnosis;
   // Session tracking for forensic history
   sessionId?: string;
+  // Severity from AI inference (used by BugClassifier)
+  severity?: 'CRITICAL' | 'WARNING' | 'INFO';
 }
 
 export interface TelemetryEvent {
@@ -116,3 +118,19 @@ export interface DiscoveredElement {
   isVisible: boolean;
   boundingBox: BoundingBox;
 }
+
+// ─────────────────────────────────────────────────────────────
+// 🚀 OPTIMIZATION SETTINGS (Shared between backend and frontend)
+// ─────────────────────────────────────────────────────────────
+
+export interface OptimizationSettings {
+  'adaptive-risk-scorer': boolean;
+  'state-aware-hashing': boolean;
+  'concurrent-spam-event': boolean;
+}
+
+export const defaultOptimizationSettings: OptimizationSettings = {
+  'adaptive-risk-scorer': true,
+  'state-aware-hashing': true,
+  'concurrent-spam-event': true,
+};

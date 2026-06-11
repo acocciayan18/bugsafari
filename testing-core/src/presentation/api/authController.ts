@@ -2,7 +2,19 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'bugsafari-dev-secret-change-in-production';
+// SECURITY: Enforce JWT_SECRET environment variable
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required. Set it before starting the server.');
+}
+// Validate secret strength in production
+if (JWT_SECRET.length < 32) {
+  throw new Error('FATAL: JWT_SECRET must be at least 32 characters for secure signing.');
+}
+if (JWT_SECRET === 'bugsafari-dev-secret-change-in-production') {
+  throw new Error('FATAL: JWT_SECRET cannot be the default insecure value. Set a strong secret in environment.');
+}
+
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
 export interface AuthRequest extends Request {
@@ -123,7 +135,7 @@ export async function handleSignup(
       return;
     }
 
-// Defense-in-Depth: Run server-side mirror verification
+    // Defense-in-Depth: Run server-side mirror verification
     // Early-Abort Rejection: If bot bypasses frontend controls, halt execution
     // Recreated identical string complexity regex pattern lookup tool
     const complexityError = validatePasswordComplexity(trimmedPassword);

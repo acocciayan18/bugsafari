@@ -1,5 +1,6 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import type { OptimizationSettings } from '../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../heuristics/domParser.js';
@@ -29,13 +30,13 @@ export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly simulator = new InteractionSimulator();
-private readonly scorer = new RiskScorer();
+  private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
   private readonly recentActionTraceIds: string[] = [];
-// State Graph Navigator for directed path finding and loop prevention (Task 2)
+  // State Graph Navigator for directed path finding and loop prevention (Task 2)
   private readonly pathNavigator = new StateGraphNavigator();
   private sessionId: string | null = null;
   private freezeActionTraceRecording = false;
@@ -65,7 +66,12 @@ private readonly scorer = new RiskScorer();
     timestamp: Date;
   }> = [];
 
-  constructor(private readonly findingRepo?: FindingRepository) { }
+  constructor(
+    private readonly findingRepo?: FindingRepository,
+    private readonly optimizationSettings?: OptimizationSettings,
+  ) {
+    console.log(`[AutonomousExplorationEngine] Optimization settings:`, optimizationSettings);
+  }
 
   public getConfirmedBugsFromMemory(): Array<{
     bugId: string;
@@ -88,7 +94,14 @@ private readonly scorer = new RiskScorer();
     advice: string;
     timestamp: Date;
   }): void {
-    this.confirmedBugsMemory.push(bug);
+    // Deduplication: check if bug already exists in memory
+    const isDuplicate = this.confirmedBugsMemory.some(
+      existing => existing.type === bug.type && existing.message === bug.message
+    );
+
+    if (!isDuplicate) {
+      this.confirmedBugsMemory.push(bug);
+    }
   }
 
   public pause() {
@@ -142,7 +155,7 @@ private readonly scorer = new RiskScorer();
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
-// StateGraphNavigator handles its own state management - no clear() needed
+    // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
     let serverCrashReason: string | null = null;
@@ -158,7 +171,7 @@ private readonly scorer = new RiskScorer();
     this.setupExceptionMonitoring(page, telemetry, lastKnownUrl);
 
 
-page.on('request', (request: Request) => {
+    page.on('request', (request: Request) => {
       if (!lastTarget) {
         return;
       }
@@ -202,6 +215,17 @@ page.on('request', (request: Request) => {
           method,
           message: `Network ${status} ${method} ${url}`,
         }));
+
+        // NEW: Register HTTP error bug to memory
+        this.registerConfirmedBug({
+          bugId: `http-${status}-${Date.now()}`,
+          type: 'NETWORK',
+          message: `HTTP ${status} Error: ${method} ${url}`,
+          selector: '',
+          payloadUsed: method,
+          advice: `HTTP ${status} indicates server or network issue. Check backend.`,
+          timestamp: new Date(),
+        });
       }
     });
 
@@ -235,6 +259,17 @@ page.on('request', (request: Request) => {
         stackTrace: `${method} ${url} - ${reason}`,
         breadcrumbs,
       });
+
+      // NEW: Register network failure bug to memory
+      this.registerConfirmedBug({
+        bugId: `network-failed-${Date.now()}`,
+        type: 'NETWORK',
+        message: `Network Request Failed: ${reason}`,
+        selector: '',
+        payloadUsed: method,
+        advice: 'Check network connectivity and server availability.',
+        timestamp: new Date(),
+      });
     });
 
     handleFramenavigated = (): void => {
@@ -254,9 +289,10 @@ page.on('request', (request: Request) => {
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
 
-// 🛡️ Initialize stability monitoring - runs silently in background
+      // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
-      this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry);
+      // NEW: Pass callback to register bugs to memory
+      this.cleanupStabilityMonitor = setupStabilityMonitoring(page, telemetry, (bug) => this.registerConfirmedBug(bug));
 
       // 🖥️ Setup isolated browser console listener for dedicated Console Tab in dashboard
       // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
@@ -317,7 +353,7 @@ page.on('request', (request: Request) => {
           await this.ensureDomReady(page, telemetry);
 
           const elements = await this.parser.parse(page);
-          
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'dom-elements-parsed',
             message: `Parsed ${elements.length} interactive elements from DOM`,
@@ -403,13 +439,13 @@ page.on('request', (request: Request) => {
             stagnationCounter = 0; // reset strike counter; fresh window after escape
           }
 
-// Convert ranked elements to PathfinderElement format for StateGraphNavigator
+          // Convert ranked elements to PathfinderElement format for StateGraphNavigator
           const pathfinderElements: PathfinderElement[] = ranked.map(el => ({
             selector: el.selector,
             score: el.riskScore,
           }));
 
-// Use StateGraphNavigator to make decision
+          // Use StateGraphNavigator to make decision
           const decision = this.pathNavigator.registerStateAndDecide(
             currentHash,
             currentUrl,
@@ -432,7 +468,7 @@ page.on('request', (request: Request) => {
             message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
           }));
 
-// StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
+          // StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
 
           if (decision.kind === 'backtrack') {
             // Emit backtrack telemetry and navigate to target URL
@@ -456,7 +492,7 @@ page.on('request', (request: Request) => {
           // Store score for telemetry
           const targetScore = exploreDecision.score;
 
-// Emit exploration milestone
+          // Emit exploration milestone
           this.emitMilestone(telemetry, `🎯 Exploring edge: ${target.selector} (score: ${decision.score.toFixed(3)})`);
           this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
 
@@ -465,7 +501,7 @@ page.on('request', (request: Request) => {
           const previousHashBeforeAction = currentHash;
 
           await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
-          
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'action-executed',
             selector: target.selector,
@@ -524,7 +560,7 @@ page.on('request', (request: Request) => {
       this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
     } finally {
-// 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
+      // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
         this.cleanupStabilityMonitor = null;
@@ -545,7 +581,7 @@ page.on('request', (request: Request) => {
     }
   }
 
-private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
+  private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
     return {
       emitTelemetry: (event: TelemetryEvent) => {
         telemetry.emitTelemetry(event);
@@ -556,8 +592,8 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
       emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
       emitForensicReport: (report) => telemetry.emitForensicReport(report),
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
-      emitBrowserConsole: telemetry.emitBrowserConsole 
-        ? (message) => telemetry.emitBrowserConsole!(message) 
+      emitBrowserConsole: telemetry.emitBrowserConsole
+        ? (message) => telemetry.emitBrowserConsole!(message)
         : undefined,
     };
   }
@@ -616,6 +652,17 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
 
   private recordActionTrace(trace: ActionBreadcrumb): void {
     this.actions.push(trace);
+
+    // FIX: Also push to ReproductionPlaybookStore so saving to history works
+    // This ensures finalBreadcrumbSteps are available when user clicks "Save to History"
+    const actionRecord: ActionRecord = {
+      timestamp: trace.timestamp,
+      type: (trace.action.toUpperCase() as unknown as ActionType) || 'CLICK',
+      selector: trace.selector,
+      url: this.targetOrigin || 'unknown',
+      payload: trace.payload,
+    };
+    ReproductionPlaybookStore.push(actionRecord);
 
     if (!this.findingRepo || !this.sessionId || this.freezeActionTraceRecording) {
       return;
@@ -914,7 +961,7 @@ private createPersistentTelemetryGateway(telemetry: TelemetryGateway): Telemetry
     return stressScenarioMap.CoordinateBombing;
   }
 
-private async executeStandardInteraction(
+  private async executeStandardInteraction(
     page: Page,
     telemetry: TelemetryGateway,
     target: InteractiveElement,
@@ -1064,7 +1111,7 @@ private async executeStandardInteraction(
       .catch(() => undefined);
   }
 
-private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
+  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     /**
      * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
      * Uses lower quality JPEG (35) for reduced bandwidth.
@@ -1143,10 +1190,10 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
     }
   }
 
-/**
-   * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
-   * Uses the strategy pattern to enhance security testing with categorized fuzzing strategies.
-   */
+  /**
+     * Executes additional security fuzzing payloads alongside SecurityVulnerabilityScout.
+     * Uses the strategy pattern to enhance security testing with categorized fuzzing strategies.
+     */
   private async executeSecurityFuzzerPayloads(
     page: Page,
     telemetry: TelemetryGateway,

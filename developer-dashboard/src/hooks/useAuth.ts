@@ -38,6 +38,31 @@ interface AuthError {
 }
 
 /**
+ * Decode JWT payload to check expiration
+ * Returns null if token is invalid or expired
+ */
+function decodeTokenExpiration(token: string): { exp: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if token is expired
+ */
+function isTokenExpired(token: string): boolean {
+  const payload = decodeTokenExpiration(token);
+  if (!payload || !payload.exp) return true;
+  // Add 10 second buffer to prevent edge cases
+  return Date.now() >= (payload.exp * 1000) - 10000;
+}
+
+/**
  * Custom hook for authentication
  * Extracts auth logic from LoginForm and provides centralized auth state management
  */
@@ -57,6 +82,15 @@ export function useAuth() {
     const storedUser = localStorage.getItem('bugsafari_user');
     const storedToken = localStorage.getItem('bugsafari_token');
     if (storedUser && storedToken) {
+      // SECURITY: Validate token expiration on initialization
+      if (isTokenExpired(storedToken)) {
+        console.warn('[useAuth] Token expired or invalid, clearing session');
+        localStorage.removeItem('bugsafari_token');
+        localStorage.removeItem('bugsafari_user');
+        setToken(null);
+        setUser(null);
+        return;
+      }
       try {
         setUser(JSON.parse(storedUser));
         setToken(storedToken);
@@ -86,7 +120,7 @@ export function useAuth() {
   /**
    * Login with email and password
    */
-const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
+  const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
 
     try {
@@ -106,18 +140,18 @@ const login = useCallback(async (credentials: LoginCredentials): Promise<boolean
         return false;
       }
 
-const authData = data as AuthResponse;
-if (authData.token && authData.user) {
+      const authData = data as AuthResponse;
+      if (authData.token && authData.user) {
         // Store token and user
         localStorage.setItem('bugsafari_token', authData.token);
         localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
         setToken(authData.token);
         setUser(authData.user);
         console.log('[useAuth] Login successful:', authData.user.email);
-        
+
         // Navigate to dashboard on success
         doNavigate('/dashboard');
-        
+
         setIsLoading(false);
         return true;
       }
@@ -135,10 +169,10 @@ if (authData.token && authData.user) {
     }
   }, [doNavigate]);
 
-/**
-   * Signup with email and password
-   * Uses in-button loading spinner (no toast.promise loading toast)
-   */
+  /**
+     * Signup with email and password
+     * Uses in-button loading spinner (no toast.promise loading toast)
+     */
   const signup = useCallback(async (credentials: SignupCredentials): Promise<boolean> => {
     setIsLoading(true);
 
@@ -163,8 +197,8 @@ if (authData.token && authData.user) {
       if (!contentType || !contentType.includes('application/json')) {
         // Server returned non-JSON response (likely 404 HTML page)
         console.error('[useAuth] Non-JSON response received:', contentType);
-        const errorMessage = response.ok 
-          ? 'Invalid server response' 
+        const errorMessage = response.ok
+          ? 'Invalid server response'
           : `Server error: ${response.status} ${response.statusText}`;
         throw new Error(errorMessage);
       }
@@ -183,23 +217,23 @@ if (authData.token && authData.user) {
       }
 
       const authData = data as AuthResponse;
-     if (authData.token && authData.user) {
-  // Store token and user
-  localStorage.setItem('bugsafari_token', authData.token);
-  localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-  setToken(authData.token);
-  setUser(authData.user);
-console.log('[useAuth] Signup successful:', authData.user.email);
-  console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
-  
-  // Graceful 2-second timeout delay for optimal user experience
-  setTimeout(() => {
-    doNavigate('/login');
-    setIsLoading(false);
-  }, 2000); 
+      if (authData.token && authData.user) {
+        // Store token and user
+        localStorage.setItem('bugsafari_token', authData.token);
+        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
+        setToken(authData.token);
+        setUser(authData.user);
+        console.log('[useAuth] Signup successful:', authData.user.email);
+        console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
 
-  return true;
-}
+        // Graceful 2-second timeout delay for optimal user experience
+        setTimeout(() => {
+          doNavigate('/login');
+          setIsLoading(false);
+        }, 2000);
+
+        return true;
+      }
 
       throw new Error('Unexpected response from server');
     } catch (error) {
@@ -222,9 +256,9 @@ console.log('[useAuth] Signup successful:', authData.user.email);
     console.log('[useAuth] User logged out');
   }, []);
 
-/**
-   * Check if user is authenticated
-   */
+  /**
+     * Check if user is authenticated
+     */
   const isAuthenticated = useCallback((): boolean => {
     return !!token && !!user;
   }, [token, user]);

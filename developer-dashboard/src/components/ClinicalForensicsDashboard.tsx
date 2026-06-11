@@ -120,15 +120,14 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
         <div className="flex items-center gap-1.5 text-blue-400 font-bold tracking-wider uppercase text-[10px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
-        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
-          ai.severity === 'CRITICAL' 
-            ? 'bg-red-950/80 border-red-800 text-red-400' 
-            : 'bg-amber-950/80 border-amber-800 text-amber-400'
-        }`}>
+        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${ai.severity === 'CRITICAL'
+          ? 'bg-red-950/80 border-red-800 text-red-400'
+          : 'bg-amber-950/80 border-amber-800 text-amber-400'
+          }`}>
           {ai.severity}
         </span>
       </div>
-      
+
       <div className="space-y-2 text-[11px] leading-relaxed">
         <div>
           <span className="text-slate-400 font-bold">Vulnerability Class:</span>{' '}
@@ -141,7 +140,7 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: any }) => {
         <div className="text-slate-300 text-justify italic font-light mt-1">
           <span className="text-slate-400 not-italic font-bold">Inference Deduction:</span> {ai.explanation}
         </div>
-        
+
         {/* Highlighted Clean Actionable Remediation Box */}
         <div className="mt-3 p-2.5 bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded font-sans text-xs">
           <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-emerald-400 mb-1">
@@ -171,7 +170,7 @@ interface ClinicalForensicsDashboardProps {
   };
   isConnected: boolean;
   isTestRunning: boolean;
-testStatus?: 'READY' | 'RUNNING' | 'PAUSED';
+  testStatus?: 'READY' | 'RUNNING' | 'PAUSED';
   currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
   hasRunCompleted?: boolean; // 👈 True after first test run completes
   isInitializing?: boolean; // 👈 True when test started but no frame received yet
@@ -190,18 +189,18 @@ export default function ClinicalForensicsDashboard({
   targetUrl = 'https://cafesplatform.elementfx.com/',
   currentUrl,
   frameBuffer = null,
-telemetry = [],
+  telemetry = [],
   browserConsole = [],
   sessionHistory = [],
   errors = { incidents: [], reports: [] },
   isConnected = false,
-isTestRunning = false,
+  isTestRunning = false,
   testStatus = 'READY',
   currentEngineAction = '',
   hasRunCompleted = false,
   isInitializing = false,
-liveFrame = null,
-onPause,
+  liveFrame = null,
+  onPause,
   onResume,
   onStop,
 }: ClinicalForensicsDashboardProps) {
@@ -228,20 +227,20 @@ onPause,
   const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
       ? telemetry.map((event) => {
-          if (typeof event === 'string') {
-            return { rawText: event, aiDiagnostics: null };
-          }
-          const timestamp = event.timestamp
-            ? new Date(event.timestamp).toTimeString().slice(0, 8)
-            : new Date().toTimeString().slice(0, 8);
-          const type = event.type ?? 'EVENT';
-          const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
-          
-          return {
-            rawText: `${timestamp} [${type}] ${message}`,
-            aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
-          };
-        })
+        if (typeof event === 'string') {
+          return { rawText: event, aiDiagnostics: null };
+        }
+        const timestamp = event.timestamp
+          ? new Date(event.timestamp).toTimeString().slice(0, 8)
+          : new Date().toTimeString().slice(0, 8);
+        const type = event.type ?? 'EVENT';
+        const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+
+        return {
+          rawText: `${timestamp} [${type}] ${message}`,
+          aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+        };
+      })
       : [];
     return events.slice(-100);
   }, [telemetry]);
@@ -259,7 +258,7 @@ onPause,
   // RENDER: Forensic View (55% of screen)
   // ─────────────────────────────────────────────────────────────
 
-return (
+  return (
     <section className="flex flex-1 flex-row overflow-hidden bg-white">
 
       {/* ═══════════════════════════════════════════════════════════════
@@ -267,8 +266,8 @@ return (
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-[55%] h-full overflow-hidden border-r border-slate-200">
         <div className="h-full overflow-hidden bg-slate-50 p-4">
-<div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-<LiveFeed
+          <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <LiveFeed
               currentUrl={currentUrl || targetUrl}
               frame={frameBuffer}
               isConnected={isConnected}
@@ -279,7 +278,7 @@ return (
             />
           </div>
 
-          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */} 
+          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-600">Status:</span>
@@ -322,7 +321,7 @@ return (
                     Resume
                   </button>
                 )}
-{onStop && (
+                {onStop && (
                   <button
                     onClick={onStop}
                     className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
@@ -340,7 +339,7 @@ return (
         </div>
       </div>
 
-{/* ═══════════════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════════════
           RIGHT PANEL: Terminal with Telemetry Tabs
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
@@ -407,7 +406,7 @@ return (
                       >
                         {logObj.rawText}
                       </div>
-                      
+
                       {/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
                       <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
@@ -464,7 +463,7 @@ return (
                     const incidentKey = `incident-${idx}`;
                     const metadata = extractErrorMetadata(incident);
                     const isExpanded = expandedStackTrace[incidentKey];
-                    
+
                     // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
                     const aiDiagnostics = (incident as any).aiDiagnostics;
 
@@ -511,7 +510,7 @@ return (
                           <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
                             {incident.reason}
                           </div>
-                          
+
                           {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
                           <AiForensicDiagnosticCard ai={aiDiagnostics} />
                         </div>
@@ -579,7 +578,7 @@ return (
                           <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
                             {report.reason}
                           </div>
-                          
+
                           <AiForensicDiagnosticCard ai={aiDiagnostics} />
                         </div>
 
@@ -683,7 +682,7 @@ return (
             );
           })()}
 
-{/* ════════════════════════════════════════
+          {/* ════════════════════════════════════════
               TAB: CONSOLE (Browser Console Output)
               ════════════════════════════════════════ */}
           {activeTab === 'console' && (
@@ -748,6 +747,7 @@ return (
                       <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Timestamp</th>
                       <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Target URL</th>
                       <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Status</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700">Findings</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -768,6 +768,9 @@ return (
                             }`}>
                             {entry.status}
                           </span>
+                        </td>
+                        <td className="border border-slate-200 px-3 py-2 text-slate-700">
+                          {entry.findingCount || 0}
                         </td>
                       </tr>
                     ))}

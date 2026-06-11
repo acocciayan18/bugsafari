@@ -15,7 +15,10 @@ export type {
   BoundingBox,
   DiscoveredElement,
   IntelligentDiagnosis,
-} from '../../shared/types';
+  // OptimizationSettings now shared between backend and frontend
+  OptimizationSettings,
+  defaultOptimizationSettings,
+} from '../../shared/types.js';
 
 export interface BrowserConsoleMessage {
   timestamp: string;

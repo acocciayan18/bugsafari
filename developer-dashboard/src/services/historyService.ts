@@ -22,27 +22,32 @@ function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
-  console.log('[historyService] Auth headers:', { 
-    hasAuth: !!token, 
-    tokenPrefix: token ? token.substring(0, 20) + '...' : null 
+
+  console.log('[historyService] Auth headers:', {
+    hasAuth: !!token,
+    tokenPrefix: token ? token.substring(0, 20) + '...' : null
   });
-  
+
   return headers;
 }
 
 /**
  * Save a testing session to history
- * @param targetUrl - The URL that was tested
+ * @param targetUrl - The final/runtime URL that was actually tested
+ * @param options - Optional parameters including initialUrl for the original input URL
  * @returns Promise<void> - Resolves on success, rejects on failure
  */
-export async function saveSessionToHistory(targetUrl: string): Promise<void> {
+export async function saveSessionToHistory(
+  targetUrl: string,
+  options?: { initialUrl?: string }
+): Promise<void> {
   console.log('[historyService] 📤 saveSessionToHistory called with targetUrl:', targetUrl);
   console.log('[historyService] API_BASE_URL:', API_BASE_URL);
+  console.log('[historyService] Options:', options);
 
   // Validate targetUrl
   if (!targetUrl || typeof targetUrl !== 'string') {
@@ -52,7 +57,11 @@ export async function saveSessionToHistory(targetUrl: string): Promise<void> {
   }
 
   const trimmedUrl = targetUrl.trim();
-  console.log('[historyService] Payload prepared:', JSON.stringify({ targetUrl: trimmedUrl }));
+  const payload = {
+    targetUrl: trimmedUrl,
+    ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
+  };
+  console.log('[historyService] Payload prepared:', JSON.stringify(payload));
 
   try {
     console.log('[historyService] 📤 Sending POST request to /api/history/save-session...');
@@ -60,7 +69,7 @@ export async function saveSessionToHistory(targetUrl: string): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/api/history/save-session`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ targetUrl: trimmedUrl }),
+      body: JSON.stringify(payload),
     });
 
     console.log('[historyService] Response status:', response.status);
@@ -123,9 +132,9 @@ export async function fetchSessionHistory(limit = 50): Promise<SessionHistoryEnt
 
     const data = (await response.json()) as { sessions?: SessionHistoryEntry[] };
     console.log('[historyService] Fetched sessions count:', data.sessions?.length ?? 0);
-    
+
     return Array.isArray(data.sessions) ? data.sessions : [];
-    
+
   } catch (error) {
     console.error('[historyService] fetchSessionHistory error:', error);
     throw error;

@@ -12,11 +12,29 @@ const DEEP_SCAN_PATTERNS: RegExp[] = [
 
 type Cleanup = () => void;
 
+/** Bug registration callback for confirmed bugs */
+export type BugRegistrationCallback = (bug: {
+  bugId: string;
+  type: string;
+  message: string;
+  selector: string;
+  payloadUsed: string;
+  advice: string;
+  timestamp: Date;
+}) => void;
+
 /**
  * Monitors catastrophic runtime instability signals during an active Safari session.
  * Runs silently in the background and can be safely disposed.
+ * @param page - Playwright page to monitor
+ * @param telemetry - Telemetry gateway for emitting events
+ * @param onBugRegistered - Optional callback to register confirmed bugs to memory (NEW)
  */
-export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway): Cleanup {
+export function setupStabilityMonitoring(
+  page: Page,
+  telemetry: TelemetryGateway,
+  onBugRegistered?: BugRegistrationCallback
+): Cleanup {
   let disposed = false;
   let heartbeatInterval: NodeJS.Timeout | null = null;
   let heartbeatInFlight = false;
@@ -55,6 +73,19 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
       stackTrace,
       breadcrumbs: [],
     });
+
+    // NEW: Register bug to memory if callback provided
+    if (onBugRegistered) {
+      onBugRegistered({
+        bugId: `js-exception-${Date.now()}`,
+        type: 'RUNTIME_UI_FREEZE',
+        message: `Unhandled JS Exception: ${errorMessage}`,
+        selector: '',
+        payloadUsed: '',
+        advice: 'Check browser console for details. Fix the JavaScript error.',
+        timestamp: new Date(),
+      });
+    }
   };
 
   const emitServerCollapse = (statusCode: number, url: string, method?: string, evidence?: string): void => {
@@ -91,6 +122,19 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
       stackTrace: evidence ?? `HTTP ${statusCode}`,
       breadcrumbs: [],
     });
+
+    // NEW: Register bug to memory if callback provided
+    if (onBugRegistered) {
+      onBugRegistered({
+        bugId: `server-collapse-${Date.now()}`,
+        type: 'NETWORK',
+        message: `Server Collapse: HTTP ${statusCode} from ${url}`,
+        selector: '',
+        payloadUsed: method ?? 'GET',
+        advice: `Check backend server. HTTP ${statusCode} indicates server failure.`,
+        timestamp: new Date(),
+      });
+    }
   };
 
   const emitMainThreadLockup = (): void => {
@@ -128,6 +172,19 @@ export function setupStabilityMonitoring(page: Page, telemetry: TelemetryGateway
       stackTrace,
       breadcrumbs: [],
     });
+
+    // NEW: Register bug to memory if callback provided
+    if (onBugRegistered) {
+      onBugRegistered({
+        bugId: `main-thread-lockup-${Date.now()}`,
+        type: 'RUNTIME_UI_FREEZE',
+        message: '🧊 System Lock-up Detected: Main Thread unresponsive',
+        selector: '',
+        payloadUsed: '',
+        advice: 'Check for infinite loops or heavy JavaScript operations blocking the main thread.',
+        timestamp: new Date(),
+      });
+    }
   };
 
   const onPageError = (error: Error): void => {

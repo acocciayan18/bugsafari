@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -45,7 +45,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
     return headers;
   }
 
-public connect(): void {
+  public connect(): void {
     this.socket.on('connect', this.handleConnect);
     this.socket.on('disconnect', this.handleDisconnect);
     this.socket.on('telemetry', this.handleTelemetry);
@@ -70,17 +70,23 @@ public connect(): void {
     this.socket.disconnect();
   }
 
-public async startTest(targetUrl: string): Promise<void> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
+    console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
 
     let errorDetails = '';
 
     try {
+      const requestBody: { url: string; optimization?: OptimizationSettings } = { url: targetUrl };
+      if (optimizationSettings) {
+        requestBody.optimization = optimizationSettings;
+      }
+
       const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify({ url: targetUrl }),
+        body: JSON.stringify(requestBody),
       });
 
       console.log(`[Gateway] Response status: ${response.status}`);
@@ -103,7 +109,7 @@ public async startTest(targetUrl: string): Promise<void> {
           console.error(`[Gateway] ❌ Possible causes: Server not running, CORS error, or network issue`);
           throw new Error(`Cannot reach server at ${this.apiBaseUrl}. Is the backend running?`);
         }
-        
+
         // Generic fetch error
         console.error(`[Gateway] ❌ Fetch error:`, error.message);
         throw new Error(`Network error: ${error.message}`);
@@ -174,7 +180,7 @@ public async startTest(targetUrl: string): Promise<void> {
     this.frameHandler?.(base64Jpeg);
   };
 
-private readonly handleUrlChanged = (url: string): void => {
+  private readonly handleUrlChanged = (url: string): void => {
     this.urlChangedHandler?.(url);
   };
 

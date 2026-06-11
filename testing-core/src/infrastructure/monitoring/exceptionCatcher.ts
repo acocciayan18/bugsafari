@@ -4,47 +4,11 @@ import type { AutonomousExplorationEngine } from '../../domain/services/Autonomo
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
 import { randomBytes } from 'crypto';
+import { isActualBug } from '../../domain/services/BugClassifier.js';
 
 interface BrowserExceptionPayload {
   message: string;
   stackTrace: string;
-}
-
-/**
- * Non-bug types that should NOT be counted as bugs.
- * These are healthy system telemetry, not actual bugs.
- */
-const NON_BUG_TYPES = new Set(['ACTION', 'HEURISTIC_SCORE']);
-
-/**
- * Valid bug types that should be counted as actual bugs.
- */
-const VALID_BUG_TYPES = new Set(['EXCEPTION', 'RUNTIME_UI_FREEZE', 'SESSION_SYNC_FAULT', 'NETWORK']);
-
-/**
- * Filter out non-bug telemetry before registering as a confirmed bug.
- * Only EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, and NETWORK (status >= 400) are actual bugs.
- */
-function shouldRegisterAsBug(type: string, meta?: Record<string, unknown>): boolean {
-  const bugType = type?.toUpperCase();
-
-  // Always exclude non-bug types
-  if (bugType && NON_BUG_TYPES.has(bugType)) {
-    return false;
-  }
-
-  // For NETWORK type, check status code
-  if (bugType === 'NETWORK') {
-    const statusCode = meta?.statusCode ?? meta?.status;
-    if (typeof statusCode === 'number') {
-      return statusCode >= 400;
-    }
-    // If no status code found, assume it's an unhandled network error
-    return true;
-  }
-
-  // Include only valid bug types
-  return !!(bugType && VALID_BUG_TYPES.has(bugType));
 }
 
 // Knowledge Base Definition for the Symbolic AI Expert System
@@ -60,47 +24,47 @@ const HEURISTIC_KNOWLEDGE_BASE: Array<{
   keywords: string[];
   diagnosis: IntelligentDiagnosis;
 }> = [
-  {
-    keywords: ['vulnerability', 'sql syntax', 'postgres', 'mysql', 'sqlite', 'database error', 'query failed'],
-    diagnosis: {
-      vulnerabilityClass: "Improper Backend Input Validation / SQL Injection",
-      cwe: "CWE-89 / CWE-20",
-      severity: "CRITICAL",
-      explanation: "The server framework processed un-sanitized adversarial synthesized string structures directly within its syntax interpreter query compiler tier.",
-      suggestedFix: "Implement parameterized statements, object-relational mapping models (ORMs), and restrict structural database engine error logging variables inside production runtime threads."
+    {
+      keywords: ['vulnerability', 'sql syntax', 'postgres', 'mysql', 'sqlite', 'database error', 'query failed'],
+      diagnosis: {
+        vulnerabilityClass: "Improper Backend Input Validation / SQL Injection",
+        cwe: "CWE-89 / CWE-20",
+        severity: "CRITICAL",
+        explanation: "The server framework processed un-sanitized adversarial synthesized string structures directly within its syntax interpreter query compiler tier.",
+        suggestedFix: "Implement parameterized statements, object-relational mapping models (ORMs), and restrict structural database engine error logging variables inside production runtime threads."
+      }
+    },
+    {
+      keywords: ['cannot read properties of undefined', 'null reading', 'is not a function', 'unhandledrejection', 'typeerror'],
+      diagnosis: {
+        vulnerabilityClass: "Uncontrolled State Lifecycle Synchronization Exception",
+        cwe: "CWE-476 (Null Pointer Dereference)",
+        severity: "WARNING",
+        explanation: "A fast state transition or stress payload input caused a single-page application component hook to access variable descriptors before an asynchronous API request completely resolved data blocks.",
+        suggestedFix: "Integrate optional chaining parameters (e.g., `data?.property`), apply robust conditional state boundary gates, or utilize loading lifecycle spinners to protect unstable visual scopes."
+      }
+    },
+    {
+      keywords: ['500', 'internal server error', '502', 'bad gateway', '503', 'service unavailable'],
+      diagnosis: {
+        vulnerabilityClass: "Backend Logic Component Resilience Failure",
+        cwe: "CWE-391 (Unchecked Error Condition)",
+        severity: "CRITICAL",
+        explanation: "The adversarial data synthesis payloads completely broke structural validations on the API layer, driving an unhandled runtime error state on the server cluster.",
+        suggestedFix: "Enforce schema type boundaries via data-gating middleware (such as Zod) on backend endpoints and wrap volatile controller routines in try/catch fallback states."
+      }
+    },
+    {
+      keywords: ['404', 'not found', 'failed to load resource', '405', 'method not allowed'],
+      diagnosis: {
+        vulnerabilityClass: "Broken Object Level Resource Allocation Routing Anomaly",
+        cwe: "CWE-425 (Direct Request Resource Access)",
+        severity: "WARNING",
+        explanation: "Exploratory navigation scripts accessed an unmapped REST API routing table entry or an invalid file path structure across the split-tier cluster context.",
+        suggestedFix: "Audit front-end asset bundles and backend endpoint routers to achieve explicit API contract convergence. Provide explicit graceful fallback error redirect blocks."
+      }
     }
-  },
-  {
-    keywords: ['cannot read properties of undefined', 'null reading', 'is not a function', 'unhandledrejection', 'typeerror'],
-    diagnosis: {
-      vulnerabilityClass: "Uncontrolled State Lifecycle Synchronization Exception",
-      cwe: "CWE-476 (Null Pointer Dereference)",
-      severity: "WARNING",
-      explanation: "A fast state transition or stress payload input caused a single-page application component hook to access variable descriptors before an asynchronous API request completely resolved data blocks.",
-      suggestedFix: "Integrate optional chaining parameters (e.g., `data?.property`), apply robust conditional state boundary gates, or utilize loading lifecycle spinners to protect unstable visual scopes."
-    }
-  },
-  {
-    keywords: ['500', 'internal server error', '502', 'bad gateway', '503', 'service unavailable'],
-    diagnosis: {
-      vulnerabilityClass: "Backend Logic Component Resilience Failure",
-      cwe: "CWE-391 (Unchecked Error Condition)",
-      severity: "CRITICAL",
-      explanation: "The adversarial data synthesis payloads completely broke structural validations on the API layer, driving an unhandled runtime error state on the server cluster.",
-      suggestedFix: "Enforce schema type boundaries via data-gating middleware (such as Zod) on backend endpoints and wrap volatile controller routines in try/catch fallback states."
-    }
-  },
-  {
-    keywords: ['404', 'not found', 'failed to load resource', '405', 'method not allowed'],
-    diagnosis: {
-      vulnerabilityClass: "Broken Object Level Resource Allocation Routing Anomaly",
-      cwe: "CWE-425 (Direct Request Resource Access)",
-      severity: "WARNING",
-      explanation: "Exploratory navigation scripts accessed an unmapped REST API routing table entry or an invalid file path structure across the split-tier cluster context.",
-      suggestedFix: "Audit front-end asset bundles and backend endpoint routers to achieve explicit API contract convergence. Provide explicit graceful fallback error redirect blocks."
-    }
-  }
-];
+  ];
 
 // Symbolic AI Inference Engine Module
 function runExpertInference(errorMessage: string): IntelligentDiagnosis {
@@ -152,7 +116,7 @@ export async function setupExceptionCatcher(
 
   const emitException = (message: string, stackTrace: string, shouldHalt: boolean, statusCode?: number): void => {
     const url = page.url();
-    
+
     // Core AI Step: Contextually calculate software diagnostic metadata using the Expert Engine
     const aiDeduction = runExpertInference(message);
 
@@ -195,14 +159,14 @@ export async function setupExceptionCatcher(
         },
         reproductionSteps: actionRecorder.toReproductionSteps(),
         // Exposing raw, structured AI parameters directly to your payload for easy parsing on your React client layout
-        aiDiagnostics: aiDeduction, 
+        aiDiagnostics: aiDeduction,
       },
     });
 
     hub.emitIncidentReport(incidentReport);
     hub.emitForensicReport(forensicReport);
 
-    if (engine && shouldHalt && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+    if (engine && shouldHalt && isActualBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
       const bugId = `bug_${Date.now()}_${randomBytes(4).toString('hex')}`;
       engine.registerConfirmedBug({
         bugId,
@@ -289,7 +253,7 @@ export async function setupExceptionCatcher(
       steps: actionRecorder.snapshot(),
     });
 
-    if (engine && shouldRegisterAsBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
+    if (engine && isActualBug('EXCEPTION', { message: contextualReason, severity: aiDeduction.severity })) {
       const bugId = `bug_${Date.now()}_${randomBytes(4).toString('hex')}`;
       engine.registerConfirmedBug({
         bugId,
@@ -370,7 +334,7 @@ export async function setupExceptionCatcher(
     }
   });
 
-page.on('requestfailed', (request) => {
+  page.on('requestfailed', (request) => {
     const failure = request.failure();
     // Ignore aborted requests - these occur when navigation is cancelled or page is closed, not actual bugs
     if (failure && failure.errorText === 'net::ERR_ABORTED') {

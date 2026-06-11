@@ -1,4 +1,4 @@
-import type { ForensicCrashReport, IncidentReport, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -19,8 +19,7 @@ export interface EngineGateway {
   onUrlChanged(handler: (url: string) => void): void;
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;
   removeAllListeners(): void;
-  startTest(targetUrl: string): Promise<void>;
+  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
 }
-

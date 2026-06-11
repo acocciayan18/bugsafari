@@ -5,6 +5,33 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import { requireAuth, optionalAuth, type AuthRequest } from './authMiddleware.js';
 import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
 
+/**
+ * Sanitize and validate targetUrl to prevent NoSQL injection and XSS attacks
+ * Ensures input is a plain string URL
+ */
+function sanitizeTargetUrl(targetUrl: unknown): string | null {
+  if (typeof targetUrl !== 'string') {
+    console.error('[SECURITY] targetUrl is not a string');
+    return null;
+  }
+  const trimmed = targetUrl.trim();
+  if (!trimmed) {
+    console.error('[SECURITY] targetUrl is empty');
+    return null;
+  }
+  // Check for NoSQL injection patterns
+  if (trimmed.includes('$') && trimmed.match(/\$\w+/)) {
+    console.error('[SECURITY] Potential NoSQL injection in targetUrl');
+    return null;
+  }
+  // Basic URL format check - must start with http:// or https://
+  if (!trimmed.match(/^https?:\/\/.+/)) {
+    console.error('[SECURITY] Invalid URL format in targetUrl');
+    return null;
+  }
+  return trimmed;
+}
+
 export function registerRoutes(
   app: Express,
   useCase: StartExplorationUseCase,
@@ -21,7 +48,7 @@ export function registerRoutes(
     });
   });
 
-// Start test - allowed for guests (optional auth)
+  // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
   app.post('/api/start-test', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log(`[API] 📥 POST /api/start-test received`);
@@ -49,13 +76,17 @@ export function registerRoutes(
       console.log(`[API] ℹ️ No authenticated userId - using default for guest session`);
     }
 
+    // Extract optimization settings from request body
+    const optimizationSettings = request.body?.optimization;
+    console.log(`[API] Optimization settings:`, optimizationSettings);
+
     console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
     response.json({ accepted: true, url: targetUrl });
     console.log(`[API] 🚀 Starting safari in background...`);
-    void useCase.execute(targetUrl);
+    void useCase.execute(targetUrl, optimizationSettings);
   });
 
-// Save session - requires authentication
+  // Save session - requires authentication
   app.post('/api/history/save-session', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/history/save-session called');
     console.log('[API] Request body:', JSON.stringify(request.body));
@@ -68,18 +99,19 @@ export function registerRoutes(
     }
 
     try {
-      const targetUrl = typeof request.body?.targetUrl === 'string' ? request.body.targetUrl : undefined;
+      // SECURITY: Sanitize targetUrl to prevent NoSQL injection
+      const targetUrl = sanitizeTargetUrl(request.body?.targetUrl);
       console.log('[API] Target URL to save:', targetUrl);
 
       if (!targetUrl) {
-        console.warn('[API] No targetUrl provided in request body');
-        response.status(400).json({ error: 'targetUrl is required.' });
+        console.warn('[API] No targetUrl provided in request body or invalid format');
+        response.status(400).json({ error: 'targetUrl is required and must be a valid URL.' });
         return;
       }
 
       // Call manualSaveToHistory to save to savedsafaris collection
       const result = await useCase.manualSaveToHistory(targetUrl, userId);
-      
+
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);
         response.status(500).json({ error: result.message });
@@ -95,7 +127,7 @@ export function registerRoutes(
     }
   });
 
-// Session history - optional auth (shows prompt for guests)
+  // Session history - optional auth (shows prompt for guests)
   app.get('/api/history/sessions', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/sessions called with query:', request.query);
     console.log('[API] Auth user:', request.userId ?? 'none');
@@ -129,7 +161,7 @@ export function registerRoutes(
     }
   });
 
-// Safari run history - requires authentication
+  // Safari run history - requires authentication
   app.get('/api/history', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history called');
     console.log('[API] Auth header:', request.headers.authorization?.substring(0, 30) + '...');
@@ -147,7 +179,7 @@ export function registerRoutes(
       console.log('[API] Fetching safari history for userId:', userId);
       const history = await savedSafariRepository.getSafariHistoryByUserId(userId);
       console.log('[API] Safari history raw retrieved count:', history?.length ?? 0);
-      
+
       if (history && history.length > 0) {
         console.log('[API] First document sample:', JSON.stringify(history[0]).substring(0, 200));
       }

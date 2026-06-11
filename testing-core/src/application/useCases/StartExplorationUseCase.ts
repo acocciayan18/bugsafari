@@ -1,5 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
+import type { OptimizationSettings } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
 import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
@@ -16,47 +17,11 @@ interface ExecutionMetrics {
     bugsByCategory: Record<string, number>;
 }
 
-/**
- * Non-bug types that should NOT be counted as bugs.
- * These are healthy system telemetry, not actual bugs.
- */
-const NON_BUG_TYPES = new Set(['ACTION', 'HEURISTIC_SCORE']);
-
-/**
- * Valid bug types that should be counted as bugs.
- */
-const VALID_BUG_TYPES = new Set(['EXCEPTION', 'RUNTIME_UI_FREEZE', 'SESSION_SYNC_FAULT', 'NETWORK']);
-
-/**
- * Filter out non-bug telemetry types.
- * Only EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, and NETWORK (status >= 400) are actual bugs.
- */
-function isActualBug(bug: { type?: string; meta?: Record<string, unknown> }): boolean {
-    const bugType = bug.type?.toUpperCase();
-
-    // Always exclude non-bug types
-    if (bugType && NON_BUG_TYPES.has(bugType)) {
-        return false;
-    }
-
-    // For NETWORK type, check status code
-    if (bugType === 'NETWORK') {
-        const statusCode = bug.meta?.statusCode ?? bug.meta?.status;
-        if (typeof statusCode === 'number') {
-            return statusCode >= 400;
-        }
-        // If no status code found, assume it's an unhandled network error
-        return true;
-    }
-
-    // Include only valid bug types
-    return !!(bugType && VALID_BUG_TYPES.has(bugType));
-}
-
 export class StartExplorationUseCase {
     private currentUserId: string;
     private currentSessionId: string | null = null;
     private executionStartTime: number = 0;
+    private optimizationSettings: OptimizationSettings | undefined;
 
     constructor(
         private readonly browserEngine: BrowserEngine,
@@ -183,7 +148,11 @@ export class StartExplorationUseCase {
         }
     }
 
-public async execute(targetUrl: string): Promise<void> {
+    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> {
+        // Store optimization settings for use during execution
+        this.optimizationSettings = optimizationSettings;
+        console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
+
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
 
@@ -195,7 +164,7 @@ public async execute(targetUrl: string): Promise<void> {
             bugsByCategory: {},
         };
 
-// FIX: Create session in database BEFORE starting test
+        // FIX: Create session in database BEFORE starting test
         // CRITICAL: This operation MUST NOT block safari initialization
         // If DB is down, we continue without forensic history - that's acceptable
         this.currentSessionId = null;
@@ -219,11 +188,11 @@ public async execute(targetUrl: string): Promise<void> {
         }
 
         this.state.active = true;
-        
-        // Register the active engine so sockets can control it
-        setActiveEngine(this.browserEngine); 
 
-this.telemetry.emitTelemetry({
+        // Register the active engine so sockets can control it
+        setActiveEngine(this.browserEngine);
+
+        this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),
             type: 'ACTION',
             meta: {
@@ -236,7 +205,8 @@ this.telemetry.emitTelemetry({
         });
 
         try {
-            const result = await this.browserEngine.run(targetUrl, this.telemetry);
+            // Pass optimization settings to the browser engine
+            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings);
 
             executionStatus = result.completed ? 'COMPLETED' : 'HALTED';
 
@@ -286,14 +256,14 @@ this.telemetry.emitTelemetry({
             });
         } finally {
             const executionDuration = Date.now() - executionStartTime;
-            
+
             // FIX: Auto-complete the session with execution duration
             // This ensures the session record is always persisted, even if user doesn't click Save
             if (this.currentSessionId && this.findingRepository) {
                 try {
                     const completedAt = new Date().toISOString();
                     console.log(`[StartExplorationUseCase] Marking session ${this.currentSessionId} as ${executionStatus}, duration: ${executionDuration}ms`);
-                    
+
                     if (executionStatus === 'CRASHED') {
                         await this.findingRepository.markSessionCrashed(
                             this.currentSessionId,
@@ -306,23 +276,23 @@ this.telemetry.emitTelemetry({
                             completedAt
                         );
                     }
-                    
-// Also update the stats with runtime and calculate coverage percentage
+
+                    // Also update the stats with runtime and calculate coverage percentage
                     const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
                     const { Types } = await import('mongoose');
-                    
+
                     // Get maxActions from config (default 100 if not specified)
                     const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
-                    
+
                     // Calculate coverage percentage (actions executed / maxActions * 100)
                     const coveragePercentage = Math.min(100, Math.round((metrics.totalActions / maxActions) * 100));
-                    
+
                     console.log(`[StartExplorationUseCase] Coverage: ${metrics.totalActions}/${maxActions} = ${coveragePercentage}%`);
-                    
+
                     await SessionModel.updateOne(
                         { _id: new Types.ObjectId(this.currentSessionId) },
-                        { 
-                            $set: { 
+                        {
+                            $set: {
                                 'stats.runtimeMs': executionDuration,
                                 'stats.actionsExecuted': metrics.totalActions,
                                 'stats.coveragePercentage': coveragePercentage,
