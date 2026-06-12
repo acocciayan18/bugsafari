@@ -2,7 +2,7 @@
 // High-contrast brutalist technical aesthetic
 // Dark container for canvas streaming
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { LiveFeedRenderer } from '../infrastructure/socket/BinaryFrameReceiver';
 
 interface LiveFeedProps {
@@ -38,46 +38,74 @@ export default function LiveFeed({
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LiveFeedRenderer | null>(null);
   const [fps, setFps] = useState(0);
-  const [canvasStyle, setCanvasStyle] = useState({ width: '100%', height: '100%' });
+  const [canvasDisplaySize, setCanvasDisplaySize] = useState({ 
+    width: `${NATIVE_VIEWPORT_WIDTH}px`, 
+    height: `${NATIVE_VIEWPORT_HEIGHT}px` 
+  });
 
   // Status determination
   const isIdle = !isTestRunning && !hasRunCompleted && !isInitializing;
   const isInitializingScreen = isInitializing || (isTestRunning && !liveFrame);
   const isCompleted = hasRunCompleted && !isTestRunning;
 
-  // Initialize canvas dimensions
+// Calculate optimal dimensions for object-fit: cover (no empty margins, cropping allowed)
+  const calculateCoverDimensions = useCallback(() => {
+    if (!containerRef.current) {
+      return { 
+        canvasWidth: NATIVE_VIEWPORT_WIDTH, 
+        canvasHeight: NATIVE_VIEWPORT_HEIGHT,
+        scale: 1
+      };
+    }
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+
+    // Calculate scale for object-fit: cover behavior
+    // Use Math.max to ensure image covers ENTIRE container (no whitespace)
+    // This means the image will overflow/crop if aspect ratios don't match
+    const scale = Math.max(
+      containerWidth / NATIVE_VIEWPORT_WIDTH,
+      containerHeight / NATIVE_VIEWPORT_HEIGHT
+    );
+
+    // Calculate scaled dimensions - these become canvas INTERNAL resolution
+    const canvasWidth = Math.round(NATIVE_VIEWPORT_WIDTH * scale);
+    const canvasHeight = Math.round(NATIVE_VIEWPORT_HEIGHT * scale);
+
+    return {
+      canvasWidth,
+      canvasHeight,
+      scale
+    };
+  }, []);
+
+// Update canvas for object-fit: cover rendering
+  const updateCanvasSize = useCallback(() => {
+    if (!containerRef.current || !canvasRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const coverData = calculateCoverDimensions();
+
+    // Diagnostic: Log LiveFeed rendering metrics (cover mode)
+    console.log(`[LiveFeed] Render: container=${containerRect.width.toFixed(0)}x${containerRect.height.toFixed(0)}, native=${NATIVE_VIEWPORT_WIDTH}x${NATIVE_VIEWPORT_HEIGHT}, canvasInternal=${coverData.canvasWidth}x${coverData.canvasHeight}, scale=${coverData.scale.toFixed(3)}`);
+
+    // Set canvas INTERNAL resolution to scaled dimensions
+    // This implements object-fit: cover - the image fills the canvas without stretching
+    canvasRef.current.width = coverData.canvasWidth;
+    canvasRef.current.height = coverData.canvasHeight;
+
+    // Update state for placeholders (idle, initializing, completed screens)
+    setCanvasDisplaySize({
+      width: `${coverData.canvasWidth}px`,
+      height: `${coverData.canvasHeight}px`
+    });
+  }, [calculateCoverDimensions]);
+
+  // Initialize canvas dimensions with object-fit: cover
   useEffect(() => {
     if (!canvasRef.current) return;
-
-    canvasRef.current.width = NATIVE_VIEWPORT_WIDTH;
-    canvasRef.current.height = NATIVE_VIEWPORT_HEIGHT;
-
-    const updateCanvasSize = () => {
-      if (!containerRef.current || !canvasRef.current) return;
-
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const containerWidth = containerRect.width;
-      const containerHeight = containerRect.height;
-
-      const sourceAspect = NATIVE_VIEWPORT_WIDTH / NATIVE_VIEWPORT_HEIGHT;
-      const containerAspect = containerWidth / containerHeight;
-
-      let displayWidth: number;
-      let displayHeight: number;
-
-      if (containerAspect > sourceAspect) {
-        displayHeight = containerHeight;
-        displayWidth = containerHeight * sourceAspect;
-      } else {
-        displayWidth = containerWidth;
-        displayHeight = containerWidth / sourceAspect;
-      }
-
-      setCanvasStyle({
-        width: `${displayWidth}px`,
-        height: `${displayHeight}px`,
-      });
-    };
 
     updateCanvasSize();
 
@@ -92,7 +120,7 @@ export default function LiveFeed({
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [updateCanvasSize]);
 
   // Binary stream handling
   useEffect(() => {
@@ -128,20 +156,24 @@ export default function LiveFeed({
     }
   }, [useBinaryStream, binaryWsUrl]);
 
-  // Frame rendering
+// Frame rendering - uses object-fit: cover (fills canvas, cropped if needed)
   const renderFrame = liveFrame || frame;
 
   useEffect(() => {
     if (renderFrame && !useBinaryStream && canvasRef.current) {
-      const img = new Image();
-      img.onload = () => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, NATIVE_VIEWPORT_WIDTH, NATIVE_VIEWPORT_HEIGHT);
-          ctx.drawImage(img, 0, 0, NATIVE_VIEWPORT_WIDTH, NATIVE_VIEWPORT_HEIGHT);
-        }
-      };
-      img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        const img = new Image();
+        img.onload = () => {
+          // Draw image to fill canvas (object-fit: cover behavior)
+          // Canvas internal resolution already set to cover dimensions
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
+      }
     }
   }, [renderFrame, useBinaryStream]);
 
@@ -176,7 +208,7 @@ export default function LiveFeed({
         </div>
       </div>
 
-      {/* CANVAS CONTAINER - White Industrial */}
+{/* CANVAS CONTAINER - White Industrial */}
       <div
         ref={containerRef}
         className="flex flex-col items-center justify-center flex-1 min-h-0 bg-white overflow-hidden p-0 relative"
@@ -185,7 +217,7 @@ export default function LiveFeed({
         {isIdle && (
           <div
             className="absolute flex items-center justify-center z-10 bg-white"
-            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
               ENTER TARGET URL TO INITIATE
@@ -197,7 +229,7 @@ export default function LiveFeed({
         {isInitializingScreen && (
           <div
             className="absolute flex flex-col items-center justify-center z-10 bg-white"
-            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <div className="mb-4 flex items-center justify-center gap-1">
               <span className="h-2 w-2 bg-black animate-pulse"></span>
@@ -214,7 +246,7 @@ export default function LiveFeed({
         {isCompleted && (
           <div
             className="absolute flex items-center justify-center z-10 bg-white"
-            style={{ width: canvasStyle.width, height: canvasStyle.height }}
+            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
               EXPLORATION COMPLETE
@@ -222,16 +254,10 @@ export default function LiveFeed({
           </div>
         )}
 
-        {/* Canvas */}
+{/* Canvas with object-fit: cover (internal resolution = display size) */}
         <canvas
           ref={canvasRef}
-          style={{
-            width: canvasStyle.width,
-            height: canvasStyle.height,
-            maxWidth: '100%',
-            maxHeight: '100%',
-          }}
-          className="block object-contain"
+          className="block w-full h-full"
         />
       </div>
     </div>

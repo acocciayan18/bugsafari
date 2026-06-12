@@ -57,8 +57,9 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
 
-  // 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
-  const INITIALIZATION_TIMEOUT_MS = 15000; // 15 seconds timeout
+// 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
+  // Increased from 15s to 30s to account for browser startup time on slower machines
+  const INITIALIZATION_TIMEOUT_MS = 30000; // 30 seconds timeout
 
   useEffect(() => {
     let initializationTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -72,14 +73,14 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
         setIsInitializing(false);
         setIsTestRunning(false);
         setStatus('READY');
-        // Add a timeout error to telemetry so user knows what happened
+// Add a timeout error to telemetry so user knows what happened
         setTelemetry((prev) => [
           ...prev,
           {
             timestamp: new Date().toISOString(),
             type: 'EXCEPTION',
             meta: {
-              message: 'Engine initialization timeout: No live frame received within 15 seconds. The browser may have failed to start.',
+              message: 'Engine initialization timeout: No live frame received within 30 seconds. The browser may have failed to start or the target URL is taking too long to respond.',
             },
           },
         ]);

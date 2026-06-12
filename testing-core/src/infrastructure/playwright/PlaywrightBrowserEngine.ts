@@ -5,6 +5,20 @@ import type { OptimizationSettings } from '../../../../developer-dashboard/src/t
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 
+/**
+ * Browser and system information captured at launch
+ */
+export interface BrowserInfo {
+  browser: string;
+  browserVersion: string;
+  browserEngine: string;
+  operatingSystem: string;
+  platform: string;
+  screenResolution: string;
+  viewportWidth: number;
+  viewportHeight: number;
+}
+
 export class PlaywrightBrowserEngine implements BrowserEngine {
   constructor(private readonly findingRepo?: FindingRepository) { }
 
@@ -23,6 +37,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     advice: string;
     timestamp: Date;
   }> = [];
+  private currentBrowserInfo: BrowserInfo | null = null;
 
   public pause(): void {
     this.activeEngine?.pause();
@@ -46,26 +61,82 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings): Promise<{ completed: boolean; reason: string }> {
+public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings): Promise<{ completed: boolean; reason: string }> {
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings);
     this.activeBrowser = await chromium.launch({ headless: true });
+    const VIEWPORT_WIDTH = 1440;
+    const VIEWPORT_HEIGHT = 900;
+    
+    // Diagnostic: Log viewport configuration
+    console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
+    const browserVersion = await this.activeBrowser.version();
+    console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
+    
     this.activeContext = await this.activeBrowser.newContext({
-      viewport: { width: 1440, height: 900 },
+      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       ignoreHTTPSErrors: true,
+      deviceScaleFactor: 1,
     });
     this.activePage = await this.activeContext.newPage();
+    
+    // Capture browser info and system details for telemetry
+    const platformInfo = await this.activePage.evaluate(() => {
+      return {
+        platform: navigator.platform,
+        userAgent: navigator.userAgent,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+      };
+    });
+
+    // Store browser info for telemetry
+    this.currentBrowserInfo = {
+      browser: 'Chromium',
+      browserVersion: browserVersion,
+      browserEngine: 'Blink',
+      operatingSystem: platformInfo.platform,
+      platform: platformInfo.platform,
+      screenResolution: `${platformInfo.screenWidth}x${platformInfo.screenHeight}`,
+      viewportWidth: VIEWPORT_WIDTH,
+      viewportHeight: VIEWPORT_HEIGHT,
+    };
+
+    console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
+
+    // Diagnostic: Verify page viewport
+    const initialViewport = await this.activePage.evaluate(() => {
+      return {
+        windowInnerWidth: window.innerWidth,
+        windowInnerHeight: window.innerHeight,
+        documentClientWidth: document.documentElement?.clientWidth ?? 0,
+        documentClientHeight: document.documentElement?.clientHeight ?? 0,
+        bodyClientWidth: document.body?.clientWidth ?? 0,
+        bodyClientHeight: document.body?.clientHeight ?? 0,
+        scrollWidth: document.documentElement?.scrollWidth ?? 0,
+        scrollHeight: document.documentElement?.scrollHeight ?? 0,
+      };
+    });
+    console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
 
     let result: { completed: boolean; reason: string };
     try {
-      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60);
+      // Pass browserInfo to the engine for telemetry collection
+      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
     } finally {
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       await this.cleanupResources();
       this.activeEngine = null;
     }
     return result;
+  }
+
+  /**
+   * Get the captured browser info
+   */
+  public getBrowserInfo(): BrowserInfo | null {
+    return this.currentBrowserInfo;
   }
 
   public getConfirmedBugsFromMemory(): Array<{

@@ -1,305 +1,337 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { mapNetworkError, showErrorToast } from '../infrastructure/notifications/toastUtils';
-import { toast } from 'sonner';
-
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
 interface SignupFormProps {
   onSignupSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
 }
 
-// Validation rule types
-interface ValidationRule {
-  key: string;
-  label: string;
-  isValid: boolean;
-}
+// Icons
+const UserIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+  </svg>
+);
 
-// Auth response types matching API
-interface AuthResponse {
-  ok?: boolean;
-  token: string;
-  user: { id: string; email: string };
-  error?: string;
-}
+const EnvelopeIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v11.25a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75" />
+  </svg>
+);
 
-export default function SignupForm({
-  onSignupSuccess,
-}: SignupFormProps) {
+const LockClosedIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+  </svg>
+);
+
+const EyeIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const EyeSlashIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+  </svg>
+);
+
+const XIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
-  const [emailError, setEmailError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
   const navigate = useNavigate();
 
-  // Password validation states
-  const [hasMinLength, setHasMinLength] = useState(false);
-  const [hasUppercase, setHasUppercase] = useState(false);
-  const [hasNumber, setHasNumber] = useState(false);
-  const [hasSpecialChar, setHasSpecialChar] = useState(false);
+  // Password validation
+  const hasMinLength = password.length >= 12;
+  const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasNoSequential = !/(.)\1{2,}|abc|123|qwe|password|pass/i.test(password);
 
-  // Password strength validation: all 4 criteria must be true
-  const isPasswordStrong = hasMinLength && hasUppercase && hasNumber && hasSpecialChar;
-
-  // Validation checklist items
-  const validationRules: ValidationRule[] = [
-    { key: 'minLength', label: 'At least 8 characters', isValid: hasMinLength },
-    { key: 'uppercase', label: 'One uppercase letter (A-Z)', isValid: hasUppercase },
-    { key: 'number', label: 'One numeric character (0-9)', isValid: hasNumber },
-    { key: 'specialChar', label: 'One special character (!@#$%^&*)', isValid: hasSpecialChar },
-  ];
-
-  // Validate password on every change
-  useEffect(() => {
-    setHasMinLength(password.length >= 8);
-    setHasUppercase(/[A-Z]/.test(password));
-    setHasNumber(/[0-9]/.test(password));
-    setHasSpecialChar(/[^A-Za-z0-9]/.test(password));
-  }, [password]);
-
-  // Clear email error when user starts typing
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEmail(e.target.value);
-    if (emailError) {
-      setEmailError('');
-    }
-  };
-
-// Handle signup with in-button loading spinner per requirements
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    // Client-side validation
-    if (!email.trim() || !password) {
-      setFormError('Email and password are required');
+    if (!fullName.trim()) {
+      setFormError('Please enter your full name.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 12) {
+      setFormError('Password must be at least 12 characters.');
+      return;
+    }
+
+    if (!hasSymbol || !hasNumber) {
+      setFormError('Password must include symbols and numbers.');
       return;
     }
 
     if (password !== confirmPassword) {
-      setFormError('Passwords do not match');
+      setFormError('Passwords do not match.');
       return;
     }
 
-    if (!isPasswordStrong) {
-      setFormError('Password does not meet all requirements');
-      return;
-    }
-
-    setIsLoading(true);
+setIsLoading(true);
 
     try {
-      // Direct API call without toast.promise wrapper
+      const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+      
+      // Make real API call to backend for user registration
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password: password,
-        }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
-      // Check content type to handle non-JSON responses
-      const contentType = response.headers.get('content-type');
-      let data: AuthResponse;
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        // Server returned non-JSON (likely HTML error page)
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
-      }
+      const data = await response.json();
 
-      // Handle HTTP status codes per requirements
-      if (response.status === 201) {
-        // Success - account created
-        if (data.token && data.user) {
-          localStorage.setItem('bugsafari_token', data.token);
-          localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
-          console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
-          
-          // Trigger toast ONLY on success
-          toast.success("Account created successfully! Redirecting to login terminal...");
-          
-          // Immediate redirect to /login after success
-          navigate('/login', { replace: true });
-
-          // Invoke callback if provided
-          if (onSignupSuccess) {
-            onSignupSuccess(data.token, data.user);
-          }
-          
-          setIsLoading(false);
-          return;
+      if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 409) {
+          setFormError('An account with this email already exists.');
+        } else {
+          setFormError(data.error || 'Account creation failed. Please try again.');
         }
-        throw new Error('Invalid server response');
+        setIsLoading(false);
+        return;
       }
 
-      if (response.status === 409) {
-        // Conflict - email already exists
-        const errorMsg = data.error ?? 'This email identifier already holds active credentials.';
-        setEmailError(errorMsg);
-        throw new Error(`Registration Rejected: ${errorMsg}`);
+      // Success - backend returns token and user
+      if (data.token && data.user) {
+        // Store token and user in localStorage
+        localStorage.setItem('bugsafari_token', data.token);
+        localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
+        
+        if (onSignupSuccess) {
+          onSignupSuccess(data.token, data.user);
+        }
+        
+        // Navigate to dashboard after successful signup
+        navigate('/dashboard');
+      } else {
+        setFormError('Unexpected response from server.');
       }
-
-      // Other errors
-      const errorMsg = data.error ?? `Registration failed: ${response.status}`;
-      throw new Error(errorMsg);
+      
     } catch (err) {
-      // Handle errors with proper message mapping
-      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
-      
-      // Map network errors to high-visibility message
-      const networkMessage = mapNetworkError(errorMessage);
-      if (networkMessage.includes('Infrastructure Offline')) {
-        showErrorToast(networkMessage, 8000);
-      }
-      
-      // Don't overwrite emailError if it's a conflict (409)
-      if (!emailError) {
-        setFormError(errorMessage);
-      }
-      
       console.error('[SignupForm] Signup error:', err);
+      setFormError('Unable to connect to server. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleGuestLogin = () => {
+    navigate('/dashboard');
+  };
+
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
+        
+{/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-zinc-100">BugSafari</h1>
-          <p className="text-sm text-zinc-500 mt-1">Create an account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={handleEmailChange}
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
-              placeholder="you@example.com"
-              required
-            />
-            {emailError && (
-              <p className="text-rose-500 text-xs mt-1">Registration Rejected: {emailError}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
-              placeholder="Enter a strong password"
-              required
-            />
-          </div>
-
-          {/* Dynamic Password Strength Checklist */}
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-              Password Requirements
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {validationRules.map((rule) => (
-                <div
-                  key={rule.key}
-                  className={`flex items-center gap-2 text-xs transition-all duration-200 ${
-                    rule.isValid ? 'text-emerald-500' : 'text-zinc-500'
-                  }`}
-                >
-                  {rule.isValid ? (
-                    <svg
-                      className="w-3 h-3 shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-3 h-3 shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <circle cx="6" cy="10" r="2" />
-                    </svg>
-                  )}
-                  <span className="truncate">{rule.label}</span>
+        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
+          <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">BugSafari</h2>
+          <p className="text-base text-slate-500 text-center mb-6">Create your account</p>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            
+            {/* FULL NAME */}
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
+                Full Name
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                  <UserIcon />
                 </div>
-              ))}
+                <input
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  placeholder="Linus Torvalds"
+                  required
+                />
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-zinc-300 mb-1">
-              Confirm Password
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          {formError && (
-            <div className="p-3 bg-red-950/50 border border-red-900 rounded-lg">
-              <p className="text-sm text-red-400">{formError}</p>
+            {/* WORK EMAIL */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
+                Work Email
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                  <EnvelopeIcon />
+                </div>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  placeholder="developer@bugsafari.io"
+                  required
+                />
+              </div>
             </div>
-          )}
 
-<button
-            type="submit"
-            disabled={isLoading || !isPasswordStrong}
-            className="w-full rounded-lg bg-zinc-100 px-4 cursor-pointer py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-600 flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span>Creating Account...</span>
-              </>
-            ) : (
-              'Create Account'
+            {/* PASSWORD */}
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                  <LockClosedIcon />
+                </div>
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  placeholder="••••••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                </button>
+              </div>
+            </div>
+
+            {/* CONFIRM PASSWORD */}
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                  <LockClosedIcon />
+                </div>
+                <input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  placeholder="••••••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                </button>
+              </div>
+            </div>
+
+            {/* PASSWORD REQUIREMENTS */}
+            <div className="pt-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
+                Password Requirements
+              </p>
+              <div className="space-y-1">
+                <div className={`flex items-center gap-2 text-xs ${hasMinLength ? 'text-green-600' : 'text-red-500'}`}>
+                  <span className={hasMinLength ? 'text-green-600' : 'text-red-500'}>
+                    {hasMinLength ? <CheckIcon /> : <XIcon />}
+                  </span>
+                  <span>Minimum 12 characters</span>
+                </div>
+                <div className={`flex items-center gap-2 text-xs ${hasSymbol && hasNumber ? 'text-green-600' : 'text-slate-400'}`}>
+                  <span className={hasSymbol && hasNumber ? 'text-green-600' : 'text-slate-400'}>
+                    <CheckIcon />
+                  </span>
+                  <span>Include symbols &amp; numbers</span>
+                </div>
+                <div className={`flex items-center gap-2 text-xs ${hasNoSequential ? 'text-green-600' : 'text-slate-400'}`}>
+                  <span className={hasNoSequential ? 'text-green-600' : 'text-slate-400'}>
+                    <CheckIcon />
+                  </span>
+                  <span>No sequential strings</span>
+                </div>
+              </div>
+            </div>
+
+            {formError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{formError}</p>
+              </div>
             )}
-          </button>
-        </form>
 
-<div className="mt-6 text-center">
-          <Link
-            to="/login"
-            className="text-sm text-zinc-500 hover:text-zinc-300"
-          >
-            Already have an account?{' '}
-            <span className="font-semibold text-zinc-300">Sign in</span>
-          </Link>
+            {/* SUBMIT BUTTON */}
+            <button
+              type="submit"
+              disabled={isLoading || !fullName || !email || !password || !confirmPassword}
+              className="w-full rounded-lg bg-slate-800 px-4 py-3 mt-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors shadow-md"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Creating account...</span>
+                </>
+              ) : (
+                'Create Account →'
+              )}
+            </button>
+          </form>
+
+          {/* LINKS */}
+          <div className="mt-6 flex flex-col items-center space-y-4">
+            <Link
+              to="/login"
+              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-4 transition-colors"
+            >
+              Already have an account? Log in
+            </Link>
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Continue As Guest Mode
+            </button>
+          </div>
         </div>
+        
       </div>
     </div>
   );

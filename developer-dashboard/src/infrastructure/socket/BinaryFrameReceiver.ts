@@ -402,7 +402,7 @@ export class LiveFeedRenderer {
   private canvasRenderer: CanvasFrameRenderer | null = null;
   private stopRendering: (() => void) | null = null;
 
-  constructor(options: {
+constructor(options: {
     canvasElement: HTMLCanvasElement;
     wsUrl: string;
     frameWidth?: number;
@@ -411,15 +411,18 @@ export class LiveFeedRenderer {
     // Initialize canvas renderer
     this.canvasRenderer = new CanvasFrameRenderer(options.canvasElement);
     
-    // Set dimensions
-    if (options.frameWidth && options.frameHeight) {
-      this.canvasRenderer.setDimensions(options.frameWidth, options.frameHeight);
-    }
+    // Note: Dimensions are now set dynamically by LiveFeed component
+    // based on container size (object-fit: cover behavior)
+    // The canvas internal resolution will be updated when frames arrive
 
     // Initialize receiver with frame callback
     this.receiver = new BinaryFrameReceiver({
       url: options.wsUrl,
-      onFrame: (frameData) => {
+      onFrame: (frameData, metadata) => {
+        // Update canvas dimensions from metadata if available
+        if (metadata?.width && metadata?.height) {
+          this.canvasRenderer?.setDimensions(metadata.width, metadata.height);
+        }
         this.canvasRenderer?.queueFrame(frameData);
       },
     });

@@ -16,7 +16,14 @@ import { getStrategyByCategory } from '../scenarios/fuzzing/strategies/index.js'
 import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
 import { setupBrowserConsoleListener } from '../../infrastructure/monitoring/browserConsoleListener.js';
 import type { FindingRepository } from '../repositories/FindingRepository.js';
+import type { BrowserInfo } from '../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
+import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
+import { forensicScreenshotRepository } from '../../infrastructure/database/repositories/ForensicScreenshotRepository.js';
+import { ForensicErrorType, ForensicErrorSeverity } from '../../infrastructure/database/models/ForensicErrorModel.js';
+import { ForensicScreenshotType } from '../../infrastructure/database/models/ForensicScreenshotModel.js';
+import { Types } from 'mongoose';
 
 // Import StateGraphNavigator and types from DIrectedPathFinder
 import { StateGraphNavigator } from './StateGraphNavigator.js';
@@ -56,7 +63,7 @@ export class AutonomousExplorationEngine {
   private isFrameBroadcastInFlight = false;
   private currentTelemetry: TelemetryGateway | null = null;
 
-  private confirmedBugsMemory: Array<{
+private confirmedBugsMemory: Array<{
     bugId: string;
     type: string;
     message: string;
@@ -65,6 +72,15 @@ export class AutonomousExplorationEngine {
     advice: string;
     timestamp: Date;
   }> = [];
+
+  // Runtime metrics for Phase 3 telemetry tracking
+  private runtimeMetrics = {
+    startTime: 0,
+    requestsCount: 0,
+    pageCount: 0,
+    interactionCount: 0,
+    failureCount: 0,
+  };
 
   constructor(
     private readonly findingRepo?: FindingRepository,
@@ -149,12 +165,41 @@ export class AutonomousExplorationEngine {
     );
   }
 
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60): Promise<{ completed: boolean; reason: string }> {
+public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<{ completed: boolean; reason: string }> {
+    // Initialize runtime metrics tracking
+    this.runtimeMetrics = {
+      startTime: Date.now(),
+      requestsCount: 0,
+      pageCount: 1, // Start with 1 for initial page load
+      interactionCount: 0,
+      failureCount: 0,
+    };
+    
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
+    
+    // Persist initial telemetry with browser info (Phase 3)
+    if (browserInfo && this.sessionId) {
+      this.persistTelemetry({
+        browser: browserInfo.browser,
+        browserVersion: browserInfo.browserVersion,
+        browserEngine: browserInfo.browserEngine,
+        operatingSystem: browserInfo.operatingSystem,
+        platform: browserInfo.platform,
+        screenResolution: browserInfo.screenResolution,
+        viewportWidth: browserInfo.viewportWidth,
+        viewportHeight: browserInfo.viewportHeight,
+        executionDuration: 0,
+        requestsCount: 0,
+        pageCount: 0,
+        interactionCount: 0,
+        failureCount: 0,
+      });
+    }
+    
     // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
@@ -187,7 +232,7 @@ export class AutonomousExplorationEngine {
       }
     });
 
-    // Task 1 Fix: Add response handler for NETWORK telemetry
+// Task 1 Fix: Add response handler for NETWORK telemetry
     page.on('response', async (response: Response) => {
       const status = response.status();
       const url = response.url();
@@ -195,11 +240,12 @@ export class AutonomousExplorationEngine {
 
       // Emit NETWORK for failures (>=400 per TESTING_TYPES.md) or soft-fail body
       let shouldEmit = status >= 400;
+      let bodyContent = '';
 
       if (!shouldEmit) {
         try {
-          const body = await response.text().catch(() => '');
-          const bodyLower = body.toLowerCase();
+          bodyContent = await response.text().catch(() => '');
+          const bodyLower = bodyContent.toLowerCase();
           const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
           const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
           shouldEmit = hasErrorFlag || hasStatusFail;
@@ -208,13 +254,34 @@ export class AutonomousExplorationEngine {
         }
       }
 
-      if (shouldEmit) {
+if (shouldEmit) {
+        // Phase 3: Track failed requests count
+        this.runtimeMetrics.requestsCount++;
+        
         telemetry.emitTelemetry(this.event('NETWORK', {
           statusCode: status,
           url,
           method,
           message: `Network ${status} ${method} ${url}`,
         }));
+
+        // 📸 Phase 4: Capture CRITICAL_EVENT screenshot on API failure
+        this.captureScreenshot(page, ForensicScreenshotType.API_FAILURE, `HTTP ${status} Error: ${method} ${url}`).catch((err) =>
+          console.warn('[AutonomousExplorationEngine] API failure screenshot capture failed:', err)
+        );
+
+        // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
+        this.persistForensicError({
+          type: ForensicErrorType.API_FAILURE,
+          severity: status >= 500 ? ForensicErrorSeverity.HIGH : ForensicErrorSeverity.MEDIUM,
+          message: `API Failure: HTTP ${status} ${method} ${url}`,
+          stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+          url: lastKnownUrl || page.url(),
+          endpoint: url,
+          method,
+          statusCode: status,
+          responseText: bodyContent.slice(0, 500),
+        });
 
         // NEW: Register HTTP error bug to memory
         this.registerConfirmedBug({
@@ -229,7 +296,7 @@ export class AutonomousExplorationEngine {
       }
     });
 
-    // Catch network request failures (timeouts, connection errors, aborts)
+// Catch network request failures (timeouts, connection errors, aborts)
     page.on('requestfailed', (request: Request) => {
       const timestamp = new Date().toISOString();
       const url = request.url();
@@ -260,6 +327,17 @@ export class AutonomousExplorationEngine {
         breadcrumbs,
       });
 
+      // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
+      this.persistForensicError({
+        type: ForensicErrorType.API_FAILURE,
+        severity: ForensicErrorSeverity.HIGH,
+        message: `Network Request Failed: ${reason} for ${method} ${url}`,
+        stackTrace: `${method} ${url} - ${reason}`,
+        url: lastKnownUrl || page.url(),
+        endpoint: url,
+        method,
+      });
+
       // NEW: Register network failure bug to memory
       this.registerConfirmedBug({
         bugId: `network-failed-${Date.now()}`,
@@ -272,22 +350,36 @@ export class AutonomousExplorationEngine {
       });
     });
 
-    handleFramenavigated = (): void => {
+handleFramenavigated = (): void => {
       const url = page.url();
       if (!url) return;
       lastKnownUrl = url;
+      // Phase 3: Track page count when navigating
+      this.runtimeMetrics.pageCount++;
       telemetry.emitUrlChanged(url);
     };
 
     page.on('framenavigated', handleFramenavigated);
 
     try {
-      // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
+// Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
 
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // EMIT EARLY TELEMETRY: Notify that browser has started navigating
+      // This helps the frontend understand the engine is processing
+      telemetry.emitTelemetry(this.event('ACTION', {
+        actionExecuted: 'browser-launched',
+        message: `🚀 Browser launched, navigating to ${targetUrl}...`,
+      }));
+
+await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
+
+      // 📸 Phase 4: Capture initial screenshot (after page load)
+      this.captureScreenshot(page, ForensicScreenshotType.INITIAL).catch((err) =>
+        console.warn('[AutonomousExplorationEngine] Initial screenshot capture failed:', err)
+      );
 
       // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
@@ -500,7 +592,10 @@ export class AutonomousExplorationEngine {
           this.logHighImpact(target, telemetry);
           const previousHashBeforeAction = currentHash;
 
-          await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+
+          // Phase 3: Track interaction count
+          this.runtimeMetrics.interactionCount++;
 
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'action-executed',
@@ -525,7 +620,16 @@ export class AutonomousExplorationEngine {
 
           await this.emitLiveFrame(page, telemetry);
           await wait(350);
-        } catch (err) {
+} catch (err) {
+          // Phase 3: Track failure count on exception
+          this.runtimeMetrics.failureCount++;
+          
+          // 📸 Phase 4: Capture FAILURE screenshot BEFORE recording error and test termination
+          const failureMessage = err instanceof Error ? err.message : String(err);
+          this.captureScreenshot(page, ForensicScreenshotType.FAILURE, `Test Failed: ${failureMessage}`).catch((err) =>
+            console.warn('[AutonomousExplorationEngine] Failure screenshot capture failed:', err)
+          );
+          
           // Emergency Data Flush: capture current action buffer and emit EXCEPTION telemetry.
           const actionSnapshot = this.actions.snapshot();
           const reproductionSteps = actionSnapshot.map((item, index) => `Step ${index + 1}: ${item.action} on ${item.selector}`);
@@ -559,7 +663,7 @@ export class AutonomousExplorationEngine {
 
       this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
-    } finally {
+} finally {
       // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
@@ -568,6 +672,32 @@ export class AutonomousExplorationEngine {
 
       // 🚀 Stop frame capture loop
       this.stopFrameCaptureLoop();
+
+      // 📸 Phase 4: Capture final screenshot (at test completion)
+      const finalStatus = this.freezeActionTraceRecording ? 'Failed' : 'Completed';
+      this.captureScreenshot(page, ForensicScreenshotType.FINAL, `Safari ${finalStatus}`).catch((err) =>
+        console.warn('[AutonomousExplorationEngine] Final screenshot capture failed:', err)
+      );
+
+// Phase 3: Persist final telemetry with execution duration (use instance metrics)
+      const executionDuration = this.runtimeMetrics.startTime ? Date.now() - this.runtimeMetrics.startTime : 0;
+      if (browserInfo && this.sessionId) {
+        this.persistTelemetry({
+          browser: browserInfo.browser,
+          browserVersion: browserInfo.browserVersion,
+          browserEngine: browserInfo.browserEngine,
+          operatingSystem: browserInfo.operatingSystem,
+          platform: browserInfo.platform,
+          screenResolution: browserInfo.screenResolution,
+          viewportWidth: browserInfo.viewportWidth,
+          viewportHeight: browserInfo.viewportHeight,
+          executionDuration,
+          requestsCount: this.runtimeMetrics.requestsCount,
+          pageCount: this.runtimeMetrics.pageCount,
+          interactionCount: this.runtimeMetrics.interactionCount,
+          failureCount: this.runtimeMetrics.failureCount,
+        });
+      }
 
       if (handleFramenavigated) {
         page.off('framenavigated', handleFramenavigated);
@@ -708,7 +838,7 @@ export class AutonomousExplorationEngine {
   }
 
 
-  private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): void {
+private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): void {
     page.on('dialog', async (dialog: Dialog) => {
       telemetry.emitTelemetry(this.event('ACTION', {
         actionExecuted: 'dialog-auto-dismiss',
@@ -718,7 +848,98 @@ export class AutonomousExplorationEngine {
     });
   }
 
-  private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKnownUrl: string): void {
+/**
+   * Persist error to forensic_errors database (Phase 2: Error Logging System)
+   */
+  private async persistForensicError(params: {
+    type: ForensicErrorType;
+    severity: ForensicErrorSeverity;
+    message: string;
+    stackTrace?: string;
+    url?: string;
+    endpoint?: string;
+    method?: string;
+    statusCode?: number;
+    responseText?: string;
+    filename?: string;
+    lineNumber?: number;
+    columnNumber?: number;
+    selector?: string;
+    action?: string;
+  }): Promise<void> {
+    if (!this.sessionId) return;
+
+    try {
+      await forensicErrorRepository.create({
+        forensicRunId: new Types.ObjectId(this.sessionId),
+        ...params,
+      });
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to persist forensic error:', error);
+    }
+  }
+
+/**
+   * Persist telemetry to forensic_telemetry database (Phase 3: Telemetry Collection)
+   */
+  private async persistTelemetry(params: {
+    browser: string;
+    browserVersion: string;
+    browserEngine?: string;
+    operatingSystem: string;
+    platform?: string;
+    screenResolution?: string;
+    viewportWidth?: number;
+    viewportHeight?: number;
+    executionDuration?: number;
+    requestsCount?: number;
+    pageCount?: number;
+    interactionCount?: number;
+    failureCount?: number;
+    memoryUsage?: number;
+    cpuUsage?: number;
+  }): Promise<void> {
+    if (!this.sessionId) return;
+
+    try {
+      await forensicTelemetryRepository.create({
+        forensicRunId: new Types.ObjectId(this.sessionId),
+        ...params,
+      });
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to persist forensic telemetry:', error);
+    }
+  }
+
+  /**
+   * Capture and persist a screenshot (Phase 4: Screenshot Forensics)
+   */
+  private async captureScreenshot(
+    page: Page,
+    screenshotType: ForensicScreenshotType,
+    errorMessage?: string,
+    stepNumber?: number,
+  ): Promise<void> {
+    if (!this.sessionId) return;
+
+    try {
+      const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
+      const imageData = screenshot.toString('base64');
+
+      await forensicScreenshotRepository.create({
+        forensicRunId: new Types.ObjectId(this.sessionId),
+        screenshotType,
+        imageData,
+        url: page.url(),
+        errorMessage,
+        stepNumber,
+      });
+    } catch (error) {
+      console.error('[AutonomousExplorationEngine] Failed to capture screenshot:', error);
+    }
+  }
+
+private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKnownUrl: string): void {
     // Monitor uncaught JavaScript exceptions
     page.on('pageerror', (error: Error) => {
       const message = error?.message ?? 'Unknown page error';
@@ -747,6 +968,20 @@ export class AutonomousExplorationEngine {
         stackTrace,
         breadcrumbs,
       });
+
+// Persist error to forensic_errors database (Phase 2: Error Logging System)
+      this.persistForensicError({
+        type: ForensicErrorType.JS_EXCEPTION,
+        severity: ForensicErrorSeverity.HIGH,
+        message: `🔴 Unhandled JS Exception: ${message}`,
+        stackTrace,
+        url,
+      });
+
+      // 📸 Phase 4: Capture CRITICAL_EVENT screenshot on JS exception
+      this.captureScreenshot(page, ForensicScreenshotType.CRITICAL_EVENT, `JS Exception: ${message}`).catch((err) =>
+        console.warn('[AutonomousExplorationEngine] JS exception screenshot capture failed:', err)
+      );
     });
 
     // Monitor unhandled promise rejections via console errors
@@ -786,71 +1021,19 @@ export class AutonomousExplorationEngine {
         stackTrace: text,
         breadcrumbs,
       });
+
+      // Persist console error to forensic_errors database (Phase 2: Error Logging System)
+      this.persistForensicError({
+        type: ForensicErrorType.CONSOLE_ERROR,
+        severity: ForensicErrorSeverity.MEDIUM,
+        message: `🔴 Console Error: ${text}`,
+        stackTrace: text,
+        url,
+      });
     });
   }
 
-  private async handleResponse(response: Response, currentUrl: string, telemetry: TelemetryGateway): Promise<string | null> {
-    const status = response.status();
-    const url = response.url();
-    const method = response.request().method();
-    const timestamp = new Date().toISOString();
-    const breadcrumbs = this.actions.snapshot();
-
-    const shouldEmitByStatus = status >= 400;
-
-    let shouldEmitByBody = false;
-    let bodyContent = '';
-    if (!shouldEmitByStatus) {
-      try {
-        bodyContent = await response.text().catch(() => '');
-        const bodyLower = bodyContent.toLowerCase();
-
-        const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
-        const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
-
-        shouldEmitByBody = hasErrorFlag || hasStatusFail;
-      } catch {
-        shouldEmitByBody = false;
-      }
-    }
-
-    if (shouldEmitByStatus || shouldEmitByBody) {
-      telemetry.emitTelemetry(this.event('NETWORK', {
-        statusCode: status,
-        url,
-        method,
-        message: `Network ${status} ${method} ${url}`,
-      }));
-
-      // Emit incident and forensic reports for ALL error statuses (4xx and 5xx)
-      const reason = `HTTP ${status}: ${method} ${url}`;
-      const stackTrace = `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`;
-
-      telemetry.emitIncidentReport({
-        timestamp,
-        reason,
-        url: currentUrl,
-        statusCode: status,
-        stackTrace,
-        steps: this.breadcrumbsToActionRecords(breadcrumbs),
-      });
-
-      telemetry.emitForensicReport({
-        timestamp,
-        reason,
-        statusCode: status,
-        url: currentUrl,
-        stackTrace,
-        breadcrumbs,
-      });
-
-      return reason;
-    }
-
-    return null;
-  }
-
-  private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
+private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
     const current = page.url();
     if (!current) {
       return;

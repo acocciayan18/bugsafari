@@ -13,9 +13,12 @@ import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngin
 import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import CommandCenter from './components/CommandCenter';
+import ForensicReport from './components/ForensicReport';
 import LandingPage from './components/LandingPage';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
+import ForgotPasswordForm from './components/ForgotPasswordForm';
+import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
 
@@ -82,11 +85,13 @@ export default function App() {
 
   const isAuthenticated = !!token && !!user;
 
-  const handleLoginSuccess = (newToken: string, newUser: User) => {
+const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('bugsafari_token', newToken);
     localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
+    // Clear guest mode on successful login
+    localStorage.removeItem('bugsafari_guest');
   };
 
   const handleSignupSuccess = (newToken: string, newUser: User) => {
@@ -96,33 +101,47 @@ export default function App() {
     localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
   };
 
-  const handleGuestAccess = () => {
+const handleGuestAccess = () => {
     setToken(null);
     setUser(null);
+    // For guest access, we store a special marker to allow guest sessions
+    localStorage.setItem('bugsafari_guest', 'true');
   };
 
-  const handleLogout = () => {
+const handleLogout = () => {
     localStorage.removeItem('bugsafari_user');
     localStorage.removeItem('bugsafari_token');
+    localStorage.removeItem('bugsafari_guest');
     setToken(null);
     setUser(null);
   };
 
+const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
+
   const location = useLocation();
-  const hasValidSession = !!token && !!user;
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup';
+  const hasValidSession = !!token && !!user || isGuestMode;
+const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
 
   // Derive activeView from URL path for sidebar highlighting
   const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
+// ─────────────────────────────────────────────────────────────
+  // Public Routes: LandingPage FIRST, then /login
   // ─────────────────────────────────────────────────────────────
-  // Public Routes: LandingPage, /login and /signup
-  // ─────────────────────────────────────────────────────────────
+  if (location.pathname === '/') {
+    return (
+      <>
+        <Toaster position="top-center" theme="dark" />
+        <LandingPage />
+      </>
+    );
+  }
+
   if (isAuthRoute || !hasValidSession) {
     return (
       <>
         <Toaster position="top-center" theme="dark" />
-        <Routes>
+<Routes>
           <Route path="/" element={<LandingPage />} />
           <Route
             path="/login"
@@ -138,6 +157,14 @@ export default function App() {
             element={
               <SignupForm onSignupSuccess={handleSignupSuccess} />
             }
+          />
+          <Route
+            path="/forgot-password"
+            element={<ForgotPasswordForm />}
+          />
+          <Route
+            path="/reset-password"
+            element={<ResetPasswordForm />}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -199,7 +226,7 @@ export default function App() {
             </div>
           }
         />
-        <Route
+<Route
           path="/history"
           element={
             <div className="flex h-screen w-screen bg-white">
@@ -214,6 +241,25 @@ export default function App() {
               />
               <div className="flex flex-1">
                 <SavedEvaluationSafaris />
+              </div>
+            </div>
+          }
+        />
+        <Route
+          path="/forensic-report/:runId"
+          element={
+            <div className="flex h-screen w-screen bg-white">
+              <Toaster position="top-center" theme="dark" />
+              <Sidebar
+                user={user}
+                isLoggedIn={isAuthenticated}
+                onLogout={handleLogout}
+                activeView={activeView}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              />
+              <div className="flex flex-1">
+                <ForensicReport />
               </div>
             </div>
           }

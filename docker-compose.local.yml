@@ -50,7 +50,7 @@ services:
     networks:
       - bugsafari-local
 
-  # Local development with volume mapping and auto-recompilation
+# Local development with volume mapping and auto-recompilation
   api:
     container_name: bugsafari-api
     restart: unless-stopped
@@ -81,6 +81,11 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: bugsafari-local-development-secret
       JWT_EXPIRES_IN: 7d
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      APP_NAME: BugSafari
     ports:
       - "3000:3000"
     depends_on:

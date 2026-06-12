@@ -201,7 +201,64 @@ export class SavedSafariRepository {
       .sort({ executionDate: -1 })           // Newest safari run first
       .lean<ISavedSafari[]>();               // Return plain JS objects — faster for read-only consumers
 
-    return results;
+return results;
+  }
+
+  /**
+   * deleteRecord
+   *
+   * Deletes a saved safari record by its ID, ensuring the user owns it.
+   * Only allows deletion of records that belong to the requesting user.
+   *
+   * @param recordId  The string representation of the safari record's ObjectId.
+   * @param userId  The string representation of the user's ObjectId.
+   * @returns       Object with success boolean and message.
+   */
+  public async deleteRecord(
+    recordId: string,
+    userId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    // ── 1. Validate IDs ─────────────────────────────────────────────────────
+    const recordObjectId = toObjectId(recordId);
+    const userObjectId = toObjectId(userId);
+
+    if (!recordObjectId) {
+      console.warn(
+        `[SavedSafariRepository] deleteRecord: "${recordId}" is not a valid ObjectId.`,
+      );
+      return { success: false, message: 'Invalid record ID.' };
+    }
+
+    if (!userObjectId) {
+      console.warn(
+        `[SavedSafariRepository] deleteRecord: "${userId}" is not a valid ObjectId.`,
+      );
+      return { success: false, message: 'Invalid user ID.' };
+    }
+
+    // ── 2. Find and delete the record (only if owned by user) ──────────────
+    const result = await SavedSafari.deleteOne({
+      _id: recordObjectId,
+      userId: userObjectId,
+    });
+
+    if (result.deletedCount === 0) {
+      console.warn(
+        `[SavedSafariRepository] deleteRecord: No record found with id "${recordId}" for user "${userId}".`,
+      );
+      return {
+        success: false,
+        message: 'Record not found or access denied.',
+      };
+    }
+
+    console.log(
+      `[SavedSafariRepository] deleteRecord: Successfully deleted record "${recordId}"`,
+    );
+    return {
+      success: true,
+      message: 'Record deleted successfully.',
+    };
   }
 }
 

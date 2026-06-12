@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import HelpMenuIcon from './HelpMenuIcon';
 
 interface User {
   id: string;
@@ -46,7 +47,7 @@ export default function Sidebar({
           </svg>
         </button>
 
-        {/* BUGSAFARI branding - shows on right when expanded, hidden when collapsed */}
+{/* BUGSAFARI branding - shows on right when expanded, hidden when collapsed */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-0 h-0' : 'w-auto h-auto flex-1'}`}>
           <h1 className="text-xl font-bold uppercase tracking-wider text-slate-900 whitespace-nowrap">
             BUGSAFARI
@@ -54,6 +55,11 @@ export default function Sidebar({
           <p className="mt-1 text-xs text-slate-500 whitespace-nowrap">
             Clinical Forensics Engine
           </p>
+        </div>
+
+{/* Help Menu Icon - shows only when collapsed */}
+        <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-auto h-auto' : 'w-0 h-0'}`}>
+          <HelpMenuIcon />
         </div>
       </div>
 
@@ -115,7 +121,7 @@ export default function Sidebar({
         </ul>
       </nav>
 
-      {/* Footer - User Profile Card - Shows only icon when collapsed */}
+{/* Footer - User Profile Card - Shows only icon when collapsed */}
       <div className={`border-t border-slate-200 transition-[padding] duration-300 ${isCollapsed ? 'p-2' : 'p-4'}`}>
         {isLoggedIn && user ? (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
@@ -142,19 +148,30 @@ export default function Sidebar({
               Logout
             </button>
           </div>
-        ) : (
-          <div className={`flex items-center border border-slate-200 bg-white transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-slate-400 text-base font-bold text-white">
-              ?
-            </div>
-            <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
-              <div className="text-xs font-medium text-slate-900">
-                Guest User
+) : (
+          <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
+<div 
+              onClick={() => navigate('/signup')}
+              className={`flex items-center border border-slate-200 bg-white transition-all duration-200 cursor-pointer hover:bg-slate-50 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}
+            >
+              <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
+                <div className="text-xs font-medium text-slate-900">
+                  Guest User
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Guest mode
+                </div>
               </div>
-              <div className="text-[10px] text-slate-500">
-                Not logged in
-              </div>
             </div>
+<button
+              onClick={() => navigate('/signup')}
+              className={`flex w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition-all duration-200 ${isCollapsed ? 'h-0 p-0 opacity-0 overflow-hidden' : 'opacity-100 py-2'}`}
+            >
+              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0m-4 4V4m0 0l4 4m-4-4H3" />
+              </svg>
+              Back to Login
+            </button>
           </div>
         )}
       </div>
