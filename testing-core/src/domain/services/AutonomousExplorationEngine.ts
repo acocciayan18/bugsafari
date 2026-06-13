@@ -451,7 +451,7 @@ export class AutonomousExplorationEngine {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
 
-      // EMIT EARLY TELEMETRY: Notify that browser has started navigating
+// EMIT EARLY TELEMETRY: Notify that browser has started navigating
       // This helps the frontend understand the engine is processing
       telemetry.emitTelemetry(this.event('ACTION', {
         actionExecuted: 'browser-launched',
@@ -460,6 +460,13 @@ export class AutonomousExplorationEngine {
 
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
+      
+      // FIX: Emit live frame IMMEDIATELY after page load to prevent initialization timeout
+      // This ensures frontend receives a frame within 30 seconds of starting
+      this.emitLiveFrame(page, telemetry).catch((err) =>
+        console.warn('[AutonomousExplorationEngine] Initial frame capture failed:', err)
+      );
+      
       await this.ensureDomReady(page, telemetry);
 
       // 📸 Phase 4: Capture initial screenshot (after page load)

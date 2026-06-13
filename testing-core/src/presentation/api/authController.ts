@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
+import { requireAuth, verifyToken, type AuthRequest } from './authMiddleware.js';
 
 // Email transporter configuration
 // Using environment variables for SMTP settings
@@ -155,11 +156,6 @@ if (!JWT_SECRET.includes('fallback') && JWT_SECRET.length < 32) {
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
-export interface AuthRequest extends Request {
-  userId?: string;
-  userEmail?: string;
-}
-
 /**
  * Server-side password complexity validation - mirrors frontend regex criteria
  * Defense-in-Depth: Validates against 4 regex checks applied on frontend client
@@ -240,6 +236,8 @@ export function registerAuthRoutes(app: Express): void {
   // Forgot password routes
   app.post('/api/auth/forgot-password', handleForgotPassword);
   app.post('/api/auth/reset-password', handleResetPassword);
+  // Update password route (requires authentication)
+  app.post('/api/auth/update-password', requireAuth, handleUpdatePassword);
 }
 
 /**
@@ -586,7 +584,7 @@ export async function handleResetPassword(
 
     await user.save();
 
-    console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail}`);
+console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail}`);
 
     response.json({
       ok: true,
@@ -595,5 +593,82 @@ export async function handleResetPassword(
   } catch (err: any) {
     console.error('[Auth] Reset password error:', err.message, err.stack);
     response.status(500).json({ error: 'Failed to reset password' });
+  }
+}
+
+/**
+ * POST /api/auth/update-password
+ * Update password for authenticated user - requires current password verification
+ */
+export async function handleUpdatePassword(
+  request: AuthRequest,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { currentPassword, newPassword } = request.body;
+    const userId = request.userId;
+    const userEmail = request.userEmail;
+
+    // Validate inputs
+    const sanitizedCurrentPassword = sanitizeString(currentPassword, 'currentPassword');
+    const sanitizedNewPassword = sanitizeString(newPassword, 'newPassword');
+
+    if (!sanitizedCurrentPassword || !sanitizedNewPassword) {
+      response.status(400).json({
+        error: 'Current password and new password are required',
+      });
+      return;
+    }
+
+    if (!userId || !userEmail) {
+      response.status(401).json({
+        error: 'Authentication required',
+      });
+      return;
+    }
+
+    // Find user by ID
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      response.status(404).json({
+        error: 'User not found',
+      });
+      return;
+    }
+
+    // Verify current password before allowing change
+    const isValidPassword = await user.comparePassword(sanitizedCurrentPassword);
+    if (!isValidPassword) {
+      console.warn(`[UPDATE PASSWORD] Invalid current password for: ${userEmail}`);
+      response.status(401).json({
+        error: 'Current password is incorrect',
+      });
+      return;
+    }
+
+    // Validate new password complexity
+    const complexityError = validatePasswordComplexity(sanitizedNewPassword);
+    if (complexityError) {
+      response.status(400).json({
+        error: 'Security validation failure: New password does not meet complexity requirements.',
+      });
+      return;
+    }
+
+    // Update password (will be hashed by pre-save hook)
+    user.password = sanitizedNewPassword;
+    await user.save();
+
+    console.log(`[UPDATE PASSWORD] Password successfully updated for: ${userEmail}`);
+
+    response.json({
+      ok: true,
+      message: 'Password has been updated successfully.',
+    });
+  } catch (err: any) {
+    console.error('[Auth] Update password error:', err.message, err.stack);
+    response.status(500).json({ error: 'Failed to update password' });
   }
 }

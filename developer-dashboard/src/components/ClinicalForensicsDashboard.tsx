@@ -9,10 +9,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry, BrowserConsoleMessage } from '../types';
 import LiveFeed from './LiveFeed';
-import ForensicHelpIcon from './ForensicHelpIcon';
 
 // Tab state type for the bottom terminal
-type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'history' | 'screenshots';
+type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'history';
 
 // ═══════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS: Clipboard, Formatting, Text Processing
@@ -378,17 +377,7 @@ export default function ClinicalForensicsDashboard({
           >
             history
           </button>
-          <button
-            onClick={() => setActiveTab('screenshots')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'screenshots' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-screenshots
-          </button>
-          </div>
-          {/* Forensic Help Icon - Right side of header */}
-          <div className="pr-2">
-            <ForensicHelpIcon />
-          </div>
+</div>
         </div>
 
         {/* Terminal Output Container */}
@@ -746,7 +735,7 @@ screenshots
             </div>
           )}
 
-          {/* ════════════════════════════════════════
+{/* ════════════════════════════════════════
               TAB: HISTORY (Session History Table)
               ════════════════════════════════════════ */}
 {activeTab === 'history' && (
@@ -792,214 +781,8 @@ screenshots
               )}
             </div>
           )}
-
-          {/* ════════════════════════════════════════
-              TAB: SCREENSHOTS (Forensic Screenshot Gallery)
-              ════════════════════════════════════════ */}
-          {activeTab === 'screenshots' && (
-            <ScreenshotsTab />
-          )}
         </div>
       </div>
     </section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SUB-COMPONENT: ScreenshotsTab - Gallery, Fullscreen Viewer, Download
-// ═══════════════════════════════════════════════════════════════
-
-interface ScreenshotItem {
-  id: string;
-  screenshotType: string;
-  imageData: string;
-  url?: string;
-  errorMessage?: string;
-  stepNumber?: number;
-  createdAt: string;
-}
-
-function ScreenshotsTab() {
-  const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
-  const [selectedScreenshot, setSelectedScreenshot] = useState<ScreenshotItem | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Fetch screenshots from API
-  useEffect(() => {
-    const fetchScreenshots = async () => {
-      try {
-        const response = await fetch('/api/forensic/screenshots');
-        if (response.ok) {
-          const data = await response.json();
-          setScreenshots(data.screenshots || []);
-        }
-      } catch (error) {
-        console.error('Failed to fetch screenshots:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchScreenshots();
-  }, []);
-
-  // Get screenshot type label and color
-  const getScreenshotTypeInfo = (type: string) => {
-    const typeMap: Record<string, { label: string; color: string }> = {
-      INITIAL: { label: 'Initial', color: 'bg-blue-100 text-blue-700' },
-      FAILURE: { label: 'Failure', color: 'bg-red-100 text-red-700' },
-      FINAL: { label: 'Final', color: 'bg-green-100 text-green-700' },
-      CRITICAL_EVENT: { label: 'Critical', color: 'bg-orange-100 text-orange-700' },
-      JS_EXCEPTION: { label: 'JS Error', color: 'bg-red-100 text-red-700' },
-      API_FAILURE: { label: 'API Error', color: 'bg-yellow-100 text-yellow-700' },
-      NAVIGATION_FAILURE: { label: 'Nav Error', color: 'bg-purple-100 text-purple-700' },
-    };
-    return typeMap[type] || { label: type, color: 'bg-gray-100 text-gray-700' };
-  };
-
-  // Download screenshot as image
-  const downloadScreenshot = (screenshot: ScreenshotItem) => {
-    const link = document.createElement('a');
-    link.href = `data:image/jpeg;base64,${screenshot.imageData}`;
-    link.download = `forensic-screenshot-${screenshot.screenshotType}-${screenshot.createdAt}.jpg`;
-    link.click();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-slate-500 text-xs">Loading screenshots...</div>
-      </div>
-    );
-  }
-
-  if (screenshots.length === 0) {
-    return (
-      <div className="text-slate-500 italic text-xs py-4 px-4">
-        No screenshots captured yet. Screenshots are automatically captured during test runs.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Screenshot Count Summary */}
-      <div className="flex items-center justify-between px-2">
-        <span className="text-xs font-semibold text-slate-700">
-          📸 Forensic Screenshots ({screenshots.length})
-        </span>
-      </div>
-
-      {/* Thumbnail Gallery Grid */}
-      <div className="grid grid-cols-3 gap-2">
-        {screenshots.slice(0, 6).map((screenshot, idx) => {
-          const typeInfo = getScreenshotTypeInfo(screenshot.screenshotType);
-          return (
-            <div
-              key={screenshot.id || idx}
-              className="relative group cursor-pointer border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
-              onClick={() => setSelectedScreenshot(screenshot)}
-            >
-              {/* Thumbnail Image */}
-              <div className="aspect-video bg-slate-100">
-                <img
-                  src={`data:image/jpeg;base64,${screenshot.imageData}`}
-                  alt={screenshot.screenshotType}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              
-              {/* Type Badge */}
-              <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${typeInfo.color}`}>
-                {typeInfo.label}
-              </div>
-
-              {/* Hover Overlay with Actions */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedScreenshot(screenshot);
-                  }}
-                  className="p-1.5 bg-white rounded-full hover:bg-slate-100"
-                  title="View Fullscreen"
-                >
-                  <svg className="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    downloadScreenshot(screenshot);
-                  }}
-                  className="p-1.5 bg-white rounded-full hover:bg-slate-100"
-                  title="Download"
-                >
-                  <svg className="w-4 h-4 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3v0a3 3 0 003-3v-1M12 4v12m0 0l-4-4m4 4l4-4" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Show more info if > 6 screenshots */}
-      {screenshots.length > 6 && (
-        <div className="text-xs text-slate-500 text-center">
-          +{screenshots.length - 6} more screenshots available. Click on a screenshot to view fullscreen.
-        </div>
-      )}
-
-      {/* Fullscreen Viewer Modal */}
-      {selectedScreenshot && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-          onClick={() => setSelectedScreenshot(null)}
-        >
-          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            {/* Fullscreen Image */}
-            <img
-              src={`data:image/jpeg;base64,${selectedScreenshot.imageData}`}
-              alt={selectedScreenshot.screenshotType}
-              className="max-w-full max-h-[85vh] object-contain"
-            />
-            
-            {/* Screenshot Info Bar */}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getScreenshotTypeInfo(selectedScreenshot.screenshotType).color}`}>
-                  {getScreenshotTypeInfo(selectedScreenshot.screenshotType).label}
-                </span>
-                <span className="text-xs">
-                  {selectedScreenshot.createdAt ? new Date(selectedScreenshot.createdAt).toLocaleString() : 'Unknown time'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => downloadScreenshot(selectedScreenshot)}
-                  className="flex items-center gap-1 px-3 py-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3v0a3 3 0 003-3v-1M12 4v12m0 0l-4-4m4 4l4-4" />
-                  </svg>
-                  <span className="text-xs">Download</span>
-                </button>
-                <button
-                  onClick={() => setSelectedScreenshot(null)}
-                  className="p-1 hover:bg-white/20 rounded transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

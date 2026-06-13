@@ -5,7 +5,7 @@
 // Manages global session state, auth flow, and 2-column layout structure
 // Single source of truth for socket.io connections and telemetry distribution
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
@@ -21,6 +21,8 @@ import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
+import Settings from './components/Settings';
+import { useSettings, applyTheme, type AppSettings } from './hooks/useSettings';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
@@ -56,10 +58,18 @@ function getStoredToken(): string | null {
 // ═══════════════════════════════════════════════════════════════════════
 
 export default function App() {
-  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+
+  // Load settings and apply theme on mount
+  const { settings } = useSettings();
+
+  // Apply theme on mount and when settings change
+  useEffect(() => {
+    applyTheme(settings);
+  }, [settings.darkMode, settings.lightMode]);
 
   const createGateway = useCallback(() => {
     const gateway = new SocketHttpEngineGateway(API_BASE_URL, SOCKET_URL);
@@ -94,12 +104,8 @@ const handleLoginSuccess = (newToken: string, newUser: User) => {
     localStorage.removeItem('bugsafari_guest');
   };
 
-  const handleSignupSuccess = (newToken: string, newUser: User) => {
-    setToken(newToken);
-    setUser(newUser);
-    localStorage.setItem('bugsafari_token', newToken);
-    localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
-  };
+// handleSignupSuccess is no longer needed
+// After registration, user must log in with their new credentials (no auto-login)
 
 const handleGuestAccess = () => {
     setToken(null);
@@ -152,10 +158,11 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
               />
             }
           />
-          <Route
+<Route
             path="/signup"
             element={
-              <SignupForm onSignupSuccess={handleSignupSuccess} />
+              // No onSignupSuccess - registration does NOT auto-login
+              <SignupForm />
             }
           />
           <Route
@@ -245,7 +252,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
             </div>
           }
         />
-        <Route
+<Route
           path="/forensic-report/:runId"
           element={
             <div className="flex h-screen w-screen bg-white">
@@ -260,6 +267,25 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
               />
               <div className="flex flex-1">
                 <ForensicReport />
+              </div>
+            </div>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <div className="flex h-screen w-screen bg-white">
+              <Toaster position="top-center" theme="dark" />
+              <Sidebar
+                user={user}
+                isLoggedIn={isAuthenticated}
+                onLogout={handleLogout}
+                activeView={activeView}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              />
+              <div className="flex flex-1">
+                <Settings />
               </div>
             </div>
           }

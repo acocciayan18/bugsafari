@@ -216,22 +216,19 @@ export function useAuth() {
         throw new Error(errorMessage);
       }
 
-      const authData = data as AuthResponse;
+const authData = data as AuthResponse;
       if (authData.token && authData.user) {
-        // Store token and user
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-        setToken(authData.token);
-        setUser(authData.user);
+        // DO NOT store token/user - account creation is NOT auto-login
+        // Just show success message and redirect to login
         console.log('[useAuth] Signup successful:', authData.user.email);
-        console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
-
-        // Graceful 2-second timeout delay for optimal user experience
-        setTimeout(() => {
-          doNavigate('/login');
-          setIsLoading(false);
-        }, 2000);
-
+        console.log("✔ [SIGNUP SUCCESS]: Account created. User must log in with new credentials.");
+        
+        // Show success message - user needs to log in
+        toast.success('Account created successfully. Please log in.');
+        
+        // Navigate to login immediately (no delay needed)
+        doNavigate('/login');
+        setIsLoading(false);
         return true;
       }
 
@@ -256,9 +253,9 @@ export function useAuth() {
     console.log('[useAuth] User logged out');
   }, []);
 
-  /**
-     * Check if user is authenticated
-     */
+/**
+   * Check if user is authenticated
+   */
   const isAuthenticated = useCallback((): boolean => {
     return !!token && !!user;
   }, [token, user]);
@@ -269,6 +266,49 @@ export function useAuth() {
   const clearEmailError = useCallback(() => {
     setEmailError('');
   }, []);
+
+  /**
+   * Update user password
+   * Requires current password verification before allowing change
+   */
+  const updatePassword = useCallback(async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/update-password`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data: { ok?: boolean; error?: string } = await response.json();
+
+      if (!response.ok) {
+        const errorMessage = data.error ?? 'Failed to update password';
+        console.error('[useAuth] Update password failed:', errorMessage);
+        setIsLoading(false);
+        return { success: false, error: errorMessage };
+      }
+
+      console.log('[useAuth] Password updated successfully');
+      setIsLoading(false);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
+      console.error('[useAuth] Update password error:', error);
+      setIsLoading(false);
+      return { success: false, error: errorMessage };
+    }
+  }, [token]);
 
   return {
     user,
@@ -281,5 +321,6 @@ export function useAuth() {
     logout,
     isAuthenticated,
     setNavigate,
+    updatePassword,
   };
 }

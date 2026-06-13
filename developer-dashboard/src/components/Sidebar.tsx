@@ -4,7 +4,6 @@
 
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import HelpMenuIcon from './HelpMenuIcon';
 
 interface User {
   id: string;
@@ -55,11 +54,6 @@ export default function Sidebar({
           <p className="mt-1 text-xs text-slate-500 whitespace-nowrap">
             Clinical Forensics Engine
           </p>
-        </div>
-
-{/* Help Menu Icon - shows only when collapsed */}
-        <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-auto h-auto' : 'w-0 h-0'}`}>
-          <HelpMenuIcon />
         </div>
       </div>
 

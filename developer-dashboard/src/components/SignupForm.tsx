@@ -109,7 +109,7 @@ setIsLoading(true);
         body: JSON.stringify({ email: email.trim(), password }),
       });
 
-      const data = await response.json();
+const data = await response.json();
 
       if (!response.ok) {
         // Handle specific error cases
@@ -122,18 +122,14 @@ setIsLoading(true);
         return;
       }
 
-      // Success - backend returns token and user
-      if (data.token && data.user) {
-        // Store token and user in localStorage
-        localStorage.setItem('bugsafari_token', data.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
+// Success - account created, but DO NOT auto-login
+// User must log in with their new credentials
+      if (data.success || data.message) {
+        // Show success message - user needs to log in with new account
+        alert('Account created successfully. Please log in.');
         
-        if (onSignupSuccess) {
-          onSignupSuccess(data.token, data.user);
-        }
-        
-        // Navigate to dashboard after successful signup
-        navigate('/dashboard');
+        // Navigate to login page so user can log in with new credentials
+        navigate('/login');
       } else {
         setFormError('Unexpected response from server.');
       }

@@ -67,14 +67,13 @@ const handleSubmit = async (e: FormEvent) => {
 // Use whatever the user enters - email format
     const emailInput = username.trim();
 
-    try {
+try {
       const success = await login({ email: emailInput, password });
       if (!success) {
         setFormError('Login failed. Please check your credentials.');
-      } else {
-        // Login successful - navigate directly to dashboard
-        navigate('/dashboard');
       }
+      // Note: useAuth.login() already handles navigation to /dashboard on success
+      // No need for duplicate navigate call here
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       setFormError(errorMessage);
