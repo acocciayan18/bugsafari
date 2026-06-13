@@ -6,6 +6,21 @@
 
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import DOMPurify from 'dompurify';
+
+// ─────────────────────────────────────────────────────────────
+// SECURITY PATCH: XSS Sanitization (Task 2)
+// ─────────────────────────────────────────────────────────────
+// Wrap all dynamically rendered HTML and stack traces through DOMPurify.sanitize()
+// to prevent XSS vulnerabilities if the testing engine ingests malicious payloads
+
+/** Sanitize HTML content to prevent XSS attacks */
+function sanitizeContent(content: string): string {
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'code', 'pre', 'span', 'br', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['class'],
+  });
+}
 
 interface ReportSection {
   id: string;
@@ -135,6 +150,9 @@ interface SectionCardProps {
 }
 
 function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
+  // Task 2: Sanitize content before rendering to prevent XSS
+  const sanitizedContent = sanitizeContent(section.content);
+
   return (
     <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <button
@@ -148,9 +166,11 @@ function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
       </button>
       {isExpanded && (
         <div className="border-t border-slate-200 px-4 py-4 bg-slate-50">
-          <pre className="whitespace-pre-wrap text-xs font-mono text-slate-700 leading-relaxed">
-            {section.content}
-          </pre>
+          <pre
+            className="whitespace-pre-wrap text-xs font-mono text-slate-700 leading-relaxed"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+          />
         </div>
       )}
     </div>

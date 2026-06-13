@@ -3,8 +3,68 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { OptimizationSettings } from '../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
+
+// ─────────────────────────────────────────────────────────────
+// SECURITY PATCHES (Addressing Critical Vulnerabilities)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Maximum number of confirmed bugs to store in memory.
+ * Prevents resource exhaustion during long-running SPA exploration sessions.
+ * Task 3A: Patch Memory Leaks
+ */
+const MAX_CONFIRMED_BUGS = 500;
+
+/**
+ * Sanitizes exception stack traces to prevent information disclosure.
+ * Strips internal file paths, Node.js internals, and environment-specific variables
+ * before broadcasting EXCEPTION telemetry to the frontend.
+ * Task 1: Remediate Information Disclosure
+ */
+function sanitizeException(error: Error | string): { message: string; stackTrace: string } {
+  const message = typeof error === 'string' ? error : error.message;
+  let stackTrace = typeof error === 'string' ? error : (error.stack ?? message);
+
+  // Normalize line separators
+  stackTrace = stackTrace.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Remove file paths that expose server internals
+  // Windows paths
+  stackTrace = stackTrace.replace(/C:\\Users\\[^\\]+\\/g, '[REDACTED_PATH]/g');
+  stackTrace = stackTrace.replace(/C:\/[^\/]+\//g, '[REDACTED_PATH]/g');
+  // Unix/Linux paths
+  stackTrace = stackTrace.replace(/\/home\/[^\/]+\//g, '[REDACTED_PATH]/g');
+  stackTrace = stackTrace.replace(/\/Users\/[^\/]+\//g, '[REDACTED_PATH]/g');
+
+  // Remove Node.js internal paths
+  stackTrace = stackTrace.replace(/node:[/\\][^\n]*/g, '[NODE_INTERNAL]');
+  stackTrace = stackTrace.replace(/\/node_modules\/[^\n]*/g, '[NODE_MODULE]');
+
+  // Remove environment variables references
+  stackTrace = stackTrace.replace(/process\.env\.[A-Za-z_0-9]+/g, '[ENV_VAR]');
+  stackTrace = stackTrace.replace(/NODE_ENV=[^\s\n]*/g, '[ENV_VAR]');
+  stackTrace = stackTrace.replace(/DATABASE_URL=[^\s\n]*/g, '[ENV_VAR]');
+  stackTrace = stackTrace.replace(/API_KEY=[^\s\n]*/g, '[ENV_VAR]');
+  stackTrace = stackTrace.replace(/SECRET_[A-Za-z_0-9]*/g, '[SECRET]');
+
+  // Remove anonymous function details (anonymous at position ...)
+  stackTrace = stackTrace.replace(/anonymous at .+/g, '[anonymous function]');
+
+  // Remove line/column numbers that could hint at codebase structure
+  stackTrace = stackTrace.replace(/:(\d+):(\d+)/g, ':[LINE]:[COL]');
+
+  // Extract just the error type name if present (e.g., "TypeError:", "ReferenceError:")
+  const errorTypeMatch = stackTrace.match(/^([A-Za-z]+Error):/);
+  const errorType = errorTypeMatch ? errorTypeMatch[1] : 'Error';
+
+  return {
+    message: `${errorType}: ${message}`,
+    stackTrace,
+  };
+}
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
+import { VisualRegressionDetector, CATASTROPHIC_SHIFT_THRESHOLD } from '../heuristics/VisualRegressionDetector.js';
 import { InteractionSimulator } from '../scenarios/rapidClickerStress.js';
 import { RiskScorer } from './RiskScorer.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -36,6 +96,8 @@ import type {
 export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
+  private readonly visualRegressionDetector = new VisualRegressionDetector();
+  private readonly baselineScreenshots = new Map<string, Buffer>();
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
@@ -63,7 +125,7 @@ export class AutonomousExplorationEngine {
   private isFrameBroadcastInFlight = false;
   private currentTelemetry: TelemetryGateway | null = null;
 
-private confirmedBugsMemory: Array<{
+  private confirmedBugsMemory: Array<{
     bugId: string;
     type: string;
     message: string;
@@ -117,6 +179,12 @@ private confirmedBugsMemory: Array<{
 
     if (!isDuplicate) {
       this.confirmedBugsMemory.push(bug);
+
+      // Task 3A: Enforce memory cap to prevent resource exhaustion
+      // Use circular buffer approach - remove oldest entry when cap is reached
+      while (this.confirmedBugsMemory.length > MAX_CONFIRMED_BUGS) {
+        this.confirmedBugsMemory.shift();
+      }
     }
   }
 
@@ -165,7 +233,7 @@ private confirmedBugsMemory: Array<{
     );
   }
 
-public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<{ completed: boolean; reason: string }> {
+  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<{ completed: boolean; reason: string }> {
     // Initialize runtime metrics tracking
     this.runtimeMetrics = {
       startTime: Date.now(),
@@ -174,13 +242,13 @@ public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, max
       interactionCount: 0,
       failureCount: 0,
     };
-    
+
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
     this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
-    
+
     // Persist initial telemetry with browser info (Phase 3)
     if (browserInfo && this.sessionId) {
       this.persistTelemetry({
@@ -199,7 +267,7 @@ public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, max
         failureCount: 0,
       });
     }
-    
+
     // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     let lastTarget: InteractiveElement | null = null;
@@ -232,11 +300,22 @@ public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, max
       }
     });
 
-// Task 1 Fix: Add response handler for NETWORK telemetry
+    // Task 1 Fix: Add response handler for NETWORK telemetry
     page.on('response', async (response: Response) => {
       const status = response.status();
       const url = response.url();
       const method = response.request().method();
+      const resourceType = response.request().resourceType();
+
+      // Skip frontend assets to prevent false positives
+      if (url.includes('vite') ||
+        url.includes('node_modules') ||
+        url.endsWith('.js') ||
+        url.endsWith('.css') ||
+        resourceType === 'script' ||
+        resourceType === 'stylesheet') {
+        return;
+      }
 
       // Emit NETWORK for failures (>=400 per TESTING_TYPES.md) or soft-fail body
       let shouldEmit = status >= 400;
@@ -254,10 +333,10 @@ public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, max
         }
       }
 
-if (shouldEmit) {
+      if (shouldEmit) {
         // Phase 3: Track failed requests count
         this.runtimeMetrics.requestsCount++;
-        
+
         telemetry.emitTelemetry(this.event('NETWORK', {
           statusCode: status,
           url,
@@ -296,7 +375,7 @@ if (shouldEmit) {
       }
     });
 
-// Catch network request failures (timeouts, connection errors, aborts)
+    // Catch network request failures (timeouts, connection errors, aborts)
     page.on('requestfailed', (request: Request) => {
       const timestamp = new Date().toISOString();
       const url = request.url();
@@ -350,7 +429,7 @@ if (shouldEmit) {
       });
     });
 
-handleFramenavigated = (): void => {
+    handleFramenavigated = (): void => {
       const url = page.url();
       if (!url) return;
       lastKnownUrl = url;
@@ -362,7 +441,7 @@ handleFramenavigated = (): void => {
     page.on('framenavigated', handleFramenavigated);
 
     try {
-// Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
+      // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
 
       // EMIT EARLY TELEMETRY: Notify that browser has started navigating
@@ -372,7 +451,7 @@ handleFramenavigated = (): void => {
         message: `🚀 Browser launched, navigating to ${targetUrl}...`,
       }));
 
-await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       await this.ensureDomReady(page, telemetry);
 
@@ -485,6 +564,56 @@ await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           // engine is stuck clicking elements that have no effect on app state.
           const currentHash = await this.hashManager.hash(page);
 
+          // --- Visual Regression Detection (SSIM) ---
+          // Only run SSIM comparison if the engine is returning to a previously known
+          // domHash (visitation count > 1) to verify it hasn't visually degraded.
+          const hasBaseline = this.baselineScreenshots.has(currentHash);
+          const visitCount = this.visitedHashes.has(currentHash) ? 2 : 1;
+
+          if (hasBaseline && visitCount > 1) {
+            // Take current screenshot and compare against baseline
+            const currentScreenshot = await page.screenshot({ type: 'png' });
+            const baselineScreenshot = this.baselineScreenshots.get(currentHash)!;
+
+            try {
+              const comparisonResult = await this.visualRegressionDetector.compareFrames(
+                baselineScreenshot,
+                currentScreenshot,
+              );
+
+              if (!comparisonResult.isMatch) {
+                // Catastrophic visual shift detected - UI has collapsed
+                const bugMessage = `Silent Visual UI Collapse detected! SSIM score: ${comparisonResult.ssimScore.toFixed(3)} (threshold: ${CATASTROPHIC_SHIFT_THRESHOLD})`;
+
+                telemetry.emitTelemetry(this.event('BUG', {
+                  message: bugMessage,
+                  selector: '',
+                  url: lastKnownUrl || page.url(),
+                }));
+
+                // Register the visual regression bug
+                this.registerConfirmedBug({
+                  bugId: `visual-collapse-${currentHash.substring(0, 8)}-${Date.now()}`,
+                  type: 'VISUAL_REGRESSION',
+                  message: bugMessage,
+                  selector: currentHash,
+                  payloadUsed: `SSIM: ${comparisonResult.ssimScore.toFixed(3)}`,
+                  advice: 'Visual UI structure has collapsed. Check CSS, Z-index, or rendering bugs.',
+                  timestamp: new Date(),
+                });
+
+                // Capture screenshot for forensic analysis
+                this.captureScreenshot(page, ForensicScreenshotType.CRITICAL_EVENT, bugMessage).catch(() => { });
+              }
+            } catch (error) {
+              console.warn('[AutonomousExplorationEngine] Visual regression comparison failed:', error);
+            }
+          } else if (!hasBaseline) {
+            // First time seeing this state - capture baseline screenshot
+            const baselineScreenshot = await page.screenshot({ type: 'png' });
+            this.baselineScreenshots.set(currentHash, baselineScreenshot);
+          }
+
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'dom-state-hash',
             stateHash: currentHash,
@@ -592,7 +721,7 @@ await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           this.logHighImpact(target, telemetry);
           const previousHashBeforeAction = currentHash;
 
-await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+          await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
 
           // Phase 3: Track interaction count
           this.runtimeMetrics.interactionCount++;
@@ -612,6 +741,42 @@ await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage)
             currentHash,
           );
 
+          // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
+          // If the resulting state has low visitation count (novel), reward the weights
+          const currentNode = this.pathNavigator.snapshot();
+          const isNovelState = this.visitedHashes.has(currentHash) === false;
+
+          if (isNovelState) {
+            // Novel state discovered - fire Perceptron's Delta Rule to reward the element weights
+            this.scorer.rewardFromNetworkSignal(target);
+
+            telemetry.emitTelemetry(this.event('ACTION', {
+              actionExecuted: 'novelty-reward-triggered',
+              selector: target.selector,
+              message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${target.selector}.`,
+            }));
+          } else {
+            // Get the visit count for telemetry
+            const visitCount = this.visitedHashes.size;
+            telemetry.emitTelemetry(this.event('ACTION', {
+              actionExecuted: 'state-revisited',
+              selector: target.selector,
+              message: `State revisitted (visitCount: ${visitCount}). No novelty reward applied.`,
+            }));
+          }
+
+          // Emit curiosity-driven selection telemetry
+          const boredomThreshold = this.pathNavigator.getBoredomThreshold();
+          const topScore = decision.score;
+          const curiosityDriven = topScore >= boredomThreshold;
+
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'curiosity-decision',
+            selector: target.selector,
+            score: topScore,
+            message: `Curiosity-driven: ${curiosityDriven ? 'EXPLORE' : 'BACKTRACK'} (topScore=${topScore.toFixed(2)}, boredomThreshold=${boredomThreshold})`,
+          }));
+
           telemetry.emitTelemetry(this.event('HEURISTIC_SCORE', {
             selector: target.selector,
             score: Number(target.riskScore.toFixed(4)),
@@ -620,29 +785,27 @@ await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage)
 
           await this.emitLiveFrame(page, telemetry);
           await wait(350);
-} catch (err) {
+        } catch (err: unknown) {
           // Phase 3: Track failure count on exception
           this.runtimeMetrics.failureCount++;
-          
+
           // 📸 Phase 4: Capture FAILURE screenshot BEFORE recording error and test termination
           const failureMessage = err instanceof Error ? err.message : String(err);
           this.captureScreenshot(page, ForensicScreenshotType.FAILURE, `Test Failed: ${failureMessage}`).catch((err) =>
             console.warn('[AutonomousExplorationEngine] Failure screenshot capture failed:', err)
           );
-          
+
           // Emergency Data Flush: capture current action buffer and emit EXCEPTION telemetry.
           const actionSnapshot = this.actions.snapshot();
           const reproductionSteps = actionSnapshot.map((item, index) => `Step ${index + 1}: ${item.action} on ${item.selector}`);
-          const message = err instanceof Error ? err.message : String(err);
-          const stackTrace = err instanceof Error ? err.stack ?? message : message;
-
+          const sanitized = sanitizeException(err instanceof Error ? err : String(err));
 
           telemetry.emitTelemetry(
             this.event('EXCEPTION', {
-              message: `Engine exception: ${message}`,
+              message: `Engine exception: ${sanitized.message}`,
               exceptionDetails: {
-                message,
-                stackTrace,
+                message: sanitized.message,
+                stackTrace: sanitized.stackTrace,
               },
               reproductionSteps,
               url: lastKnownUrl || page.url(),
@@ -652,18 +815,17 @@ await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage)
           await this.persistBrainSnapshot('crash');
 
 
-
           // Do not remove existing crash reason logic; prefer already-known reasons.
           return {
             completed: false,
-            reason: runtimeCrashReason ?? serverCrashReason ?? `Engine exception: ${message}`,
+            reason: runtimeCrashReason ?? serverCrashReason ?? `Engine exception: ${sanitized.message}`,
           };
         }
       }
 
       this.emitMilestone(telemetry, `✅ Exploration Complete: 60 steps executed successfully`);
       return { completed: true, reason: 'Maximum exploration steps reached.' };
-} finally {
+    } finally {
       // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
@@ -679,7 +841,7 @@ await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage)
         console.warn('[AutonomousExplorationEngine] Final screenshot capture failed:', err)
       );
 
-// Phase 3: Persist final telemetry with execution duration (use instance metrics)
+      // Phase 3: Persist final telemetry with execution duration (use instance metrics)
       const executionDuration = this.runtimeMetrics.startTime ? Date.now() - this.runtimeMetrics.startTime : 0;
       if (browserInfo && this.sessionId) {
         this.persistTelemetry({
@@ -838,7 +1000,7 @@ await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage)
   }
 
 
-private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): void {
+  private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): void {
     page.on('dialog', async (dialog: Dialog) => {
       telemetry.emitTelemetry(this.event('ACTION', {
         actionExecuted: 'dialog-auto-dismiss',
@@ -848,9 +1010,9 @@ private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): voi
     });
   }
 
-/**
-   * Persist error to forensic_errors database (Phase 2: Error Logging System)
-   */
+  /**
+     * Persist error to forensic_errors database (Phase 2: Error Logging System)
+     */
   private async persistForensicError(params: {
     type: ForensicErrorType;
     severity: ForensicErrorSeverity;
@@ -879,9 +1041,9 @@ private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): voi
     }
   }
 
-/**
-   * Persist telemetry to forensic_telemetry database (Phase 3: Telemetry Collection)
-   */
+  /**
+     * Persist telemetry to forensic_telemetry database (Phase 3: Telemetry Collection)
+     */
   private async persistTelemetry(params: {
     browser: string;
     browserVersion: string;
@@ -939,7 +1101,7 @@ private configureDialogAutoDismiss(page: Page, telemetry: TelemetryGateway): voi
     }
   }
 
-private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKnownUrl: string): void {
+  private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKnownUrl: string): void {
     // Monitor uncaught JavaScript exceptions
     page.on('pageerror', (error: Error) => {
       const message = error?.message ?? 'Unknown page error';
@@ -969,7 +1131,7 @@ private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKn
         breadcrumbs,
       });
 
-// Persist error to forensic_errors database (Phase 2: Error Logging System)
+      // Persist error to forensic_errors database (Phase 2: Error Logging System)
       this.persistForensicError({
         type: ForensicErrorType.JS_EXCEPTION,
         severity: ForensicErrorSeverity.HIGH,
@@ -1033,7 +1195,7 @@ private setupExceptionMonitoring(page: Page, telemetry: TelemetryGateway, lastKn
     });
   }
 
-private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
+  private async ensureTargetDomain(page: Page, telemetry: TelemetryGateway): Promise<void> {
     const current = page.url();
     if (!current) {
       return;

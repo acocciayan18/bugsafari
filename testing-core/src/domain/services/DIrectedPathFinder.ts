@@ -174,7 +174,9 @@ export type PathfinderEventKind =
   | 'backtrack-initiated'
   | 'node-exhausted'
   | 'graph-exhausted'
-  | 'loop-penalty-applied';
+  | 'loop-penalty-applied'
+  | 'boredom-triggered-backtrack'
+  | 'boredom-check-passed';
 
 export interface PathfinderEvent {
   readonly kind: PathfinderEventKind;

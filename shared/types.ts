@@ -2,7 +2,7 @@
 // shared/types.ts - SHARED DATA MODEL BLUEPRINT
 // ═══════════════════════════════════════════════════════════════
 
-export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE';
+export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE' | 'BUG';
 
 export type SemanticRole =
   | 'LOGIN'
@@ -47,6 +47,8 @@ export interface TelemetryMeta {
   blockedUrl?: string;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
+  ssimScore?: number;
+  visualRegressionType?: 'CSS_BREAKAGE' | 'Z_INDEX_OVERLAP' | 'RENDER_FAILURE';
   // 🧠 Optional parameter allowing the React client state logic to read inference mappings
   aiDiagnostics?: IntelligentDiagnosis;
   // Session tracking for forensic history

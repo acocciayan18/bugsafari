@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import type { ParsedQs } from 'qs';
 import { parseTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
@@ -10,10 +11,66 @@ import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisS
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 
+// ──────────────────────────────────────────────���──────────────────────────────
+// Safe Parameter Extraction Utilities
+// Addresses: string|string[] type issues from Express req.query/req.params
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Safely extract a single string from Express params/query.
+ * Express can return string|ParsedQs|string[] when multiple values exist.
+ */
+function extractStringParam(value: string | ParsedQs | (string | ParsedQs)[] | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    // Handle array of strings or ParsedQs
+    const first = value[0];
+    return typeof first === 'string' ? first : undefined;
+  }
+  // Handle single value
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Safely extract and validate ObjectId from string parameter.
+ * Returns null if invalid.
+ */
+function extractObjectIdParam(value: string | ParsedQs | (string | ParsedQs)[] | undefined): string | null {
+  const str = extractStringParam(value);
+  if (!str) return null;
+
+  // Basic validation - ObjectId is 24 hex characters
+  if (!/^[0-9a-fA-F]{24}$/.test(str)) {
+    return null;
+  }
+  return str;
+}
+
 /**
  * Sanitize and validate targetUrl to prevent NoSQL injection and XSS attacks
  * Ensures input is a plain string URL
  */
+/**
+ * Interface for session data used in forensic reports.
+ * Represents the shape of session data from both savedsafaris and sessions collections.
+ */
+interface SessionReportData {
+  _id?: unknown;
+  targetUrl?: string;
+  executionDate?: Date;
+  timeElapsed?: number;
+  status?: string;
+  metrics?: {
+    totalActions?: number;
+    totalBugsFound?: number;
+    bugsByCategory?: Record<string, number>;
+  };
+  forensicTrace?: {
+    finalBreadcrumbSteps?: string[];
+    caughtBugs?: Array<{ type?: string }>;
+  };
+}
+
 function sanitizeTargetUrl(targetUrl: unknown): string | null {
   if (typeof targetUrl !== 'string') {
     console.error('[SECURITY] targetUrl is not a string');
@@ -145,8 +202,10 @@ export function registerRoutes(
         return;
       }
 
-      const rawLimit = Number(request.query.limit ?? 50);
-      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : 50;
+      // FIXED: Safely extract limit parameter - Express can return string|string[]
+      const rawLimit = extractStringParam(request.query.limit);
+      const limitVal = rawLimit ? Number(rawLimit) : 50;
+      const limit = Number.isFinite(limitVal) ? Math.max(1, Math.min(limitVal, 200)) : 50;
       console.log('[API] Querying session history with limit:', limit);
 
       const sessions = await findingRepo.listSessionHistory(limit);
@@ -166,7 +225,7 @@ export function registerRoutes(
     }
   });
 
-// Safari run history - requires authentication
+  // Safari run history - requires authentication
   app.get('/api/history', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history called');
     console.log('[API] Auth header:', request.headers.authorization?.substring(0, 30) + '...');
@@ -206,7 +265,8 @@ export function registerRoutes(
 
     try {
       const userId = request.userId;
-      const recordId = request.params.id;
+      // FIXED: Safely extract recordId from params - can be string|string[]
+      const recordId = extractObjectIdParam(request.params.id);
 
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
@@ -214,7 +274,7 @@ export function registerRoutes(
       }
 
       if (!recordId) {
-        response.status(400).json({ error: 'Record ID is required.' });
+        response.status(400).json({ error: 'Invalid record ID format.' });
         return;
       }
 
@@ -250,9 +310,10 @@ export function registerRoutes(
         return;
       }
 
-      const recordId = request.params.id;
+      // FIXED: Safely extract recordId from params - can be string|string[]
+      const recordId = extractObjectIdParam(request.params.id);
       if (!recordId) {
-        response.status(400).json({ error: 'Record ID is required.' });
+        response.status(400).json({ error: 'Invalid record ID format.' });
         return;
       }
 
@@ -277,13 +338,13 @@ export function registerRoutes(
     }
   });
 
-// 📸 Phase 4: Forensic Screenshots API
+  // 📸 Phase 4: Forensic Screenshots API
   app.get('/api/forensic/screenshots', async (request: Request, response: Response): Promise<void> => {
     console.log('[API] GET /api/forensic/screenshots called with query:', request.query);
 
-try {
-      // Get the most recent session's screenshots (optional: filter by session ID)
-      const sessionId = request.query.sessionId as string | undefined;
+    try {
+      // FIXED: Safely extract sessionId from query - can be string|string[]
+      const sessionId = extractStringParam(request.query.sessionId) || undefined;
       let screenshots: import('../../infrastructure/database/repositories/ForensicScreenshotRepository.js').IForensicScreenshot[] = [];
 
       if (sessionId) {
@@ -295,7 +356,7 @@ try {
         screenshots = [];
       }
 
-// Return screenshots in format suitable for gallery
+      // Return screenshots in format suitable for gallery
       const formattedScreenshots = screenshots.map(s => ({
         id: s._id?.toString(),
         forensicRunId: s.forensicRunId?.toString(),
@@ -399,7 +460,7 @@ try {
         return;
       }
 
-console.log('[API] Analysis generated successfully, risk score:', result.analysis.riskScore);
+      console.log('[API] Analysis generated successfully, risk score:', result.analysis.riskScore);
       response.json({
         analysis: {
           id: result.analysis.forensicRunId?.toString(),
@@ -431,9 +492,10 @@ console.log('[API] Analysis generated successfully, risk score:', result.analysi
     console.log('[API] GET /api/forensic/report/:sessionId called with params:', request.params);
 
     try {
-      const sessionId = request.params.sessionId;
+      // FIXED: Safely extract sessionId from params - can be string|string[]
+      const sessionId = extractStringParam(request.params.sessionId);
       if (!sessionId) {
-        response.status(400).json({ error: 'sessionId is required.' });
+        response.status(400).json({ error: 'Invalid session ID format.' });
         return;
       }
 
@@ -450,7 +512,8 @@ console.log('[API] Analysis generated successfully, risk score:', result.analysi
       const sessionData = savedSafari.find(s => s._id?.toString() === sessionId);
 
       // If not found in savedsafaris, try sessions collection
-      let session = sessionData;
+      // FIXED: Use proper type interface for session data
+      let session: SessionReportData | undefined = sessionData as SessionReportData | undefined;
       if (!session && findingRepo) {
         const sessions = await findingRepo.listSessionHistory(200);
         const foundSession = sessions.find(s => (s as any)._id?.toString() === sessionId);

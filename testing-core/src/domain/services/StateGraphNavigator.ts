@@ -78,6 +78,15 @@ export interface StateGraphNavigatorConfig {
    * Default: 500
    */
   maxNodes: number;
+
+  /**
+   * Boredom threshold for curiosity-driven backtracking.
+   * If the highest hybridScore on the current DOM state falls below this,
+   * the engine considers the page "exhausted of interesting actions" and
+   * triggers backtracking to explore a different branch.
+   * Default: 15
+   */
+  boredomThreshold: number;
 }
 
 const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -85,6 +94,7 @@ const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   branchBlockThreshold: 2,
   maxStackDepth: 60,
   maxNodes: 500,
+  boredomThreshold: 15,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,7 +165,17 @@ export class StateGraphNavigator {
     const loopDetected =
       this.consecutiveRepeatCount >= this.config.loopStrikeThreshold;
 
-    if (forcedBacktrack || loopDetected || node.exhausted) {
+    // 5a. Check boredom threshold - if all interesting actions exhausted, backtrack
+    const bored = this.isBoredomTriggered(node);
+
+    if (forcedBacktrack || loopDetected || node.exhausted || bored) {
+      if (bored) {
+        this.recordEvent(
+          'boredom-triggered-backtrack',
+          currentHash,
+          `Boredom threshold triggered (max score ${this.getCurrentMaxScore(node)} < ${this.config.boredomThreshold}). Backtracking to explore new branches.`,
+        );
+      }
       return this.handleDeadEnd(node, loopDetected);
     }
 
@@ -492,17 +512,89 @@ export class StateGraphNavigator {
   }
 
   /**
-   * Return the highest-scored unvisited edge on this node, or null if none.
-   */
+     * Return the highest-scored unvisited edge on this node, or null if none.
+     * Uses explicit sorting by hybridScore (descending) for Best-First Search.
+     */
   private pickBestUnvisitedEdge(node: GraphNode): GraphEdge | null {
-    let best: GraphEdge | null = null;
-    for (const edge of node.edges.values()) {
-      if (edge.status !== 'unvisited') continue;
-      if (!best || edge.score > best.score) {
-        best = edge;
-      }
+    // Convert to array and sort by score descending (Best-First Search)
+    const unvisitedEdges = [...node.edges.values()].filter(
+      (e) => e.status === 'unvisited'
+    );
+
+    if (unvisitedEdges.length === 0) {
+      return null;
     }
-    return best;
+
+    // Sort by score descending - highest scores first
+    unvisitedEdges.sort((a, b) => b.score - a.score);
+    return unvisitedEdges[0] ?? null;
+  }
+
+  /**
+   * Best-First Search: Sort elements by hybridScore and return the highest-scoring one.
+   * This method is called by the engine when making navigation decisions.
+   * 
+   * @param scoredElements Array of elements with their hybridScore (from RiskScorer)
+   * @returns The highest-scoring element to interact with next, or null if none available
+   */
+  public getBestNextAction(
+    scoredElements: Array<{ selector: EdgeSelector; score: number }>
+  ): { selector: EdgeSelector; score: number } | null {
+    if (scoredElements.length === 0) {
+      return null;
+    }
+
+    // Sort by hybridScore descending (Best-First Search)
+    const sorted = [...scoredElements].sort((a, b) => b.score - a.score);
+    return sorted[0] ?? null;
+  }
+
+  /**
+   * Check if the current DOM state has fallen below the boredom threshold.
+   * If the highest available hybridScore is below boredomThreshold, the page is considered
+   * "exhausted of interesting actions" and should trigger backtracking.
+   * 
+   * @param node The current graph node
+   * @returns true if boredom-triggered backtracking should occur
+   */
+  private isBoredomTriggered(node: GraphNode): boolean {
+    const unvisitedEdges = [...node.edges.values()].filter(
+      (e) => e.status === 'unvisited'
+    );
+
+    if (unvisitedEdges.length === 0) {
+      return false; // No edges to judge - let other logic handle it
+    }
+
+    // Get the maximum score among unvisited edges
+    const maxScore = Math.max(...unvisitedEdges.map((e) => e.score));
+
+    // If highest score is below boredom threshold, trigger backtracking
+    return maxScore < this.config.boredomThreshold;
+  }
+
+  /**
+     * Get the current boredom threshold value.
+     * Useful for telemetry and debugging.
+     */
+  public getBoredomThreshold(): number {
+    return this.config.boredomThreshold;
+  }
+
+  /**
+   * Get the maximum score among unvisited edges on a node.
+   * Useful for telemetry and debugging.
+   */
+  private getCurrentMaxScore(node: GraphNode): number {
+    const unvisitedEdges = [...node.edges.values()].filter(
+      (e) => e.status === 'unvisited'
+    );
+
+    if (unvisitedEdges.length === 0) {
+      return 0;
+    }
+
+    return Math.max(...unvisitedEdges.map((e) => e.score));
   }
 
   // ───────────────────────────────────────────────────────────────────────────
