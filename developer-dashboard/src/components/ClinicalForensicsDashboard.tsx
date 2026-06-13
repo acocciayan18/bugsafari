@@ -344,7 +344,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
 
-{/* Tab Headers */}
+        {/* Tab Headers */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 shrink-0 overflow-visible">
           <div className="flex overflow-visible">
             <button
@@ -353,31 +353,31 @@ export default function ClinicalForensicsDashboard({
             >
               telemetry live-feed
             </button>
-          <button
-            onClick={() => setActiveTab('errors')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            errors
-          </button>
-          <button
-            onClick={() => setActiveTab('network')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            network
-          </button>
-          <button
-            onClick={() => setActiveTab('console')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            console
-          </button>
-<button
-            onClick={() => setActiveTab('history')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            history
-          </button>
-</div>
+            <button
+              onClick={() => setActiveTab('errors')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              errors
+            </button>
+            <button
+              onClick={() => setActiveTab('network')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              network
+            </button>
+            <button
+              onClick={() => setActiveTab('console')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              console
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              history
+            </button>
+          </div>
         </div>
 
         {/* Terminal Output Container */}
@@ -659,8 +659,13 @@ export default function ClinicalForensicsDashboard({
                             {method} {statusCode || 'ERR'}
                           </span>
                           {duration !== undefined && (
-                            <span className="text-[10px] text-slate-500">
+                            <span className="text-[10px] text-slate-500 ml-2">
                               {duration}ms
+                            </span>
+                          )}
+                          {message && (
+                            <span className="text-[10px] text-slate-400 ml-2 italic">
+                              {message}
                             </span>
                           )}
                         </div>
@@ -735,10 +740,10 @@ export default function ClinicalForensicsDashboard({
             </div>
           )}
 
-{/* ════════════════════════════════════════
+          {/* ════════════════════════════════════════
               TAB: HISTORY (Session History Table)
               ════════════════════════════════════════ */}
-{activeTab === 'history' && (
+          {activeTab === 'history' && (
             <div className="overflow-auto max-h-96 custom-scrollbar">
               {sessionHistory.length === 0 ? (
                 <div className="text-slate-500 italic text-xs py-4 px-4">No session history available.</div>

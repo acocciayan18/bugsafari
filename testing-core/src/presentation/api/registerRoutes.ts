@@ -202,15 +202,6 @@ export function registerRoutes(
         return;
       }
 
-<<<<<<< Updated upstream
-      // FIXED: Safely extract limit parameter - Express can return string|string[]
-      const rawLimit = extractStringParam(request.query.limit);
-      const limitVal = rawLimit ? Number(rawLimit) : 50;
-      const limit = Number.isFinite(limitVal) ? Math.max(1, Math.min(limitVal, 200)) : 50;
-=======
-const rawLimit = Number(String(request.query.limit ?? '50'));
-      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : 50;
->>>>>>> Stashed changes
       console.log('[API] Querying session history with limit:', limit);
 
       const sessions = await findingRepo.listSessionHistory(limit);
@@ -269,14 +260,6 @@ const rawLimit = Number(String(request.query.limit ?? '50'));
     console.log('[API] Authenticated user:', request.userId ?? 'none');
 
     try {
-<<<<<<< Updated upstream
-      const userId = request.userId;
-      // FIXED: Safely extract recordId from params - can be string|string[]
-      const recordId = extractObjectIdParam(request.params.id);
-=======
-const userId = request.userId;
-      const recordId = String(request.params.id);
->>>>>>> Stashed changes
 
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
@@ -320,12 +303,6 @@ const userId = request.userId;
         return;
       }
 
-<<<<<<< Updated upstream
-      // FIXED: Safely extract recordId from params - can be string|string[]
-      const recordId = extractObjectIdParam(request.params.id);
-=======
-const recordId = String(request.params.id);
->>>>>>> Stashed changes
       if (!recordId) {
         response.status(400).json({ error: 'Invalid record ID format.' });
         return;
@@ -506,12 +483,6 @@ const recordId = String(request.params.id);
     console.log('[API] GET /api/forensic/report/:sessionId called with params:', request.params);
 
     try {
-<<<<<<< Updated upstream
-      // FIXED: Safely extract sessionId from params - can be string|string[]
-      const sessionId = extractStringParam(request.params.sessionId);
-=======
-const sessionId = String(request.params.sessionId);
->>>>>>> Stashed changes
       if (!sessionId) {
         response.status(400).json({ error: 'Invalid session ID format.' });
         return;
