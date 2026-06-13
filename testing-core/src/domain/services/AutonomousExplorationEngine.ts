@@ -1,4 +1,4 @@
-import type { Dialog, Page, Request, Response } from 'playwright';
+import type { Dialog, Page, Request, Response, CDPSession } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { OptimizationSettings } from '../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
@@ -65,6 +65,8 @@ function sanitizeException(error: Error | string): { message: string; stackTrace
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { VisualRegressionDetector, CATASTROPHIC_SHIFT_THRESHOLD } from '../heuristics/VisualRegressionDetector.js';
+import { MemoryLeakDetector } from '../heuristics/MemoryLeakDetector.js';
+import { MemoryProfiler } from '../../infrastructure/monitoring/MemoryProfiler.js';
 import { InteractionSimulator } from '../scenarios/rapidClickerStress.js';
 import { RiskScorer } from './RiskScorer.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -143,6 +145,11 @@ export class AutonomousExplorationEngine {
     interactionCount: 0,
     failureCount: 0,
   };
+
+  // Memory profiling for leak detection
+  private readonly memoryProfiler = new MemoryProfiler();
+  private readonly memoryLeakDetector = new MemoryLeakDetector();
+  private cdpClient: CDPSession | null = null;
 
   constructor(
     private readonly findingRepo?: FindingRepository,
@@ -472,6 +479,14 @@ export class AutonomousExplorationEngine {
       // 🚀 Start independent frame capture loop for 30fps streaming
       this.startFrameCaptureLoop(page, telemetry);
 
+      // 🧠 Initialize CDP session for memory profiling
+      try {
+        this.cdpClient = await this.memoryProfiler.attach(page);
+        console.log('[AutonomousExplorationEngine] CDP session attached for memory profiling');
+      } catch (error) {
+        console.warn('[AutonomousExplorationEngine] Failed to attach CDP session:', error);
+      }
+
       // --- 3-Strike Logic Loop State ---
       // Tracks consecutive steps where the DOM fingerprint did not change.
       let previousHash = '';
@@ -619,6 +634,41 @@ export class AutonomousExplorationEngine {
             stateHash: currentHash,
             message: `DOM fingerprint captured. stagnation=${stagnationCounter}/3`,
           }));
+
+          // 🧠 Memory Leak Detection: Measure heap and analyze for leaks
+          if (this.cdpClient) {
+            try {
+              const heapMB = await this.memoryProfiler.measureHeap(this.cdpClient);
+              const leakResult = this.memoryLeakDetector.recordAndAnalyze(currentHash, heapMB);
+
+              telemetry.emitTelemetry(this.event('ACTION', {
+                actionExecuted: 'heap-measurement',
+                message: `Heap: ${heapMB.toFixed(2)} MB for state ${currentHash.substring(0, 8)}`,
+              }));
+
+              if (leakResult.isLeaking) {
+                const leakMessage = `Memory Leak: State ${currentHash.substring(0, 8)} grew by ${leakResult.leakAmountMB.toFixed(2)} MB over ${leakResult.visitCount} visits`;
+
+                telemetry.emitTelemetry(this.event('BUG', {
+                  message: leakMessage,
+                  selector: '',
+                  url: lastKnownUrl || page.url(),
+                }));
+
+                this.registerConfirmedBug({
+                  bugId: `memory-leak-${currentHash.substring(0, 8)}-${Date.now()}`,
+                  type: 'MEMORY_LEAK',
+                  message: leakMessage,
+                  selector: currentHash,
+                  payloadUsed: `heapGrowth: ${leakResult.leakAmountMB.toFixed(2)}MB`,
+                  advice: 'Memory is monotonically increasing. Check for unreleased event listeners or detached DOM nodes.',
+                  timestamp: new Date(),
+                });
+              }
+            } catch (error) {
+              console.warn('[AutonomousExplorationEngine] Heap measurement failed:', error);
+            }
+          }
 
           // Track state changes.
           // Only increment the strike counter when no penalty is already active —
@@ -834,6 +884,9 @@ export class AutonomousExplorationEngine {
 
       // 🚀 Stop frame capture loop
       this.stopFrameCaptureLoop();
+
+      // 🧠 Cleanup CDP session for memory profiling
+      this.memoryProfiler.dispose();
 
       // 📸 Phase 4: Capture final screenshot (at test completion)
       const finalStatus = this.freezeActionTraceRecording ? 'Failed' : 'Completed';

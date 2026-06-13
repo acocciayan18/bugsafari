@@ -1,226 +1,197 @@
-# Memory Leak Detection Module - Implementation Plan
+# Memory Leak Detection Implementation Plan
 
-## Overview
-This document outlines the implementation plan for adding deep-diagnostic Memory Leak Detection to BugSafari using the Chrome DevTools Protocol (CDP).
+## Executive Summary
 
----
+BugSafari is an autonomous SPA testing engine that needs two memory-related features:
+1. **Network Interceptor False Positive Patch** - Already implemented in AutonomousExplorationEngine.ts
+2. **Memory Leak Detection Module** - Requires integration into the engine execution loop
 
-## Task 1: Patch Network Interceptor False Positives
+## Current State Analysis
 
-### Problem
-The current network interceptor may flag frontend assets (Vite hot-reload, node_modules, JS/CSS files) as API failures when checking response bodies for "error" keywords.
+### ✅ Task 1: Network Interceptor False Positives Patch
+**Status**: COMPLETED  
+**Location**: `testing-core/src/domain/services/AutonomousExplorationEngine.ts`  
+**Implementation**: The code already includes checks to skip frontend assets:
 
-### Solution
-Add early return to skip asset URLs in the response handler.
-
-### Implementation Location
-`testing-core/src/domain/services/AutonomousExplorationEngine.ts` - inside `page.on('response')` handler (around line ~290)
-
-### Code Change:
 ```typescript
-// ADD THIS BEFORE THE SOFT-FAIL CHECK:
-const url = response.url();
-const request = response.request();
-
 // Skip frontend assets to prevent false positives
-if (url.includes('vite') || 
-    url.includes('node_modules') || 
-    url.endsWith('.js') || 
-    url.endsWith('.css') || 
-    request.resourceType() === 'script' ||
-    request.resourceType() === 'stylesheet') {
+if (url.includes('vite') ||
+  url.includes('node_modules') ||
+  url.endsWith('.js') ||
+  url.endsWith('.css') ||
+  resourceType === 'script' ||
+  resourceType === 'stylesheet') {
   return;
 }
 ```
 
----
+### ✅ Task 2: Memory Profiler Service
+**Status**: COMPLETED  
+**Location**: `testing-core/src/infrastructure/monitoring/MemoryProfiler.ts`  
+**Implementation**: Full CDP-based memory profiling with GC forcing
 
-## Task 2: Create Memory Profiler Service
+### ✅ Task 3: Memory Leak Detector
+**Status**: COMPLETED  
+**Location**: `testing-core/src/domain/heuristics/MemoryLeakDetector.ts`  
+**Implementation**: Monotonically increasing memory detection per DOM state
 
-### Purpose
-Measure the JavaScript heap size using Chrome DevTools Protocol (CDP) to detect memory leaks.
+### 🔴 Task 4: Engine Integration
+**Status**: **MISSING** - NOT integrated into AutonomousExplorationEngine  
+**Required**: Instantiate and use both MemoryProfiler and MemoryLeakDetector in the engine execution loop
 
-### Target File
-`testing-core/src/infrastructure/monitoring/MemoryProfiler.ts` (NEW FILE)
+## Implementation Plan for Task 4
 
-### Implementation:
+### Step 1: Import the modules
+Add imports to AutonomousExplorationEngine.ts:
 ```typescript
-import type { Page, CDPSession } from 'playwright';
-
-export class MemoryProfiler {
-  private client: CDPSession | null = null;
-
-  public async attach(page: Page): Promise<CDPSession> {
-    this.client = await page.context().newCDPSession(page);
-    return this.client;
-  }
-
-  public async measureHeap(client?: CDPSession): Promise<number> {
-    const cdp = client ?? this.client;
-    if (!cdp) {
-      return 0;
-    }
-
-    try {
-      // Force garbage collection for accurate reading
-      await cdp.send('HeapProfiler.enable').catch(() => {});
-      await cdp.send('HeapProfiler.collectGarbage').catch(() => {});
-
-      const metrics = await cdp.send('Runtime.getHeapUsage');
-      return metrics.usedSize / (1024 * 1024); // Convert to MB
-    } catch (error) {
-      console.warn('[MemoryProfiler] Failed to measure heap:', error);
-      return 0;
-    }
-  }
-
-  public getClient(): CDPSession | null {
-    return this.client;
-  }
-}
-```
-
----
-
-## Task 3: Create Memory Leak Detector
-
-### Purpose
-Track heap usage per DOM state and detect monotonically growing memory patterns indicating leaks.
-
-### Target File
-`testing-core/src/domain/heuristics/MemoryLeakDetector.ts` (NEW FILE)
-
-### Implementation:
-```typescript
-export interface LeakAnalysisResult {
-  isLeaking: boolean;
-  leakAmountMB: number;
-  visitCount: number;
-}
-
-export class MemoryLeakDetector {
-  private heapHistory = new Map<string, number[]>();
-  private readonly LEAK_THRESHOLD_MB = 3;
-  private readonly MIN_VISITS = 3;
-
-  public recordAndAnalyze(hash: string, currentHeapMB: number): LeakAnalysisResult {
-    const history = this.heapHistory.get(hash) ?? [];
-    history.push(currentHeapMB);
-    this.heapHistory.set(hash, history);
-
-    const visitCount = history.length;
-    if (visitCount < this.MIN_VISITS) {
-      return { isLeaking: false, leakAmountMB: 0, visitCount };
-    }
-
-    // Check if memory is monotonically increasing (strictly growing)
-    let isMonotonicallyGrowing = true;
-    for (let i = 1; i < history.length; i++) {
-      if (history[i] <= history[i - 1]) {
-        isMonotonicallyGrowing = false;
-        break;
-      }
-    }
-
-    const firstVisit = history[0];
-    const currentVisit = history[history.length - 1];
-    const leakAmountMB = currentVisit - firstVisit;
-
-    const isLeaking = isMonotonicallyGrowing && leakAmountMB > this.LEAK_THRESHOLD_MB;
-
-    return { isLeaking, leakAmountMB, visitCount };
-  }
-
-  public getHistory(hash: string): number[] {
-    return this.heapHistory.get(hash) ?? [];
-  }
-}
-```
-
----
-
-## Task 4: Inject Memory Tracking into Engine
-
-### Target File
-`testing-core/src/domain/services/AutonomousExplorationEngine.ts`
-
-### Changes Required:
-
-1. **Add imports** (at top with other imports):
-```typescript
-import { MemoryProfiler } from '../infrastructure/monitoring/MemoryProfiler.js';
+import { MemoryProfiler } from '../../infrastructure/monitoring/MemoryProfiler.js';
 import { MemoryLeakDetector } from '../heuristics/MemoryLeakDetector.js';
 ```
 
-2. **Add class instances** (in class properties):
+### Step 2: Instantiate in class
+Add to AutonomousExplorationEngine class:
 ```typescript
 private readonly memoryProfiler = new MemoryProfiler();
 private readonly memoryLeakDetector = new MemoryLeakDetector();
 private cdpClient: CDPSession | null = null;
 ```
 
-3. **In initialization phase** (after page.goto):
+### Step 3: Attach in initialization
+In the run() method, after page.goto():
 ```typescript
-// Attach CDP profiler for memory monitoring
 this.cdpClient = await this.memoryProfiler.attach(page);
 ```
 
-4. **In main Observe loop** (after getting currentHash):
+### Step 4: Measure in observation loop
+After hashing DOM state (in the main for loop):
 ```typescript
-// Measure heap usage after each state change
 const heapMB = await this.memoryProfiler.measureHeap(this.cdpClient);
+const leakResult = this.memoryLeakDetector.recordAndAnalyze(currentHash, heapMB);
 
-if (heapMB > 0) {
-  const analysis = this.memoryLeakDetector.recordAndAnalyze(currentHash, heapMB);
-  
-  if (analysis.isLeaking) {
-    const bugMessage = `Memory Leak detected! Heap grew by ${analysis.leakAmountMB.toFixed(2)} MB over ${analysis.visitCount} visits`;
-    
-    telemetry.emitTelemetry(this.event('BUG', {
-      message: bugMessage,
-      selector: '',
-      url: page.url(),
+if (leakResult.isLeaking) {
+  telemetry.emitTelemetry(this.event('BUG', {
+    message: `Memory Leak: State ${currentHash.substring(0, 8)} grew by ${leakResult.leakAmountMB.toFixed(2)} MB over ${leakResult.visitCount} visits`,
+    selector: '',
+    url: lastKnownUrl || page.url(),
+  }));
+}
+```
+
+### Step 5: Cleanup
+In the finally block:
+```typescript
+this.memoryProfiler.dispose();
+```
+
+## Files Modified
+
+1. `testing-core/src/domain/services/AutonomousExplorationEngine.ts` - Add integration
+
+## Safety Considerations
+
+- Wrap CDP operations in try/catch to prevent crashes
+- Use optional chaining and null checks for CDP client
+- Ensure GC collection is wrapped safely
+
+## Testing
+
+Run the engine with a test target and verify:
+1. No crashes during CDP session creation
+2. Memory metrics are recorded in telemetry
+3. Leak detection triggers BUG events when threshold exceeded
+
+---
+
+## Implementation Complete ✅
+
+### Files Modified
+
+1. **testing-core/src/domain/services/AutonomousExplorationEngine.ts**
+   - Added imports: `MemoryLeakDetector`, `MemoryProfiler`
+   - Added class properties: `memoryProfiler`, `memoryLeakDetector`, `cdpClient`
+   - Added CDP session attachment in initialization phase
+   - Added heap measurement and leak analysis in the observation loop
+   - Added cleanup in finally block
+
+### Changes Summary
+
+#### Import additions:
+```typescript
+import { MemoryLeakDetector } from '../heuristics/MemoryLeakDetector.js';
+import { MemoryProfiler } from '../../infrastructure/monitoring/MemoryProfiler.js';
+```
+
+#### Class properties (added to AutonomousExplorationEngine class):
+```typescript
+// Memory profiling for leak detection
+private readonly memoryProfiler = new MemoryProfiler();
+private readonly memoryLeakDetector = new MemoryLeakDetector();
+private cdpClient: CDPSession | null = null;
+```
+
+#### Initialization (after frame capture loop):
+```typescript
+// 🧠 Initialize CDP session for memory profiling
+try {
+  this.cdpClient = await this.memoryProfiler.attach(page);
+  console.log('[AutonomousExplorationEngine] CDP session attached for memory profiling');
+} catch (error) {
+  console.warn('[AutonomousExplorationEngine] Failed to attach CDP session:', error);
+}
+```
+
+#### Measurement in observation loop (after DOM hash):
+```typescript
+// 🧠 Memory Leak Detection: Measure heap and analyze for leaks
+if (this.cdpClient) {
+  try {
+    const heapMB = await this.memoryProfiler.measureHeap(this.cdpClient);
+    const leakResult = this.memoryLeakDetector.recordAndAnalyze(currentHash, heapMB);
+
+    telemetry.emitTelemetry(this.event('ACTION', {
+      actionExecuted: 'heap-measurement',
+      message: `Heap: ${heapMB.toFixed(2)} MB for state ${currentHash.substring(0, 8)}`,
     }));
-    
-    this.registerConfirmedBug({
-      bugId: `memory-leak-${currentHash.substring(0, 8)}-${Date.now()}`,
-      type: 'MEMORY_LEAK',
-      message: bugMessage,
-      selector: currentHash,
-      payloadUsed: `Heap: ${heapMB.toFixed(2)} MB`,
-      advice: 'Check for unfreed closures, detached DOM references, or growing caches.',
-      timestamp: new Date(),
-    });
+
+    if (leakResult.isLeaking) {
+      const leakMessage = `Memory Leak: State ${currentHash.substring(0, 8)} grew by ${leakResult.leakAmountMB.toFixed(2)} MB over ${leakResult.visitCount} visits`;
+
+      telemetry.emitTelemetry(this.event('BUG', {
+        message: leakMessage,
+        selector: '',
+        url: lastKnownUrl || page.url(),
+      }));
+
+      this.registerConfirmedBug({
+        bugId: `memory-leak-${currentHash.substring(0, 8)}-${Date.now()}`,
+        type: 'MEMORY_LEAK',
+        message: leakMessage,
+        selector: currentHash,
+        payloadUsed: `heapGrowth: ${leakResult.leakAmountMB.toFixed(2)}MB`,
+        advice: 'Memory is monotonically increasing. Check for unreleased event listeners or detached DOM nodes.',
+        timestamp: new Date(),
+      });
+    }
+  } catch (error) {
+    console.warn('[AutonomousExplorationEngine] Heap measurement failed:', error);
   }
 }
 ```
 
----
-
-## System Impact
-
-### Positive Effects:
-1. **False Positive Reduction**: Network interceptor will no longer flag Vite dev server and asset files as API failures
-2. **Memory Leak Detection**: Engine can now detect persistent memory growth patterns tied to specific DOM states
-3. **Better Diagnostics**: Heap usage data provides actionable insights for developers
-
-### Performance Considerations:
-- CDP session adds minimal overhead (~5-10ms per measurement)
-- GC collection is wrapped in try/catch for safety
-- Memory history is per-state (not infinite growth)
-
-### New Files Created:
-- `testing-core/src/infrastructure/monitoring/MemoryProfiler.ts`
-- `testing-core/src/domain/heuristics/MemoryLeakDetector.ts`
-
-### Files Modified:
-- `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
+#### Cleanup (in finally block):
+```typescript
+// 🧠 Cleanup CDP session for memory profiling
+this.memoryProfiler.dispose();
+```
 
 ---
 
-## Implementation Order
-1. Patch Network Interceptor (quick fix)
-2. Create MemoryProfiler.ts
-3. Create MemoryLeakDetector.ts  
-4. Update AutonomousExplorationEngine.ts with imports and integration
-5. Test with a target SPA
+## Telemetry Output
+
+When memory leak is detected, the engine emits:
+- **ACTION** telemetry with `actionExecuted: 'heap-measurement'` containing heap size
+- **BUG** telemetry with detailed leak information including:
+  - State hash prefix
+  - Memory growth amount in MB
+  - Number of visits to that state
+  - Remediation advice

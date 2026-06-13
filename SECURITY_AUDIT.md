@@ -1,60 +1,80 @@
-# BugSafari Security Audit Report
+# BugSafari Security & Architecture Audit Report
 
-**Repository:** BUGSAFARI/bugsafari  
+**Date:** 2024
 **Auditor:** Principal Software Architect & Lead Security Engineer
+**Scope:** Full Repository (testing-core + developer-dashboard)
 
 ---
 
 ## Executive Summary
 
-This document presents a comprehensive "State of the Codebase" security audit of the BugSafari automated bug hunting platform, covering both the `testing-core` backend and the `developer-dashboard` frontend. The audit includes architecture mapping, algorithmic analysis, error handling review, and TODO reconciliation.
+This report presents the findings of a comprehensive four-phase audit of the BugSafari autonomous bug hunting platform. The system demonstrates sophisticated architecture with clear separation of concerns between the testing engine (Node.js/Playwright), the API layer, and the React frontend. However, several areas require attention to improve stability, type safety, and error handling.
 
-**Overall Assessment:** The codebase demonstrates solid architectural foundations with an innovative autonomous exploration engine. Several vulnerabilities, code smells, and improvement opportunities have been identified and are documented below with specific remediation guidance.
+**Key Findings:**
+- ✅ Strong architecture with clear pipeline from detection → validation → storage → display
+- ⚠️ Type safety gaps between backend and frontend schemas
+- ⚠️ Error handling gaps in telemetry pipeline
+- ⚠️ Some TODO items remain unimplemented
+- ✅ Production-ready security sanitization implemented
 
 ---
 
 ## Phase 1: Architecture & Data Flow Mapping
 
-### 1.1 Core Pipeline Trace
+### 1.1 Pipeline Trace: Bug Journey
 
-The data flow pipeline follows this structure:
+The complete data flow follows this path:
 
 ```
-[User Start] → [API /start-test] → [AutonomousExplorationEngine]
-        ↓
-    [Page Navigation] → [DOM Parsing] + [Risk Scoring]
-        ↓
-    [Element Selection] → [Action Execution]
-        ↓
-    [Screenshots/Telemetry] ←→ [WebSocket Streaming]
-        ↓
-    [FindingRepository] → [MongoDB] → [API /history]
-        ↓
-    [Dashboard Display]
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AutonomousExplorationEngine (testing-core)                                  │
+│  └── Detects bugs via RiskScorer, DOM parsing, stress scenarios              │
+│      │                                                                │
+│      ▼                                                                │
+│  TelemetryGateway.emitTelemetry() → SocketServer (socket.io)               │
+│      │                                                                │
+│      ▼                                                                │
+│  Forensics Repositories (MongoDB)                                      │
+│  ├── FindingRepository.save()                                            │
+│  ├── ForensicErrorRepository.create()                                   │
+│  ├── ForensicScreenshotRepository.create()                                │
+│  └── ForensicTelemetryRepository.create()                                 │
+│      │                                                                │
+│      ▼                                                                │
+│  SocketHttpEngineGateway (frontend) → WebSocket → SocketTelemetryGateway │
+│      │                                                                │
+│      ▼                                                                │
+│  useDashboardController (React state)                                │
+│      │                                                                │
+│      ▼                                                                │
+│  ClinicalForensicsDashboard (UI rendering)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 Critical Nodes Identified
 
-**Backend Controllers/Services:**
-- `AutonomousExplorationEngine` - Main exploration orchestrator
-- `RiskScorer` - Hybrid heuristic + ML scoring (60/40 split)
-- `StateGraphNavigator` - DFS directed path finding with backtracking
-- `BugClassifier` - Bug validation and deduplication
-- `FindingRepository` - MongoDB persistence layer
+| Node | Location | Responsibilities |
+|------|----------|---------------|
+| **AutonomousExplorationEngine** | `testing-core/src/domain/services/` | Core exploration loop, bug detection, memory management |
+| **RiskScorer** | `testing-core/src/domain/services/RiskScorer.ts` | Heuristic + ML scoring for element prioritization |
+| **StateGraphNavigator** | `testing-core/src/domain/services/StateGraphNavigator.ts` | DFS traversal, backtracking, loop detection |
+| **BugClassifier** | `testing-core/src/domain/services/BugClassifier.ts` | Bug validation, deduplication |
+| **exceptionCatcher** | `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts` | Browser exception catching, AI inference |
+| **stabilityMonitor** | `testing-core/src/infrastructure/monitoring/stabilityMonitor.ts` | Heartbeat, main thread lockup detection |
+| **SocketTelemetryGateway** | `testing-core/src/infrastructure/socket/SocketTelemetryGateway.ts` | WebSocket telemetry bridge |
+| **useDashboardController** | `developer-dashboard/src/application/useCases/` | Frontend state management |
+| **CommandCenter** | `developer-dashboard/src/components/CommandCenter.tsx` | Main UI orchestrator |
+| **ClinicalForensicsDashboard** | `developer-dashboard/src/components/ClinicalForensicsDashboard.tsx` | Telemetry visualization |
 
-**Frontend Components:**
-- `useDashboardController` - React state management
-- `SocketHttpEngineGateway` - Socket.IO real-time communication
-- `ClinicalForensicsDashboard` - Main dashboard UI
-
-### 1.3 Architectural Code Smells
+### 1.3 Architectural Bottlenecks & Code Smells
 
 | Issue | Location | Severity | Description |
-|-------|----------|----------|-------------|
-| Circular dependency risk | `AutonomousExplorationEngine.ts` imports numerous services | Medium | Heavy service coupling - service locator pattern recommended |
-| Database write saturation | `FindingModel` on every telemetry event | High | Synchronous writes without batching can cause backpressure |
-| Memory leak potential | `CircularBuffer` unbounded if not properly capped | Medium | Action breadcrumb ring buffer could grow indefinitely |
-| Tight coupling | `RiskScorer` and `Perceptron` tightly coupled scoring | Low | Acceptable but makes ML model updates risky |
+|-------|----------|----------|------------|
+| **Memory saturation** | `AutonomousExplorationEngine.confirmedBugsMemory` | HIGH | Unbounded array growth - mitigated with MAX_CONFIRMED_BUGS=500 cap |
+| **DB write saturation** | Multiple repositories | MEDIUM | Each telemetry event triggers async DB write without batching |
+| **Telemetry buffer growth** | `useDashboardController` state.telemetry | MEDIUM | Capped at 500 entries but grows unbounded during long runs |
+| **Frame backpressure** | `emitLiveFrame` in engine | LOW | Has in-flight guard to prevent but could be optimized |
+| **Circular dependency risk** | DI system | LOW | Imports look clean but could benefit from explicit DI container |
 
 ---
 
@@ -62,80 +82,85 @@ The data flow pipeline follows this structure:
 
 ### 2.1 Algorithm Evaluation
 
-#### RiskScorer (Hybrid Scoring)
-```typescript
-// Formula: combinedScore = (heuristicScore * 0.6) + (mlScore * 0.4)
-```
+#### RiskScorer (hybrid scoring)
+- **Approach:** Combines 60% heuristic + 40% ML perceptron scoring
+- **Strengths:** 
+  - Multiple feedback mechanisms (network signals, state changes, novelty rewards)
+  - Adaptive weights that evolve during exploration
+  - Penalty system for loop escape mode
+- **Edge Cases:**
+  - `featureVector` could be undefined if element data incomplete (handled with fallback)
+  - Negative scores possible after penalties but clamped to minimum 1
+
+#### StateGraphNavigator (DFS traversal)
+- **Approach:** Maintains graph of DOM states + edges with breadcrumb stack
+- **Strengths:**
+  - Boredom threshold for curiosity-driven exploration
+  - Loop detection via consecutive repeat counter
+  - Branch blocking after threshold
+  - Proper backtrack logic with stack management
+- **Edge Cases:**
+  - `seenHashes` set doesn't persist across node eviction (intentional)
+  - Could infinite loop if `getBestUnvisitedEdge` returns null repeatedly - handled by exhaustion check
+
+#### BugClassifier (bug validation)
+- **Approach:** Type whitelist + NETWORK special rules
+- **Strengths:**
+  - Explicit excludes (ACTION, HEURISTIC_SCORE)
+  - NETWORK bugs require status >= 400 or critical strings
+  - Clear deduplication logic
+- **Edge Cases:**
+  - Relies on `statusCode` from meta but some events may not have it
+
+#### exceptionCatcher (AI inference)
+- **Approach:** Keyword-based expert system with CWE mapping
+- **Strengths:**
+  - Maps common errors to CWE identifiers
+  - Provides remediation suggestions
+  - Covers SQL injection, null pointer, HTTP errors, broken resources
+- **Edge Cases:**
+  - Keyword matching is case-sensitive in some rules (e.g., "net::ERR")
+  - Falls back to generic "Unclassified" for unknown errors
+
+### 2.2 Backend Architecture Evaluation
+
+| Aspect | Assessment | Recommendations |
+|--------|------------|--------------|
+| **Concurrency** | Good - async/await throughout | Consider worker thread pool for heavy DOM parsing |
+| **Memory Management** | Good - MAX_CONFIRMED_BUGS cap | Add periodic garbage collection for old baseline screenshots |
+| **Error Recovery** | Good - try/catch in main loop | Add circuit breaker for repeated failures |
+| **Scalability** | Single-instance design | Consider distributed queue for scaling |
 
 **Strengths:**
-- Weighted combination reduces overfitting risk
-- Keyword-based heuristics cover high-priority elements (login, delete, payment)
-- Adaptive weights allow runtime learning
+- ✅ Comprehensive stability monitoring with heartbeat
+- ✅ Proper cleanup in finally blocks
+- ✅ Memory-capped data structures
+- ✅ Sanitization for stack traces (SECURITY FIX)
 
 **Weaknesses:**
-- Fixed 60/40 ratio may not be optimal for all use cases
-- Heuristic weights are hardcoded - not configurable without code changes
-- No explicit handling of form elements vs. navigation elements
-
-#### StateGraphNavigator (DFS-Based)
-```typescript
-// Loop detection: 3 consecutive identical DOM hashes triggers backtracking
-// Branch blocking: 2 backtracks from same node blocks entire branch
-```
-
-**Strengths:**
-- Proper loop prevention with configurable thresholds
-- Stack depth limiting (default 60) prevents unbounded growth
-- Node eviction with LRU strategy when maxNodes (500) reached
-
-**Edge Cases:**
-- Infinite scroll pages could exhaust maxStackDepth prematurely
-- Dynamic content that cycles through 3 states would trigger false loop detection
-- No handling of hash collisions (different states with same DOM fingerprint)
-
-#### BugClassifier (Filtering)
-```typescript
-// Validation rules:
-// - EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT always valid
-// - NETWORK only if status >= 400 OR critical strings present
-```
-
-**Strengths:**
-- Proper filtering prevents false bug reports
-- Deduplication logic prevents noise
-
-**Weaknesses:**
-- No handling of 429 (rate limit) responses
-- Critical string list may miss modern JS framework errors
-
-### 2.2 Backend Architecture Suggestions
-
-**Concurrency:**
-- Consider Web Worker pool for parallel exploration sessions
-- Implement async batching for telemetry writes (batch every 10 events or 500ms)
-
-**Memory Management:**
-```typescript
-// Current: unbounded Array in confirmedBugsMemory
-// Recommended: Add maxConfirmedBugs cap (e.g., 500)
-const MAX_CONFIRMED_BUGS = 500;
-```
-
-**Scaling:**
-- Stateless engine design supports horizontal scaling
-- Consider Redis for shared state in distributed deployments
+- ⚠️ No circuit breaker pattern
+- ⚠️ No request batching for DB writes
+- ⚠️ Frame capture runs on setInterval without pause during backtracking
 
 ### 2.3 Frontend Architecture Evaluation
 
-**WebSocket/Telemetry Handling:**
-- Frame-skipping guard (`isFrameBroadcastInFlight`) prevents backpressure ✓
-- Binary frame support for reduced bandwidth ✓
-- Efficient JPEG quality (35) for live streaming ✓
+| Aspect | Assessment | Recommendations |
+|--------|------------|--------------|
+| **State Management** | React hooks - good | Consider Zustand for complex state |
+| **WebSocket handling** | Good - gateway pattern | Add reconnection logic with exponential backoff |
+| **Rendering** | Good - conditional rendering | Add virtualization for long telemetry lists |
+| **Type Safety** | TypeScript - good | Align more closely with backend schemas |
 
-**React State Issues:**
-- `telemetry` array grows unbounded - needs 500 cap (implemented correctly)
-- `useEffect` cleanup incomplete in some components - potential memory leaks
-- Missing error boundaries around dashboard components
+**Strengths:**
+- ✅ Clean separation via useDashboardController hook
+- ✅ Telemetry buffering with 500 cap
+- ✅ Proper cleanup on disconnect
+- ✅ Thinking/initializing states for UX
+
+**Weaknesses:**
+- ⚠️ No virtualization - could lag with 500+ telemetry entries
+- ⚠️ `latestFrame` vs `liveFrame` could cause confusion
+- ⚠️ Some type misalignment with backend (see Phase 3)
 
 ---
 
@@ -143,139 +168,141 @@ const MAX_CONFIRMED_BUGS = 500;
 
 ### 3.1 Error Leaks Analysis
 
-| Error Type | Handler | Status | Issue |
-|-----------|---------|--------|-------|
-| Page errors (`page.on('pageerror')`) | ✓ Full logging + screenshot | Good | None detected |
-| Network failures (`requestfailed`) | ✓ Full logging + forensic report | Good | None detected |
-| HTTP errors (`response >= 400`) | ✓ Full logging + screenshot | Good | None detected |
-| Console errors | ⚠ Partial | Missing: stack trace for some console errors |
-| Unhandled promise rejections | ⚠ Partial | Only via console.error, no structured logging |
+| Location | Issue | Severity | Status |
+|----------|------|----------|--------|
+| `AutonomousExplorationEngine.executeWeightedAction()` | Errors caught but not always bubbled to dashboard | MEDIUM | ✅ Emits telemetry on failure |
+| `exceptionCatcher` | Silent network error filtering (net::ERR) | LOW | ✅ Intentional |
+| `stabilityMonitor` | All errors properly emitted | N/A | ✅ No silent swallow |
+| RiskScorer scoring | Promise rejections not caught | LOW | ✅ Async handling within try |
+| `injectPayload()` | `.catch(() => undefined)` swallows errors | HIGH | ⚠️ **Should log** |
 
-**Critical Finding:** Some console errors skip network-related errors but may miss framework-specific errors due to overly broad filtering:
-```typescript
-// Current (potentially insufficient):
-if (text.includes('net::ERR') || text.includes('ERR_')) {
-  return; // Skip - may miss legitimate console errors
-}
-```
+### 3.2 Type Safety Analysis
 
-### 3.2 Type Safety Review
+#### Backend → Frontend Type Alignment
 
-**Backend → Frontend Type Alignment:**
+| Type | Backend (`shared/types.ts`) | Frontend (`developer-dashboard/src/types.ts`) | Status |
+|------|--------------------------|---------------------------------------------|-------|
+| `TelemetryEvent` | ✅ Defined | Re-exported via `types.ts` | ✅ ALIGNED |
+| `TelemetryMeta` | ✅ Defined | Re-exported | ✅ ALIGNED |
+| `ActionBreadcrumb` | ✅ Defined | Re-exported | ✅ ALIGNED |
+| `ActionRecord` | ✅ Defined | Re-exported | ✅ ALIGNED |
+| `ForensicCrashReport` | ✅ Defined | Re-exported | ✅ ALIGNED |
+| `IncidentReport` | ✅ Defined | Re-exported | ✅ ALIGNED |
+| `SessionHistoryEntry` | ❌ Not in shared | Defined in frontend only | ⚠️ **PARTIAL** |
+| `BrowserConsoleMessage` | ❌ Not in shared | Defined in frontend | ⚠️ **FRAGMENTED** |
 
-| Type | Backend | Frontend | Status |
-|------|---------|---------|--------|
-| TelemetryEvent | ✓ Full interface | ✓ Re-exported | ✓ Aligned |
-| SessionHistoryEntry | ✓ MongoDB model | ✓ Re-exported | ✓ Aligned |
-| ForensicCrashReport | ✓ Defined | ✓ Re-exported | ✓ Aligned |
-| BrowserConsoleMessage | ✓ Backend model | ✓ Local definition | ⚠ Duplicated - should be shared |
-
-**Issue:** `BrowserConsoleMessage` is defined in both `developer-dashboard/src/types.ts` and potentially backend - risk of divergence.
+**Issues Found:**
+1. `SessionHistoryEntry` is defined in frontend only - should be shared
+2. `BrowserConsoleMessage` is defined in frontend only - should be shared
+3. `OptimizationSettings` is shared but defaults differ slightly
 
 ### 3.3 Frontend State Management Analysis
 
-**Race Conditions Found:**
+| Issue | Location | Severity | Description |
+|-------|----------|----------|------------|
+| **Race condition** | `telemetry` state updates | LOW | Multiple `setTelemetry` calls could conflict |
+| **Memory leak potential** | `sessionHistory` fetch | LOW | Fetched on mount but not cached |
+| **Unnecessary re-renders** | `LiveFeed` | MEDIUM | No memoization on frame rendering |
+| **Stale frame state** | `liveFrame` vs `latestFrame` | LOW | Two frame states could confuse |
 
-1. **Initialization Race (Medium Severity)**
-   ```typescript
-   // Race between setIsInitializing(true) and first liveFrame
-   // 30s timeout fallback exists but may mask real issues
-   ```
-
-2. **State Update Race (Low Severity)**
-   ```typescript
-   // Multiple setTelemetry calls in close succession could cause out-of-order rendering
-   // React 18 batching helps but explicit ordering not guaranteed
-   ```
-
-**Memory Leaks:**
-- `CircularBuffer` in engine properly capped at 20 ✓
-- React state arrays properly sliced to 500 ✓
-- Missing cleanup for `frameCaptureInterval` in error paths - POTENTIAL LEAK
-
-### 3.4 Security Vulnerability Assessment
-
-**Identified Vulnerabilities:**
-
-| CVE | Type | Severity | Location | Description |
-|-----|------|----------|----------|-------------|
-| Info Disclosure | Medium | Medium | Telemetry logging | Full stack traces emitted to frontend |
-| XSS Potential | Low | Low | ForensicReport | HTML from backend rendered without sanitization |
+**useDashboardController Analysis:**
+- ✅ Proper initialization timeout (30s)
+- ✅ Thinking state properly managed
+- ✅ Terminal action detection works
+- ✅ Frame buffer cleared on test conclusion
+- ⚠️ No error boundary wrapping
 
 ---
 
 ## Phase 4: TODO.md Implementation Reconciliation
 
-### 4.1 Status Check
+### 4.1 Status Check Against Main TODO.md
 
-**Main TODO.md:**
-- ✓ ForensicReport component implemented
-- ✓ Navigation to report page implemented
-- ✓ Routing implemented
-- ⚠ Mock data - real data not connected yet
-- ❌ Export functionality not implemented (PDF, JSON, CSV)
+The main `TODO.md` in root covers "Implementation: View Report - Phase A":
 
-**Key Project TODOs (from file list):**
-| TODO File | Purpose | Implementation Status |
-|----------|---------|----------------------|
-| TODO_FORENSIC_REPORT.md | Forensic report page | Partial - component exists, needs data connection |
-| TODO_BUG_DEDUP_FIX.md | Bug deduplication | Implemented in BugClassifier ✓ |
-| TODO_PHASE3_PLAN.md | Telemetry collection | Implemented ✓ |
-| TODO_PHASE4_SCREENSHOT_FORENSICS.md | Screenshot capture | Implemented ✓ |
-| TODO_OPTIMIZATION_MATRIX.md | Optimization flags | Implemented ✓ |
+| Task | Status | Notes |
+|------|--------|-------|
+| ForensicReport Component | ✅ COMPLETE | All 6 sections implemented |
+| Navigation (View Report button) | ✅ COMPLETE | Implemented in SavedEvaluationSafaris |
+| Routing | ✅ COMPLETE | `/forensic-report/:runId` route exists |
+| Placeholder Data | ✅ COMPLETE | Mock data renders |
 
-### 4.2 Orphaned Code Identification
+### 4.2 Other TODO Files Analysis
 
-| Code | Location | Description |
-|------|----------|-------------|
-| `.bak` files | `ClinicalForensicsDashboard.tsx.bak` | Backup file - should be deleted |
-| Unused models | Some database models may not be wired | Need to verify full integration |
-| Dead code paths | Error handler fallbacks with empty catch | Some silently swallow errors |
+Several TODO_*.md files exist for specific fixes:
+
+| File | Purpose | Implementation Status |
+|------|---------|-------------------|
+| TODO_AUTH_FIX.md | Authentication fixes | PARTIALLY IMPLEMENTED |
+| TODO_BUG_DEDUP_FIX.md | Bug deduplication | ✅ IMPLEMENTED in engine |
+| TODO_SECURITY_FIXES.md | Security patches | ✅ IMPLEMENTED - sanitization active |
+| TODO_PHASE3_PLAN.md | Error logging system | ✅ IMPLEMENTED |
+| TODO_PHASE4_SCREENSHOT_FORENSICS.md | Screenshot capture | ✅ IMPLEMENTED |
+
+### 4.3 Orphaned Code / Zombie Functions
+
+| Item | Location | Status |
+|------|----------|--------|
+| `BinaryFrameServer` class | `monitoring/BinaryFrameServer.ts` | ✅ USED in frame capture |
+| `MemoryProfiler` class | `monitoring/MemoryProfiler.ts` | ⚠️ NOT DIRECTLY CALLED |
+| `actionBuffer.ts` ActionRecorder | `monitoring/actionBuffer.ts` | ✅ USED in exceptionCatcher |
+| `.bak` files | Multiple `.bak` files | ⚠️ SHOULD BE CLEANED UP |
+
+**Unused Functions:**
+- `MemoryProfiler` appears to be a skeleton not wired in
+- Backup files (.bak) should be removed or added to .gitignore
 
 ---
 
 ## Action Plan
 
-### Priority 1: Critical Security Fixes
+### Priority 1: Critical Fixes
 
-| # | File | Issue | Fix |
-|---|------|-------|-----|
-| 1.1 | `AutonomousExplorationEngine.ts` | Stack trace info disclosure | Sanitize stack traces before frontend emission |
-| 1.2 | `ForensicReport.tsx` | XSS vulnerability | Add DOMPurify before rendering HTML |
+| # | Action | File(s) to Modify | Estimated Effort |
+|----|--------|-----------------|-----------------|--------------|
+| 1.1 | Add logging to `injectPayload()` catch block | `AutonomousExplorationEngine.ts` | 15 min |
+| 1.2 | Share `SessionHistoryEntry` and `BrowserConsoleMessage` types | Create in `shared/types.ts` | 30 min |
+| 1.3 | Remove `.bak` backup files | Multiple locations | 10 min |
 
-### Priority 2: High Priority Bug Fixes
+### Priority 2: High Value Improvements
 
-| # | File | Issue | Fix |
-|---|------|-------|-----|
-| 2.1 | `AutonomousExplorationEngine.ts` | Unbounded bug memory | Add MAX_CONFIRMED_BUGS cap |
-| 2.2 | `AutonomousExplorationEngine.ts` | Frame interval cleanup | Ensure cleanup in ALL finally paths |
-| 2.3 | `SocketHttpEngineGateway.ts` | Error handling | Add structured error parsing |
+| # | Action | File(s) to Modify | Estimated Effort |
+|----|--------|-----------------|-----------------|--------------|
+| 2.1 | Add error boundary to React app | `App.tsx` | 30 min |
+| 2.2 | Implement request batching for DB writes | Repository files | 2 hrs |
+| 2.3 | Add circuit breaker pattern | `AutonomousExplorationEngine.ts` | 1 hr |
+| 2.4 | Virtualize telemetry list rendering | `TelemetryStream.tsx` | 1 hr |
 
-### Priority 3: Medium Priority Improvements
+### Priority 3: Optimization & Cleanup
 
-| # | File | Issue | Fix |
-|---|------|-------|-----|
-| 3.1 | `RiskScorer.ts` | Configurable weights | Move weights to configuration |
-| 3.2 | `StateGraphNavigator.ts` | Hash collision handling | Add state similarity detection |
-| 3.3 | `useDashboardController.ts` | Add error boundaries | Wrap components with error handling |
-
-### Priority 4: Low Priority Enhancements
-
-| # | File | Issue | Fix |
-|---|------|-------|-----|
-| 4.1 | `BrowserConsoleMessage` | Type duplication | Move to shared types |
-| 4.2 | `ClinicalForensicsDashboard.tsx.bak` | Backup file | Delete orphaned file |
-| 4.3 | Console error handling | Improve filtering | Add more error pattern matching |
+| # | Action | File(s) to Modify | Estimated Effort |
+|----|--------|-----------------|-----------------|--------------|
+| 3.1 | Remove unused `MemoryProfiler` or wire it in | `monitoring/MemoryProfiler.ts` | 30 min |
+| 3.2 | Add reconnection logic with backoff | `SocketHttpEngineGateway.ts` | 1 hr |
+| 3.3 | Consolidate frame state (latestFrame/liveFrame) | `useDashboardController.tsx` | 30 min |
+| 3.4 | Add unit/integration tests | Test files | 4+ hrs |
 
 ---
 
-## Recommendations Summary
+## Conclusion
 
-1. **Immediate:** Sanitize stack traces and add HTML sanitization to prevent information disclosure
-2. **Short-term:** Add bounds checking to all in-memory collections, ensure proper cleanup in all error paths
-3. **Medium-term:** Decouple services using dependency injection, make heuristic weights configurable
-4. **Long-term:** Consider event sourcing architecture for better auditability, implement distributed state with Redis
+The BugSafari codebase demonstrates solid architecture with clear separation of concerns. The autonomous exploration engine has sophisticated bug detection with AI-powered inference. The frontend provides excellent visualization of telemetry data.
+
+**Primary Concerns:**
+1. Type fragmentation between frontend/backend for some data models
+2. Silent error swallowing in payload injection
+3. Lack of error boundaries in React app
+4. Some backup files (.bak) cluttering repository
+
+**Strengths:**
+1. Production-ready security sanitization
+2. Comprehensive stability monitoring
+3. Memory-bounded data structures
+4. Clean telemetry pipeline
+5. Well-documented algorithms
+
+The Action Plan above provides a roadmap for addressing the identified issues. All critical items can be addressed within 2-3 developer days.
 
 ---
 
-**End of Security Audit Report**
+*End of Security Audit Report*
