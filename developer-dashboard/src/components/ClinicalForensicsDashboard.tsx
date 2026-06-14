@@ -234,11 +234,32 @@ export default function ClinicalForensicsDashboard({
           ? new Date(event.timestamp).toTimeString().slice(0, 8)
           : new Date().toTimeString().slice(0, 8);
         const type = event.type ?? 'EVENT';
-        const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+
+        // Type-safe message extraction using discriminated union
+        let message = 'event';
+        if (event.type === 'ACTION' && event.meta) {
+          message = event.meta.message ?? event.meta.actionExecuted ?? 'event';
+        } else if (event.type === 'NETWORK' && event.meta) {
+          message = event.meta.message ?? `${event.meta.method ?? 'REQ'} ${event.meta.url ?? ''}`;
+        } else if (event.type === 'EXCEPTION' && event.meta) {
+          message = event.meta.message ?? 'Exception';
+        } else if (event.type === 'HEURISTIC_SCORE' && event.meta) {
+          message = event.meta.message ?? `Score update`;
+        } else if (event.type === 'BUG' && event.meta) {
+          message = event.meta.message ?? 'Bug detected';
+        }
+
+        // Type-safe AI diagnostics extraction
+        let aiDiagnostics: any = null;
+        if (event.type === 'EXCEPTION' && event.meta) {
+          aiDiagnostics = event.meta.aiDiagnostics || null;
+        } else if (event.type === 'BUG' && event.meta) {
+          aiDiagnostics = event.meta.aiDiagnostics || null;
+        }
 
         return {
           rawText: `${timestamp} [${type}] ${message}`,
-          aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+          aiDiagnostics
         };
       })
       : [];
@@ -624,7 +645,8 @@ export default function ClinicalForensicsDashboard({
               <div className="space-y-3 p-2">
                 <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
                 {networkEvents.map((event, idx) => {
-                  const meta = event.meta;
+                  // Cast to NetworkTelemetryMeta for type-safe access
+                  const meta = event.meta as any;
                   const statusCode = meta?.statusCode;
                   const url = meta?.url || 'unknown';
                   const method = meta?.method || 'GET';

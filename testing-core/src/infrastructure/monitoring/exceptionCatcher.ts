@@ -287,16 +287,19 @@ export async function setupExceptionCatcher(
       const computedErrorMsg = `${method} Status Code: ${statusCode} encountered at endpoint URL: ${url}`;
       const aiDeduction = runExpertInference(statusCode.toString() + " " + computedErrorMsg);
 
+      // For errors with AI diagnostics, use EXCEPTION type to include aiDiagnostics field
       hub.emitTelemetry({
         timestamp: new Date().toISOString(),
-        type: 'NETWORK',
+        type: 'EXCEPTION',
         meta: {
           url,
-          method,
-          statusCode,
-          durationMs,
           message: `[${aiDeduction.vulnerabilityClass}] ${method} ${statusCode} ${url}`,
+          exceptionDetails: {
+            message: computedErrorMsg,
+            stackTrace: `HTTP ${statusCode} ${method} ${url}`,
+          },
           aiDiagnostics: aiDeduction,
+          severity: aiDeduction.severity,
         },
       });
 
@@ -316,16 +319,19 @@ export async function setupExceptionCatcher(
         const softFailMsg = `Soft-fail detected in 2xx payload data at ${url}: ${body.slice(0, 200)}`;
         const aiDeduction = runExpertInference(softFailMsg);
 
+        // For soft-fail with AI diagnostics, use EXCEPTION type
         hub.emitTelemetry({
           timestamp: new Date().toISOString(),
-          type: 'NETWORK',
+          type: 'EXCEPTION',
           meta: {
             url,
-            method,
-            statusCode,
-            durationMs,
             message: `[${aiDeduction.vulnerabilityClass}] ${softFailMsg}`,
+            exceptionDetails: {
+              message: softFailMsg,
+              stackTrace: body.slice(0, 200),
+            },
             aiDiagnostics: aiDeduction,
+            severity: aiDeduction.severity,
           },
         });
       }
@@ -344,14 +350,19 @@ export async function setupExceptionCatcher(
     const failureText = failure?.errorText ?? 'Request failed';
     const aiDeduction = runExpertInference(failureText);
 
+    // For failed requests with AI diagnostics, use EXCEPTION type
     hub.emitTelemetry({
       timestamp: new Date().toISOString(),
-      type: 'NETWORK',
+      type: 'EXCEPTION',
       meta: {
         url: request.url(),
-        method: request.method(),
         message: `[${aiDeduction.vulnerabilityClass}] Core Connection Dropped: ${failureText}`,
+        exceptionDetails: {
+          message: failureText,
+          stackTrace: `Request failed: ${request.url()}`,
+        },
         aiDiagnostics: aiDeduction,
+        severity: aiDeduction.severity,
       },
     });
   });

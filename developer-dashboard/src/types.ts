@@ -10,6 +10,13 @@ export type {
   TelemetryEvent,
   TelemetryType,
   TelemetryMeta,
+  // New discriminated union types (ISP refactoring)
+  TelemetryBase,
+  ActionTelemetryMeta,
+  NetworkTelemetryMeta,
+  ExceptionTelemetryMeta,
+  HeuristicScoreTelemetryMeta,
+  BugTelemetryMeta,
   ExceptionDetails,
   SemanticRole,
   BoundingBox,
@@ -18,31 +25,10 @@ export type {
   // OptimizationSettings now shared between backend and frontend
   OptimizationSettings,
   defaultOptimizationSettings,
+  // Frontend state types now shared for consistency
+  BrowserConsoleMessage,
+  SessionHistoryEntry,
 } from '../../shared/types.js';
-
-export interface BrowserConsoleMessage {
-  timestamp: string;
-  level: 'log' | 'error' | 'warn' | 'info';
-  message: string;
-  url?: string;
-  line?: number;
-}
-
-export interface SessionHistoryEntry {
-  id: string;
-  targetUrl: string;
-  status: 'Running' | 'Completed' | 'Crashed';
-  startedAt: string;
-  finishedAt?: string;
-  endedReason?: string;
-  savedManually: boolean;
-  findingCount: number;
-  actionTraceCount: number;
-  brainSnapshots: number;
-  runtimeMs?: number;
-  coveragePercentage?: number;
-  maxActions?: number;
-}
 
 
 

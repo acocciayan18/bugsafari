@@ -31,37 +31,85 @@ export interface ExceptionDetails {
   stackTrace: string;
 }
 
-export interface TelemetryMeta {
+// ═══════════════════════════════════════════════════════════════
+// TELEMETRY DISCRIMINATED UNIONS (ISP Refactoring)
+// Each telemetry type has its own specific meta fields for type safety
+// ═══════════════════════════════════════════════════════════════
+
+// Base fields common to all telemetry types
+export interface TelemetryBase {
+  timestamp: string;
+}
+
+// Action telemetry meta - specific fields for ACTION type
+export interface ActionTelemetryMeta {
   selector?: string;
   actionExecuted?: string;
-  statusCode?: number;
-  status?: number;
+  message?: string;
+  score?: number;
+  url?: string;
+  semanticRole?: SemanticRole;
+  sessionId?: string;
+  stateHash?: string;
+}
+
+// Network telemetry meta - specific fields for NETWORK type
+export interface NetworkTelemetryMeta {
   url?: string;
   method?: string;
+  statusCode?: number;
+  status?: number;
   durationMs?: number;
-  score?: number;
-  tagName?: string;
-  semanticRole?: SemanticRole;
-  stateHash?: string;
   message?: string;
   blockedUrl?: string;
+}
+
+// Exception telemetry meta - specific fields for EXCEPTION type
+export interface ExceptionTelemetryMeta {
+  message?: string;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
-  ssimScore?: number;
-  visualRegressionType?: 'CSS_BREAKAGE' | 'Z_INDEX_OVERLAP' | 'RENDER_FAILURE';
-  // 🧠 Optional parameter allowing the React client state logic to read inference mappings
+  url?: string;
   aiDiagnostics?: IntelligentDiagnosis;
-  // Session tracking for forensic history
-  sessionId?: string;
-  // Severity from AI inference (used by BugClassifier)
   severity?: 'CRITICAL' | 'WARNING' | 'INFO';
 }
 
-export interface TelemetryEvent {
-  timestamp: string;
-  type: TelemetryType;
-  meta: TelemetryMeta;
+// Heuristic score telemetry meta - specific fields for HEURISTIC_SCORE type
+export interface HeuristicScoreTelemetryMeta {
+  selector?: string;
+  score?: number;
+  message?: string;
+  tagName?: string;
+  semanticRole?: SemanticRole;
 }
+
+// Bug telemetry meta - specific fields for BUG type
+export interface BugTelemetryMeta {
+  message?: string;
+  selector?: string;
+  url?: string;
+  score?: number;
+  ssimScore?: number;
+  visualRegressionType?: 'CSS_BREAKAGE' | 'Z_INDEX_OVERLAP' | 'RENDER_FAILURE';
+  aiDiagnostics?: IntelligentDiagnosis;
+  severity?: 'CRITICAL' | 'WARNING' | 'INFO';
+}
+
+// Discriminated union for TelemetryEvent
+export type TelemetryEvent =
+  | (TelemetryBase & { type: 'ACTION'; meta: ActionTelemetryMeta })
+  | (TelemetryBase & { type: 'NETWORK'; meta: NetworkTelemetryMeta })
+  | (TelemetryBase & { type: 'EXCEPTION'; meta: ExceptionTelemetryMeta })
+  | (TelemetryBase & { type: 'HEURISTIC_SCORE'; meta: HeuristicScoreTelemetryMeta })
+  | (TelemetryBase & { type: 'BUG'; meta: BugTelemetryMeta });
+
+// Backward compatibility type alias (deprecated - use discriminated union)
+export type TelemetryMeta =
+  | ActionTelemetryMeta
+  | NetworkTelemetryMeta
+  | ExceptionTelemetryMeta
+  | HeuristicScoreTelemetryMeta
+  | BugTelemetryMeta;
 
 export interface ActionBreadcrumb {
   timestamp: string;
@@ -136,3 +184,31 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'state-aware-hashing': true,
   'concurrent-spam-event': true,
 };
+
+// ─────────────────────────────────────────────────────────────
+// 🔧 FRONTEND STATE TYPES (Shared for consistency)
+// ─────────────────────────────────────────────────────────────
+
+export interface BrowserConsoleMessage {
+  timestamp: string;
+  level: 'log' | 'error' | 'warn' | 'info';
+  message: string;
+  url?: string;
+  line?: number;
+}
+
+export interface SessionHistoryEntry {
+  id: string;
+  targetUrl: string;
+  status: 'Running' | 'Completed' | 'Crashed';
+  startedAt: string;
+  finishedAt?: string;
+  endedReason?: string;
+  savedManually: boolean;
+  findingCount: number;
+  actionTraceCount: number;
+  brainSnapshots: number;
+  runtimeMs?: number;
+  coveragePercentage?: number;
+  maxActions?: number;
+}

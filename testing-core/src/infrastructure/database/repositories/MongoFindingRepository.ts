@@ -8,7 +8,7 @@ import type {
   SaveFindingInput,
   SessionHistoryRecord,
 } from "../../../domain/repositories/FindingRepository.js";
-import type { TelemetryMeta } from "../../../types.js";
+import type { TelemetryMeta, NetworkTelemetryMeta } from "../../../types.js";
 import { ActionTraceModel } from "../models/ActionTraceModel.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { FindingType, SessionStatus } from "../models/FindingType.js";
@@ -43,11 +43,13 @@ function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
 
   // For NETWORK type, only save if status >= 400 or has critical strings
   if (bugType === 'NETWORK') {
-    const statusCode = meta?.statusCode ?? meta?.status;
+    // Type guard: only access statusCode/status when we know it's a NETWORK telemetry
+    const networkMeta = meta as NetworkTelemetryMeta | undefined;
+    const statusCode = networkMeta?.statusCode ?? networkMeta?.status;
     if (typeof statusCode === 'number' && statusCode >= 400) {
       return true;
     }
-    const message = meta?.message?.toLowerCase() ?? '';
+    const message = networkMeta?.message?.toLowerCase() ?? '';
     const hasCriticalString = CRITICAL_NETWORK_STRINGS.some(critical => message.includes(critical.toLowerCase()));
     if (hasCriticalString) {
       return true;

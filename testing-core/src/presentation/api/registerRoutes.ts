@@ -202,6 +202,7 @@ export function registerRoutes(
         return;
       }
 
+      const limit = 50;
       console.log('[API] Querying session history with limit:', limit);
 
       const sessions = await findingRepo.listSessionHistory(limit);
@@ -260,6 +261,8 @@ export function registerRoutes(
     console.log('[API] Authenticated user:', request.userId ?? 'none');
 
     try {
+      const userId = request.userId;
+      const recordId = extractObjectIdParam(request.params.id as string | ParsedQs | (string | ParsedQs)[] | undefined);
 
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
@@ -297,6 +300,8 @@ export function registerRoutes(
 
     try {
       const userId = request.userId;
+      const recordId = extractObjectIdParam(request.params.id as string | ParsedQs | (string | ParsedQs)[] | undefined);
+
       if (!userId) {
         console.warn('[API] No userId in authenticated request');
         response.status(401).json({ error: 'Authentication required.' });
@@ -483,6 +488,8 @@ export function registerRoutes(
     console.log('[API] GET /api/forensic/report/:sessionId called with params:', request.params);
 
     try {
+      const sessionId = extractObjectIdParam(request.params.sessionId as string | ParsedQs | (string | ParsedQs)[] | undefined);
+
       if (!sessionId) {
         response.status(400).json({ error: 'Invalid session ID format.' });
         return;
@@ -506,7 +513,7 @@ export function registerRoutes(
       if (!session && findingRepo) {
         const sessions = await findingRepo.listSessionHistory(200);
         const foundSession = sessions.find(s => (s as any)._id?.toString() === sessionId);
-if (foundSession) {
+        if (foundSession) {
           session = {
             _id: (foundSession as any)._id,
             targetUrl: (foundSession as any).targetUrl,

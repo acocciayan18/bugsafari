@@ -1,6 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../shared/types.js';
+import type { OptimizationSettings, TelemetryEvent } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
 import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
@@ -223,7 +223,7 @@ export class StartExplorationUseCase {
                     url: targetUrl,
                     message: result.reason,
                 },
-            });
+            } as TelemetryEvent);
         } catch (error) {
             executionStatus = 'CRASHED';
             const message = error instanceof Error ? error.message : String(error);

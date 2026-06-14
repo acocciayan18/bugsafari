@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { requireAuth, verifyToken, type AuthRequest } from './authMiddleware.js';
+import { requireAuth, type AuthRequest } from './authMiddleware.js';
 
 // Email transporter configuration
 // Using environment variables for SMTP settings
@@ -37,7 +37,7 @@ function createEmailTransporter() {
  */
 async function sendPasswordResetEmail(email: string, resetToken: string): Promise<boolean> {
   const resetLink = `${APP_URL}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
-  
+
   const mailOptions = {
     from: `"${APP_NAME}" <${process.env.SMTP_USER || 'noreply@bugsafari.com'}>`,
     to: email,
@@ -126,13 +126,13 @@ If you didn't request this, please ignore this email.
 
   try {
     const transporter = createEmailTransporter();
-    
+
     // Check if SMTP is configured
     if (!emailConfig.auth.user) {
       console.log(`[EMAIL] SMTP not configured. Reset link would be: ${resetLink}`);
       return false;
     }
-    
+
     const info = await transporter.sendMail(mailOptions);
     console.log(`[EMAIL] Password reset email sent to ${email}: ${info.messageId}`);
     return true;
@@ -352,7 +352,7 @@ export async function handleLogin(
       return;
     }
 
-const trimmedEmail = sanitizedEmail.trim().toLowerCase();
+    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
 
     console.log(`[Auth] Login attempt for: "${trimmedEmail}"`);
     console.log(`[Auth] Password length: ${sanitizedPassword?.length}`);
@@ -493,7 +493,7 @@ export async function handleForgotPassword(
 
       console.log(`\n========================================`);
       console.log(`[FORGOT PASSWORD] Reset link for: ${trimmedEmail}`);
-await sendPasswordResetEmail(trimmedEmail, resetToken);
+      await sendPasswordResetEmail(trimmedEmail, resetToken);
       console.log(`⏰ Expires in: 1 hour`);
       console.log(`========================================\n`);
 
@@ -584,7 +584,7 @@ export async function handleResetPassword(
 
     await user.save();
 
-console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail}`);
+    console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail}`);
 
     response.json({
       ok: true,

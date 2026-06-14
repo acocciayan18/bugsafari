@@ -5,7 +5,7 @@
 // Manages global session state, auth flow, and 2-column layout structure
 // Single source of truth for socket.io connections and telemetry distribution
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, Component, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
@@ -23,6 +23,57 @@ import Sidebar from './components/Sidebar';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
 import Settings from './components/Settings';
 import { useSettings, applyTheme, type AppSettings } from './hooks/useSettings';
+
+// ─────────────────────────────────────────────────────────────
+// ERROR BOUNDARY - Catches uncaught errors in component tree
+// ─────────────────────────────────────────────────────────────
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error('[ErrorBoundary] Caught an error:', error, errorInfo);
+  }
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen w-screen items-center justify-center bg-red-50">
+          <div className="max-w-md p-6 bg-white rounded-lg shadow-xl border border-red-200">
+            <h2 className="text-xl font-bold text-red-600 mb-4">Something went wrong</h2>
+            <p className="text-gray-600 mb-4">
+              An unexpected error occurred. Please try refreshing the page.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
@@ -58,7 +109,7 @@ function getStoredToken(): string | null {
 // ═══════════════════════════════════════════════════════════════════════
 
 export default function App() {
-const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
@@ -95,7 +146,7 @@ const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
 
   const isAuthenticated = !!token && !!user;
 
-const handleLoginSuccess = (newToken: string, newUser: User) => {
+  const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('bugsafari_token', newToken);
@@ -104,17 +155,17 @@ const handleLoginSuccess = (newToken: string, newUser: User) => {
     localStorage.removeItem('bugsafari_guest');
   };
 
-// handleSignupSuccess is no longer needed
-// After registration, user must log in with their new credentials (no auto-login)
+  // handleSignupSuccess is no longer needed
+  // After registration, user must log in with their new credentials (no auto-login)
 
-const handleGuestAccess = () => {
+  const handleGuestAccess = () => {
     setToken(null);
     setUser(null);
     // For guest access, we store a special marker to allow guest sessions
     localStorage.setItem('bugsafari_guest', 'true');
   };
 
-const handleLogout = () => {
+  const handleLogout = () => {
     localStorage.removeItem('bugsafari_user');
     localStorage.removeItem('bugsafari_token');
     localStorage.removeItem('bugsafari_guest');
@@ -122,16 +173,16 @@ const handleLogout = () => {
     setUser(null);
   };
 
-const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
+  const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
 
   const location = useLocation();
   const hasValidSession = !!token && !!user || isGuestMode;
-const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
 
   // Derive activeView from URL path for sidebar highlighting
   const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
-// ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   // Public Routes: LandingPage FIRST, then /login
   // ─────────────────────────────────────────────────────────────
   if (location.pathname === '/') {
@@ -147,7 +198,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
     return (
       <>
         <Toaster position="top-center" theme="dark" />
-<Routes>
+        <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route
             path="/login"
@@ -158,7 +209,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
               />
             }
           />
-<Route
+          <Route
             path="/signup"
             element={
               // No onSignupSuccess - registration does NOT auto-login
@@ -233,7 +284,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
             </div>
           }
         />
-<Route
+        <Route
           path="/history"
           element={
             <div className="flex h-screen w-screen bg-white">
@@ -252,7 +303,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
             </div>
           }
         />
-<Route
+        <Route
           path="/forensic-report/:runId"
           element={
             <div className="flex h-screen w-screen bg-white">

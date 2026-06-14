@@ -9,15 +9,15 @@ export async function installDomainGuard(
   const targetOrigin = new URL(targetUrl).origin;
 
   await context.route('**/*', async (route) => {
-const request = route.request();
+    const request = route.request();
     const requestUrl = request.url();
 
     if (request.isNavigationRequest() && isExternalHttpNavigation(requestUrl, targetOrigin)) {
       hub.emitTelemetry({
         timestamp: new Date().toISOString(),
-        type: 'ACTION',
+        type: 'NETWORK',
         meta: {
-          actionExecuted: 'blocked-external-navigation',
+          url: requestUrl,
           blockedUrl: requestUrl,
           message: `Blocked external navigation to ${requestUrl}`,
         },
@@ -41,9 +41,8 @@ export async function restoreDomainIfNeeded(page: Page, targetUrl: string, hub: 
 
   hub.emitTelemetry({
     timestamp: new Date().toISOString(),
-    type: 'ACTION',
+    type: 'NETWORK',
     meta: {
-      actionExecuted: 'restore-target-domain',
       url: currentUrl,
       blockedUrl: currentUrl,
       message: `Restoring browser to ${target.origin}`,
