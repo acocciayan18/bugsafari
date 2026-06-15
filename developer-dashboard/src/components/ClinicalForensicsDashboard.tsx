@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry, BrowserConsoleMessage } from '../types';
 import LiveFeed from './LiveFeed';
 import ForensicHelpIcon from './ForensicHelpIcon';
+import SessionTimer from './SessionTimer';
 
 // Tab state type for the bottom terminal
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'history' | 'screenshots';
@@ -295,6 +296,10 @@ export default function ClinicalForensicsDashboard({
                   }`} />
                 {testStatus}
               </span>
+              <SessionTimer
+                isRunning={isTestRunning}
+                isPaused={testStatus === 'PAUSED'}
+              />
             </div>
 
             {/* Control Buttons - Pause/Resume/Stop */}
@@ -345,7 +350,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
 
-{/* Tab Headers */}
+        {/* Tab Headers */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 shrink-0 overflow-visible">
           <div className="flex overflow-visible">
             <button
@@ -354,36 +359,36 @@ export default function ClinicalForensicsDashboard({
             >
               telemetry live-feed
             </button>
-          <button
-            onClick={() => setActiveTab('errors')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            errors
-          </button>
-          <button
-            onClick={() => setActiveTab('network')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            network
-          </button>
-          <button
-            onClick={() => setActiveTab('console')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            console
-          </button>
-<button
-            onClick={() => setActiveTab('history')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            history
-          </button>
-          <button
-            onClick={() => setActiveTab('screenshots')}
-            className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'screenshots' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-screenshots
-          </button>
+            <button
+              onClick={() => setActiveTab('errors')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              errors
+            </button>
+            <button
+              onClick={() => setActiveTab('network')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              network
+            </button>
+            <button
+              onClick={() => setActiveTab('console')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              console
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'history' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              history
+            </button>
+            <button
+              onClick={() => setActiveTab('screenshots')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'screenshots' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              screenshots
+            </button>
           </div>
           {/* Forensic Help Icon - Right side of header */}
           <div className="pr-2">
@@ -749,7 +754,7 @@ screenshots
           {/* ════════════════════════════════════════
               TAB: HISTORY (Session History Table)
               ════════════════════════════════════════ */}
-{activeTab === 'history' && (
+          {activeTab === 'history' && (
             <div className="overflow-auto max-h-96 custom-scrollbar">
               {sessionHistory.length === 0 ? (
                 <div className="text-slate-500 italic text-xs py-4 px-4">No session history available.</div>
@@ -907,7 +912,7 @@ function ScreenshotsTab() {
                   className="w-full h-full object-cover"
                 />
               </div>
-              
+
               {/* Type Badge */}
               <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${typeInfo.color}`}>
                 {typeInfo.label}
@@ -966,7 +971,7 @@ function ScreenshotsTab() {
               alt={selectedScreenshot.screenshotType}
               className="max-w-full max-h-[85vh] object-contain"
             />
-            
+
             {/* Screenshot Info Bar */}
             <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white px-4 py-2 flex items-center justify-between">
               <div className="flex items-center gap-3">

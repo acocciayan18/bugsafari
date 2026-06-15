@@ -21,6 +21,7 @@ import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
+import Settings from './components/Settings';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
@@ -85,7 +86,7 @@ export default function App() {
 
   const isAuthenticated = !!token && !!user;
 
-const handleLoginSuccess = (newToken: string, newUser: User) => {
+  const handleLoginSuccess = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('bugsafari_token', newToken);
@@ -101,14 +102,14 @@ const handleLoginSuccess = (newToken: string, newUser: User) => {
     localStorage.setItem('bugsafari_user', JSON.stringify(newUser));
   };
 
-const handleGuestAccess = () => {
+  const handleGuestAccess = () => {
     setToken(null);
     setUser(null);
     // For guest access, we store a special marker to allow guest sessions
     localStorage.setItem('bugsafari_guest', 'true');
   };
 
-const handleLogout = () => {
+  const handleLogout = () => {
     localStorage.removeItem('bugsafari_user');
     localStorage.removeItem('bugsafari_token');
     localStorage.removeItem('bugsafari_guest');
@@ -116,16 +117,16 @@ const handleLogout = () => {
     setUser(null);
   };
 
-const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
+  const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
 
   const location = useLocation();
   const hasValidSession = !!token && !!user || isGuestMode;
-const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
 
   // Derive activeView from URL path for sidebar highlighting
   const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
 
-// ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   // Public Routes: LandingPage FIRST, then /login
   // ─────────────────────────────────────────────────────────────
   if (location.pathname === '/') {
@@ -141,7 +142,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
     return (
       <>
         <Toaster position="top-center" theme="dark" />
-<Routes>
+        <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route
             path="/login"
@@ -226,7 +227,7 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
             </div>
           }
         />
-<Route
+        <Route
           path="/history"
           element={
             <div className="flex h-screen w-screen bg-white">
@@ -241,6 +242,25 @@ const isAuthRoute = location.pathname === '/login' || location.pathname === '/si
               />
               <div className="flex flex-1">
                 <SavedEvaluationSafaris />
+              </div>
+            </div>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <div className="flex h-screen w-screen bg-white">
+              <Toaster position="top-center" theme="dark" />
+              <Sidebar
+                user={user}
+                isLoggedIn={isAuthenticated}
+                onLogout={handleLogout}
+                activeView={activeView}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              />
+              <div className="flex flex-1">
+                <Settings />
               </div>
             </div>
           }
