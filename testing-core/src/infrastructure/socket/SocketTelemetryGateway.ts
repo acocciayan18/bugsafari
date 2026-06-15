@@ -3,7 +3,7 @@ import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryE
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 export class SocketTelemetryGateway implements TelemetryGateway {
-  constructor(private readonly io: Server) {}
+  constructor(private readonly io: Server) { }
 
   public emitTelemetry(event: TelemetryEvent): void {
     this.io.emit('telemetry', event);
@@ -43,4 +43,24 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitIncidentReport(report: IncidentReport): void {
     this.io.emit('incident-report', report);
   }
+
+  // Phase 3: Timer state events for frontend countdown sync
+  public emitTimerState(state: TimerState): void {
+    this.io.emit('timer-state', state);
+  }
+
+  public emitTimeRemaining(timeRemainingMs: number): void {
+    this.io.emit('time-remaining', timeRemainingMs);
+  }
+}
+
+/**
+ * Phase 3: Timer state interface for frontend sync
+ */
+export interface TimerState {
+  isRunning: boolean;
+  isPaused: boolean;
+  timeRemainingMs: number;
+  totalTimeboxMs: number;
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'timeout';
 }

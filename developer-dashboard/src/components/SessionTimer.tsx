@@ -3,27 +3,52 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Real-time countdown visualization for session time limit
 // Displays MM:SS format with progress bar and color transitions
+// Phase 3: Enhanced to receive time remaining from backend via WebSocket
+// Includes full UI interface with clock display and progress ring
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface SessionTimerProps {
     initialTimeMs?: number;  // Default: 180000 (3 minutes)
-    isRunning: boolean;
-    isPaused: boolean;
+    isRunning?: boolean;     // Phase 3: Now optional - can be inferred from backend
+    isPaused?: boolean;       // Phase 3: Now optional - can be inferred from backend
     onTimeUp?: () => void;
+    socket?: {
+        on(event: string, callback: (data: number) => void): void;
+        off(event: string, callback: (data: number) => void): void;
+    };
+    variant?: 'compact' | 'full';  // UI variant: compact (inline) or full (standalone)
 }
 
-export default function SessionTimer({
+// Compact version for inline display
+function CompactTimer({
     initialTimeMs = 180000,
-    isRunning,
-    isPaused,
-    onTimeUp
+    isRunning: propIsRunning = true,
+    isPaused: propIsPaused = false,
+    onTimeUp,
+    socket
 }: SessionTimerProps) {
     const [timeRemaining, setTimeRemaining] = useState(initialTimeMs);
+    const [isRunning, setIsRunning] = useState(propIsRunning);
+    const [isPaused, setIsPaused] = useState(propIsPaused);
 
     useEffect(() => {
-        if (!isRunning || isPaused) return;
+        if (!socket) return;
 
+        const handleTimeRemaining = (newTime: number) => {
+            setTimeRemaining(newTime);
+            if (newTime <= 0) {
+                onTimeUp?.();
+            }
+        };
+
+        socket.on('time-remaining', handleTimeRemaining);
+        return () => {
+            socket.off('time-remaining', handleTimeRemaining);
+        };
+    }, [socket, onTimeUp]);
+
+    const startLocalCountdown = useCallback(() => {
         const interval = setInterval(() => {
             setTimeRemaining(prev => {
                 if (prev <= 1000) {
@@ -33,26 +58,38 @@ export default function SessionTimer({
                 return prev - 1000;
             });
         }, 1000);
-
         return () => clearInterval(interval);
-    }, [isRunning, isPaused, onTimeUp]);
+    }, [onTimeUp]);
 
-    // Format time as MM:SS
+    useEffect(() => {
+        if (!socket && isRunning && !isPaused) {
+            return startLocalCountdown();
+        }
+    }, [socket, isRunning, isPaused, startLocalCountdown]);
+
+    useEffect(() => {
+        setIsRunning(propIsRunning);
+        setIsPaused(propIsPaused);
+    }, [propIsRunning, propIsPaused]);
+
+    useEffect(() => {
+        if (isRunning && !isPaused) {
+            setTimeRemaining(initialTimeMs);
+        }
+    }, [isRunning, isPaused, initialTimeMs]);
+
     const minutes = Math.floor(timeRemaining / 60000);
     const seconds = Math.floor((timeRemaining % 60000) / 1000);
     const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-    // Calculate progress percentage
     const progressPercent = (timeRemaining / initialTimeMs) * 100;
 
-    // Color based on time remaining
     const getColor = () => {
         if (progressPercent > 50) return 'bg-emerald-500';
         if (progressPercent > 20) return 'bg-amber-500';
         return 'bg-red-500';
     };
 
-    // Animation for low time
     const isUrgent = timeRemaining <= 30000;
 
     return (
@@ -69,4 +106,170 @@ export default function SessionTimer({
             </div>
         </div>
     );
+}
+
+// Full UI variant with clock display and progress ring
+function FullTimer({
+    initialTimeMs = 180000,
+    isRunning: propIsRunning = true,
+    isPaused: propIsPaused = false,
+    onTimeUp,
+    socket
+}: SessionTimerProps) {
+    const [timeRemaining, setTimeRemaining] = useState(initialTimeMs);
+    const [isRunning, setIsRunning] = useState(propIsRunning);
+    const [isPaused, setIsPaused] = useState(propIsPaused);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleTimeRemaining = (newTime: number) => {
+            setTimeRemaining(newTime);
+            if (newTime <= 0) {
+                onTimeUp?.();
+            }
+        };
+
+        socket.on('time-remaining', handleTimeRemaining);
+        return () => {
+            socket.off('time-remaining', handleTimeRemaining);
+        };
+    }, [socket, onTimeUp]);
+
+    const startLocalCountdown = useCallback(() => {
+        const interval = setInterval(() => {
+            setTimeRemaining(prev => {
+                if (prev <= 1000) {
+                    onTimeUp?.();
+                    return 0;
+                }
+                return prev - 1000;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [onTimeUp]);
+
+    useEffect(() => {
+        if (!socket && isRunning && !isPaused) {
+            return startLocalCountdown();
+        }
+    }, [socket, isRunning, isPaused, startLocalCountdown]);
+
+    useEffect(() => {
+        setIsRunning(propIsRunning);
+        setIsPaused(propIsPaused);
+    }, [propIsRunning, propIsPaused]);
+
+    useEffect(() => {
+        if (isRunning && !isPaused) {
+            setTimeRemaining(initialTimeMs);
+        }
+    }, [isRunning, isPaused, initialTimeMs]);
+
+    const minutes = Math.floor(timeRemaining / 60000);
+    const seconds = Math.floor((timeRemaining % 60000) / 1000);
+    const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+    const progressPercent = (timeRemaining / initialTimeMs) * 100;
+    const strokeDasharray = 2 * Math.PI * 40;  // radius = 40
+    const strokeDashoffset = strokeDasharray * (1 - progressPercent / 100);
+
+    // Get color scheme based on time remaining
+    const getStatusColor = () => {
+        if (progressPercent > 50) return { ring: '#10b981', bg: '#d1fae5', text: '#065f46' };       // emerald
+        if (progressPercent > 20) return { ring: '#f59e0b', bg: '#fef3c7', text: '#92400e' };       // amber
+        return { ring: '#ef4444', bg: '#fee2e2', text: '#991b1b' };                              // red
+    };
+
+    const colors = getStatusColor();
+    const isUrgent = timeRemaining <= 30000;
+
+    // Status text
+    const getStatusText = () => {
+        if (timeRemaining <= 0) return 'TIME UP';
+        if (isPaused) return 'PAUSED';
+        if (!isRunning) return 'READY';
+        return 'RUNNING';
+    };
+
+    return (
+        <div className="flex flex-col items-center gap-3 p-4 bg-white rounded-xl shadow-md border border-slate-200">
+            {/* Status Badge */}
+            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isPaused ? 'bg-amber-100 text-amber-700' :
+                    timeRemaining <= 0 ? 'bg-red-100 text-red-700' :
+                        isRunning ? 'bg-emerald-100 text-emerald-700' :
+                            'bg-slate-100 text-slate-600'
+                }`}>
+                {getStatusText()}
+            </div>
+
+            {/* Clock Display with Progress Ring */}
+            <div className="relative w-28 h-28">
+                {/* Background circle */}
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                    <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="#e2e8f0"
+                        strokeWidth="8"
+                    />
+                    <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke={colors.ring}
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        strokeDasharray={strokeDasharray}
+                        strokeDashoffset={strokeDashoffset}
+                        className={`transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
+                    />
+                </svg>
+
+                {/* Time Display */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span
+                        className="text-2xl font-mono font-bold"
+                        style={{ color: colors.text }}
+                    >
+                        {formattedTime}
+                    </span>
+                    <span className="text-xs text-slate-400 uppercase tracking-wider">
+                        remaining
+                    </span>
+                </div>
+            </div>
+
+            {/* Progress Bar (horizontal) */}
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                    className={`h-full transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
+                    style={{
+                        width: `${progressPercent}%`,
+                        backgroundColor: colors.ring
+                    }}
+                />
+            </div>
+
+            {/* Time Info */}
+            <div className="flex justify-between w-full text-xs text-slate-500">
+                <span>Elapsed: {Math.floor((initialTimeMs - timeRemaining) / 1000)}s</span>
+                <span>Total: {initialTimeMs / 1000}s</span>
+            </div>
+        </div>
+    );
+}
+
+// Export both variants
+export default function SessionTimer(props: SessionTimerProps) {
+    const { variant = 'compact' } = props;
+
+    if (variant === 'full') {
+        return <FullTimer {...props} />;
+    }
+
+    return <CompactTimer {...props} />;
 }

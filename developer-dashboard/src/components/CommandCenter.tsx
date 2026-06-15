@@ -1,9 +1,10 @@
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // CommandCenter.tsx - BRUTALIST COMMAND CENTER
 // 3-Row Layout: Header Controls → Input Bar → Workspace Grid
-// ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import { useState, type FormEvent, type ReactNode } from 'react';
+import SessionTimer from './SessionTimer';
 
 interface CommandCenterProps {
   targetUrl: string;
@@ -15,6 +16,9 @@ interface CommandCenterProps {
   onResume?: () => void;
   onStop?: () => void;
   onSaveSessionToHistory?: () => void;
+  // Timer props
+  sessionTimeMs?: number;
+  onTimeUp?: () => void;
   // Child components for workspace
   children?: ReactNode;
 }
@@ -29,6 +33,8 @@ export default function CommandCenter({
   onResume,
   onStop,
   onSaveSessionToHistory,
+  sessionTimeMs = 180000,
+  onTimeUp,
   children,
 }: CommandCenterProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
@@ -45,7 +51,7 @@ export default function CommandCenter({
 
       {/* ═══════════════════════════════════════════════════════════════════════
           ROW 1: GLOBAL HEADER CONTROLS
-          ═══════════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════════════════════════════════ */}
       <header className="flex justify-between items-center w-full border-b border-transparent pb-2">
         {/* Left: Placeholder for future controls */}
         <div className="flex items-center gap-2">
@@ -53,7 +59,16 @@ export default function CommandCenter({
         </div>
 
         {/* Right: Control Button Group - Always Visible */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Session Timer - Beside control buttons */}
+          <SessionTimer
+            initialTimeMs={sessionTimeMs}
+            isRunning={testStatus === 'RUNNING'}
+            isPaused={testStatus === 'PAUSED'}
+            onTimeUp={onTimeUp}
+            variant="compact"
+          />
+
           {/* STOP Button - Always visible */}
           {onStop && (
             <button
@@ -121,7 +136,7 @@ export default function CommandCenter({
 
       {/* ═══════════════════════════════════════════════════════════════════════
           ROW 2: TARGETED ACTION & INPUT BAR
-          ═══════════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-1.5 w-full">
         <div className="flex gap-4 w-full">
           <div className="flex-1 relative flex items-center bg-white rounded-lg shadow-md">
@@ -156,7 +171,7 @@ export default function CommandCenter({
 
       {/* ═══════════════════════════════════════════════════════════════════════
           ROW 3: WORKSPACE (Split Panels)
-          ═══════════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════════════════════════════════ */}
       <main className="grid grid-cols-1 gap-6 w-full flex-1 items-stretch min-h-0">
         {children}
       </main>

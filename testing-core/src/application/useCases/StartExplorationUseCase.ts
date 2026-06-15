@@ -156,13 +156,25 @@ export class StartExplorationUseCase {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
 
+        // Phase 3: Get timebox from optimization settings (default: 180000ms = 3 minutes)
+        const TIMEBOX_MS = this.optimizationSettings?.['execution-timebox-ms'] ?? 180000;
+        console.log(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
+
         const executionStartTime = Date.now();
-        let executionStatus: 'COMPLETED' | 'CRASHED' | 'HALTED' = 'COMPLETED';
+        let executionStatus: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'TIMEOUT' = 'COMPLETED';
         const metrics: ExecutionMetrics = {
             totalActions: 0,
             totalBugsFound: 0,
             bugsByCategory: {},
         };
+
+        // Phase 3: Timeout error class for graceful termination
+        class TimeboxExceededError extends Error {
+            constructor() {
+                super(`Execution timebox of ${TIMEBOX_MS}ms exceeded`);
+                this.name = 'TimeboxExceededError';
+            }
+        }
 
         // FIX: Create session in database BEFORE starting test
         // CRITICAL: This operation MUST NOT block safari initialization
@@ -205,8 +217,40 @@ export class StartExplorationUseCase {
         });
 
         try {
-            // Pass optimization settings to the browser engine
-            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings);
+            // Phase 3: Wrap engine.run in Promise.race with timeout for timebox enforcement
+            const enginePromise = this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings);
+            const timeoutPromise = new Promise<{ completed: boolean; reason: string }>((_, reject) => {
+                setTimeout(() => reject(new TimeboxExceededError()), TIMEBOX_MS);
+            });
+
+            let result: { completed: boolean; reason: string };
+            try {
+                result = await Promise.race([enginePromise, timeoutPromise]);
+            } catch (timeoutError) {
+                // Timeout was reached - handle gracefully
+                executionStatus = 'TIMEOUT';
+                console.log(`[StartExplorationUseCase] ⚠️ Timebox of ${TIMEBOX_MS}ms exceeded - initiating graceful termination`);
+
+                // Emit timeout telemetry before graceful termination
+                this.telemetry.emitTelemetry({
+                    timestamp: new Date().toISOString(),
+                    type: 'ACTION',
+                    meta: {
+                        actionExecuted: 'timebox-exceeded',
+                        url: targetUrl,
+                        message: `Execution timebox of ${TIMEBOX_MS}ms exceeded`,
+                    },
+                });
+
+                // Try to gracefully stop the engine if it's still running
+                try {
+                    await this.browserEngine.stop?.();
+                } catch (stopError) {
+                    console.warn('[StartExplorationUseCase] Error during graceful termination:', stopError);
+                }
+
+                result = { completed: false, reason: `Timebox of ${TIMEBOX_MS}ms exceeded` };
+            }
 
             executionStatus = result.completed ? 'COMPLETED' : 'HALTED';
 
