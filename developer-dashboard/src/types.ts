@@ -44,5 +44,35 @@ export interface SessionHistoryEntry {
   maxActions?: number;
 }
 
+// ─────────────────────────────────────────────────────────────
+// 👤 USER SETTINGS TYPES
+// ─────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name?: string;
+  createdAt?: string;
+}
+
+export interface UserSettings {
+  theme: 'light' | 'dark';
+  notifications: boolean;
+  autoSave: boolean;
+}
+
+export interface PasswordChangeForm {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ProfileUpdateData {
+  name?: string;
+  email?: string;
+}
+
+export type ThemeMode = 'light' | 'dark';
+
 
 

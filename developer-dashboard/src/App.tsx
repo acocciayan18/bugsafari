@@ -70,7 +70,7 @@ export default function App() {
     return gateway;
   }, [token]);
 
-  const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory } =
+  const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, handleTimeLimitExceeded } =
     useDashboardController(createGateway);
 
   const handleSaveSessionToHistory = () => {
@@ -198,6 +198,8 @@ export default function App() {
                 isTestRunning={state.isTestRunning}
                 testStatus={state.status}
                 hasRunCompleted={state.hasRunCompleted}
+                hasTimeLimitExceeded={state.hasTimeLimitExceeded}
+                onTimeUp={handleTimeLimitExceeded}
                 onStart={startTest}
                 onPause={pauseTest}
                 onResume={resumeTest}

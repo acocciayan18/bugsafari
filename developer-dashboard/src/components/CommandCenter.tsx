@@ -11,6 +11,7 @@ interface CommandCenterProps {
   isTestRunning: boolean;
   testStatus: 'READY' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CRASHED' | 'STOPPED' | 'EXHAUSTED';
   hasRunCompleted?: boolean;
+  hasTimeLimitExceeded?: boolean;
   onStart: (url: string) => void;
   onPause?: () => void;
   onResume?: () => void;
@@ -28,6 +29,7 @@ export default function CommandCenter({
   isTestRunning,
   testStatus,
   hasRunCompleted,
+  hasTimeLimitExceeded,
   onStart,
   onPause,
   onResume,
@@ -38,6 +40,9 @@ export default function CommandCenter({
   children,
 }: CommandCenterProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
+
+  // Enable save button when run completed OR time limit exceeded
+  const canSave = hasRunCompleted || hasTimeLimitExceeded;
 
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();
@@ -114,8 +119,8 @@ export default function CommandCenter({
             </button>
           )}
 
-          {/* SAVE HISTORY Button - Always visible when run completed */}
-          {onSaveSessionToHistory && hasRunCompleted && (
+          {/* SAVE HISTORY Button - Enable when run completed OR time limit exceeded */}
+          {onSaveSessionToHistory && canSave && (
             <button
               onClick={onSaveSessionToHistory}
               className={`font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors shadow-sm ${isTestRunning ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-800'}`}

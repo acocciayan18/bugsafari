@@ -10,6 +10,7 @@ export interface DashboardState {
   isThinking: boolean; // 👈 Thinking indicator state
   status: 'READY' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
   hasRunCompleted: boolean; // 👈 True after first test run completes
+  hasTimeLimitExceeded: boolean; // 👈 True when timer limit is exceeded
   currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
   isInitializing: boolean; // 👈 True when test started but no frame received yet
   liveFrame: string | null; // 👈 Active frame buffer - MUST clear on test conclusion
@@ -45,6 +46,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
   const [status, setStatus] = useState<'READY' | 'RUNNING' | 'PAUSED'>('READY');
   const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
+  const [hasTimeLimitExceeded, setHasTimeLimitExceeded] = useState(false); // 👈 True when timer limit is exceeded
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -57,7 +59,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
 
-// 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
+  // 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
   // Increased from 15s to 30s to account for browser startup time on slower machines
   const INITIALIZATION_TIMEOUT_MS = 30000; // 30 seconds timeout
 
@@ -73,7 +75,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
         setIsInitializing(false);
         setIsTestRunning(false);
         setStatus('READY');
-// Add a timeout error to telemetry so user knows what happened
+        // Add a timeout error to telemetry so user knows what happened
         setTelemetry((prev) => [
           ...prev,
           {
@@ -261,6 +263,14 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
   };
 
+  // Handler for when time limit is exceeded
+  const handleTimeLimitExceeded = () => {
+    setHasTimeLimitExceeded(true);
+    setIsTestRunning(false);
+    setStatus('READY');
+    setHasRunCompleted(true);
+  };
+
   return {
     state: {
       isConnected,
@@ -269,6 +279,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       isThinking,
       status,
       hasRunCompleted,
+      hasTimeLimitExceeded,
       currentEngineAction,
       isInitializing,
       liveFrame,
@@ -281,6 +292,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       isSavingSession,
       browserConsole,
     },
+    handleTimeLimitExceeded,
     startTest,
     pauseTest,
     resumeTest,

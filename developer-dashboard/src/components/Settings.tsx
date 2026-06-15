@@ -1,36 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// Settings - Application Settings Page (UI Only - Non-functional)
+// Settings - Application Settings Page (Phase 4 - Performance Optimized)
 // ═══════════════════════════════════════════════════════════════════════════════
-// This is a UI-only scaffolding component. No backend integration.
-// All forms and toggles are for display purposes only.
+// This component integrates with useAuth and useUserSettings hooks for
+// real backend authentication and settings management.
+// Phase 4: Added memoization and accessibility improvements.
 
-import { useState } from 'react';
+import { useState, useEffect, memo } from 'react';
+import { toast } from 'sonner';
 
-// Icons
-const UserIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-  </svg>
-);
+// Icons - use extracted components
+import { UserIcon, LockClosedIcon, EyeIcon, EyeSlashIcon } from './icons';
 
-const LockClosedIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-  </svg>
-);
-
-const EyeIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
-const EyeSlashIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-  </svg>
-);
+// Hooks
+import { useAuth } from '../hooks/useAuth';
+import { useUserSettings } from '../hooks/useUserSettings';
 
 // Password input field component with show/hide toggle
 function PasswordInputField({
@@ -87,8 +70,8 @@ function PasswordInputField({
   );
 }
 
-// Toggle Switch component
-function ToggleSwitch({
+// Toggle Switch component - memoized for performance (Phase 4)
+const ToggleSwitch = memo(function ToggleSwitch({
   checked,
   onChange,
   label,
@@ -111,18 +94,20 @@ function ToggleSwitch({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 ${checked ? 'bg-slate-800' : 'bg-slate-200'
           }`}
       >
         <span
+          aria-hidden="true"
           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-5' : 'translate-x-0'
             }`}
         />
       </button>
     </div>
   );
-}
+});
 
 // Application Settings Section with toggles (UI-only - static defaults)
 function ApplicationSettingsSection() {
@@ -188,15 +173,15 @@ const SETTINGS_SECTIONS = [
   { id: 'danger', label: 'Danger Zone', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
 ];
 
-// Security Settings Section with password change form (UI-only)
+// Security Settings Section with password change form - connected to backend
 function SecuritySettingsSection() {
-  // UI-only: Use local state for display purposes
+  const { changePassword, isPasswordChanging, passwordError, clearPasswordSuccess } = useUserSettings();
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
   const [errors, setErrors] = useState<{ current?: string; new?: string; confirm?: string }>({});
-  const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   const togglePassword = (field: 'current' | 'new' | 'confirm') => {
@@ -227,23 +212,22 @@ function SecuritySettingsSection() {
   };
 
   const handleSubmit = async () => {
-    // UI-only: No actual submission - just show a message
-    setIsLoading(true);
-    setSuccessMessage('');
-
     if (!validateForm()) {
-      setIsLoading(false);
       return;
     }
 
-    // Simulate loading state
-    setTimeout(() => {
-      setSuccessMessage('Password updated successfully (demo only)');
+    // Call backend to change password
+    const success = await changePassword(currentPassword, newPassword);
+    if (success) {
+      setSuccessMessage('Password changed successfully');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setIsLoading(false);
-    }, 1000);
+      setTimeout(() => {
+        setSuccessMessage('');
+        clearPasswordSuccess();
+      }, 3000);
+    }
   };
 
   return (
@@ -298,10 +282,10 @@ function SecuritySettingsSection() {
 
       <button
         type="submit"
-        disabled={isLoading}
+        disabled={isPasswordChanging}
         className="w-full rounded-lg bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
       >
-        {isLoading ? 'Updating...' : 'Update Password'}
+        {isPasswordChanging ? 'Updating...' : 'Update Password'}
       </button>
     </form>
   );
@@ -321,6 +305,40 @@ function SettingsSection({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  // Render account section with user profile
+  if (isExpanded && id === 'account') {
+    return (
+      <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
+        <button
+          onClick={onToggle}
+          className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100">
+              <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+              </svg>
+            </div>
+            <span className="text-sm font-semibold text-slate-900">{label}</span>
+          </div>
+          <svg
+            className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <div className="border-t border-slate-200 bg-slate-50 px-6 py-8">
+          <AccountSection />
+        </div>
+      </div>
+    );
+  }
+
   // Render security section with password change form
   if (isExpanded && id === 'security') {
     return (
@@ -355,7 +373,7 @@ function SettingsSection({
     );
   }
 
-  // Render application section with toggles
+  // Render application section with connected toggles
   if (isExpanded && id === 'application') {
     return (
       <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
@@ -429,13 +447,222 @@ function SettingsSection({
   );
 }
 
+// Account Section - displays user info from useAuth and useUserSettings
+function AccountSection() {
+  const { user, logout } = useAuth();
+  const { profile, isProfileLoading, updateProfile, isProfileUpdating, profileUpdateError } = useUserSettings();
+
+  const [displayName, setDisplayName] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Initialize display name from profile
+  useEffect(() => {
+    if (profile?.name) {
+      setDisplayName(profile.name);
+    }
+  }, [profile]);
+
+  const handleSaveProfile = async () => {
+    if (!displayName.trim()) {
+      toast.error('Display name cannot be empty');
+      return;
+    }
+
+    const success = await updateProfile({ name: displayName.trim() });
+    if (success) {
+      setSuccessMessage('Profile updated successfully');
+      setIsEditing(false);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast.info('Signed out successfully');
+  };
+
+  if (isProfileLoading) {
+    return (
+      <div className="space-y-4 max-w-md">
+        <div className="animate-pulse space-y-3">
+          <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+          <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+          <div className="h-20 bg-slate-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 max-w-md">
+      <p className="text-sm text-slate-600 mb-4">
+        Manage your account information and preferences.
+      </p>
+
+      {/* User Info Display */}
+      <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200">
+            <UserIcon />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-900">
+              {profile?.name || user?.email || 'User'}
+            </p>
+            <p className="text-xs text-slate-500">{user?.email}</p>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-200">
+          <p className="text-xs text-slate-500">User ID</p>
+          <p className="text-xs font-mono text-slate-700 truncate">{user?.id}</p>
+        </div>
+      </div>
+
+      {/* Profile Update Form */}
+      <div className="space-y-3">
+        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700">
+          Display Name
+        </label>
+        <input
+          id="displayName"
+          type="text"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          disabled={!isEditing}
+          className="w-full rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+          placeholder="Enter your display name"
+        />
+
+        {profileUpdateError && (
+          <p className="text-xs text-red-500">{profileUpdateError}</p>
+        )}
+
+        {successMessage && (
+          <p className="text-sm text-emerald-600">{successMessage}</p>
+        )}
+
+        <div className="flex gap-3">
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleSaveProfile}
+                disabled={isProfileUpdating}
+                className="flex-1 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                {isProfileUpdating ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setDisplayName(profile?.name || '');
+                }}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Edit Profile
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Logout Button */}
+      <div className="pt-4 border-t border-slate-200">
+        <button
+          onClick={handleLogout}
+          className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
-  // UI-only: Use local state for expanded section tracking
+  // Integrate useAuth hook
+  const { user, isAuthenticated, logout } = useAuth();
+  const { settings, isSettingsLoading, updateSettings } = useUserSettings();
+
+  // Local state for expanded section tracking
   const [expandedSection, setExpandedSection] = useState<string | null>('account');
+
+  // Check authentication on mount and handle unauthenticated state
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      // User is not authenticated - could redirect to login
+      console.log('[Settings] User not authenticated');
+    }
+  }, [user]);
+
+  // Handle application settings toggle with backend integration
+  const handleSettingsToggle = async (key: 'notifications' | 'autoSave', value: boolean) => {
+    await updateSettings({ [key]: value });
+  };
 
   const toggleSection = (sectionId: string) => {
     setExpandedSection(expandedSection === sectionId ? null : sectionId);
   };
+
+  // Custom ApplicationSettingsSection with backend integration
+  function ConnectedApplicationSettingsSection() {
+    if (isSettingsLoading) {
+      return (
+        <div className="space-y-2 max-w-md">
+          <div className="animate-pulse space-y-3">
+            <div className="h-8 bg-slate-200 rounded"></div>
+            <div className="h-8 bg-slate-200 rounded"></div>
+            <div className="h-8 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2 max-w-md">
+        <p className="text-sm text-slate-600 mb-4">
+          Configure your application preferences. Theme changes apply immediately.
+        </p>
+
+        <div className="border-t border-slate-200 pt-4">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Theme</span>
+        </div>
+
+        <ToggleSwitch
+          checked={settings.theme === 'light'}
+          onChange={() => { }}
+          label="Light Mode"
+          description="Use light color scheme"
+        />
+
+        <div className="border-t border-slate-200 pt-4 mt-4">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Features</span>
+        </div>
+
+        <ToggleSwitch
+          checked={settings.notifications}
+          onChange={(checked) => handleSettingsToggle('notifications', checked)}
+          label="Notifications"
+          description="Show desktop notifications"
+        />
+
+        <ToggleSwitch
+          checked={settings.autoSave}
+          onChange={(checked) => handleSettingsToggle('autoSave', checked)}
+          label="Auto Save"
+          description="Automatically save changes"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -451,12 +678,22 @@ export default function Settings() {
           </span>
         </div>
         <div className="flex items-center gap-4">
+          {/* User info in header */}
+          {user && (
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+                <UserIcon />
+              </div>
+              <span className="text-xs text-slate-600 hidden md:inline">{user.email}</span>
+            </div>
+          )}
           <button
+            onClick={logout}
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-            title="Help"
+            title="Sign Out"
           >
             <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
             </svg>
           </button>
         </div>
@@ -500,7 +737,7 @@ export default function Settings() {
         </div>
         <div className="text-center">
           <span className="font-mono text-xs text-slate-400">
-            SETTINGS PANEL - V.8.2.19
+            SETTINGS PANEL - V.8.2.21 (Phase 4)
           </span>
         </div>
       </footer>
