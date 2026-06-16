@@ -109,11 +109,10 @@ const ToggleSwitch = memo(function ToggleSwitch({
   );
 });
 
-// Application Settings Section with toggles (UI-only - static defaults)
+// Application Settings Section with toggles - UI-only fallback for unauthenticated users
 function ApplicationSettingsSection() {
-  // UI-only: Use local state for display purposes
-  const [darkMode, setDarkMode] = useState(false);
-  const [lightMode, setLightMode] = useState(true);
+  // FIX #1: Use single theme state instead of conflicting darkMode/lightMode
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [notifications, setNotifications] = useState(true);
   const [autoSave, setAutoSave] = useState(true);
 
@@ -128,17 +127,10 @@ function ApplicationSettingsSection() {
       </div>
 
       <ToggleSwitch
-        checked={darkMode}
-        onChange={setDarkMode}
+        checked={theme === 'dark'}
+        onChange={(checked) => setTheme(checked ? 'dark' : 'light')}
         label="Dark Mode"
         description="Use dark color scheme"
-      />
-
-      <ToggleSwitch
-        checked={lightMode}
-        onChange={setLightMode}
-        label="Light Mode"
-        description="Use light color scheme"
       />
 
       <div className="border-t border-slate-200 pt-4 mt-4">
@@ -460,6 +452,14 @@ function AccountSection() {
   useEffect(() => {
     if (profile?.name) {
       setDisplayName(profile.name);
+      // Store display name in localStorage for Sidebar
+      localStorage.setItem('bugsafari_displayName', profile.name);
+    } else {
+      // Try to read from localStorage on load
+      const stored = localStorage.getItem('bugsafari_displayName');
+      if (stored) {
+        setDisplayName(stored);
+      }
     }
   }, [profile]);
 
@@ -604,7 +604,12 @@ export default function Settings() {
   }, [user]);
 
   // Handle application settings toggle with backend integration
-  const handleSettingsToggle = async (key: 'notifications' | 'autoSave', value: boolean) => {
+  const handleSettingsToggle = async (key: 'theme', value: 'light' | 'dark') => {
+    await updateSettings({ [key]: value });
+  };
+
+  // Handle boolean settings toggles
+  const handleBooleanToggle = async (key: 'notifications' | 'autoSave', value: boolean) => {
     await updateSettings({ [key]: value });
   };
 
@@ -637,10 +642,12 @@ export default function Settings() {
         </div>
 
         <ToggleSwitch
-          checked={settings.theme === 'light'}
-          onChange={() => { }}
-          label="Light Mode"
-          description="Use light color scheme"
+          checked={settings.theme === 'dark'}
+          onChange={async (checked) => {
+            await handleSettingsToggle('theme', checked ? 'dark' : 'light');
+          }}
+          label="Dark Mode"
+          description="Use dark color scheme"
         />
 
         <div className="border-t border-slate-200 pt-4 mt-4">
@@ -649,14 +656,14 @@ export default function Settings() {
 
         <ToggleSwitch
           checked={settings.notifications}
-          onChange={(checked) => handleSettingsToggle('notifications', checked)}
+          onChange={(checked) => handleBooleanToggle('notifications', checked)}
           label="Notifications"
           description="Show desktop notifications"
         />
 
         <ToggleSwitch
           checked={settings.autoSave}
-          onChange={(checked) => handleSettingsToggle('autoSave', checked)}
+          onChange={(checked) => handleBooleanToggle('autoSave', checked)}
           label="Auto Save"
           description="Automatically save changes"
         />
@@ -678,7 +685,7 @@ export default function Settings() {
           </span>
         </div>
         <div className="flex items-center gap-4">
-          {/* User info in header */}
+          {/* User info in header - display only, no logout button here */}
           {user && (
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
@@ -687,15 +694,6 @@ export default function Settings() {
               <span className="text-xs text-slate-600 hidden md:inline">{user.email}</span>
             </div>
           )}
-          <button
-            onClick={logout}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-            title="Sign Out"
-          >
-            <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-            </svg>
-          </button>
         </div>
       </header>
 

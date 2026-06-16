@@ -52,6 +52,10 @@ function getStoredToken(): string | null {
   return localStorage.getItem('bugsafari_token');
 }
 
+function getStoredDisplayName(): string | null {
+  return localStorage.getItem('bugsafari_displayName');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT: App
 // ═══════════════════════════════════════════════════════════════════════
@@ -60,6 +64,7 @@ export default function App() {
   const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [displayName, setDisplayName] = useState<string | null>(() => getStoredDisplayName());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const createGateway = useCallback(() => {
@@ -191,6 +196,7 @@ export default function App() {
                 activeView={activeView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                displayName={displayName}
               />
               {/* COMMAND CENTER with 3-row layout */}
               <CommandCenter
@@ -241,6 +247,7 @@ export default function App() {
                 activeView={activeView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                displayName={displayName}
               />
               <div className="flex flex-1">
                 <SavedEvaluationSafaris />
@@ -260,6 +267,7 @@ export default function App() {
                 activeView={activeView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                displayName={displayName}
               />
               <div className="flex flex-1">
                 <Settings />
@@ -279,6 +287,7 @@ export default function App() {
                 activeView={activeView}
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                displayName={displayName}
               />
               <div className="flex flex-1">
                 <ForensicReport />

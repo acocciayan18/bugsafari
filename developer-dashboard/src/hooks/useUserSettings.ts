@@ -4,7 +4,7 @@
  * Provides centralized state management for settings-related operations
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import type { UserProfile, UserSettings, ProfileUpdateData } from '../types';
@@ -41,6 +41,12 @@ export function useUserSettings() {
         notifications: true,
         autoSave: true,
     });
+    // UseRef for settings rollback (fixes stale closure issue)
+    const settingsRef = useRef<UserSettings>(settings);
+    // Keep ref in sync with state
+    useEffect(() => {
+        settingsRef.current = settings;
+    }, [settings]);
     const [isSettingsLoading, setIsSettingsLoading] = useState(false);
     const [settingsError, setSettingsError] = useState<string>('');
 
@@ -281,8 +287,11 @@ export function useUserSettings() {
         setIsSettingsLoading(true);
         setSettingsError('');
 
+        // Store previous settings for rollback
+        const previousSettings = { ...settingsRef.current };
+
         // Optimistic update
-        const optimisticSettings = { ...settings, ...newSettings };
+        const optimisticSettings = { ...settingsRef.current, ...newSettings };
         setSettings(optimisticSettings);
 
         try {
@@ -297,8 +306,8 @@ export function useUserSettings() {
                     logout();
                     throw new Error('Session expired');
                 }
-                // Rollback on error
-                setSettings(settings);
+                // Rollback on error using ref (fixes stale closure)
+                setSettings(previousSettings);
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Failed to update settings');
             }
@@ -318,15 +327,15 @@ export function useUserSettings() {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to update settings';
             setSettingsError(errorMessage);
-            // Rollback on error
-            setSettings(settings);
+            // Rollback on error using ref (fixes stale closure)
+            setSettings(previousSettings);
             toast.error(errorMessage);
             console.error('[useUserSettings] Update settings error:', error);
             return false;
         } finally {
             setIsSettingsLoading(false);
         }
-    }, [token, settings, logout, getAuthHeaders]);
+    }, [token, logout, getAuthHeaders]);
 
     /**
      * Clear password success state

@@ -10,6 +10,7 @@ import { SocketTelemetryGateway } from './infrastructure/socket/SocketTelemetryG
 import { StartExplorationUseCase } from './application/useCases/StartExplorationUseCase.js';
 import { registerRoutes } from './presentation/api/registerRoutes.js';
 import { registerAuthRoutes } from './presentation/api/authController.js';
+import { registerUserSettingsRoutes } from './presentation/api/userSettingsController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
@@ -68,6 +69,7 @@ const browserEngine = new PlaywrightBrowserEngine(findingRepository);
 // Pass findingRepository to use case for domain-level bug filtering
 const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false }, findingRepository, '000000000000000000000000');
 registerAuthRoutes(app);
+registerUserSettingsRoutes(app);
 registerRoutes(app, useCase, port, findingRepository);
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);

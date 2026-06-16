@@ -9,6 +9,7 @@ import HelpMenuIcon from './HelpMenuIcon';
 interface User {
   id: string;
   email: string;
+  name?: string;
 }
 
 interface SidebarProps {
@@ -18,6 +19,7 @@ interface SidebarProps {
   activeView?: 'dashboard' | 'history' | 'settings';
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  displayName?: string | null;
   children?: ReactNode;
 }
 
@@ -28,6 +30,7 @@ export default function Sidebar({
   activeView = 'dashboard',
   isCollapsed = false,
   onToggleCollapse,
+  displayName,
 }: SidebarProps) {
   const navigate = useNavigate();
   const sidebarWidth = isCollapsed ? 'w-20' : 'w-[18%]';
@@ -47,7 +50,7 @@ export default function Sidebar({
           </svg>
         </button>
 
-{/* BUGSAFARI branding - shows on right when expanded, hidden when collapsed */}
+        {/* BUGSAFARI branding - shows on right when expanded, hidden when collapsed */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-0 h-0' : 'w-auto h-auto flex-1'}`}>
           <h1 className="text-xl font-bold uppercase tracking-wider text-slate-900 whitespace-nowrap">
             BUGSAFARI
@@ -57,7 +60,7 @@ export default function Sidebar({
           </p>
         </div>
 
-{/* Help Menu Icon - shows only when collapsed */}
+        {/* Help Menu Icon - shows only when collapsed */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-auto h-auto' : 'w-0 h-0'}`}>
           <HelpMenuIcon />
         </div>
@@ -121,20 +124,20 @@ export default function Sidebar({
         </ul>
       </nav>
 
-{/* Footer - User Profile Card - Shows only icon when collapsed */}
+      {/* Footer - User Profile Card - Shows only icon when collapsed */}
       <div className={`border-t border-slate-200 transition-[padding] duration-300 ${isCollapsed ? 'p-2' : 'p-4'}`}>
         {isLoggedIn && user ? (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
             <div className={`flex items-center border border-slate-200 bg-white transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
               <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-slate-900 text-base font-bold text-white">
-                {user.email.charAt(0).toUpperCase()}
+                {(displayName || user.email).charAt(0).toUpperCase()}
               </div>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1 min-w-0'}`}>
                 <div className="text-xs font-medium text-slate-900 truncate">
-                  {user.email}
+                  {displayName || user.email}
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Logged in
+                  {displayName ? 'Logged in' : user.email}
                 </div>
               </div>
             </div>
@@ -148,9 +151,9 @@ export default function Sidebar({
               Logout
             </button>
           </div>
-) : (
+        ) : (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
-<div 
+            <div
               onClick={() => navigate('/signup')}
               className={`flex items-center border border-slate-200 bg-white transition-all duration-200 cursor-pointer hover:bg-slate-50 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}
             >
@@ -163,7 +166,7 @@ export default function Sidebar({
                 </div>
               </div>
             </div>
-<button
+            <button
               onClick={() => navigate('/signup')}
               className={`flex w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition-all duration-200 ${isCollapsed ? 'h-0 p-0 opacity-0 overflow-hidden' : 'opacity-100 py-2'}`}
             >
