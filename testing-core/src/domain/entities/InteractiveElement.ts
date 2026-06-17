@@ -1,3 +1,5 @@
+import type { BoundingBox } from '@bugsafari/shared';
+
 export interface InteractiveElement {
   selector: string;
   id: string;
@@ -9,4 +11,6 @@ export interface InteractiveElement {
   isPointer: boolean;
   featureVector: Record<string, number>;
   riskScore: number;
+  // Explicit spatial coordinates captured after layout stabilization
+  boundingBox?: BoundingBox;
 }

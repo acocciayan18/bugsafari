@@ -3,8 +3,101 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ScoredElement } from '../../services/RiskScorer.js';
 import type { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import type { StressScenario } from '../types.js';
-import { classifyInputElement } from './elementClassifier.js';
-import { getStrategyByCategory } from './strategies/index.js';
+import { classifyInputElement, FieldCategory } from './elementClassifier.js';
+import { 
+  getStrategyByCategory, 
+  getAllNumericPayloads, 
+  getAllXssVectors, 
+  getAllSqlNoSqlVectors, 
+  getAllChaosTokens,
+  getAllEmailVectors,
+  getAllDateVectors,
+  getAllJsonVectors 
+} from './strategies/index.js';
+
+// ============================================================================
+// Multi-Pass Iteration Configuration
+// ============================================================================
+
+/**
+ * Configuration options for multi-pass fuzzer iteration
+ */
+export interface FuzzerOptions {
+  /** Number of payloads to iterate through (default: 5) */
+  iterationCount?: number;
+  /** Whether to stop on first crash (default: false) */
+  stopOnCrash?: boolean;
+  /** Delay between iterations in ms (default: 100) */
+  iterationDelay?: number;
+  /** Whether to shuffle payload order (default: true) */
+  shufflePayloads?: boolean;
+  /** Whether to emit telemetry for each payload (default: true) */
+  emitTelemetry?: boolean;
+}
+
+/**
+ * Result of a multi-pass fuzzing iteration
+ */
+export interface FuzzIterationResult {
+  selector: string;
+  category: FieldCategory;
+  payload: string;
+  payloadIndex: number;
+  totalPayloads: number;
+  success: boolean;
+  error?: string;
+  timestamp: string;
+}
+
+/**
+ * Default fuzzer options
+ */
+const DEFAULT_FUZZER_OPTIONS: Required<FuzzerOptions> = {
+  iterationCount: 5,
+  stopOnCrash: false,
+  iterationDelay: 100,
+  shufflePayloads: true,
+  emitTelemetry: true,
+};
+
+/**
+ * Gets all available payloads for a given category
+ * @param category The field category
+ * @returns Array of payload strings
+ */
+export function getPayloadsForCategory(category: FieldCategory): string[] {
+  switch (category) {
+    case 'NUMERIC':
+      return getAllNumericPayloads();
+    case 'TEXT_SEARCH':
+      return getAllXssVectors();
+    case 'DATABASE_AUTH':
+      return getAllSqlNoSqlVectors();
+    case 'EMAIL':
+      return getAllEmailVectors();
+    case 'DATE':
+      return getAllDateVectors();
+    case 'JSON':
+      return getAllJsonVectors();
+    case 'CHAOS_FALLBACK':
+    default:
+      return getAllChaosTokens();
+  }
+}
+
+/**
+ * Shuffles an array using Fisher-Yates algorithm
+ * @param array Array to shuffle
+ * @returns New shuffled array
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 
 // ============================================================================
 // Smart Attacker - Intelligent Action Chain (merged from smartAttacker.ts)
@@ -349,3 +442,207 @@ console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector
  * Type for backwards compatibility
  */
 export type DataFuzzer = typeof dataFuzzer;
+
+// ============================================================================
+// Multi-Pass Iteration Execute Function
+// ============================================================================
+
+/**
+ * Injects a single payload into an input field
+ */
+async function injectPayload(
+  page: Page,
+  selector: string,
+  tagName: string,
+  payload: string,
+): Promise<boolean> {
+  try {
+    if (payload.length > 10000) {
+      await page.evaluate(
+        ({ sel, val }: { sel: string; val: string }) => {
+          const el = document.querySelector(sel);
+          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+            el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        },
+        { sel: selector, val: payload }
+      );
+    } else if (tagName === 'select') {
+      const optionValues = await page.$$eval(
+        `${selector} option`,
+        (options) => options.map((opt) => (opt as HTMLOptionElement).value).filter(Boolean)
+      );
+      if (optionValues.length > 0) {
+        await page.selectOption(selector, optionValues[0]);
+      } else {
+        await page.fill(selector, payload);
+      }
+    } else {
+      await page.fill(selector, payload);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Triggers form submission
+ */
+async function triggerSubmit(page: Page, selector: string): Promise<void> {
+  try {
+    await page.press(selector, 'Enter');
+  } catch {
+    try {
+      const submitButton = await page.$('button[type="submit"], input[type="submit"], [type="submit"]');
+      if (submitButton) {
+        await submitButton.click();
+      }
+    } catch {
+      await page.evaluate((sel: string) => {
+        const el = document.querySelector(sel);
+        const form = el?.closest('form');
+        if (form) {
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      }, selector);
+    }
+  }
+}
+
+/**
+ * Execute multi-pass fuzzing iteration
+ * 
+ * @param page Playwright Page object
+ * @param target Target input element
+ * @param options Fuzzer options
+ * @returns Array of iteration results
+ */
+export async function executeMultiPassFuzzing(
+  page: Page,
+  target: InteractiveElement,
+  options?: FuzzerOptions,
+): Promise<FuzzIterationResult[]> {
+  const opts = { ...DEFAULT_FUZZER_OPTIONS, ...options };
+  const results: FuzzIterationResult[] = [];
+
+  if (!target?.selector) {
+    console.log('[MultiPassFuzzer] Skipping - no target selector provided');
+    return results;
+  }
+
+  const tagName = target.tagName?.toLowerCase() ?? '';
+  const selector = target.selector;
+
+  // Validate target is an input field
+  if (!isInputField(tagName)) {
+    console.log(`[MultiPassFuzzer] Skipping - '${selector}' is not an input field`);
+    return results;
+  }
+
+  // Classify the input element
+  const category = classifyInputElement(target);
+  console.log(`🔍 [MULTI-PASS] Classified "${target.id || selector}" as -> ${category}`);
+
+  // Strip constraints
+  try {
+    await page.evaluate((sel: string) => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.removeAttribute('maxlength');
+        el.removeAttribute('pattern');
+        el.removeAttribute('required');
+        el.removeAttribute('min');
+        el.removeAttribute('max');
+        if (el instanceof HTMLInputElement) {
+          el.maxLength = 524288;
+        }
+        if (el instanceof HTMLTextAreaElement) {
+          el.maxLength = 524288;
+        }
+      }
+    }, selector);
+  } catch (error) {
+    console.error(`[MultiPassFuzzer] Failed to strip constraints: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  // Get all payloads for the category
+  const allPayloads = getPayloadsForCategory(category);
+  const payloads = opts.shufflePayloads ? shuffleArray(allPayloads) : allPayloads;
+  const iterationCount = Math.min(opts.iterationCount, payloads.length);
+
+  console.log(`🔥 [MULTI-PASS] Starting ${iterationCount} iterations on '${selector}'`);
+
+  // Iterate through payloads
+  for (let i = 0; i < iterationCount; i++) {
+    const payload = payloads[i];
+    const timestamp = new Date().toISOString();
+
+    if (opts.emitTelemetry) {
+      console.log(`  📝 [Iteration ${i + 1}/${iterationCount}] Payload: ${payload.substring(0, 50)}...`);
+    }
+
+    try {
+      // Inject payload
+      const injectSuccess = await injectPayload(page, selector, tagName, payload);
+      if (!injectSuccess) {
+        results.push({
+          selector,
+          category,
+          payload,
+          payloadIndex: i,
+          totalPayloads: iterationCount,
+          success: false,
+          error: 'Failed to inject payload',
+          timestamp,
+        });
+        continue;
+      }
+
+      // Trigger submit
+      await triggerSubmit(page, selector);
+
+      // Add small delay between iterations
+      if (opts.iterationDelay > 0 && i < iterationCount - 1) {
+        await new Promise((resolve) => setTimeout(resolve, opts.iterationDelay));
+      }
+
+      results.push({
+        selector,
+        category,
+        payload,
+        payloadIndex: i,
+        totalPayloads: iterationCount,
+        success: true,
+        timestamp,
+      });
+
+      // Check for crash
+      if (opts.stopOnCrash) {
+        // Could add crash detection logic here
+      }
+    } catch (error) {
+      results.push({
+        selector,
+        category,
+        payload,
+        payloadIndex: i,
+        totalPayloads: iterationCount,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp,
+      });
+
+      if (opts.stopOnCrash) {
+        console.error(`[MultiPassFuzzer] Stopping on crash: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        break;
+      }
+    }
+  }
+
+  console.log(`✅ [MULTI-PASS] Completed ${results.length} iterations, ${results.filter((r) => r.success).length} successful`);
+
+  return results;
+}

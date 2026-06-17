@@ -65,8 +65,10 @@ function sanitizeException(error: Error | string): { message: string; stackTrace
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
 import { VisualRegressionDetector, CATASTROPHIC_SHIFT_THRESHOLD } from '../heuristics/VisualRegressionDetector.js';
+import { SeededRandomGenerator } from './SeededRandomGenerator.js';
 import { InteractionSimulator } from '../scenarios/rapidClickerStress.js';
 import { RiskScorer } from './RiskScorer.js';
+import { ChaosTransactionManager } from '../fuzzing/ChaosTransactionManager.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { StressScenario } from '../scenarios/types.js';
@@ -135,7 +137,7 @@ export class AutonomousExplorationEngine {
     timestamp: Date;
   }> = [];
 
-  // Runtime metrics for Phase 3 telemetry tracking
+// Runtime metrics for Phase 3 telemetry tracking
   private runtimeMetrics = {
     startTime: 0,
     requestsCount: 0,
@@ -144,11 +146,66 @@ export class AutonomousExplorationEngine {
     failureCount: 0,
   };
 
-  constructor(
+// ChaosTransactionManager for wrapping input field fuzzing sequences
+  private fuzzManager: ChaosTransactionManager;
+
+  // SeededRandomGenerator for deterministic/reproducible fuzzing decisions
+  private seededRandom: SeededRandomGenerator;
+
+  // Data fuzzer decision threshold - use heuristic scoring for intelligent decision
+  private dataFuzzerThreshold = 0.3; // Use data fuzzer when target risk score >= 0.3
+
+constructor(
     private readonly findingRepo?: FindingRepository,
     private readonly optimizationSettings?: OptimizationSettings,
   ) {
     console.log(`[AutonomousExplorationEngine] Optimization settings:`, optimizationSettings);
+
+// Initialize ChaosTransactionManager with telemetry and action buffer callbacks
+    this.fuzzManager = new ChaosTransactionManager(
+      // WebSocket emitter callback - uses the event helper for consistent telemetry format
+      (type: string, payload: any) => {
+        console.log(`[ChaosTransactionManager] Emitting ${type}:`, payload.message ?? payload.bugType);
+      },
+      // Recent steps callback - queries the circular action buffer for crash context
+      () => this.actions.snapshot()
+    );
+
+// Initialize SeededRandomGenerator for deterministic fuzzing decisions
+    // Use seed from optimizationSettings if provided, otherwise undefined (non-reproducible mode)
+    // Note: randomSeed can be added to OptimizationSettings interface for reproducible testing
+    const seed = (this.optimizationSettings as any)?.randomSeed as number | undefined;
+    this.seededRandom = new SeededRandomGenerator(seed);
+    
+    // Log mode for thesis panel demonstration
+    if (seed !== undefined) {
+      console.log(`[AutonomousExplorationEngine] Running in SEEDED mode (seed: ${seed}) for reproducible testing`);
+    } else {
+      console.log(`[AutonomousExplorationEngine] Running in HEURISTIC mode for intelligent data fuzzer decisions`);
+    }
+  }
+
+  /**
+   * Determines whether to use data fuzzer based on hybrid approach:
+   * - Heuristic mode (default): Use data fuzzer when target risk score >= threshold
+   * - Seeded mode: Use seeded RNG for deterministic decision when seed provided
+   */
+  private shouldUseDataFuzzer(target: InteractiveElement): boolean {
+    const isInputField = target.tagName === 'input' || target.tagName === 'textarea';
+    
+    if (!isInputField) {
+      return false;
+    }
+
+    // If seeded random generator is configured, use deterministic mode
+    if (this.seededRandom.isSeeded()) {
+      const randomValue = this.seededRandom.next();
+      return randomValue < 0.5; // 50% chance when seeded for backwards compatibility
+    }
+
+    // Heuristic mode: Use data fuzzer based on risk score threshold
+    const riskScore = Number(target.riskScore);
+    return riskScore >= this.dataFuzzerThreshold;
   }
 
   public getConfirmedBugsFromMemory(): Array<{
@@ -539,7 +596,7 @@ export class AutonomousExplorationEngine {
           }
 
           const ranked = this.scorer.score(elements);
-          telemetry.emitTargets(
+telemetry.emitTargets(
             ranked.slice(0, 12).map((element) => ({
               tagName: element.tagName,
               id: element.id,
@@ -551,7 +608,8 @@ export class AutonomousExplorationEngine {
               semanticRole: inferSemanticRole(element),
               score: Number(element.riskScore.toFixed(4)),
               isVisible: element.isVisible,
-              boundingBox: { x: 0, y: 0, width: 0, height: 0 },
+              // Use actual spatial coordinates captured after layout stabilization
+              boundingBox: element.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
             })),
           );
 
@@ -1306,7 +1364,7 @@ export class AutonomousExplorationEngine {
     return stressScenarioMap.CoordinateBombing;
   }
 
-  private async executeStandardInteraction(
+private async executeStandardInteraction(
     page: Page,
     telemetry: TelemetryGateway,
     target: InteractiveElement,
@@ -1315,9 +1373,9 @@ export class AutonomousExplorationEngine {
     // Highlight the target element being interacted with
     await this.highlighter.flashHighlight(page, target.selector);
 
-    if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
-      // 50% chance to escalate from "Standard typing" to "Data Fuzzing" for INPUT/TEXTAREA
-      const useDataFuzzer = (target.tagName === 'input' || target.tagName === 'textarea') && Math.random() < 0.5;
+if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
+      // Use heuristic-based decision (or seeded RNG if configured) instead of unseeded randomness
+      const useDataFuzzer = this.shouldUseDataFuzzer(target);
 
       if (useDataFuzzer) {
         // Use Data Fuzzer: Delegate to strategy pattern
@@ -1333,18 +1391,29 @@ export class AutonomousExplorationEngine {
           score: Number(target.riskScore.toFixed(4)),
         });
 
-        // Strip constraints first (maxlength, pattern) to allow large payloads
-        await this.stripConstraints(page);
+// Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
+        this.fuzzManager.openFuzzTransaction(target.selector, payload);
 
-        // Inject the fuzz payload
-        await this.injectPayload(page, target.selector, payload);
+        try {
+          // Strip constraints first (maxlength, pattern) to allow large payloads
+          await this.stripConstraints(page);
 
-        // Emit telemetry with the required format
-        telemetry.emitTelemetry(this.event('ACTION', {
-          actionExecuted: 'data-fuzzer-injection',
-          selector: target.selector,
-          message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
-        }));
+          // Inject the fuzz payload
+          await this.injectPayload(page, target.selector, payload);
+
+          // Wait for lagging SPA/network promises to resolve while transaction window remains open
+          await this.page?.waitForTimeout(400);
+
+          // Emit telemetry with the required format
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'data-fuzzer-injection',
+            selector: target.selector,
+            message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
+          }));
+        } finally {
+          // Ensure transaction window never leaks between subsequent element exploration selections
+          this.fuzzManager.closeTransaction();
+        }
 
         return;
       }
@@ -1362,8 +1431,20 @@ export class AutonomousExplorationEngine {
         score: Number(target.riskScore.toFixed(4)),
       });
 
-      await this.stripConstraints(page);
-      await this.injectPayload(page, target.selector, payload);
+// Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
+      this.fuzzManager.openFuzzTransaction(target.selector, payload);
+
+      try {
+        await this.stripConstraints(page);
+        await this.injectPayload(page, target.selector, payload);
+
+        // Wait for lagging SPA/network promises to resolve while transaction window remains open
+        await this.page?.waitForTimeout(400);
+      } finally {
+        // Ensure transaction window never leaks between subsequent element exploration selections
+        this.fuzzManager.closeTransaction();
+      }
+
       return;
     }
 

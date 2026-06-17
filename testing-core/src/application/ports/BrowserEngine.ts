@@ -1,5 +1,5 @@
 import type { TelemetryGateway } from './TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../developer-dashboard/src/types.js';
+import type { OptimizationSettings, defaultOptimizationSettings } from '../../../../shared/types.js';
 
 export interface BrowserEngineConfig {
   maxActions?: number;

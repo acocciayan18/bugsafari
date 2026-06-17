@@ -33,6 +33,27 @@ import {
   isChaosToken 
 } from './chaosFallbackStrategy.js';
 
+import { 
+  type EmailPayload, 
+  generateEmailPayload, 
+  getAllEmailVectors, 
+  isEmailVector 
+} from './emailStrategy.js';
+
+import { 
+  type DatePayload, 
+  generateDatePayload, 
+  getAllDateVectors, 
+  isDateVector 
+} from './dateStrategy.js';
+
+import { 
+  type JsonPayload, 
+  generateJsonPayload, 
+  getAllJsonVectors, 
+  isJsonVector 
+} from './jsonStrategy.js';
+
 // Re-export all types and functions
 export { 
   type NumericPayload, 
@@ -62,6 +83,27 @@ export {
   isChaosToken 
 };
 
+export { 
+  type EmailPayload, 
+  generateEmailPayload, 
+  getAllEmailVectors, 
+  isEmailVector 
+};
+
+export { 
+  type DatePayload, 
+  generateDatePayload, 
+  getAllDateVectors, 
+  isDateVector 
+};
+
+export { 
+  type JsonPayload, 
+  generateJsonPayload, 
+  getAllJsonVectors, 
+  isJsonVector 
+};
+
 /**
  * Strategy type union for all available fuzzing strategies
  */
@@ -74,7 +116,7 @@ export type FuzzingStrategy =
 /**
  * Field category type from element classifier
  */
-export type FieldCategory = 'NUMERIC' | 'TEXT_SEARCH' | 'DATABASE_AUTH' | 'CHAOS_FALLBACK';
+export type FieldCategory = 'NUMERIC' | 'TEXT_SEARCH' | 'DATABASE_AUTH' | 'CHAOS_FALLBACK' | 'EMAIL' | 'DATE' | 'JSON';
 
 /**
  * Result type for strategy payload
@@ -104,6 +146,21 @@ export function getStrategyByCategory(category: FieldCategory): StrategyPayload 
       // DATABASE_AUTH uses SQL/NoSQL injection for auth-related fields
       const result = generateSqlNoSqlPayload();
       return { value: result.vector, description: result.description };
+    }
+    case 'EMAIL': {
+      // EMAIL uses email-specific fuzzing vectors
+      const result = generateEmailPayload();
+      return { value: result.value, description: result.description };
+    }
+    case 'DATE': {
+      // DATE uses date manipulation vectors
+      const result = generateDatePayload();
+      return { value: result.value, description: result.description };
+    }
+    case 'JSON': {
+      // JSON uses JSON injection vectors
+      const result = generateJsonPayload();
+      return { value: result.value, description: result.description };
     }
     case 'CHAOS_FALLBACK':
     default: {

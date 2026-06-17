@@ -38,8 +38,8 @@ export function DeleteConfirmDialog({
   isLoading = false,
   children,
 }: DeleteConfirmDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Handle Escape key
   useEffect(() => {
@@ -85,7 +85,7 @@ export function DeleteConfirmDialog({
       >
         {/* Header */}
         <div className="mb-4 flex items-start gap-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
             <svg
               className="h-5 w-5 text-red-600"
               fill="none"

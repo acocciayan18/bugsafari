@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../developer-dashboard/src/types.js';
+import type { OptimizationSettings } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 
@@ -65,7 +65,13 @@ public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSet
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings);
-    this.activeBrowser = await chromium.launch({ headless: true });
+this.activeBrowser = await chromium.launch({
+      headless: false,
+      args: [
+        '--start-maximized',
+        '--disable-dev-shm-usage',
+      ],
+    });
     const VIEWPORT_WIDTH = 1440;
     const VIEWPORT_HEIGHT = 900;
     

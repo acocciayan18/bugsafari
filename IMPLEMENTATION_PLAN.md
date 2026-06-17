@@ -1,83 +1,244 @@
-# Implementation Plan: Brutalist Technical Dashboard Transformation
+# Implementation Plan
 
-## Information Gathered
+[Overview]
+Refactor the `scanInteractiveElements` function in `domParser.ts` to support modern web component microfrontends with closed Shadow DOM boundaries. Replace the current iterative collection loop with a deep recursive traversal method that properly detects and enters `.shadowRoot` boundaries, including closed Shadow DOMs via Chrome DevTools Protocol access.
 
-### Current Component States:
-1. **ControlPanel.tsx** ✅ COMPLETE - Already has brutalist styling:
-   - Sharp edges (no rounded classes)
-   - Border-based shadows
-   - Header: "COMMAND CENTER"
-   - STOP/PAUSE buttons
-   - Input + EXECUTE button
+[Types]
+Define new result interfaces for the recursive traversal that tracks element origins (light DOM vs shadow DOM).
 
-2. **LiveFeed.tsx** ✅ COMPLETE - Already has brutalist styling:
-   - Sharp edges
-   - Header: "VIEWPORT" with status dot
-   - Dark canvas container
+**New Types to Add:**
+```typescript
+// Interface for element with source tracking
+interface ShadowAwareElement {
+  element: Element;
+  shadowMode: 'open' | 'closed' | 'none';
+  depth: number;
+  path: string; // Track the DOM path for debugging
+}
 
-3. **ClinicalForensicsDashboard.tsx** ⚠️ NEEDS WORK:
-   - Has rounded corners (rounded-lg, rounded-xl, etc.)
-   - Shadow-based styling
-   - Lowercase tabs or regular underline
+// Interface for closed shadow root access result
+interface ClosedShadowAccess {
+  success: boolean;
+  elements: Element[];
+}
+```
 
-4. **Sidebar.tsx** ⚠️ NEEDS WORK:
-   - Has rounded corners (rounded-lg, rounded-md)
+**Existing Types Unchanged:**
+- `ParsedElement` - Keep as is
+- `InteractiveElement` - Keep as is
+- `BoundingBox` - Keep as is (from @bugsafari/shared)
 
-5. **App.tsx** ⚠️ NEEDS WORK:
-   - Uses w-[50%] instead of exact 50/50
+[Files]
+Single sentence describing file modifications.
 
-### Target Specifications from Task:
-1. **Global Header (Top Tier)**:
-   - "OPTIMIZATION MATRIX" left block with prominent drop shadow
-   - STOP (red), PAUSE (charcoal), SAVE HISTORY buttons
-   - Flat layout separated by shadow
+- **Modified**: `testing-core/src/domain/heuristics/domParser.ts` - Complete refactor of element collection logic
 
-2. **Input Bar (Middle Tier)**:
-   - "Border" label (small muted gray)
-   - URL input with staging URL
-   - "INITIALIZE EXPLORATORY SAFARI" trigger button with play icon
+**No New Files Required**
 
-3. **Split-Panel (Bottom Tier)**:
-   - LEFT: "HEADLESS BROWSER" viewport
-   - RIGHT: "LIVE FORENSIC TELEMETRY STREAM" with tabs
+**Detailed breakdown:**
+- Existing files to be modified:
+  - `testing-core/src/domain/heuristics/domParser.ts` - Replace `collectElements` with deep recursive traversal
 
-## Plan Details
+[Functions]
+Single sentence describing function modifications.
 
-### Step 1: Transform ClinicalForensicsDashboard.tsx
-Changes:
-- Replace all `rounded-*` with sharp borders
-- Replace all `shadow-*` with 1px borders
-- Tab labels: UPPERCASE with thick black underline for active
-- Terminal format: `[HH:MM:SS]` timestamps left-aligned
-- Category labels: bold uppercase in center (ANALYSIS, IO_HUB, SECURITY, SYSTEM, KERNEL)
-- Data payload: right-aligned uppercase
+**New Function: DeepRecursiveTraversal**
+- Signature: `deepTraverse(root: Document | Element | ShadowRoot): ParsedElement[]`
+- File path: Inside `page.evaluate()` in `scanInteractiveElements()`
+- Purpose: Pure recursive traversal that handles open and closed shadow DOM boundaries
 
-### Step 2: Update ControlPanel.tsx (minor fixes)
-Changes needed:
-- Rename header from "COMMAND CENTER" to "OPTIMIZATION MATRIX"
-- Change "TARGET" label to "Border"  
-- Change button text from "EXECUTE" to "INITIALIZE EXPLORATORY SAFARI"
-- Verify STOP button is bright red
-- Verify PAUSE button is dark charcoal
-- Verify SAVE HISTORY button is white with dark border
+**Modified Function: scanInteractiveElements(page)**
+- Current: Uses iterative `collectElements` with secondary shadow handling
+- Required: Refactor to use deep recursive traversal as primary pattern
 
-### Step 3: Sidebar.tsx - Remove rounded corners
-Changes:
-- Remove `rounded-lg`, `rounded-md`, `rounded-xl` everywhere
+**New Helper: accessClosedShadowRoot(element)**
+- Signature: `accessClosedShadowRoot(el: Element): ShadowRoot | null`
+- Purpose: Chrome-specific method to access closed shadow roots using evaluate with `openOrClosedShadowRoot`
 
-### Step 4: App.tsx - Fix 50/50 split
-Changes:
-- Use exact half: `w-1/2` instead of `w-[50%]`
+**Helper Functions (Internal to page.evaluate()):**
+- `buildSelector(element)` - Keep existing
+- `extractText(element)` - Keep existing
+- `isDisabled(element)` - Keep existing
+- `isElementClickable(element)` - Keep existing
+- `filterVolatileClasses(className)` - Keep existing
 
-## Files to Edit:
-1. developer-dashboard/src/components/ClinicalForensicsDashboard.tsx - MAJOR
-2. developer-dashboard/src/components/ControlPanel.tsx - MINOR
-3. developer-dashboard/src/components/Sidebar.tsx - MINOR
-4. developer-dashboard/src/App.tsx - MINOR
+[Classes]
+Single sentence describing class modifications.
 
-## Dependent Files:
-- None - all changes are isolated to these components
+No class modifications required. The `RecursiveDomParser` class will automatically benefit from the refactored `scanInteractiveElements()`.
 
-## Followup Steps:
-- Verify the build passes: `npm run build`
-- Start dev server to verify visual changes: `npm run dev`
+**Detailed breakdown:**
+- New classes: None
+- Modified classes: None
+- Removed classes: None
+
+[Dependencies]
+Single sentence describing dependency modifications.
+
+No new npm dependencies required. The implementation uses existing Playwright APIs and Chrome DevTools Protocol features accessible via `page.evaluate()`.
+
+**Detailed breakdown:**
+- Playwright 1.59.1 - Already in use
+- No version changes required
+- Integration: Uses CDP access via `page.evaluate()` for closed shadow root detection
+
+[Testing]
+Single sentence describing testing approach.
+
+Test the implementation by creating test pages with Shadow DOM (both open and closed modes) and verify all interactive elements are discovered.
+
+**Test File Requirements:**
+- Create test HTML files with:
+  - Open Shadow DOM containing buttons/inputs
+  - Closed Shadow DOM (`attachShadow({ mode: 'closed' })`) containing interactive elements
+  - Nested Shadow DOM boundaries
+  - Iframes with Shadow DOM inside
+- Existing automated tests should continue to pass
+
+**Validation Strategies:**
+1. Test with open Shadow DOM - verify elements found
+2. Test with closed Shadow DOM - verify elements found (key validation)
+3. Test with nested boundaries - verify deep traversal works
+4. Run existing test suite to confirm no regressions
+
+[Implementation Order]
+Single sentence describing the implementation sequence.
+
+Refactor the element collection in a single coordinated change within `domParser.ts`.
+
+Numbered steps:
+1. **Step 1**: Add `accessClosedShadowRoot()` helper inside `page.evaluate()` IIFE - uses Chrome's `openOrClosedShadowRoot` property accessible via evaluate
+2. **Step 2**: Replace iterative `collectElements` with pure recursive `deepTraverse()` function that treats shadow boundary detection as primary operation
+3. **Step 3**: Ensure the recursive function handles: open shadow roots, closed shadow roots (via helper), iframe documents, and native elements in a unified traversal pattern
+4. **Step 4**: Test the implementation
+
+---
+
+## Implementation Details
+
+### Current vs. Proposed Architecture
+
+**Current (Iterative/Secondary):**
+```javascript
+const collectElements = (root) => {
+  // 1. Collect from current root
+  Array.from(root.querySelectorAll(query)).forEach(el => rawElementsSet.add(el));
+
+  // 2. Iterate children - Shadow DOM is SECONDARY
+  const children = root.children || root.childNodes || [];
+  for (const child of children) {
+    if (child.shadowRoot) {  // Only catches OPEN shadow roots
+      collectElements(child.shadowRoot);
+    }
+    // ...
+  }
+};
+```
+
+**Proposed (Recursive/Primary):**
+```javascript
+// Deep recursive traversal - treats boundary crossing as PRIMARY
+const deepTraverse = (root, depth = 0, path = 'document') => {
+  const results = [];
+
+  // 1. Collect interactive elements from current context
+  if (root.querySelectorAll) {
+    const elements = Array.from(root.querySelectorAll(query));
+    for (const el of elements) {
+      results.push({ element: el, depth, path });
+    }
+  }
+
+  // 2. Recursively traverse into shadow boundaries (PRIMARY operation)
+  const children = root.children || [];
+  for (const child of children) {
+    const tag = child.tagName?.toLowerCase() || '';
+
+    // Handle Shadow DOM - both open AND closed
+    const shadowRoot = getShadowRoot(child);
+    if (shadowRoot) {
+      results.push(...deepTraverse(shadowRoot, depth + 1, path + ' > shadow-root'));
+      continue;
+    }
+
+    // Handle iframes
+    if (tag === 'iframe' || tag === 'frame') {
+      try {
+        if (child.contentDocument) {
+          results.push(...deepTraverse(child.contentDocument, depth + 1, path + ' > iframe'));
+        }
+      } catch (e) { /* cross-origin */ }
+      continue;
+    }
+
+    // Continue recursion for nested elements
+    results.push(...deepTraverse(child, depth, path));
+  }
+
+  return results;
+};
+
+const getShadowRoot = (element) => {
+  // Try open shadow root first
+  if (element.shadowRoot) return element.shadowRoot;
+
+  // Try to access closed shadow root via evaluate
+  // Note: This requires the element handle, works via page.evaluate
+  try {
+    return element.openOrClosedShadowRoot || null;
+  } catch {
+    return null;
+  }
+};
+```
+
+### Closed Shadow DOM Access Strategy
+
+Chrome/Chromium provides a way to access closed shadow roots:
+- `element.openOrClosedShadowRoot` - Returns the shadow root regardless of mode
+- This is accessible in browser context but not via standard DOM API
+- Implementation uses `page.evaluate()` to run JavaScript that accesses this property
+
+### Path String Generation
+
+Track the DOM path for debugging and logging:
+- Format: `document > body > custom-element > shadow-root > input`
+- Helps identify elements found in shadow boundaries when debugging
+
+---
+
+## Quality Standards
+
+1. **Pure Recursion**: The traversal must be structured as deep recursive calls, not iterative loops with recursion
+2. **Unified Handling**: Open shadow, closed shadow, and iframe must be handled with the same code path
+3. **Depth Tracking**: Maintain depth counter to prevent infinite recursion on pathological cases
+4. **Error Isolation**: Each boundary crossing must be error-isolated so failures don't break the entire scan
+5. **Backward Compatibility**: All existing behavior (visibility filtering, selector building, etc.) must remain functional
+6. **Performance**: Deep recursion must have safeguards against pathological DOM trees (max depth limit)
+
+---
+
+## Key Technical Details
+
+### Why `element.shadowRoot` Returns Null for Closed Shadow DOM
+
+In the DOM spec:
+- `element.shadowRoot` only returns the shadow root if `mode === 'open'`
+- For closed shadow roots, this property returns `null`
+- However, Chrome exposes `element.openOrClosedShadowRoot` internally
+
+### Playwright Integration
+
+The refactored code remains inside `page.evaluate()`:
+- All code runs in browser context
+- Playwright handles the CDP communication
+- No additional Playwright-specific APIs needed
+
+### Maximum Depth Safeguard
+
+Add a maximum depth constant to prevent infinite recursion:
+```javascript
+const MAX_TRAVERSE_DEPTH = 50;
+```
+
+If depth exceeds this, stop recursing into that branch and log a warning.

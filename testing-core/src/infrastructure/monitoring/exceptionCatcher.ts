@@ -1,6 +1,7 @@
 import type { Page, Request } from 'playwright';
 import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import type { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
+import { ChaosTransactionManager } from '../../domain/fuzzing/ChaosTransactionManager.js';
 import { ActionRecorder } from './actionBuffer.js';
 import { TelemetryHub } from './socketServer.js';
 import { randomBytes } from 'crypto';
@@ -110,6 +111,7 @@ export async function setupExceptionCatcher(
   hub: TelemetryHub,
   actionRecorder: ActionRecorder,
   engine?: AutonomousExplorationEngine,
+  fuzzManager?: ChaosTransactionManager,
 ): Promise<CrashSignal> {
   const crashSignal = new CrashSignal();
   const requestStartedAt = new Map<Request, number>();
@@ -212,8 +214,20 @@ export async function setupExceptionCatcher(
     `,
   });
 
-  page.on('pageerror', (error) => {
+page.on('pageerror', (error) => {
     emitException(error.message, error.stack ?? error.message, true);
+
+    // Dispatch to FuzzTransactionManager if available
+    if (fuzzManager) {
+      fuzzManager.evaluateAndRegisterBug(
+        'EXCEPTION',
+        error.message,
+        {
+          stackTrace: error.stack ?? error.message,
+          url: page.url(),
+        }
+      );
+    }
   });
 
   page.on('console', (message) => {
@@ -300,8 +314,22 @@ export async function setupExceptionCatcher(
         },
       });
 
-      if (statusCode >= 500) {
+if (statusCode >= 500) {
         emitException(`Server failure ${statusCode} from ${url}`, `HTTP ${statusCode} ${method} ${url}`, true, statusCode);
+
+        // Dispatch NETWORK_500 to FuzzTransactionManager if available
+        if (fuzzManager) {
+          fuzzManager.evaluateAndRegisterBug(
+            'NETWORK_500',
+            `Server failure ${statusCode} from ${url}`,
+            {
+              statusCode,
+              url,
+              method,
+              durationMs,
+            }
+          );
+        }
       }
       return;
     }

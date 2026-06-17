@@ -24,7 +24,7 @@ export interface ClassifiableElement {
  * Type-safe union for field categories.
  * Used to classify input elements for targeted fuzzing strategies.
  */
-export type FieldCategory = 'NUMERIC' | 'TEXT_SEARCH' | 'DATABASE_AUTH' | 'CHAOS_FALLBACK';
+export type FieldCategory = 'NUMERIC' | 'TEXT_SEARCH' | 'DATABASE_AUTH' | 'CHAOS_FALLBACK' | 'EMAIL' | 'DATE' | 'JSON';
 
 /**
  * Token sets for NUMERIC classification.
@@ -126,6 +126,65 @@ const DATABASE_AUTH_TOKENS = new Set([
 ]);
 
 /**
+ * Token sets for EMAIL classification.
+ * Matches email address fields.
+ */
+const EMAIL_TOKENS = new Set([
+  'email',
+  'e-mail',
+  'mail',
+  'emailaddress',
+  'contact-email',
+  'user-email',
+  'billing-email',
+  'alternate-email',
+]);
+
+/**
+ * Token sets for DATE classification.
+ * Matches date/datetime fields.
+ */
+const DATE_TOKENS = new Set([
+  'date',
+  'datetime',
+  'time',
+  'birthdate',
+  'dob',
+  'birthday',
+  'startdate',
+  'enddate',
+  'start',
+  'end',
+  'expiry',
+  'expiration',
+  'expire',
+  'created',
+  'modified',
+  'updated',
+  'timestamp',
+  'scheduled',
+  'deadline',
+  'due',
+  'duedate',
+]);
+
+/**
+ * Token sets for JSON classification.
+ * Matches JSON/API input fields.
+ */
+const JSON_TOKENS = new Set([
+  'json',
+  'data',
+  'payload',
+  'config',
+  'settings',
+  'preferences',
+  'metadata',
+  'options',
+  'params',
+]);
+
+/**
  * Checks if a string contains any token from a given set (case-insensitive).
  * @param text The text to search in
  * @param tokens The set of tokens to match against
@@ -198,7 +257,7 @@ export function classifyInputElement(element: unknown): FieldCategory {
     return 'NUMERIC';
   }
   
-  // Priority 3: TEXT_SEARCH - Check for text/search input types
+// Priority 3: TEXT_SEARCH - Check for text/search input types
   // Match type="text" explicitly
   if (elementType === 'text') {
     return 'TEXT_SEARCH';
@@ -209,7 +268,43 @@ export function classifyInputElement(element: unknown): FieldCategory {
     return 'TEXT_SEARCH';
   }
   
-  // Priority 4: CHAOS_FALLBACK - Default for unclassified inputs
+  // Priority 4: EMAIL - Check for email field types
+  // Match type="email" explicitly
+  if (elementType === 'email') {
+    return 'EMAIL';
+  }
+  
+  // Check for email-related tokens
+  if (containsToken(identifiers, EMAIL_TOKENS)) {
+    return 'EMAIL';
+  }
+  
+  // Priority 5: DATE - Check for date/datetime input types
+  // Match type="date", type="datetime-local", etc.
+  if (elementType === 'date' || elementType === 'datetime-local' || elementType === 'time' || elementType === 'month' || elementType === 'week') {
+    return 'DATE';
+  }
+  
+  // Check for date-related tokens
+  if (containsToken(identifiers, DATE_TOKENS)) {
+    return 'DATE';
+  }
+  
+  // Priority 6: JSON - Check for JSON/API input fields
+  // Match type="hidden" or custom data fields
+  if (elementType === 'hidden') {
+    // Check if it's a JSON/data field
+    if (containsToken(identifiers, JSON_TOKENS)) {
+      return 'JSON';
+    }
+  }
+  
+  // Check for JSON-related tokens
+  if (containsToken(identifiers, JSON_TOKENS)) {
+    return 'JSON';
+  }
+  
+  // Priority N: CHAOS_FALLBACK - Default for unclassified inputs
   return 'CHAOS_FALLBACK';
 }
 
