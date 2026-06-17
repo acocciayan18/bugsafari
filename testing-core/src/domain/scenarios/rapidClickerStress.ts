@@ -14,6 +14,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
+import type { ChaosTransactionManager, StressClickMetadata, ChaosContextType } from '../fuzzing/ChaosTransactionManager.js';
 
 // ============================================================================
 // Configuration Constants
@@ -100,6 +101,22 @@ export const buttonSpammer: StressScenario = {
       `[StressScenario:ButtonSpammer] Starting spam with ${CLICK_COUNT} clicks on '${selector}'`
     );
 
+    // Build the element chain from target selector
+    const elementChain: string[] = [selector];
+
+    // Create metadata for the chaos transaction
+    const metadata: StressClickMetadata = {
+      velocity: CLICK_DELAY_MS,
+      elementChain: elementChain,
+    };
+
+    // Start the chaos transaction with STRESS_CLICK type
+    // Use global singleton pattern for the transaction manager
+    const chaosManager = getChaosTransactionManager();
+    if (chaosManager) {
+      chaosManager.startTransaction(selector, 'STRESS_CLICK', metadata);
+    }
+
     const clickPromises: Promise<void>[] = [];
 
     // Execute clicks rapidly without awaiting individual clicks
@@ -131,6 +148,11 @@ export const buttonSpammer: StressScenario = {
 
     // Wait for all click promises to settle (or fail)
     await Promise.allSettled(clickPromises);
+
+    // Close the chaos transaction
+    if (chaosManager) {
+      chaosManager.closeTransaction();
+    }
 
     console.log(`[StressScenario:ButtonSpammer] Spam completed with ${CLICK_COUNT} clicks`);
   },
@@ -358,6 +380,36 @@ export class InteractionSimulator {
     });
     await Promise.all(clickTasks);
   }
+}
+
+// ============================================================================
+// ChaosTransactionManager Singleton Accessor
+// ============================================================================
+
+/**
+ * Singleton instance of the ChaosTransactionManager for rapid clicker stress scenarios.
+ * Set this via setChaosTransactionManager() before using buttonSpammer or other stress scenarios.
+ */
+let chaosManagerInstance: ChaosTransactionManager<StressClickMetadata> | null = null;
+
+/**
+ * Sets the global ChaosTransactionManager instance for rapid clicker stress scenarios.
+ * Call this during application initialization before using stress scenarios.
+ *
+ * @param manager The ChaosTransactionManager instance to use
+ */
+export function setChaosTransactionManager(
+  manager: ChaosTransactionManager<StressClickMetadata> | null
+): void {
+  chaosManagerInstance = manager;
+}
+
+/**
+ * Gets the current ChaosTransactionManager instance.
+ * @returns The ChaosTransactionManager instance or null if not set
+ */
+export function getChaosTransactionManager(): ChaosTransactionManager<StressClickMetadata> | null {
+  return chaosManagerInstance;
 }
 
 // ============================================================================

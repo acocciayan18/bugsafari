@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ScoredElement } from '../../services/RiskScorer.js';
-import type { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
+import type { ActionBreadcrumb } from '@bugsafari/shared';
 import type { StressScenario } from '../types.js';
 import { classifyInputElement, FieldCategory } from './elementClassifier.js';
 import { 
@@ -14,6 +14,86 @@ import {
   getAllDateVectors,
   getAllJsonVectors 
 } from './strategies/index.js';
+import { ChaosTransactionManager, FuzzMetadata, FuzzingStrategyType } from '../../fuzzing/index.js';
+
+// ============================================================================
+// Module-level ChaosTransactionManager instance for dataFuzzer
+// ============================================================================
+
+/**
+ * Singleton reference to the active chaos transaction manager.
+ * Used for integration with fuzzGuard vulnerability detection.
+ * Set via initializeFuzzTransactionManager().
+ */
+let fuzzTransactionManagerInstance: ChaosTransactionManager<FuzzMetadata> | null = null;
+
+/**
+ * Initializes the fuzz transaction manager singleton.
+ * Must be called before fuzzing operations begin.
+ * 
+ * @param emitTelemetry - Optional telemetry callback
+ * @param getRecentSteps - Optional steps callback
+ * @returns The initialized ChaosTransactionManager instance
+ */
+export function initializeFuzzTransactionManager(
+  emitTelemetry?: (type: string, payload: unknown) => void,
+  getRecentSteps?: () => ActionBreadcrumb[]
+): ChaosTransactionManager<FuzzMetadata> {
+  if (!fuzzTransactionManagerInstance) {
+    fuzzTransactionManagerInstance = new ChaosTransactionManager(
+      emitTelemetry ?? ((_type, _payload) => {}),
+      getRecentSteps ?? (() => [])
+    );
+  }
+  return fuzzTransactionManagerInstance;
+}
+
+/**
+ * Gets the current fuzz transaction manager instance.
+ */
+export function getFuzzTransactionManagerInstance(): ChaosTransactionManager<FuzzMetadata> | null {
+  return fuzzTransactionManagerInstance;
+}
+
+/**
+ * Sets up fuzzGuard to use the ChaosTransactionManager instance.
+ * Call this after initializeFuzzTransactionManager() to enable fuzzGuard vulnerability detection.
+ */
+export function setupFuzzGuardAccessor(): void {
+  // Import dynamically to avoid circular dependencies
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  import('../../../bugs/finders/fuzzGuard.js').then((module) => {
+    if (fuzzTransactionManagerInstance) {
+      module.setChaosManagerAccessor(fuzzTransactionManagerInstance);
+      console.log('[DataFuzzer] fuzzGuard accessor configured');
+    }
+  }).catch((err) => {
+    console.error('[DataFuzzer] Failed to setup fuzzGuard accessor:', err);
+  });
+}
+
+/**
+ * Maps FieldCategory to FuzzingStrategyType
+ */
+function categoryToStrategy(category: FieldCategory): FuzzingStrategyType {
+  switch (category) {
+    case 'NUMERIC':
+      return 'boundary';
+    case 'TEXT_SEARCH':
+      return 'injection';  // XSS vectors
+    case 'DATABASE_AUTH':
+      return 'injection';  // SQL/NoSQL injection
+    case 'EMAIL':
+      return 'mutating';
+    case 'DATE':
+      return 'boundary';
+    case 'JSON':
+      return 'encoding';
+    case 'CHAOS_FALLBACK':
+    default:
+      return 'chaos';
+  }
+}
 
 // ============================================================================
 // Multi-Pass Iteration Configuration
@@ -134,14 +214,14 @@ export async function fuzzTextInput(
  * @param page Playwright Page object
  * @param targets Scored elements to analyze
  * @param seed Random seed for payload generation
- * @param actionRecorder Optional action recorder for telemetry
+ * @param onAction Optional callback for telemetry when action is executed
  * @returns SmartActionResult or null if no input target found
  */
 export async function smartActionChain(
   page: Page,
   targets: ScoredElement[],
   seed: number,
-  actionRecorder?: ActionRecorder,
+  onAction?: (action: { type: string; selector: string; url: string; payload: string; label?: string }) => void,
 ): Promise<SmartActionResult | null> {
   // Find input element target
   const inputTarget = targets.find((target) =>
@@ -150,12 +230,12 @@ export async function smartActionChain(
 
   if (inputTarget) {
     const payload = await fuzzTextInput(page, inputTarget as unknown as InteractiveElement, seed);
-    actionRecorder?.record({
+    onAction?.({
       type: 'INPUT',
       selector: inputTarget.selector,
       url: page.url(),
       payload,
-      fallbackLabel: inputTarget.text || inputTarget.name || inputTarget.id,
+      label: inputTarget.text || inputTarget.name || inputTarget.id,
     });
     return {
       actionExecuted: 'fuzz-input',
@@ -276,6 +356,29 @@ function isInputField(tagName: string): boolean {
 }
 
 /**
+ * Maps FieldCategory to FuzzingStrategyType
+ */
+function categoryToStrategyType(category: FieldCategory): FuzzingStrategyType {
+  switch (category) {
+    case 'NUMERIC':
+      return 'boundary';
+    case 'TEXT_SEARCH':
+      return 'injection';
+    case 'DATABASE_AUTH':
+      return 'injection';
+    case 'EMAIL':
+      return 'mutating';
+    case 'DATE':
+      return 'boundary';
+    case 'JSON':
+      return 'encoding';
+    case 'CHAOS_FALLBACK':
+    default:
+      return 'chaos';
+  }
+}
+
+/**
  * Data Fuzzer stress scenario.
  *
  * Performs field-level fuzzing to test for vulnerabilities like:
@@ -287,6 +390,8 @@ function isInputField(tagName: string): boolean {
  * - Find input validation vulnerabilities
  * - Test for server-side payload size limits
  * - Check for encoding/interpretation bugs
+ * 
+ * Integrates with ChaosTransactionManager for vulnerability tracking.
  */
 export const dataFuzzer: StressScenario = {
   name: 'DataFuzzer',
@@ -297,10 +402,10 @@ export const dataFuzzer: StressScenario = {
       return;
     }
 
-const tagName = target.tagName?.toLowerCase() ?? '';
+    const tagName = target.tagName?.toLowerCase() ?? '';
     const selector = target.selector;
 
-// Classify the input element using heuristic-driven classifier
+    // Classify the input element using heuristic-driven classifier
     const category = classifyInputElement(target);
     console.log(`🔍 [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
 
@@ -314,6 +419,28 @@ const tagName = target.tagName?.toLowerCase() ?? '';
         `[StressScenario:DataFuzzer] Skipping - '${selector}' is not an input field`
       );
       return;
+    }
+
+    // Get strategy-based payload using heuristic classification
+    const strategyPayload = getStrategyByCategory(category);
+    const payload = strategyPayload.value;
+    const strategyDescription = strategyPayload.description;
+    const strategyUsed = categoryToStrategyType(category);
+
+    // Start chaos transaction with comprehensive metadata
+    const fuzzMetadata: FuzzMetadata = {
+      payload: payload,
+      fieldType: tagName,
+      category: category,
+      strategy: strategyUsed,
+    };
+
+    // Use the transaction manager if available
+    if (fuzzTransactionManagerInstance) {
+      fuzzTransactionManagerInstance.startTransaction(selector, 'FUZZ', fuzzMetadata);
+      console.log(
+        `[StressScenario:DataFuzzer] Transaction started: type=FUZZ, category=${category}, strategy=${strategyUsed}`
+      );
     }
 
     // Strip constraints (maxlength, pattern) from the element
@@ -348,12 +475,7 @@ const tagName = target.tagName?.toLowerCase() ?? '';
       );
     }
 
-// Get strategy-based payload using heuristic classification
-    const strategyPayload = getStrategyByCategory(category);
-    const payload = strategyPayload.value;
-    const strategyDescription = strategyPayload.description;
-
-console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector into field selector: ${selector}`);
+    console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector into field selector: ${selector}`);
     console.log(
       `[StressScenario:DataFuzzer] Strategy: ${strategyDescription}, payload length: ${payload.length}`
     );
@@ -432,6 +554,12 @@ console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector
         );
       }
       // Don't re-throw - error isolation is handled
+    }
+
+    // Close the chaos transaction
+    if (fuzzTransactionManagerInstance) {
+      fuzzTransactionManagerInstance.closeTransaction();
+      console.log(`[StressScenario:DataFuzzer] Transaction closed`);
     }
 
     console.log(`[StressScenario:DataFuzzer] Fuzzing complete for '${selector}'`);

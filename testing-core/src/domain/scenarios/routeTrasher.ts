@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
+import type { ChaosTransactionManager, RouteTrashMetadata } from '../fuzzing/index.js';
 
 export interface RouteTrashResult {
   attempted: number;
@@ -68,11 +69,26 @@ async function safeNavigation(
 export const routeTrasher = {
   name: 'RouteTrasher',
 
-  async execute(page: Page, target?: InteractiveElement | number): Promise<RouteTrashResult> {
+async execute(
+    page: Page,
+    target: InteractiveElement | undefined,
+    chaosManager: ChaosTransactionManager<RouteTrashMetadata>
+  ): Promise<RouteTrashResult> {
     const repetitions =
       typeof target === 'number' && Number.isFinite(target) && target > 0
         ? Math.floor(target)
         : NAVIGATION_REPETITIONS;
+
+    const originPath = page.url();
+
+    // Initialize enhanced metadata with navigation type detection
+    const metadata: RouteTrashMetadata = {
+      originPath: originPath,
+      targetPath: '',
+    };
+
+    // Open transaction with enhanced metadata (if chaosManager provided)
+    chaosManager?.startTransaction('page', 'ROUTE_TRASH', metadata);
 
     console.log(
       `[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`
@@ -81,58 +97,85 @@ export const routeTrasher = {
     let completed = 0;
     let attempted = 0;
 
-    for (let i = 0; i < repetitions; i++) {
-      attempted++;
+    try {
+      for (let i = 0; i < repetitions; i++) {
+        attempted++;
 
-      // goBack
-      try {
-        const backSuccess = await safeNavigation(page, 'goBack');
-        if (backSuccess) {
-          completed++;
-          console.log(
-            `[StressScenario:RouteTrasher] Iteration ${i + 1}: goBack completed`
-          );
+        // goBack
+        try {
+          const backSuccess = await safeNavigation(page, 'goBack');
+          if (backSuccess) {
+            completed++;
+            
+            // Update metadata with navigation type
+            if (chaosManager) {
+              const activeMeta = chaosManager.getActiveMetadata();
+              if (activeMeta) {
+                activeMeta.injectedPath = page.url();
+                activeMeta.navigationType = 'history_back';
+                activeMeta.targetPath = page.url();
+              }
+            }
+            
+            console.log(
+              `[StressScenario:RouteTrasher] Iteration ${i + 1}: goBack completed`
+            );
+          }
+        } catch (error) {
+          if (error instanceof Error && isNonFatalNavigationError(error)) {
+            console.log(
+              `[StressScenario:RouteTrasher] Ignored navigation error on goBack: ${error.message}`
+            );
+          } else if (error instanceof Error) {
+            console.error(
+              `[StressScenario:RouteTrasher] Non-fatal error on goBack: ${error.message}`
+            );
+          }
         }
-      } catch (error) {
-        if (error instanceof Error && isNonFatalNavigationError(error)) {
-          console.log(
-            `[StressScenario:RouteTrasher] Ignored navigation error on goBack: ${error.message}`
-          );
-        } else if (error instanceof Error) {
-          console.error(
-            `[StressScenario:RouteTrasher] Non-fatal error on goBack: ${error.message}`
-          );
+
+        // Small delay between nav operations
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        attempted++;
+
+        // goForward
+        try {
+          const forwardSuccess = await safeNavigation(page, 'goForward');
+          if (forwardSuccess) {
+            completed++;
+            
+            // Update metadata with navigation type
+            if (chaosManager) {
+              const activeMeta = chaosManager.getActiveMetadata();
+              if (activeMeta) {
+                activeMeta.injectedPath = page.url();
+                activeMeta.navigationType = 'history_forward';
+                activeMeta.targetPath = page.url();
+              }
+            }
+            
+            console.log(
+              `[StressScenario:RouteTrasher] Iteration ${i + 1}: goForward completed`
+            );
+          }
+        } catch (error) {
+          if (error instanceof Error && isNonFatalNavigationError(error)) {
+            console.log(
+              `[StressScenario:RouteTrasher] Ignored navigation error on goForward: ${error.message}`
+            );
+          } else if (error instanceof Error) {
+            console.error(
+              `[StressScenario:RouteTrasher] Non-fatal error on goForward: ${error.message}`
+            );
+          }
         }
+
+        // Small delay between iterations
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      // Small delay between nav operations
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      attempted++;
-
-      // goForward
-      try {
-        const forwardSuccess = await safeNavigation(page, 'goForward');
-        if (forwardSuccess) {
-          completed++;
-          console.log(
-            `[StressScenario:RouteTrasher] Iteration ${i + 1}: goForward completed`
-          );
-        }
-      } catch (error) {
-        if (error instanceof Error && isNonFatalNavigationError(error)) {
-          console.log(
-            `[StressScenario:RouteTrasher] Ignored navigation error on goForward: ${error.message}`
-          );
-        } else if (error instanceof Error) {
-          console.error(
-            `[StressScenario:RouteTrasher] Non-fatal error on goForward: ${error.message}`
-          );
-        }
-      }
-
-      // Small delay between iterations
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally {
+      // Always close transaction, even on error
+      chaosManager?.closeTransaction();
     }
 
     console.log(

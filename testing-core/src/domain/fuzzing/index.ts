@@ -8,6 +8,7 @@ export {
   type ChaosContext,
   type ChaosMetadata,
   type FuzzMetadata,
+  type FuzzingStrategyType,
   type NetworkMetadata,
   type StressClickMetadata,
   type RouteTrashMetadata,

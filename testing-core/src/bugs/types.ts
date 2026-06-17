@@ -10,7 +10,11 @@ export type BugClass =
   | 'SPA_STATE_RACE_CONDITION'
   | 'STRUCTURAL_NAVIGATION_LOGIC'
   | 'RUNTIME_STABILITY_EXCEPTION'
-  | 'BOUNDARY_STRESS_FAILURE';
+  | 'BOUNDARY_STRESS_FAILURE'
+  | 'FUZZ_VULNERABILITY_LEAK'
+  | 'SECURITY_VULNERABILITY_LEAK'
+  | 'CASCADING_STATE_FAILURE'
+  | 'ROUTE_MUTATION_FAILURE';
 
 export interface BugFinding {
   bugClass: BugClass;
@@ -23,6 +27,13 @@ export interface BugFinding {
     stateHash?: string;
     statusCode?: number;
     durationMs?: number;
+    isCascadingFailure?: boolean;
+    previousContext?: {
+      type: string;
+      timestamp: number;
+      targetSelector?: string;
+      metadata?: unknown;
+    };
   };
 }
 
