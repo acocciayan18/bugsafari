@@ -309,12 +309,29 @@ const isDisabled = (element) => {
         return results;
       };
       
-      // Execute deep recursive traversal starting from document
+// Execute deep recursive traversal starting from document
       const rawElements = deepTraverse(document);
       
 // IMPROVED VISIBILITY & 2. THE HIDDEN OVERLAY (Z-INDEX) BLOCK FIX
-      const candidates = rawElements.filter(el => {
-        const rect = el.getBoundingClientRect();
+      const getSafeBoundingRect = (node) => {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+
+        const element = node;
+        if (typeof element.getBoundingClientRect !== 'function') return null;
+
+        try {
+          return element.getBoundingClientRect();
+        } catch (error) {
+          return null;
+        }
+      };
+
+      // Filter out non-element nodes that don't expose layout APIs safely
+      const candidates = rawElements.filter(wrapped => {
+        const el = wrapped.element;
+
+        const rect = getSafeBoundingRect(el);
+        if (!rect) return false;
         
         // Skip elements with no physical dimensions
         if (rect.width === 0 || rect.height === 0) return false;
@@ -340,16 +357,20 @@ const isDisabled = (element) => {
       });
 
 // Anti-Weight Expansion Filter
-      const specificElements = candidates.filter(parent => {
-        const hasInteractiveChild = candidates.some(child => 
-          parent !== child && parent.contains(child)
+      const specificElements = candidates.filter(wrapped => {
+        const parent = wrapped.element;
+        const hasInteractiveChild = candidates.some(childWrapper => 
+          childWrapper.element !== parent && parent.contains(childWrapper.element)
         );
         return !hasInteractiveChild; 
       });
 
       // First pass: collect elements with their extracted text (no slicing)
-      const elementData = specificElements.map((element) => {
-        const rect = element.getBoundingClientRect();
+      const elementData = specificElements.flatMap((wrapped) => {
+        const element = wrapped.element;
+        const rect = getSafeBoundingRect(element);
+        if (!rect) return [];
+
         const tagName = element.tagName.toLowerCase();
         const id = element.getAttribute('id') || '';
         const className = element.getAttribute('class') || '';
@@ -359,8 +380,8 @@ const isDisabled = (element) => {
         const fullText = extractText(element);
         const role = element.getAttribute('role') || '';
         const href = element instanceof HTMLAnchorElement ? element.href : '';
-        
-        return {
+
+        return [{
           element,
           tagName,
           id,
@@ -377,7 +398,7 @@ const isDisabled = (element) => {
             width: rect.width,
             height: rect.height
           }
-        };
+        }];
       });
 
       // Second pass: compute SHA-256 hashes in parallel

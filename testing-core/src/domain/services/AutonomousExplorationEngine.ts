@@ -508,14 +508,18 @@ constructor(
         message: `🚀 Browser launched, navigating to ${targetUrl}...`,
       }));
 
-// Use shorter timeout and better wait strategy to prevent hanging
+      console.log('[AutonomousExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
+      // Use shorter timeout and better wait strategy to prevent hanging
       // Also emit immediate frame to prevent "No live frame" timeout
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      console.log('[AutonomousExplorationEngine] page.goto completed for targetUrl:', targetUrl);
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       
       // Emit immediate first frame to prevent frontend "No live frame received" timeout
       // This must happen BEFORE any other async operations
+      console.log('[AutonomousExplorationEngine] Emitting first live frame after page navigation');
       await this.emitLiveFrame(page, telemetry);
+      console.log('[AutonomousExplorationEngine] First live frame emitted successfully');
       
       await this.ensureDomReady(page, telemetry);
 
@@ -1138,8 +1142,9 @@ telemetry.emitTargets(
     }
   }
 
-  /**
+/**
    * Capture and persist a screenshot (Phase 4: Screenshot Forensics)
+   * Added check to verify page is still valid before attempting capture
    */
   private async captureScreenshot(
     page: Page,
@@ -1148,6 +1153,13 @@ telemetry.emitTargets(
     stepNumber?: number,
   ): Promise<void> {
     if (!this.sessionId) return;
+
+    // Check if page is still valid and accessible before attempting screenshot
+    // This prevents "Target page, context or browser has been closed" errors
+    if (!page || (page as any).isClosed()) {
+      console.warn('[AutonomousExplorationEngine] Cannot capture screenshot: page is closed or invalid');
+      return;
+    }
 
     try {
       const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
@@ -1162,6 +1174,11 @@ telemetry.emitTargets(
         stepNumber,
       });
     } catch (error) {
+      // Handle the specific "Target page, context or browser has been closed" error gracefully
+      if (error instanceof Error && error.message.includes('Target page, context or browser has been closed')) {
+        console.warn('[AutonomousExplorationEngine] Page closed before screenshot capture, skipping forensic screenshot');
+        return;
+      }
       console.error('[AutonomousExplorationEngine] Failed to capture screenshot:', error);
     }
   }

@@ -68,29 +68,49 @@ public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSet
 // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup
-    this.activeBrowser = await Promise.race([
-      chromium.launch({
-        headless: true,
-        args: [
-          '--start-maximized',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-sandbox',
-        ],
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Browser launch timeout: browser failed to start within 30 seconds')), 30000)
-      )
-    ]).catch(async (launchError) => {
-      // Detailed error logging for diagnostic purposes
-      console.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
-      // Attempt fallback launch with minimal args
-      console.log('[PlaywrightBrowserEngine] Attempting fallback launch...');
-      return await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
+    const browserLaunchTimeoutMs = 30000;
+    console.log('[PlaywrightBrowserEngine] Starting browser launch', {
+      headless: true,
+      launchTimeoutMs: browserLaunchTimeoutMs,
+      env: {
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH,
+        NODE_ENV: process.env.NODE_ENV,
+      },
     });
+
+    try {
+      this.activeBrowser = await Promise.race([
+        chromium.launch({
+          headless: true,
+          args: [
+            '--start-maximized',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-sandbox',
+          ],
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Browser launch timeout: browser failed to start within ${browserLaunchTimeoutMs}ms`)),
+            browserLaunchTimeoutMs,
+          ),
+        ),
+      ]);
+    } catch (launchError) {
+      console.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
+      console.log('[PlaywrightBrowserEngine] Attempting fallback launch with minimal args...');
+
+      try {
+        this.activeBrowser = await chromium.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+      } catch (fallbackError) {
+        console.error('[PlaywrightBrowserEngine] Fallback browser launch failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
+
     const VIEWPORT_WIDTH = 1440;
     const VIEWPORT_HEIGHT = 900;
     

@@ -219,37 +219,45 @@ export class StartExplorationUseCase {
         try {
             // Phase 3: Wrap engine.run in Promise.race with timeout for timebox enforcement
             const enginePromise = this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings);
-            const timeoutPromise = new Promise<{ completed: boolean; reason: string }>((_, reject) => {
-                setTimeout(() => reject(new TimeboxExceededError()), TIMEBOX_MS);
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => reject(new TimeboxExceededError()), TIMEBOX_MS);
             });
 
             let result: { completed: boolean; reason: string };
             try {
                 result = await Promise.race([enginePromise, timeoutPromise]);
-            } catch (timeoutError) {
-                // Timeout was reached - handle gracefully
-                executionStatus = 'TIMEOUT';
-                console.log(`[StartExplorationUseCase] ⚠️ Timebox of ${TIMEBOX_MS}ms exceeded - initiating graceful termination`);
+            } catch (error) {
+                if (error instanceof TimeboxExceededError) {
+                    executionStatus = 'TIMEOUT';
+                    console.log(`[StartExplorationUseCase] ⚠️ Timebox of ${TIMEBOX_MS}ms exceeded - initiating graceful termination`);
 
-                // Emit timeout telemetry before graceful termination
-                this.telemetry.emitTelemetry({
-                    timestamp: new Date().toISOString(),
-                    type: 'ACTION',
-                    meta: {
-                        actionExecuted: 'timebox-exceeded',
-                        url: targetUrl,
-                        message: `Execution timebox of ${TIMEBOX_MS}ms exceeded`,
-                    },
-                });
+                    this.telemetry.emitTelemetry({
+                        timestamp: new Date().toISOString(),
+                        type: 'ACTION',
+                        meta: {
+                            actionExecuted: 'timebox-exceeded',
+                            url: targetUrl,
+                            message: `Execution timebox of ${TIMEBOX_MS}ms exceeded`,
+                        },
+                    });
 
-                // Try to gracefully stop the engine if it's still running
-                try {
-                    await this.browserEngine.stop?.();
-                } catch (stopError) {
-                    console.warn('[StartExplorationUseCase] Error during graceful termination:', stopError);
+                    try {
+                        await this.browserEngine.stop?.();
+                    } catch (stopError) {
+                        console.warn('[StartExplorationUseCase] Error during graceful termination:', stopError);
+                    }
+
+                    result = { completed: false, reason: `Timebox of ${TIMEBOX_MS}ms exceeded` };
+                } else {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.error('[StartExplorationUseCase] Fatal engine startup error detected:', message);
+                    throw error;
                 }
-
-                result = { completed: false, reason: `Timebox of ${TIMEBOX_MS}ms exceeded` };
+            } finally {
+                if (timeoutId !== null) {
+                    clearTimeout(timeoutId);
+                }
             }
 
             executionStatus = result.completed ? 'COMPLETED' : 'HALTED';
