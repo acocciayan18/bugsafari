@@ -11,12 +11,10 @@ import { structuralProbeFinder } from './finders/structuralProbe.js';
 export function getAllBugFinders(): BugFinder[] {
   return [
     inputSanitizationFinder,
-    clientSideConstraintBypassFinder,
     noSqlInjectionFinder,
     spaRaceConditionsFinder,
     structuralNavigationFinder,
     runtimeStabilityFinder,
-    boundaryStressFinder,
     fuzzGuard,
     concurrentStressGuard,
     structuralProbeFinder,

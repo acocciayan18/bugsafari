@@ -72,7 +72,7 @@ import { ChaosTransactionManager } from '../fuzzing/ChaosTransactionManager.js';
 import { BoundingBoxHighlighter } from '../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { StressScenario } from '../scenarios/types.js';
-import { stressScenarioMap, stressScenarioRegistry, securityVulnerabilityScout, formBypasser, networkSaboteur } from '../scenarios/index.js';
+import { stressScenarioMap, stressScenarioRegistry, formBypasser, networkSaboteur } from '../scenarios/index.js';
 import { classifyInputElement } from '../scenarios/fuzzing/elementClassifier.js';
 import { getStrategyByCategory } from '../scenarios/fuzzing/strategies/index.js';
 import { setupStabilityMonitoring } from '../../infrastructure/monitoring/stabilityMonitor.js';
@@ -508,8 +508,15 @@ constructor(
         message: `🚀 Browser launched, navigating to ${targetUrl}...`,
       }));
 
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+// Use shorter timeout and better wait strategy to prevent hanging
+      // Also emit immediate frame to prevent "No live frame" timeout
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
+      
+      // Emit immediate first frame to prevent frontend "No live frame received" timeout
+      // This must happen BEFORE any other async operations
+      await this.emitLiveFrame(page, telemetry);
+      
       await this.ensureDomReady(page, telemetry);
 
       // 📸 Phase 4: Capture initial screenshot (after page load)
@@ -1306,8 +1313,8 @@ telemetry.emitTargets(
       score: Number(target.riskScore.toFixed(4)),
     });
 
-    // For security scenarios on text inputs, strip constraints first
-    if (scenario.name === 'SecurityVulnerabilityScout') {
+// For security scenarios on text inputs, strip constraints first
+    if (scenario.name === 'FormBypasser') {
       try {
         await this.stripConstraints(page);
         telemetry.emitTelemetry(this.event('ACTION', {
@@ -1339,12 +1346,12 @@ telemetry.emitTargets(
     // Check for text input fields (input[type="text"], textarea, input[type="password"])
     const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';
 
-    // If it's a text input field and chaos threshold allows, delegate to security scout
+    // If it's a text input field and chaos threshold allows, delegate to formBypasser (handles constraint stripping)
     if (isTextInput) {
       const chaosRoll = Math.random();
       if (chaosRoll < this.chaosThreshold) {
         console.log(`[AutonomousExplorationEngine] Chaos threshold triggered (${(chaosRoll * 100).toFixed(1)}% < ${(this.chaosThreshold * 100).toFixed(1)}%) - activating security audit on ${target.selector}`);
-        return securityVulnerabilityScout;
+        return formBypasser;
       }
       // Use formBypasser for text inputs when not using security scout
       // This ensures constraints are stripped before payload injection

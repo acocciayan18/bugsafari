@@ -7,7 +7,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 // Import scenario implementations
 import { dataFuzzer, setChaosManager as setDataFuzzerChaosManager, smartActionChain } from './fuzzing/dataFuzzer.js';
 import type { SmartActionResult } from './fuzzing/dataFuzzer.js';
-import { buttonSpammer, coordinateBombing } from './rapidClickerStress.js';
+import { buttonSpammer, coordinateBombing } from './rapidClicker/index.js';
 import { routeTrasher } from './routeTrasher.js';
 import { formBypasser } from './formBypasser.js';
 import { networkSaboteur } from './networkSaboteur.js';
@@ -49,7 +49,7 @@ import {
   executeSpam,
   InteractionSimulator,
   type BurstClickResult,
-} from './rapidClickerStress.js';
+} from './rapidClicker/index.js';
 
 export interface StressScenarioRegistryOptions {
   /** Optional telemetry gateway for broadcasting events */

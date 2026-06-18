@@ -65,12 +65,31 @@ public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSet
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings);
-this.activeBrowser = await chromium.launch({
-      headless: false,
-      args: [
-        '--start-maximized',
-        '--disable-dev-shm-usage',
-      ],
+// Launch browser with proper headless mode and timeout handling
+    // Use headless: true for automated testing (no GUI)
+    // Add explicit timeout to prevent hangs during browser startup
+    this.activeBrowser = await Promise.race([
+      chromium.launch({
+        headless: true,
+        args: [
+          '--start-maximized',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-sandbox',
+        ],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Browser launch timeout: browser failed to start within 30 seconds')), 30000)
+      )
+    ]).catch(async (launchError) => {
+      // Detailed error logging for diagnostic purposes
+      console.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
+      // Attempt fallback launch with minimal args
+      console.log('[PlaywrightBrowserEngine] Attempting fallback launch...');
+      return await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
     });
     const VIEWPORT_WIDTH = 1440;
     const VIEWPORT_HEIGHT = 900;

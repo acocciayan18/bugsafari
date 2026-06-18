@@ -50,7 +50,7 @@ services:
     networks:
       - bugsafari-local
 
-# Local development with volume mapping and auto-recompilation
+  # Local development with volume mapping and auto-recompilation
   api:
     container_name: bugsafari-api
     restart: unless-stopped
@@ -77,7 +77,7 @@ services:
       NODE_ENV: development
       BUGSAFARI_PORT: "3000"
       BUGSAFARI_API_PORT: "3000"
-      MONGODB_URI: mongodb://mongodb:27017/bugsafari
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/bugsafari}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: bugsafari-local-development-secret
       JWT_EXPIRES_IN: 7d
@@ -123,7 +123,7 @@ services:
       - ./shared:/app/shared
     environment:
       NODE_ENV: development
-      MONGODB_URI: mongodb://mongodb:27017/bugsafari
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/bugsafari}
       REDIS_URL: redis://redis:6379
       BUGSAFARI_WORKER_CONCURRENCY: "1"
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
