@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry, BrowserConsoleMessage } from '../types';
+import type { TestSessionStatus } from '../application/useCases/useDashboardController';
 import LiveFeed from './LiveFeed';
 import ForensicHelpIcon from './ForensicHelpIcon';
 import SessionTimer from './SessionTimer';
@@ -171,8 +172,8 @@ interface ClinicalForensicsDashboardProps {
     reports: ForensicCrashReport[];
   };
   isConnected: boolean;
-  isTestRunning: boolean;
-  testStatus?: 'READY' | 'RUNNING' | 'PAUSED';
+isTestRunning: boolean;
+  testStatus?: TestSessionStatus;
   currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
   hasRunCompleted?: boolean; // 👈 True after first test run completes
   isInitializing?: boolean; // 👈 True when test started but no frame received yet
@@ -197,7 +198,7 @@ export default function ClinicalForensicsDashboard({
   errors = { incidents: [], reports: [] },
   isConnected = false,
   isTestRunning = false,
-  testStatus = 'READY',
+testStatus = 'IDLE',
   currentEngineAction = '',
   hasRunCompleted = false,
   isInitializing = false,
@@ -284,13 +285,13 @@ export default function ClinicalForensicsDashboard({
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-600">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'RUNNING'
+<span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'ACTIVE'
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                 : testStatus === 'PAUSED'
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
                   : 'border-slate-300 bg-slate-50 text-slate-600'
                 }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'RUNNING' ? 'bg-emerald-500 animate-pulse'
+                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'ACTIVE' ? 'bg-emerald-500 animate-pulse'
                   : testStatus === 'PAUSED' ? 'bg-amber-500'
                     : 'bg-slate-400'
                   }`} />
@@ -303,9 +304,9 @@ export default function ClinicalForensicsDashboard({
             </div>
 
             {/* Control Buttons - Pause/Resume/Stop */}
-            {(testStatus === 'RUNNING' || testStatus === 'PAUSED') && (
+{(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
               <div className="flex items-center gap-2">
-                {testStatus === 'RUNNING' && onPause && (
+                {testStatus === 'ACTIVE' && onPause && (
                   <button
                     onClick={onPause}
                     className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"

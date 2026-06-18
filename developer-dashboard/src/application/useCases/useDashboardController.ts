@@ -3,17 +3,22 @@ import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGatewa
 import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
 import { saveSessionToHistory } from '../../services/historyService';
 
+// 👈 Unified Test Session Status Type for visibility matrix
+export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED';
+
 export interface DashboardState {
   isConnected: boolean;
   isLaunching: boolean;
   isTestRunning: boolean;
-  isThinking: boolean; // 👈 Thinking indicator state
-  status: 'READY' | 'RUNNING' | 'PAUSED'; // 👈 New Flow State
-  hasRunCompleted: boolean; // 👈 True after first test run completes
-  hasTimeLimitExceeded: boolean; // 👈 True when timer limit is exceeded
-  currentEngineAction: string; // 👈 Dynamic engine status for UI (Task 3)
-  isInitializing: boolean; // 👈 True when test started but no frame received yet
-  liveFrame: string | null; // 👈 Active frame buffer - MUST clear on test conclusion
+  isThinking: boolean;
+  status: TestSessionStatus;
+  hasRunCompleted: boolean;
+  hasTimeLimitExceeded: boolean;
+  currentEngineAction: string;
+  isInitializing: boolean;
+  liveFrame: string | null;
+  remainingTimeMs: number;
+  elapsedTimeMs: number;
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
@@ -21,14 +26,14 @@ export interface DashboardState {
   currentUrl: string;
   sessionHistory: SessionHistoryEntry[];
   isSavingSession: boolean;
-  browserConsole: BrowserConsoleMessage[]; // 👈 Browser console messages
+  browserConsole: BrowserConsoleMessage[];
 }
 
 const ENGINE_TERMINAL_ACTIONS = new Set([
   'engine-stopped',
   'engine-finished',
   'engine-halted',
-  'timebox-exceeded', // NEW: Natural timebox expiration triggers same reset flow as manual STOP
+  'timebox-exceeded',
 ]);
 
 const ENGINE_PAUSE_ACTIONS = new Set([
@@ -44,10 +49,10 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
-  const [isThinking, setIsThinking] = useState(false); // 👈 Thinking indicator state
-  const [status, setStatus] = useState<'READY' | 'RUNNING' | 'PAUSED'>('READY');
-  const [hasRunCompleted, setHasRunCompleted] = useState(false); // 👈 Tracks if a test run has completed
-  const [hasTimeLimitExceeded, setHasTimeLimitExceeded] = useState(false); // 👈 True when timer limit is exceeded
+  const [isThinking, setIsThinking] = useState(false);
+  const [status, setStatus] = useState<TestSessionStatus>('IDLE');
+  const [hasRunCompleted, setHasRunCompleted] = useState(false);
+  const [hasTimeLimitExceeded, setHasTimeLimitExceeded] = useState(false);
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -55,42 +60,39 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
-  const [currentEngineAction, setCurrentEngineAction] = useState<string>(''); // 👈 Dynamic engine status for UI (Task 3)
-  const [isInitializing, setIsInitializing] = useState(false); // 👈 True when test started but no frame received yet
-  const [liveFrame, setLiveFrame] = useState<string | null>(null); // 👈 Active frame buffer - MUST clear on test conclusion
-  const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]); // 👈 Browser console messages
+  const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [liveFrame, setLiveFrame] = useState<string | null>(null);
+  const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]);
 
-  // 👈 Fix #3: Timeout fallback to prevent infinite loading if no liveFrame arrives
-  // Increased from 15s to 30s to account for browser startup time on slower machines
-  const INITIALIZATION_TIMEOUT_MS = 30000; // 30 seconds timeout
+  const [remainingTimeMs, setRemainingTimeMs] = useState<number>(180000);
+  const [elapsedTimeMs, setElapsedTimeMs] = useState<number>(0);
+
+  const INITIALIZATION_TIMEOUT_MS = 30000;
 
   useEffect(() => {
     let initializationTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    // Start a timeout whenever isInitializing becomes true
     if (isInitializing && isTestRunning) {
       initializationTimeout = setTimeout(() => {
-        // If still initializing after 15 seconds, force-reset the states
         console.warn('[useDashboardController] Initialization timeout reached - forcing reset');
         setIsThinking(false);
         setIsInitializing(false);
         setIsTestRunning(false);
-        setStatus('READY');
-        // Add a timeout error to telemetry so user knows what happened
+        setStatus('IDLE');
         setTelemetry((prev) => [
           ...prev,
           {
             timestamp: new Date().toISOString(),
             type: 'EXCEPTION',
             meta: {
-              message: 'Engine initialization timeout: No live frame received within 30 seconds. The browser may have failed to start or the target URL is taking too long to respond.',
+              message: 'Engine initialization timeout: No live frame received within 30 seconds.',
             },
           },
         ]);
       }, INITIALIZATION_TIMEOUT_MS);
     }
 
-    // Clear timeout if isInitializing becomes false (frame arrived)
     if (!isInitializing && initializationTimeout) {
       clearTimeout(initializationTimeout);
       initializationTimeout = null;
@@ -106,17 +108,11 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   useEffect(() => {
     gateway.onConnected((connected) => {
       setIsConnected(connected);
-      // Reset thinking state on disconnect to prevent infinite loading trap
       if (!connected) {
         setIsThinking(false);
       }
     });
     gateway.onTelemetry((event) => {
-      // Note: We do NOT clear isThinking here because the first telemetry 
-      // arrives instantly (e.g., "Launching Playwright...") and would prematurely 
-      // dismiss the indicator. We keep isThinking true until the first live 
-      // frame arrives (visual proof of browser startup).
-
       setTelemetry((previous) => {
         const next = [...previous, event];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -125,10 +121,14 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       // 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
-        setStatus('READY');
-        setHasRunCompleted(true); // Mark run as completed for Save button gating
-        setLiveFrame(null); // 🚨 CRITICAL: Clear frame buffer on test conclusion to prevent stale screenshot
-        setIsInitializing(false); // Reset initializing state
+        // Map terminal actions to STOPPED or FINISHED based on action type
+        const terminalStatus: TestSessionStatus = event.meta.actionExecuted === 'engine-finished' ? 'FINISHED' : 'STOPPED';
+        setStatus(terminalStatus);
+        setHasRunCompleted(true);
+        setLiveFrame(null);
+        setIsInitializing(false);
+        setRemainingTimeMs(180000);
+        setElapsedTimeMs(0);
         void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
       }
 
@@ -137,43 +137,46 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       }
 
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_RESUME_ACTIONS.has(event.meta.actionExecuted)) {
-        setStatus('RUNNING');
+        setStatus('ACTIVE');
       }
 
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'url-changed' && event.meta.message) {
         setCurrentUrl(event.meta.message);
       }
 
-// Task 3: Extract system-status for dynamic UI
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'system-status' && event.meta.message) {
         setCurrentEngineAction(event.meta.message);
       }
 
-      // NEW: Handle explicit IDLE status from backend - ensures deterministic state handshake
+      // Handle explicit IDLE status from backend
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'engine-status' && event.meta.message === 'IDLE') {
         console.log('[useDashboardController] Received explicit IDLE status - resetting all button states');
-        // Double-ensure all states reset - explicit handshake confirms backend is ready
         setIsTestRunning(false);
         setIsLaunching(false);
         setIsThinking(false);
         setIsInitializing(false);
-        setStatus('READY');
+        setStatus('IDLE');
         setLiveFrame(null);
+      }
+
+      if (event.type === 'ACTION' && event.meta.actionExecuted === 'time-remaining') {
+        const remaining = event.meta.remainingTimeMs ?? 0;
+        const elapsed = event.meta.elapsedTimeMs ?? 0;
+        setRemainingTimeMs(remaining);
+        setElapsedTimeMs(elapsed);
       }
     });
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
-    gateway.onUrlChanged((url) => setCurrentUrl(url)); // FIX: Wire up url-changed socket event to update currentUrl state
+    gateway.onUrlChanged((url) => setCurrentUrl(url));
     gateway.onLiveFrame((frame) => {
-      // Clear thinking state when first live frame is received
       setIsThinking(false);
-      setIsInitializing(false); // 👈 First frame received - no longer initializing
-      setLiveFrame(`data:image/jpeg;base64,${frame}`); // 👈 Set active frame buffer
+      setIsInitializing(false);
+      setLiveFrame(`data:image/jpeg;base64,${frame}`);
       setLatestFrame(`data:image/jpeg;base64,${frame}`)
     });
 
-    // 👈 Listen for browser console messages from the target browser
     gateway.onBrowserConsole((message) => {
       setBrowserConsole((prev) => {
         const next = [...prev, message];
@@ -189,35 +192,34 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> => {
     if (!targetUrl.trim()) return;
 
-    // Set thinking state to true immediately when button is clicked
     setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
-    setStatus('RUNNING'); // 👈 Set running status
-    setIsInitializing(true); // 👈 Mark as initializing - waiting for first frame
-    setLiveFrame(null); // 👈 Clear any stale frames
+    setStatus('ACTIVE');
+    setIsInitializing(true);
+    setLiveFrame(null);
     setTelemetry([]);
     setReports([]);
     setIncidents([]);
     setCurrentUrl(targetUrl);
+    setRemainingTimeMs(180000);
+    setElapsedTimeMs(0);
 
     try {
       await gateway.startTest(targetUrl.trim(), optimizationSettings);
       setIsLaunching(false);
     } catch (error) {
-      // CRUCIAL SAFETY GATE: Clear thinking state on API error to prevent infinite loading trap
       setIsThinking(false);
       const message = error instanceof Error ? error.message : String(error);
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
       setIsLaunching(false);
       setIsTestRunning(false);
-      setStatus('READY');
+      setStatus('IDLE');
     }
   };
 
-  // 👇 ADDED: Exposed Control Actions
   const pauseTest = () => {
-    if (status === 'RUNNING') {
+    if (status === 'ACTIVE') {
       (gateway as any).pauseTest();
     }
   };
@@ -229,9 +231,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   };
 
   const stopTest = () => {
-    if (status === 'RUNNING' || status === 'PAUSED') {
+    if (status === 'ACTIVE' || status === 'PAUSED') {
       (gateway as any).stopTest();
-      // We don't manually set to IDLE here, we wait for the terminal telemetry event to confirm it stopped
     }
   };
 
@@ -246,11 +247,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
     setIsSavingSession(true);
     try {
-      // Use currentUrl (runtime URL from engine via url-changed events) if available
-      // Fall back to input URL if engine hasn't navigated anywhere yet
       const runtimeUrl = currentUrl || inputTargetUrl;
-
-      // Use the new historyService signature that tracks both URLs
       await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
       await refreshHistory();
       setTelemetry((prev) => [
@@ -276,11 +273,10 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     }
   };
 
-  // Handler for when time limit is exceeded
   const handleTimeLimitExceeded = () => {
     setHasTimeLimitExceeded(true);
     setIsTestRunning(false);
-    setStatus('READY');
+    setStatus('FINISHED');
     setHasRunCompleted(true);
   };
 
@@ -296,6 +292,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
       currentEngineAction,
       isInitializing,
       liveFrame,
+      remainingTimeMs,
+      elapsedTimeMs,
       telemetry,
       reports,
       incidents,

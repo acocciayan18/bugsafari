@@ -124,6 +124,10 @@ private isPaused = false;
   private lastTickTimestamp: number = 0;
   private timeboxMs: number = 180000; // Default 3 minutes
   private timeboxExceeded: boolean = false;
+  
+  // Timer snapshot tracking for pause/resume support
+  private pauseSnapshotTimeMs: number = 0;  // Time accumulated when PAUSE was triggered
+  private dynamicDeadline: number = 0;  // Absolute deadline for resume calculation
 
   // Stability monitoring cleanup function - disposed in finally block
   private cleanupStabilityMonitor: (() => void) | null = null;
@@ -252,12 +256,26 @@ constructor(
     }
   }
 
-  public pause() {
+public pause() {
+    // Record the snapshot of elapsed time when pausing
+    this.pauseSnapshotTimeMs = this.elapsedActiveTimeMs;
     this.isPaused = true;
+    console.log(`[AutonomousExplorationEngine] Session PAUSED at ${this.pauseSnapshotTimeMs}ms elapsed`);
   }
 
   public resume() {
+    // Calculate the new dynamic deadline based on accumulated time
+    const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
+    this.dynamicDeadline = Date.now() + remainingTimeMs;
     this.isPaused = false;
+    console.log(`[AutonomousExplorationEngine] Session RESUMED with ${remainingTimeMs}ms remaining (elapsed: ${this.elapsedActiveTimeMs}ms)`);
+  }
+
+  /**
+   * Get the remaining time in ms (for external queries like the dashboard).
+   */
+  public getRemainingTimeMs(): number {
+    return Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
   }
 
 public stop() {
@@ -315,13 +333,15 @@ public stop() {
     return false;
   }
 
-  /**
+/**
    * Start the timing interval that accumulates active time.
    * Time only accumulates when NOT paused.
+   * Emits TIME_REMAINING telemetry every 1 second to sync with frontend.
    */
-  private startTimingInterval(): void {
+  private startTimingInterval(telemetry: TelemetryGateway): void {
     this.elapsedActiveTimeMs = 0;
     this.lastTickTimestamp = Date.now();
+    let tickCounter = 0;
     
     this.timingInterval = setInterval(() => {
       if (!this.isPaused && !this.isStopRequested) {
@@ -329,6 +349,23 @@ public stop() {
         const delta = now - this.lastTickTimestamp;
         this.elapsedActiveTimeMs += delta;
         this.lastTickTimestamp = now;
+        
+        // Emit TIME_REMAINING every 10 ticks (1 second)
+        tickCounter++;
+        if (tickCounter >= 10) {
+          tickCounter = 0;
+          const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
+          telemetry.emitTelemetry({
+            timestamp: new Date().toISOString(),
+            type: 'ACTION',
+            meta: {
+              actionExecuted: 'time-remaining',
+              message: `${remainingTimeMs}`,
+              remainingTimeMs,
+              elapsedTimeMs: this.elapsedActiveTimeMs,
+            },
+          });
+        }
       } else {
         // When paused or stopped, just update tick reference without accumulating
         this.lastTickTimestamp = Date.now();
@@ -394,9 +431,10 @@ this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
 
-    // 🕐 Start timing interval that accumulates active time (only when NOT paused)
+// 🕐 Start timing interval that accumulates active time (only when NOT paused)
     // This replaces the fixed timeout approach with accumulative time tracking
-    this.startTimingInterval();
+    // Also emits TIME_REMAINING telemetry to sync with frontend
+    this.startTimingInterval(telemetry);
 
     // Persist initial telemetry with browser info (Phase 3)
     if (browserInfo && this.sessionId) {

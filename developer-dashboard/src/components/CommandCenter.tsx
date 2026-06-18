@@ -5,11 +5,12 @@
 
 import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from './SessionTimer';
+import type { TestSessionStatus } from '../application/useCases/useDashboardController';
 
 interface CommandCenterProps {
   targetUrl: string;
   isTestRunning: boolean;
-  testStatus: 'READY' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CRASHED' | 'STOPPED' | 'EXHAUSTED';
+  testStatus: TestSessionStatus;
   hasRunCompleted?: boolean;
   hasTimeLimitExceeded?: boolean;
   onStart: (url: string) => void;
@@ -17,12 +18,20 @@ interface CommandCenterProps {
   onResume?: () => void;
   onStop?: () => void;
   onSaveSessionToHistory?: () => void;
-  // Timer props
   sessionTimeMs?: number;
   onTimeUp?: () => void;
-  // Child components for workspace
   children?: ReactNode;
 }
+
+// 👈 Visibility Matrix: Compute which controls are visible based on status
+const computeControlVisibility = (status: TestSessionStatus) => {
+  return {
+    showStartButton: status === 'IDLE' || status === 'STOPPED' || status === 'FINISHED',
+    showPauseButton: status === 'ACTIVE',
+    showResumeButton: status === 'PAUSED',
+    showStopButton: status === 'ACTIVE' || status === 'PAUSED',
+  };
+};
 
 export default function CommandCenter({
   targetUrl: initialTargetUrl,
@@ -41,8 +50,10 @@ export default function CommandCenter({
 }: CommandCenterProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
 
-  // Enable save button when run completed OR time limit exceeded
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
+
+  // 👈 Compute visibility matrix based on unified status
+  const controlVisibility = computeControlVisibility(testStatus);
 
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();
@@ -54,32 +65,32 @@ export default function CommandCenter({
   return (
     <div className="flex flex-col gap-6 w-full h-full bg-[#F8F9FA] p-6 font-mono selection:bg-slate-200">
 
-      {/* ═══════════════════════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 1: GLOBAL HEADER CONTROLS
-          ═══════════════════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════════════════════════════════════════ */}
       <header className="flex justify-between items-center w-full border-b border-transparent pb-2">
-        {/* Left: Placeholder for future controls */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">Command Center</span>
         </div>
 
-        {/* Right: Control Button Group - Always Visible */}
+{/* Right: Control Button Group - Conditional Visibility */}
         <div className="flex items-center gap-3">
-          {/* Session Timer - Beside control buttons */}
-          <SessionTimer
-            initialTimeMs={sessionTimeMs}
-            isRunning={testStatus === 'RUNNING'}
-            isPaused={testStatus === 'PAUSED'}
-            onTimeUp={onTimeUp}
-            variant="compact"
-          />
+          {/* Strict conditional unmounting: Only render timer when session is ACTIVE or PAUSED */}
+          {(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
+            <SessionTimer
+              initialTimeMs={sessionTimeMs}
+              isRunning={testStatus === 'ACTIVE'}
+              isPaused={testStatus === 'PAUSED'}
+              onTimeUp={onTimeUp}
+              variant="compact"
+            />
+          )}
 
-          {/* STOP Button - Always visible */}
-          {onStop && (
+          {/* STOP Button - Only visible when ACTIVE or PAUSED */}
+          {controlVisibility.showStopButton && onStop && (
             <button
               onClick={onStop}
-              className={`font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors ${testStatus === 'RUNNING' || testStatus === 'PAUSED' ? 'bg-[#E53E3E] hover:bg-red-600 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
-              disabled={testStatus !== 'RUNNING' && testStatus !== 'PAUSED'}
+              className="bg-[#E53E3E] hover:bg-red-600 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
               title="Stop Test"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -89,12 +100,11 @@ export default function CommandCenter({
             </button>
           )}
 
-          {/* PAUSE Button - Always visible */}
-          {onPause && (
+          {/* PAUSE Button - Only visible when ACTIVE */}
+          {controlVisibility.showPauseButton && onPause && (
             <button
               onClick={onPause}
-              className={`font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors ${testStatus === 'RUNNING' ? 'bg-[#1A1D29] hover:bg-slate-800 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
-              disabled={testStatus !== 'RUNNING'}
+              className="bg-[#1A1D29] hover:bg-slate-800 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
               title="Pause Test"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -105,8 +115,8 @@ export default function CommandCenter({
             </button>
           )}
 
-          {/* RESUME Button - Always visible (swaps with Pause) */}
-          {onResume && testStatus === 'PAUSED' && (
+          {/* RESUME Button - Only visible when PAUSED */}
+          {controlVisibility.showResumeButton && onResume && (
             <button
               onClick={onResume}
               className="bg-[#1A1D29] hover:bg-slate-800 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
@@ -128,7 +138,6 @@ export default function CommandCenter({
               title="Save Session to History"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                {/* Disk/Floppy icon */}
                 <path d="M4 4h10l4 4v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" fill="none" stroke="currentColor" strokeWidth="2" />
                 <path d="M14 4v4h4" fill="none" stroke="currentColor" strokeWidth="2" />
                 <circle cx="7.5" cy="11.5" r="1" fill="currentColor" />
@@ -139,7 +148,7 @@ export default function CommandCenter({
         </div>
       </header>
 
-      {/* ═══════════════════════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 2: TARGETED ACTION & INPUT BAR
           ═══════════════════════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-1.5 w-full">
@@ -160,28 +169,31 @@ export default function CommandCenter({
               placeholder="https://staging.alpha-shop.io"
             />
           </div>
-          <button
-            onClick={() => handleStartTest()}
-            disabled={isTestRunning}
-            className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${isTestRunning ? 'bg-slate-600 cursor-not-allowed' : ''}`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
-              <path d="M10 8l6 4-6 4V8z" fill="currentColor" />
-            </svg>
-            Initialize Exploratory Safari
-          </button>
+          
+          {/* START Button - Only visible when IDLE, STOPPED, or FINISHED */}
+          {controlVisibility.showStartButton && (
+            <button
+              onClick={() => handleStartTest()}
+              disabled={isTestRunning}
+              className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${isTestRunning ? 'bg-slate-600 cursor-not-allowed' : ''}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
+                <path d="M10 8l6 4-6 4V8z" fill="currentColor" />
+              </svg>
+              Initialize Exploratory Safari
+            </button>
+          )}
         </div>
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════════
+      {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 3: WORKSPACE (Split Panels)
-          ═══════════════════════════════════════════════════════════════════════ */}
+          ═══════════════════════════════════════════════════════════════════════════════ */}
       <main className="grid grid-cols-1 gap-6 w-full flex-1 items-stretch min-h-0">
         {children}
       </main>
 
-      {/* Security Protocol Footer */}
       <div className="border-t border-slate-200 pt-4">
         <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
           SECURITY PROTOCOL: AES-256 ACTIVE

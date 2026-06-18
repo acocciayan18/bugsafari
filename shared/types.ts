@@ -55,6 +55,9 @@ export interface TelemetryMeta {
   sessionId?: string;
   // Severity from AI inference (used by BugClassifier)
   severity?: 'CRITICAL' | 'WARNING' | 'INFO';
+  // Timer sync fields for session timebox tracking (only counts when NOT paused)
+  remainingTimeMs?: number;
+  elapsedTimeMs?: number;
 }
 
 export interface TelemetryEvent {
