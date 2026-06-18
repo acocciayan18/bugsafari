@@ -64,7 +64,7 @@ export interface StressClickMetadata {
  */
 export interface RouteTrashMetadata {
   originPath: string;
-  targetPath: string; // Keep for backward compatibility with older logs
+  targetPath?: string; // Preserve for backward compatibility
   injectedPath?: string;
   navigationType?: 'history_back' | 'history_forward' | 'query_mutation' | 'malformed_push';
 }
@@ -398,6 +398,16 @@ console.log(
    */
   public startTransaction(targetSelector: string, type: ChaosContextType, metadata?: T): void {
     this.openTransaction(targetSelector, type, metadata);
+  }
+
+  /**
+   * End the current chaos transaction (alias for closeTransaction).
+   * Ensures transaction lifecycle completion after page lifecycle event or timeout.
+   *
+   * @returns void
+   */
+  public endTransaction(): void {
+    this.closeTransaction();
   }
 
   /**

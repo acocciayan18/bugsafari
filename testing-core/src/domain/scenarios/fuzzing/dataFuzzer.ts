@@ -17,42 +17,30 @@ import {
 import { ChaosTransactionManager, FuzzMetadata, FuzzingStrategyType } from '../../fuzzing/index.js';
 
 // ============================================================================
-// Module-level ChaosTransactionManager instance for dataFuzzer
+// Injected ChaosTransactionManager for dataFuzzer
 // ============================================================================
 
 /**
- * Singleton reference to the active chaos transaction manager.
- * Used for integration with fuzzGuard vulnerability detection.
- * Set via initializeFuzzTransactionManager().
+ * Reference to the active chaos transaction manager.
+ * Can be injected via setChaosManager() for centralized management.
  */
-let fuzzTransactionManagerInstance: ChaosTransactionManager<FuzzMetadata> | null = null;
+let chaosManagerInstance: ChaosTransactionManager<FuzzMetadata> | null = null;
 
 /**
- * Initializes the fuzz transaction manager singleton.
- * Must be called before fuzzing operations begin.
+ * Sets the chaos transaction manager instance.
+ * Used by createStressScenarioRegistry factory to inject unified manager.
  * 
- * @param emitTelemetry - Optional telemetry callback
- * @param getRecentSteps - Optional steps callback
- * @returns The initialized ChaosTransactionManager instance
+ * @param manager - The ChaosTransactionManager instance to use
  */
-export function initializeFuzzTransactionManager(
-  emitTelemetry?: (type: string, payload: unknown) => void,
-  getRecentSteps?: () => ActionBreadcrumb[]
-): ChaosTransactionManager<FuzzMetadata> {
-  if (!fuzzTransactionManagerInstance) {
-    fuzzTransactionManagerInstance = new ChaosTransactionManager(
-      emitTelemetry ?? ((_type, _payload) => {}),
-      getRecentSteps ?? (() => [])
-    );
-  }
-  return fuzzTransactionManagerInstance;
+export function setChaosManager(manager: ChaosTransactionManager<FuzzMetadata>): void {
+  chaosManagerInstance = manager;
 }
 
 /**
- * Gets the current fuzz transaction manager instance.
+ * Gets the current chaos transaction manager instance.
  */
-export function getFuzzTransactionManagerInstance(): ChaosTransactionManager<FuzzMetadata> | null {
-  return fuzzTransactionManagerInstance;
+export function getChaosManager(): ChaosTransactionManager<FuzzMetadata> | null {
+  return chaosManagerInstance;
 }
 
 /**
@@ -63,8 +51,8 @@ export function setupFuzzGuardAccessor(): void {
   // Import dynamically to avoid circular dependencies
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   import('../../../bugs/finders/fuzzGuard.js').then((module) => {
-    if (fuzzTransactionManagerInstance) {
-      module.setChaosManagerAccessor(fuzzTransactionManagerInstance);
+    if (chaosManagerInstance) {
+      module.setChaosManagerAccessor(chaosManagerInstance);
       console.log('[DataFuzzer] fuzzGuard accessor configured');
     }
   }).catch((err) => {
@@ -435,9 +423,9 @@ export const dataFuzzer: StressScenario = {
       strategy: strategyUsed,
     };
 
-    // Use the transaction manager if available
-    if (fuzzTransactionManagerInstance) {
-      fuzzTransactionManagerInstance.startTransaction(selector, 'FUZZ', fuzzMetadata);
+// Use the transaction manager if available
+    if (chaosManagerInstance) {
+      chaosManagerInstance.startTransaction(selector, 'FUZZ', fuzzMetadata);
       console.log(
         `[StressScenario:DataFuzzer] Transaction started: type=FUZZ, category=${category}, strategy=${strategyUsed}`
       );
@@ -556,9 +544,9 @@ export const dataFuzzer: StressScenario = {
       // Don't re-throw - error isolation is handled
     }
 
-    // Close the chaos transaction
-    if (fuzzTransactionManagerInstance) {
-      fuzzTransactionManagerInstance.closeTransaction();
+// Close the chaos transaction
+    if (chaosManagerInstance) {
+      chaosManagerInstance.closeTransaction();
       console.log(`[StressScenario:DataFuzzer] Transaction closed`);
     }
 
