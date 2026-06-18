@@ -28,6 +28,7 @@ const ENGINE_TERMINAL_ACTIONS = new Set([
   'engine-stopped',
   'engine-finished',
   'engine-halted',
+  'timebox-exceeded', // NEW: Natural timebox expiration triggers same reset flow as manual STOP
 ]);
 
 const ENGINE_PAUSE_ACTIONS = new Set([
@@ -143,9 +144,21 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
         setCurrentUrl(event.meta.message);
       }
 
-      // Task 3: Extract system-status for dynamic UI
+// Task 3: Extract system-status for dynamic UI
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'system-status' && event.meta.message) {
         setCurrentEngineAction(event.meta.message);
+      }
+
+      // NEW: Handle explicit IDLE status from backend - ensures deterministic state handshake
+      if (event.type === 'ACTION' && event.meta.actionExecuted === 'engine-status' && event.meta.message === 'IDLE') {
+        console.log('[useDashboardController] Received explicit IDLE status - resetting all button states');
+        // Double-ensure all states reset - explicit handshake confirms backend is ready
+        setIsTestRunning(false);
+        setIsLaunching(false);
+        setIsThinking(false);
+        setIsInitializing(false);
+        setStatus('READY');
+        setLiveFrame(null);
       }
     });
 

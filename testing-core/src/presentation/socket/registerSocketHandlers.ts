@@ -32,6 +32,22 @@ function emitEngineAction(io: Server, actionExecuted: string, message: string): 
   });
 }
 
+/**
+ * Emit explicit engine status - provides deterministic state handshake.
+ * Forces clean state transition to IDLE when session terminates.
+ */
+function emitEngineStatus(io: Server, status: 'IDLE' | 'STOPPED'): void {
+  io.emit('telemetry', {
+    timestamp: new Date().toISOString(),
+    type: 'ACTION',
+    meta: {
+      actionExecuted: 'engine-status',
+      message: status,
+    },
+  });
+  console.log(`[Socket] Engine status emitted: ${status}`);
+}
+
 export function registerSocketHandlers(io: Server): void {
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] dashboard connected ${socket.id}`);
@@ -56,18 +72,20 @@ export function registerSocketHandlers(io: Server): void {
       }
     });
 
-    socket.on('stop-test', () => {
+socket.on('stop-test', () => {
       console.log('[Socket] Session STOPPED manually');
       if (activeEngineSession?.engine && typeof activeEngineSession.engine.stop === 'function') {
         void Promise.resolve(activeEngineSession.engine.stop()).finally(() => {
           activeEngineSession = null;
           activeEngineInstance = null;
+          // Emit explicit IDLE status after cleanup - ensures deterministic state handshake
+          emitEngineAction(io, 'engine-stopped', 'Safari session stopped by user.');
+          emitEngineStatus(io, 'IDLE');
         });
-        emitEngineAction(io, 'engine-stopped', 'Safari session stopped by user.');
       }
     });
 
-    socket.on('disconnect', () => {
+socket.on('disconnect', () => {
       console.log(`[Socket] dashboard disconnected ${socket.id}`);
 
       if (
@@ -79,7 +97,9 @@ export function registerSocketHandlers(io: Server): void {
         void Promise.resolve(activeEngineSession.engine.stop()).finally(() => {
           activeEngineSession = null;
           activeEngineInstance = null;
+          // Emit explicit IDLE status after cleanup
           emitEngineAction(io, 'engine-stopped', 'Safari session stopped after dashboard disconnect.');
+          emitEngineStatus(io, 'IDLE');
         });
       }
     });

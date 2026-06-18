@@ -39,12 +39,28 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   }> = [];
   private currentBrowserInfo: BrowserInfo | null = null;
 
-  public pause(): void {
+public pause(): void {
     this.activeEngine?.pause();
   }
 
   public resume(): void {
     this.activeEngine?.resume();
+  }
+
+  /**
+   * Get the accumulated active execution time in milliseconds.
+   * Only counts time when the engine is NOT paused.
+   */
+  public getElapsedActiveTimeMs(): number {
+    return this.activeEngine?.getElapsedActiveTimeMs() ?? 0;
+  }
+
+  /**
+   * Check if the timebox has been exceeded.
+   * Returns true only when elapsed active time >= timeboxMs AND engine is NOT paused.
+   */
+  public isTimeboxExceeded(timeboxMs: number = 180000): boolean {
+    return this.activeEngine?.isTimeboxExceeded(timeboxMs) ?? false;
   }
 
   public async stop(): Promise<void> {

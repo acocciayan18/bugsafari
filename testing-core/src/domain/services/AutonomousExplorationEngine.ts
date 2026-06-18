@@ -114,9 +114,16 @@ export class AutonomousExplorationEngine {
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
 
-  private isPaused = false;
+private isPaused = false;
   private isStopRequested = false;
   private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
+
+// Accumulative active time tracking for timebox (only counts when NOT paused)
+  private elapsedActiveTimeMs: number = 0;
+  private timingInterval: ReturnType<typeof setInterval> | null = null;
+  private lastTickTimestamp: number = 0;
+  private timeboxMs: number = 180000; // Default 3 minutes
+  private timeboxExceeded: boolean = false;
 
   // Stability monitoring cleanup function - disposed in finally block
   private cleanupStabilityMonitor: (() => void) | null = null;
@@ -253,9 +260,90 @@ constructor(
     this.isPaused = false;
   }
 
-  public stop() {
+public stop() {
     this.isStopRequested = true;
     this.isPaused = false;
+  }
+
+  /**
+   * Get the accumulated active execution time (in ms).
+   * Only counts time when the engine is NOT paused.
+   */
+  public getElapsedActiveTimeMs(): number {
+    return this.elapsedActiveTimeMs;
+  }
+
+  /**
+   * Set the accumulated active execution time (for resumable scenarios).
+   */
+  public setElapsedActiveTimeMs(ms: number): void {
+    this.elapsedActiveTimeMs = ms;
+  }
+
+/**
+   * Check if the timebox has been exceeded.
+   * Timebox exceeded only triggers when NOT paused.
+   */
+  public isTimeboxExceeded(timeboxMs: number = 180000): boolean {
+    return this.elapsedActiveTimeMs >= timeboxMs && !this.isPaused;
+  }
+
+  /**
+   * Check if timebox has been exceeded and terminate gracefully if so.
+   * Should be called at the start of each loop iteration.
+   * 
+   * @param telemetry - Telemetry gateway for emitting timeout event
+   * @returns true if timebox exceeded (caller should exit loop), false otherwise
+   */
+  private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean {
+    if (this.isTimeboxExceeded(this.timeboxMs) && !this.timeboxExceeded) {
+      this.timeboxExceeded = true;
+      this.stopTimingInterval();
+      
+      // Emit timeout telemetry
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'timebox-exceeded',
+          message: `Execution timebox of ${this.timeboxMs}ms (${this.timeboxMs / 60000}min) exceeded - active time only`,
+        },
+      });
+      
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Start the timing interval that accumulates active time.
+   * Time only accumulates when NOT paused.
+   */
+  private startTimingInterval(): void {
+    this.elapsedActiveTimeMs = 0;
+    this.lastTickTimestamp = Date.now();
+    
+    this.timingInterval = setInterval(() => {
+      if (!this.isPaused && !this.isStopRequested) {
+        const now = Date.now();
+        const delta = now - this.lastTickTimestamp;
+        this.elapsedActiveTimeMs += delta;
+        this.lastTickTimestamp = now;
+      } else {
+        // When paused or stopped, just update tick reference without accumulating
+        this.lastTickTimestamp = Date.now();
+      }
+    }, 100);
+  }
+
+  /**
+   * Stop the timing interval.
+   */
+  private stopTimingInterval(): void {
+    if (this.timingInterval) {
+      clearInterval(this.timingInterval);
+      this.timingInterval = null;
+    }
   }
 
   private breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[] {
@@ -302,9 +390,13 @@ constructor(
 
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
-    this.freezeActionTraceRecording = false;
+this.freezeActionTraceRecording = false;
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
+
+    // 🕐 Start timing interval that accumulates active time (only when NOT paused)
+    // This replaces the fixed timeout approach with accumulative time tracking
+    this.startTimingInterval();
 
     // Persist initial telemetry with browser info (Phase 3)
     if (browserInfo && this.sessionId) {
@@ -548,10 +640,21 @@ constructor(
       // instead of the highest, and all current-page elements carry a score penalty.
       let penaltyStepsRemaining = 0;
 
-      for (let step = 1; step <= maxSteps; step++) {
+for (let step = 1; step <= maxSteps; step++) {
         if (this.isStopRequested) {
           this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
           return { completed: false, reason: 'Safari session manually stopped by user.' };
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // TIMEBOX CHECK - CRITICAL: Must check at each iteration
+        // Only terminates when elapsedActiveTimeMs >= 180000 AND NOT paused
+        // ─────────────────────────────────────────────────────────────
+        if (this.checkTimeboxAndTerminateIfExceeded(telemetry)) {
+          return { 
+            completed: false, 
+            reason: `Timebox of ${this.timeboxMs}ms (${this.timeboxMs / 60000}min) exceeded - active execution time only` 
+          };
         }
 
         while (this.isPaused) {
@@ -901,8 +1004,11 @@ telemetry.emitTargets(
         this.cleanupStabilityMonitor = null;
       }
 
-      // 🚀 Stop frame capture loop
+// 🚀 Stop frame capture loop
       this.stopFrameCaptureLoop();
+
+      // 🕐 Stop timing interval
+      this.stopTimingInterval();
 
       // 📸 Phase 4: Capture final screenshot (at test completion)
       const finalStatus = this.freezeActionTraceRecording ? 'Failed' : 'Completed';
