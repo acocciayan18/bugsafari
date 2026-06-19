@@ -55,7 +55,7 @@ export default function LoginForm({
     navigate('/dashboard');
   };
 
-const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -64,17 +64,15 @@ const handleSubmit = async (e: FormEvent) => {
       return;
     }
 
-// Use whatever the user enters - email format
+    // Use whatever the user enters - email format
     const emailInput = username.trim();
 
     try {
       const success = await login({ email: emailInput, password });
       if (!success) {
         setFormError('Login failed. Please check your credentials.');
-      } else {
-        // Login successful - navigate directly to dashboard
-        navigate('/dashboard');
       }
+      // Navigation handled by useAuth.login() callback
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       setFormError(errorMessage);
@@ -85,7 +83,7 @@ const handleSubmit = async (e: FormEvent) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-{/* Header */}
+        {/* Header */}
         <div className="text-center mb-8">
         </div>
 
@@ -95,7 +93,7 @@ const handleSubmit = async (e: FormEvent) => {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username Field */}
             <div>
-<label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
                 Email
               </label>
               <div className="relative">
@@ -159,7 +157,7 @@ const handleSubmit = async (e: FormEvent) => {
             </button>
           </form>
 
-{/* Links */}
+          {/* Links */}
           <div className="mt-6 flex flex-col items-center space-y-4">
             <Link
               to="/forgot-password"

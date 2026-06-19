@@ -18,7 +18,7 @@ const LandingPage: FC = () => {
 
     return (
         <div className="min-h-screen bg-white">
-{/* NAVIGATION BAR */}
+            {/* NAVIGATION BAR */}
             <nav className="flex items-center justify-between px-8 py-4 border-b border-gray-200 shadow-sm bg-white/80 backdrop-blur-sm">
                 <div className="text-2xl font-bold tracking-tight text-slate-800">BUGSAFARI</div>
                 <div className="flex items-center gap-8">
@@ -34,13 +34,16 @@ const LandingPage: FC = () => {
                     >
                         Sign in
                     </button>
-                    <button className="px-5 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-md">
+                    <button
+                        onClick={() => navigate('/signup')}
+                        className="px-5 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-md"
+                    >
                         Try BugSafari
                     </button>
                 </div>
             </nav>
 
-{/* HERO SECTION */}
+            {/* HERO SECTION */}
             <section className="flex flex-col lg:flex-row min-h-[80vh]">
                 <div className="flex-1 flex flex-col justify-center px-8 lg:px-16 py-16">
                     <h1 className="text-5xl lg:text-6xl font-bold leading-tight mb-4 text-slate-900">
@@ -99,7 +102,7 @@ const LandingPage: FC = () => {
                 </div>
             </section>
 
-{/* FEATURES SECTION */}
+            {/* FEATURES SECTION */}
             <section className="py-16 px-8 border-t border-gray-100">
                 <div className="flex flex-col lg:flex-row gap-8">
                     <div className="flex-1 rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-shadow">
@@ -146,7 +149,7 @@ const LandingPage: FC = () => {
                 </div>
             </section>
 
-{/* DIAGNOSTIC OVERLAY SECTION */}
+            {/* DIAGNOSTIC OVERLAY SECTION */}
             <section className="py-16 px-8">
                 <div className="rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 bg-slate-900">
@@ -189,7 +192,7 @@ const LandingPage: FC = () => {
                 </div>
             </section>
 
-{/* FOOTER */}
+            {/* FOOTER */}
             <footer className="flex flex-col lg:flex-row items-center justify-between px-8 py-6 border-t border-gray-100">
                 <div className="text-lg font-semibold text-slate-800">BugSafari</div>
                 <div className="flex items-center gap-6 my-4 lg:my-0">

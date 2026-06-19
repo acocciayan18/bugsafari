@@ -56,10 +56,10 @@ export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const navigate = useNavigate();
 
   // Password validation
@@ -97,11 +97,11 @@ export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
       return;
     }
 
-setIsLoading(true);
+    setIsLoading(true);
 
     try {
       const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-      
+
       // Make real API call to backend for user registration
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
@@ -127,17 +127,17 @@ setIsLoading(true);
         // Store token and user in localStorage
         localStorage.setItem('bugsafari_token', data.token);
         localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
-        
+
         if (onSignupSuccess) {
           onSignupSuccess(data.token, data.user);
         }
-        
-        // Navigate to dashboard after successful signup
-        navigate('/dashboard');
+
+        // Navigate to login page so user can sign in with new credentials
+        navigate('/login');
       } else {
         setFormError('Unexpected response from server.');
       }
-      
+
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
       setFormError('Unable to connect to server. Please try again.');
@@ -153,8 +153,8 @@ setIsLoading(true);
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        
-{/* Header */}
+
+        {/* Header */}
         <div className="text-center mb-8">
         </div>
 
@@ -162,7 +162,7 @@ setIsLoading(true);
           <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">BugSafari</h2>
           <p className="text-base text-slate-500 text-center mb-6">Create your account</p>
           <form onSubmit={handleSubmit} className="space-y-5">
-            
+
             {/* FULL NAME */}
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
@@ -331,7 +331,7 @@ setIsLoading(true);
             </button>
           </div>
         </div>
-        
+
       </div>
     </div>
   );

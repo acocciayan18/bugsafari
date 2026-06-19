@@ -224,14 +224,11 @@ export function useAuth() {
         setToken(authData.token);
         setUser(authData.user);
         console.log('[useAuth] Signup successful:', authData.user.email);
-        console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
 
-        // Graceful 2-second timeout delay for optimal user experience
-        setTimeout(() => {
-          doNavigate('/login');
-          setIsLoading(false);
-        }, 2000);
+        // Navigate to login page for user to sign in with new credentials
+        doNavigate('/login');
 
+        setIsLoading(false);
         return true;
       }
 
