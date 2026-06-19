@@ -3,5 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "types": "types.ts"
+  "types": "types.ts",
+  "scripts": {
+    "build": "tsc --emitDeclarationOnly --declaration --outDir dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
 }

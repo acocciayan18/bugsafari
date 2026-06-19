@@ -37,6 +37,10 @@ podman compose -f docker-compose.local.yml up -d
 
 ```
 mongodb://localhost:27017/bugsafari
+
+or
+
+mongodb+srv://bugsafari_db:Bugsafari_2026@cluster0.x4wkyw2.mongodb.net/?appName=Cluster0
 ```
 
 3. Hit **Connect**.
