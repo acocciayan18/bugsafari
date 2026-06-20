@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
 interface SignupFormProps {
   onSignupSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
@@ -64,7 +65,7 @@ export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
 
   // Password validation
   const hasMinLength = password.length >= 12;
-  const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+const hasSymbol = /[_!@#$%^&*(),.?":{}|<>]/.test(password);
   const hasNumber = /[0-9]/.test(password);
   const hasNoSequential = !/(.)\1{2,}|abc|123|qwe|password|pass/i.test(password);
 
@@ -122,18 +123,13 @@ setIsLoading(true);
         return;
       }
 
-      // Success - backend returns token and user
+// Success - backend returns token and user
       if (data.token && data.user) {
-        // Store token and user in localStorage
-        localStorage.setItem('bugsafari_token', data.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
+        // Show success toast and redirect to login
+        toast.success("Account created successfully! Please log in.");
         
-        if (onSignupSuccess) {
-          onSignupSuccess(data.token, data.user);
-        }
-        
-        // Navigate to dashboard after successful signup
-        navigate('/dashboard');
+        // Navigate to login page after successful signup
+        navigate('/login');
       } else {
         setFormError('Unexpected response from server.');
       }

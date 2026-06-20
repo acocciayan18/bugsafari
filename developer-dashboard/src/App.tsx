@@ -7,7 +7,7 @@
 
 import { useCallback, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import { AuthGuard } from './components/AuthGuard';
@@ -135,46 +135,38 @@ export default function App() {
   // Public Routes: LandingPage FIRST, then /login
   // ─────────────────────────────────────────────────────────────
   if (location.pathname === '/') {
-    return (
-      <>
-        <Toaster position="top-center" theme="dark" />
-        <LandingPage />
-      </>
-    );
+return <LandingPage />;
   }
 
-  if (isAuthRoute || !hasValidSession) {
+if (isAuthRoute || !hasValidSession) {
     return (
-      <>
-        <Toaster position="top-center" theme="dark" />
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route
-            path="/login"
-            element={
-              <LoginForm
-                onLoginSuccess={handleLoginSuccess}
-                onGuestAccess={handleGuestAccess}
-              />
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <SignupForm onSignupSuccess={handleSignupSuccess} />
-            }
-          />
-          <Route
-            path="/forgot-password"
-            element={<ForgotPasswordForm />}
-          />
-          <Route
-            path="/reset-password"
-            element={<ResetPasswordForm />}
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route
+          path="/login"
+          element={
+            <LoginForm
+              onLoginSuccess={handleLoginSuccess}
+              onGuestAccess={handleGuestAccess}
+            />
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <SignupForm onSignupSuccess={handleSignupSuccess} />
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={<ForgotPasswordForm />}
+        />
+        <Route
+          path="/reset-password"
+          element={<ResetPasswordForm />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     );
   }
 
@@ -184,11 +176,10 @@ export default function App() {
   return (
     <AuthGuard>
       <Routes>
-        <Route
+<Route
           path="/dashboard"
           element={
             <div className="flex h-screen w-screen bg-white overflow-hidden">
-              <Toaster position="top-center" theme="dark" />
               <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
@@ -235,11 +226,10 @@ export default function App() {
             </div>
           }
         />
-        <Route
+<Route
           path="/history"
           element={
             <div className="flex h-screen w-screen bg-white">
-              <Toaster position="top-center" theme="dark" />
               <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
@@ -255,11 +245,10 @@ export default function App() {
             </div>
           }
         />
-        <Route
+<Route
           path="/settings"
           element={
             <div className="flex h-screen w-screen bg-white">
-              <Toaster position="top-center" theme="dark" />
               <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}
@@ -275,11 +264,10 @@ export default function App() {
             </div>
           }
         />
-        <Route
+<Route
           path="/forensic-report/:runId"
           element={
             <div className="flex h-screen w-screen bg-white">
-              <Toaster position="top-center" theme="dark" />
               <Sidebar
                 user={user}
                 isLoggedIn={isAuthenticated}

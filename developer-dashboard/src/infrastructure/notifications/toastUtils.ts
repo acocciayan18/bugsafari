@@ -60,7 +60,7 @@ export function showAsyncToastPromise<T>(
       return originalError.message;
     },
     style: baseToastStyle,
-    duration: 5000,
+    duration: 3000,
   });
   
   // Return the promise result - sonner handles toast display automatically
@@ -146,7 +146,7 @@ export function showInfoToast(message: string, duration: number = 4000): void {
  * @param message - The warning message to display
  * @param duration - Auto-close duration in milliseconds
  */
-export function showWarningToast(message: string, duration: number = 5000): void {
+export function showWarningToast(message: string, duration: number = 3000): void {
   toast.warning(message, {
     duration,
     style: {

@@ -1,0 +1,100 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+Custom Toast Styles
+White background, black text, colored icons per variant
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* Toast container */
+.toast-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  min-width: 280px;
+  max-width: 400px;
+}
+
+/* Toast content layout */
+.toast-custom .toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+/* Toast icon */
+.toast-custom .toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Icon colors by variant */
+.toast-custom .toast-icon.text-green-500 {
+  color: #22c55e;
+}
+
+.toast-custom .toast-icon.text-black {
+  color: #000000;
+}
+
+.toast-custom .toast-icon.text-red-500 {
+  color: #ef4444;
+}
+
+/* Toast message */
+.toast-custom .toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #000000;
+}
+
+/* Dismiss button */
+.toast-custom .toast-dismiss-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.toast-custom .toast-dismiss-btn:hover {
+  background-color: #f3f4f6;
+  color: #000000;
+}
+
+.toast-custom .toast-dismiss-btn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.toast-custom .toast-dismiss-btn:active {
+  background-color: #e5e7eb;
+}
+
+/* Toast container for sonner - ensure proper positioning */
+[data-sonner-toast] .toast-custom {
+  margin-bottom: 8px;
+}
+
+/* Light theme overrides for sonner Toaster */
+[data-sonner-theme="light"] {
+  --toast-background: #ffffff;
+  --toast-foreground: #000000;
+  --toast-border: #e5e7eb;
+}

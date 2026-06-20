@@ -3,7 +3,7 @@ import type { ParsedQs } from 'qs';
 import { parseTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
-import { requireAuth, optionalAuth, type AuthRequest } from './authMiddleware.js';
+import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
 import { forensicScreenshotRepository, type IForensicScreenshot } from '../../infrastructure/database/repositories/ForensicScreenshotRepository.js';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';

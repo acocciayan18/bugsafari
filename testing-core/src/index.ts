@@ -9,8 +9,8 @@ import { PlaywrightBrowserEngine } from './infrastructure/playwright/PlaywrightB
 import { SocketTelemetryGateway } from './infrastructure/socket/SocketTelemetryGateway.js';
 import { StartExplorationUseCase } from './application/useCases/StartExplorationUseCase.js';
 import { registerRoutes } from './presentation/api/registerRoutes.js';
-import { registerAuthRoutes } from './presentation/api/authController.js';
-import { registerUserSettingsRoutes } from './presentation/api/userSettingsController.js';
+import { registerAuthRoutes } from './presentation/authentication/authController.js';
+import { registerUserSettingsRoutes } from './presentation/authentication/userSettingsController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
