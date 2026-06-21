@@ -339,14 +339,27 @@ try {
                             }
                         }
                     );
-                } catch (completionError) {
+} catch (completionError) {
                     console.error('[StartExplorationUseCase] Failed to complete session:', completionError);
                 }
             }
 
+            // CRITICAL: Emit explicit IDLE status to ensure deterministic state handshake
+            // This prevents zombie backend processes by synchronizing UI state with actual engine state
+            this.telemetry.emitTelemetry({
+                timestamp: new Date().toISOString(),
+                type: 'ACTION',
+                meta: {
+                    actionExecuted: 'engine-status',
+                    message: 'IDLE',
+                },
+            });
+
             this.state.active = false;
             this.currentSessionId = null;
             setActiveEngine(null);
+
+            console.log('[StartExplorationUseCase] Session terminated, status set to IDLE');
         }
     }
 }

@@ -350,21 +350,13 @@ public stop() {
         this.elapsedActiveTimeMs += delta;
         this.lastTickTimestamp = now;
         
-        // Emit TIME_REMAINING every 10 ticks (1 second)
+// Emit TIME_REMAINING every 10 ticks (1 second)
         tickCounter++;
         if (tickCounter >= 10) {
           tickCounter = 0;
           const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
-          telemetry.emitTelemetry({
-            timestamp: new Date().toISOString(),
-            type: 'ACTION',
-            meta: {
-              actionExecuted: 'time-remaining',
-              message: `${remainingTimeMs}`,
-              remainingTimeMs,
-              elapsedTimeMs: this.elapsedActiveTimeMs,
-            },
-          });
+          // INFRASTRUCTURE TIME UPDATES REMOVED - Internal tracking continues for hard stop enforcement
+          // The time tracking logic still runs internally to enforce 3-minute timeout
         }
       } else {
         // When paused or stopped, just update tick reference without accumulating
@@ -1045,8 +1037,19 @@ telemetry.emitTargets(
 // 🚀 Stop frame capture loop
       this.stopFrameCaptureLoop();
 
-      // 🕐 Stop timing interval
+// 🕐 Stop timing interval
       this.stopTimingInterval();
+
+      // CRITICAL: Emit explicit IDLE status to prevent zombie backend processes
+      // This ensures deterministic state handshake with frontend
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'engine-status',
+          message: 'IDLE',
+        },
+      });
 
       // 📸 Phase 4: Capture final screenshot (at test completion)
       const finalStatus = this.freezeActionTraceRecording ? 'Failed' : 'Completed';

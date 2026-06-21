@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
+import { AUTH_CONFIG, verifyTokenSync, type AuthPayload } from './authConfig.js';
 
 // Email transporter configuration
 // Using environment variables for SMTP settings
@@ -138,22 +139,11 @@ If you didn't request this, please ignore this email.
   } catch (error) {
     console.error(`[EMAIL] Failed to send password reset email:`, error);
     return false;
-  }
+}
 }
 
-// SECURITY: Enforce JWT_SECRET environment variable
-let JWT_SECRET = process.env.JWT_SECRET as string;
-// Fallback for development mode only (never use in production)
-if (!JWT_SECRET) {
-  console.warn('[WARNING] JWT_SECRET not set, using development fallback. Set JWT_SECRET in production!');
-  JWT_SECRET = 'bugsafari-dev-secret-fallback-32charsminimum!';
-}
-// Validate secret strength in production (skip for dev fallback)
-if (!JWT_SECRET.includes('fallback') && JWT_SECRET.length < 32) {
-  throw new Error('FATAL: JWT_SECRET must be at least 32 characters for secure signing.');
-}
-
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
+// Use centralized JWT config - no duplication needed
+const JWT_EXPIRES_IN = AUTH_CONFIG.JWT_EXPIRES_IN;
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -303,10 +293,10 @@ export async function handleSignup(
         password: trimmedPassword,
       });
 
-      // Generate JWT token
+// Generate JWT token
       const token = jwt.sign(
         { userId: newUser._id.toString(), email: trimmedEmail },
-        JWT_SECRET,
+        AUTH_CONFIG.JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions,
       );
 
@@ -393,10 +383,10 @@ const trimmedEmail = sanitizedEmail.trim().toLowerCase();
         return;
       }
 
-      // Generate JWT token
+// Generate JWT token
       const token = jwt.sign(
         { userId: user._id.toString(), email: trimmedEmail },
-        JWT_SECRET,
+        AUTH_CONFIG.JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions,
       );
 
@@ -417,21 +407,6 @@ const trimmedEmail = sanitizedEmail.trim().toLowerCase();
   } catch (err) {
     console.error('[Auth] Login error:', err);
     next(err);
-  }
-}
-
-/**
- * Verify JWT token and extract user info
- */
-export function verifyToken(token: string): { userId: string; email: string } | null {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      userId: string;
-      email: string;
-    };
-    return decoded;
-  } catch {
-    return null;
   }
 }
 

@@ -39,7 +39,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   }> = [];
   private currentBrowserInfo: BrowserInfo | null = null;
 
-public pause(): void {
+  public pause(): void {
     this.activeEngine?.pause();
   }
 
@@ -70,18 +70,28 @@ public pause(): void {
     this.isStopping = true;
 
     try {
-      this.activeEngine?.stop();
+      // Force engine stop first - critical for zombie prevention
+      if (this.activeEngine) {
+        this.activeEngine.stop();
+        console.log('[PlaywrightBrowserEngine] Engine stop requested');
+      }
+      // Clear engine reference immediately to prevent stale state
+      this.activeEngine = null;
+      await this.cleanupResources();
+    } catch (err) {
+      console.error('[PlaywrightBrowserEngine] Stop error:', err instanceof Error ? err.message : String(err));
+      // Ensure cleanup runs even on error
       await this.cleanupResources();
     } finally {
       this.isStopping = false;
     }
   }
 
-public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings): Promise<{ completed: boolean; reason: string }> {
+  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings): Promise<{ completed: boolean; reason: string }> {
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings);
-// Launch browser with proper headless mode and timeout handling
+    // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup
     const browserLaunchTimeoutMs = 30000;
@@ -129,19 +139,19 @@ public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSet
 
     const VIEWPORT_WIDTH = 1440;
     const VIEWPORT_HEIGHT = 900;
-    
+
     // Diagnostic: Log viewport configuration
     console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
     const browserVersion = await this.activeBrowser.version();
     console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
-    
+
     this.activeContext = await this.activeBrowser.newContext({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       ignoreHTTPSErrors: true,
       deviceScaleFactor: 1,
     });
     this.activePage = await this.activeContext.newPage();
-    
+
     // Capture browser info and system details for telemetry
     const platformInfo = await this.activePage.evaluate(() => {
       return {
@@ -221,8 +231,42 @@ public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSet
     this.activeContext = null;
     this.activeBrowser = null;
 
-    await page?.close().catch(() => undefined);
-    await context?.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
+    // Forcefully close page with error handling
+    if (page) {
+      try {
+        await page.close();
+      } catch (err) {
+        console.error('[PlaywrightBrowserEngine] Failed closing page:', err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // Forcefully close context with error handling
+    if (context) {
+      try {
+        await context.close();
+      } catch (err) {
+        console.error('[PlaywrightBrowserEngine] Failed closing context:', err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // Forcefully close browser to prevent zombie processes - critical for cleanup
+    if (browser) {
+      try {
+        await browser.close();
+        console.log('[PlaywrightBrowserEngine] Browser closed successfully');
+      } catch (err) {
+        console.error('[PlaywrightBrowserEngine] Failed killing zombie browser:', err instanceof Error ? err.message : String(err));
+        // Try force kill as last resort
+        try {
+          if (!browser.isConnected()) {
+            console.log('[PlaywrightBrowserEngine] Browser already disconnected');
+          } else {
+            await browser.close();
+          }
+        } catch (forceErr) {
+          console.error('[PlaywrightBrowserEngine] Force kill failed:', forceErr instanceof Error ? forceErr.message : String(forceErr));
+        }
+      }
+    }
   }
 }

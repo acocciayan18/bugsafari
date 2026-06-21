@@ -1,39 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-
-// SECURITY: Enforce JWT_SECRET environment variable (must match authController.ts)
-let JWT_SECRET = process.env.JWT_SECRET as string;
-// Fallback for development mode only (never use in production)
-if (!JWT_SECRET) {
-  console.warn('[WARNING] JWT_SECRET not set, using development fallback. Set JWT_SECRET in production!');
-  JWT_SECRET = 'bugsafari-dev-secret-fallback-32charsminimum!';
-}
-// Validate secret strength in production (skip for dev fallback)
-if (!JWT_SECRET.includes('fallback') && JWT_SECRET.length < 32) {
-  throw new Error('FATAL: JWT_SECRET must be at least 32 characters for secure signing.');
-}
-// Type assertion: After validation, JWT_SECRET is guaranteed to be defined
-const JWT_SECRET_STR: string = JWT_SECRET;
+import { verifyTokenSync } from './authConfig.js';
 
 export interface AuthRequest extends Request {
   userId?: string;
   userEmail?: string;
   isGuest?: boolean;
-}
-
-/**
- * Verify JWT token and extract user info
- */
-export function verifyToken(token: string): { userId: string; email: string } | null {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET_STR) as {
-      userId: string;
-      email: string;
-    };
-    return decoded;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -55,7 +26,7 @@ export function requireAuth(
   }
 
   const token = authHeader.substring(7);
-  const decoded = verifyToken(token);
+  const decoded = verifyTokenSync(token);
 
   if (!decoded) {
     response.status(401).json({
@@ -83,7 +54,7 @@ export function optionalAuth(
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    const decoded = verifyToken(token);
+    const decoded = verifyTokenSync(token);
 
     if (decoded) {
       request.userId = decoded.userId;
