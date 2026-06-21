@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, SessionHistoryEntry, BrowserConsoleMessage } from '../types';
 import type { TestSessionStatus } from '../application/useCases/useDashboardController';
 import LiveFeed from './LiveFeed';
-import ForensicHelpIcon from './ForensicHelpIcon';
+import ForensicHelpIcon from '../designs/icons/ForensicHelpIcon';
 import SessionTimer from './SessionTimer';
 
 // Tab state type for the bottom terminal
@@ -172,7 +172,7 @@ interface ClinicalForensicsDashboardProps {
     reports: ForensicCrashReport[];
   };
   isConnected: boolean;
-isTestRunning: boolean;
+  isTestRunning: boolean;
   testStatus?: TestSessionStatus;
   currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
   hasRunCompleted?: boolean; // 👈 True after first test run completes
@@ -198,7 +198,7 @@ export default function ClinicalForensicsDashboard({
   errors = { incidents: [], reports: [] },
   isConnected = false,
   isTestRunning = false,
-testStatus = 'IDLE',
+  testStatus = 'IDLE',
   currentEngineAction = '',
   hasRunCompleted = false,
   isInitializing = false,
@@ -285,7 +285,7 @@ testStatus = 'IDLE',
           <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-slate-600">Status:</span>
-<span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'ACTIVE'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'ACTIVE'
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                 : testStatus === 'PAUSED'
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
@@ -304,7 +304,7 @@ testStatus = 'IDLE',
             </div>
 
             {/* Control Buttons - Pause/Resume/Stop */}
-{(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
+            {(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
               <div className="flex items-center gap-2">
                 {testStatus === 'ACTIVE' && onPause && (
                   <button

@@ -14,7 +14,6 @@ import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import CommandCenter from './components/CommandCenter';
 import ForensicReport from './components/ForensicReport';
-import LandingPage from './components/LandingPage';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
 import ForgotPasswordForm from './components/ForgotPasswordForm';
@@ -22,6 +21,8 @@ import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
 import Settings from './components/Settings';
+import { ThemeProvider } from './designs/ThemeContext';
+import LandingPage from './designs/LandingPage';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
@@ -135,38 +136,44 @@ export default function App() {
   // Public Routes: LandingPage FIRST, then /login
   // ─────────────────────────────────────────────────────────────
   if (location.pathname === '/') {
-return <LandingPage />;
+    return (
+      <ThemeProvider>
+        <LandingPage />
+      </ThemeProvider>
+    );
   }
 
-if (isAuthRoute || !hasValidSession) {
+  if (isAuthRoute || !hasValidSession) {
     return (
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route
-          path="/login"
-          element={
-            <LoginForm
-              onLoginSuccess={handleLoginSuccess}
-              onGuestAccess={handleGuestAccess}
-            />
-          }
-        />
-        <Route
-          path="/signup"
-          element={
-            <SignupForm onSignupSuccess={handleSignupSuccess} />
-          }
-        />
-        <Route
-          path="/forgot-password"
-          element={<ForgotPasswordForm />}
-        />
-        <Route
-          path="/reset-password"
-          element={<ResetPasswordForm />}
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <ThemeProvider>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/login"
+            element={
+              <LoginForm
+                onLoginSuccess={handleLoginSuccess}
+                onGuestAccess={handleGuestAccess}
+              />
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <SignupForm onSignupSuccess={handleSignupSuccess} />
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={<ForgotPasswordForm />}
+          />
+          <Route
+            path="/reset-password"
+            element={<ResetPasswordForm />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ThemeProvider>
     );
   }
 
@@ -174,126 +181,128 @@ if (isAuthRoute || !hasValidSession) {
   // Protected Routes: /dashboard and /history
   // ─────────────────────────────────────────────────────────────
   return (
-    <AuthGuard>
-      <Routes>
-<Route
-          path="/dashboard"
-          element={
-            <div className="flex h-screen w-screen bg-white overflow-hidden">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={handleLogout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                displayName={displayName}
-              />
-              {/* COMMAND CENTER with 3-row layout */}
-              <CommandCenter
-                targetUrl={targetUrl}
-                isTestRunning={state.isTestRunning}
-                testStatus={state.status}
-                hasRunCompleted={state.hasRunCompleted}
-                hasTimeLimitExceeded={state.hasTimeLimitExceeded}
-                onTimeUp={handleTimeLimitExceeded}
-                onStart={startTest}
-                onPause={pauseTest}
-                onResume={resumeTest}
-                onStop={stopTest}
-                onSaveSessionToHistory={handleSaveSessionToHistory}
-              >
-                {/* SINGLE: Headless Browser Viewport - Full flex fill */}
-                <div className="flex flex-col min-h-0">
-                  <ClinicalForensicsDashboard
-                    targetUrl={targetUrl}
-                    currentUrl={state.currentUrl}
-                    frameBuffer={state.latestFrame}
-                    telemetry={state.telemetry}
-                    browserConsole={state.browserConsole}
-                    sessionHistory={state.sessionHistory}
-                    errors={{ incidents: state.incidents, reports: state.reports }}
-                    isConnected={state.isConnected}
-                    isTestRunning={state.isTestRunning}
-                    testStatus={state.status}
-                    currentEngineAction={state.currentEngineAction}
-                    hasRunCompleted={state.hasRunCompleted}
-                    isInitializing={state.isInitializing}
-                    liveFrame={state.liveFrame}
-                  />
+    <ThemeProvider>
+      <AuthGuard>
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={
+              <div className="flex h-screen w-screen bg-white overflow-hidden">
+                <Sidebar
+                  user={user}
+                  isLoggedIn={isAuthenticated}
+                  onLogout={handleLogout}
+                  activeView={activeView}
+                  isCollapsed={isSidebarCollapsed}
+                  onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  displayName={displayName}
+                />
+                {/* COMMAND CENTER with 3-row layout */}
+                <CommandCenter
+                  targetUrl={targetUrl}
+                  isTestRunning={state.isTestRunning}
+                  testStatus={state.status}
+                  hasRunCompleted={state.hasRunCompleted}
+                  hasTimeLimitExceeded={state.hasTimeLimitExceeded}
+                  onTimeUp={handleTimeLimitExceeded}
+                  onStart={startTest}
+                  onPause={pauseTest}
+                  onResume={resumeTest}
+                  onStop={stopTest}
+                  onSaveSessionToHistory={handleSaveSessionToHistory}
+                >
+                  {/* SINGLE: Headless Browser Viewport - Full flex fill */}
+                  <div className="flex flex-col min-h-0">
+                    <ClinicalForensicsDashboard
+                      targetUrl={targetUrl}
+                      currentUrl={state.currentUrl}
+                      frameBuffer={state.latestFrame}
+                      telemetry={state.telemetry}
+                      browserConsole={state.browserConsole}
+                      sessionHistory={state.sessionHistory}
+                      errors={{ incidents: state.incidents, reports: state.reports }}
+                      isConnected={state.isConnected}
+                      isTestRunning={state.isTestRunning}
+                      testStatus={state.status}
+                      currentEngineAction={state.currentEngineAction}
+                      hasRunCompleted={state.hasRunCompleted}
+                      isInitializing={state.isInitializing}
+                      liveFrame={state.liveFrame}
+                    />
+                  </div>
+                </CommandCenter>
+              </div>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <div className="flex h-screen w-screen bg-white">
+                <Sidebar
+                  user={user}
+                  isLoggedIn={isAuthenticated}
+                  onLogout={handleLogout}
+                  activeView={activeView}
+                  isCollapsed={isSidebarCollapsed}
+                  onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  displayName={displayName}
+                />
+                <div className="flex flex-1">
+                  <SavedEvaluationSafaris />
                 </div>
-              </CommandCenter>
-            </div>
-          }
-        />
-<Route
-          path="/history"
-          element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={handleLogout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                displayName={displayName}
-              />
-              <div className="flex flex-1">
-                <SavedEvaluationSafaris />
               </div>
-            </div>
-          }
-        />
-<Route
-          path="/settings"
-          element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={handleLogout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                displayName={displayName}
-              />
-              <div className="flex flex-1">
-                <Settings />
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <div className="flex h-screen w-screen bg-white">
+                <Sidebar
+                  user={user}
+                  isLoggedIn={isAuthenticated}
+                  onLogout={handleLogout}
+                  activeView={activeView}
+                  isCollapsed={isSidebarCollapsed}
+                  onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  displayName={displayName}
+                />
+                <div className="flex flex-1">
+                  <Settings />
+                </div>
               </div>
-            </div>
-          }
-        />
-<Route
-          path="/forensic-report/:runId"
-          element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={handleLogout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                displayName={displayName}
-              />
-              <div className="flex flex-1">
-                <ForensicReport />
+            }
+          />
+          <Route
+            path="/forensic-report/:runId"
+            element={
+              <div className="flex h-screen w-screen bg-white">
+                <Sidebar
+                  user={user}
+                  isLoggedIn={isAuthenticated}
+                  onLogout={handleLogout}
+                  activeView={activeView}
+                  isCollapsed={isSidebarCollapsed}
+                  onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  displayName={displayName}
+                />
+                <div className="flex flex-1">
+                  <ForensicReport />
+                </div>
               </div>
-            </div>
-          }
-        />
-        <Route
-          path="*"
-          element={
-            hasValidSession ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    </AuthGuard>
+            }
+          />
+          <Route
+            path="*"
+            element={
+              hasValidSession ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+        </Routes>
+      </AuthGuard>
+    </ThemeProvider>
   );
 }

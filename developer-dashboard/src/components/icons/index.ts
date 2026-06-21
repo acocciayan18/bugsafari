@@ -1,28 +1,16 @@
 /**
  * Icon Exports
- * Central export file for all icon components
+ * Re-exported from designs/icons for backward compatibility
  */
 
-import UserIcon from './UserIcon.js';
-import LockClosedIcon from './LockClosedIcon.js';
-import EyeIcon from './EyeIcon.js';
-import EyeSlashIcon from './EyeSlashIcon.js';
-import GearIcon from './GearIcon.js';
-import DatabaseIcon from './DatabaseIcon.js';
-import ShieldIcon from './ShieldIcon.js';
-import WarningIcon from './WarningIcon.js';
-import InformationCircleIcon from './InformationCircleIcon.js';
-import ChevronDownIcon from './ChevronDownIcon.js';
-
-export {
-    UserIcon,
-    LockClosedIcon,
-    EyeIcon,
-    EyeSlashIcon,
-    GearIcon,
-    DatabaseIcon,
-    ShieldIcon,
-    WarningIcon,
-    InformationCircleIcon,
-    ChevronDownIcon,
-};
+export { ChevronDownIcon } from '../../designs/icons/index.js';
+export { DatabaseIcon } from '../../designs/icons/index.js';
+export { EyeIcon } from '../../designs/icons/index.js';
+export { EyeSlashIcon } from '../../designs/icons/index.js';
+export { GearIcon } from '../../designs/icons/index.js';
+export { ForensicHelpIcon } from '../../designs/icons/index.js';
+export { InformationCircleIcon } from '../../designs/icons/index.js';
+export { LockClosedIcon } from '../../designs/icons/index.js';
+export { ShieldIcon } from '../../designs/icons/index.js';
+export { UserIcon } from '../../designs/icons/index.js';
+export { WarningIcon } from '../../designs/icons/index.js';

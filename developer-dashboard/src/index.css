@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./designs/globals.css";
 
 @theme {
   /* In v4, variables defined here automatically EXTEND the theme */
@@ -6,7 +7,7 @@
   --color-secondary: #64748B;
   --color-sage: #059669;
   --color-background: #F8FAFC;
-  
+
   --radius-genesis: 8px;
   --shadow-genesis: 0 4px 16px rgba(15, 23, 42, 0.07);
 }
@@ -18,12 +19,14 @@
 }
 
 @layer utilities {
+
   /* Help menu fade-in animation */
   @keyframes fade-in {
     from {
       opacity: 0;
       transform: scale(0.95) translateY(-4px);
     }
+
     to {
       opacity: 1;
       transform: scale(1) translateY(0);
