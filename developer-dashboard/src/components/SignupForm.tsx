@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import GradientBlinds from '../designs/GradientBlinds';
 
 interface SignupFormProps {
   onSignupSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
@@ -57,15 +58,15 @@ export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const navigate = useNavigate();
 
   // Password validation
   const hasMinLength = password.length >= 12;
-const hasSymbol = /[_!@#$%^&*(),.?":{}|<>]/.test(password);
+  const hasSymbol = /[_!@#$%^&*(),.?":{}|<>]/.test(password);
   const hasNumber = /[0-9]/.test(password);
   const hasNoSequential = !/(.)\1{2,}|abc|123|qwe|password|pass/i.test(password);
 
@@ -98,11 +99,11 @@ const hasSymbol = /[_!@#$%^&*(),.?":{}|<>]/.test(password);
       return;
     }
 
-setIsLoading(true);
+    setIsLoading(true);
 
     try {
       const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-      
+
       // Make real API call to backend for user registration
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
@@ -123,17 +124,17 @@ setIsLoading(true);
         return;
       }
 
-// Success - backend returns token and user
+      // Success - backend returns token and user
       if (data.token && data.user) {
         // Show success toast and redirect to login
         toast.success("Account created successfully! Please log in.");
-        
+
         // Navigate to login page after successful signup
         navigate('/login');
       } else {
         setFormError('Unexpected response from server.');
       }
-      
+
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
       setFormError('Unable to connect to server. Please try again.');
@@ -147,10 +148,25 @@ setIsLoading(true);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        
-{/* Header */}
+    <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4">
+      {/* GradientBlinds Background */}
+      <div className="absolute inset-0 z-0">
+        <GradientBlinds
+          gradientColors={['#1e293b', '#334155', '#475569', '#64748b']}
+          angle={25}
+          noise={0.15}
+          blindCount={12}
+          mouseDampening={0.12}
+          mirrorGradient={true}
+          spotlightRadius={0.6}
+          spotlightSoftness={1.2}
+          spotlightOpacity={0.8}
+          distortAmount={0.3}
+        />
+      </div>
+      <div className="w-full max-w-md z-10">
+
+        {/* Header */}
         <div className="text-center mb-8">
         </div>
 
@@ -158,7 +174,7 @@ setIsLoading(true);
           <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">BugSafari</h2>
           <p className="text-base text-slate-500 text-center mb-6">Create your account</p>
           <form onSubmit={handleSubmit} className="space-y-5">
-            
+
             {/* FULL NAME */}
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
@@ -327,7 +343,7 @@ setIsLoading(true);
             </button>
           </div>
         </div>
-        
+
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ import CommandCenter from './components/CommandCenter';
 import ForensicReport from './components/ForensicReport';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
+import SlidingAuthForm from './designs/SlidingAuthForm';
 import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
@@ -151,8 +152,9 @@ export default function App() {
           <Route
             path="/login"
             element={
-              <LoginForm
+              <SlidingAuthForm
                 onLoginSuccess={handleLoginSuccess}
+                onSignupSuccess={handleSignupSuccess}
                 onGuestAccess={handleGuestAccess}
               />
             }
@@ -160,7 +162,11 @@ export default function App() {
           <Route
             path="/signup"
             element={
-              <SignupForm onSignupSuccess={handleSignupSuccess} />
+              <SlidingAuthForm
+                onLoginSuccess={handleLoginSuccess}
+                onSignupSuccess={handleSignupSuccess}
+                onGuestAccess={handleGuestAccess}
+              />
             }
           />
           <Route

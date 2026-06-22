@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import GradientBlinds from '../designs/GradientBlinds';
 
 interface LoginFormProps {
   onLoginSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
@@ -55,7 +56,7 @@ export default function LoginForm({
     navigate('/dashboard');
   };
 
-const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -64,7 +65,7 @@ const handleSubmit = async (e: FormEvent) => {
       return;
     }
 
-// Use whatever the user enters - email format
+    // Use whatever the user enters - email format
     const emailInput = username.trim();
 
     try {
@@ -83,9 +84,24 @@ const handleSubmit = async (e: FormEvent) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md">
-{/* Header */}
+    <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4">
+      {/* GradientBlinds Background */}
+      <div className="absolute inset-0 z-0">
+        <GradientBlinds
+          gradientColors={['#1e293b', '#334155', '#475569', '#64748b']}
+          angle={25}
+          noise={0.15}
+          blindCount={12}
+          mouseDampening={0.12}
+          mirrorGradient={true}
+          spotlightRadius={0.6}
+          spotlightSoftness={1.2}
+          spotlightOpacity={0.8}
+          distortAmount={0.3}
+        />
+      </div>
+      <div className="w-full max-w-md z-10">
+        {/* Header */}
         <div className="text-center mb-8">
         </div>
 
@@ -95,7 +111,7 @@ const handleSubmit = async (e: FormEvent) => {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username Field */}
             <div>
-<label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
                 Email
               </label>
               <div className="relative">
@@ -159,7 +175,7 @@ const handleSubmit = async (e: FormEvent) => {
             </button>
           </form>
 
-{/* Links */}
+          {/* Links */}
           <div className="mt-6 flex flex-col items-center space-y-4">
             <Link
               to="/forgot-password"
