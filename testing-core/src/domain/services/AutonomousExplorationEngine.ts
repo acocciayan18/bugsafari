@@ -57,10 +57,38 @@ function sanitizeException(error: Error | string): { message: string; stackTrace
   const errorTypeMatch = stackTrace.match(/^([A-Za-z]+Error):/);
   const errorType = errorTypeMatch ? errorTypeMatch[1] : 'Error';
 
-  return {
+return {
     message: `${errorType}: ${message}`,
     stackTrace,
   };
+}
+
+/**
+ * Checks if the error is a browser/context closed error that occurs when operator
+ * manually stops the test. These should be treated as graceful shutdown, not fatal errors.
+ * Playwright throws "Target page, context or browser has been closed" when browser closes
+ * during a pending action like page.goto().
+ */
+function isBrowserClosedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('closed') || 
+         message.includes('Target page, context or browser has been closed');
+}
+
+/**
+ * Checks if the network failure is a user-initiated cancellation (ERR_ABORTED).
+ * When users cancel a Safari session right after hitting start, unresolved HTTP requests
+ * are forcefully cancelled by the browser, throwing net::ERR_ABORTED errors.
+ * These false-positive errors should be demoted to informational ACTION instead of EXCEPTION.
+ */
+function isNetworkAbortedError(errorText: string | undefined | null): boolean {
+  if (!errorText) return false;
+  const lower = errorText.toLowerCase();
+  return lower.includes('net::err_aborted') || 
+         lower.includes('err_aborted') ||
+         lower.includes('aborted') ||
+         lower.includes('request cancelled') ||
+         lower.includes('canceled');
 }
 import { RecursiveDomParser } from '../heuristics/domParser.js';
 import { DomHasher } from '../../ml/domHasher.js';
@@ -547,7 +575,7 @@ telemetry.emitTelemetry(this.event('NETWORK', {
       }
     });
 
-    // Catch network request failures (timeouts, connection errors, aborts)
+// Catch network request failures (timeouts, connection errors, aborts)
     page.on('requestfailed', (request: Request) => {
       const timestamp = new Date().toISOString();
       const url = request.url();
@@ -556,6 +584,24 @@ telemetry.emitTelemetry(this.event('NETWORK', {
       const reason = failure?.errorText ?? 'Unknown network failure';
       const breadcrumbs = this.actions.snapshot();
 
+      // NEW: Filter out false-positive ERR_ABORTED errors from user session cancellation
+      // When users cancel a Safari session, unresolved HTTP requests are forcefully cancelled
+      // These should be demoted to informational ACTION instead of EXCEPTION to prevent dashboard clutter
+      const isAborted = isNetworkAbortedError(reason);
+
+      if (isAborted) {
+        // Demote to informational ACTION - user session was cancelled, not a real error
+        telemetry.emitTelemetry(this.event('ACTION', {
+          actionExecuted: 'network-aborted',
+          url,
+          method,
+          message: `ℹ️ Active network connection closed due to user session abort. ${method} ${url}`,
+        }));
+        // Skip persistent logging for aborts - these are expected cancellation events
+        return;
+      }
+
+      // Process as EXCEPTION for real network failures
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         url,
         method,
@@ -931,6 +977,13 @@ telemetry.emitTargets(
           await this.emitLiveFrame(page, telemetry);
           await wait(350);
 } catch (err: unknown) {
+          // Check if this is a browser/context closed error - this happens when operator
+          // manually stops the test. Treat it as graceful shutdown, not fatal exception.
+          if (isBrowserClosedError(err)) {
+            this.emitMilestone(telemetry, 'ℹ️ Session gracefully stopped by operator');
+            return { completed: false, reason: 'Session gracefully stopped by operator' };
+          }
+
           // Phase 3: Track failure count on exception
           this.runtimeMetrics.failureCount++;
 
@@ -1593,13 +1646,20 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       .catch(() => undefined);
   }
 
-  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
+private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     /**
      * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
      * Uses lower quality JPEG (35) for reduced bandwidth.
      * Frame-skipping guard prevents backpressure when previous broadcast is still in-flight.
+     * 
+     * SAFETY: Added try-catch to handle browser closure during manual session cancellation.
+     * This prevents false-positive [EXCEPTION] errors when user stops the session.
      */
     if (this.isFrameBroadcastInFlight) {
+      return;
+    }
+    // SAFETY: Check if page is already closed before attempting screenshot
+    if (page.isClosed()) {
       return;
     }
     this.isFrameBroadcastInFlight = true;
@@ -1612,6 +1672,14 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       } else {
         telemetry.emitLiveFrame(screenshot.toString('base64'));
       }
+    } catch (err) {
+      // Gracefully handle browser closure during manual stop
+      // Silently ignore - this is expected during session cancellation
+      if (isBrowserClosedError(err)) {
+        return;
+      }
+      // Log other unexpected errors for debugging but don't throw
+      console.warn('[AutonomousExplorationEngine] Live frame capture failed:', err instanceof Error ? err.message : err);
     } finally {
       this.isFrameBroadcastInFlight = false;
     }
@@ -1629,8 +1697,13 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
     }, 33);
   }
 
-  private async captureAndEmitFrame(): Promise<void> {
+private async captureAndEmitFrame(): Promise<void> {
     if (!this.page || !this.currentTelemetry) {
+      return;
+    }
+    // SAFETY: Check if page is already closed before attempting screenshot
+    // This prevents race condition during manual session cancellation
+    if (this.page.isClosed()) {
       return;
     }
     if (this.isFrameBroadcastInFlight) {
@@ -1646,7 +1719,14 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       } else {
         this.currentTelemetry.emitLiveFrame(screenshot.toString('base64'));
       }
-    } catch {
+    } catch (err) {
+      // Gracefully handle browser closure during manual stop
+      // Silently ignore - this is expected during session cancellation
+      if (isBrowserClosedError(err)) {
+        return;
+      }
+      // Log other unexpected errors for debugging but don't throw
+      console.warn('[AutonomousExplorationEngine] Frame capture failed:', err instanceof Error ? err.message : err);
     } finally {
       this.isFrameBroadcastInFlight = false;
     }

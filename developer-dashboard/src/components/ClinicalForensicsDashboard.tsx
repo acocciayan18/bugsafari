@@ -13,6 +13,7 @@ import type { TestSessionStatus } from '../application/useCases/useDashboardCont
 import LiveFeed from './LiveFeed';
 import ForensicHelpIcon from '../designs/icons/ForensicHelpIcon';
 import SessionTimer from './SessionTimer';
+import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel } from './telemetry';
 
 // Tab state type for the bottom terminal
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
@@ -212,11 +213,6 @@ export default function ClinicalForensicsDashboard({
   // ─────────────────────────────────────────────────────────────
 
 const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
-  const [expandedStackTrace, setExpandedStackTrace] = useState<Record<string, boolean>>({});
-  const [expandedActionTrail, setExpandedActionTrail] = useState<Record<string, boolean>>({});
-
-  const errorIncidents = errors?.incidents ?? [];
-  const errorReports = errors?.reports ?? [];
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // ─────────────────────────────────────────────────────────────
@@ -453,290 +449,25 @@ const formattedTelemetry = useMemo(() => {
             </>
           )}
 
-          {/* ════════════════════════════════════════
+{/* ════════════════════════════════════════
               TAB: ERRORS (Incidents & Crash Reports)
               ════════════════════════════════════════ */}
           {activeTab === 'errors' && (
-            <div className="space-y-4 p-2">
-              {errorIncidents.length === 0 && errorReports.length === 0 ? (
-                <div className="text-slate-500 italic py-4">No errors captured yet.</div>
-              ) : (
-                <>
-                  {/* INCIDENT CARDS */}
-                  {errorIncidents.map((incident, idx) => {
-                    const incidentKey = `incident-${idx}`;
-                    const metadata = extractErrorMetadata(incident);
-                    const isExpanded = expandedStackTrace[incidentKey];
-
-                    // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
-                    const aiDiagnostics = (incident as any).aiDiagnostics;
-
-                    return (
-                      <div
-                        key={incidentKey}
-                        className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
-                              ⚠
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-red-900">Forensics (Incident)</div>
-                              <div className="text-[11px] text-red-700 opacity-75">
-                                {metadata.timestamp.split('T')[1]?.slice(0, 8) || 'Unknown'}
-                              </div>
-                            </div>
-                          </div>
-                          <CopyButton text={incident.reason} label="Error Message" />
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                            <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                            <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                            <div className="text-xs font-mono text-red-900">{metadata.source}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                            <div className="text-xs font-mono text-red-900">#{idx}</div>
-                          </div>
-                        </div>
-
-                        <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                          <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
-                            {incident.reason}
-                          </div>
-
-                          {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-
-                        {incident.stackTrace && (
-                          <ExpandableCodeBlock
-                            title="Stack Trace"
-                            content={incident.stackTrace}
-                            isExpanded={isExpanded}
-                            onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [incidentKey]: !prev[incidentKey] }))}
-                            className="max-h-96"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* CRASH REPORT CARDS */}
-                  {errorReports.map((report, idx) => {
-                    const reportKey = `report-${idx}`;
-                    const metadata = extractErrorMetadata(report);
-                    const isExpanded = expandedStackTrace[reportKey];
-                    const aiDiagnostics = (report as any).aiDiagnostics;
-
-                    return (
-                      <div
-                        key={reportKey}
-                        className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
-                              🔥
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-red-900">Console Error</div>
-                              <div className="text-[11px] text-red-700 opacity-75">
-                                {report.timestamp || 'Unknown'}
-                              </div>
-                            </div>
-                          </div>
-                          <CopyButton text={report.reason} label="Error Message" />
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                            <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                            <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                            <div className="text-xs font-mono text-red-900">{metadata.source}</div>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                            <div className="text-xs font-mono text-red-900">#{idx}</div>
-                          </div>
-                        </div>
-
-                        <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                          <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
-                            {report.reason}
-                          </div>
-
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-
-                        {report.stackTrace && (
-                          <ExpandableCodeBlock
-                            title="Stack Trace"
-                            content={report.stackTrace}
-                            isExpanded={isExpanded}
-                            onToggle={() => setExpandedStackTrace(prev => ({ ...prev, [reportKey]: !prev[reportKey] }))}
-                            className="max-h-96"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
+            <ErrorTabPanel errors={errors} />
           )}
 
-          {/* ════════════════════════════════════════
+{/* ════════════════════════════════════════
               TAB: NETWORK
               ════════════════════════════════════════ */}
-          {activeTab === 'network' && (() => {
-            const networkEvents = telemetry
-              .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
-              .slice(-50);
+          {activeTab === 'network' && (
+            <NetworkTabPanel telemetry={telemetry} />
+          )}
 
-            if (networkEvents.length === 0) {
-              return (
-                <div className="text-slate-500 py-4">
-                  <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
-                  <div className="text-slate-400 italic text-xs leading-relaxed">
-                    Waiting for network activity...
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div className="space-y-3 p-2">
-                <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
-                {networkEvents.map((event, idx) => {
-                  const meta = event.meta;
-                  const statusCode = meta?.statusCode;
-                  const url = meta?.url || 'unknown';
-                  const method = meta?.method || 'GET';
-                  const duration = meta?.durationMs;
-                  const message = meta?.message || '';
-                  const aiDiagnostics = meta?.aiDiagnostics || null;
-
-                  const isError = statusCode && statusCode >= 400;
-                  const isServerError = statusCode && statusCode >= 500;
-                  const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
-
-                  const borderColor = isServerError
-                    ? 'border-red-300'
-                    : isClientError
-                      ? 'border-amber-300'
-                      : 'border-slate-300';
-                  const bgColor = isServerError
-                    ? 'bg-red-50'
-                    : isClientError
-                      ? 'bg-amber-50'
-                      : 'bg-white';
-                  const textColor = isError ? 'text-red-700' : 'text-blue-600';
-
-                  return (
-                    <div
-                      key={`network-${idx}`}
-                      className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
-                    >
-                      <div className="px-3 py-2 flex items-center justify-between border-b border-slate-200">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-mono text-xs font-bold ${textColor}`}>
-                            {method} {statusCode || 'ERR'}
-                          </span>
-                          {duration !== undefined && (
-                            <span className="text-[10px] text-slate-500">
-                              {duration}ms
-                            </span>
-                          )}
-                        </div>
-{/* Timestamp removed for simplified console matching */}
-                        {/* <span className="text-[10px] text-slate-500 font-mono">
-                          {event.timestamp ? new Date(event.timestamp).toTimeString().slice(0, 8) : ''}
-                        </span> */}
-                      </div>
-                      <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
-                        {url}
-                      </div>
-                      {(message || aiDiagnostics) && (
-                        <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
-                          {message}
-                          <AiForensicDiagnosticCard ai={aiDiagnostics} />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* ════════════════════════════════════════
+{/* ════════════════════════════════════════
               TAB: CONSOLE (Browser Console Output)
               ════════════════════════════════════════ */}
           {activeTab === 'console' && (
-            <div className="space-y-3 p-2">
-              <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">📋</span>
-                    <span className="text-xs font-bold text-slate-900">Browser Console Output</span>
-                  </div>
-                  <span className="text-[10px] text-slate-500">Last 50 logs</span>
-                </div>
-
-                <div className="max-h-96 overflow-y-auto custom-scrollbar bg-white">
-                  {browserConsole.length === 0 ? (
-                    <div className="text-slate-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
-                  ) : (
-                    <div className="p-3 space-y-2">
-                      {browserConsole.slice(-50).map((log, idx) => (
-                        <div key={idx} className="flex items-start gap-2 justify-between p-2 border border-slate-200 rounded hover:bg-slate-50">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-slate-700 flex-shrink-0 w-6">{idx + 1}.</span>
-                              <span className="font-semibold text-xs whitespace-pre-wrap break-words text-slate-700">
-                                {log.message}
-                              </span>
-                            </div>
-{/* Timestamp removed for simplified console matching */}
-                            {/* <div className="text-slate-600 text-[11px] mt-1 whitespace-pre-wrap break-words font-mono ml-8">
-                              {log.timestamp && new Date(log.timestamp).toLocaleTimeString()}
-                            </div> */}
-                          </div>
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                            <CopyButton text={log.message} label="Log" />
-                          </div>
-                        </div>
-                      ))}
-
-                      <ExpandableCodeBlock
-                        title="View Full Console Logs JSON"
-                        content={JSON.stringify(browserConsole.slice(-50), null, 2)}
-                        isExpanded={expandedActionTrail['console']}
-                        onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ConsoleTabPanel browserConsole={browserConsole} />
           )}
 
 

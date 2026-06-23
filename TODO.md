@@ -1,29 +1,35 @@
-# TODO.md - Telemetry Dashboard Modularization
+# TODO - Browser Closed Error Handling Fix
 
-## Task Overview
-Refactor the monolithic `ClinicalForensicsDashboard` component by extracting tab panels into separate modular components.
+## Task: Handle "Target page, context or browser has been closed" gracefully
 
-## Implementation Steps
+### Overview
+When an operator manually clicks "Stop Testing" on the dashboard, the browser context is torn down. If Playwright is in the middle of executing an operation like `page.goto`, it throws a generic error that should be treated as graceful abort, not a bug.
 
-- [ ] Step 1: Create the telemetry directory structure at `developer-dashboard/src/components/telemetry/`
-- [ ] Step 2: Extract TelemetryLogStream.tsx (telemetry tab content)
-- [ ] Step 3: Extract ErrorTabPanel.tsx (errors tab content)
-- [ ] Step 4: Extract NetworkTabPanel.tsx (network tab content)
-- [ ] Step 5: Extract ConsoleTabPanel.tsx (console tab content)
-- [ ] Step 6: Refactor ClinicalForensicsDashboard.tsx to import and use the modular components
-- [ ] Step 7: Test the refactored component to ensure all tabs work correctly
+### Current State Analysis
+The file already has:
+1. ✅ `isBrowserClosedError` helper function (line ~77-81)
+2. ✅ Check in catch block for browser closed errors
+3. ✅ Telemetry message updated to 'Session gracefully stopped by operator'
 
-## File Changes Summary
+### Implementation Steps
+- [x] Step 1: Verify current catch block implementation around line 513
+- [x] Step 2: Confirm telemetry message format
+- [x] Step 3: Make the edit to update the message COMPLETED
 
-### New Files to Create:
-- `developer-dashboard/src/components/telemetry/TelemetryLogStream.tsx`
-- `developer-dashboard/src/components/telemetry/ErrorTabPanel.tsx`
-- `developer-dashboard/src/components/telemetry/NetworkTabPanel.tsx`
-- `developer-dashboard/src/components/telemetry/ConsoleTabPanel.tsx`
-- `developer-dashboard/src/components/telemetry/index.ts`
+---
 
-### Files to Modify:
-- `developer-dashboard/src/components/ClinicalForensicsDashboard.tsx`
+# TODO - ERR_ABORTED Network Request Filtering
 
-## Dependencies
-- No new dependencies required - using existing TypeScript types and React patterns
+## Task: Filter false-positive net::ERR_ABORTED errors on session cancellation
+
+### Overview
+When users cancel a Safari session right after hitting start, unresolved HTTP requests are forcefully cancelled by the browser, throwing net::ERR_ABORTED errors. These false-positive errors should be demoted to informational ACTION instead of EXCEPTION.
+
+### Target File
+- `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
+
+### Implementation Steps
+- [x] Step 1: Add `isNetworkAbortedError()` helper function to detect cancellation errors
+- [x] Step 2: Modify `page.on('requestfailed')` handler to check for abort errors
+- [x] Step 3: Demote filtered errors to ACTION type with message: "ℹ️ Active network connection closed due to user session abort."
+COMPLETED
