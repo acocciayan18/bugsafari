@@ -1,22 +1,39 @@
 # Implementation Plan
 
-[Overview]
-Filter out false-positive `net::ERR_ABORTED` network failures when users cancel Safari sessions, demoting them to informational ACTION milestones instead of EXCEPTION telemetry to prevent dashboard clutter.
+## Overview
 
-[Scope]
-When a user cancels a Safari session right after hitting start, unresolved HTTP requests are forcefully cancelled by the browser, throwing `net::ERR_ABORTED` errors. Currently these are captured by the `page.on('requestfailed')` handler and emitted as EXCEPTION telemetry. This implementation adds a guard to detect such cancellation errors and demote them to informational ACTION messages.
+Remove two unused code definitions (`extractErrorMetadata` and `ExpandableCodeBlock`) from the ClinicalForensicsDashboard.tsx file to fix TypeScript/ESLint warning errors about assigned but never used values.
 
-[Files]
-- `testing-core/src/domain/services/AutonomousExplorationEngine.ts` - Modify the `requestfailed` event handler (around line 442-479) to filter/demote ERR_ABORTED errors
+## Types
 
-[Functions]
-- `page.on('requestfailed')` handler - Add conditional guard to check for cancellation errors and demote to ACTION instead of EXCEPTION
+No type system changes required.
 
-[Types]
-No type changes required.
+## Files
 
-[Implementation Order]
-1. Add helper function `isNetworkAbortedError()` to detect cancellation-related error messages
-2. Modify the `requestfailed` handler to use the helper function
-3. Demote filtered errors to ACTION type with informational message: `ℹ️ Active network connection closed due to user session abort.`
-4. Update TODO.md to track progress
+- **Existing files to be modified**: `developer-dashboard/src/components/ClinicalForensicsDashboard.tsx`
+  - Remove unused `extractErrorMetadata` function definition
+  - Remove unused `ExpandableCodeBlock` component definition
+
+## Functions
+
+- **Removed functions**:
+  - `extractErrorMetadata`: Utility function for extracting metadata from error objects - never called in component
+  - `ExpandableCodeBlock`: Reusable component for expandable code blocks - never used in component
+
+## Classes
+
+No class modifications required.
+
+## Dependencies
+
+No dependency modifications required.
+
+## Testing
+
+No test file modifications required.
+
+## Implementation Order
+
+1. [ ] Remove `extractErrorMetadata` function definition (lines ~43-52)
+2. [ ] Remove `ExpandableCodeBlock` component definition (lines ~77-112)
+3. [ ] Verify the file compiles without unused variable warnings
