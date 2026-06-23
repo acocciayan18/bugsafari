@@ -3,9 +3,11 @@
 // 3-Row Layout: Header Controls → Input Bar → Workspace Grid
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from './SessionTimer';
 import type { TestSessionStatus } from '../application/useCases/useDashboardController';
+
+// const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
 interface CommandCenterProps {
   targetUrl: string;
@@ -51,8 +53,30 @@ export default function CommandCenter({
   children,
 }: CommandCenterProps) {
   const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
+  const [backendBuildTime, setBackendBuildTime] = useState<string | null>(null);
 
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
+
+// Fetch backend health info to get build timestamp
+  useEffect(() => {
+    console.log('[CommandCenter] Fetching health endpoint from: /api/health');
+    fetch('/api/health')
+      .then(res => {
+        console.log('[CommandCenter] Health response status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[CommandCenter] Health data:', data);
+        if (data.compiledAt) {
+          console.log('[CommandCenter] Setting backend build time:', data.compiledAt);
+          setBackendBuildTime(data.compiledAt);
+        } else {
+          console.log('[CommandCenter] No compiledAt in response, using timestamp:', data.timestamp);
+          setBackendBuildTime(data.timestamp || new Date().toLocaleString());
+        }
+      })
+      .catch(err => console.error('[CommandCenter] Failed to fetch health:', err));
+  }, []);
 
   // 👈 Compute visibility matrix based on unified status
   const controlVisibility = computeControlVisibility(testStatus);
@@ -213,10 +237,15 @@ export default function CommandCenter({
         {children}
       </main>
 
-      <div className="border-t border-slate-200 pt-4">
+<div className="border-t border-slate-200 pt-4 flex justify-between items-center">
         <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
           SECURITY PROTOCOL: AES-256 ACTIVE
         </p>
+        {backendBuildTime && (
+          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            ℹ️ Testing Core Instance Build: {backendBuildTime}
+          </p>
+        )}
       </div>
     </div>
   );

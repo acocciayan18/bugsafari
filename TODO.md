@@ -1,3 +1,21 @@
+# TODO - Race Condition Fix (TypeError on Rapid Session Cancellation)
+
+## Task: Fix TypeError: Cannot read properties of null (reading 'run')
+
+### Overview
+When stopping a test session right after starting it, a `TypeError: Cannot read properties of null (reading 'run')` is thrown inside `PlaywrightBrowserEngine.ts`. This is because the cleanup method nullifies the internal exploration engine while the asynchronous `run()` method is still progressing through its initialization sequence.
+
+### Target File
+- `testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts`
+
+### Implementation Steps
+- [x] Step 1: Add null safety check before `this.activeEngine.run(...)` invocation
+- [x] Step 2: Wrap execution in try/catch to handle TypeError gracefully
+- [x] Step 3: Emit ACTION telemetry ("🏁 Session initialization terminated safely by request") instead of EXCEPTION
+COMPLETED
+
+---
+
 # TODO - Browser Closed Error Handling Fix
 
 ## Task: Handle "Target page, context or browser has been closed" gracefully

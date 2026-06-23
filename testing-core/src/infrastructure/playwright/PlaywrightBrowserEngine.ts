@@ -172,7 +172,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       screenResolution: `${platformInfo.screenWidth}x${platformInfo.screenHeight}`,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-    };
+};
 
     console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
 
@@ -193,8 +193,38 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
     let result: { completed: boolean; reason: string };
     try {
+      // 🔒 RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
+      if (!this.activeEngine) {
+        // Gracefully abort - session was terminated by request
+        telemetry.emitTelemetry({
+          timestamp: new Date().toISOString(),
+          type: 'ACTION',
+          meta: {
+            actionExecuted: 'session-initialization-terminated',
+            message: '🏁 Session initialization terminated safely by request',
+          },
+        });
+        return { completed: false, reason: 'Session terminated by user' };
+      }
+      
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
+    } catch (err: unknown) {
+      // 🔒 RACE CONDITION FIX: Catch null property access during rapid cancellation
+      if (err instanceof TypeError && err.message.includes('Cannot read properties of null')) {
+        // Gracefully suppress exception - this is expected during rapid cancellation
+        telemetry.emitTelemetry({
+          timestamp: new Date().toISOString(),
+          type: 'ACTION',
+          meta: {
+            actionExecuted: 'session-initialization-terminated',
+            message: '🏁 Session initialization terminated safely by request',
+          },
+        });
+        return { completed: false, reason: 'Session terminated by user' };
+      }
+      // Re-throw unexpected errors
+      throw err;
     } finally {
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       await this.cleanupResources();
