@@ -137,13 +137,14 @@ export default function TelemetryStream({
                         </div>
                         <div className="mt-1 line-clamp-2 text-[11px] text-[#6B7280]">{sub}</div>
                       </div>
-                      <div className="shrink-0 text-[11px] text-[#9CA3AF]">
+{/* Timestamp display removed for simplified console matching */}
+                      {/* <div className="shrink-0 text-[11px] text-[#9CA3AF]">
                         {new Date(event.timestamp).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
                           second: '2-digit',
                         })}
-                      </div>
+                      </div> */}
                     </div>
                   </li>
                 );

@@ -5,7 +5,6 @@ import { StartExplorationUseCase } from '../../application/useCases/StartExplora
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
-import { forensicScreenshotRepository, type IForensicScreenshot } from '../../infrastructure/database/repositories/ForensicScreenshotRepository.js';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
@@ -338,43 +337,12 @@ export function registerRoutes(
     }
   });
 
-  // 📸 Phase 4: Forensic Screenshots API
-  app.get('/api/forensic/screenshots', async (request: Request, response: Response): Promise<void> => {
-    console.log('[API] GET /api/forensic/screenshots called with query:', request.query);
+// Forensic Screenshots API - Now returns empty array (screenshots disabled for storage optimization)
+  app.get('/api/forensic/screenshots', async (_request: Request, response: Response): Promise<void> => {
+    console.log('[API] GET /api/forensic/screenshots called - screenshots disabled');
 
-    try {
-      // FIXED: Safely extract sessionId from query - can be string|string[]
-      const sessionId = extractStringParam(request.query.sessionId) || undefined;
-      let screenshots: import('../../infrastructure/database/repositories/ForensicScreenshotRepository.js').IForensicScreenshot[] = [];
-
-      if (sessionId) {
-        screenshots = await forensicScreenshotRepository.findByRunId(sessionId);
-      } else {
-        // Get latest screenshots from all recent sessions (limit to 20)
-        const allScreenshots = await forensicScreenshotRepository.findByRunId('0000000000000000').catch(() => []);
-        // If no specific session, return empty for now (frontend should pass sessionId)
-        screenshots = [];
-      }
-
-      // Return screenshots in format suitable for gallery
-      const formattedScreenshots = screenshots.map(s => ({
-        id: s._id?.toString(),
-        forensicRunId: s.forensicRunId?.toString(),
-        screenshotType: s.screenshotType,
-        imageData: s.imageData,
-        url: s.url,
-        errorMessage: s.errorMessage,
-        stepNumber: s.stepNumber,
-        createdAt: s.createdAt?.toISOString(),
-      }));
-
-      console.log('[API] Returning screenshots count:', formattedScreenshots.length);
-      response.json({ screenshots: formattedScreenshots });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[API] Error in /api/forensic/screenshots:', error);
-      response.status(500).json({ error: `Failed to fetch screenshots: ${errorMessage}`, screenshots: [] });
-    }
+    // Return empty screenshots array - screenshot capture has been removed
+    response.json({ screenshots: [] });
   });
 
   // 🧠 Phase 5: Forensic Analysis API - Get analysis for a test run
@@ -562,17 +530,8 @@ export function registerRoutes(
         createdAt: e.createdAt?.toISOString(),
       }));
 
-      // Fetch screenshots
-      const screenshots = await forensicScreenshotRepository.findByRunId(sessionId).catch(() => []);
-      const formattedScreenshots = screenshots.map(s => ({
-        id: s._id?.toString(),
-        screenshotType: s.screenshotType,
-        imageData: s.imageData,
-        url: s.url,
-        errorMessage: s.errorMessage,
-        stepNumber: s.stepNumber,
-        createdAt: s.createdAt?.toISOString(),
-      }));
+// Screenshots removed - return empty array
+      const formattedScreenshots: never[] = [];
 
       // Fetch telemetry
       const telemetry = await forensicTelemetryRepository.findByForensicRunId(sessionId).catch(() => []);

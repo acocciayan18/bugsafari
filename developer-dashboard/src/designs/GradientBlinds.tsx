@@ -129,7 +129,7 @@ uniform int   uColorCount;
 varying vec2 vUv;
 
 float rand(vec2 co){
-  return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453;
+  return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453);
 }
 
 vec2 rotate2D(vec2 p, float a){
@@ -174,27 +174,25 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec2 uv = pr * 0.5 + 0.5;
 
     vec2 uvMod = uv;
-    if (uDistort > 0.0) {
-      float a = uvMod.y * 6.0;
-      float b = uvMod.x * 6.0;
-      float w = 0.01 * uDistort;
-      uvMod.x += sin(a) * w;
-      uvMod.y += cos(b) * w;
-    }
-    float t = uvMod.x;
     if (uMirror > 0.5) {
-      t = 1.0 - abs(1.0 - 2.0 * fract(t));
+      uvMod.x = abs(uvMod.x - 0.5) * 2.0;
     }
-    vec3 base = getGradientColor(t);
+
+    if (uDistort > 0.0) {
+      uvMod.y += (rand(vec2(uvMod.x * 10.0, iTime * 0.25)) - 0.5) * 0.15 * uDistort;
+      uvMod.x += (rand(vec2(uvMod.y * 10.0, iTime * 0.2)) - 0.5) * 0.15 * uDistort;
+    }
+
+    vec3 base = getGradientColor(uvMod.x);
 
     vec2 offset = vec2(iMouse.x/iResolution.x, iMouse.y/iResolution.y);
-  float d = length(uv0 - offset);
-  float r = max(uSpotlightRadius, 1e-4);
-  float dn = d / r;
-  float spot = (1.0 - 2.0 * pow(dn, uSpotlightSoftness)) * uSpotlightOpacity;
-  vec3 cir = vec3(spot);
-  float stripe = fract(uvMod.x * max(uBlindCount, 1.0));
-  if (uShineFlip > 0.5) stripe = 1.0 - stripe;
+    float d = length(uv0 - offset);
+    float r = max(uSpotlightRadius, 1e-4);
+    float dn = d / r;
+    float spot = (1.0 - 2.0 * pow(dn, uSpotlightSoftness)) * uSpotlightOpacity;
+    vec3 cir = vec3(spot);
+    float stripe = fract(uvMod.x * max(uBlindCount, 1.0));
+    if (uShineFlip > 0.5) stripe = 1.0 - stripe;
     vec3 ran = vec3(stripe);
 
     vec3 col = cir + base - ran;
@@ -305,9 +303,14 @@ void main() {
             } else {
                 lastTimeRef.current = t;
             }
+
             if (!paused && programRef.current && meshRef.current) {
                 try {
-                    renderer.render({ scene: meshRef.current });
+                    const glProgram = (programRef.current as any)?.program;
+                    const hasPosition = Boolean((geometryRef.current as any)?.attributes?.position);
+                    if (glProgram && hasPosition) {
+                        renderer.render({ scene: meshRef.current });
+                    }
                 } catch (e) {
                     console.error(e);
                 }

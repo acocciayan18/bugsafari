@@ -158,7 +158,24 @@ export function createDefaultStressScenarioRegistry(): StressScenario[] {
 }
 
 // Export scenario map for lookup by name
-export const stressScenarioMap: Record<string, StressScenario> = {};
+// Note: We create wrapper functions to handle the interface mismatch with routeTrasher
+export const stressScenarioMap: Record<string, StressScenario> = {
+  RouteTrasher: {
+    name: routeTrasher.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      return (routeTrasher as any).execute(page, target, null);
+    },
+  },
+  CoordinateBombing: coordinateBombing,
+  ButtonSpammer: buttonSpammer,
+  FormBypasser: formBypasser,
+  NetworkSaboteur: {
+    name: networkSaboteur.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      return (networkSaboteur as any).execute(page, target, null);
+    },
+  },
+};
 
 // Re-export all items for backward compatibility
 export {

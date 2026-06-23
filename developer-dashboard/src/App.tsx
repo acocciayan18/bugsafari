@@ -14,8 +14,6 @@ import { AuthGuard } from './components/AuthGuard';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import CommandCenter from './components/CommandCenter';
 import ForensicReport from './components/ForensicReport';
-import LoginForm from './components/LoginForm';
-import SignupForm from './components/SignupForm';
 import SlidingAuthForm from './designs/SlidingAuthForm';
 import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
@@ -66,7 +64,7 @@ export default function App() {
   const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
-  const [displayName, setDisplayName] = useState<string | null>(() => getStoredDisplayName());
+const [displayName] = useState<string | null>(() => getStoredDisplayName());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const createGateway = useCallback(() => {
@@ -204,12 +202,13 @@ export default function App() {
                   displayName={displayName}
                 />
                 {/* COMMAND CENTER with 3-row layout */}
-                <CommandCenter
+<CommandCenter
                   targetUrl={targetUrl}
                   isTestRunning={state.isTestRunning}
                   testStatus={state.status}
                   hasRunCompleted={state.hasRunCompleted}
                   hasTimeLimitExceeded={state.hasTimeLimitExceeded}
+                  isConnected={state.isConnected}
                   onTimeUp={handleTimeLimitExceeded}
                   onStart={startTest}
                   onPause={pauseTest}
@@ -219,13 +218,12 @@ export default function App() {
                 >
                   {/* SINGLE: Headless Browser Viewport - Full flex fill */}
                   <div className="flex flex-col min-h-0">
-                    <ClinicalForensicsDashboard
+<ClinicalForensicsDashboard
                       targetUrl={targetUrl}
                       currentUrl={state.currentUrl}
                       frameBuffer={state.latestFrame}
                       telemetry={state.telemetry}
                       browserConsole={state.browserConsole}
-                      sessionHistory={state.sessionHistory}
                       errors={{ incidents: state.incidents, reports: state.reports }}
                       isConnected={state.isConnected}
                       isTestRunning={state.isTestRunning}

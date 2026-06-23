@@ -13,6 +13,7 @@ interface CommandCenterProps {
   testStatus: TestSessionStatus;
   hasRunCompleted?: boolean;
   hasTimeLimitExceeded?: boolean;
+  isConnected?: boolean;
   onStart: (url: string) => void;
   onPause?: () => void;
   onResume?: () => void;
@@ -39,6 +40,7 @@ export default function CommandCenter({
   testStatus,
   hasRunCompleted,
   hasTimeLimitExceeded,
+  isConnected,
   onStart,
   onPause,
   onResume,
@@ -68,7 +70,7 @@ export default function CommandCenter({
       {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 1: GLOBAL HEADER CONTROLS
           ═══════════════════════════════════════════════════════════════════════════════ */}
-      <header className="flex justify-between items-center w-full border-b border-transparent pb-2">
+<header className="relative flex justify-between items-center w-full border-b border-transparent pb-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">Command Center</span>
         </div>
@@ -129,7 +131,7 @@ export default function CommandCenter({
             </button>
           )}
 
-          {/* SAVE HISTORY Button - Enable when run completed OR time limit exceeded */}
+{/* SAVE HISTORY Button - Enable when run completed OR time limit exceeded */}
           {onSaveSessionToHistory && canSave && (
             <button
               onClick={onSaveSessionToHistory}
@@ -146,6 +148,23 @@ export default function CommandCenter({
             </button>
           )}
         </div>
+
+        {/* Gateway Status Indicator - Top Right Corner */}
+        {isConnected !== undefined && (
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-2 text-xs font-mono">
+            {isConnected ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-green-600 font-semibold">GATEWAY: CONNECTED</span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                <span className="text-red-600 font-semibold">GATEWAY: DISCONNECTED</span>
+              </>
+            )}
+          </div>
+        )}
       </header>
 
       {/* ═══════════════════════════════════════════════════════════════════════════════

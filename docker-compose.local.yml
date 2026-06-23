@@ -50,7 +50,6 @@ services:
     networks:
       - bugsafari-local
 
-  # Local development with volume mapping and auto-recompilation
   api:
     container_name: bugsafari-api
     restart: unless-stopped
@@ -69,10 +68,7 @@ services:
         RUN npm run build --workspace shared
         RUN npm run build --workspace testing-core
         EXPOSE 3000
-    # Volume mapping for local development - host changes reflect instantly in container
-    volumes:
-      - ./testing-core:/app/testing-core
-      - ./shared:/app/shared
+    # Note: Volumes removed to fix Windows path space and statfs mounting constraints in Podman
     environment:
       NODE_ENV: development
       BUGSAFARI_PORT: "3000"
@@ -95,11 +91,9 @@ services:
         condition: service_healthy
     networks:
       - bugsafari-local
-    # Auto-recompilation: watches for file changes and restarts automatically
     command: >
       sh -c "npm run dev --workspace testing-core"
 
-  # Local development with volume mapping and auto-recompilation
   worker:
     container_name: bugsafari-worker
     restart: unless-stopped
@@ -117,10 +111,7 @@ services:
         COPY shared ./shared
         RUN npm run build --workspace shared
         RUN npm run build --workspace testing-core
-    # Volume mapping for local development - host changes reflect instantly in container
-    volumes:
-      - ./testing-core:/app/testing-core
-      - ./shared:/app/shared
+    # Note: Volumes removed to fix Windows path space and statfs mounting constraints in Podman
     environment:
       NODE_ENV: development
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/bugsafari}
@@ -134,7 +125,6 @@ services:
         condition: service_healthy
     networks:
       - bugsafari-local
-    # Auto-recompilation: watches for file changes and restarts automatically
     command: >
       sh -c "npm run dev --workspace testing-core"
 

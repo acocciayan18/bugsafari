@@ -82,9 +82,7 @@ import type { BrowserInfo } from '../../infrastructure/playwright/PlaywrightBrow
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
-import { forensicScreenshotRepository } from '../../infrastructure/database/repositories/ForensicScreenshotRepository.js';
 import { ForensicErrorType, ForensicErrorSeverity } from '../../infrastructure/database/models/ForensicErrorModel.js';
-import { ForensicScreenshotType } from '../../infrastructure/database/models/ForensicScreenshotModel.js';
 import { Types } from 'mongoose';
 
 // Import StateGraphNavigator and types from DIrectedPathFinder
@@ -99,7 +97,6 @@ export class AutonomousExplorationEngine {
   private readonly parser = new RecursiveDomParser();
   private readonly hashManager = new DomHasher();
   private readonly visualRegressionDetector = new VisualRegressionDetector();
-  private readonly baselineScreenshots = new Map<string, Buffer>();
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
@@ -313,18 +310,19 @@ public stop() {
    * @param telemetry - Telemetry gateway for emitting timeout event
    * @returns true if timebox exceeded (caller should exit loop), false otherwise
    */
-  private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean {
+private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean {
     if (this.isTimeboxExceeded(this.timeboxMs) && !this.timeboxExceeded) {
       this.timeboxExceeded = true;
       this.stopTimingInterval();
       
-      // Emit timeout telemetry
+      // Emit timebox completion as INFO (not exception)
+      // This signals normal completion, not an error
       telemetry.emitTelemetry({
         timestamp: new Date().toISOString(),
         type: 'ACTION',
         meta: {
-          actionExecuted: 'timebox-exceeded',
-          message: `Execution timebox of ${this.timeboxMs}ms (${this.timeboxMs / 60000}min) exceeded - active time only`,
+          actionExecuted: 'timebox-completed',
+          message: `⏱️ Time limit reached: ${this.timeboxMs / 60000} min timebox completed - exploration ended normally`,
         },
       });
       
@@ -516,17 +514,12 @@ this.freezeActionTraceRecording = false;
         // Phase 3: Track failed requests count
         this.runtimeMetrics.requestsCount++;
 
-        telemetry.emitTelemetry(this.event('NETWORK', {
+telemetry.emitTelemetry(this.event('NETWORK', {
           statusCode: status,
           url,
           method,
           message: `Network ${status} ${method} ${url}`,
         }));
-
-        // 📸 Phase 4: Capture CRITICAL_EVENT screenshot on API failure
-        this.captureScreenshot(page, ForensicScreenshotType.API_FAILURE, `HTTP ${status} Error: ${method} ${url}`).catch((err) =>
-          console.warn('[AutonomousExplorationEngine] API failure screenshot capture failed:', err)
-        );
 
         // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
         this.persistForensicError({
@@ -643,12 +636,7 @@ this.freezeActionTraceRecording = false;
       await this.emitLiveFrame(page, telemetry);
       console.log('[AutonomousExplorationEngine] First live frame emitted successfully');
       
-      await this.ensureDomReady(page, telemetry);
-
-      // 📸 Phase 4: Capture initial screenshot (after page load)
-      this.captureScreenshot(page, ForensicScreenshotType.INITIAL).catch((err) =>
-        console.warn('[AutonomousExplorationEngine] Initial screenshot capture failed:', err)
-      );
+await this.ensureDomReady(page, telemetry);
 
       // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
@@ -766,55 +754,10 @@ telemetry.emitTargets(
           // engine is stuck clicking elements that have no effect on app state.
           const currentHash = await this.hashManager.hash(page);
 
-          // --- Visual Regression Detection (SSIM) ---
-          // Only run SSIM comparison if the engine is returning to a previously known
-          // domHash (visitation count > 1) to verify it hasn't visually degraded.
-          const hasBaseline = this.baselineScreenshots.has(currentHash);
-          const visitCount = this.visitedHashes.has(currentHash) ? 2 : 1;
-
-          if (hasBaseline && visitCount > 1) {
-            // Take current screenshot and compare against baseline
-            const currentScreenshot = await page.screenshot({ type: 'png' });
-            const baselineScreenshot = this.baselineScreenshots.get(currentHash)!;
-
-            try {
-              const comparisonResult = await this.visualRegressionDetector.compareFrames(
-                baselineScreenshot,
-                currentScreenshot,
-              );
-
-              if (!comparisonResult.isMatch) {
-                // Catastrophic visual shift detected - UI has collapsed
-                const bugMessage = `Silent Visual UI Collapse detected! SSIM score: ${comparisonResult.ssimScore.toFixed(3)} (threshold: ${CATASTROPHIC_SHIFT_THRESHOLD})`;
-
-                telemetry.emitTelemetry(this.event('BUG', {
-                  message: bugMessage,
-                  selector: '',
-                  url: lastKnownUrl || page.url(),
-                }));
-
-                // Register the visual regression bug
-                this.registerConfirmedBug({
-                  bugId: `visual-collapse-${currentHash.substring(0, 8)}-${Date.now()}`,
-                  type: 'VISUAL_REGRESSION',
-                  message: bugMessage,
-                  selector: currentHash,
-                  payloadUsed: `SSIM: ${comparisonResult.ssimScore.toFixed(3)}`,
-                  advice: 'Visual UI structure has collapsed. Check CSS, Z-index, or rendering bugs.',
-                  timestamp: new Date(),
-                });
-
-                // Capture screenshot for forensic analysis
-                this.captureScreenshot(page, ForensicScreenshotType.CRITICAL_EVENT, bugMessage).catch(() => { });
-              }
-            } catch (error) {
-              console.warn('[AutonomousExplorationEngine] Visual regression comparison failed:', error);
-            }
-          } else if (!hasBaseline) {
-            // First time seeing this state - capture baseline screenshot
-            const baselineScreenshot = await page.screenshot({ type: 'png' });
-            this.baselineScreenshots.set(currentHash, baselineScreenshot);
-          }
+// --- Visual Regression Detection (SSIM) ---
+          // Visual regression detection disabled - baseline screenshot storage removed
+          // Note: The visualRegressionDetector still exists but is not actively storing baselines
+          // The SSIM comparison is skipped to avoid memory overhead
 
           telemetry.emitTelemetry(this.event('ACTION', {
             actionExecuted: 'dom-state-hash',
@@ -987,15 +930,9 @@ telemetry.emitTargets(
 
           await this.emitLiveFrame(page, telemetry);
           await wait(350);
-        } catch (err: unknown) {
+} catch (err: unknown) {
           // Phase 3: Track failure count on exception
           this.runtimeMetrics.failureCount++;
-
-          // 📸 Phase 4: Capture FAILURE screenshot BEFORE recording error and test termination
-          const failureMessage = err instanceof Error ? err.message : String(err);
-          this.captureScreenshot(page, ForensicScreenshotType.FAILURE, `Test Failed: ${failureMessage}`).catch((err) =>
-            console.warn('[AutonomousExplorationEngine] Failure screenshot capture failed:', err)
-          );
 
           // Emergency Data Flush: capture current action buffer and emit EXCEPTION telemetry.
           const actionSnapshot = this.actions.snapshot();
@@ -1042,7 +979,7 @@ telemetry.emitTargets(
 
       // CRITICAL: Emit explicit IDLE status to prevent zombie backend processes
       // This ensures deterministic state handshake with frontend
-      telemetry.emitTelemetry({
+telemetry.emitTelemetry({
         timestamp: new Date().toISOString(),
         type: 'ACTION',
         meta: {
@@ -1050,12 +987,6 @@ telemetry.emitTargets(
           message: 'IDLE',
         },
       });
-
-      // 📸 Phase 4: Capture final screenshot (at test completion)
-      const finalStatus = this.freezeActionTraceRecording ? 'Failed' : 'Completed';
-      this.captureScreenshot(page, ForensicScreenshotType.FINAL, `Safari ${finalStatus}`).catch((err) =>
-        console.warn('[AutonomousExplorationEngine] Final screenshot capture failed:', err)
-      );
 
       // Phase 3: Persist final telemetry with execution duration (use instance metrics)
       const executionDuration = this.runtimeMetrics.startTime ? Date.now() - this.runtimeMetrics.startTime : 0;
@@ -1257,7 +1188,7 @@ telemetry.emitTargets(
     }
   }
 
-  /**
+/**
      * Persist telemetry to forensic_telemetry database (Phase 3: Telemetry Collection)
      */
   private async persistTelemetry(params: {
@@ -1286,47 +1217,6 @@ telemetry.emitTargets(
       });
     } catch (error) {
       console.error('[AutonomousExplorationEngine] Failed to persist forensic telemetry:', error);
-    }
-  }
-
-/**
-   * Capture and persist a screenshot (Phase 4: Screenshot Forensics)
-   * Added check to verify page is still valid before attempting capture
-   */
-  private async captureScreenshot(
-    page: Page,
-    screenshotType: ForensicScreenshotType,
-    errorMessage?: string,
-    stepNumber?: number,
-  ): Promise<void> {
-    if (!this.sessionId) return;
-
-    // Check if page is still valid and accessible before attempting screenshot
-    // This prevents "Target page, context or browser has been closed" errors
-    if (!page || (page as any).isClosed()) {
-      console.warn('[AutonomousExplorationEngine] Cannot capture screenshot: page is closed or invalid');
-      return;
-    }
-
-    try {
-      const screenshot = await page.screenshot({ type: 'jpeg', quality: 80 });
-      const imageData = screenshot.toString('base64');
-
-      await forensicScreenshotRepository.create({
-        forensicRunId: new Types.ObjectId(this.sessionId),
-        screenshotType,
-        imageData,
-        url: page.url(),
-        errorMessage,
-        stepNumber,
-      });
-    } catch (error) {
-      // Handle the specific "Target page, context or browser has been closed" error gracefully
-      if (error instanceof Error && error.message.includes('Target page, context or browser has been closed')) {
-        console.warn('[AutonomousExplorationEngine] Page closed before screenshot capture, skipping forensic screenshot');
-        return;
-      }
-      console.error('[AutonomousExplorationEngine] Failed to capture screenshot:', error);
     }
   }
 
@@ -1360,7 +1250,7 @@ telemetry.emitTargets(
         breadcrumbs,
       });
 
-      // Persist error to forensic_errors database (Phase 2: Error Logging System)
+// Persist error to forensic_errors database (Phase 2: Error Logging System)
       this.persistForensicError({
         type: ForensicErrorType.JS_EXCEPTION,
         severity: ForensicErrorSeverity.HIGH,
@@ -1368,11 +1258,6 @@ telemetry.emitTargets(
         stackTrace,
         url,
       });
-
-      // 📸 Phase 4: Capture CRITICAL_EVENT screenshot on JS exception
-      this.captureScreenshot(page, ForensicScreenshotType.CRITICAL_EVENT, `JS Exception: ${message}`).catch((err) =>
-        console.warn('[AutonomousExplorationEngine] JS exception screenshot capture failed:', err)
-      );
     });
 
     // Monitor unhandled promise rejections via console errors

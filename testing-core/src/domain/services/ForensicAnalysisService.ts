@@ -3,7 +3,6 @@ import {
   forensicErrorRepository,
   type CreateForensicErrorParams,
 } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
-import { forensicScreenshotRepository } from '../../infrastructure/database/repositories/ForensicScreenshotRepository.js';
 import {
   forensicAnalysisRepository,
   type CreateForensicAnalysisParams,
@@ -52,9 +51,9 @@ export class ForensicAnalysisService {
       };
     }
 
-    // Collect forensic data
+// Collect forensic data (screenshots removed for storage optimization)
     const errors = await forensicErrorRepository.findByRunId(runId);
-    const screenshots = await forensicScreenshotRepository.findByRunId(runId.toString());
+    const screenshots: Array<{ _id?: Types.ObjectId }> = [];
 
     // Generate analysis
     const analysis = this.generateAnalysis(runId, errors, screenshots);

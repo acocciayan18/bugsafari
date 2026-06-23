@@ -1,64 +1,115 @@
 # Implementation Plan
 
-## Overview
-Clean up the `startTimingInterval` method in `AutonomousExplorationEngine.ts` by removing telemetry emissions for infrastructure time updates while preserving internal time tracking logic for the 3-minute hard stop enforcement.
+## [Overview]
+Modularize the monolithic `ClinicalForensicsDashboard` component by extracting inline tab panel content into four separate, reusable component files within a new `telemetry` subdirectory. This refactoring improves maintainability, enables parallel development on individual panels, and reduces the main dashboard file from ~700 lines to a cleaner component that manages tab switching logic.
 
-## Context
-The `startTimingInterval` method runs a 100ms interval that accumulates active execution time. Every 10 ticks (1 second), it emits `actionExecuted: 'time-remaining'` telemetry. This floods the console telemetry feed with unnecessary numeric streams ("179999", "178999", etc.) that clutter user action telemetry logs. The internal time tracking must continue to enforce the 3-minute hard stop.
+The current `ClinicalForensicsDashboard.tsx` handles all four tab contents (telemetry, errors, network, console) inline, making it bloated and difficult to maintain. Each tab's logic will be extracted into its own component file, with the main dashboard importing and dynamically rendering these sub-components based on the active tab state.
 
-## Changes Required
+## [Types]
 
-### Files
-- **Modified**: `testing-core/src/domain/services/AutonomousExplorationEngine.ts`
+### Props Interfaces for New Components
 
-### Method Changes
-- **Modified**: `startTimingInterval` method - Remove the `telemetry.emitTelemetry` call inside the `tickCounter >= 10` block while preserving:
-  - `remainingTimeMs` calculation
-  - `this.elapsedActiveTimeMs` update logic
-  - `this.lastTickTimestamp` tracking
-  - The interval itself continues to run normally
-
-### Implementation Order
-1. Read the current `startTimingInterval` method
-2. Edit the method to remove/comment out only the `telemetry.emitTelemetry` call inside the `if (tickCounter >= 10)` block
-3. Keep all internal variable calculations (`remainingTimeMs`, `elapsedActiveTimeMs`, `tickCounter`, etc.)
-4. Verify the changes compile correctly
-
-## Detailed Implementation
-
-### Current Block (Lines to modify):
 ```typescript
-tickCounter++;
-if (tickCounter >= 10) {
-  tickCounter = 0;
-  const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
-  telemetry.emitTelemetry({
-    timestamp: new Date().toISOString(),
-    type: 'ACTION',
-    meta: {
-      actionExecuted: 'time-remaining',
-      message: `${remainingTimeMs}`,
-      remainingTimeMs,
-      elapsedTimeMs: this.elapsedActiveTimeMs,
-    },
-  });
+// TelemetryLogStream.tsx
+interface TelemetryLogStreamProps {
+  telemetry: TelemetryEvent[] | string[];
+  isTestRunning: boolean;
+  currentEngineAction?: string;
+}
+
+// ErrorTabPanel.tsx
+interface ErrorTabPanelProps {
+  errors: {
+    incidents: IncidentReport[];
+    reports: ForensicCrashReport[];
+  };
+}
+
+// NetworkTabPanel.tsx
+interface NetworkTabPanelProps {
+  telemetry: TelemetryEvent[] | string[];
+}
+
+// ConsoleTabPanel.tsx
+interface ConsoleTabPanelProps {
+  browserConsole: BrowserConsoleMessage[];
 }
 ```
 
-### New Block (After modification):
-```typescript
-tickCounter++;
-if (tickCounter >= 10) {
-  tickCounter = 0;
-  const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
-  // INFRASTRUCTURE TIME UPDATES REMOVED - Internal tracking continues for hard stop enforcement
-  // The time tracking logic still runs below to enforce 3-minute timeout
-  // Note: remainingTimeMs calculated but not emitted to reduce console noise
-}
-```
+### Re-exported Types (already defined in shared/types.ts):
+- `TelemetryEvent` - from `../../shared/types.js`
+- `IncidentReport` - from `../../shared/types.js`
+- `ForensicCrashReport` - from `../../shared/types.js`
+- `BrowserConsoleMessage` - from `../types.ts`
+- `IntelligentDiagnosis` - from `../../shared/types.js`
 
-## Task Progress
-- [ ] Step 1: Verify the exact location of the code to modify
-- [ ] Step 2: Apply the edit to remove telemetry.emitTelemetry from the tickCounter >= 10 block
-- [ ] Step 3: Verify the code compiles correctly
-- [ ] Step 4: Complete the implementation
+## [Files]
+
+### New Files to Create:
+
+1. **`developer-dashboard/src/components/telemetry/TelemetryLogStream.tsx`**
+   - Purpose: Renders the telemetry live-feed tab content
+   - Contains: Formatted telemetry rendering, AiForensicDiagnosticCard integration
+   - Props: `telemetry`, `isTestRunning`, `currentEngineAction`
+
+2. **`developer-dashboard/src/components/telemetry/ErrorTabPanel.tsx`**
+   - Purpose: Renders the errors tab (incidents & crash reports)
+   - Contains: Error card rendering, stack trace expansion, CopyButton, metadata grids
+   - Props: `errors`
+
+3. **`developer-dashboard/src/components/telemetry/NetworkTabPanel.tsx`**
+   - Purpose: Renders the network tab (NETWORK filter events)
+   - Contains: Network event cards with status codes, duration, URLs, color-coded borders
+   - Props: `telemetry`
+
+4. **`developer-dashboard/src/components/telemetry/ConsoleTabPanel.tsx`**
+   - Purpose: Renders the console tab (browser console output)
+   - Contains: Console log rendering, expandable JSON view
+   - Props: `browserConsole`
+
+5. **`developer-dashboard/src/components/telemetry/index.ts`**
+   - Purpose: Barrel export file for all telemetry components
+   - Contains: Re-exports of all four panel components
+
+### Files to Modify:
+
+1. **`developer-dashboard/src/components/ClinicalForensicsDashboard.tsx`**
+   - Remove inline tab content for: telemetry, errors, network, console
+   - Add imports for new modular components
+   - Keep: Tab header logic, state management, LiveFeed integration
+   - Simplify render to: Import and conditionally render sub-components
+
+### Shared Utilities (to be extracted to a shared location or duplicated in each component if needed):
+- `CopyButton` - Used in ErrorTabPanel and ConsoleTabPanel
+- `ExpandableCodeBlock` - Used in ErrorTabPanel and ConsoleTabPanel  
+- `AiForensicDiagnosticCard` - Used in TelemetryLogStream, ErrorTabPanel, NetworkTabPanel
+- `extractErrorMetadata` - Used in ErrorTabPanel
+- `copyToClipboard` - Used by CopyButton
+- TerminalTab type definition
+
+## [Functions]
+
+### New Functions:
+
+1. **`copyToClipboard(text: string, label?: string): Promise<void>`**
+   - File: Will be defined in each component or in a shared utils file
+   - Purpose: Safely copy text to clipboard with user feedback
+
+2. **`extractErrorMetadata(error: IncidentReport | ForensicCrashReport): Record<string, string>`**
+   - File: ErrorTabPanel.tsx
+   - Purpose: Extract metadata from error objects for structured grid display
+
+3. **`describeEvent(event: TelemetryEvent): DescribeResult`**
+   - File: TelemetryLogStream.tsx (moved from TelemetryStream.tsx if needed)
+   - Purpose: Format event for display with severity pills
+   - Note: This function exists in TelemetryStream.tsx - decide whether to reuse or recreate
+
+### Modified Functions:
+
+1. **`ClinicalForensicsDashboard` (component)**
+   - Current file: `ClinicalForensicsDashboard.tsx`
+   - Changes: Remove inline JSX for each tab, add conditional rendering based on `activeTab` state
+   - Simplify to ~200 lines from ~700 lines
+
+### Removed Functions (migrated to sub-components):
+
