@@ -173,23 +173,7 @@ export default function CommandCenter({
           )}
         </div>
 
-        {/* Gateway Status Indicator - Top Right Corner */}
-        {isConnected !== undefined && (
-          <div className="absolute top-4 right-4 z-50 flex items-center gap-2 text-xs font-mono">
-            {isConnected ? (
-              <>
-                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-green-600 font-semibold">GATEWAY: CONNECTED</span>
-              </>
-            ) : (
-              <>
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <span className="text-red-600 font-semibold">GATEWAY: DISCONNECTED</span>
-              </>
-            )}
-          </div>
-        )}
-      </header>
+</header>
 
       {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 2: TARGETED ACTION & INPUT BAR
@@ -241,11 +225,30 @@ export default function CommandCenter({
         <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
           SECURITY PROTOCOL: AES-256 ACTIVE
         </p>
-        {backendBuildTime && (
-          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-            ℹ️ Testing Core Instance Build: {backendBuildTime}
-          </p>
-        )}
+        <div className="flex items-center gap-4">
+          {/* Gateway Status - Now in Footer beside Testing Core Build */}
+          {isConnected !== undefined && (
+            <div className="flex items-center gap-2 text-xs font-mono">
+              {isConnected ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-green-600 font-semibold">GATEWAY: CONNECTED</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                  <span className="text-red-600 font-semibold">GATEWAY: DISCONNECTED</span>
+                </>
+              )}
+            </div>
+          )}
+          {/* Backend Build Time */}
+          {backendBuildTime && (
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+              ℹ️ Testing Core Instance Build: {backendBuildTime}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

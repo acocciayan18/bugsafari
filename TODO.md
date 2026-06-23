@@ -1,3 +1,22 @@
+# TODO - Gateway Status Footer Move
+
+## Task: Move GATEWAY: CONNECTED from header to footer
+
+### Overview
+Move the "GATEWAY: CONNECTED/DISCONNECTED" status indicator from the header (top-right corner) to the footer, placing it beside the "Testing Core Instance Build" timestamp while maintaining its functionality.
+
+### Target File
+- `developer-dashboard/src/components/CommandCenter.tsx`
+
+### Implementation Steps
+- [x] Step 1: Read CommandCenter.tsx to understand current structure
+- [x] Step 2: Remove Gateway Status from header (lines 143-153)
+- [x] Step 3: Add Gateway Status to footer section
+- [x] Step 4: Test the implementation
+COMPLETED
+
+---
+
 # TODO - Race Condition Fix (TypeError on Rapid Session Cancellation)
 
 ## Task: Fix TypeError: Cannot read properties of null (reading 'run')
