@@ -1,10 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../context/AuthContext';
 import GradientBlinds from '../designs/GradientBlinds';
 
 interface LoginFormProps {
-  onLoginSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
   onGuestAccess: () => void;
 }
 
@@ -35,7 +34,6 @@ const EyeSlashIcon = () => (
 );
 
 export default function LoginForm({
-  onLoginSuccess,
   onGuestAccess,
 }: LoginFormProps) {
   const [username, setUsername] = useState('');
@@ -68,14 +66,12 @@ export default function LoginForm({
     // Use whatever the user enters - email format
     const emailInput = username.trim();
 
-    try {
+try {
       const success = await login({ email: emailInput, password });
       if (!success) {
         setFormError('Login failed. Please check your credentials.');
-      } else {
-        // Login successful - navigate directly to dashboard
-        navigate('/dashboard');
       }
+      // AuthContext handles navigation after successful login - no redundant navigate() call needed
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       setFormError(errorMessage);

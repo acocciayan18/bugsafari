@@ -2,10 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import GradientBlinds from '../designs/GradientBlinds';
+import { useAuth } from '../context/AuthContext';
 
-interface SignupFormProps {
-  onSignupSuccess?: (newToken: string, newUser: { id: string; email: string }) => void;
-}
+// SignupForm no longer needs props - uses context directly
 
 // Icons
 const UserIcon = () => (
@@ -51,7 +50,7 @@ const XIcon = () => (
   </svg>
 );
 
-export default function SignupForm({ onSignupSuccess }: SignupFormProps) {
+export default function SignupForm() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

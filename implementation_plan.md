@@ -1,116 +1,119 @@
 # Implementation Plan
 
-## [Overview]
-Fix the unhandled token authentication bug in `SavedEvaluationSafaris.tsx` where the `fetchHistory` method fails with a raw HTTP 401 exception when the user's authorization session expires. The fix will add proper lifecycle guard handling to gracefully detect authentication expiration, clear stale tokens, display an error toast, and redirect to login.
+[Overview]
+Refactor authentication state desynchronization by making AuthContext.tsx the single source of truth and simplifying useAuth.ts to a pure wrapper hook that consumes the shared context, eliminating duplicate state management that causes the stale cache issue during logout/re-login loops.
 
-## [Types]
-No new type definitions required. The existing types in `SavedEvaluationSafaris.tsx` are sufficient:
-- `EvaluationSafari[]` - Already used for safari data
-- `fetchError` state - Already exists for error handling
+[Scope & Context]
+The BugSafari application has two authentication implementations:
+1. `developer-dashboard/src/context/AuthContext.tsx` - React Context with centralized auth state (already has correct state update order)
+2. `developer-dashboard/src/hooks/useAuth.ts` - Standalone hook with duplicate state management (causes desync issues)
 
-## [Files]
-Single file to be modified:
+The root cause: When logout occurs, localStorage updates can race with React state updates, causing memory states to lag behind persistent storage. This results in authentication loop bounce when users log out and immediately log back in.
 
-### Modified Files:
-1. **`developer-dashboard/src/components/SavedEvaluationSafaris.tsx`**
-   - Location: `fetchHistory` async function (around line 240-295)
-   - Current issue: No specific handling for HTTP 401 or token expiration
-   - Required changes:
-     - Add explicit 401 status detection before generic error handling
-     - Parse error response for "Invalid or expired token" message
-     - Clear stale token from localStorage
-     - Display session expired toast using Sonner
-     - Redirect to login page
+Solution: Use AuthContext.tsx as the authoritative source and make useAuth.ts a thin wrapper that delegates to it - eliminating duplicate state that gets out of sync.
 
-## [Functions]
+[Types]
+No new types required. Existing types in AuthContext.tsx will be re-exported:
+- `AuthUser { id: string, email: string }`
+- `LoginCredentials { email: string, password: string }`
+- `SignupCredentials { email: string, password: string }`
+- `AuthContextValue` - Extended to include all context properties
+- `NavigateCallback (path: string) => void`
 
-### Modified Functions:
-1. **`fetchHistory`** - in `SavedEvaluationSafaris.tsx`
-   - Signature: `const fetchHistory = async (showLoading = true) => { ... }`
-   - Required changes:
-     - After receiving response, check for 401 status before other error handling
-     - Parse error response body to detect token expiration messages
-     - Clear authentication tokens from localStorage (`bugsafari_token`, `bugsafari_user`)
-     - Display error toast: `toast.error("Session expired. Please log in again.")`
-     - Redirect to login page using `window.location.href = '/login'`
-     - Wrap entire operation in try/catch to prevent component crash
+[Files]
 
-## [Classes]
-No class modifications required.
+**New Files:**
+- None required
 
-## [Dependencies]
-No new dependencies required. The following are already available:
-- `toast` from 'sonner' - Already imported in the file
-- `localStorage` - Native browser API
-- `window.location.href` - Native browser navigation
+**Modified Files:**
+1. `developer-dashboard/src/hooks/useAuth.ts`
+   - Complete refactor to become a thin wrapper hook
+   - Remove all internal state (user, token, isLoading, emailError)
+   - Remove login(), signup(), logout() implementations
+   - Import and re-export all types from AuthContext.tsx
+   - Import AuthContext and simply return useContext(AuthContext)
 
-## [Testing]
-Test validation strategy:
-1. Manual test with expired token (logout and try to fetch history)
-2. Verify toast displays "Session expired. Please log in again."
-3. Verify redirect to `/login` happens automatically
-4. Verify component doesn't crash (empty state shown or gracefully handled)
+2. `developer-dashboard/src/context/AuthContext.tsx`
+   - No functional changes (already has correct fix)
+   - Export AuthContext directly so useAuth.ts can import it
+   - Add re-export of types for useAuth.ts to import
 
-## [Implementation Order]
+**Deleted Files:**
+- None
 
-1. **Understand the current `fetchHistory` implementation** ✅
-   - Done: Reviewed SavedEvaluationSafaris.tsx lines ~240-295
-   - Current flow: response check → generic error throw → catch block sets error
+**Configuration Updates:**
+- No config files needed
 
-2. **Modify `fetchHistory` function in SavedEvaluationSafaris.tsx**
-   - Add 401 status detection logic
-   - Add token-specific error message parsing
-   - Add localStorage clear logic
-   - Add toast.error with session expired message
-   - Add redirect to /login
+[Functions]
 
-3. **Validate the implementation**
-   - Test with valid token (normal operation)
-   - Test with expired token (graceful handling)
-   - Verify toast and redirect work correctly
-   - Verify no component crash occurs
+**New Functions:**
+- None (delegating to AuthContext)
+
+**Modified Functions:**
+1. `useAuth` in `developer-dashboard/src/hooks/useAuth.ts`
+   - Signature: `function useAuth(): AuthContextValue`
+   - Current: Contains full auth logic with useState, useCallback, API calls
+   - Required: Simple wrapper calling `useContext(AuthContext)`
+   
+**Removed Functions:**
+- `login` - Removed from useAuth.ts (delegates to context)
+- `signup` - Removed from useAuth.ts (delegates to context)
+- `logout` - Removed from useAuth.ts (delegates to context)
+- `setNavigate` - Removed from useAuth.ts (delegates to context)
+- `isAuthenticated` - Removed from useAuth.ts (computed in context)
+- `clearEmailError` - Removed from useAuth.ts (delegates to context)
+- `decodeTokenExpiration` - Removed (duplicate in context)
+- `isTokenExpired` - Removed (duplicate in context)
+
+[Classes]
+- No classes involved - this is a hooks-only refactor
+
+[Dependencies]
+- No new npm packages required
+- Uses existing React Context API (built-in)
+
+[Testing]
+
+**Test Strategy:**
+1. Verify all components using useAuth() still work after refactor
+2. Test logout immediately followed by login - should not bounce
+3. Verify token/user state is null after logout
+4. Verify token/user state is populated after login
+5. Test page refresh - should restore auth state from localStorage
+
+**Files to Test:**
+- LoginForm.tsx - Uses useAuth().login()
+- SignupForm.tsx - Uses useAuth().signup()
+- Sidebar.tsx - Uses useAuth().logout() and useAuth().user
+- AuthGuard.tsx - Uses useAuth().isAuthenticated
+- Any component importing from useAuth.ts
+
+[Implementation Order]
+
+1. **Step 1**: Update AuthContext.tsx - Export AuthContext and types
+   - Export `AuthContext` directly for import
+   - Re-export types so useAuth.ts can import them
+
+2. **Step 2**: Refactor useAuth.ts - Convert to thin wrapper
+   - Remove all state declarations
+   - Remove all function implementations  
+   - Import AuthContext and useContext
+   - Import types from AuthContext (re-export)
+   - Create simple wrapper function returning useContext(AuthContext)
+   - Add proper error handling for context not being available
+
+3. **Step 3**: Verify usage in dependent components
+   - Check LoginForm.tsx imports
+   - Check SignupForm.tsx imports
+   - Check Sidebar.tsx imports
+   - Check AuthGuard.tsx imports
+   - Update any imports if needed
+
+4. **Step 4**: Manual testing
+   - Run dev server
+   - Test logout → immediate login flow
+   - Verify no authentication bounce
 
 ---
-
-## [Technical Details]
-
-### Current problematic code flow:
-```javascript
-const response = await fetch(`${API_BASE_URL}/api/history`, {
-  headers: { 'Authorization': `Bearer ${token}` },
-});
-
-if (!response.ok) {  // This catches 401 but doesn't handle it specially
-  const errorText = await response.text();
-  throw new Error(`Failed to fetch history: ${response.status}`);
-}
-```
-
-### Required fix implementation:
-```javascript
-// Check for 401 Unauthorized - token expired or invalid
-if (response.status === 401) {
-  // Try to parse error message for "Invalid or expired token"
-  const errorText = await response.text();
-  const isTokenError = errorText.includes('Invalid or expired token') || 
-                       errorText.includes('expired token') ||
-                       errorText.includes('Invalid token') ||
-                       errorText.includes('401');
-  
-  if (isTokenError) {
-    // Clear stale tokens from localStorage
-    localStorage.removeItem('bugsafari_token');
-    localStorage.removeItem('bugsafari_user');
-    
-    // Display session expired warning toast
-    toast.error("Session expired. Please log in again.");
-    
-    // Redirect to login page
-    window.location.href = '/login';
-    return; // Exit early to prevent further processing
-  }
-}
-```
-
-### Error handling in catch block:
-The existing catch block should remain but will now handle other errors differently since 401 is handled before.
+*Plan Version: 1.0*
+*Created: Current Date*

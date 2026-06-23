@@ -4,17 +4,7 @@ import LoginForm from '../components/LoginForm';
 import SignupForm from '../components/SignupForm';
 import GradientBlinds from './GradientBlinds';
 import { useTheme, PALETTES, type ColorPalette } from './ThemeContext';
-
-interface User {
-    id: string;
-    email: string;
-}
-
-interface Props {
-    onLoginSuccess: (token: string, user: User) => void;
-    onSignupSuccess: (token: string, user: User) => void;
-    onGuestAccess?: () => void;
-}
+import { useAuth } from '../context/AuthContext';
 
 // Generate gradient colors based on theme palette
 function getOverlayGradientColors(palette: ColorPalette): string[] {
@@ -22,22 +12,24 @@ function getOverlayGradientColors(palette: ColorPalette): string[] {
     return [colors.primary, colors.secondary, colors.tertiary, colors.quaternary];
 }
 
-export default function SlidingAuthForm({ onLoginSuccess, onSignupSuccess, onGuestAccess }: Props) {
+export default function SlidingAuthForm() {
     const [isSignup, setIsSignup] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const navigate = useNavigate();
     const { theme, colorPalette } = useTheme();
     const overlayRef = useRef<HTMLDivElement>(null);
+    
+    // Use auth context for guest access - handled internally now
+    const { login } = useAuth();
 
     const handleBack = () => {
         navigate('/');
     };
 
-    // Create a required function from optional prop
+    // Guest access handled via context directly in LoginForm
     const handleGuestAccess = () => {
-        if (onGuestAccess) {
-            onGuestAccess();
-        }
+        // Set guest mode in localStorage and navigate
+        localStorage.setItem('bugsafari_guest', 'true');
         navigate('/dashboard');
     };
 
@@ -83,7 +75,7 @@ export default function SlidingAuthForm({ onLoginSuccess, onSignupSuccess, onGue
 
                 <div className="relative bg-white/95 shadow-2xl rounded-xl overflow-hidden flex h-full w-full">
 
-                    {/* Left Panel: Login Form */}
+{/* Left Panel: Login Form */}
                     <div
                         className={`absolute inset-y-0 left-0 w-1/2 p-8 h-full flex flex-col justify-center overflow-auto transition-all duration-500 ease-in-out ${activePanel === 'login'
                             ? 'opacity-100 translate-x-0 z-10'
@@ -91,7 +83,7 @@ export default function SlidingAuthForm({ onLoginSuccess, onSignupSuccess, onGue
                             }`}
                     >
                         <div className="w-full max-w-md mx-auto">
-                            <LoginForm onLoginSuccess={onLoginSuccess} onGuestAccess={handleGuestAccess} />
+                            <LoginForm onGuestAccess={handleGuestAccess} />
                         </div>
                     </div>
 
@@ -103,7 +95,7 @@ export default function SlidingAuthForm({ onLoginSuccess, onSignupSuccess, onGue
                             }`}
                     >
                         <div className="w-full max-w-md mx-auto">
-                            <SignupForm onSignupSuccess={onSignupSuccess} />
+                            <SignupForm />
                         </div>
                     </div>
 

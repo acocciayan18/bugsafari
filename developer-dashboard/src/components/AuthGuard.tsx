@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -7,19 +8,17 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const location = useLocation();
-  const token = localStorage.getItem('bugsafari_token');
-  const user = localStorage.getItem('bugsafari_user');
-  const isGuestMode = localStorage.getItem('bugsafari_guest') === 'true';
-
-  const isAuthenticated = !!token && !!user;
+  
+  // Use React Auth Context - reactive, no localStorage lag
+  const { isAuthenticated, isGuestMode } = useAuth();
 
   // Allow access if authenticated OR in guest mode
   if (!isAuthenticated && !isGuestMode) {
-    console.log('[AuthGuard] No valid token or guest mode found, redirecting to /login');
+    console.log('[AuthGuard] No valid auth or guest mode, redirecting to /login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  console.log('[AuthGuard] Valid token or guest mode found, allowing access');
+  console.log('[AuthGuard] Valid auth or guest mode found, allowing access');
   return <>{children}</>;
 }
 
