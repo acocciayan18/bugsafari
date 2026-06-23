@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { ReproducibleSteps } from './ReproducibleSteps';
 import { CoverageDisplay } from './CoverageProgressBar';
@@ -243,7 +244,8 @@ const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const { token } = useAuth();
+const { token } = useAuth();
+  const navigate = useNavigate();
 
   // Fetch from API on mount
   useEffect(() => {
@@ -272,7 +274,29 @@ const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
         },
       });
 
-      console.log('[SavedEvaluations] Response status:', response.status);
+console.log('[SavedEvaluations] Response status:', response.status);
+
+      // Check for 401 Unauthorized - token expired or invalid
+      if (response.status === 401) {
+        const errorText = await response.text();
+        const isTokenError = errorText.includes('Invalid or expired token') || 
+                           errorText.includes('expired token') ||
+                           errorText.includes('Invalid token') ||
+                           errorText.includes('401');
+        
+        if (isTokenError) {
+          // Clear stale tokens from localStorage
+          localStorage.removeItem('bugsafari_token');
+          localStorage.removeItem('bugsafari_user');
+          
+          // Display session expired warning toast
+          toast.error("Session expired. Please log in again.");
+          
+          // Redirect to login page using React Router navigation
+          navigate('/login');
+          return;
+        }
+      }
 
       if (!response.ok) {
         const errorText = await response.text();

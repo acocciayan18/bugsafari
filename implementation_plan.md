@@ -1,110 +1,116 @@
 # Implementation Plan
 
-## Overview
-Fix a race condition bug in PlaywrightBrowserEngine where stopping a test session immediately after starting causes `TypeError: Cannot read properties of null (reading 'run')`. The issue occurs because `stop()` nullifies `this.activeEngine` while `run()` is still progressing through its initialization sequence asynchronously.
+## [Overview]
+Fix the unhandled token authentication bug in `SavedEvaluationSafaris.tsx` where the `fetchHistory` method fails with a raw HTTP 401 exception when the user's authorization session expires. The fix will add proper lifecycle guard handling to gracefully detect authentication expiration, clear stale tokens, display an error toast, and redirect to login.
 
-## Types
-No type system changes required. The existing TypeScript types are sufficient for this fix.
+## [Types]
+No new type definitions required. The existing types in `SavedEvaluationSafaris.tsx` are sufficient:
+- `EvaluationSafari[]` - Already used for safari data
+- `fetchError` state - Already exists for error handling
 
-## Files
-- **Modify**: `testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts`
-  - Location: The `run()` method where `this.activeEngine.run()` is invoked
-  - Changes: Add null safety check and try/catch for graceful abort handling
+## [Files]
+Single file to be modified:
 
-## Functions
-- **Modified**: `PlaywrightBrowserEngine.run()` method
-  - Current location: Lines ~86-177 in PlaywrightBrowserEngine.ts
-  - Required changes:
-    1. Add null check before `this.activeEngine.run(...)` call
-    2. Wrap the engine execution in try/catch to handle rapid cancellation
-    3. On TypeError (null property access), emit ACTION telemetry instead of EXCEPTION
+### Modified Files:
+1. **`developer-dashboard/src/components/SavedEvaluationSafaris.tsx`**
+   - Location: `fetchHistory` async function (around line 240-295)
+   - Current issue: No specific handling for HTTP 401 or token expiration
+   - Required changes:
+     - Add explicit 401 status detection before generic error handling
+     - Parse error response for "Invalid or expired token" message
+     - Clear stale token from localStorage
+     - Display session expired toast using Sonner
+     - Redirect to login page
 
-## Classes
-No class modifications required. The existing class structure is unchanged.
+## [Functions]
 
-## Dependencies
-No new dependencies required. The existing imports are sufficient:
-- `TelemetryGateway` is already imported
-- `AutonomousExplorationEngine` is already imported
+### Modified Functions:
+1. **`fetchHistory`** - in `SavedEvaluationSafaris.tsx`
+   - Signature: `const fetchHistory = async (showLoading = true) => { ... }`
+   - Required changes:
+     - After receiving response, check for 401 status before other error handling
+     - Parse error response body to detect token expiration messages
+     - Clear authentication tokens from localStorage (`bugsafari_token`, `bugsafari_user`)
+     - Display error toast: `toast.error("Session expired. Please log in again.")`
+     - Redirect to login page using `window.location.href = '/login'`
+     - Wrap entire operation in try/catch to prevent component crash
 
-## Testing
-Test validation approach:
-1. Start a test session and immediately cancel it within 1 second
-2. Verify no TypeError is thrown
-3. Verify ACTION telemetry is emitted ("🏁 Session initialization terminated safely by request")
-4. Verify no EXCEPTION payload is broadcast
+## [Classes]
+No class modifications required.
 
-## Implementation Order
+## [Dependencies]
+No new dependencies required. The following are already available:
+- `toast` from 'sonner' - Already imported in the file
+- `localStorage` - Native browser API
+- `window.location.href` - Native browser navigation
 
-task_progress Items:
-- [ ] Step 1: Read PlaywrightBrowserEngine.ts to locate the exact line where `this.activeEngine.run()` is called
-- [ ] Step 2: Add null safety check before the engine.run() invocation
-- [ ] Step 3: Wrap the execution in try/catch to handle TypeError gracefully
-- [ ] Step 4: Emit ACTION status instead of EXCEPTION when cancellation occurs
-- [ ] Step 5: Verify the implementation manually
+## [Testing]
+Test validation strategy:
+1. Manual test with expired token (logout and try to fetch history)
+2. Verify toast displays "Session expired. Please log in again."
+3. Verify redirect to `/login` happens automatically
+4. Verify component doesn't crash (empty state shown or gracefully handled)
+
+## [Implementation Order]
+
+1. **Understand the current `fetchHistory` implementation** ✅
+   - Done: Reviewed SavedEvaluationSafaris.tsx lines ~240-295
+   - Current flow: response check → generic error throw → catch block sets error
+
+2. **Modify `fetchHistory` function in SavedEvaluationSafaris.tsx**
+   - Add 401 status detection logic
+   - Add token-specific error message parsing
+   - Add localStorage clear logic
+   - Add toast.error with session expired message
+   - Add redirect to /login
+
+3. **Validate the implementation**
+   - Test with valid token (normal operation)
+   - Test with expired token (graceful handling)
+   - Verify toast and redirect work correctly
+   - Verify no component crash occurs
 
 ---
 
-## Detailed Implementation
+## [Technical Details]
 
-### File: testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts
+### Current problematic code flow:
+```javascript
+const response = await fetch(`${API_BASE_URL}/api/history`, {
+  headers: { 'Authorization': `Bearer ${token}` },
+});
 
-**Current code around line ~180:**
-```typescript
-let result: { completed: boolean; reason: string };
-try {
-  // Pass browserInfo to the engine for telemetry collection
-  result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
-} finally {
-  this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
-  await this.cleanupResources();
-  this.activeEngine = null;
+if (!response.ok) {  // This catches 401 but doesn't handle it specially
+  const errorText = await response.text();
+  throw new Error(`Failed to fetch history: ${response.status}`);
 }
 ```
 
-**Replaced code:**
-```typescript
-let result: { completed: boolean; reason: string };
-try {
-  // 🔒 RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
-  if (!this.explorationEngine) {
-    // Gracefully abort - session was terminated by request
-    telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
-      type: 'ACTION',
-      meta: {
-        actionExecuted: 'session-initialization-terminated',
-        message: '🏁 Session initialization terminated safely by request',
-      },
-    });
-    return { completed: false, reason: 'Session terminated by user' };
-  }
+### Required fix implementation:
+```javascript
+// Check for 401 Unauthorized - token expired or invalid
+if (response.status === 401) {
+  // Try to parse error message for "Invalid or expired token"
+  const errorText = await response.text();
+  const isTokenError = errorText.includes('Invalid or expired token') || 
+                       errorText.includes('expired token') ||
+                       errorText.includes('Invalid token') ||
+                       errorText.includes('401');
   
-  // Pass browserInfo to the engine for telemetry collection
-  result = await this.explorationEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
-} catch (err: unknown) {
-  // 🔒 RACE CONDITION FIX: Catch null property access during rapid cancellation
-  if (err instanceof TypeError && err.message.includes('Cannot read properties of null')) {
-    // Gracefully suppress exception - this is expected during rapid cancellation
-    telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
-      type: 'ACTION',
-      meta: {
-        actionExecuted: 'session-initialization-terminated',
-        message: '🏁 Session initialization terminated safely by request',
-      },
-    });
-    return { completed: false, reason: 'Session terminated by user' };
+  if (isTokenError) {
+    // Clear stale tokens from localStorage
+    localStorage.removeItem('bugsafari_token');
+    localStorage.removeItem('bugsafari_user');
+    
+    // Display session expired warning toast
+    toast.error("Session expired. Please log in again.");
+    
+    // Redirect to login page
+    window.location.href = '/login';
+    return; // Exit early to prevent further processing
   }
-  // Re-throw unexpected errors
-  throw err;
-} finally {
-  this.capturedConfirmedBugs = this.explorationEngine?.getConfirmedBugsFromMemory() ?? [];
-  await this.cleanupResources();
-  this.explorationEngine = null;
 }
 ```
 
-**Notes:**
-- Changed `this.activeEngine` to `this.explorationEngine` if that's the actual property name in use (need to verify exact name from file)
-- The key change is adding the null check before calling `.run()` and catching TypeError to emit ACTION instead of EXCEPTION
+### Error handling in catch block:
+The existing catch block should remain but will now handle other errors differently since 401 is handled before.

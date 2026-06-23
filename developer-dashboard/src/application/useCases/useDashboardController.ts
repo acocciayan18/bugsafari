@@ -189,7 +189,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     return () => gateway.disconnect();
   }, [gateway]);
 
-  const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> => {
+const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> => {
     if (!targetUrl.trim()) return;
 
     setIsThinking(true);
@@ -204,6 +204,9 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     setCurrentUrl(targetUrl);
     setRemainingTimeMs(180000);
     setElapsedTimeMs(0);
+    // Reset session completion states to prevent UI state leak
+    setHasRunCompleted(false);
+    setHasTimeLimitExceeded(false);
 
     try {
       await gateway.startTest(targetUrl.trim(), optimizationSettings);
