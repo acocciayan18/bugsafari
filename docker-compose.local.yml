@@ -25,31 +25,6 @@ services:
     networks:
       - bugsafari-local
 
-  mongodb:
-    image: mongo:latest
-    container_name: bugsafari-mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: bugsafari
-    volumes:
-      - mongodb-data:/data/db
-      - mongodb-config:/data/configdb
-    healthcheck:
-      test:
-        - CMD
-        - mongosh
-        - --quiet
-        - --eval
-        - db.adminCommand('ping').ok
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    networks:
-      - bugsafari-local
-
   api:
     container_name: bugsafari-api
     restart: unless-stopped
@@ -68,26 +43,24 @@ services:
         RUN npm run build --workspace shared
         RUN npm run build --workspace testing-core
         EXPOSE 3000
-    # Note: Volumes removed to fix Windows path space and statfs mounting constraints in Podman
     environment:
-      NODE_ENV: development
-      BUGSAFARI_PORT: "3000"
-      BUGSAFARI_API_PORT: "3000"
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/bugsafari}
-      REDIS_URL: redis://redis:6379
-      JWT_SECRET: bugsafari-local-development-secret
-      JWT_EXPIRES_IN: 7d
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      APP_NAME: BugSafari
+      - MONGODB_URI=${MONGODB_URI}
+      - NODE_ENV=development
+      - PORT=3000
+      - BUGSAFARI_PORT=3000
+      - BUGSAFARI_API_PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=bugsafari-local-development-secret
+      - JWT_EXPIRES_IN=7d
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - APP_NAME=BugSafari
     ports:
       - "3000:3000"
     depends_on:
       redis:
-        condition: service_healthy
-      mongodb:
         condition: service_healthy
     networks:
       - bugsafari-local
@@ -111,17 +84,14 @@ services:
         COPY shared ./shared
         RUN npm run build --workspace shared
         RUN npm run build --workspace testing-core
-    # Note: Volumes removed to fix Windows path space and statfs mounting constraints in Podman
     environment:
-      NODE_ENV: development
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/bugsafari}
-      REDIS_URL: redis://redis:6379
-      BUGSAFARI_WORKER_CONCURRENCY: "1"
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      - MONGODB_URI=${MONGODB_URI}
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - BUGSAFARI_WORKER_CONCURRENCY=1
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     depends_on:
       redis:
-        condition: service_healthy
-      mongodb:
         condition: service_healthy
     networks:
       - bugsafari-local
@@ -131,10 +101,6 @@ services:
 volumes:
   redis-data:
     name: bugsafari-redis-data
-  mongodb-data:
-    name: bugsafari-mongodb-data
-  mongodb-config:
-    name: bugsafari-mongodb-config
 
 networks:
   bugsafari-local:

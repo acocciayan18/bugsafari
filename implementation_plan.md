@@ -1,119 +1,43 @@
 # Implementation Plan
 
 [Overview]
-Refactor authentication state desynchronization by making AuthContext.tsx the single source of truth and simplifying useAuth.ts to a pure wrapper hook that consumes the shared context, eliminating duplicate state management that causes the stale cache issue during logout/re-login loops.
+Fix the runtime issue where the backend container compilation succeeds but the application server process never runs by restoring the execution lifecycle hook in the `dev` script.
 
-[Scope & Context]
-The BugSafari application has two authentication implementations:
-1. `developer-dashboard/src/context/AuthContext.tsx` - React Context with centralized auth state (already has correct state update order)
-2. `developer-dashboard/src/hooks/useAuth.ts` - Standalone hook with duplicate state management (causes desync issues)
-
-The root cause: When logout occurs, localStorage updates can race with React state updates, causing memory states to lag behind persistent storage. This results in authentication loop bounce when users log out and immediately log back in.
-
-Solution: Use AuthContext.tsx as the authoritative source and make useAuth.ts a thin wrapper that delegates to it - eliminating duplicate state that gets out of sync.
+[Background]
+The BugSafari backend uses `tsc-watch` for development with hot-reload capabilities. The current `dev` script only compiles TypeScript but lacks the `--onSuccess` parameter to trigger the application server startup after successful compilation. This causes the telemetry exception: `[EXCEPTION] Launch failed: Cannot reach server at http://localhost:3000`.
 
 [Types]
-No new types required. Existing types in AuthContext.tsx will be re-exported:
-- `AuthUser { id: string, email: string }`
-- `LoginCredentials { email: string, password: string }`
-- `SignupCredentials { email: string, password: string }`
-- `AuthContextValue` - Extended to include all context properties
-- `NavigateCallback (path: string) => void`
+No type changes required - this is a configuration-only fix.
 
 [Files]
+**testing-core/package.json**: Modify the `dev` script to include the `--onSuccess` parameter that triggers the application entry point immediately when compilation succeeds.
 
-**New Files:**
-- None required
-
-**Modified Files:**
-1. `developer-dashboard/src/hooks/useAuth.ts`
-   - Complete refactor to become a thin wrapper hook
-   - Remove all internal state (user, token, isLoading, emailError)
-   - Remove login(), signup(), logout() implementations
-   - Import and re-export all types from AuthContext.tsx
-   - Import AuthContext and simply return useContext(AuthContext)
-
-2. `developer-dashboard/src/context/AuthContext.tsx`
-   - No functional changes (already has correct fix)
-   - Export AuthContext directly so useAuth.ts can import it
-   - Add re-export of types for useAuth.ts to import
-
-**Deleted Files:**
-- None
-
-**Configuration Updates:**
-- No config files needed
+Changes:
+- `"dev": "tsc-watch"` → `"dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\""`
 
 [Functions]
-
-**New Functions:**
-- None (delegating to AuthContext)
-
-**Modified Functions:**
-1. `useAuth` in `developer-dashboard/src/hooks/useAuth.ts`
-   - Signature: `function useAuth(): AuthContextValue`
-   - Current: Contains full auth logic with useState, useCallback, API calls
-   - Required: Simple wrapper calling `useContext(AuthContext)`
-   
-**Removed Functions:**
-- `login` - Removed from useAuth.ts (delegates to context)
-- `signup` - Removed from useAuth.ts (delegates to context)
-- `logout` - Removed from useAuth.ts (delegates to context)
-- `setNavigate` - Removed from useAuth.ts (delegates to context)
-- `isAuthenticated` - Removed from useAuth.ts (computed in context)
-- `clearEmailError` - Removed from useAuth.ts (delegates to context)
-- `decodeTokenExpiration` - Removed (duplicate in context)
-- `isTokenExpired` - Removed (duplicate in context)
+No function modifications required.
 
 [Classes]
-- No classes involved - this is a hooks-only refactor
+No class modifications required.
 
 [Dependencies]
-- No new npm packages required
-- Uses existing React Context API (built-in)
+No new dependencies required - `tsc-watch` is already installed (version 6.2.0) and supports the `--onSuccess` parameter.
 
 [Testing]
-
-**Test Strategy:**
-1. Verify all components using useAuth() still work after refactor
-2. Test logout immediately followed by login - should not bounce
-3. Verify token/user state is null after logout
-4. Verify token/user state is populated after login
-5. Test page refresh - should restore auth state from localStorage
-
-**Files to Test:**
-- LoginForm.tsx - Uses useAuth().login()
-- SignupForm.tsx - Uses useAuth().signup()
-- Sidebar.tsx - Uses useAuth().logout() and useAuth().user
-- AuthGuard.tsx - Uses useAuth().isAuthenticated
-- Any component importing from useAuth.ts
+- Run `npm run dev` in the testing-core directory
+- Verify compilation succeeds without errors
+- Verify the server starts and listens on port 3000
+- Confirm the `/api/debug/db` endpoint responds
 
 [Implementation Order]
+1. Read the current `testing-core/package.json` to confirm the current `dev` script state
+2. Modify the `dev` script to append `--onSuccess "node dist/testing-core/src/index.js"`
+3. Verify the changes are correctly applied
+4. Document completion in TODO.md
 
-1. **Step 1**: Update AuthContext.tsx - Export AuthContext and types
-   - Export `AuthContext` directly for import
-   - Re-export types so useAuth.ts can import them
-
-2. **Step 2**: Refactor useAuth.ts - Convert to thin wrapper
-   - Remove all state declarations
-   - Remove all function implementations  
-   - Import AuthContext and useContext
-   - Import types from AuthContext (re-export)
-   - Create simple wrapper function returning useContext(AuthContext)
-   - Add proper error handling for context not being available
-
-3. **Step 3**: Verify usage in dependent components
-   - Check LoginForm.tsx imports
-   - Check SignupForm.tsx imports
-   - Check Sidebar.tsx imports
-   - Check AuthGuard.tsx imports
-   - Update any imports if needed
-
-4. **Step 4**: Manual testing
-   - Run dev server
-   - Test logout → immediate login flow
-   - Verify no authentication bounce
-
----
-*Plan Version: 1.0*
-*Created: Current Date*
+task_progress Items:
+- [x] Step 1: Analyze the codebase and understand the issue
+- [x] Step 2: Implement the fix in testing-core/package.json
+- [x] Step 3: Verify the changes are correctly applied
+- [ ] Step 4: Test the dev script execution

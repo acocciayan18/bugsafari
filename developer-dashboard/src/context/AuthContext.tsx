@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
 
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
 
 // ============================================================================
 // Types - Re-exported from useAuth for convenience
@@ -164,15 +164,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // LOGIN FUNCTION
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
+const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
       });
+
+      if (!response.ok) {
+        console.error(`[AuthContext] Server returned status code: ${response.status}`);
+        toast.error(`Server connection failed (${response.status}). Please verify that your backend container is healthy on port 3000!`);
+        setIsLoading(false);
+        return false;
+      }
 
       const data: AuthResponse | AuthError = await response.json();
 
@@ -207,11 +214,19 @@ const authData = data as AuthResponse;
         return true;
       }
 
-      toast.error('Login failed - unexpected response', { id: 'auth-login' });
+toast.error('Login failed - unexpected response', { id: 'auth-login' });
       console.error('[AuthContext] Login failed - unexpected response:', data);
       setIsLoading(false);
       return false;
-    } catch (error) {
+    } catch (error: any) {
+      // Detect network errors when API gateway is unreachable
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        console.warn('[AuthContext] API gateway server on port 3000 is unreachable or hot-reloading.');
+        toast.error("Network Error: Cannot connect to BugSafari API. Ensure your backend container stack is running!");
+        setIsLoading(false);
+        return false;
+      }
+      // Existing fallback error handling
       const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
       toast.error(errorMessage, { id: 'auth-login' });
       console.error('[AuthContext] Login error:', error);
@@ -228,7 +243,7 @@ const authData = data as AuthResponse;
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

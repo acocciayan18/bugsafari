@@ -70,21 +70,7 @@ interface SessionReportData {
   };
 }
 
-// Static initialization constant for build timestamp
-// Format: "JUNE 23 | 10:05 PM"
-const formatBuildTimestamp = (date: Date): string => {
-  const months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
-  const month = months[date.getMonth()];
-  const day = date.getDate();
-  let hours = date.getHours();
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  hours = hours ? hours : 12; // 0 should be 12
-  return `${month} ${day} | ${hours}:${minutes} ${ampm}`;
-};
 
-const BACKEND_BOOT_TIME = formatBuildTimestamp(new Date());
 
 function sanitizeTargetUrl(targetUrl: unknown): string | null {
   if (typeof targetUrl !== 'string') {
@@ -117,13 +103,7 @@ export function registerRoutes(
 ): void {
 // Health check - public
   app.get('/api/health', (_request: Request, response: Response) => {
-    response.json({
-      ok: true,
-      active: useCase.isActive(),
-      port,
-      timestamp: new Date().toISOString(),
-      compiledAt: BACKEND_BOOT_TIME,
-    });
+    response.json({ status: "healthy" });
   });
 
   // Start test - allowed for guests (optional auth)

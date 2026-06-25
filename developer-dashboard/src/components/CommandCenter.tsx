@@ -3,7 +3,7 @@
 // 3-Row Layout: Header Controls → Input Bar → Workspace Grid
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from './SessionTimer';
 import type { TestSessionStatus } from '../application/useCases/useDashboardController';
 
@@ -52,31 +52,9 @@ export default function CommandCenter({
   onTimeUp,
   children,
 }: CommandCenterProps) {
-  const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
-  const [backendBuildTime, setBackendBuildTime] = useState<string | null>(null);
+const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
 
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
-
-// Fetch backend health info to get build timestamp
-  useEffect(() => {
-    console.log('[CommandCenter] Fetching health endpoint from: /api/health');
-    fetch('/api/health')
-      .then(res => {
-        console.log('[CommandCenter] Health response status:', res.status);
-        return res.json();
-      })
-      .then(data => {
-        console.log('[CommandCenter] Health data:', data);
-        if (data.compiledAt) {
-          console.log('[CommandCenter] Setting backend build time:', data.compiledAt);
-          setBackendBuildTime(data.compiledAt);
-        } else {
-          console.log('[CommandCenter] No compiledAt in response, using timestamp:', data.timestamp);
-          setBackendBuildTime(data.timestamp || new Date().toLocaleString());
-        }
-      })
-      .catch(err => console.error('[CommandCenter] Failed to fetch health:', err));
-  }, []);
 
   // 👈 Compute visibility matrix based on unified status
   const controlVisibility = computeControlVisibility(testStatus);
@@ -226,7 +204,7 @@ export default function CommandCenter({
           SECURITY PROTOCOL: AES-256 ACTIVE
         </p>
         <div className="flex items-center gap-4">
-          {/* Gateway Status - Now in Footer beside Testing Core Build */}
+          {/* Gateway Status */}
           {isConnected !== undefined && (
             <div className="flex items-center gap-2 text-xs font-mono">
               {isConnected ? (
@@ -241,12 +219,6 @@ export default function CommandCenter({
                 </>
               )}
             </div>
-          )}
-          {/* Backend Build Time */}
-          {backendBuildTime && (
-            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-              ℹ️ Testing Core Instance Build: {backendBuildTime}
-            </p>
           )}
         </div>
       </div>

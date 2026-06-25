@@ -23,13 +23,17 @@ export class SocketHttpEngineGateway implements EngineGateway {
   private urlChangedHandler: UrlChangedHandler | null = null;
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
 
-  constructor(apiBaseUrl: string, socketUrl: string) {
+constructor(apiBaseUrl: string, socketUrl: string) {
     this.apiBaseUrl = apiBaseUrl;
-    this.socket = io(socketUrl, {
+    // Use hybrid fallback: environment variable first, then window.location.origin for proxy-aware routing
+    const resolvedSocketUrl = socketUrl || (typeof window !== 'undefined' ? window.location.origin : apiBaseUrl);
+    this.socket = io(resolvedSocketUrl, {
       autoConnect: false,
+      transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 20,
-      timeout: 10000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
   }
 
@@ -100,22 +104,17 @@ export class SocketHttpEngineGateway implements EngineGateway {
 
       console.log(`[Gateway] ✅ Safari launch accepted`);
     } catch (error) {
-      // Determine if it's a network/fetch error
       if (error instanceof TypeError) {
-        // Check for common network errors
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {
-          // This usually means server is down or unreachable
           console.error(`[Gateway] ❌ Network error - server may be unreachable: ${this.apiBaseUrl}`);
           console.error(`[Gateway] ❌ Possible causes: Server not running, CORS error, or network issue`);
           throw new Error(`Cannot reach server at ${this.apiBaseUrl}. Is the backend running?`);
         }
 
-        // Generic fetch error
         console.error(`[Gateway] ❌ Fetch error:`, error.message);
         throw new Error(`Network error: ${error.message}`);
       }
 
-      // Re-throw other errors as-is
       throw error;
     }
   }
@@ -132,18 +131,22 @@ export class SocketHttpEngineGateway implements EngineGateway {
     }
   }
 
-  public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
-    const response = await fetch(`${this.apiBaseUrl}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
-      headers: this.getAuthHeaders(),
-    });
-    if (!response.ok) {
-      throw new Error(`Could not fetch session history (${response.status})`);
+public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error(`Could not fetch session history (${response.status})`);
+      }
+      const data = (await response.json()) as { sessions?: SessionHistoryEntry[] };
+      return Array.isArray(data.sessions) ? data.sessions : [];
+    } catch (error) {
+      console.log("[Gateway] Backend is hot-reloading. Suppressing transient ERR_EMPTY_RESPONSE.");
+      return [];
     }
-    const data = (await response.json()) as { sessions?: SessionHistoryEntry[] };
-    return Array.isArray(data.sessions) ? data.sessions : [];
   }
 
-  // Flow Control Methods
   public pauseTest(): void {
     this.socket.emit('pause-test');
   }

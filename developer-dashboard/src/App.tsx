@@ -23,7 +23,8 @@ import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? API_BASE_URL;
+// Hybrid fallback: Use env var if set, otherwise fall back to window.location.origin for proxy-aware routing
+const SOCKET_URL = import.meta.env.VITE_BUGSAFARI_SOCKET_URL ?? (typeof window !== 'undefined' ? window.location.origin : API_BASE_URL);
 
 // View type for navigation
 type ViewType = 'dashboard' | 'history' | 'settings';

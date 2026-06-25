@@ -1,31 +1,40 @@
-# TODO - BugSafari Implementation Tracker
+# TODO - Runtime Server Launch Fix
 
-## Authentication State Desync Fix - Completed
+## Task
+Fix the runtime issue where the backend container compilation succeeds but the application server process never runs by restoring the execution lifecycle hook in the `dev` script.
 
-### Task Progress:
-- [x] Verify AuthContext.tsx has correct fix (React state updated FIRST, then localStorage)
-- [x] Refactor useAuth.ts to be thin wrapper delegating to AuthContext
-- [x] Build verification - SUCCESS (178 modules transformed)
+## Implementation Steps
 
-### Implementation Summary:
-1. **AuthContext.tsx** - Already had the fix implemented:
-   - `login()`: React state (`setToken`, `setUser`) updates FIRST, then localStorage
-   - `logout()`: React state resets FIRST, then localStorage
+- [x] Step 1: Understand current dev script configuration in testing-core/package.json
+- [x] Step 2: Analyze tsc-watch and its --onSuccess parameter
+- [x] Step 3: Create implementation_plan.md with detailed fix plan
+- [x] Step 4: Execute the fix - append --onSuccess parameter to dev script
+- [x] Step 5: Verify the changes are correctly applied
+- [ ] Step 6: Test the dev script execution (run `npm run dev`)
 
-2. **useAuth.ts** - Refactored to be thin wrapper:
-   - Removed duplicate state management (259 lines removed)
-   - Now delegates to AuthContext using `useContext`
-   - Maintains backward compatibility for any imports
+## Changes Required
 
-### Key Changes:
-- `developer-dashboard/src/hooks/useAuth.ts` - Reduced from 285 lines to 26 lines
-- Now uses single source of truth from AuthContext.tsx
-- Eliminates duplicate state that caused desync issues
-
-### Build Status:
-- Vite build: SUCCESS (14.16s)
-- 178 modules transformed
-- 0 errors
+1. Modify testing-core/package.json:
+   - Change `"dev": "tsc-watch"` to `"dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\""`
 
 ---
-*Last Updated: Current Date*
+
+# TODO - Login Redirect Fix
+
+## Task
+Fix login network path in AuthContext.tsx to use Vite proxy instead of direct port 3000 connection.
+
+## Implementation Steps
+
+- [x] Step 1: Understand current login implementation in AuthContext.tsx
+- [x] Step 2: Examine vite.config.ts to verify proxy configuration
+- [x] Step 3: Create implementation_plan.md with detailed fix plan
+- [x] Step 4: Execute the fix - change hardcoded URL to relative path
+- [x] Step 5: Verify the changes are correct
+
+## Changes Required
+
+1. Modify AuthContext.tsx:
+   - Change API_BASE_URL to use relative path when in dev mode
+   - Update login fetch to use `/api/auth/login` relative path
+   - Update signup fetch to use `/api/auth/register` relative path
