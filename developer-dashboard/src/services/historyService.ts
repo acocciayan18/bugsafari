@@ -5,8 +5,6 @@
 
 import type { SessionHistoryEntry } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-
 /**
  * Get authentication token from localStorage
  */
@@ -36,6 +34,18 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 /**
+ * Get fetch options with credentials for cross-origin requests
+ */
+function getFetchOptions(method: string, body?: object): RequestInit {
+  return {
+    method,
+    headers: getAuthHeaders(),
+    credentials: 'include',
+    body: body ? JSON.stringify(body) : undefined,
+  };
+}
+
+/**
  * Save a testing session to history
  * @param targetUrl - The final/runtime URL that was actually tested
  * @param options - Optional parameters including initialUrl for the original input URL
@@ -46,7 +56,6 @@ export async function saveSessionToHistory(
   options?: { initialUrl?: string }
 ): Promise<void> {
   console.log('[historyService] 📤 saveSessionToHistory called with targetUrl:', targetUrl);
-  console.log('[historyService] API_BASE_URL:', API_BASE_URL);
   console.log('[historyService] Options:', options);
 
   // Validate targetUrl
@@ -66,11 +75,7 @@ export async function saveSessionToHistory(
   try {
     console.log('[historyService] 📤 Sending POST request to /api/history/save-session...');
 
-    const response = await fetch(`${API_BASE_URL}/api/history/save-session`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
+const response = await fetch('/api/history/save-session', getFetchOptions('POST', payload));
 
     console.log('[historyService] Response status:', response.status);
     console.log('[historyService] Response ok:', response.ok);
@@ -117,11 +122,9 @@ export async function fetchSessionHistory(limit = 50): Promise<SessionHistoryEnt
   console.log('[historyService] fetchSessionHistory called with limit:', limit);
 
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`,
-      {
-        headers: getAuthHeaders(),
-      }
+const response = await fetch(
+      `/api/history/sessions?limit=${encodeURIComponent(String(limit))}`,
+      getFetchOptions('GET')
     );
 
     console.log('[historyService] fetchSessionHistory response status:', response.status);
@@ -166,11 +169,8 @@ export async function deleteRecord(recordId: string): Promise<void> {
   try {
     console.log('[historyService] 📤 Sending DELETE request to /api/history/:id...');
 
-    // Remove encodeURIComponent - MongoDB ObjectIds don't need encoding and it can cause issues
-    const response = await fetch(`${API_BASE_URL}/api/history/${recordId}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    });
+// Remove encodeURIComponent - MongoDB ObjectIds don't need encoding and it can cause issues
+    const response = await fetch(`/api/history/${recordId}`, getFetchOptions('DELETE'));
 
     console.log('[historyService] Response status:', response.status);
     console.log('[historyService] Response ok:', response.ok);
@@ -224,10 +224,7 @@ export async function exportRecord(recordId: string): Promise<void> {
   try {
     console.log('[historyService] 📤 Fetching record for export from /api/history/export/:id...');
 
-    const response = await fetch(`${API_BASE_URL}/api/history/export/${encodeURIComponent(recordId)}`, {
-      method: 'GET',
-      headers: getAuthHeaders()
-    });
+const response = await fetch(`/api/history/export/${encodeURIComponent(recordId)}`, getFetchOptions('GET'));
 
     console.log('[historyService] Export response status:', response.status);
     console.log('[historyService] Export response ok:', response.ok);

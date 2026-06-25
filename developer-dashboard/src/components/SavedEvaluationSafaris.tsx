@@ -12,8 +12,6 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { deleteRecord as deleteSafariRecord, exportRecord } from '../services/historyService';
 import { toast } from 'sonner';
 
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-
 // Types matching the saved safari document from backend
 export interface SafariMetrics {
   totalActions: number;
@@ -244,13 +242,18 @@ const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-const { token } = useAuth();
+const { token, isAuthLoading, refreshToken, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Fetch from API on mount
+  // Fetch from API on mount - with sanity barrier to prevent race condition
   useEffect(() => {
+    // 🚀 CRITICAL: Intercept transitional mounting frames to halt requests with uninitialized tokens
+    if (!token || isAuthLoading) {
+      return;
+    }
+
     fetchHistory();
-  }, [token]);
+  }, [token, isAuthLoading]);
 
   // Refetch function exposed for manual refresh
   const fetchHistory = async (showLoading = true) => {
@@ -265,37 +268,47 @@ const { token } = useAuth();
     }
     setFetchError(null);
 
-    try {
-      console.log('[SavedEvaluations] Starting fetch with token:', token ? 'token present' : 'NO TOKEN');
+try {
+      // Debug: Log token details for debugging 401 issue
+      console.log('[SavedEvaluations] ===== TOKEN DEBUG =====');
+      console.log('[SavedEvaluations] Token from useAuth():', token ? `present (${token.substring(0, 30)}...)` : 'NULL');
+      console.log('[SavedEvaluations] Token from localStorage:', localStorage.getItem('bugsafari_token') ? `present (${localStorage.getItem('bugsafari_token')?.substring(0, 30)}...)` : 'NULL');
+      console.log('[SavedEvaluations] =========================');
 
-      const response = await fetch(`${API_BASE_URL}/api/history`, {
+      const response = await fetch('/api/history', {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
+        credentials: 'include',
       });
 
-console.log('[SavedEvaluations] Response status:', response.status);
+// Debug: Log the actual response details
+      console.log('[SavedEvaluations] Response status:', response.status);
+      console.log('[SavedEvaluations] Response headers:', Object.fromEntries(response.headers.entries()));
 
-      // Check for 401 Unauthorized - token expired or invalid
-      if (response.status === 401) {
-        const errorText = await response.text();
-        const isTokenError = errorText.includes('Invalid or expired token') || 
-                           errorText.includes('expired token') ||
-                           errorText.includes('Invalid token') ||
-                           errorText.includes('401');
+// Explicit check for auth degradation events (401/403)
+// This directly triggers session logout without relying on broken token refresh backend
+      if (response.status === 401 || response.status === 403) {
+        console.error('[History] Request rejected due to token invalidation. Initializing auth recovery sequence...');
         
-        if (isTokenError) {
-          // Clear stale tokens from localStorage
-          localStorage.removeItem('bugsafari_token');
-          localStorage.removeItem('bugsafari_user');
-          
-          // Display session expired warning toast
-          toast.error("Session expired. Please log in again.");
-          
-          // Redirect to login page using React Router navigation
-          navigate('/login');
-          return;
-        }
+        // Display user-friendly toast message
+        toast.error("Your validation session has expired. Redirecting to login...");
+        
+        // Clear local storage tokens (auth cleanup)
+        localStorage.removeItem('bugsafari_token');
+        localStorage.removeItem('bugsafari_user');
+        
+        // Trigger session logout to invalidate React state
+        logout();
+        
+        // Short-circuit: clear component state and redirect to login
+        setSafariData([]);
+        setIsLoading(false);
+        
+        // Navigate to login page
+        navigate('/login');
+        return;
       }
 
       if (!response.ok) {

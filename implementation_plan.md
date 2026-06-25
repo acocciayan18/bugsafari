@@ -1,43 +1,46 @@
 # Implementation Plan
 
 [Overview]
-Fix the runtime issue where the backend container compilation succeeds but the application server process never runs by restoring the execution lifecycle hook in the `dev` script.
+Update BUGSAFARI_BLUEPRINT.md Section 7 "CURRENT MODULE ANCHORS" to reflect the actual implementation state of the codebase, correcting references to files and modules that have been renamed, moved, or consolidated.
 
-[Background]
-The BugSafari backend uses `tsc-watch` for development with hot-reload capabilities. The current `dev` script only compiles TypeScript but lacks the `--onSuccess` parameter to trigger the application server startup after successful compilation. This causes the telemetry exception: `[EXCEPTION] Launch failed: Cannot reach server at http://localhost:3000`.
+[Overview]
+The BUGSAFARI_BLUEPRINT.md Section 7 "CURRENT MODULE ANCHORS" contains references to implementation files that no longer accurately reflect the current codebase structure. This implementation plan details the discrepancies found during investigation and provides corrections for the blueprint's module anchor references.
 
 [Types]
-No type changes required - this is a configuration-only fix.
+No type system changes required.
 
 [Files]
-**testing-core/package.json**: Modify the `dev` script to include the `--onSuccess` parameter that triggers the application entry point immediately when compilation succeeds.
-
-Changes:
-- `"dev": "tsc-watch"` → `"dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\""`
+The file to be modified:
+- BUGSAFARI_BLUEPRINT.md - Update Section 7 "CURRENT MODULE ANCHORS" to reflect actual implementation paths
 
 [Functions]
-No function modifications required.
+No function changes required.
 
 [Classes]
-No class modifications required.
+No class changes required.
 
 [Dependencies]
-No new dependencies required - `tsc-watch` is already installed (version 6.2.0) and supports the `--onSuccess` parameter.
+No dependency changes required.
 
 [Testing]
-- Run `npm run dev` in the testing-core directory
-- Verify compilation succeeds without errors
-- Verify the server starts and listens on port 3000
-- Confirm the `/api/debug/db` endpoint responds
+No testing changes required.
 
 [Implementation Order]
-1. Read the current `testing-core/package.json` to confirm the current `dev` script state
-2. Modify the `dev` script to append `--onSuccess "node dist/testing-core/src/index.js"`
-3. Verify the changes are correctly applied
-4. Document completion in TODO.md
+1. Update Section 7 module anchor references to match actual file paths:
+   - Change "authController.ts" "authMiddleware.ts" to "presentation/authentication/authController.ts" "presentation/authentication/authMiddleware.ts"
+   - Change intelligence section "domParser.ts" to "AutonomousExplorationEngine.ts" for DOM handling reference
+   - Change "smartAttacker.ts" to include "dataFuzzer.ts" (exists in domain/scenarios/fuzzing folder)
+   - Remove references to files that don't exist: "browserConsoleListener.ts" not found (may be part of PlaywrightBrowserEngine.ts or separate)
+   - Add "ToastProvider.tsx" to dashboard notification references
+   - Confirm actual locations for run orchestration: "runController.ts", "stackManager.ts", "domainGuard.ts"
+   - Confirm actual locations for monitoring: "socketServer.ts" "BinaryFrameServer.ts" "exceptionCatcher.ts" "stabilityMonitor.ts"
+   - Confirm actual locations for worker/queue: "worker-entry.ts"
 
-task_progress Items:
-- [x] Step 1: Analyze the codebase and understand the issue
-- [x] Step 2: Implement the fix in testing-core/package.json
-- [x] Step 3: Verify the changes are correctly applied
-- [ ] Step 4: Test the dev script execution
+2. Update date stamp in document header from "June 4, 2026" to reflect current version date
+
+3. Verify all reference paths are correct for:
+   - Backend intelligence section: RiskScorer.ts, StateGraphNavigator.ts, DIrectedPathFinder.ts, AutonomousExplorationEngine.ts
+   - Backend scenarios section: formBypasser.ts, networkSaboteur.ts, rapidClickerStress.ts, routeTrasher.ts
+   - Backend detection: bugs/finders/* (8 finders exist)
+
+4. Final review of all updated references against filesystem

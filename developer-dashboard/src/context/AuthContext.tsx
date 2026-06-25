@@ -49,10 +49,12 @@ export interface AuthContextValue {
   // Computed
   isAuthenticated: boolean;
   isGuestMode: boolean;
+  isAuthLoading: boolean; // true when auth is initializing (token exists but user not yet restored)
   
   // Actions
   login: (credentials: LoginCredentials) => Promise<boolean>;
   signup: (credentials: SignupCredentials) => Promise<boolean>;
+  refreshToken: () => Promise<boolean>; // Refresh JWT token to prevent 401 errors
   logout: () => void;
   clearEmailError: () => void;
   
@@ -98,9 +100,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // SINGLE SOURCE OF TRUTH: All auth state managed here
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const [user, setUser] = useState<AuthUser | null>(null);
+// Initialize state with SYNCHRONOUS validation - prevents 401 race condition
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const storedToken = localStorage.getItem('bugsafari_token');
+    if (storedToken && isTokenExpired(storedToken)) {
+      // Token already expired, don't restore user
+      return null;
+    }
+    const storedUser = localStorage.getItem('bugsafari_user');
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
   const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('bugsafari_token');
+    const storedToken = localStorage.getItem('bugsafari_token');
+    // CRITICAL: Validate token expiration synchronously during initialization
+    if (storedToken && isTokenExpired(storedToken)) {
+      console.warn('[AuthContext] Token expired or invalid, clearing session');
+      localStorage.removeItem('bugsafari_token');
+      localStorage.removeItem('bugsafari_user');
+      return null;
+    }
+    return storedToken;
   });
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState<string>('');
@@ -311,9 +338,9 @@ const authData = data as AuthResponse;
     }
   }, [navigateTo]);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
   // LOGOUT FUNCTION
-  // ══════════════════════════════════════════════════════════════════���════════
+  // ═══════════════════════════════════════════════════════════════════════════
   
 const logout = useCallback(() => {
     // CRITICAL: Reset React state FIRST to prevent stale cache on immediate re-login
@@ -331,6 +358,67 @@ const logout = useCallback(() => {
   }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // TOKEN REFRESH FUNCTION
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+const refreshToken = useCallback(async (): Promise<boolean> => {
+    const currentToken = token || localStorage.getItem('bugsafari_token');
+    if (!currentToken) {
+      console.warn('[AuthContext] No token available for refresh');
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`,
+        },
+      });
+
+console.log('[AuthContext] Token refresh response status:', response.status);
+
+      // Handle 404 - refresh endpoint not found (unlinked route condition)
+      if (response.status === 404) {
+        console.warn('[AuthContext] Token refresh route wrapper is unmapped on this backend iteration.');
+        logout();
+        return false;
+      }
+
+      // Handle 403/401 - session credentials invalid or expired
+      if (response.status === 403 || response.status === 401) {
+        console.error('[AuthContext] Session credentials are mathematically invalid or expired.');
+        logout();
+        return false;
+      }
+
+      const data: AuthResponse | AuthError = await response.json();
+      const authData = data as AuthResponse;
+
+      if (authData.token && authData.user) {
+        // Update with new token
+        setToken(authData.token);
+        setUser(authData.user);
+        localStorage.setItem('bugsafari_token', authData.token);
+        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
+        console.log('[AuthContext] Token refreshed successfully');
+        return true;
+      }
+
+      console.warn('[AuthContext] Token refresh returned no valid data');
+      return false;
+    } catch (error) {
+      console.error('[AuthContext] Token refresh error:', error);
+      // Network error - backend may be unreachable
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error('[AuthContext] Network error - backend may be down');
+      }
+      return false;
+    }
+  }, [token, logout]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Clear email error
   // ═══════════════════════════════════════════════════════════════════════════
   
@@ -338,17 +426,24 @@ const logout = useCallback(() => {
     setEmailError('');
   }, []);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
   // Computed: isAuthenticated
   // ═══════════════════════════════════════════════════════════════════════════
   
   const isAuthenticated = token !== null && user !== null;
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Computed: isAuthLoading - true during auth initialization (token exists but user not yet restored)
+  // This prevents race conditions where components fire requests before auth is ready
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const isAuthLoading = token !== null && user === null && !isLoading;
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Context Value
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const value: AuthContextValue = {
+const value: AuthContextValue = {
     // State
     user,
     token,
@@ -358,10 +453,12 @@ const logout = useCallback(() => {
     // Computed
     isAuthenticated,
     isGuestMode,
+    isAuthLoading,
     
     // Actions
     login,
     signup,
+    refreshToken,
     logout,
     clearEmailError,
     

@@ -240,16 +240,17 @@ Reference telemetry envelope shape:
 Important implementation anchors in the current tree:
 
 - Dashboard shell: `developer-dashboard/src/App.tsx`, `ClinicalForensicsDashboard.tsx`
-- Auth: `AuthGuard.tsx`, `LoginForm.tsx`, `SignupForm.tsx`, `useAuth.ts`, `authController.ts`, `authMiddleware.ts`, `UserModel.ts`
-- Dashboard transport: `EngineGateway.ts`, `SocketHttpEngineGateway.ts`, `BinaryFrameReceiver.ts`
-- Backend startup: `testing-core/src/index.ts`, `registerRoutes.ts`, `registerSocketHandlers.ts`
-- Run orchestration: `StartExplorationUseCase.ts`, `runController.ts`, `stackManager.ts`, `domainGuard.ts`
-- Intelligence: `AutonomousExplorationEngine.ts`, `RiskScorer.ts`, `StateGraphNavigator.ts`, `DIrectedPathFinder.ts`, `domParser.ts`
-- Scenarios: `dataFuzzer.ts`, `formBypasser.ts`, `networkSaboteur.ts`, `rapidClickerStress.ts`, `routeTrasher.ts`, `securityVulnerabilityScout.ts`, `smartAttacker.ts`
-- Detection: `bugs/registry.ts`, `bugs/scenarioAdapters.ts`, `bugs/finders/*`, `bugs/stressAdapters/*`
+- Auth: `AuthGuard.tsx`, `LoginForm.tsx`, `SignupForm.tsx`, `useAuth.ts`, `presentation/authentication/authController.ts`, `presentation/authentication/authMiddleware.ts`, `userSettingsController.ts`, `database/models/UserModel.ts`
+- Dashboard transport: `application/ports/EngineGateway.ts`, `infrastructure/engine/SocketHttpEngineGateway.ts`, `infrastructure/socket/BinaryFrameReceiver.ts`
+- Backend startup: `testing-core/src/index.ts`, `presentation/api/registerRoutes.ts`, `presentation/socket/registerSocketHandlers.ts`
+- Run orchestration: `application/useCases/StartExplorationUseCase.ts`, `application/services/runController.ts`, `application/services/stackManager.ts`, `application/services/domainGuard.ts`
+- Intelligence: `AutonomousExplorationEngine.ts`, `RiskScorer.ts`, `StateGraphNavigator.ts`, `DIrectedPathFinder.ts`, `ForensicAnalysisService.ts`, `BugClassifier.ts`
+- Scenarios: `domain/scenarios/fuzzing/dataFuzzer.ts`, `formBypasser.ts`, `networkSaboteur.ts`, `rapidClickerStress.ts`, `routeTrasher.ts`
+- Bug detection: `bugs/registry.ts`, `bugs/scenarioAdapters.ts`, `bugs/finders/*` (8 finders: concurrentStress, fuzzGuard, inputSanitization, noSqlInjection, runtimeStability, spaRaceConditions, structuralNavigation, structuralProbe)
 - Monitoring: `actionBuffer.ts`, `exceptionCatcher.ts`, `reproductionPlaybookStore.ts`, `stabilityMonitor.ts`, `socketServer.ts`, `BinaryFrameServer.ts`
-- Persistence: `mongooseClient.ts`, `MongoFindingRepository.ts`, `ActionTraceModel.ts`, `BrainConfigModel.ts`, `FindingModel.ts`, `FindingType.ts`, `SessionModel.ts`, `UserModel.ts`
-- Worker/queue: `TaskQueue.ts`, `SafariWorker.ts`, `worker-entry.ts`
+- Persistence: `database/mongooseClient.ts`, `database/repositories/MongoFindingRepository.ts`, `database/models/ActionTraceModel.ts`, `database/models/BrainConfigModel.ts`, `database/models/FindingModel.ts`, `database/models/FindingType.ts`, `database/models/SessionModel.ts`, `database/models/UserModel.ts`
+- Worker/queue: `queue/TaskQueue.ts`, `workers/SafariWorker.ts`, `worker-entry.ts`
+- Dashboard notifications: `infrastructure/notifications/ToastProvider.tsx`, `toastUtils.ts`
 - Contracts: `shared/types.ts`, `testing-core/src/types.ts`, `developer-dashboard/src/types.ts`
 
 ---
