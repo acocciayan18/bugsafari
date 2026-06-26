@@ -1,8 +1,14 @@
 import mongoose, { Schema, type Document } from 'mongoose';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DEPRECATED: This file is deprecated.
+// The sessions collection (SessionModel.ts) is now the single source of truth.
+// All session history should be stored in the sessions collection.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ISavedSafari — TypeScript interface contract
-// Collection target: 'savedsafaris'
+// Collection target: 'savedsafaris' (DEPRECATED - use sessions instead)
 // Relational parent: 'users'
 // ─────────────────────────────────────────────────────────────────────────────
 

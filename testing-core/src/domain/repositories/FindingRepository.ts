@@ -3,6 +3,7 @@ import type { ActionBreadcrumb, TelemetryEvent } from '../../../../shared/types.
 export interface CreateSessionInput {
   targetUrl: string;
   startedAt: string;
+  userId?: string;  // Optional - will be required for authenticated sessions
 }
 
 export interface SaveFindingInput {

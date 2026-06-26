@@ -184,27 +184,29 @@ export class StartExplorationUseCase {
             }
         }
 
-        // FIX: Create session in database BEFORE starting test
+// FIX: Create session in database BEFORE starting test
         // CRITICAL: This operation MUST NOT block safari initialization
         // If DB is down, we continue without forensic history - that's acceptable
         this.currentSessionId = null;
         if (this.findingRepository) {
-            try {
-                console.log(`[StartExplorationUseCase] Attempting to create session for ${targetUrl}...`);
-                this.currentSessionId = await this.findingRepository.createSession({
-                    targetUrl,
-                    startedAt: new Date().toISOString(),
-                });
-                console.log(`[StartExplorationUseCase] ✓ Session created: ${this.currentSessionId}`);
-            } catch (sessionError) {
-                const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
-                console.error(`[StartExplorationUseCase] ⚠️ Session creation failed: ${errorMessage}`);
-                console.warn('[StartExplorationUseCase] Continuing launch WITHOUT forensic history - DB unavailable');
-                // DO NOT re-throw - continue without session tracking
-                // This ensures the safari can still launch even if DB is down
-            }
+          try {
+            console.log(`[StartExplorationUseCase] Attempting to create session for ${targetUrl}...`);
+            console.log(`[StartExplorationUseCase] UserId for session: ${this.currentUserId}`);
+            this.currentSessionId = await this.findingRepository.createSession({
+              targetUrl,
+              startedAt: new Date().toISOString(),
+              userId: this.currentUserId,  // CRITICAL: Bind session to authenticated user
+            });
+            console.log(`[StartExplorationUseCase] ✓ Session created: ${this.currentSessionId} for userId: ${this.currentUserId}`);
+          } catch (sessionError) {
+            const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+            console.error(`[StartExplorationUseCase] ⚠️ Session creation failed: ${errorMessage}`);
+            console.warn('[StartExplorationUseCase] Continuing launch WITHOUT forensic history - DB unavailable');
+            // DO NOT re-throw - continue without session tracking
+            // This ensures the safari can still launch even if DB is down
+          }
         } else {
-            console.log('[StartExplorationUseCase] No findingRepository - running without forensic history');
+          console.log('[StartExplorationUseCase] No findingRepository - running without forensic history');
         }
 
         this.state.active = true;

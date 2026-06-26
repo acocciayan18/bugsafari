@@ -62,14 +62,22 @@ function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
 
 
 export class MongoFindingRepository implements FindingRepository {
-  public async createSession(input: CreateSessionInput): Promise<string> {
+public async createSession(input: CreateSessionInput): Promise<string> {
     console.log(`[MongoFindingRepository] 📝 Creating session for: ${input.targetUrl}`);
+    console.log(`[MongoFindingRepository] UserId: ${input.userId ?? 'none/unauthenticated'}`);
+    
+    // Use provided userId or default to guest user
+    const userIdToUse = input.userId && isValidObjectId(input.userId) 
+      ? new Types.ObjectId(input.userId) 
+      : new Types.ObjectId('000000000000000000000000');  // Default guest user
+    
     const session = await SessionModel.create({
+      userId: userIdToUse,  // CRITICAL: Link session to user
       targetUrl: input.targetUrl,
       status: SessionStatus.RUNNING,
       startedAt: new Date(input.startedAt),
     });
-    console.log(`[MongoFindingRepository] ✅ Session created: ${session._id}`);
+    console.log(`[MongoFindingRepository] ✅ Session created: ${session._id} for userId: ${userIdToUse}`);
     return session._id.toString();
   }
 

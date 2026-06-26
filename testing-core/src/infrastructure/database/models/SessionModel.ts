@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 import { SessionStatus } from './FindingType.js';
 
 export interface ISessionConfig {
@@ -19,8 +19,40 @@ export interface ISessionStats {
   maxActions?: number;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Forensic Trace subdocuments - consolidated from SavedSafariModel
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ICaughtBug {
+  bugId: string;
+  type: string;
+  message: string;
+  selector: string;
+  payloadUsed: string;
+  advice: string;
+  timestamp: Date;
+}
+
+export interface IForensicTrace {
+  finalBreadcrumbSteps: string[];
+  caughtBugs: ICaughtBug[];
+}
+
+export interface ISessionMetrics {
+  totalActions: number;
+  totalBugsFound: number;
+  bugsByCategory: Record<string, number>;
+}
+
 const sessionSchema = new Schema(
   {
+    // User association - CRITICAL: Every session must belong to a user
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'userId is required — every session must belong to an authenticated user.'],
+      index: true,
+    },
     targetUrl: {
       type: String,
       required: [true, 'Target URL is required'],
@@ -85,7 +117,7 @@ const sessionSchema = new Schema(
       required: false,
       default: { maxDepth: 5, maxActions: 100, timeout: 30000, headless: true, allowedDomains: [] },
     },
-stats: {
+    stats: {
       type: {
         actionsExecuted: { type: Number, default: 0 },
         findingsFound: { type: Number, default: 0 },
@@ -114,6 +146,61 @@ stats: {
       },
       required: false,
       default: null,
+    },
+    // ─────────────────────────────────────────────────────────────────────────
+    // Consolidated fields from SavedSafariModel for unified session history
+    // ─────────────────────────────────────────────────────────────────────────
+    // Note: executionDate aliases startedAt, timeElapsed aliases stats.runtimeMs
+    // These fields allow backward compatibility with existing queries
+    executionDate: {
+      type: Date,
+      default: () => new Date(),
+      index: true,
+    },
+    timeElapsed: {
+      type: Number,
+      required: false,
+      default: 0,
+      min: [0, 'timeElapsed cannot be negative'],
+    },
+    metrics: {
+      type: {
+        totalActions: { type: Number, default: 0, min: 0 },
+        totalBugsFound: { type: Number, default: 0, min: 0 },
+        bugsByCategory: {
+          type: Map,
+          of: Number,
+          default: {},
+        },
+      },
+      required: false,
+      default: { totalActions: 0, totalBugsFound: 0, bugsByCategory: {} },
+    },
+    forensicTrace: {
+      type: {
+        finalBreadcrumbSteps: {
+          type: [String],
+          default: [],
+          validate: {
+            validator: (steps: string[]) => steps.length <= 20,
+            message: 'finalBreadcrumbSteps cannot exceed the 20-step limit.',
+          },
+        },
+        caughtBugs: [{
+          bugId: {
+            type: String,
+            default: () => new Types.ObjectId().toString(),
+          },
+          type: { type: String, default: '' },
+          message: { type: String, default: '' },
+          selector: { type: String, default: '' },
+          payloadUsed: { type: String, default: '' },
+          advice: { type: String, default: '' },
+          timestamp: { type: Date, default: Date.now },
+        }],
+      },
+      required: false,
+      default: { finalBreadcrumbSteps: [], caughtBugs: [] },
     },
   },
   {

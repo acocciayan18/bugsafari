@@ -2,6 +2,12 @@ import { isValidObjectId, Types } from 'mongoose';
 import { SavedSafari, type ISavedSafari } from '../schemas/SavedSafariModel.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DEPRECATED: This repository is deprecated.
+// The sessions collection (MongoFindingRepository) is now the single source of truth.
+// All session history should use sessions collection with userId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 

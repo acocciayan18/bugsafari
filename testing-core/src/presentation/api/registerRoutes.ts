@@ -222,7 +222,8 @@ export function registerRoutes(
     }
   });
 
-  // Safari run history - requires authentication
+// Safari run history - requires authentication
+  // UPDATED: Query sessions collection instead of savedsafaris for unified history
   app.get('/api/history', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history called');
     console.log('[API] Auth header:', request.headers.authorization?.substring(0, 30) + '...');
@@ -237,16 +238,24 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Fetching safari history for userId:', userId);
-      const history = await savedSafariRepository.getSafariHistoryByUserId(userId);
-      console.log('[API] Safari history raw retrieved count:', history?.length ?? 0);
+      console.log('[API] Fetching session history for userId:', userId);
+      
+      // Query sessions collection by userId (unified history)
+      const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
+      const { Types } = await import('mongoose');
+      
+      const sessions = await SessionModel.find({ userId: new Types.ObjectId(userId) })
+        .sort({ startedAt: -1 })
+        .lean();
+      
+      console.log('[API] Sessions raw retrieved count:', sessions?.length ?? 0);
 
-      if (history && history.length > 0) {
-        console.log('[API] First document sample:', JSON.stringify(history[0]).substring(0, 200));
+      if (sessions && sessions.length > 0) {
+        console.log('[API] First document sample:', JSON.stringify(sessions[0]).substring(0, 200));
       }
 
-      // Return documents sorted by executionDate: -1 (newest first) - repository handles sorting
-      response.json(history);
+      // Return documents sorted by startedAt: -1 (newest first)
+      response.json(sessions);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/history:', error);
