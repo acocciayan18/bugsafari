@@ -208,6 +208,38 @@ export async function deleteRecord(recordId: string): Promise<void> {
 }
 
 /**
+ * Fetch full saved safari documents from the backend (requires auth).
+ * Returns the raw array — callers cast to their local SavedSafariDocument type.
+ */
+export async function fetchSafariDocuments(): Promise<unknown[]> {
+  console.log('[historyService] fetchSafariDocuments called');
+
+  try {
+    const response = await fetch('/api/history', getFetchOptions('GET'));
+
+    console.log('[historyService] fetchSafariDocuments response status:', response.status);
+
+    if (!response.ok) {
+      const err = new Error(`Failed to fetch history: ${response.status}`) as Error & { status: number };
+      err.status = response.status;
+      throw err;
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      console.error('[historyService] ❌ Network error - could not reach API:', error.message);
+    } else if (error instanceof Error) {
+      console.error('[historyService] ❌ Error:', error.message);
+    } else {
+      console.error('[historyService] ❌ Unknown error:', error);
+    }
+    throw error;
+  }
+}
+
+/**
  * Export a safari record as JSON file
  * @param recordId - The ID of the record to export
  * @returns Promise<void> - Triggers file download on success

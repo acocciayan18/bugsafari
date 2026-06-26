@@ -379,17 +379,15 @@ const refreshToken = useCallback(async (): Promise<boolean> => {
 
 console.log('[AuthContext] Token refresh response status:', response.status);
 
-      // Handle 404 - refresh endpoint not found (unlinked route condition)
+      // Handle 404 - refresh endpoint not found; just return false, caller decides
       if (response.status === 404) {
-        console.warn('[AuthContext] Token refresh route wrapper is unmapped on this backend iteration.');
-        logout();
+        console.warn('[AuthContext] Token refresh route is unmapped on this backend.');
         return false;
       }
 
-      // Handle 403/401 - session credentials invalid or expired
+      // Handle 403/401 - session credentials invalid or expired; caller decides what to do
       if (response.status === 403 || response.status === 401) {
-        console.error('[AuthContext] Session credentials are mathematically invalid or expired.');
-        logout();
+        console.error('[AuthContext] Session credentials are invalid or expired.');
         return false;
       }
 

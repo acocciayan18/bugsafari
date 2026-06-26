@@ -3,13 +3,13 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import type { SessionHistoryEntry } from '../types';
 import { ReproducibleSteps } from './ReproducibleSteps';
 import { CoverageDisplay } from './CoverageProgressBar';
 import { RowActionMenu } from './RowActionMenu';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
-import { deleteRecord as deleteSafariRecord, exportRecord } from '../services/historyService';
+import { deleteRecord as deleteSafariRecord, exportRecord, fetchSessionHistory } from '../services/historyService';
 import { toast } from 'sonner';
 
 // Types matching the saved safari document from backend
@@ -114,18 +114,44 @@ function calculateCoverage(actions: number): number {
 
 // Transform API response to evaluation format
 function transformToEvaluations(docs: SavedSafariDocument[]): EvaluationSafari[] {
-  return docs.map((doc) => ({
-    id: doc._id,
-    targetUrl: doc.targetUrl,
-    date: formatDate(doc.executionDate),
-    steps: doc.metrics.totalActions,
-    coverage: calculateCoverage(doc.metrics.totalActions),
-    severity: determineSeverity(doc.metrics.totalBugsFound),
-    severityCount: doc.metrics.totalBugsFound,
-    status: doc.status,
-    timeElapsed: doc.timeElapsed,
-    bugsByCategory: doc.metrics.bugsByCategory,
-    forensicTrace: doc.forensicTrace,
+  return docs.map((doc) => {
+    const metrics = doc.metrics ?? { totalActions: 0, totalBugsFound: 0, bugsByCategory: {} };
+    return {
+      id: doc._id,
+      targetUrl: doc.targetUrl,
+      date: formatDate(doc.executionDate),
+      steps: metrics.totalActions,
+      coverage: calculateCoverage(metrics.totalActions),
+      severity: determineSeverity(metrics.totalBugsFound),
+      severityCount: metrics.totalBugsFound,
+      status: doc.status,
+      timeElapsed: doc.timeElapsed,
+      bugsByCategory: metrics.bugsByCategory,
+      forensicTrace: doc.forensicTrace ?? { finalBreadcrumbSteps: [], caughtBugs: [] },
+      isExpanded: false,
+    };
+  });
+}
+
+function mapSessionStatus(s: SessionHistoryEntry['status']): EvaluationSafari['status'] {
+  if (s === 'Completed') return 'COMPLETED';
+  if (s === 'Crashed') return 'CRASHED';
+  return 'HALTED';
+}
+
+function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): EvaluationSafari[] {
+  return sessions.map((session) => ({
+    id: session.id,
+    targetUrl: session.targetUrl,
+    date: formatDate(session.startedAt),
+    steps: session.actionTraceCount,
+    coverage: session.coveragePercentage ?? calculateCoverage(session.actionTraceCount),
+    severity: determineSeverity(session.findingCount),
+    severityCount: session.findingCount,
+    status: mapSessionStatus(session.status),
+    timeElapsed: session.runtimeMs ?? 0,
+    bugsByCategory: {},
+    forensicTrace: { finalBreadcrumbSteps: [], caughtBugs: [] },
     isExpanded: false,
   }));
 }
@@ -242,8 +268,7 @@ const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-const { token, isAuthLoading, refreshToken, logout } = useAuth();
-  const navigate = useNavigate();
+const { token, isAuthLoading } = useAuth();
 
   // Fetch from API on mount - with sanity barrier to prevent race condition
   useEffect(() => {
@@ -258,78 +283,20 @@ const { token, isAuthLoading, refreshToken, logout } = useAuth();
   // Refetch function exposed for manual refresh
   const fetchHistory = async (showLoading = true) => {
     if (!token) {
-      console.log('[SavedEvaluations] No token, user not authenticated');
       setIsLoading(false);
       return;
     }
-
-    if (showLoading) {
-      setIsLoading(true);
-    }
+    if (showLoading) setIsLoading(true);
     setFetchError(null);
-
-try {
-      // Debug: Log token details for debugging 401 issue
-      console.log('[SavedEvaluations] ===== TOKEN DEBUG =====');
-      console.log('[SavedEvaluations] Token from useAuth():', token ? `present (${token.substring(0, 30)}...)` : 'NULL');
-      console.log('[SavedEvaluations] Token from localStorage:', localStorage.getItem('bugsafari_token') ? `present (${localStorage.getItem('bugsafari_token')?.substring(0, 30)}...)` : 'NULL');
-      console.log('[SavedEvaluations] =========================');
-
-      const response = await fetch('/api/history', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-// Debug: Log the actual response details
-      console.log('[SavedEvaluations] Response status:', response.status);
-      console.log('[SavedEvaluations] Response headers:', Object.fromEntries(response.headers.entries()));
-
-// Explicit check for auth degradation events (401/403)
-// This directly triggers session logout without relying on broken token refresh backend
-      if (response.status === 401 || response.status === 403) {
-        console.error('[History] Request rejected due to token invalidation. Initializing auth recovery sequence...');
-        
-        // Display user-friendly toast message
-        toast.error("Your validation session has expired. Redirecting to login...");
-        
-        // Clear local storage tokens (auth cleanup)
-        localStorage.removeItem('bugsafari_token');
-        localStorage.removeItem('bugsafari_user');
-        
-        // Trigger session logout to invalidate React state
-        logout();
-        
-        // Short-circuit: clear component state and redirect to login
-        setSafariData([]);
-        setIsLoading(false);
-        
-        // Navigate to login page
-        navigate('/login');
-        return;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[SavedEvaluations] Error response:', errorText);
-        throw new Error(`Failed to fetch history: ${response.status}`);
-      }
-
-      const data: SavedSafariDocument[] = await response.json();
-      console.log('[SavedEvaluations] Raw API response count:', data?.length ?? 0);
-
-      if (!data || data.length === 0) {
-        console.log('[SavedEvaluations] No history found for this user - showing empty state');
-      }
-
-      const transformed = transformToEvaluations(data || []);
-      console.log('[SavedEvaluations] Transformed safaris:', transformed.length);
-      setSafariData(transformed);
+    try {
+      const sessions = await fetchSessionHistory();
+      console.log('[SavedEvaluations] Sessions count:', sessions.length);
+      setSafariData(transformSessionsToEvaluations(sessions));
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Unknown error');
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setFetchError(msg);
       console.error('[SavedEvaluations] Fetch error:', err);
+      toast.error('Failed to load history. Please try again.');
     } finally {
       setIsLoading(false);
     }
