@@ -1,27 +1,27 @@
-# TODO - History Page Auto-Logout Bug Fix
+# TODO - 401 Unauthorized Fix for Save Session
 
-## Task
-Fix the bug where navigating to `/history` automatically logs out the user.
+## Current state: Enhanced both frontend and backend with debug logging
 
-## Root Cause Identified
-In `SavedEvaluationSafaris.tsx`, when the history API (`/api/history`) returns a 401 or 403 error, the code immediately logs out the user without properly attempting token refresh first.
+### Changes Applied (2025):
+1. ✅ historyService.ts: Updated isTokenExpired buffer from 5000ms to 30000ms (30s)
+2. ✅ AuthContext.tsx: Updated isTokenExpired buffer from 5000ms to 30000ms (30s)
+3. ✅ historyService.ts: Enhanced saveSessionToHistory with multiple retry logic for 401 handling
+4. ✅ authMiddleware.ts: Added debug logging to trace exact token validation failure
+5. ✅ optionalAuth: Added debug logging for token extraction diagnostics
 
-## Plan
-1. [DONE] Analyze code to understand the flow: SavedEvaluationSafaris.tsx → historyService.ts → API
-2. [IN PROGRESS] Fix the error handling in SavedEvaluationSafaris.tsx to properly attempt token refresh before logging out
-3. [PENDING] Test the fix (manual verification)
+### Backend debug logging added:
+- `[AUTH] requireAuth - Headers received:` - Logs all auth headers from request
+- `[AUTH] requireAuth - Token received (first 20 chars):` - Logs token extraction
+- `[AUTH] requireAuth - Token verification failed:` - Logs token validation failures
+- `[AUTH] requireAuth - Token verified for userId:` - Logs successful verification
 
-## Issue Location
-- File: `developer-dashboard/src/components/SavedEvaluationSafaris.tsx`
-- Function: `fetchHistory` (inside `useEffect` callback and `attemptFetch` logic)
-- Problem: When API returns 401/403, code calls `logout()` immediately instead of properly handling the session
+### Frontend improvements:
+- Multiple retry attempts on 401 (up to 3 tries)
+- Fallback to localStorage token if refresh API fails
+- Better 403 error handling for access denial scenarios
+- Detailed response body logging for debugging
 
-## Fix Strategy
-1. When API returns 401/403, try token refresh FIRST
-2. If refresh succeeds, retry the API call with new token
-3. Only logout if refresh fails or returns 401/403
-
-## Implementation Needed
-- The existing `refreshToken` function should be called before `logout()` 
-- The retry should happen ONCE after refresh
-- The user should NOT be logged out immediately on API 401/403 errors
+### Next steps:
+- [ ] Test by saving session - check backend console for `[AUTH]` log entries
+- [ ] See if token is received by backend or missing after proxy forwarding
+- [ ] Verify if JWT_SECRET matches between frontend and backend

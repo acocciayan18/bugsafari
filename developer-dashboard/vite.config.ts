@@ -11,11 +11,15 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        configure: (proxy, _options) => {
+configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req, _res) => {
             // Copy and pass cookie states through to the Express container safely
             if (req.headers.cookie) {
               proxyReq.setHeader('cookie', req.headers.cookie);
+            }
+            // Also forward Authorization header explicitly for proxy reliability
+            if (req.headers.authorization) {
+              proxyReq.setHeader('authorization', req.headers.authorization);
             }
           });
         }

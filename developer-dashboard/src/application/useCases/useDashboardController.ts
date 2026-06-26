@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
 import { saveSessionToHistory } from '../../services/historyService';
+import { useAuth } from '../../context/AuthContext';
 
 // 👈 Unified Test Session Status Type for visibility matrix
 export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED';
@@ -46,6 +47,7 @@ const ENGINE_RESUME_ACTIONS = new Set([
 
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
+  const { token } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -248,10 +250,13 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     if (isSavingSession) {
       return;
     }
+    if (!token) {
+      throw new Error('Not authenticated. Please log in to save your session.');
+    }
     setIsSavingSession(true);
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
-      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
+      await saveSessionToHistory(runtimeUrl.trim(), token, { initialUrl: inputTargetUrl.trim() });
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,

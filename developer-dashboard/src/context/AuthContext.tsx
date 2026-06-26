@@ -82,9 +82,19 @@ function decodeTokenExpiration(token: string): { exp: number } | null {
 
 function isTokenExpired(token: string): boolean {
   const payload = decodeTokenExpiration(token);
-  if (!payload || !payload.exp) return true;
-  // Add 10 second buffer to prevent edge cases
-  return Date.now() >= (payload.exp * 1000) - 10000;
+  if (!payload || !payload.exp) {
+    console.log('[AuthContext] Invalid token payload (no exp claim)');
+    return true;
+  }
+  // Consider expired if less than 30 seconds remaining - gives time for refresh to work
+  const timeRemainingMs = (payload.exp * 1000) - Date.now();
+  const isExpired = timeRemainingMs < 30000;
+  if (isExpired) {
+    console.log(`[AuthContext] Token expired or near expiry. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
+  } else {
+    console.log(`[AuthContext] Token valid. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
+  }
+  return isExpired;
 }
 
 // ============================================================================

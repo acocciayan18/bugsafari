@@ -1,46 +1,48 @@
-# Implementation Plan
+# Implementation Plan: 401 Unauthorized Fix for Session History Save
 
 [Overview]
-Update BUGSAFARI_BLUEPRINT.md Section 7 "CURRENT MODULE ANCHORS" to reflect the actual implementation state of the codebase, correcting references to files and modules that have been renamed, moved, or consolidated.
+Fix the persistent 401 Unauthorized and Invalid or expired token console errors appearing in historyService.ts when an exploration session is successfully saved. The frontend correctly sends `Authorization: Bearer <token>` with `credentials: 'include'`, but the backend auth middleware lacks sufficient debug logging to diagnose extraction failures, and the frontend needs better error recovery when receiving 401 from the API.
 
-[Overview]
-The BUGSAFARI_BLUEPRINT.md Section 7 "CURRENT MODULE ANCHORS" contains references to implementation files that no longer accurately reflect the current codebase structure. This implementation plan details the discrepancies found during investigation and provides corrections for the blueprint's module anchor references.
+The root cause is TWO-FOLD:
+1. **Frontend**: historyService.ts doesn't properly handle 401 responses from save-session endpoint - it attempts token refresh but doesn't distinguish between different 401 error types from the backend
+2. **Backend**: authMiddleware.ts lacks debug logging to identify if token extraction from proxy-forwarded headers is failing
 
 [Types]
-No type system changes required.
+No new types required. Existing types in shared/types.ts and developer-dashboard/src/types.ts are sufficient.
 
 [Files]
-The file to be modified:
-- BUGSAFARI_BLUEPRINT.md - Update Section 7 "CURRENT MODULE ANCHORS" to reflect actual implementation paths
+**Modified:**
+- `developer-dashboard/src/services/historyService.ts` - Fix saveSessionToHistory to handle 401 from /api/history/save-session properly
+- `testing-core/src/presentation/authentication/authMiddleware.ts` - Add debug logging for token extraction/validation
+
+**No changes needed:**
+- `developer-dashboard/vite.config.ts` - Already correctly forwards authorization header
+- `testing-core/src/presentation/api/registerRoutes.ts` - Already uses requireAuth correctly
 
 [Functions]
-No function changes required.
+- Modified: `saveSessionToHistory` in historyService.ts - Add proper 401 error handling for save-session specifically (the current code only handles 401 for refresh token but not for the main save endpoint)
+- Modified: `requireAuth` and `optionalAuth` middleware - Add debug logging to log what headers are received
 
 [Classes]
-No class changes required.
+No new classes or modifications required.
 
 [Dependencies]
-No dependency changes required.
+No new dependencies required.
 
 [Testing]
-No testing changes required.
+- Verify 401 error disappears when saving session
+- Verify history entries are correctly mapped to userId in MongoDB
+- Verify console errors about token expiration no longer appear
 
 [Implementation Order]
-1. Update Section 7 module anchor references to match actual file paths:
-   - Change "authController.ts" "authMiddleware.ts" to "presentation/authentication/authController.ts" "presentation/authentication/authMiddleware.ts"
-   - Change intelligence section "domParser.ts" to "AutonomousExplorationEngine.ts" for DOM handling reference
-   - Change "smartAttacker.ts" to include "dataFuzzer.ts" (exists in domain/scenarios/fuzzing folder)
-   - Remove references to files that don't exist: "browserConsoleListener.ts" not found (may be part of PlaywrightBrowserEngine.ts or separate)
-   - Add "ToastProvider.tsx" to dashboard notification references
-   - Confirm actual locations for run orchestration: "runController.ts", "stackManager.ts", "domainGuard.ts"
-   - Confirm actual locations for monitoring: "socketServer.ts" "BinaryFrameServer.ts" "exceptionCatcher.ts" "stabilityMonitor.ts"
-   - Confirm actual locations for worker/queue: "worker-entry.ts"
+1. Add debug logging to authMiddleware.ts to see what headers the backend receives
+2. Fix historyService.ts to properly handle 401 when saving session (not just token refresh)
+3. Test session save and verify userId mapping in MongoDB
 
-2. Update date stamp in document header from "June 4, 2026" to reflect current version date
-
-3. Verify all reference paths are correct for:
-   - Backend intelligence section: RiskScorer.ts, StateGraphNavigator.ts, DIrectedPathFinder.ts, AutonomousExplorationEngine.ts
-   - Backend scenarios section: formBypasser.ts, networkSaboteur.ts, rapidClickerStress.ts, routeTrasher.ts
-   - Backend detection: bugs/finders/* (8 finders exist)
-
-4. Final review of all updated references against filesystem
+Steps:
+- [x] Step 1: Read authMiddleware.ts to understand token extraction logic
+- [x] Step 2: Read historyService.ts to understand current token handling
+- [x] Step 3: Add debug logging to authMiddleware.ts to diagnose if headers are received
+- [x] Step 4: Fix historyService.ts to handle 401 from /api/history/save-session endpoint
+- [ ] Step 5: Test session save and verify userId mapping
+- [ ] Step 6: Verify console errors are resolved

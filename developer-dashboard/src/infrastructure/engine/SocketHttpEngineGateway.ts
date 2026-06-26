@@ -10,10 +10,17 @@ type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
 export class SocketHttpEngineGateway implements EngineGateway {
   private readonly apiBaseUrl: string;
   private readonly socket: Socket;
   private authToken: string | null = null;
+
+  // Connection state tracking
+  private connectionState: ConnectionState = 'disconnected';
+  private connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private readonly CONNECTION_TIMEOUT_MS = 10000; // 10 second timeout for initial connection
 
   private connectedHandler: ConnectedHandler | null = null;
   private telemetryHandler: TelemetryHandler | null = null;
@@ -27,13 +34,19 @@ constructor(apiBaseUrl: string, socketUrl: string) {
     this.apiBaseUrl = apiBaseUrl;
     // Use hybrid fallback: environment variable first, then window.location.origin for proxy-aware routing
     const resolvedSocketUrl = socketUrl || (typeof window !== 'undefined' ? window.location.origin : apiBaseUrl);
+    
+    // Fix: Use polling first, fallback to WebSocket - more reliable for initial connection
+    // Also add forceJSONP for environments that block WebSocket upgrade
     this.socket = io(resolvedSocketUrl, {
       autoConnect: false,
-      transports: ['websocket', 'polling'],
+      // Prefer polling first for reliability - will upgrade to websocket if available
+      transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
+      // Add timeout for connection attempts
+      timeout: 20000,
     });
   }
 
@@ -49,7 +62,32 @@ constructor(apiBaseUrl: string, socketUrl: string) {
     return headers;
   }
 
-  public connect(): void {
+public connect(): void {
+    // Set connection state to connecting
+    this.connectionState = 'connecting';
+    
+    // Set up connection timeout to detect failed connections
+    this.connectionTimeoutId = setTimeout(() => {
+      if (this.connectionState === 'connecting') {
+        console.warn('[Gateway] Connection timeout - server may not be responding');
+        this.connectionState = 'disconnected';
+      }
+    }, this.CONNECTION_TIMEOUT_MS);
+
+    // Set up error handlers for better diagnostics
+    this.socket.on('connect_error', (error: Error) => {
+      console.error('[Gateway] Connection error:', error.message);
+      // Clear the timeout since we got a response (even if it's an error)
+      if (this.connectionTimeoutId) {
+        clearTimeout(this.connectionTimeoutId);
+        this.connectionTimeoutId = null;
+      }
+    });
+
+    this.socket.on('error', (error: Error) => {
+      console.error('[Gateway] Socket error:', error.message);
+    });
+
     this.socket.on('connect', this.handleConnect);
     this.socket.on('disconnect', this.handleDisconnect);
     this.socket.on('telemetry', this.handleTelemetry);
@@ -62,7 +100,14 @@ constructor(apiBaseUrl: string, socketUrl: string) {
     this.socket.connect();
   }
 
-  public disconnect(): void {
+public disconnect(): void {
+    // Clear connection timeout
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+    this.connectionState = 'disconnected';
+    
     this.socket.off('connect', this.handleConnect);
     this.socket.off('disconnect', this.handleDisconnect);
     this.socket.off('telemetry', this.handleTelemetry);
@@ -71,6 +116,8 @@ constructor(apiBaseUrl: string, socketUrl: string) {
     this.socket.off('live-frame', this.handleLiveFrame);
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
+    this.socket.off('connect_error');
+    this.socket.off('error');
     this.socket.disconnect();
   }
 
@@ -120,9 +167,10 @@ constructor(apiBaseUrl: string, socketUrl: string) {
   }
 
   public async saveSession(targetUrl: string): Promise<void> {
-    const response = await fetch(`${this.apiBaseUrl}/api/history/save-session`, {
+    const response = await fetch('/api/history/save-session', {
       method: 'POST',
       headers: this.getAuthHeaders(),
+      credentials: 'include',
       body: JSON.stringify({ targetUrl }),
     });
 
@@ -131,10 +179,11 @@ constructor(apiBaseUrl: string, socketUrl: string) {
     }
   }
 
-public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
+  public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
+      const response = await fetch(`/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
         headers: this.getAuthHeaders(),
+        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error(`Could not fetch session history (${response.status})`);
@@ -159,11 +208,19 @@ public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
     this.socket.emit('stop-test');
   }
 
-  private readonly handleConnect = (): void => {
+private readonly handleConnect = (): void => {
+    // Clear connection timeout on successful connection
+    if (this.connectionTimeoutId) {
+      clearTimeout(this.connectionTimeoutId);
+      this.connectionTimeoutId = null;
+    }
+    this.connectionState = 'connected';
+    console.log('[Gateway] Connected successfully');
     this.connectedHandler?.(true);
   };
 
   private readonly handleDisconnect = (): void => {
+    this.connectionState = 'disconnected';
     this.connectedHandler?.(false);
   };
 

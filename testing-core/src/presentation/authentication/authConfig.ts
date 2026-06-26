@@ -22,9 +22,10 @@ if (!JWT_SECRET) {
       'Set JWT_SECRET to a secure random string of at least 32 characters.'
     );
   }
-  // DEVELOPMENT: Use secure fallback with explicit dev marker
-  console.warn('[WARNING] JWT_SECRET not set. Using development fallback (DO NOT USE IN PRODUCTION).');
-  JWT_SECRET = 'dev-only-bugsafari-fallback-key-32ch-min!';
+  // DEVELOPMENT: Use consistent secret that matches docker-compose.local.yml
+  // IMPORTANT: This MUST match JWT_SECRET in docker-compose.local.yml to avoid token verification failures
+  console.warn('[WARNING] JWT_SECRET not set. Using development fallback (must match docker-compose).');
+  JWT_SECRET = 'bugsafari-local-development-secret';
 }
 
 // PRODUCTION VALIDATION: Enforce 32+ character secret
