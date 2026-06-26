@@ -6,57 +6,10 @@
 import type { SessionHistoryEntry } from '../types';
 
 /**
- * Decode JWT token and check expiration
- */
-function decodeTokenExpiration(token: string): { exp: number } | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Check if a JWT token is expired
- * Uses server-side validation: allow requests to be sent even if token is near expiration
- * The server will handle rejection if token is actually expired
- */
-function isTokenExpired(token: string): boolean {
-  const payload = decodeTokenExpiration(token);
-  if (!payload || !payload.exp) {
-    console.log('[historyService] Invalid token payload (no exp claim)');
-    return true;
-  }
-  // Consider expired if less than 30 seconds remaining - gives time for refresh to work
-  const timeRemainingMs = (payload.exp * 1000) - Date.now();
-  const isExpired = timeRemainingMs < 30000;
-  if (isExpired) {
-    console.log(`[historyService] Token expired or near expiry. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  } else {
-    console.log(`[historyService] Token valid. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  }
-  return isExpired;
-}
-
-/**
- * Get authentication token from localStorage with expiration validation
+ * Get authentication token from localStorage
  */
 function getAuthToken(): string | null {
-  const token = localStorage.getItem('bugsafari_token');
-  if (!token) return null;
-  
-  // Validate token is not expired before returning
-  if (isTokenExpired(token)) {
-    console.warn('[historyService] Token is expired, clearing session');
-    localStorage.removeItem('bugsafari_token');
-    localStorage.removeItem('bugsafari_user');
-    return null;
-  }
-  
-  return token;
+  return localStorage.getItem('bugsafari_token');
 }
 
 /**
@@ -93,103 +46,20 @@ function getFetchOptions(method: string, body?: object): RequestInit {
 }
 
 /**
- * Attempt to refresh the auth token via the backend
- */
-async function refreshAuthToken(): Promise<string | null> {
-  const currentToken = localStorage.getItem('bugsafari_token');
-  if (!currentToken) return null;
-
-  // Debug: Log token details before refresh attempt
-  try {
-    const payload = JSON.parse(atob(currentToken.split('.')[1]));
-    console.log('[historyService] Token exp (from token):', new Date(payload.exp * 1000).toISOString());
-    console.log('[historyService] Current time:', new Date().toISOString());
-    console.log('[historyService] Seconds until expiry:', Math.round((payload.exp * 1000 - Date.now()) / 1000));
-  } catch (e) {
-    console.log('[historyService] Could not decode token for debug');
-  }
-
-  try {
-    console.log('[historyService] Attempting token refresh at /api/auth/refresh');
-    
-    const response = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${currentToken}`,
-      },
-      credentials: 'include',
-    });
-
-    // Debug: Log response details
-    console.log('[historyService] Token refresh response status:', response.status);
-    console.log('[historyService] Token refresh response ok:', response.ok);
-    
-    // Check for error response body to see what the backend says
-    let responseText = '';
-    try {
-      responseText = await response.text();
-      console.log('[historyService] Token refresh response body:', responseText.substring(0, 500));
-    } catch (e) {
-      console.log('[historyService] Could not read response body');
-    }
-
-    if (!response.ok) {
-      console.warn('[historyService] Token refresh failed, HTTP status:', response.status);
-      return null;
-    }
-
-    // Try parsing as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText) as { token?: string; user?: { id: string } };
-    } catch {
-      console.warn('[historyService] Token refresh response not valid JSON');
-      return null;
-    }
-
-    if (data.token && data.user) {
-      localStorage.setItem('bugsafari_token', data.token);
-      localStorage.setItem('bugsafari_user', JSON.stringify(data.user));
-      console.log('[historyService] ✅ Token refreshed successfully');
-      return data.token;
-    }
-
-    console.warn('[historyService] Token refresh returned no token/user in response');
-    return null;
-  } catch (error) {
-    console.error('[historyService] Token refresh network error:', error);
-    return null;
-  }
-}
-
-/**
- * Save a testing session to history with token validation and 401 recovery
+ * Save a testing session to history.
  * @param targetUrl - The final/runtime URL that was actually tested
- * @param token - Auth token (optional, falls back to localStorage if not provided)
+ * @param token - The caller's JWT from React auth state (passed explicitly to avoid localStorage race conditions)
  * @param options - Optional parameters including initialUrl for the original input URL
- * @returns Promise<void> - Resolves on success, rejects on failure
  */
 export async function saveSessionToHistory(
   targetUrl: string,
-  token?: string,
+  token: string,
   options?: { initialUrl?: string }
 ): Promise<void> {
-  console.log('[historyService] 📤 saveSessionToHistory called with targetUrl:', targetUrl);
-
-  // Use provided token or fall back to localStorage with validation
-  let authToken = token || getAuthToken();
-  
-  if (!authToken) {
-    const error = 'No valid auth token. Please log in to save your session.';
-    console.error('[historyService] ❌ Auth error:', error);
-    throw new Error(error);
-  }
+  console.log('[historyService] 📤 saveSessionToHistory called');
 
   if (!targetUrl || typeof targetUrl !== 'string') {
-    const error = 'Invalid targetUrl: must be a non-empty string';
-    console.error('[historyService] ❌ Validation error:', error);
-    throw new Error(error);
+    throw new Error('Invalid targetUrl: must be a non-empty string');
   }
 
   const trimmedUrl = targetUrl.trim();
@@ -198,94 +68,38 @@ export async function saveSessionToHistory(
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
   };
 
-  // Helper to perform the save request
-  const performSave = async (tokenToUse: string): Promise<Response> => {
-    console.log('[historyService] Making save request with token:', tokenToUse.substring(0, 20) + '...');
-    return fetch('/api/history/save-session', {
+  let response: Response;
+  try {
+    response = await fetch('/api/history/save-session', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tokenToUse}`,
+        'Authorization': `Bearer ${token}`,
       },
       credentials: 'include',
       body: JSON.stringify(payload),
     });
-  };
-
-  // First attempt with current token
-  let response = await performSave(authToken);
-  console.log('[historyService] First attempt response status:', response.status);
-
-  // Try token refresh and retry if 401
-  if (response.status === 401) {
-    console.log('[historyService] Got 401 on first attempt, attempting token refresh...');
-    
-    // Try to refresh the token
-    const newToken = await refreshAuthToken();
-    
-    if (newToken) {
-      authToken = newToken;
-      console.log('[historyService] Token refreshed successfully, retrying save...');
-      response = await performSave(authToken);
-      console.log('[historyService] Retry response status:', response.status);
-    } else {
-      console.warn('[historyService] Token refresh API returned no new token');
-      
-      // Try getting token from localStorage (user might have logged in again)
-      const storedToken = localStorage.getItem('bugsafari_token');
-      if (storedToken && storedToken !== token) {
-        console.log('[historyService] Trying stored token from localStorage...');
-        authToken = storedToken;
-        response = await performSave(authToken);
-        console.log('[historyService] Retry with stored token status:', response.status);
-      } else {
-        console.warn('[historyService] No fallback token available');
-      }
-    }
-  }
-
-  // If still 401 after retries, try one more time with fresh localStorage token
-  if (response.status === 401) {
-    console.log('[historyService] Still getting 401, checking localStorage for fresh token...');
-    const freshToken = localStorage.getItem('bugsafari_token');
-    if (freshToken && freshToken !== authToken) {
-      authToken = freshToken;
-      console.log('[historyService] Trying fresh token from localStorage...');
-      response = await performSave(authToken);
-      console.log('[historyService] Final retry response status:', response.status);
-    }
-  }
-
-  // Parse response body for error details
-  let responseData;
-  let responseText = '';
-  try {
-    responseText = await response.text();
-    console.log('[historyService] Response body:', responseText.substring(0, 500));
-    try {
-      responseData = JSON.parse(responseText);
-    } catch {
-      responseData = null;
-    }
-  } catch {
-    responseData = null;
+  } catch (networkError) {
+    console.error('[historyService] ❌ Network error saving session:', networkError instanceof Error ? networkError.message : networkError);
+    throw networkError;
   }
 
   if (!response.ok) {
     let errorMessage: string;
-    if (response.status === 401) {
-      errorMessage = 'Authentication expired. Please log in again to save your session.';
-    } else if (response.status === 403) {
-      errorMessage = 'Access denied. You may not have permission to save this session.';
-    } else {
-      errorMessage = responseData?.error || `Server returned ${response.status}`;
+    try {
+      const data = await response.json() as { error?: string };
+      errorMessage = data?.error ?? `Server returned ${response.status}`;
+    } catch {
+      errorMessage = `Server returned ${response.status}`;
     }
     console.error('[historyService] ❌ Save failed:', errorMessage);
-    console.error('[historyService] Full response data:', responseData);
-    throw new Error(errorMessage);
+    const err = new Error(errorMessage) as Error & { status: number };
+    err.status = response.status;
+    throw err;
   }
 
-  console.log('[historyService] ✅ Session saved successfully!', responseData);
+  const responseData = await response.json() as { ok?: boolean; message?: string };
+  console.log('[historyService] ✅ Session saved:', responseData.message ?? 'success');
 }
 
 /**

@@ -11,11 +11,11 @@ export interface AuthRequest extends Request {
  * Middleware that requires authentication
  * Blocks non-authenticated users from accessing protected routes
  */
-export function requireAuth(
+export async function requireAuth(
   request: AuthRequest,
   response: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const authHeader = request.headers.authorization;
   
   // DEBUG: Log all auth-related headers to diagnose token extraction issues
@@ -34,17 +34,55 @@ export function requireAuth(
     return;
   }
 
-  const token = authHeader.substring(7);
+const token = authHeader.substring(7);
   console.log('[AUTH] requireAuth - Token received (first 20 chars):', token.substring(0, 20) + '...');
   
-  const decoded = verifyTokenSync(token);
+  // CRITICAL DEBUG: Log the JWT_SECRET being used for verification
+  const { AUTH_CONFIG } = await import('./authConfig.js');
+  console.log('[AUTH] JWT_SECRET being used for verify:', AUTH_CONFIG.JWT_SECRET);
+  console.log('[AUTH] JWT_SECRET length:', AUTH_CONFIG.JWT_SECRET?.length);
+  
+  // Decode first to see the token's claims without verification
+  const jwt = await import('jsonwebtoken');
+  const decodedNoVerify = jwt.default.decode(token);
+  console.log('[AUTH] Token decoded (no verify - claims):', JSON.stringify(decodedNoVerify));
+  
+  // Use existing verifyTokenSync but with better error logging
+  let decoded;
+  try {
+    decoded = verifyTokenSync(token);
+  } catch (err: any) {
+    // Log the actual error from jwt.verify
+    console.error('[AUTH] requireAuth - verifyTokenSync threw:', err.message || String(err));
+  }
   
   if (!decoded) {
-    console.log('[AUTH] requireAuth - Token verification failed');
-    response.status(401).json({
-      error: 'Invalid or expired token. Please log in again.',
-    });
-    return;
+    // Manual verify with detailed error capture - capture exact error
+    let verificationError = 'UNKNOWN';
+    try {
+      const verified = jwt.default.verify(token, AUTH_CONFIG.JWT_SECRET);
+      console.log('[AUTH] Manual verify succeeded:', verified);
+      decoded = verified as any;
+    } catch (verifyErr: any) {
+      verificationError = verifyErr.message || String(verifyErr);
+      console.error('[AUTH] Manual verify FAILED with error:', verificationError);
+      console.error('[AUTH] This likely means JWT_SECRET mismatch or token was signed with different secret');
+    }
+    
+    if (!decoded) {
+      console.log('[AUTH] requireAuth - Token verification failed. Error:', verificationError);
+      // Type guard: ensure decodedNoVerify is an object with exp/iat properties before accessing
+      if (decodedNoVerify && typeof decodedNoVerify === 'object' && 'exp' in decodedNoVerify && 'iat' in decodedNoVerify) {
+        console.log('[AUTH] Token exp:', (decodedNoVerify as any).exp, 'Current time:', Math.floor(Date.now()/1000));
+        console.log('[AUTH] Token iat:', (decodedNoVerify as any).iat);
+      } else {
+        console.log('[AUTH] Token could not be decoded or missing standard JWT claims');
+      }
+      response.status(401).json({
+        error: 'Invalid or expired token. Please log in again.',
+      });
+      return;
+    }
   }
 
   console.log('[AUTH] requireAuth - Token verified for userId:', decoded.userId, 'email:', decoded.email);

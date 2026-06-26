@@ -47,7 +47,7 @@ const ENGINE_RESUME_ACTIONS = new Set([
 
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
-  const { token } = useAuth();
+  const { token, refreshToken } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -256,7 +256,25 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setIsSavingSession(true);
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
-      await saveSessionToHistory(runtimeUrl.trim(), token, { initialUrl: inputTargetUrl.trim() });
+      let activeToken = token;
+      try {
+        await saveSessionToHistory(runtimeUrl.trim(), activeToken, { initialUrl: inputTargetUrl.trim() });
+      } catch (err) {
+        // If auth rejected, attempt a token refresh once before giving up
+        const status = (err as { status?: number })?.status;
+        if (status === 401 || status === 403) {
+          console.warn('[useDashboardController] Save got 401/403, trying token refresh...');
+          const refreshed = await refreshToken();
+          if (refreshed) {
+            const newToken = localStorage.getItem('bugsafari_token') ?? activeToken;
+            await saveSessionToHistory(runtimeUrl.trim(), newToken, { initialUrl: inputTargetUrl.trim() });
+          } else {
+            throw new Error('Session expired. Please log in again to save your session.');
+          }
+        } else {
+          throw err;
+        }
+      }
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,
@@ -276,6 +294,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
           meta: { message: `Save Session failed: ${message}` },
         },
       ]);
+      throw error;
     } finally {
       setIsSavingSession(false);
     }

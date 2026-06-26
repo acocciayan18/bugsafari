@@ -1,10 +1,12 @@
 /**
  * Shared authentication configuration
  * Eliminates duplicate JWT_SECRET logic across auth files
- * 
+ *
  * SECURITY: Production requires JWT_SECRET to be set via environment variable.
  * Development mode automatically uses a secure fallback when not configured.
  */
+
+import jwt from 'jsonwebtoken';
 
 // Determine environment mode
 const isProduction = process.env.NODE_ENV === 'production';
@@ -75,35 +77,19 @@ export function getAuthConfig() {
 }
 
 /**
- * Verify JWT token and extract user info - centralized for reuse
- * Uses dynamic import to avoid issues with ESM/CommonJS
+ * Verify JWT token and extract user info — async wrapper kept for backward compat.
  */
 export async function verifyToken(token: string): Promise<AuthPayload | null> {
-  try {
-    // Dynamic import to handle jsonwebtoken
-    const jwt = await import('jsonwebtoken');
-    // Use AUTH_CONFIG.JWT_SECRET which has the non-null assertion applied
-    const secret = AUTH_CONFIG.JWT_SECRET;
-    // Cast through unknown first to satisfy TypeScript type checking
-    const decoded = jwt.default.verify(token, secret) as unknown as AuthPayload;
-    return decoded;
-  } catch {
-    return null;
-  }
+  return verifyTokenSync(token);
 }
 
 /**
- * Synchronous JWT token verification - for use in Express middleware
- * Uses synchronous jsonwebtoken.verify for non-async contexts
+ * Synchronous JWT token verification — used by Express middleware.
+ * Uses the statically imported jwt module (ESM-safe, no require()).
  */
 export function verifyTokenSync(token: string): AuthPayload | null {
   try {
-    // Import jsonwebtoken synchronously (ESM default export)
-    const jwt = require('jsonwebtoken');
-    // Use AUTH_CONFIG.JWT_SECRET which has the non-null assertion applied
-    const secret = AUTH_CONFIG.JWT_SECRET;
-    // Cast through unknown first to satisfy TypeScript type checking
-    const decoded = jwt.verify(token, secret) as unknown as AuthPayload;
+    const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET) as unknown as AuthPayload;
     return decoded;
   } catch {
     return null;
