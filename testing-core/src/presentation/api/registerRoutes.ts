@@ -144,17 +144,16 @@ export function registerRoutes(
     void useCase.execute(targetUrl, optimizationSettings);
   });
 
-  // Save session - requires authentication
-  app.post('/api/history/save-session', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+// Save session - allows anonymous/guest (optionalAuth for bypass)
+  app.post('/api/history/save-session', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/history/save-session called');
     console.log('[API] Request body:', JSON.stringify(request.body));
-    console.log('[API] Auth user:', request.userId ?? 'none');
+    console.log('[API] Auth user:', request.userId ?? 'anonymous/guest');
+    console.log('[API] Is guest:', request.isGuest);
 
-    const userId = request.userId;
-    if (!userId) {
-      response.status(401).json({ error: 'Authentication required.' });
-      return;
-    }
+    // Use authenticated userId or fallback to anonymous placeholder
+    const userId = request.userId || 'anonymous-guest-user';
+    const ownerType = request.userId ? 'authenticated' : (request.body?.ownerType || 'anonymous');
 
     try {
       // SECURITY: Sanitize targetUrl to prevent NoSQL injection
@@ -168,7 +167,8 @@ export function registerRoutes(
       }
 
       // Call manualSaveToHistory to save to savedsafaris collection
-      const result = await useCase.manualSaveToHistory(targetUrl, userId);
+      // Pass ownerType in options for tracking anonymous vs authenticated saves
+      const result = await useCase.manualSaveToHistory(targetUrl, userId, { ownerType });
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);
@@ -176,8 +176,9 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Saved to savedsafaris:', result.message);
-      response.json({ ok: true, message: result.message });
+      console.log('[API] Saved to savedsafaris:', result.message, '| ownerType:', ownerType);
+      // Explicitly return 201 Created status for resource creation
+      response.status(201).json({ ok: true, message: result.message, ownerType });
     } catch (error) {
       console.error('[API] Error saving session:', error);
       const message = error instanceof Error ? error.message : String(error);

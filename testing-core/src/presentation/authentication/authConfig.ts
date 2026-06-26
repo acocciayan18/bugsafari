@@ -25,9 +25,13 @@ if (!JWT_SECRET) {
     );
   }
   // DEVELOPMENT: Use consistent secret that matches docker-compose.local.yml
-  // IMPORTANT: This MUST match JWT_SECRET in docker-compose.local.yml to avoid token verification failures
-  console.warn('[WARNING] JWT_SECRET not set. Using development fallback (must match docker-compose).');
+  // IMPORTANT: This MUST match JWT_SECRET in docker-compose.local.yml, root .env, and testing-core/.env
+  // to avoid cross-context token verification (401) failures.
   JWT_SECRET = 'bugsafari-local-development-secret';
+  console.warn(
+    `[authConfig] JWT_SECRET env var not set — using development fallback "${JWT_SECRET}". ` +
+    'If tokens minted elsewhere 401 here, the launch context is using a different secret.',
+  );
 }
 
 // PRODUCTION VALIDATION: Enforce 32+ character secret
@@ -86,12 +90,23 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
 /**
  * Synchronous JWT token verification — used by Express middleware.
  * Uses the statically imported jwt module (ESM-safe, no require()).
+ * 
+ * FIX: Added detailed logging to diagnose 401 failures.
+ * Logs whether verification failed due to expired token vs. invalid signature
  */
 export function verifyTokenSync(token: string): AuthPayload | null {
   try {
     const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET) as unknown as AuthPayload;
     return decoded;
-  } catch {
+  } catch (err) {
+    // FIX: Log specific reason for verification failure to help diagnose 401 issues
+    if (err instanceof jwt.TokenExpiredError) {
+      console.warn('[AUTH] Token verification failed: Token has expired');
+    } else if (err instanceof jwt.JsonWebTokenError) {
+      console.warn('[AUTH] Token verification failed: Invalid token', err.message);
+    } else {
+      console.warn('[AUTH] Token verification failed:', err instanceof Error ? err.message : 'Unknown error');
+    }
     return null;
   }
 }

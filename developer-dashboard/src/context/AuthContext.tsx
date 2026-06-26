@@ -86,9 +86,10 @@ function isTokenExpired(token: string): boolean {
     console.log('[AuthContext] Invalid token payload (no exp claim)');
     return true;
   }
-  // Consider expired if less than 30 seconds remaining - gives time for refresh to work
+  // FIX: Increased buffer from 30 seconds to 120 seconds (2 minutes)
+  // This prevents unnecessary token refresh attempts when token still has valid remaining time
   const timeRemainingMs = (payload.exp * 1000) - Date.now();
-  const isExpired = timeRemainingMs < 30000;
+  const isExpired = timeRemainingMs < 120000; // 2 minute buffer
   if (isExpired) {
     console.log(`[AuthContext] Token expired or near expiry. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
   } else {

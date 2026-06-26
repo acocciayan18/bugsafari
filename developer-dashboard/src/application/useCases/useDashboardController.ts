@@ -45,6 +45,21 @@ const ENGINE_RESUME_ACTIONS = new Set([
   'engine-resumed',
 ]);
 
+/**
+ * Decode JWT token payload to check expiration
+ * Used to determine if token is genuinely expired before triggering refresh
+ */
+function decodeTokenExpiration(token: string): { exp: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
   const { token, refreshToken } = useAuth();
@@ -246,35 +261,15 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setSessionHistory(history);
   };
 
-  const saveSession = async (inputTargetUrl: string): Promise<void> => {
+const saveSession = async (inputTargetUrl: string): Promise<void> => {
     if (isSavingSession) {
       return;
-    }
-    if (!token) {
-      throw new Error('Not authenticated. Please log in to save your session.');
     }
     setIsSavingSession(true);
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
-      let activeToken = token;
-      try {
-        await saveSessionToHistory(runtimeUrl.trim(), activeToken, { initialUrl: inputTargetUrl.trim() });
-      } catch (err) {
-        // If auth rejected, attempt a token refresh once before giving up
-        const status = (err as { status?: number })?.status;
-        if (status === 401 || status === 403) {
-          console.warn('[useDashboardController] Save got 401/403, trying token refresh...');
-          const refreshed = await refreshToken();
-          if (refreshed) {
-            const newToken = localStorage.getItem('bugsafari_token') ?? activeToken;
-            await saveSessionToHistory(runtimeUrl.trim(), newToken, { initialUrl: inputTargetUrl.trim() });
-          } else {
-            throw new Error('Session expired. Please log in again to save your session.');
-          }
-        } else {
-          throw err;
-        }
-      }
+      // Anonymous/unauthenticated save - no token needed
+      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,

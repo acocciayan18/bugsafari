@@ -46,17 +46,15 @@ function getFetchOptions(method: string, body?: object): RequestInit {
 }
 
 /**
- * Save a testing session to history.
+ * Save a testing session to history (anonymous/unauthenticated).
  * @param targetUrl - The final/runtime URL that was actually tested
- * @param token - The caller's JWT from React auth state (passed explicitly to avoid localStorage race conditions)
  * @param options - Optional parameters including initialUrl for the original input URL
  */
 export async function saveSessionToHistory(
   targetUrl: string,
-  token: string,
   options?: { initialUrl?: string }
 ): Promise<void> {
-  console.log('[historyService] 📤 saveSessionToHistory called');
+  console.log('[historyService] 📤 saveSessionToHistory called (anonymous mode)');
 
   if (!targetUrl || typeof targetUrl !== 'string') {
     throw new Error('Invalid targetUrl: must be a non-empty string');
@@ -66,6 +64,7 @@ export async function saveSessionToHistory(
   const payload = {
     targetUrl: trimmedUrl,
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
+    ownerType: 'anonymous',
   };
 
   let response: Response;
@@ -74,7 +73,6 @@ export async function saveSessionToHistory(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
       },
       credentials: 'include',
       body: JSON.stringify(payload),

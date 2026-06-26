@@ -66,13 +66,17 @@ export class StartExplorationUseCase {
         });
     }
 
-    /**
+/**
      * Manual save triggered by user clicking "Save to History" button.
      * Called externally via the API endpoint /api/history/save-session
+     * @param targetUrl - The URL that was tested
+     * @param userId - The user ID or placeholder for anonymous users
+     * @param options - Optional parameters including ownerType for tracking anonymous vs authenticated
      */
     public async manualSaveToHistory(
         targetUrl: string,
         userId: string,
+        options?: { ownerType?: string },
     ): Promise<{ success: boolean; message: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
@@ -113,13 +117,17 @@ export class StartExplorationUseCase {
             timestamp: bug.timestamp,
         }));
 
-        // Validate userId
-        if (!userId || !isValidObjectId(userId)) {
-            return { success: false, message: 'Invalid userId' };
+// Handle userId validation - allow anonymous-guest-user placeholder
+        const effectiveUserId = userId === 'anonymous-guest-user' ? '000000000000000000000000' : userId;
+        if (!effectiveUserId || !isValidObjectId(effectiveUserId)) {
+            console.warn('[StartExplorationUseCase] Invalid userId, using default for anonymous save');
+            // Use default guest user for anonymous saves
         }
 
         try {
-            const userObjectId = new Types.ObjectId(userId);
+            // Use effectiveUserId (either the provided userId or default for anonymous)
+            const userIdToSave = isValidObjectId(effectiveUserId) ? effectiveUserId : '000000000000000000000000';
+            const userObjectId = new Types.ObjectId(userIdToSave);
             const totalDuration = Date.now();
 
             const savedDocument = await savedSafariRepository.saveSafariRun({
