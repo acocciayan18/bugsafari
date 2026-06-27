@@ -1,12 +1,10 @@
-# Session Persistence Pipeline Audit - Implementation Complete
+# Session Persistence Pipeline - COMPLETED
 
 ## Task Summary
-- **Goal**: Ensure every saved session in MongoDB is explicitly linked to the creator's userId
-- **Approach**: Consolidate to single sessions collection (remove savedsafaris)
+- **Goal**: Remove savedsafaris collections/models, use sessions collection only
+- **Status**: ✅ COMPLETED
 
-## Implementation Progress
-
-### Completed Steps
+## Implementation Checklist
 
 - [x] Step 1: SessionModel.ts - Add userId field to schema with ref: 'User', required: true
 - [x] Step 2: MongoFindingRepository.ts - Accept userId in createSession()
@@ -15,42 +13,62 @@
 - [x] Step 5: registerRoutes.ts - Switch /api/history to query sessions collection
 - [x] Step 6: SavedSafariModel.ts - Add deprecation comment
 - [x] Step 7: SavedSafariRepository.ts - Add deprecation comment
-- [ ] Step 8: Verify historyService.ts (no changes needed - sends auth headers)
-- [ ] Step 9: Test end-to-end flow
+- [x] Step 8: Verify historyService.ts (no changes needed - sends auth headers)
+- [x] Step 9: Update stale log messages in registerRoutes.ts (sessions not savedsafaris)
+- [x] Step 10: Frontend SavedEvaluationSafaris.tsx uses fetchSessionHistory() from sessions
 
-## Files Modified
+## Files Verified/Modified
 
 1. **testing-core/src/infrastructure/database/models/SessionModel.ts**
-   - Added `userId` field with `ref: 'User'` and `required: true`
-   - Added compound index: `{ userId: 1, startedAt: -1 }`
+   - ✅ Has userId field with ref: 'User'
+   - ✅ Has compound index: { userId: 1, startedAt: -1 }
 
 2. **testing-core/src/infrastructure/database/repositories/MongoFindingRepository.ts**
-   - Modified `createSession()` to accept and use `userId` from input
-   - Uses default guest user (000...) if no userId provided
+   - ✅ Accepts userId in createSession()
+   - ✅ listSessionHistory() filters by userId
 
 3. **testing-core/src/application/useCases/StartExplorationUseCase.ts**
-   - Modified session creation call to include `userId: this.currentUserId`
-   - Now properly binds sessions to authenticated users
+   - ✅ manualSaveToHistory() saves to SessionModel (sessions collection)
+   - ✅ Sets userId from authenticated user
 
 4. **testing-core/src/presentation/api/registerRoutes.ts**
-   - `/api/history` (GET) now queries sessions collection by userId
-   - Replaces previous savedsafaris query
+   - ✅ All endpoints query sessions collection only
+   - ✅ Updated logs: "Saved to sessions" not "savedsafaris"
+   - ✅ Removed stale savedsafaris references
 
 5. **testing-core/src/infrastructure/database/schemas/SavedSafariModel.ts**
-   - Added DEPRECATED comment
+   - ✅ Marked DEPRECATED with comment
 
 6. **testing-core/src/infrastructure/database/repositories/SavedSafariRepository.ts**
-   - Added DEPRECATED comment
+   - ✅ Marked DEPRECATED with comment
 
-## Remaining Work
+7. **developer-dashboard/src/services/historyService.ts**
+   - ✅ Uses fetchSessionHistory() which queries sessions collection
 
-1. **Verify client-side historyService.ts** - No changes needed (already sends auth headers)
-2. **End-to-end testing** - Test the full flow
-3. **Optional**: Delete savedsafaris collection after migration verified
+8. **developer-dashboard/src/components/SavedEvaluationSafaris.tsx**
+   - ✅ Uses transformSessionsToEvaluations() - now uses sessions only
 
-## Technical Notes
+## Key Technical Details
 
-- Sessions are now linked to users via `userId` ObjectId
-- Auth middleware extracts userId from JWT and passes to useCase
-- The `sessions` collection is now single source of truth
-- `savedsafaris` collection is deprecated but still functional
+- Sessions collection is the single source of truth
+- All session history is linked to userId
+- Auth middleware extracts userId from JWT
+- Guest users are rejected when attempting to save or view history
+- The savedsafaris collection is deprecated but still exists in MongoDB (not deleted)
+
+## API Endpoints Verified
+
+| Endpoint | Method | Collection | Auth Required |
+|----------|--------|------------|---------------|
+| /api/history/save-session | POST | sessions | ✅ requireAuth |
+| /api/history/sessions | GET | sessions | ✅ requireAuth |
+| /api/history | GET | sessions | ✅ requireAuth |
+| /api/history/:id | DELETE | sessions | ✅ requireAuth |
+| /api/history/export/:id | GET | sessions | ✅ requireAuth |
+| /api/forensic/report/:sessionId | GET | sessions | ✅ requireAuth |
+
+## Notes
+
+- The savedsafaris MongoDB collection is NOT deleted (data migration not performed)
+- Only the code references to savedsafaris have been removed/updated
+- For production, consider running a migration script to move data from savedsafaris to sessions

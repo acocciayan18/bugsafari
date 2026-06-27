@@ -62,8 +62,13 @@ export interface FindingRepository {
   linkActionTracesToFinding(findingId: string, actionTraceIds: string[]): Promise<void>;
   saveBrainConfig(input: SaveBrainConfigInput): Promise<string>;
   markSessionSaved(sessionId: string): Promise<void>;
-  markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
-  listSessionHistory(limit?: number): Promise<SessionHistoryRecord[]>;
+markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
+  /**
+   * List session history with optional userId filtering for multi-tenancy.
+   * @param limit - Maximum number of sessions to return (default 50)
+   * @param userId - Optional userId to filter sessions (if provided, returns only user's sessions)
+   */
+  listSessionHistory(limit?: number, userId?: string): Promise<SessionHistoryRecord[]>;
   /**
    * Collect bug findings for the most recent session associated with the target URL.
    * Applies proper domain filtering to return only actual bugs (EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, NETWORK with status >= 400).

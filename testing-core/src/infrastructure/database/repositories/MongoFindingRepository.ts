@@ -270,12 +270,32 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     }
   }
 
-  public async listSessionHistory(limit = 50): Promise<SessionHistoryRecord[]> {
-    console.log("[Repository] listSessionHistory called with limit:", limit);
+public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHistoryRecord[]> {
+    console.log("[Repository] listSessionHistory called with limit:", limit, "userId:", userId ?? "none");
 
     try {
+      // Build filter based on userId for multi-tenancy
+      const filter: Record<string, unknown> = {};
+
+      // CRITICAL: If userId provided, filter by userId for data isolation
+      // If no userId (shouldn't happen with requireAuth but handle safely), return empty array
+      if (userId && isValidObjectId(userId)) {
+        filter.userId = new Types.ObjectId(userId);
+        console.log("[Repository] Filtering sessions by userId:", userId);
+      } else if (userId) {
+        // Invalid userId provided - return empty array (safety check)
+        console.log("[Repository] Invalid userId, returning empty array");
+        return [];
+      }
+      // No userId = return empty for guests (multi-tenancy: guests see nothing)
+      // This should be caught by requireAuth but handle edge cases
+      else {
+        console.log("[Repository] No userId provided, returning empty array");
+        return [];
+      }
+
       // Wrap in try/catch to handle database errors gracefully
-      const sessions = await SessionModel.find({})
+      const sessions = await SessionModel.find(filter)
         .sort({ startedAt: -1 })
         .limit(Math.max(1, Math.min(limit, 200)))
         .lean();

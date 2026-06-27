@@ -1,10 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import GradientBlinds from '../designs/GradientBlinds';
 
 interface LoginFormProps {
-  onGuestAccess: () => void;
+  onGuestAccess?: () => void;
 }
 
 // Icons
@@ -63,15 +62,13 @@ export default function LoginForm({
       return;
     }
 
-    // Use whatever the user enters - email format
     const emailInput = username.trim();
 
-try {
+    try {
       const success = await login({ email: emailInput, password });
       if (!success) {
         setFormError('Login failed. Please check your credentials.');
       }
-      // AuthContext handles navigation after successful login - no redundant navigate() call needed
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       setFormError(errorMessage);
@@ -80,38 +77,19 @@ try {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4">
-      {/* GradientBlinds Background */}
-      <div className="absolute inset-0 z-0">
-        <GradientBlinds
-          gradientColors={['#1e293b', '#334155', '#475569', '#64748b']}
-          angle={25}
-          noise={0.15}
-          blindCount={12}
-          mouseDampening={0.12}
-          mirrorGradient={true}
-          spotlightRadius={0.6}
-          spotlightSoftness={1.2}
-          spotlightOpacity={0.8}
-          distortAmount={0.3}
-        />
-      </div>
-      <div className="w-full max-w-md z-10">
-        {/* Header */}
-        <div className="text-center mb-8">
-        </div>
-
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">BugSafari</h2>
-          <p className="text-base text-slate-500 text-center mb-6">Sign in to your account</p>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+      <div className="w-full max-w-md mx-auto">
+        <div className="bg-white p-8 border border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900 text-center mb-2">BugSafari</h2>
+          <p className="text-base text-gray-600 text-center mb-6">Sign in to your account</p>
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username Field */}
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
                 Email
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <UserIcon />
                 </div>
                 <input
@@ -119,8 +97,8 @@ try {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="Linus Torvalds"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="user@example.com"
                   required
                 />
               </div>
@@ -128,11 +106,11 @@ try {
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -140,13 +118,13 @@ try {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="••••••••••••"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="Enter password"
                   required
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -156,7 +134,7 @@ try {
 
             {/* Error Message */}
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 bg-red-50 border border-red-200">
                 <p className="text-sm text-red-600">{formError}</p>
               </div>
             )}
@@ -165,7 +143,7 @@ try {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+              className="w-full border border-gray-800 bg-gray-800 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Please wait...' : 'Sign In'}
             </button>
@@ -175,22 +153,22 @@ try {
           <div className="mt-6 flex flex-col items-center space-y-4">
             <Link
               to="/forgot-password"
-              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-4 transition-colors"
+              className="text-sm text-gray-600 hover:text-gray-900"
             >
               Forgot Password?
             </Link>
             <Link
               to="/signup"
-              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-4 transition-colors"
+              className="text-sm text-gray-600 hover:text-gray-900"
             >
-              Don&apos;t have account? Sign up
+              Do not have an account? Sign up
             </Link>
             <button
               type="button"
               onClick={handleGuestClick}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              className="text-sm text-gray-500 hover:text-gray-700"
             >
-              Continue As Guest Mode
+              Continue As Guest
             </button>
           </div>
         </div>

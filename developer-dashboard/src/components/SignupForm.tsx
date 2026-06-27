@@ -1,10 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import GradientBlinds from '../designs/GradientBlinds';
 import { useAuth } from '../context/AuthContext';
-
-// SignupForm no longer needs props - uses context directly
 
 // Icons
 const UserIcon = () => (
@@ -56,12 +53,19 @@ export default function SignupForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const navigate = useNavigate();
+  
+  // Use AuthContext for consistent authentication handling
+  const { signup, isLoading, setNavigate: setAuthNavigate } = useAuth();
+
+  // Set navigate callback for AuthContext
+  useEffect(() => {
+    setAuthNavigate(navigate);
+  }, [navigate, setAuthNavigate]);
 
   // Password validation
   const hasMinLength = password.length >= 12;
@@ -98,47 +102,16 @@ export default function SignupForm() {
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
-
-      // Make real API call to backend for user registration
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Handle specific error cases
-        if (response.status === 409) {
-          setFormError('An account with this email already exists.');
-        } else {
-          setFormError(data.error || 'Account creation failed. Please try again.');
-        }
-        setIsLoading(false);
-        return;
+      const success = await signup({ email: email.trim(), password });
+      if (!success) {
+        // AuthContext.signup() already handles error toasts
+        setFormError('Registration failed. Please try again.');
       }
-
-      // Success - backend returns token and user
-      if (data.token && data.user) {
-        // Show success toast and redirect to login
-        toast.success("Account created successfully! Please log in.");
-
-        // Navigate to login page after successful signup
-        navigate('/login');
-      } else {
-        setFormError('Unexpected response from server.');
-      }
-
+      // On success, AuthContext automatically navigates to /login after 2s delay
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
       setFormError('Unable to connect to server. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -147,40 +120,20 @@ export default function SignupForm() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-4">
-      {/* GradientBlinds Background */}
-      <div className="absolute inset-0 z-0">
-        <GradientBlinds
-          gradientColors={['#1e293b', '#334155', '#475569', '#64748b']}
-          angle={25}
-          noise={0.15}
-          blindCount={12}
-          mouseDampening={0.12}
-          mirrorGradient={true}
-          spotlightRadius={0.6}
-          spotlightSoftness={1.2}
-          spotlightOpacity={0.8}
-          distortAmount={0.3}
-        />
-      </div>
-      <div className="w-full max-w-md z-10">
-
-        {/* Header */}
-        <div className="text-center mb-8">
-        </div>
-
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">BugSafari</h2>
-          <p className="text-base text-slate-500 text-center mb-6">Create your account</p>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+      <div className="w-full max-w-md mx-auto">
+        <div className="bg-white p-8 border border-gray-200">
+          <h2 className="text-xl font-bold text-gray-900 text-center mb-2">BugSafari</h2>
+          <p className="text-base text-gray-600 text-center mb-6">Create your account</p>
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {/* FULL NAME */}
             <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
                 Full Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <UserIcon />
                 </div>
                 <input
@@ -188,8 +141,8 @@ export default function SignupForm() {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="Linus Torvalds"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="Your name"
                   required
                 />
               </div>
@@ -197,11 +150,11 @@ export default function SignupForm() {
 
             {/* WORK EMAIL */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 Work Email
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <EnvelopeIcon />
                 </div>
                 <input
@@ -209,8 +162,8 @@ export default function SignupForm() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="developer@bugsafari.io"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="user@example.com"
                   required
                 />
               </div>
@@ -218,11 +171,11 @@ export default function SignupForm() {
 
             {/* PASSWORD */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -230,14 +183,14 @@ export default function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="••••••••••••"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="Enter password"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none"
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
@@ -246,11 +199,11 @@ export default function SignupForm() {
 
             {/* CONFIRM PASSWORD */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
                 Confirm Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -258,14 +211,14 @@ export default function SignupForm() {
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="••••••••••••"
+                  className="w-full border border-gray-300 px-4 py-3 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
+                  placeholder="Confirm password"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none"
                 >
                   {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
                 </button>
@@ -274,7 +227,7 @@ export default function SignupForm() {
 
             {/* PASSWORD REQUIREMENTS */}
             <div className="pt-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                 Password Requirements
               </p>
               <div className="space-y-1">
@@ -284,14 +237,14 @@ export default function SignupForm() {
                   </span>
                   <span>Minimum 12 characters</span>
                 </div>
-                <div className={`flex items-center gap-2 text-xs ${hasSymbol && hasNumber ? 'text-green-600' : 'text-slate-400'}`}>
-                  <span className={hasSymbol && hasNumber ? 'text-green-600' : 'text-slate-400'}>
+                <div className={`flex items-center gap-2 text-xs ${hasSymbol && hasNumber ? 'text-green-600' : 'text-gray-400'}`}>
+                  <span className={hasSymbol && hasNumber ? 'text-green-600' : 'text-gray-400'}>
                     <CheckIcon />
                   </span>
-                  <span>Include symbols &amp; numbers</span>
+                  <span>Include symbols and numbers</span>
                 </div>
-                <div className={`flex items-center gap-2 text-xs ${hasNoSequential ? 'text-green-600' : 'text-slate-400'}`}>
-                  <span className={hasNoSequential ? 'text-green-600' : 'text-slate-400'}>
+                <div className={`flex items-center gap-2 text-xs ${hasNoSequential ? 'text-green-600' : 'text-gray-400'}`}>
+                  <span className={hasNoSequential ? 'text-green-600' : 'text-gray-400'}>
                     <CheckIcon />
                   </span>
                   <span>No sequential strings</span>
@@ -300,7 +253,7 @@ export default function SignupForm() {
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 bg-red-50 border border-red-200">
                 <p className="text-sm text-red-600">{formError}</p>
               </div>
             )}
@@ -309,7 +262,7 @@ export default function SignupForm() {
             <button
               type="submit"
               disabled={isLoading || !fullName || !email || !password || !confirmPassword}
-              className="w-full rounded-lg bg-slate-800 px-4 py-3 mt-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors shadow-md"
+              className="w-full border border-gray-800 bg-gray-800 px-4 py-3 mt-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -320,7 +273,7 @@ export default function SignupForm() {
                   <span>Creating account...</span>
                 </>
               ) : (
-                'Create Account →'
+                'Create Account'
               )}
             </button>
           </form>
@@ -329,20 +282,19 @@ export default function SignupForm() {
           <div className="mt-6 flex flex-col items-center space-y-4">
             <Link
               to="/login"
-              className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-4 transition-colors"
+              className="text-sm text-gray-600 hover:text-gray-900"
             >
               Already have an account? Log in
             </Link>
             <button
               type="button"
               onClick={handleGuestLogin}
-              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+              className="text-sm text-gray-500 hover:text-gray-700"
             >
-              Continue As Guest Mode
+              Continue As Guest
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

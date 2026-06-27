@@ -54,7 +54,8 @@ export async function saveSessionToHistory(
   targetUrl: string,
   options?: { initialUrl?: string }
 ): Promise<void> {
-  console.log('[historyService] 📤 saveSessionToHistory called (anonymous mode)');
+  const token = localStorage.getItem('bugsafari_token');
+  console.log('[historyService] 📤 saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
 
   if (!targetUrl || typeof targetUrl !== 'string') {
     throw new Error('Invalid targetUrl: must be a non-empty string');
@@ -64,16 +65,24 @@ export async function saveSessionToHistory(
   const payload = {
     targetUrl: trimmedUrl,
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
-    ownerType: 'anonymous',
   };
+
+  // Build headers with Authorization if token is present
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    console.log('[historyService] ✓ Token attached:', token.substring(0, 20) + '...');
+  } else {
+    console.log('[historyService] ⚠ No token - will fail with 401 if not logged in');
+  }
 
   let response: Response;
   try {
     response = await fetch('/api/history/save-session', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       credentials: 'include',
       body: JSON.stringify(payload),
     });
@@ -82,14 +91,38 @@ export async function saveSessionToHistory(
     throw networkError;
   }
 
-  if (!response.ok) {
+if (!response.ok) {
     let errorMessage: string;
+    let errorCode: string | undefined;
+    let requiresRegistration = false;
+
     try {
-      const data = await response.json() as { error?: string };
+      const data = await response.json() as { 
+        error?: string; 
+        code?: string;
+        requiresRegistration?: boolean;
+      };
       errorMessage = data?.error ?? `Server returned ${response.status}`;
+      errorCode = data?.code;
+      requiresRegistration = data?.requiresRegistration ?? false;
     } catch {
       errorMessage = `Server returned ${response.status}`;
     }
+
+    // Handle guest rejection specifically
+    if (response.status === 403 || errorCode === 'GUEST_FORBIDDEN') {
+      console.warn('[historyService] ❌ Guest save rejected - registration required');
+      const err = new Error('Registration required to save history.') as Error & { 
+        status: number; 
+        code?: string;
+        requiresRegistration?: boolean;
+      };
+      err.status = 403;
+      err.code = 'GUEST_FORBIDDEN';
+      err.requiresRegistration = requiresRegistration;
+      throw err;
+    }
+
     console.error('[historyService] ❌ Save failed:', errorMessage);
     const err = new Error(errorMessage) as Error & { status: number };
     err.status = response.status;

@@ -268,7 +268,7 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
     setIsSavingSession(true);
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
-      // Anonymous/unauthenticated save - no token needed
+      // Save now requires authentication (throws 403 for guests)
       await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
       await refreshHistory();
       setTelemetry((prev) => [
@@ -280,15 +280,35 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
         },
       ]);
     } catch (error) {
+      // Check if this is a guest rejection (403 GUEST_FORBIDDEN)
+      const err = error as Error & { code?: string; status?: number; requiresRegistration?: boolean };
+      const isGuestRejection = err?.code === 'GUEST_FORBIDDEN' || err?.status === 403;
+      
       const message = error instanceof Error ? error.message : String(error);
-      setTelemetry((prev) => [
-        ...prev,
-        {
-          timestamp: new Date().toISOString(),
-          type: 'EXCEPTION',
-          meta: { message: `Save Session failed: ${message}` },
-        },
-      ]);
+      
+      // Add specific telemetry for guest rejection
+      if (isGuestRejection) {
+        setTelemetry((prev) => [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            type: 'EXCEPTION',
+            meta: { 
+              message: 'Registration required to save session history. Please sign in or create an account.',
+              requiresRegistration: true,
+            },
+          },
+        ]);
+      } else {
+        setTelemetry((prev) => [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            type: 'EXCEPTION',
+            meta: { message: `Save Session failed: ${message}` },
+          },
+        ]);
+      }
       throw error;
     } finally {
       setIsSavingSession(false);

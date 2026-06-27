@@ -4,11 +4,12 @@ import { parseTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
-import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
+import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
+import { Types } from 'mongoose';
 
 // ──────────────────────────────────────────────���──────────────────────────────
 // Safe Parameter Extraction Utilities
@@ -144,16 +145,27 @@ export function registerRoutes(
     void useCase.execute(targetUrl, optimizationSettings);
   });
 
-// Save session - allows anonymous/guest (optionalAuth for bypass)
-  app.post('/api/history/save-session', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+// Save session - REQUIRES authentication (no guest saves allowed)
+  app.post('/api/history/save-session', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/history/save-session called');
     console.log('[API] Request body:', JSON.stringify(request.body));
-    console.log('[API] Auth user:', request.userId ?? 'anonymous/guest');
+    console.log('[API] Auth user:', request.userId ?? 'none');
     console.log('[API] Is guest:', request.isGuest);
 
-    // Use authenticated userId or fallback to anonymous placeholder
-    const userId = request.userId || 'anonymous-guest-user';
-    const ownerType = request.userId ? 'authenticated' : (request.body?.ownerType || 'anonymous');
+    // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
+    // If somehow we reached here without a valid userId, reject as guest
+    if (!request.userId) {
+      console.warn('[API] ❌ Guest save attempt rejected: No authenticated userId');
+      response.status(403).json({
+        error: 'Registration required to save history.',
+        code: 'GUEST_FORBIDDEN',
+        requiresRegistration: true,
+      });
+      return;
+    }
+
+    const userId = request.userId;
+    const ownerType = 'authenticated';
 
     try {
       // SECURITY: Sanitize targetUrl to prevent NoSQL injection
@@ -166,8 +178,8 @@ export function registerRoutes(
         return;
       }
 
-      // Call manualSaveToHistory to save to savedsafaris collection
-      // Pass ownerType in options for tracking anonymous vs authenticated saves
+// Call manualSaveToHistory to save to sessions collection
+      // Pass ownerType in options for tracking authenticated saves
       const result = await useCase.manualSaveToHistory(targetUrl, userId, { ownerType });
 
       if (!result.success) {
@@ -176,7 +188,7 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Saved to savedsafaris:', result.message, '| ownerType:', ownerType);
+console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', ownerType, '| userId:', userId);
       // Explicitly return 201 Created status for resource creation
       response.status(201).json({ ok: true, message: result.message, ownerType });
     } catch (error) {
@@ -186,16 +198,29 @@ export function registerRoutes(
     }
   });
 
-  // Session history - optional auth (shows prompt for guests)
-  app.get('/api/history/sessions', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+// Session history - REQUIRES authentication (returns only user's sessions)
+  app.get('/api/history/sessions', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/sessions called with query:', request.query);
     console.log('[API] Auth user:', request.userId ?? 'none');
+    console.log('[API] Is guest:', request.isGuest);
+
+    // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
+    if (!request.userId) {
+      console.warn('[API] ❌ Guest history access rejected: No authenticated userId');
+      response.status(403).json({
+        error: 'Registration required to view session history.',
+        code: 'GUEST_FORBIDDEN',
+        requiresRegistration: true,
+        sessions: [],
+      });
+      return;
+    }
 
     // Wrap entire endpoint in try/catch for comprehensive error handling
     try {
       if (!findingRepo) {
         console.warn('[API] findingRepo is undefined - database not connected');
-        response.json({ sessions: [], requiresAuth: request.isGuest });
+        response.json({ sessions: [] });
         return;
       }
 
@@ -203,22 +228,24 @@ export function registerRoutes(
       const rawLimit = extractStringParam(request.query.limit);
       const limitVal = rawLimit ? Number(rawLimit) : 50;
       const limit = Number.isFinite(limitVal) ? Math.max(1, Math.min(limitVal, 200)) : 50;
-      console.log('[API] Querying session history with limit:', limit);
+      console.log('[API] Querying session history with limit:', limit, 'for userId:', request.userId);
 
-      const sessions = await findingRepo.listSessionHistory(limit);
+      // CRITICAL: Pass userId to filter only this user's sessions
+      const sessions = await findingRepo.listSessionHistory(limit, request.userId);
       console.log('[API] Raw sessions from repository:', sessions?.length ?? 0);
 
       // Falsy/empty safe check - ensure sessions is an array before returning
       const safeSessions = Array.isArray(sessions) ? sessions : [];
       console.log('[API] Returning safe sessions count:', safeSessions.length);
 
-      response.json({ sessions: safeSessions, requiresAuth: request.isGuest });
+      // Return only authenticated user's sessions
+      response.json({ sessions: safeSessions });
     } catch (error) {
       // Comprehensive error handling with explicit log message
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/history/sessions:', error);
       console.error('[API] Error stack:', error instanceof Error ? error.stack : 'no stack');
-      response.status(500).json({ error: `Failed to fetch session history: ${errorMessage}` });
+      response.status(500).json({ error: `Failed to fetch session history: ${errorMessage}`, sessions: [] });
     }
   });
 
@@ -263,7 +290,7 @@ export function registerRoutes(
     }
   });
 
-  // Delete a safari record by ID
+// Delete a session by ID (using sessions collection)
   app.delete('/api/history/:id', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] DELETE /api/history/:id called');
     console.log('[API] Record ID:', request.params.id);
@@ -284,17 +311,22 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Deleting safari record:', recordId, 'for user:', userId);
-      const result = await savedSafariRepository.deleteRecord(recordId, userId);
+      console.log('[API] Deleting session record:', recordId, 'for user:', userId);
+      
+      // Use SessionModel.deleteOne with userId for ownership check
+      const result = await SessionModel.deleteOne({
+        _id: new Types.ObjectId(recordId),
+        userId: new Types.ObjectId(userId),
+      });
 
-      if (!result.success) {
-        console.warn('[API] Delete failed:', result.message);
-        response.status(404).json({ error: result.message });
+      if (result.deletedCount === 0) {
+        console.warn('[API] Delete failed: Record not found or not owned by user');
+        response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
       console.log('[API] Record deleted successfully:', recordId);
-      response.json({ ok: true, message: result.message });
+      response.json({ ok: true, message: 'Record deleted successfully.' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in DELETE /api/history/:id:', error);
@@ -302,7 +334,7 @@ export function registerRoutes(
     }
   });
 
-  // Export a safari record as JSON
+// Export a session record as JSON (using sessions collection)
   app.get('/api/history/export/:id', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/export/:id called');
     console.log('[API] Record ID to export:', request.params.id);
@@ -323,13 +355,17 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Fetching safari record for export:', recordId, 'for user:', userId);
-      const history = await savedSafariRepository.getSafariHistoryByUserId(userId);
-      const record = history.find(h => h._id?.toString() === recordId);
+      console.log('[API] Fetching session record for export:', recordId, 'for user:', userId);
+      
+      // Use SessionModel.findOne with userId for ownership check
+      const record = await SessionModel.findOne({
+        _id: new Types.ObjectId(recordId),
+        userId: new Types.ObjectId(userId),
+      }).lean();
 
       if (!record) {
-        console.warn('[API] Record not found:', recordId);
-        response.status(404).json({ error: 'Record not found.' });
+        console.warn('[API] Record not found or access denied:', recordId);
+        response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
@@ -480,42 +516,36 @@ export function registerRoutes(
         return;
       }
 
-      console.log('[API] Fetching complete forensic report for session:', sessionId, 'user:', userId);
+console.log('[API] Fetching complete forensic report for session:', sessionId, 'user:', userId);
 
-      // Fetch session data from savedsafaris collection
-      const savedSafari = await savedSafariRepository.getSafariHistoryByUserId(userId);
-      const sessionData = savedSafari.find(s => s._id?.toString() === sessionId);
+      // Fetch session data from sessions collection (unified history)
+      const sessionDoc = await SessionModel.findOne({
+        _id: new Types.ObjectId(sessionId),
+        userId: new Types.ObjectId(userId),
+      }).lean();
 
-      // If not found in savedsafaris, try sessions collection
-      // FIXED: Use proper type interface for session data
-      let session: SessionReportData | undefined = sessionData as SessionReportData | undefined;
-      if (!session && findingRepo) {
-        const sessions = await findingRepo.listSessionHistory(200);
-        const foundSession = sessions.find(s => (s as any)._id?.toString() === sessionId);
-        if (foundSession) {
-          session = {
-            _id: (foundSession as any)._id,
-            targetUrl: (foundSession as any).targetUrl,
-            executionDate: (foundSession as any).startedAt,
-            timeElapsed: (foundSession as any).stats?.runtimeMs || 0,
-            status: (foundSession as any).status,
-            metrics: {
-              totalActions: (foundSession as any).stats?.actionsExecuted || 0,
-              totalBugsFound: (foundSession as any).findingCount || 0,
-              bugsByCategory: {},
-            },
-            forensicTrace: {
-              finalBreadcrumbSteps: [],
-              caughtBugs: [],
-            },
-          };
-        }
-      }
-
-      if (!session) {
+      if (!sessionDoc) {
         response.status(404).json({ error: 'Session not found or access denied.' });
         return;
       }
+
+      // Convert to SessionReportData format
+      const session: SessionReportData = {
+        _id: sessionDoc._id,
+        targetUrl: sessionDoc.targetUrl,
+        executionDate: sessionDoc.startedAt,
+        timeElapsed: sessionDoc.stats?.runtimeMs || 0,
+        status: sessionDoc.status,
+        metrics: {
+          totalActions: sessionDoc.stats?.actionsExecuted || 0,
+          totalBugsFound: sessionDoc.findingCount || 0,
+          bugsByCategory: sessionDoc.metrics?.bugsByCategory || {},
+        },
+        forensicTrace: sessionDoc.forensicTrace || {
+          finalBreadcrumbSteps: [],
+          caughtBugs: [],
+        },
+      };
 
       // Fetch errors
       const errors = await forensicErrorRepository.findByRunId(sessionId).catch(() => []);

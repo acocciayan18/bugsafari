@@ -13,7 +13,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import CommandCenter from './components/CommandCenter';
 import ForensicReport from './components/ForensicReport';
-import SlidingAuthForm from './designs/SlidingAuthForm';
+import LoginForm from './components/LoginForm';
+import SignupForm from './components/SignupForm';
 import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
 import Sidebar from './components/Sidebar';
@@ -87,10 +88,10 @@ function AuthAppContent() {
   if (isAuthRoute || !hasValidSession) {
     return (
       <ThemeProvider>
-        <Routes>
+<Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<SlidingAuthForm />} />
-          <Route path="/signup" element={<SlidingAuthForm />} />
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/signup" element={<SignupForm />} />
           <Route path="/forgot-password" element={<ForgotPasswordForm />} />
           <Route path="/reset-password" element={<ResetPasswordForm />} />
           <Route path="*" element={<Navigate to="/" replace />} />

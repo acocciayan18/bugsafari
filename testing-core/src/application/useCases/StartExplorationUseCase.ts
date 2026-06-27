@@ -3,9 +3,10 @@ import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
 import type { OptimizationSettings } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
-import { savedSafariRepository } from '../../infrastructure/database/repositories/SavedSafariRepository.js';
 import type { ActionRecord } from '../../../../shared/types.js';
 import { Types, isValidObjectId } from 'mongoose';
+import { SessionModel, type ISession } from '../../infrastructure/database/models/SessionModel.js';
+import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 
 interface RunState {
     active: boolean;
@@ -130,24 +131,57 @@ export class StartExplorationUseCase {
             const userObjectId = new Types.ObjectId(userIdToSave);
             const totalDuration = Date.now();
 
-            const savedDocument = await savedSafariRepository.saveSafariRun({
-                userId: userObjectId,
-                targetUrl,
-                executionDate: new Date(),
-                timeElapsed: totalDuration,
-                status: 'COMPLETED',
-                metrics: {
-                    totalActions: actionRecords.length,
-                    totalBugsFound: realBugsFound.length,
-                    bugsByCategory: breakdownCategories,
+            // Find the most recent session for this user+targetUrl to update (manual save flow)
+            // If no running session exists, create a new document in sessions collection
+            let savedDocument: ISession | null = await SessionModel.findOneAndUpdate(
+                { targetUrl, userId: userObjectId, status: SessionStatus.RUNNING },
+                {
+                    $set: {
+                        status: SessionStatus.COMPLETED,
+                        finishedAt: new Date(),
+                        endedReason: 'Manually saved by user',
+                        metrics: {
+                            totalActions: actionRecords.length,
+                            totalBugsFound: realBugsFound.length,
+                            bugsByCategory: breakdownCategories,
+                        },
+                        forensicTrace: {
+                            finalBreadcrumbSteps,
+                            caughtBugs,
+                        },
+                        executionDate: new Date(),
+                        timeElapsed: totalDuration,
+                    }
                 },
-                forensicTrace: {
-                    finalBreadcrumbSteps,
-                    caughtBugs,
-                },
-            });
+                { new: true }
+            );
 
-            console.log(`[StartExplorationUseCase] ✓ Manual save: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length}`);
+            // If no running session found, create a new document
+            if (!savedDocument) {
+                savedDocument = await SessionModel.create({
+                    userId: userObjectId,
+                    targetUrl,
+                    status: SessionStatus.COMPLETED,
+                    startedAt: new Date(Date.now() - totalDuration),
+                    finishedAt: new Date(),
+                    endedReason: 'Manually saved by user',
+                    findingCount: realBugsFound.length,
+                    actionTraceCount: actionRecords.length,
+                    metrics: {
+                        totalActions: actionRecords.length,
+                        totalBugsFound: realBugsFound.length,
+                        bugsByCategory: breakdownCategories,
+                    },
+                    forensicTrace: {
+                        finalBreadcrumbSteps,
+                        caughtBugs,
+                    },
+                    executionDate: new Date(),
+                    timeElapsed: totalDuration,
+                });
+            }
+
+            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length}`);
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);

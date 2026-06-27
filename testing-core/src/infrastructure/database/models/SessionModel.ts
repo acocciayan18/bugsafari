@@ -214,6 +214,7 @@ sessionSchema.index({ status: 1, startedAt: -1 });
 sessionSchema.index({ targetUrl: 1 });
 
 export interface ISession extends Document {
+  userId: Types.ObjectId;
   targetUrl: string;
   status: SessionStatus;
   startedAt: Date;
@@ -225,6 +226,10 @@ export interface ISession extends Document {
   brainSnapshotCount: number;
   config: ISessionConfig;
   stats: ISessionStats;
+  executionDate: Date;
+  timeElapsed: number;
+  metrics: ISessionMetrics;
+  forensicTrace: IForensicTrace;
   error?: {
     message?: string;
     stackTrace?: string;
