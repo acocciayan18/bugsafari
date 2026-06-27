@@ -18,7 +18,14 @@ export type {
   // OptimizationSettings now shared between backend and frontend
   OptimizationSettings,
   defaultOptimizationSettings,
+  // Testing Type Selector (operator-gated scenario matrix)
+  TestingTypeId,
+  TestingTypeOption,
+  ExplorationRunConfig,
 } from '../../shared/types.js';
+
+// Value re-exports (runtime constants used to render the selector + defaults).
+export { TESTING_TYPE_CATALOG, ALL_TESTING_TYPE_IDS } from '../../shared/types.js';
 
 export interface BrowserConsoleMessage {
   timestamp: string;

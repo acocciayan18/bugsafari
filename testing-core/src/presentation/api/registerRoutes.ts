@@ -10,6 +10,20 @@ import { forensicErrorRepository } from '../../infrastructure/database/repositor
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { Types } from 'mongoose';
+import { ALL_TESTING_TYPE_IDS, type TestingTypeId } from '../../../../shared/types.js';
+
+/**
+ * Validate the client-supplied testing-type selection against the known catalog,
+ * dropping any unknown ids. Returns undefined when nothing valid is supplied so
+ * the engine falls back to its all-enabled default.
+ */
+function parseSelectedScenarios(body: unknown): TestingTypeId[] | undefined {
+  const raw = (body as { selectedScenarios?: unknown })?.selectedScenarios;
+  if (!Array.isArray(raw)) return undefined;
+  const allowed = new Set<string>(ALL_TESTING_TYPE_IDS);
+  const filtered = raw.filter((value): value is TestingTypeId => typeof value === 'string' && allowed.has(value));
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 // ──────────────────────────────────────────────���──────────────────────────────
 // Safe Parameter Extraction Utilities
@@ -107,6 +121,36 @@ export function registerRoutes(
     response.json({ status: "healthy" });
   });
 
+  // Explicit Safari stop endpoint - for cleanup on timeout or emergency stop
+  // No authentication required for emergency cleanup scenarios
+  app.post('/api/safari/stop', async (_request: Request, response: Response): Promise<void> => {
+    console.log('[API] 🔴 POST /api/safari/stop received - explicit cleanup request');
+
+    try {
+      // Import the active engine from socket handlers
+      const { activeEngineInstance } = await import('../socket/registerSocketHandlers.js');
+
+      if (!activeEngineInstance) {
+        console.log('[API] No active engine to stop - already IDLE');
+        response.json({ ok: true, message: 'No active session to stop' });
+        return;
+      }
+
+      console.log('[API] Stopping active engine...');
+      if (typeof activeEngineInstance.stop === 'function') {
+        await activeEngineInstance.stop();
+      }
+
+      console.log('[API] ✅ Engine stopped successfully via HTTP endpoint');
+      response.json({ ok: true, message: 'Safari session stopped' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[API] Error stopping engine:', errorMessage);
+      // Return success even on error - engine may already be stopped
+      response.json({ ok: true, message: 'Stop attempted', error: errorMessage });
+    }
+  });
+
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
   app.post('/api/start-test', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
@@ -139,10 +183,15 @@ export function registerRoutes(
     const optimizationSettings = request.body?.optimization;
     console.log(`[API] Optimization settings:`, optimizationSettings);
 
+    // Extract + validate the operator-selected testing strategies (gates which
+    // stress/fuzz/bypass scenarios run this session). Undefined => all enabled.
+    const selectedScenarios = parseSelectedScenarios(request.body);
+    console.log(`[API] Selected scenarios:`, selectedScenarios ?? '(all)');
+
     console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
     response.json({ accepted: true, url: targetUrl });
     console.log(`[API] 🚀 Starting safari in background...`);
-    void useCase.execute(targetUrl, optimizationSettings);
+    void useCase.execute(targetUrl, optimizationSettings, selectedScenarios);
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)

@@ -1,6 +1,6 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../shared/types.js';
+import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../shared/types.ts';
 import { CircularBuffer } from '../../lib/circularBuffer.js';
 
@@ -117,6 +117,7 @@ import { Types } from 'mongoose';
 
 // Import StateGraphNavigator and types from DIrectedPathFinder
 import { StateGraphNavigator } from './StateGraphNavigator.js';
+import { ScenarioGate } from './scenarioGate.js';
 import type {
   PathfinderDecision,
   PathfinderElement,
@@ -193,11 +194,19 @@ private isPaused = false;
   // Data fuzzer decision threshold - use heuristic scoring for intelligent decision
   private dataFuzzerThreshold = 0.3; // Use data fuzzer when target risk score >= 0.3
 
+  // Operator-gated scenario matrix — resolves which stress/fuzz/bypass modes run.
+  private readonly gate: ScenarioGate;
+
 constructor(
     private readonly findingRepo?: FindingRepository,
     private readonly optimizationSettings?: OptimizationSettings,
+    selectedScenarios?: TestingTypeId[],
   ) {
     console.log(`[AutonomousExplorationEngine] Optimization settings:`, optimizationSettings);
+
+    // Build the testing-type gate (empty/undefined selection => all enabled).
+    this.gate = new ScenarioGate(selectedScenarios);
+    console.log(`[AutonomousExplorationEngine] Active testing types:`, this.gate.activeCategories());
 
 // Initialize ChaosTransactionManager with telemetry and action buffer callbacks
     this.fuzzManager = new ChaosTransactionManager(
@@ -460,6 +469,10 @@ private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean
 this.freezeActionTraceRecording = false;
     ActiveScenarioTracker.reset();
     this.lastBrainSnapshotStep = 0;
+
+    // Operator visibility: announce which testing strategies are active this run.
+    this.emitMilestone(telemetry, `🎛️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
+
     this.sessionId = await this.createSession(targetUrl);
 
 // 🕐 Start timing interval that accumulates active time (only when NOT paused)
@@ -705,13 +718,16 @@ telemetry.emitTelemetry(this.event('NETWORK', {
       );
 
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
-      
-      // Emit immediate first frame to prevent frontend "No live frame received" timeout
-      // This must happen BEFORE any other async operations
-      console.log('[AutonomousExplorationEngine] Emitting first live frame after page navigation');
-      await this.emitLiveFrame(page, telemetry);
-      console.log('[AutonomousExplorationEngine] First live frame emitted successfully');
-      
+
+      // 🚀 Start the independent 33 ms frame loop the instant the page is
+      // navigable — BEFORE ensureDomReady / console-listener setup. Continuous
+      // streaming must not wait on those (~5 s) or on a single best-effort
+      // screenshot; this guarantees the dashboard clears its 30 s "no live
+      // frame" handshake regardless of page speed or selected scenarios.
+      // captureAndEmitFrame already guards page.isClosed()/in-flight, and each
+      // screenshot is capped by SCREENSHOT_TIMEOUT_MS, so this is safe here.
+      this.startFrameCaptureLoop(page, telemetry);
+
 await this.ensureDomReady(page, telemetry);
 
       // 🛡️ Initialize stability monitoring - runs silently in background
@@ -723,9 +739,6 @@ await this.ensureDomReady(page, telemetry);
       // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
       await setupBrowserConsoleListener(page, telemetry);
 
-      // 🚀 Start independent frame capture loop for 30fps streaming
-      this.startFrameCaptureLoop(page, telemetry);
-
       // --- 3-Strike Logic Loop State ---
       // Tracks consecutive steps where the DOM fingerprint did not change.
       let previousHash = '';
@@ -736,7 +749,7 @@ await this.ensureDomReady(page, telemetry);
 
 for (let step = 1; step <= maxSteps; step++) {
         if (this.isStopRequested) {
-          this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
+          this.emitMilestone(telemetry, `Safari session manually stopped by user.`);
           return { completed: false, reason: 'Safari session manually stopped by user.' };
         }
 
@@ -753,7 +766,7 @@ for (let step = 1; step <= maxSteps; step++) {
 
         while (this.isPaused) {
           if (this.isStopRequested) {
-            this.emitMilestone(telemetry, `🛑 Safari session manually stopped by user.`);
+            this.emitMilestone(telemetry, `Safari session manually stopped by user.`);
             return { completed: false, reason: 'Safari session manually stopped by user.' };
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -771,8 +784,9 @@ for (let step = 1; step <= maxSteps; step++) {
 
           // 📡 Network Sabotage: 10% random chance to sabotage network requests
           // This tests if the UI breaks when network calls are delayed/aborted
+          // Gated by the Navigational/Traversal testing type (owns NetworkSaboteur).
           const sabotageDice = Math.random();
-          if (sabotageDice < 0.1) {
+          if (this.gate.isScenarioEnabled('NetworkSaboteur') && sabotageDice < 0.1) {
             this.emitMilestone(telemetry, '📡 Chaos Mode: Sabotaging network requests for this step...');
             telemetry.emitTelemetry(this.event('ACTION', {
               actionExecuted: 'network-sabotage',
@@ -796,11 +810,12 @@ for (let step = 1; step <= maxSteps; step++) {
           }));
 
           if (elements.length === 0) {
-            telemetry.emitTelemetry(this.event('ACTION', {
-              actionExecuted: 'empty-dom',
-              message: 'No interactive elements after retry window. Stopping run.',
-            }));
-            return { completed: true, reason: 'DOM has no interactive elements.' };
+            // SPA may still be routing — don't hard-exit on an empty snapshot.
+            // Wait 1 s and retry on the next iteration; the loop terminates
+            // naturally at maxSteps if the DOM never populates.
+            this.emitMilestone(telemetry, '⏳ No interactive elements this step — waiting for DOM to settle...');
+            await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+            continue;
           }
 
           const ranked = this.scorer.score(elements);
@@ -1453,14 +1468,33 @@ telemetry.emitTelemetry({
     ranked: InteractiveElement[],
     revisitedPage: boolean,
   ): Promise<void> {
-    const isStressAction = Math.random() < 0.3;
+    const exploratoryEnabled = this.gate.isEnabled('exploratory');
+    // Bias toward stress when the standard (exploratory) path is disabled, so the
+    // operator's enabled stress scenarios still receive execution time.
+    const wantStress = !exploratoryEnabled || Math.random() < 0.3;
 
-    if (!isStressAction) {
-      await this.executeStandardInteraction(page, telemetry, target, ranked);
+    const scenario = wantStress ? this.pickStressScenario(target, revisitedPage) : null;
+
+    if (!scenario) {
+      // No enabled stress scenario applies to this element this step — fall back
+      // to the standard per-target dispatcher when the exploratory baseline OR
+      // data fuzzing (which lives inside that path) is enabled.
+      if (exploratoryEnabled || this.gate.isEnabled('dataFuzzing')) {
+        await this.executeStandardInteraction(page, telemetry, target, ranked);
+      } else {
+        // Every active category has no applicable scenario for this element type
+        // (e.g. only "Concurrency" is selected but the target is a plain div).
+        // Perform a minimal baseline click so the run stays visible in telemetry
+        // rather than silently skipping the step.
+        this.emitMilestone(
+          telemetry,
+          `⚡ No active scenario matched ${target.selector} — minimal fallback click`,
+        );
+        await this.safeButtonSpammer(page, target, telemetry);
+      }
       return;
     }
 
-    const scenario = this.pickStressScenario(target, revisitedPage);
     const escalationMessage = `🔥 Escalating to ${scenario.name} on ${target.selector}`;
 
     telemetry.emitTelemetry(this.event('ACTION', {
@@ -1502,8 +1536,10 @@ telemetry.emitTelemetry({
           console.warn('[AutonomousExplorationEngine] Constraint stripping failed before security scenario:', error);
         }
 
-        // Enhance security testing with data fuzzer payloads
-        await this.executeSecurityFuzzerPayloads(page, telemetry, target);
+        // Enhance security testing with data fuzzer payloads (gated by Data Fuzzing)
+        if (this.gate.isEnabled('dataFuzzing')) {
+          await this.executeSecurityFuzzerPayloads(page, telemetry, target);
+        }
       }
 
       await scenario.execute(page, target);
@@ -1512,7 +1548,12 @@ telemetry.emitTelemetry({
     }
   }
 
-  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario {
+  /**
+   * Heuristically rank the stress scenarios that suit this element, then return
+   * the first whose owning testing-type the operator left enabled. Returns null
+   * when every applicable scenario has been deactivated for this run.
+   */
+  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario | null {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
     const buttonLike =
@@ -1525,29 +1566,25 @@ telemetry.emitTelemetry({
     // Check for text input fields (input[type="text"], textarea, input[type="password"])
     const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';
 
-    // If it's a text input field and chaos threshold allows, delegate to formBypasser (handles constraint stripping)
+    // Build an ordered candidate list by element heuristics. Order preserves the
+    // previous prioritization (constraint stripping for inputs/buttons, route
+    // trashing on revisits, coordinate bombing as the catch-all).
+    const candidates: StressScenario[] = [];
     if (isTextInput) {
-      const chaosRoll = Math.random();
-      if (chaosRoll < this.chaosThreshold) {
-        console.log(`[AutonomousExplorationEngine] Chaos threshold triggered (${(chaosRoll * 100).toFixed(1)}% < ${(this.chaosThreshold * 100).toFixed(1)}%) - activating security audit on ${target.selector}`);
-        return formBypasser;
+      candidates.push(formBypasser);
+    } else {
+      if (revisitedPage) candidates.push(stressScenarioMap.RouteTrasher);
+      if (buttonLike) candidates.push(formBypasser);
+      candidates.push(stressScenarioMap.CoordinateBombing);
+    }
+
+    // Return the first candidate whose testing-type is enabled this session.
+    for (const candidate of candidates) {
+      if (this.gate.isScenarioEnabled(candidate.name)) {
+        return candidate;
       }
-      // Use formBypasser for text inputs when not using security scout
-      // This ensures constraints are stripped before payload injection
-      return formBypasser;
     }
-
-    if (revisitedPage) {
-      return stressScenarioMap.RouteTrasher;
-    }
-
-    if (buttonLike) {
-      // Use formBypasser for buttons to ensure they can be clicked
-      // This helps bypass disabled/readonly button states
-      return formBypasser;
-    }
-
-    return stressScenarioMap.CoordinateBombing;
+    return null;
   }
 
 private async executeStandardInteraction(
@@ -1560,8 +1597,13 @@ private async executeStandardInteraction(
     await this.highlighter.flashHighlight(page, target.selector);
 
 if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
-      // Use heuristic-based decision (or seeded RNG if configured) instead of unseeded randomness
-      const useDataFuzzer = this.shouldUseDataFuzzer(target);
+      const fuzzEnabled = this.gate.isEnabled('dataFuzzing');
+      const exploratoryEnabled = this.gate.isEnabled('exploratory');
+
+      // Data fuzzing runs when its testing-type is enabled AND either the heuristic
+      // selects it, or the exploratory baseline (normal injection) is disabled so
+      // fuzzing is the only enabled way to exercise this field.
+      const useDataFuzzer = fuzzEnabled && (this.shouldUseDataFuzzer(target) || !exploratoryEnabled);
 
       if (useDataFuzzer) {
         // Use Data Fuzzer: Delegate to strategy pattern
@@ -1611,6 +1653,12 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
         return;
       }
 
+      // Normal (non-fuzz) payload injection is part of the exploratory baseline.
+      // If exploratory testing is disabled, leave the field untouched this step.
+      if (!exploratoryEnabled) {
+        return;
+      }
+
       // Standard payload injection using strategy pattern
       const category = classifyInputElement(target);
       const strategyPayload = getStrategyByCategory(category);
@@ -1648,21 +1696,28 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       return;
     }
 
-    this.recordActionTrace(
-      {
-        timestamp: new Date().toISOString(),
-        selector: target.selector,
-        action: 'button-spammer',
-        score: Number(target.riskScore.toFixed(4)),
-      },
-      {
-        actionType: 'CLICK',
-        humanIdentifier: resolveElementLabel(target),
-      },
-    );
+    // Baseline interaction with the scored target — part of exploratory testing.
+    if (this.gate.isEnabled('exploratory')) {
+      this.recordActionTrace(
+        {
+          timestamp: new Date().toISOString(),
+          selector: target.selector,
+          action: 'button-spammer',
+          score: Number(target.riskScore.toFixed(4)),
+        },
+        {
+          actionType: 'CLICK',
+          humanIdentifier: resolveElementLabel(target),
+        },
+      );
 
-    await this.safeButtonSpammer(page, target, telemetry);
-    await this.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));
+      await this.safeButtonSpammer(page, target, telemetry);
+    }
+
+    // Overlapping concurrency stress across sibling elements — gated separately.
+    if (this.gate.isEnabled('concurrency')) {
+      await this.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));
+    }
   }
 
   private async safeButtonSpammer(page: Page, target: InteractiveElement, telemetry: TelemetryGateway): Promise<void> {
@@ -1743,26 +1798,30 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       .catch(() => undefined);
   }
 
-private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
-    /**
-     * OPTIMIZED: Capture screenshot as raw Buffer for binary streaming.
-     * Uses lower quality JPEG (35) for reduced bandwidth.
-     * Frame-skipping guard prevents backpressure when previous broadcast is still in-flight.
-     * 
-     * SAFETY: Added try-catch to handle browser closure during manual session cancellation.
-     * This prevents false-positive [EXCEPTION] errors when user stops the session.
-     */
+// Hard upper bound for a single screenshot capture.
+  // Playwright's default can hang 20-25 s on a cold page; 5 s is ample for
+  // a live-stream frame and prevents blocking the 30-second init window.
+  private static readonly SCREENSHOT_TIMEOUT_MS = 5000;
+
+  private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<void> {
     if (this.isFrameBroadcastInFlight) {
       return;
     }
-    // SAFETY: Check if page is already closed before attempting screenshot
     if (page.isClosed()) {
       return;
     }
     this.isFrameBroadcastInFlight = true;
 
     try {
-      const screenshot = await page.screenshot({ type: 'jpeg', quality: 35 });
+      const screenshot = await Promise.race([
+        page.screenshot({ type: 'jpeg', quality: 35 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('[Frame] Screenshot timed out')),
+            AutonomousExplorationEngine.SCREENSHOT_TIMEOUT_MS,
+          )
+        ),
+      ]);
 
       if (telemetry.emitLiveFrameBinary) {
         telemetry.emitLiveFrameBinary(screenshot);
@@ -1770,12 +1829,9 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
         telemetry.emitLiveFrame(screenshot.toString('base64'));
       }
     } catch (err) {
-      // Gracefully handle browser closure during manual stop
-      // Silently ignore - this is expected during session cancellation
       if (isBrowserClosedError(err)) {
         return;
       }
-      // Log other unexpected errors for debugging but don't throw
       console.warn('[AutonomousExplorationEngine] Live frame capture failed:', err instanceof Error ? err.message : err);
     } finally {
       this.isFrameBroadcastInFlight = false;
@@ -1794,12 +1850,10 @@ private async emitLiveFrame(page: Page, telemetry: TelemetryGateway): Promise<vo
     }, 33);
   }
 
-private async captureAndEmitFrame(): Promise<void> {
+  private async captureAndEmitFrame(): Promise<void> {
     if (!this.page || !this.currentTelemetry) {
       return;
     }
-    // SAFETY: Check if page is already closed before attempting screenshot
-    // This prevents race condition during manual session cancellation
     if (this.page.isClosed()) {
       return;
     }
@@ -1809,7 +1863,15 @@ private async captureAndEmitFrame(): Promise<void> {
     this.isFrameBroadcastInFlight = true;
 
     try {
-      const screenshot = await this.page.screenshot({ type: 'jpeg', quality: 35 });
+      const screenshot = await Promise.race([
+        this.page.screenshot({ type: 'jpeg', quality: 35 }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('[Frame] Screenshot timed out')),
+            AutonomousExplorationEngine.SCREENSHOT_TIMEOUT_MS,
+          )
+        ),
+      ]);
 
       if (this.currentTelemetry.emitLiveFrameBinary) {
         this.currentTelemetry.emitLiveFrameBinary(screenshot);
@@ -1817,12 +1879,9 @@ private async captureAndEmitFrame(): Promise<void> {
         this.currentTelemetry.emitLiveFrame(screenshot.toString('base64'));
       }
     } catch (err) {
-      // Gracefully handle browser closure during manual stop
-      // Silently ignore - this is expected during session cancellation
       if (isBrowserClosedError(err)) {
         return;
       }
-      // Log other unexpected errors for debugging but don't throw
       console.warn('[AutonomousExplorationEngine] Frame capture failed:', err instanceof Error ? err.message : err);
     } finally {
       this.isFrameBroadcastInFlight = false;

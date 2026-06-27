@@ -118,7 +118,7 @@ function AuthAppContent() {
                 isCollapsed={isSidebarCollapsed}
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               />
-              {/* COMMAND CENTER with 3-row layout */}
+{/* COMMAND CENTER with 3-row layout */}
               <CommandCenter
                 targetUrl={targetUrl}
                 isTestRunning={state.isTestRunning}
@@ -126,8 +126,9 @@ function AuthAppContent() {
                 hasRunCompleted={state.hasRunCompleted}
                 hasTimeLimitExceeded={state.hasTimeLimitExceeded}
                 isConnected={state.isConnected}
+                isCleaningUp={state.isCleaningUp}
                 onTimeUp={handleTimeLimitExceeded}
-                onStart={startTest}
+                onStart={(url, selectedScenarios) => startTest(url, undefined, selectedScenarios)}
                 onPause={pauseTest}
                 onResume={resumeTest}
                 onStop={stopTest}

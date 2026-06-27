@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../shared/types.js';
+import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 
@@ -87,10 +87,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings): Promise<{ completed: boolean; reason: string }> {
+  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<{ completed: boolean; reason: string }> {
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
-    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings);
+    console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
+    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios);
     // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup

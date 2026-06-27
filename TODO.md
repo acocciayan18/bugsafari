@@ -1,11 +1,20 @@
-# TODO - Update ALL_FILES_CODEBASE.md
+# TODO: Fix Frontend Initialization Timeout Lockup
 
-- [x] Read implementation_plan_updateALLFILES.md
-- [x] Read current ALL_FILES_CODEBASE.md structure
-- [x] Explore developer-dashboard/src directory (recursive)
-- [x] Explore testing-core/src/domain directory (recursive)
-- [x] Explore testing-core/src/infrastructure directory (recursive)
-- [x] Explore testing-core/src/bugs/finders directory  
-- [x] Explore testing-core/src/domain/scenarios directory
-- [x] Explore testing-core/src/presentation directory
-- [ ] Write comprehensive ALL_FILES_CODEBASE.md update
+## Task
+Fix the frontend initialization timeout lockup happening inside `useDashboardController.ts`.
+
+## Issues Identified
+1. Stale closure - `gateway` used in timeout but not in dependency array
+2. Race condition - timeout may fire even after state reset elsewhere
+3. No proper cleanup guarantee when startTest fails
+
+## Fixes Applied
+- [x] Add `useRef` import
+- [x] Add `gatewayRef` to prevent stale closures in timeout callback
+- [x] Add `timeoutCleanupDispatchedRef` to prevent duplicate cleanup dispatch
+- [x] Add early cleanup in startTest catch error handler
+- [x] Reset cleanup flag in useEffect cleanup function
+
+## Status
+Fixes have been applied to developer-dashboard/src/application/useCases/useDashboardController.ts
+Need to verify TypeScript compiles correctly.

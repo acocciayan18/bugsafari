@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -121,17 +121,21 @@ public disconnect(): void {
     this.socket.disconnect();
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
+    console.log(`[Gateway] Selected Scenarios:`, selectedScenarios);
 
     let errorDetails = '';
 
     try {
-      const requestBody: { url: string; optimization?: OptimizationSettings } = { url: targetUrl };
+      const requestBody: { url: string; optimization?: OptimizationSettings; selectedScenarios?: TestingTypeId[] } = { url: targetUrl };
       if (optimizationSettings) {
         requestBody.optimization = optimizationSettings;
+      }
+      if (selectedScenarios && selectedScenarios.length > 0) {
+        requestBody.selectedScenarios = selectedScenarios;
       }
 
       const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
@@ -204,8 +208,47 @@ public disconnect(): void {
     this.socket.emit('resume-test');
   }
 
-  public stopTest(): void {
+public stopTest(): void {
     this.socket.emit('stop-test');
+  }
+
+  /**
+   * Force stop - sends stop command via socket with HTTP fallback.
+   * Used for timeout cleanup to ensure backend terminates orphaned processes.
+   */
+  public async forceStop(): Promise<void> {
+    console.log('[Gateway] 🔴 forceStop called - attempting cleanup');
+
+    // First, try socket emit (most reliable when connected)
+    if (this.connectionState === 'connected') {
+      console.log('[Gateway] Attempting stop via socket...');
+      return new Promise((resolve) => {
+        this.socket.emit('stop-test');
+        // Give socket time to send before resolving
+        setTimeout(() => {
+          console.log('[Gateway] Socket stop sent');
+          resolve();
+        }, 100);
+      });
+    }
+
+    // Fallback to HTTP POST if socket not connected
+    console.log('[Gateway] Socket not connected, falling back to HTTP stop...');
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/api/safari/stop`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        console.log('[Gateway] ✅ HTTP stop successful');
+      } else {
+        console.warn('[Gateway] HTTP stop returned non-OK:', response.status);
+      }
+    } catch (httpError) {
+      console.error('[Gateway] HTTP stop failed:', httpError);
+      // Swallow error - backend may already be stopped
+    }
   }
 
 private readonly handleConnect = (): void => {

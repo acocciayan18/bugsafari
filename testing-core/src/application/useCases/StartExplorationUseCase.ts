@@ -1,6 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
-import type { OptimizationSettings } from '../../../../shared/types.js';
+import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
 import type { ActionRecord } from '../../../../shared/types.js';
@@ -190,10 +190,11 @@ export class StartExplorationUseCase {
         }
     }
 
-    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> {
+    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
+        console.log(`[StartExplorationUseCase] Selected scenarios received:`, selectedScenarios ?? '(all)');
 
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
@@ -264,7 +265,7 @@ try {
             // Phase 3: Execute engine with engine-managed timebox (FIXED: uses accumulative active time tracking)
             // The engine now tracks elapsedActiveTimeMs internally and only counts time when NOT paused.
             // This prevents timebox from expiring during pause state.
-            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings);
+            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios);
 
 // Check if the engine detected timebox exceeded (via its internal timing interval)
             if (!result.completed && result.reason.includes('timebox')) {

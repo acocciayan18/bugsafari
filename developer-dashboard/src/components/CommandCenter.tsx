@@ -5,6 +5,9 @@
 
 import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from './SessionTimer';
+import TestingTypeSelector from './TestingTypeSelector';
+import { ALL_TESTING_TYPE_IDS } from '../types';
+import type { TestingTypeId } from '../types';
 import type { TestSessionStatus } from '../application/useCases/useDashboardController';
 
 // const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -16,7 +19,8 @@ interface CommandCenterProps {
   hasRunCompleted?: boolean;
   hasTimeLimitExceeded?: boolean;
   isConnected?: boolean;
-  onStart: (url: string) => void;
+  isCleaningUp?: boolean;
+  onStart: (url: string, selectedScenarios?: TestingTypeId[]) => void;
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
@@ -43,6 +47,7 @@ export default function CommandCenter({
   hasRunCompleted,
   hasTimeLimitExceeded,
   isConnected,
+  isCleaningUp,
   onStart,
   onPause,
   onResume,
@@ -53,16 +58,20 @@ export default function CommandCenter({
   children,
 }: CommandCenterProps) {
 const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
+  // Operator-selected testing strategies — default to the full adversarial matrix.
+  const [selectedTypes, setSelectedTypes] = useState<TestingTypeId[]>(ALL_TESTING_TYPE_IDS);
 
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
+  // Block new starts during cleanup to prevent race conditions
+  const canStart = Boolean(localTargetUrl) && selectedTypes.length > 0 && !isTestRunning && !isCleaningUp;
 
   // 👈 Compute visibility matrix based on unified status
   const controlVisibility = computeControlVisibility(testStatus);
 
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();
-    if (localTargetUrl && onStart) {
-      onStart(localTargetUrl);
+    if (canStart && onStart) {
+      onStart(localTargetUrl, selectedTypes);
     }
   };
 
@@ -179,8 +188,9 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {controlVisibility.showStartButton && (
             <button
               onClick={() => handleStartTest()}
-              disabled={isTestRunning}
-              className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${isTestRunning ? 'bg-slate-600 cursor-not-allowed' : ''}`}
+              disabled={!canStart}
+              title={selectedTypes.length === 0 ? 'Select at least one testing type' : undefined}
+              className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${!canStart ? 'bg-slate-600 cursor-not-allowed hover:bg-slate-600' : ''}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
@@ -190,6 +200,15 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
             </button>
           )}
         </div>
+
+        {/* Testing Type Selector — only while a run can be configured/launched */}
+        {controlVisibility.showStartButton && (
+          <TestingTypeSelector
+            selected={selectedTypes}
+            onChange={setSelectedTypes}
+            disabled={isTestRunning}
+          />
+        )}
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════════════════

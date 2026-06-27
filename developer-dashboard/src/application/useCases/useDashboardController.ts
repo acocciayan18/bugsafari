@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
 import { saveSessionToHistory } from '../../services/historyService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -17,6 +17,7 @@ export interface DashboardState {
   hasTimeLimitExceeded: boolean;
   currentEngineAction: string;
   isInitializing: boolean;
+  isCleaningUp: boolean;
   liveFrame: string | null;
   remainingTimeMs: number;
   elapsedTimeMs: number;
@@ -77,24 +78,61 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
-  const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
+const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [liveFrame, setLiveFrame] = useState<string | null>(null);
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]);
 
-  const [remainingTimeMs, setRemainingTimeMs] = useState<number>(180000);
+const [remainingTimeMs, setRemainingTimeMs] = useState<number>(180000);
   const [elapsedTimeMs, setElapsedTimeMs] = useState<number>(0);
+
+  // Ref to track current gateway instance - prevents stale closure in timeout
+  const gatewayRef = useRef(gateway);
+  gatewayRef.current = gateway;
+
+  // Ref to track if timeout cleanup has already been dispatched
+  const timeoutCleanupDispatchedRef = useRef(false);
 
   const INITIALIZATION_TIMEOUT_MS = 30000;
 
   useEffect(() => {
     let initializationTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    // Reset the cleanup flag when starting new initialization
     if (isInitializing && isTestRunning) {
-      initializationTimeout = setTimeout(() => {
-        console.warn('[useDashboardController] Initialization timeout reached - forcing reset');
+      timeoutCleanupDispatchedRef.current = false;
+
+      initializationTimeout = setTimeout(async () => {
+        // Double-check: if cleanup was already dispatched, skip
+        if (timeoutCleanupDispatchedRef.current) {
+          return;
+        }
+        timeoutCleanupDispatchedRef.current = true;
+
+        console.warn('[useDashboardController] Initialization timeout reached - dispatching cleanup to backend');
+
+        // Set cleanup state to lock UI until backend confirms termination
+        setIsCleaningUp(true);
+
+        // Dispatch explicit stop to backend to terminate orphaned processes
+        // Use ref to get current gateway instance - prevents stale closure
+        try {
+          const currentGateway = gatewayRef.current;
+          const gatewayWithForceStop = currentGateway as unknown as { forceStop?: () => Promise<void> };
+          if (typeof gatewayWithForceStop.forceStop === 'function') {
+            await gatewayWithForceStop.forceStop();
+            console.log('[useDashboardController] Cleanup dispatched to backend');
+          }
+        } catch (cleanupError) {
+          console.error('[useDashboardController] Cleanup dispatch failed:', cleanupError);
+          // Continue with reset even if cleanup dispatch fails
+        }
+
+        // Now reset UI state after cleanup attempt
         setIsThinking(false);
         setIsInitializing(false);
+        setIsCleaningUp(false);
         setIsTestRunning(false);
         setStatus('IDLE');
         setTelemetry((prev) => [
@@ -103,22 +141,27 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
             timestamp: new Date().toISOString(),
             type: 'EXCEPTION',
             meta: {
-              message: 'Engine initialization timeout: No live frame received within 30 seconds.',
+              message: 'Engine initialization timeout: No live frame received within 30 seconds. Backend cleanup dispatched.',
             },
           },
         ]);
       }, INITIALIZATION_TIMEOUT_MS);
     }
 
+    // Clear timeout if isInitializing becomes false (e.g., from live frame or other reset)
     if (!isInitializing && initializationTimeout) {
       clearTimeout(initializationTimeout);
       initializationTimeout = null;
+      // Reset flag on early clear
+      timeoutCleanupDispatchedRef.current = false;
     }
 
-    return () => {
+return () => {
       if (initializationTimeout) {
         clearTimeout(initializationTimeout);
       }
+      // Reset cleanup flag on unmount or dependency change
+      timeoutCleanupDispatchedRef.current = false;
     };
   }, [isInitializing, isTestRunning]);
 
@@ -206,7 +249,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
     return () => gateway.disconnect();
   }, [gateway]);
 
-const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings): Promise<void> => {
+const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> => {
     if (!targetUrl.trim()) return;
 
     setIsThinking(true);
@@ -225,10 +268,12 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
 
-    try {
-      await gateway.startTest(targetUrl.trim(), optimizationSettings);
+try {
+      await gateway.startTest(targetUrl.trim(), optimizationSettings, selectedScenarios);
       setIsLaunching(false);
     } catch (error) {
+      // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing
+      setIsInitializing(false);
       setIsThinking(false);
       const message = error instanceof Error ? error.message : String(error);
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
@@ -322,7 +367,7 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
     setHasRunCompleted(true);
   };
 
-  return {
+return {
     state: {
       isConnected,
       isLaunching,
@@ -333,6 +378,7 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
       hasTimeLimitExceeded,
       currentEngineAction,
       isInitializing,
+      isCleaningUp,
       liveFrame,
       remainingTimeMs,
       elapsedTimeMs,

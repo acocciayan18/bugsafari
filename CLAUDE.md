@@ -2,6 +2,8 @@
 
 AI INSTRUCTION: Read this document entirely before suggesting refactors or generating code. Prioritize these absolute project constraints over generalized best practices.
 
+Do not make any changes until you have 95% confidence in what you need to build. Ask me follow-up questions until you reach that confidence.
+
 ## 🌍 1. System Context
 BugSafari is an Autonomous Exploratory Testing Engine for SPAs. 
 - Tech: React 18/Vite, Node.js/Express, Playwright, Socket.IO, MongoDB Atlas, Podman.
@@ -35,9 +37,3 @@ The full-stack data platform handles authenticated operator sessions through a s
 ## 🧪 5. TESTING RULES
 - Keep ML models (`RiskScorer.ts`) and `payloadSynthesizer.ts` as pure functions. Test them using fixed, mock HTML/data strings.
 - NO LIVE CONNECTIONS: Mock Playwright (`Page`, `BrowserContext`) and spy on `mongoose.connect` for unit/integration testing. Never launch actual browsers or hit Atlas in test suites.
-
-## 🚀 6. COMMANDS
-Cluster Boot:
-```powershell
-podman compose -f docker-compose.local.yml down
-podman compose -f docker-compose.local.yml up -d
