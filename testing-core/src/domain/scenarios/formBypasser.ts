@@ -2,6 +2,8 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+import { resolveElementLabel } from '../../infrastructure/monitoring/playbookNarrator.js';
 
 /**
  * Attributes stripped by FormBypasser to force interactions.
@@ -230,6 +232,8 @@ const result = JSON.parse(affectedSelector);
         selector: result.selector,
         url: pageUrl,
       });
+      const bypassLabel = target ? resolveElementLabel(target) : 'input field';
+      ActiveScenarioTracker.record(`Bypassed interface safeguards on input field: "${bypassLabel}" by removing client constraint hooks`);
 
       // Emit detailed telemetry
       console.log(

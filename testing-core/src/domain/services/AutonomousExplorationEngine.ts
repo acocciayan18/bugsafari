@@ -108,6 +108,8 @@ import { setupBrowserConsoleListener } from '../../infrastructure/monitoring/bro
 import type { FindingRepository } from '../repositories/FindingRepository.js';
 import type { BrowserInfo } from '../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+import { resolveElementLabel } from '../../infrastructure/monitoring/playbookNarrator.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { ForensicErrorType, ForensicErrorSeverity } from '../../infrastructure/database/models/ForensicErrorModel.js';
@@ -404,11 +406,21 @@ private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean
   private breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[] {
     return breadcrumbs.map((crumb) => ({
       timestamp: crumb.timestamp,
-      type: (crumb.action.toUpperCase() as unknown as ActionType) || 'CLICK',
+      type: this.mapActionVerbToType(crumb.action),
       selector: crumb.selector,
       url: this.targetOrigin || 'unknown',
       payload: crumb.payload,
     }));
+  }
+
+  /** Map internal engine action verbs (e.g. 'payload-injection') to a clean ActionType. */
+  private mapActionVerbToType(verb: string): ActionType {
+    const v = (verb ?? '').toLowerCase();
+    if (v.includes('navigat')) return 'NAVIGATE';
+    if (v.includes('payload') || v.includes('fuzz') || v.includes('inject') || v.includes('type') || v.includes('input')) {
+      return 'TYPE';
+    }
+    return 'CLICK';
   }
 
   private emitMilestone(telemetry: TelemetryGateway, message: string): void {
@@ -446,6 +458,7 @@ private checkTimeboxAndTerminateIfExceeded(telemetry: TelemetryGateway): boolean
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
 this.freezeActionTraceRecording = false;
+    ActiveScenarioTracker.reset();
     this.lastBrainSnapshotStep = 0;
     this.sessionId = await this.createSession(targetUrl);
 
@@ -547,6 +560,7 @@ telemetry.emitTelemetry(this.event('NETWORK', {
           url,
           method,
           message: `Network ${status} ${method} ${url}`,
+          reproductionSteps: ActiveScenarioTracker.flushPlaybook(),
         }));
 
         // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
@@ -602,10 +616,13 @@ telemetry.emitTelemetry(this.event('NETWORK', {
       }
 
       // Process as EXCEPTION for real network failures
+      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         url,
         method,
         message: `Network Request Failed: ${reason} for ${method} ${url}`,
+        reproductionSteps: reproductionPlaybook,
       }));
 
       telemetry.emitIncidentReport({
@@ -614,6 +631,7 @@ telemetry.emitTelemetry(this.event('NETWORK', {
         url: lastKnownUrl || page.url(),
         stackTrace: `${method} ${url} - ${reason}`,
         steps: this.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
       });
 
       telemetry.emitForensicReport({
@@ -622,6 +640,7 @@ telemetry.emitTelemetry(this.event('NETWORK', {
         url: lastKnownUrl || page.url(),
         stackTrace: `${method} ${url} - ${reason}`,
         breadcrumbs,
+        reproductionPlaybook,
       });
 
       // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
@@ -674,6 +693,17 @@ telemetry.emitTelemetry(this.event('NETWORK', {
       // Also emit immediate frame to prevent "No live frame" timeout
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       console.log('[AutonomousExplorationEngine] page.goto completed for targetUrl:', targetUrl);
+
+      // Open the reproduction playbook with the initial navigation step.
+      this.recordActionTrace(
+        {
+          timestamp: new Date().toISOString(),
+          selector: targetUrl,
+          action: 'navigation',
+        },
+        { actionType: 'NAVIGATE', humanIdentifier: targetUrl, url: targetUrl },
+      );
+
       handleFramenavigated(); // initial capture so dashboard doesn't start blank
       
       // Emit immediate first frame to prevent frontend "No live frame received" timeout
@@ -887,6 +917,14 @@ telemetry.emitTargets(
             this.emitMilestone(telemetry, `↩️ Backtracking to ${decision.targetUrl}`);
             this.emitSystemStatus(telemetry, `Backtracking to ${decision.targetHash.substring(0, 8)}...`);
             await page.goto(decision.targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            this.recordActionTrace(
+              {
+                timestamp: new Date().toISOString(),
+                selector: decision.targetUrl,
+                action: 'navigation',
+              },
+              { actionType: 'NAVIGATE', humanIdentifier: decision.targetUrl, url: decision.targetUrl },
+            );
             await wait(350);
             continue;
           }
@@ -987,9 +1025,9 @@ telemetry.emitTargets(
           // Phase 3: Track failure count on exception
           this.runtimeMetrics.failureCount++;
 
-          // Emergency Data Flush: capture current action buffer and emit EXCEPTION telemetry.
-          const actionSnapshot = this.actions.snapshot();
-          const reproductionSteps = actionSnapshot.map((item, index) => `Step ${index + 1}: ${item.action} on ${item.selector}`);
+          // Emergency Data Flush: flush the active scenario's deliberate steps
+          // (falling back to the rolling action log) and emit EXCEPTION telemetry.
+          const reproductionSteps = ActiveScenarioTracker.flushPlaybook();
           const sanitized = sanitizeException(err instanceof Error ? err : String(err));
 
           telemetry.emitTelemetry(
@@ -1142,17 +1180,26 @@ telemetry.emitTelemetry({
     }
   }
 
-  private recordActionTrace(trace: ActionBreadcrumb): void {
+  private recordActionTrace(
+    trace: ActionBreadcrumb,
+    clean?: { actionType: ActionType; humanIdentifier?: string; value?: string; url?: string },
+  ): void {
+    if (this.freezeActionTraceRecording) {
+      return;
+    }
+
     this.actions.push(trace);
 
-    // FIX: Also push to ReproductionPlaybookStore so saving to history works
-    // This ensures finalBreadcrumbSteps are available when user clicks "Save to History"
+    // Push a clean, human-descriptive record into the canonical playbook buffer
+    // so crash-time narrative serialization reads accurate action types, visible
+    // labels, live URLs, and real fuzz/text values instead of internal engine verbs.
     const actionRecord: ActionRecord = {
       timestamp: trace.timestamp,
-      type: (trace.action.toUpperCase() as unknown as ActionType) || 'CLICK',
+      type: clean?.actionType ?? 'CLICK',
       selector: trace.selector,
-      url: this.targetOrigin || 'unknown',
-      payload: trace.payload,
+      url: clean?.url ?? this.page?.url() ?? this.targetOrigin ?? 'unknown',
+      payload: clean?.value ?? trace.payload,
+      fallbackLabel: clean?.humanIdentifier,
     };
     ReproductionPlaybookStore.push(actionRecord);
 
@@ -1282,9 +1329,15 @@ telemetry.emitTelemetry({
       const timestamp = new Date().toISOString();
       const breadcrumbs = this.actions.snapshot();
 
+      // Freeze the rolling buffer and flush the active scenario's deliberate steps
+      // (falling back to the rolling action log) at the exact moment of the crash.
+      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      this.freezeActionTraceRecording = true;
+
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         message: `🔴 Unhandled JS Exception: ${message}`,
         exceptionDetails: { message, stackTrace },
+        reproductionSteps: reproductionPlaybook,
       }));
 
       telemetry.emitIncidentReport({
@@ -1293,6 +1346,7 @@ telemetry.emitTelemetry({
         url,
         stackTrace,
         steps: this.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
       });
 
       telemetry.emitForensicReport({
@@ -1301,6 +1355,7 @@ telemetry.emitTelemetry({
         url,
         stackTrace,
         breadcrumbs,
+        reproductionPlaybook,
       });
 
 // Persist error to forensic_errors database (Phase 2: Error Logging System)
@@ -1330,9 +1385,15 @@ telemetry.emitTelemetry({
       const timestamp = new Date().toISOString();
       const breadcrumbs = this.actions.snapshot();
 
+      // Freeze the rolling buffer and flush the active scenario's deliberate steps
+      // (falling back to the rolling action log) at the exact moment of the crash.
+      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      this.freezeActionTraceRecording = true;
+
       telemetry.emitTelemetry(this.event('EXCEPTION', {
         message: `🔴 Console Error: ${text}`,
         exceptionDetails: { message: text, stackTrace: text },
+        reproductionSteps: reproductionPlaybook,
       }));
 
       telemetry.emitIncidentReport({
@@ -1341,6 +1402,7 @@ telemetry.emitTelemetry({
         url,
         stackTrace: text,
         steps: this.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
       });
 
       telemetry.emitForensicReport({
@@ -1349,6 +1411,7 @@ telemetry.emitTelemetry({
         url,
         stackTrace: text,
         breadcrumbs,
+        reproductionPlaybook,
       });
 
       // Persist console error to forensic_errors database (Phase 2: Error Logging System)
@@ -1408,31 +1471,45 @@ telemetry.emitTelemetry({
 
     this.emitMilestone(telemetry, escalationMessage);
 
-    this.recordActionTrace({
-      timestamp: new Date().toISOString(),
-      selector: target.selector,
-      action: `scenario-${scenario.name}`,
-      score: Number(target.riskScore.toFixed(4)),
-    });
+    this.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: `scenario-${scenario.name}`,
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'CLICK',
+        humanIdentifier: resolveElementLabel(target),
+      },
+    );
 
-// For security scenarios on text inputs, strip constraints first
-    if (scenario.name === 'FormBypasser') {
-      try {
-        await this.stripConstraints(page);
-        telemetry.emitTelemetry(this.event('ACTION', {
-          actionExecuted: 'security-constraints-stripped',
-          selector: target.selector,
-          message: `🔓 Stripped HTML5 constraints from ${target.selector} before security injection.`,
-        }));
-      } catch (error) {
-        console.warn('[AutonomousExplorationEngine] Constraint stripping failed before security scenario:', error);
+    // Open the active scenario recording window so the scenario's deliberate,
+    // payload-specific steps are flushed verbatim into any fault it triggers.
+    ActiveScenarioTracker.begin(scenario.name, this.page?.url() ?? this.targetOrigin);
+
+    try {
+      // For security scenarios on text inputs, strip constraints first
+      if (scenario.name === 'FormBypasser') {
+        try {
+          await this.stripConstraints(page);
+          telemetry.emitTelemetry(this.event('ACTION', {
+            actionExecuted: 'security-constraints-stripped',
+            selector: target.selector,
+            message: `🔓 Stripped HTML5 constraints from ${target.selector} before security injection.`,
+          }));
+        } catch (error) {
+          console.warn('[AutonomousExplorationEngine] Constraint stripping failed before security scenario:', error);
+        }
+
+        // Enhance security testing with data fuzzer payloads
+        await this.executeSecurityFuzzerPayloads(page, telemetry, target);
       }
 
-      // Enhance security testing with data fuzzer payloads
-      await this.executeSecurityFuzzerPayloads(page, telemetry, target);
+      await scenario.execute(page, target);
+    } finally {
+      ActiveScenarioTracker.end();
     }
-
-    await scenario.execute(page, target);
   }
 
   private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario {
@@ -1492,13 +1569,20 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
         const strategyPayload = getStrategyByCategory(category);
         const payload = strategyPayload.value;
 
-        this.recordActionTrace({
-          timestamp: new Date().toISOString(),
-          selector: target.selector,
-          action: 'data-fuzzer-injection',
-          payload: category,
-          score: Number(target.riskScore.toFixed(4)),
-        });
+        this.recordActionTrace(
+          {
+            timestamp: new Date().toISOString(),
+            selector: target.selector,
+            action: 'data-fuzzer-injection',
+            payload: category,
+            score: Number(target.riskScore.toFixed(4)),
+          },
+          {
+            actionType: 'TYPE',
+            humanIdentifier: resolveElementLabel(target),
+            value: payload,
+          },
+        );
 
 // Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
         this.fuzzManager.openFuzzTransaction(target.selector, payload);
@@ -1532,13 +1616,20 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       const strategyPayload = getStrategyByCategory(category);
       const payload = strategyPayload.value;
 
-      this.recordActionTrace({
-        timestamp: new Date().toISOString(),
-        selector: target.selector,
-        action: 'payload-injection',
-        payload,
-        score: Number(target.riskScore.toFixed(4)),
-      });
+      this.recordActionTrace(
+        {
+          timestamp: new Date().toISOString(),
+          selector: target.selector,
+          action: 'payload-injection',
+          payload,
+          score: Number(target.riskScore.toFixed(4)),
+        },
+        {
+          actionType: 'TYPE',
+          humanIdentifier: resolveElementLabel(target),
+          value: payload,
+        },
+      );
 
 // Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
       this.fuzzManager.openFuzzTransaction(target.selector, payload);
@@ -1557,12 +1648,18 @@ if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagNam
       return;
     }
 
-    this.recordActionTrace({
-      timestamp: new Date().toISOString(),
-      selector: target.selector,
-      action: 'button-spammer',
-      score: Number(target.riskScore.toFixed(4)),
-    });
+    this.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'button-spammer',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'CLICK',
+        humanIdentifier: resolveElementLabel(target),
+      },
+    );
 
     await this.safeButtonSpammer(page, target, telemetry);
     await this.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));

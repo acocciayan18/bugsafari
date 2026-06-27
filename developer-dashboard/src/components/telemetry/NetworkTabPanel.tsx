@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TelemetryEvent, IntelligentDiagnosis } from '../../types';
+import ReproductionChecklist from './ReproductionChecklist';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -91,6 +92,7 @@ export default function NetworkTabPanel({
         const duration = meta?.durationMs;
         const message = meta?.message || '';
         const aiDiagnostics = meta?.aiDiagnostics || null;
+        const reproductionSteps = meta?.reproductionSteps ?? [];
 
         const isError = statusCode && statusCode >= 400;
         const isServerError = statusCode && statusCode >= 500;
@@ -132,6 +134,11 @@ export default function NetworkTabPanel({
               <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
                 {message}
                 <AiForensicDiagnosticCard ai={aiDiagnostics} />
+              </div>
+            )}
+            {reproductionSteps.length > 0 && (
+              <div className="px-3 pb-3 border-t border-slate-200">
+                <ReproductionChecklist steps={reproductionSteps} />
               </div>
             )}
           </div>

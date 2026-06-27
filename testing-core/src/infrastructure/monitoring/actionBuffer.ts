@@ -1,6 +1,7 @@
 import type { ActionRecord, ActionType } from '../../../../shared/types.ts';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
+import { narrateActionRecords } from './playbookNarrator.js';
 
 export interface ActionEntryInput {
   type: ActionType;
@@ -121,40 +122,12 @@ export class ActionRecorder {
   }
 
   /**
-   * Generate sequentially numbered narrative instructions.
-   * Format aligned with specification (without square brackets):
-   * - "Step 1. Navigate to target URL: https://..."
-   * - "Step 2. Click on item '[humanIdentifier]'"
-   * - "Step 3. Type text '[value]' into input field '[selector]'"
+   * Generate sequentially numbered, human-actionable narrative instructions.
+   * Delegates to the shared {@link narrateActionRecords} narrator so phrasing and
+   * label resolution stay consistent across every reproduction playbook source.
    */
   public toNarrativeSteps(): string[] {
-    return this.records.map((record, index) => {
-      const stepNum = index + 1;
-      const humanId = record.fallbackLabel || record.selector;
-      
-      switch (record.type) {
-        case 'NAVIGATE':
-        case 'NAVIGATION':
-          return `Step ${stepNum}. Navigate to target URL: ${record.url}`;
-        
-        case 'TYPE':
-        case 'INPUT':
-          const payload = record.payload ? `'${record.payload.slice(0, 50)}'` : '';
-          return `Step ${stepNum}. Type text ${payload} into input field '${record.selector}'`;
-        
-        case 'CLICK':
-          return `Step ${stepNum}. Click on item '${humanId}'`;
-        
-        case 'SUBMIT':
-          return `Step ${stepNum}. Submit form at '${record.selector}'`;
-        
-        case 'HOVER':
-          return `Step ${stepNum}. Hover over element '${humanId}'`;
-        
-        default:
-          return `Step ${stepNum}. ${record.type} ${record.selector} at ${record.url}`;
-      }
-    });
+    return narrateActionRecords(this.records);
   }
 
   /**

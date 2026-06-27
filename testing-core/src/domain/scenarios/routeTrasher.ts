@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
 import type { ChaosTransactionManager, RouteTrashMetadata } from '../fuzzing/index.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 
 export interface RouteTrashResult {
   attempted: number;
@@ -181,6 +182,7 @@ const originPath = page.url();
     console.log(
       `[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`
     );
+    ActiveScenarioTracker.record(`Trash navigation history (back/forward ${repetitions}×) and mutate URL query params from ${originPath}`);
 
     let completed = 0;
     let attempted = 0;

@@ -45,6 +45,13 @@ const findingSchema = new Schema(
       default: null,
       trim: true,
     },
+    // Ordered, human-readable reproduction steps captured at crash time.
+    // Persisted as a first-class field on the crash log (also lives inside `meta`).
+    reproductionPlaybook: {
+      type: [String],
+      required: false,
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -64,6 +71,7 @@ export interface IFinding extends Document {
   linkedActionTraceIds: Types.ObjectId[];
   severity?: 'low' | 'medium' | 'high' | 'critical';
   description?: string;
+  reproductionPlaybook?: string[];
 }
 
 export const FindingModel = model<IFinding>('Finding', findingSchema);

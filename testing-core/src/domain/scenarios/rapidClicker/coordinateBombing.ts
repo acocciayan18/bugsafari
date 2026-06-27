@@ -14,6 +14,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../types.js';
 import { BOMB_COUNT, isNonFatalNavigationError, randomInt, wait } from './utils.js';
+import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 
 /**
  * Coordinate Bombing stress scenario.
@@ -41,6 +42,7 @@ export const coordinateBombing: StressScenario = {
     console.log(
       `[StressScenario:CoordinateBombing] Starting bombing on viewport ${width}x${height}`
     );
+    ActiveScenarioTracker.record(`Fire ${BOMB_COUNT} random coordinate clicks across the ${width}x${height} viewport`);
 
     // Generate and fire clicks at random coordinates
     for (let i = 0; i < BOMB_COUNT; i++) {

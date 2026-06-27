@@ -1,5 +1,6 @@
 import type { Page, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
@@ -43,6 +44,7 @@ export function setupStabilityMonitoring(
   const emitUnhandledJsException = (errorMessage: string, stackTrace: string): void => {
     const timestamp = new Date().toISOString();
     const url = page.url();
+    const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
 
     telemetry.emitTelemetry({
       timestamp,
@@ -53,6 +55,7 @@ export function setupStabilityMonitoring(
           message: errorMessage,
           stackTrace,
         },
+        reproductionSteps: reproductionPlaybook,
       },
     });
 
@@ -63,6 +66,7 @@ export function setupStabilityMonitoring(
       url,
       stackTrace,
       steps: [],
+      reproductionPlaybook,
     });
 
     // Emit as forensic report
@@ -72,6 +76,7 @@ export function setupStabilityMonitoring(
       url,
       stackTrace,
       breadcrumbs: [],
+      reproductionPlaybook,
     });
 
     // NEW: Register bug to memory if callback provided
@@ -91,6 +96,7 @@ export function setupStabilityMonitoring(
   const emitServerCollapse = (statusCode: number, url: string, method?: string, evidence?: string): void => {
     const timestamp = new Date().toISOString();
     const detailSuffix = evidence ? ` Evidence: ${evidence}` : '';
+    const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
 
     telemetry.emitTelemetry({
       timestamp,
@@ -100,6 +106,7 @@ export function setupStabilityMonitoring(
         method: method ?? 'UNKNOWN',
         statusCode,
         message: `🔥 Server Collapse: Backend returned a ${statusCode} error. The application's data layer is failing.${detailSuffix}`,
+        reproductionSteps: reproductionPlaybook,
       },
     });
 
@@ -111,6 +118,7 @@ export function setupStabilityMonitoring(
       statusCode,
       stackTrace: evidence ?? `HTTP ${statusCode}`,
       steps: [],
+      reproductionPlaybook,
     });
 
     // Emit as forensic report
@@ -121,6 +129,7 @@ export function setupStabilityMonitoring(
       statusCode,
       stackTrace: evidence ?? `HTTP ${statusCode}`,
       breadcrumbs: [],
+      reproductionPlaybook,
     });
 
     // NEW: Register bug to memory if callback provided
@@ -141,6 +150,7 @@ export function setupStabilityMonitoring(
     const timestamp = new Date().toISOString();
     const url = page.url();
     const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
+    const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
 
     telemetry.emitTelemetry({
       timestamp,
@@ -152,6 +162,7 @@ export function setupStabilityMonitoring(
           message: 'Main Thread heartbeat timeout',
           stackTrace,
         },
+        reproductionSteps: reproductionPlaybook,
       },
     });
 
@@ -162,6 +173,7 @@ export function setupStabilityMonitoring(
       url,
       stackTrace,
       steps: [],
+      reproductionPlaybook,
     });
 
     // Emit as forensic report
@@ -171,6 +183,7 @@ export function setupStabilityMonitoring(
       url,
       stackTrace,
       breadcrumbs: [],
+      reproductionPlaybook,
     });
 
     // NEW: Register bug to memory if callback provided

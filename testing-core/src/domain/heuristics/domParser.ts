@@ -12,6 +12,8 @@ export interface ParsedElement {
   selector: string;
   role: string;
   href: string;
+  placeholder: string;
+  ariaLabel: string;
   isDisabled: boolean;
   boundingBox: BoundingBox;
   featureSignature: string;
@@ -36,6 +38,10 @@ export class RecursiveDomParser {
       isPointer: false, // Not computed in advanced parser, but can be added if needed
       featureVector: {},
       riskScore: 0,
+      name: element.name,
+      role: element.role,
+      placeholder: element.placeholder,
+      ariaLabel: element.ariaLabel,
       // Explicit spatial coordinates captured after layout stabilization
       boundingBox: element.boundingBox,
     }));
@@ -380,6 +386,8 @@ const isDisabled = (element) => {
         const fullText = extractText(element);
         const role = element.getAttribute('role') || '';
         const href = element instanceof HTMLAnchorElement ? element.href : '';
+        const placeholder = element.getAttribute('placeholder') || '';
+        const ariaLabel = element.getAttribute('aria-label') || '';
 
         return [{
           element,
@@ -391,6 +399,8 @@ const isDisabled = (element) => {
           fullText,
           role,
           href,
+          placeholder,
+          ariaLabel,
           isDisabled: isDisabled(element),
           boundingBox: {
             x: rect.x,
@@ -430,6 +440,8 @@ const isDisabled = (element) => {
           selector: buildSelector(data.element),
           role: data.role,
           href: data.href,
+          placeholder: data.placeholder,
+          ariaLabel: data.ariaLabel,
           isDisabled: data.isDisabled,
           boundingBox: data.boundingBox,
           featureSignature

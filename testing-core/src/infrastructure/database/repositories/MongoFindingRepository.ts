@@ -129,11 +129,18 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       return "";
     }
 
+    // Promote the crash-time reproduction narrative to a first-class field on the
+    // finding document (it also remains inside `meta` for backward compatibility).
+    const reproductionPlaybook = Array.isArray(input.event.meta?.reproductionSteps)
+      ? input.event.meta.reproductionSteps
+      : [];
+
     const finding = await FindingModel.create({
       sessionId: objectId,
       timestamp: new Date(input.event.timestamp),
       type: input.event.type as FindingType,
       meta: input.event.meta,
+      reproductionPlaybook,
     });
 
     await SessionModel.updateOne(

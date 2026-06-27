@@ -16,6 +16,8 @@ import {
   getAllJsonVectors 
 } from './strategies/index.js';
 import { ChaosTransactionManager } from '../../fuzzing/index.js';
+import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { resolveElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
 
 // ============================================================================
 // Injected ChaosTransactionManager for dataFuzzer
@@ -397,6 +399,7 @@ export const dataFuzzer: StressScenario = {
     // Classify the input element using heuristic-driven classifier
     const category = classifyInputElement(target);
     console.log(`🔍 [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
+    const fuzzLabel = resolveElementLabel(target);
 
     console.log(
       `[StressScenario:DataFuzzer] Starting fuzzing on '${selector}' (${tagName})`
@@ -458,6 +461,7 @@ export const dataFuzzer: StressScenario = {
         }
       }, selector);
       console.log(`[StressScenario:DataFuzzer] Stripped constraints from '${selector}'`);
+      ActiveScenarioTracker.record(`Bypassed interface safeguards on input field: "${fuzzLabel}" by removing client constraint hooks`);
     } catch (error) {
       console.error(
         `[StressScenario:DataFuzzer] Failed to strip constraints: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -468,9 +472,11 @@ console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector
     console.log(
       `[StressScenario:DataFuzzer] Strategy: ${strategyDescription}, payload length: ${payload.length}`
     );
+    ActiveScenarioTracker.record(`Input data value "${payload.slice(0, 80)}" provided to input field: "${fuzzLabel}"`);
 
-    // Note: Action recording is handled by the parent exploration engine via onAction callback.
-    // When an exception occurs, exceptionCatcher converts buffer to narrative steps.
+    // Note: Action recording is handled by the parent exploration engine via recordActionTrace.
+    // When an exception occurs, the engine serializes the buffer into narrative steps
+    // (ReproductionPlaybookStore.getNarrativeSteps) for the reproduction playbook.
 
     try {
       // Inject the payload using fill() or type()

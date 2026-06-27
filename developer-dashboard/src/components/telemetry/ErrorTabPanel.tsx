@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import type { IncidentReport, ForensicCrashReport, IntelligentDiagnosis } from '../../types';
+import { mapForensicReportToPlaybook, mapIncidentStepsToPlaybook } from '../../utils/semanticInstructionMapper';
+import ReproductionChecklist from './ReproductionChecklist';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -154,6 +156,24 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) =
   );
 };
 
+/**
+ * Resolve the ordered, human-readable reproduction steps for an error entry.
+ * Priority: pre-generated backend playbook → frontend fallback mapper → none.
+ */
+const resolveIncidentPlaybook = (incident: IncidentReport): string[] => {
+  if (incident.reproductionPlaybook && incident.reproductionPlaybook.length > 0) {
+    return incident.reproductionPlaybook;
+  }
+  return mapIncidentStepsToPlaybook(incident.steps).map((s) => `Step ${s.stepNumber}. ${s.instruction}`);
+};
+
+const resolveReportPlaybook = (report: ForensicCrashReport): string[] => {
+  if (report.reproductionPlaybook && report.reproductionPlaybook.length > 0) {
+    return report.reproductionPlaybook;
+  }
+  return mapForensicReportToPlaybook(report).map((s) => `Step ${s.stepNumber}. ${s.instruction}`);
+};
+
 // ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT: ErrorTabPanel
 // ─────────────────────────────────────────────────────────────
@@ -180,6 +200,7 @@ export default function ErrorTabPanel({
 
             // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
             const aiDiagnostics = (incident as any).aiDiagnostics;
+            const playbook = resolveIncidentPlaybook(incident);
 
             return (
               <div
@@ -220,6 +241,11 @@ export default function ErrorTabPanel({
                   </div>
                 </div>
 
+                {/* 🧭 Human-executable reproduction steps for this incident */}
+                <div className="px-4 pt-3">
+                  <ReproductionChecklist steps={playbook} />
+                </div>
+
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
                   <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
                     {incident.reason}
@@ -248,6 +274,7 @@ export default function ErrorTabPanel({
             const metadata = extractErrorMetadata(report);
             const isExpanded = expandedStackTrace[reportKey];
             const aiDiagnostics = (report as any).aiDiagnostics;
+            const playbook = resolveReportPlaybook(report);
 
             return (
               <div
@@ -286,6 +313,11 @@ export default function ErrorTabPanel({
                     <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
                     <div className="text-xs font-mono text-red-900">#{idx}</div>
                   </div>
+                </div>
+
+                {/* 🧭 Human-executable reproduction steps for this crash report */}
+                <div className="px-4 pt-3">
+                  <ReproductionChecklist steps={playbook} />
                 </div>
 
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">

@@ -92,6 +92,8 @@ export interface IncidentReport {
   statusCode?: number;
   stackTrace?: string;
   steps: ActionRecord[];
+  // Pre-generated sequential narrative steps for human reproduction
+  reproductionPlaybook?: string[];
 }
 
 export interface ForensicCrashReport {

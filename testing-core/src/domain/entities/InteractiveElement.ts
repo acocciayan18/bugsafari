@@ -11,6 +11,12 @@ export interface InteractiveElement {
   isPointer: boolean;
   featureVector: Record<string, number>;
   riskScore: number;
+  // Human-descriptive metadata used to render readable reproduction playbooks
+  // (resolved in label order: innerText → ariaLabel → placeholder → name).
+  name?: string;
+  role?: string;
+  placeholder?: string;
+  ariaLabel?: string;
   // Explicit spatial coordinates captured after layout stabilization
   boundingBox?: BoundingBox;
 }

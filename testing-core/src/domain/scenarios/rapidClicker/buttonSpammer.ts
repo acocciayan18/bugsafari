@@ -21,6 +21,8 @@ import {
   wait,
 } from './utils.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
+import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { resolveElementLabel, genericElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
 
 /**
  * Button Spammer stress scenario.
@@ -61,18 +63,22 @@ export const buttonSpammer: StressScenario = {
 
     const clickPromises: Promise<void>[] = [];
 
+    // Record the burst as a SINGLE reproduction step (not one per click) so the
+    // 20-slot playbook buffer is not flooded with redundant rapid-click entries.
+    ActionRecorder.recordStep({
+      actionType: 'CLICK',
+      humanIdentifier: target?.innerText?.trim() || selector,
+      value: `Rapidly clicked ${CLICK_COUNT} times`,
+      selector: selector,
+      url: page.url(),
+    });
+    const clickLabel = target ? resolveElementLabel(target) : 'button';
+    const clickKind = genericElementLabel(target?.tagName, target?.type);
+    ActiveScenarioTracker.record(`Click interaction triggered on element ${clickKind}: "${clickLabel}" (concurrent ${CLICK_COUNT}× burst)`);
+
     // Execute clicks rapidly without awaiting individual clicks
     // This floods the browser event queue
     for (let i = 0; i < CLICK_COUNT; i++) {
-// Record the click to ActionBuffer for reproduction playbook
-        const pageUrl = page.url();
-        ActionRecorder.recordStep({
-          actionType: 'CLICK',
-          humanIdentifier: `rapid-click-${i + 1}`,
-          selector: selector,
-          url: pageUrl,
-        });
-
         const clickPromise = page
         .click(selector, { force: true })
         .then(() => {
