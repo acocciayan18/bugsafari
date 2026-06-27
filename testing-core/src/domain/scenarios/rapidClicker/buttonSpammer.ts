@@ -20,6 +20,7 @@ import {
   isNonFatalNavigationError,
   wait,
 } from './utils.js';
+import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 
 /**
  * Button Spammer stress scenario.
@@ -63,7 +64,16 @@ export const buttonSpammer: StressScenario = {
     // Execute clicks rapidly without awaiting individual clicks
     // This floods the browser event queue
     for (let i = 0; i < CLICK_COUNT; i++) {
-      const clickPromise = page
+// Record the click to ActionBuffer for reproduction playbook
+        const pageUrl = page.url();
+        ActionRecorder.recordStep({
+          actionType: 'CLICK',
+          humanIdentifier: `rapid-click-${i + 1}`,
+          selector: selector,
+          url: pageUrl,
+        });
+
+        const clickPromise = page
         .click(selector, { force: true })
         .then(() => {
           console.log(`[StressScenario:ButtonSpammer] Click ${i + 1}/${CLICK_COUNT} completed`);

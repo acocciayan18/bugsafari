@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
+import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 
 /**
  * Attributes stripped by FormBypasser to force interactions.
@@ -215,10 +216,20 @@ export const formBypasser: StressScenario = {
         }
       );
 
-      const result = JSON.parse(affectedSelector);
+const result = JSON.parse(affectedSelector);
       console.log(
         `[Telemetry:ACTION] 🔓 FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
       );
+
+      // Record to ActionBuffer for reproduction playbook
+      const pageUrl = page.url();
+      ActionRecorder.recordStep({
+        actionType: 'SUBMIT',
+        humanIdentifier: result.selector,
+        value: `Stripped constraints from ${result.affectedCount} elements`,
+        selector: result.selector,
+        url: pageUrl,
+      });
 
       // Emit detailed telemetry
       console.log(

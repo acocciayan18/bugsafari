@@ -28,7 +28,7 @@ export default function ForensicTrail({ reports }: ForensicTrailProps) {
         Forensics (Latest Incident)
       </div>
 
-      <div className="h-[280px] overflow-auto bg-white p-3 text-sm">
+      <div className="h-70 overflow-auto bg-white p-3 text-sm">
         <article className="rounded-lg border border-rose-200 bg-rose-50 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -41,38 +41,30 @@ export default function ForensicTrail({ reports }: ForensicTrailProps) {
             </div>
           </div>
 
-          <div className="mt-3">
-            <div className="text-xs font-semibold text-slate-800">Reproduction Playbook (semantic)</div>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-700">
-              {playbook.length === 0 ? (
-                latest.breadcrumbs.length === 0 ? (
-                  <li className="text-slate-500">No reproduction breadcrumbs available.</li>
-                ) : (
-                  latest.breadcrumbs.map((bc, idx) => (
-                    <li key={`${bc.timestamp}-${idx}`}>
-                      Step {idx + 1}: {bc.action} {bc.selector}
-                    </li>
-                  ))
-                )
-              ) : (
+<div className="mt-3">
+            <div className="text-xs font-semibold text-slate-800">Reproduction Playbook</div>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-xs text-slate-700">
+              {latest.reproductionPlaybook && latest.reproductionPlaybook.length > 0 ? (
+                latest.reproductionPlaybook.map((step, idx) => (
+                  <li key={`${step}-${idx}`} className="rounded bg-slate-100 px-2 py-1">
+                    {step}
+                  </li>
+                ))
+              ) : playbook.length > 0 ? (
                 playbook.map((step) => (
-                  <li key={step.stepNumber}>
+                  <li key={step.stepNumber} className="rounded bg-slate-100 px-2 py-1">
                     Step {step.stepNumber}: {step.instruction}
                   </li>
                 ))
+              ) : latest.breadcrumbs.length === 0 ? (
+                <li className="text-slate-500">No reproduction steps available.</li>
+              ) : (
+                latest.breadcrumbs.map((bc, idx) => (
+                  <li key={`${bc.timestamp}-${idx}`} className="rounded bg-slate-100 px-2 py-1">
+                    Step {idx + 1}: {bc.action} {bc.selector}
+                  </li>
+                ))
               )}
-            </ol>
-          </div>
-
-
-          <div className="mt-3">
-            <div className="text-xs font-semibold text-slate-800">Raw Action Trail (circular buffer)</div>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-700">
-              {latest.breadcrumbs.map((bc, idx) => (
-                <li key={`${bc.timestamp}-${idx}`}>
-                  Step {idx + 1}: {bc.action} {bc.selector}
-                </li>
-              ))}
             </ol>
           </div>
 

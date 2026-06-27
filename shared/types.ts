@@ -74,7 +74,7 @@ export interface ActionBreadcrumb {
   score?: number;
 }
 
-export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION';
+export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT';
 
 export interface ActionRecord {
   timestamp: string;
@@ -101,6 +101,8 @@ export interface ForensicCrashReport {
   url: string;
   stackTrace?: string;
   breadcrumbs: ActionBreadcrumb[];
+  // Pre-generated sequential narrative steps for human reproduction
+  reproductionPlaybook?: string[];
 }
 
 export interface BoundingBox {

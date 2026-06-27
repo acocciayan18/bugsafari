@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ScoredElement } from '../../services/RiskScorer.js';
 import type { ActionBreadcrumb } from '@bugsafari/shared';
+import type { FuzzMetadata, FuzzingStrategyType } from '../../fuzzing/index.js';
 import type { StressScenario } from '../types.js';
 import { classifyInputElement, FieldCategory } from './elementClassifier.js';
 import { 
@@ -14,7 +15,7 @@ import {
   getAllDateVectors,
   getAllJsonVectors 
 } from './strategies/index.js';
-import { ChaosTransactionManager, FuzzMetadata, FuzzingStrategyType } from '../../fuzzing/index.js';
+import { ChaosTransactionManager } from '../../fuzzing/index.js';
 
 // ============================================================================
 // Injected ChaosTransactionManager for dataFuzzer
@@ -463,10 +464,13 @@ export const dataFuzzer: StressScenario = {
       );
     }
 
-    console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector into field selector: ${selector}`);
+console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector into field selector: ${selector}`);
     console.log(
       `[StressScenario:DataFuzzer] Strategy: ${strategyDescription}, payload length: ${payload.length}`
     );
+
+    // Note: Action recording is handled by the parent exploration engine via onAction callback.
+    // When an exception occurs, exceptionCatcher converts buffer to narrative steps.
 
     try {
       // Inject the payload using fill() or type()

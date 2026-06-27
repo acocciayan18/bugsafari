@@ -1,101 +1,68 @@
 # Implementation Plan
 
-## Overview
+[Overview]
+Update the Developer Dashboard UI component to parse and display the new sequentially numbered, human-executable bug reproduction playbooks created by the backend telemetry layer. Add a `reproductionPlaybook` field directly to `ForensicCrashReport` and refactor `ForensicTrail.tsx` to render a clean, high-contrast numbered checklist instead of the raw background activity blocks.
 
-Refactor the unified authentication interface by splitting the single shared `SlidingAuthForm` layout into two completely independent browser routes (`/login` and `/signup`) and stripping away all non-essential styling elements (background textures, multi-color gradients, shadows, hover animations) to create clean, minimalist, high-contrast authentication pages focused exclusively on secure user credential submissions.
+[Types]
+Add optional `reproductionPlaybook?: string[]` field to the `ForensicCrashReport` interface in shared/types.ts to store the pre-generated narrative playbook strings from the backend.
 
-## Types
+Detailed type definitions:
+```typescript
+// In shared/types.ts - Add to existing ForensicCrashReport interface
+export interface ForensicCrashReport {
+  timestamp: string;
+  reason: string;
+  statusCode?: number;
+  url: string;
+  stackTrace?: string;
+  breadcrumbs: ActionBreadcrumb[];
+  // NEW: Pre-generated sequential narrative steps for human reproduction
+  reproductionPlaybook?: string[];
+}
+```
 
-No TypeScript type changes required - this is a UI/component refactoring task only. Existing interfaces in `AuthContext.tsx` (`LoginCredentials`, `SignupCredentials`) remain unchanged.
+[Files]
+Modify shared/types.ts and ForensicTrail.tsx to add and render the new structured playbook.
 
-## Files
+Detailed breakdown:
+- Modified files:
+  1. `shared/types.ts` - Add optional `reproductionPlaybook?: string[]` field to ForensicCrashReport interface
+  2. `developer-dashboard/src/components/ForensicTrail.tsx` - Update to parse and render reproductionPlaybook as clean numbered checklist
 
-### Modified Files
+- No new files required.
 
-1. **developer-dashboard/src/App.tsx**
-   - Split route configuration: change `/signup` route from `<SlidingAuthForm>` to standalone `<LoginForm>` component
-   - Add explicit `/login` and `/signup` route definitions pointing to separate components
-   - Update imports to include standalone forms
+[Functions]
+Update ForensicTrail.tsx to conditionally parse reproductionPlaybook array and render clean checklist format.
 
-2. **developer-dashboard/src/components/LoginForm.tsx**
-   - Remove parent container wrappers (`min-h-screen`, `relative`, `flex items-center justify-center`, `p-4`) - these belong to the page layout
-   - Remove `GradientBlinds` background component import and usage
-   - Simplify to a standalone form component that renders the login form card only
-   - Remove all decorative styling: shadows, borders, complex animations
-   - Keep only: form fields, submit button, links (forgot password, signup link, guest access)
-   - Simplify field styling to basic high-contrast layout
+Detailed breakdown:
+- Modified functions:
+  1. `ForensicTrail` component (in ForensicTrail.tsx):
+     - Import `reproductionPlaybook` from report if available
+     - Replace old two-section view (semantic + raw trail) with clean numbered checklist
+     - Fallback to existing breadcrumb mapping if `reproductionPlaybook` is not present
 
-3. **developer-dashboard/src/components/SignupForm.tsx**
-   - Remove parent container wrappers
-   - Remove `GradientBlinds` background component import and usage
-   - Simplify to standalone form component
-   - Remove all decorative styling
-   - Keep only: form fields (fullName, email, password, confirmPassword), password requirements display, submit button, links (login link, guest access)
+[Classes]
+No class modifications required.
 
-4. **developer-dashboard/src/designs/SlidingAuthForm.tsx**
-   - Mark as deprecated (or delete if no other consumers)
-   - The standalone LoginForm and SignupForm will replace this entirely
+[Dependencies]
+No new dependencies required. The existing codebase already has all infrastructure in place:
+- `ReproductionPlaybookStore.getNarrativeSteps()` in testing-core already generates the narrative strings
+- `mapForensicReportToPlaybook()` already transforms breadcrumbs to PlaybookStep[]
+- The socket gateway already sends ForensicCrashReport to frontend
 
-### New Files
+[Testing]
+Verify the TypeScript compilation succeeds after changes. The ForensicTrail component should display cleanly formatted steps when reproductionPlaybook data is present.
 
-None required - existing components will be refactored.
+Implementation Order:
+1. Update ForensicCrashReport interface in shared/types.ts to add reproductionPlaybook field
+2. Update ForensicTrail.tsx to render reproductionPlaybook as clean numbered checklist
+3. Verify TypeScript compilation succeeds
 
-### Deleted Files
-
-- **developer-dashboard/src/designs/SlidingAuthForm.tsx** (after migration complete - optional deprecation)
-
-## Functions
-
-No function changes required. The form submission handlers (`handleSubmit`) in both LoginForm and SignupForm remain unchanged. The authentication logic is handled by `AuthContext` hooks (`useAuth`).
-
-## Classes
-
-No class changes required.
-
-## Dependencies
-
-No new dependencies required. The project already has:
-- `react-router-dom` for routing
-- `sonner` for toasts
-- Existing CSS framework (Tailwind CSS)
-
-## Testing
-
-Verify the following after implementation:
-1. Navigate to `/login` renders clean login form without sliding animation or background effects
-2. Navigate to `/signup` renders clean signup form without sliding animation or background effects
-3. Form submission works correctly (login handles credentials, signup handles registration)
-4. Navigation links between pages work correctly
-5. Guest access continues to work
-
-## Implementation Order
-
-1. **Step 1**: Modify `App.tsx` to add explicit `/login` and `/signup` routes pointing to standalone components
-   - Import `LoginForm` and `SignupForm` directly
-   - Remove `/signup` route pointing to `SlidingAuthForm`
-   - Add `/login` route (if not already present)
-
-2. **Step 2**: Refactor `LoginForm.tsx` to remove decorative elements
-   - Remove `GradientBlinds` import and usage
-   - Remove parent wrappers that create full-screen layout
-   - Strip all shadow, gradient, animation classes
-   - Keep only form content (fields, buttons, error display)
-
-3. **Step 3**: Refactor `SignupForm.tsx` to remove decorative elements
-   - Remove `GradientBlinds` import and usage
-   - Remove parent wrappers
-   - Strip all shadow, gradient, animation classes
-   - Keep only form content
-
-4. **Step 4**: Verify routes work correctly
-   - Test navigation to `/login`
-   - Test navigation to `/signup`
-   - Test form submissions
-   - Test navigation links between pages
-
-## Task Progress
-
-- [x] Step 1: Modify App.tsx route configuration for separate /login and /signup routes
-- [x] Step 2: Refactor LoginForm.tsx - remove GradientBlinds and decorative styling
-- [x] Step 3: Refactor SignupForm.tsx - remove GradientBlinds and decorative styling
-- [x] Step 4: Verify all routes and forms work correctly
+task_progress Items:
+- [x] Step 1: Read and understand existing ForensicTrail.tsx implementation
+- [x] Step 2: Analyze ForensicCrashReport type and related mapper utilities
+- [x] Step 3: Review backend reproductionPlaybookStore for narrative generation
+- [x] Step 4: Create implementation plan document
+- [x] Step 5: Add reproductionPlaybook field to ForensicCrashReport in shared/types.ts
+- [x] Step 6: Update ForensicTrail.tsx to render clean numbered checklist
+- [x] Step 7: Verify TypeScript compilation succeeds

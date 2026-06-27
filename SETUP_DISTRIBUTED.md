@@ -2,6 +2,8 @@
 
 ## Quick Start Commands
 
+cd developer-dashboard; npm run dev
+
 ```bash
 # 1. Clone and install dependencies
 git clone <your-repo-url>
