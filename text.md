@@ -1,46 +1,29 @@
-FORM SUBMISSION PIPELINE AUDIT REPORT
-Summary of Findings:
-#	Architectural Question	Status	Location
-1	Explicit Post-Input Form Submission	⚠️ PARTIAL/INCONSISTENT	dataFuzzer.ts ✅ has it, ActionExecutor.ts ❌ missing it
-2	Keyboard Handshake Emulation	❌ MISSING	No page.keyboard.press('Enter') in main path
-3	Coordinated Button Spammer	✅ EXISTS	Fully integrated with ActionExecutor
-Root Cause Identified:
-The execution gap exists because ActionExecutor.executeStandardInteraction() (lines ~140-185) performs payload injection but does NOT trigger form submission afterwards:
+A. The Generation & Strategy Selection Layer (Intelligence)
 
+Field Classification: testing-core/src/domain/scenarios/fuzzing/elementClassifier.ts classifies input elements (DATABASE_AUTH, NUMERIC, EMAIL, DATE, JSON, TEXT_SEARCH, CHAOS_FALLBACK)
+Payload Synthesis: Multiple strategy files under testing-core/src/domain/scenarios/fuzzing/strategies/:
+numericBoundaryStrategy.ts - boundary testing for numeric fields
+xssVectorStrategy.ts - XSS attack vectors
+noSqlInjectionStrategy.ts - SQL/NoSQL injection
+emailStrategy.ts - email fuzzing
+dateStrategy.ts - date manipulation
+jsonStrategy.ts - JSON injection
+chaosFallbackStrategy.ts - generic chaos tokens
+B. The Adversarial Execution Sub-Systems (Arsenal Scenarios)
 
-// Current behavior in ActionExecutor:
-await this.injectPayload(page, target.selector, payload);
-await page.waitForTimeout(400);
-// ⚠️ NO SUBMIT - form left "stranded"
-Contrast this with dataFuzzer.ts which correctly includes:
+Constraint Stripping:
 
-First tries page.press(selector, 'Enter')
-Falls back to page.$('button[type="submit"]').click()
-Final fallback: dispatch form submit event
-Affected Code Paths:
-ActionExecutor.executeStandardInteraction() - NEEDS FIX
+testing-core/src/domain/scenarios/formBypasser.ts - strips maxlength, required, disabled, readonly, pattern, etc.
+testing-core/src/domain/scenarios/fuzzing/dataFuzzer.ts - also strips constraints as part of fuzzing
+Rapid Interaction:
 
-File: testing-core/src/domain/services/exploration/ActionExecutor.ts
-Method: executeStandardInteraction()
-Location: Lines ~140-185 (after payload injection)
-ActionExecutor.injectPayload() - Could be enhanced
+testing-core/src/domain/scenarios/rapidClicker/buttonSpammer.ts - rapid click stress
+testing-core/src/domain/scenarios/rapidClicker/burstClicker.ts - burst clicking
+testing-core/src/domain/scenarios/rapidClicker/coordinateBombing.ts - coordinate bombing
+Network Disruption: testing-core/src/domain/scenarios/networkSaboteur.ts and testing-core/src/domain/scenarios/routeTrasher.ts handle network stress and route manipulation
 
-File: Same file
-Method: injectPayload() - currently just fills value
-Files Already Properly Implemented:
-✅ testing-core/src/domain/scenarios/fuzzing/dataFuzzer.ts - Has complete submit logic (lines 309-335)
-✅ testing-core/src/domain/scenarios/rapidClicker/buttonSpammer.ts - Button spammer properly integrated
-Recommended Fix:
-Add a triggerFormSubmission() helper to ActionExecutor and call it after payload injection in executeStandardInteraction(), replicating the logic already proven in dataFuzzer.ts:
+C. The Forensic Interception & Detection Layer (Sensory Monitoring)
 
-
-// 1. Press Enter on the field
-await page.press(selector, 'Enter');
-
-// 2. Find and click submit button
-const submitBtn = await page.$('button[type="submit"], input[type="submit"]');
-if (submitBtn) await submitBtn.click();
-
-// 3. Fallback: dispatch form submit event
-await page.evaluate((sel) => { ... });
-This would ensure fuzzed data always gets submitted through the network gateway to backend endpoints.
+Error Detection: testing-core/src/infrastructure/monitoring/stabilityMonitor.ts monitors runtime stability and catches JS exceptions
+Action Recording: testing-core/src/infrastructure/monitoring/actionBuffer.ts (ActionRecorder) and testing-core/src/infrastructure/monitoring/reproductionPlaybookStore track executed actions
+Forensic Analysis: testing-core/src/domain/services/ForensicAnalysisService.ts enables pattern-matching and diagnostic remediation. Orchestration flows through the ExplorationEngine in testing-core/src/domain/services/exploration/ExplorationEngine.ts, which manages fuzzing scenarios and coordinates chaos transactions via ChaosTransactionManager in testing-core/src/domain/fuzzing/ChaosTransactionManager.ts.

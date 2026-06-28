@@ -18,6 +18,7 @@ import {
 import { ChaosTransactionManager } from '../../fuzzing/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
+import { triggerFormSubmission } from '../../services/exploration/formSubmitter.js';
 
 // ============================================================================
 // Injected ChaosTransactionManager for dataFuzzer
@@ -511,30 +512,10 @@ console.log(`🔥 [HEURISTIC FUZZ] Injecting targeted ${category} exploit vector
 
       console.log(`[StressScenario:DataFuzzer] Payload injected successfully`);
 
-      // Trigger submit action
-      try {
-        // Try pressing Enter first
-        await page.press(selector, 'Enter');
-      } catch {
-        // If Enter doesn't work, try finding and clicking a submit button
-        try {
-          const submitButton = await page.$('button[type="submit"], input[type="submit"], [type="submit"]');
-          if (submitButton) {
-            await submitButton.click();
-          }
-        } catch {
-          // Last resort: dispatch submit event on the form
-          await page.evaluate((sel) => {
-            const el = document.querySelector(sel);
-            const form = el?.closest('form');
-            if (form) {
-              form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            }
-          }, selector);
-        }
-      }
-
-      console.log(`[StressScenario:DataFuzzer] Submit action triggered`);
+      // Trigger submit action via the centralized form-commitment pipeline
+      // (Enter → submit button → synthetic form dispatch).
+      const submissionMethod = await triggerFormSubmission(page, selector);
+      console.log(`[StressScenario:DataFuzzer] Submit action triggered via "${submissionMethod}"`);
     } catch (error) {
       // Handle browser-side crashes (e.g., out of memory)
       if (error instanceof Error && isNonFatalError(error)) {

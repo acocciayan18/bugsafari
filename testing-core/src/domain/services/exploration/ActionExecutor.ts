@@ -6,6 +6,7 @@ import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.
 import { getStrategyByCategory } from '../../scenarios/fuzzing/strategies/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
+import { triggerFormSubmission } from './formSubmitter.js';
 import type { ActionExecutorDeps } from './types.js';
 
 /**
@@ -226,8 +227,13 @@ export class ActionExecutor {
           // Inject the fuzz payload
           await this.injectPayload(page, target.selector, payload);
 
-          // Wait for lagging SPA/network promises to resolve while transaction window remains open
-          await page.waitForTimeout(400);
+          // Populate any empty sibling inputs in the same <form> so multi-field
+          // flows (e.g. username + password) are fully exercised before submit.
+          await this.fillEmptyFormSiblings(page, target.selector);
+
+          // Close the validation loop: explicitly submit the fuzzed form so the
+          // payload reaches the backend for deep API validation.
+          const submissionMethod = await triggerFormSubmission(page, target.selector);
 
           // Emit telemetry with the required format
           t.emit('ACTION', {
@@ -235,6 +241,15 @@ export class ActionExecutor {
             selector: target.selector,
             message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
           });
+          t.emit('ACTION', {
+            actionExecuted: 'form-submission-triggered',
+            selector: target.selector,
+            message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+          });
+
+          // In-flight settle: hold the transaction window open so network (≥400)
+          // and exception monitors can correlate backend rejections to this submit.
+          await page.waitForTimeout(600);
         } finally {
           // Ensure transaction window never leaks between subsequent element exploration selections
           this.deps.fuzzManager.closeTransaction();
@@ -276,8 +291,19 @@ export class ActionExecutor {
         await this.stripConstraints(page);
         await this.injectPayload(page, target.selector, payload);
 
-        // Wait for lagging SPA/network promises to resolve while transaction window remains open
-        await page.waitForTimeout(400);
+        // Fill empty sibling inputs in the same <form>, then explicitly submit so
+        // the typed exploratory data is validated by the target backend.
+        await this.fillEmptyFormSiblings(page, target.selector);
+        const submissionMethod = await triggerFormSubmission(page, target.selector);
+        t.emit('ACTION', {
+          actionExecuted: 'form-submission-triggered',
+          selector: target.selector,
+          message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+        });
+
+        // In-flight settle: hold the transaction window open so network (≥400)
+        // and exception monitors can correlate backend rejections to this submit.
+        await page.waitForTimeout(600);
       } finally {
         // Ensure transaction window never leaks between subsequent element exploration selections
         this.deps.fuzzManager.closeTransaction();
@@ -384,6 +410,61 @@ export class ActionExecutor {
         { sel: selector, value: payload },
       )
       .catch(() => undefined);
+  }
+
+  /**
+   * Populate every EMPTY sibling input within the anchor's parent `<form>` before
+   * submission, so multi-field flows (e.g. username + password) are exercised in
+   * full rather than submitted half-filled. Each empty field is tagged with a
+   * temporary attribute for a stable selector, classified + injected via the same
+   * strategy pipeline used for the anchor, then the temp attribute is cleaned up.
+   */
+  private async fillEmptyFormSiblings(page: Page, anchorSelector: string): Promise<void> {
+    const siblings = await page
+      .evaluate((sel) => {
+        const anchor = document.querySelector(sel);
+        const form = anchor?.closest('form');
+        if (!form) return [] as Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }>;
+
+        const skip = new Set(['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset']);
+        const out: Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }> = [];
+        let i = 0;
+        form.querySelectorAll('input, textarea, select').forEach((el) => {
+          const node = el as HTMLInputElement;
+          if (node === anchor) return;
+          if (skip.has((node.type ?? '').toLowerCase())) return;
+          if (node.value && node.value.length > 0) return; // only fill EMPTY siblings
+
+          const tmp = `bsib-${i++}`;
+          node.setAttribute('data-bugsafari-sib', tmp);
+          out.push({
+            tmp,
+            type: node.type ?? '',
+            id: node.id ?? '',
+            name: node.name ?? '',
+            placeholder: node.placeholder ?? '',
+            tagName: node.tagName.toLowerCase(),
+          });
+        });
+        return out;
+      }, anchorSelector)
+      .catch(() => [] as Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }>);
+
+    for (const sibling of siblings) {
+      const selector = `[data-bugsafari-sib="${sibling.tmp}"]`;
+      const payload = getStrategyByCategory(classifyInputElement(sibling)).value;
+      await this.injectPayload(page, selector, payload);
+    }
+
+    if (siblings.length > 0) {
+      await page
+        .evaluate(() =>
+          document
+            .querySelectorAll('[data-bugsafari-sib]')
+            .forEach((n) => n.removeAttribute('data-bugsafari-sib')),
+        )
+        .catch(() => undefined);
+    }
   }
 
   /**
