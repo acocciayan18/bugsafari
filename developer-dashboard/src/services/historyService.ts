@@ -67,25 +67,15 @@ export async function saveSessionToHistory(
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
   };
 
-  // Build headers with Authorization if token is present
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-    console.log('[historyService] ✓ Token attached:', token.substring(0, 20) + '...');
-  } else {
+  if (!token) {
     console.log('[historyService] ⚠ No token - will fail with 401 if not logged in');
   }
 
+  // Reuse the shared fetch-options helper (auth headers + credentials) rather
+  // than re-building the request inline.
   let response: Response;
   try {
-    response = await fetch('/api/history/save-session', {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    });
+    response = await fetch('/api/history/save-session', getFetchOptions('POST', payload));
   } catch (networkError) {
     console.error('[historyService] ❌ Network error saving session:', networkError instanceof Error ? networkError.message : networkError);
     throw networkError;

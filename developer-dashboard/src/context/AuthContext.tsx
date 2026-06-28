@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
+import { isTokenExpired } from '../utils/tokenUtils';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
 
@@ -66,37 +67,8 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 // ============================================================================
-// JWT Token Helpers
+// JWT Token Helpers — extracted to ../utils/tokenUtils (isTokenExpired imported above)
 // ============================================================================
-
-function decodeTokenExpiration(token: string): { exp: number } | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-function isTokenExpired(token: string): boolean {
-  const payload = decodeTokenExpiration(token);
-  if (!payload || !payload.exp) {
-    console.log('[AuthContext] Invalid token payload (no exp claim)');
-    return true;
-  }
-  // FIX: Increased buffer from 30 seconds to 120 seconds (2 minutes)
-  // This prevents unnecessary token refresh attempts when token still has valid remaining time
-  const timeRemainingMs = (payload.exp * 1000) - Date.now();
-  const isExpired = timeRemainingMs < 120000; // 2 minute buffer
-  if (isExpired) {
-    console.log(`[AuthContext] Token expired or near expiry. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  } else {
-    console.log(`[AuthContext] Token valid. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  }
-  return isExpired;
-}
 
 // ============================================================================
 // Auth Provider Component

@@ -17,7 +17,7 @@ import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
 import ForgotPasswordForm from './components/ForgotPasswordForm';
 import ResetPasswordForm from './components/ResetPasswordForm';
-import Sidebar from './components/Sidebar';
+import SidebarLayout from './components/SidebarLayout';
 import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
 import Settings from './components/Settings';
 import { ThemeProvider } from './designs/ThemeContext';
@@ -109,15 +109,15 @@ function AuthAppContent() {
         <Route
           path="/dashboard"
           element={
-            <div className="flex h-screen w-screen bg-white overflow-hidden">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={logout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              />
+            <SidebarLayout
+              user={user}
+              isAuthenticated={isAuthenticated}
+              onLogout={logout}
+              activeView={activeView}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              outerClassName="flex h-screen w-screen bg-white overflow-hidden"
+            >
 {/* COMMAND CENTER with 3-row layout */}
               <CommandCenter
                 targetUrl={targetUrl}
@@ -153,61 +153,55 @@ function AuthAppContent() {
                   />
                 </div>
               </CommandCenter>
-            </div>
+            </SidebarLayout>
           }
         />
         <Route
           path="/history"
           element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={logout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              />
-              <div className="flex flex-1">
-                <SavedEvaluationSafaris />
-              </div>
-            </div>
+            <SidebarLayout
+              user={user}
+              isAuthenticated={isAuthenticated}
+              onLogout={logout}
+              activeView={activeView}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              contentClassName="flex flex-1"
+            >
+              <SavedEvaluationSafaris />
+            </SidebarLayout>
           }
         />
         <Route
           path="/settings"
           element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={logout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              />
-              <div className="flex flex-1">
-                <Settings />
-              </div>
-            </div>
+            <SidebarLayout
+              user={user}
+              isAuthenticated={isAuthenticated}
+              onLogout={logout}
+              activeView={activeView}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              contentClassName="flex flex-1"
+            >
+              <Settings />
+            </SidebarLayout>
           }
         />
         <Route
           path="/forensic-report/:runId"
           element={
-            <div className="flex h-screen w-screen bg-white">
-              <Sidebar
-                user={user}
-                isLoggedIn={isAuthenticated}
-                onLogout={logout}
-                activeView={activeView}
-                isCollapsed={isSidebarCollapsed}
-                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              />
-              <div className="flex flex-1">
-                <ForensicReport />
-              </div>
-            </div>
+            <SidebarLayout
+              user={user}
+              isAuthenticated={isAuthenticated}
+              onLogout={logout}
+              activeView={activeView}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              contentClassName="flex flex-1"
+            >
+              <ForensicReport />
+            </SidebarLayout>
           }
         />
         <Route
