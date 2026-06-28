@@ -1,5 +1,5 @@
 import React from 'react';
-import { parseAndFormatStep } from '../utils/semanticFormatter';
+import { parseAndFormatStep } from '../../utils/semanticFormatter';
 
 interface BugFinding {
     bugId?: string;

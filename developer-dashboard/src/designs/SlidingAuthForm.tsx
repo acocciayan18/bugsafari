@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import LoginForm from '../components/LoginForm';
-import SignupForm from '../components/SignupForm';
+import LoginForm from '../components/auth/LoginForm';
+import SignupForm from '../components/auth/SignupForm';
 import GradientBlinds from './GradientBlinds';
 import { useTheme, PALETTES, type ColorPalette } from './ThemeContext';
 import { useAuth } from '../context/AuthContext';

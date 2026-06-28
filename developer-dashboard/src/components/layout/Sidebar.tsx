@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import HelpMenuIcon from './HelpMenuIcon';
+import HelpMenuIcon from '../common/HelpMenuIcon';
 
 interface User {
   id: string;

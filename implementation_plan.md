@@ -1,274 +1,193 @@
-# Implementation Plan: Race Condition Fix - Frontend/Backend State Synchronization
+# Implementation Plan: Component Directory Reorganization
 
-## [Overview]
+## Overview
 
-Fix the race condition where frontend timeout triggers local state reset without notifying the backend, leaving orphaned Playwright browser processes running. Implement symmetric cleanup ensuring both UI and backend terminate gracefully when initialization timeout occurs or connection drops.
+Refactor `developer-dashboard/src/components/` by reorganizing its flat file structure into semantically grouped subdirectories. This involves partitioning 31 component files into logical categories (auth/, control-panels/, forensics/, layout/, common/) and automatically updating all broken imports across the dashboard codebase.
 
-This implementation addresses the core issue: **frontend resets to READY (IDLE) state while backend headless browser continues running** by adding explicit stop command dispatch, cleanup state locking, and proper state handshake between components.
+## Rationale
 
-## [Types]
+The current flat structure makes it difficult to navigate and maintain. Semantic grouping improves:
+- Developer onboarding and code discovery
+- Logical separation of concerns  
+- Future scalability as more components are added
 
-### New Status Type Addition
-```typescript
-// Extended TestSessionStatus with explicit cleanup state
-export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED' | 'CLEANUP';
-```
+## Current Component Inventory
 
-### New Telemetry Event Types
-```typescript
-// Add to TelemetryMeta in shared/types.ts
-interface TelemetryMeta {
-  // ... existing fields
-  // New fields for cleanup handshake
-  requiresCleanup?: boolean;
-  cleanupConfirmed?: boolean;
-  orphanedProcessDetected?: boolean;
-}
-```
+| File | Purpose | Proposed Category |
+|------|---------|------------------|
+| AuthGuard.tsx | Route protection | auth/ |
+| LoginForm.tsx | User login | auth/ |
+| SignupForm.tsx | User registration | auth/ |
+| ForgotPasswordForm.tsx | Password recovery | auth/ |
+| ResetPasswordForm.tsx | Password reset | auth/ |
+| CommandCenter.tsx | Test orchestration | control-panels/ |
+| SessionTimer.tsx | Timer display | control-panels/ |
+| TestingTypeSelector.tsx | Test type selection | control-panels/ |
+| ClinicalForensicsDashboard.tsx | Main dashboard view | forensics/ |
+| ForensicReport.tsx | Report view | forensics/ |
+| ForensicTrail.tsx | Event trail | forensics/ |
+| ReproductionTrail.tsx | Reproduction steps | forensics/ |
+| ReproducibleSteps.tsx | Step playback | forensics/ |
+| CoverageProgressBar.tsx | Coverage display | forensics/ |
+| LiveFeed.tsx | Real-time feed | forensics/ |
+| DeleteConfirmDialog.tsx | Confirmation modal | common/ |
+| RowActionMenu.tsx | Row operations | common/ |
+| HelpMenuIcon.tsx | Help icon | common/ |
+| SupportModal.tsx | Support dialog | common/ |
+| SessionHistoryTable.tsx | History table | history/ |
+| SavedEvaluationSafaris.tsx | Saved safaris | history/ |
+| Sidebar.tsx | Navigation sidebar | layout/ |
+| SidebarLayout.tsx | Layout wrapper | layout/ |
+| Settings.tsx | User settings | settings/ |
+| TelemetryStream.tsx | Telemetry display | telemetry/ (already exists) |
+| TelemetryLogStream.tsx | Log streaming | telemetry/ |
+| ConsoleTabPanel.tsx | Console tab | telemetry/ |
+| NetworkTabPanel.tsx | Network tab | telemetry/ |
+| ErrorTabPanel.tsx | Error tab | telemetry/ |
+| ReproductionChecklist.tsx | Checklist | telemetry/ |
+| index.ts | Barrel export | (move to each folder) |
 
-### Cleanup State Interface
-```typescript
-interface CleanupState {
-  isCleaningUp: boolean;
-  cleanupStartedAt: number | null;
-  cleanupTimeoutId: ReturnType<typeof setTimeout> | null;
-  lastCleanupAttempt: 'socket' | 'http' | 'none';
-  orphansDetected: boolean;
-}
-```
+## Types
 
-### Engine Gateway Extension
-```typescript
-interface EngineGateway {
-  // ... existing methods
-  // New methods for explicit stop
-  forceStop(): Promise<void>;
-  checkHealth(): Promise<boolean>;
-}
-```
+N/A - This is a file reorganization task, not a type system change.
 
-## [Files]
+## Files
 
-### Files to be Created
+### New Files to Create
 
-1. **developer-dashboard/src/infrastructure/api/stopEndpoint.ts**
-   - Purpose: HTTP fallback endpoint for explicit Safari stop
-   - Contains: `stopSafari()` function and `/api/safari/stop` route handler
+- `developer-dashboard/src/components/auth/index.ts` - Barrel export
+- `developer-dashboard/src/components/control-panels/index.ts` - Barrel export
+- `developer-dashboard/src/components/forensics/index.ts` - Barrel export
+- `developer-dashboard/src/components/layout/index.ts` - Barrel export
+- `developer-dashboard/src/components/common/index.ts` - Barrel export
+- `developer-dashboard/src/components/history/index.ts` - Barrel export
+- `developer-dashboard/src/components/settings/index.ts` - Barrel export
 
-2. **testing-core/src/presentation/api/safariStopRoute.ts**
-   - Purpose: Backend endpoint to receive explicit stop commands
-   - Contains: `/api/safari/stop` Express route registration
+### Existing Files to Move
 
-### Files to be Modified
+All component files will be moved to their new semantic folders:
 
-1. **developer-dashboard/src/application/useCases/useDashboardController.ts**
-   - Changes:
-     - Add `'CLEANUP'` status to `TestSessionStatus` union
-     - Add `CleanupState` management
-     - Modify initialization timeout to dispatch explicit stop
-     - Add `handleTimeoutCleanup()` method
-     - Add `forceStop()` method that sends stop command before reset
+1. **auth/** (5 files)
+   - LoginForm.tsx, SignupForm.tsx, ForgotPasswordForm.tsx, ResetPasswordForm.tsx, AuthGuard.tsx
 
-2. **developer-dashboard/src/infrastructure/engine/SocketHttpEngineGateway.ts**
-   - Changes:
-     - Add `forceStop()` method with HTTP fallback
-     - Add `checkHealth()` method
-     - Implement retry logic for stop command
+2. **control-panels/** (3 files)
+   - CommandCenter.tsx, SessionTimer.tsx, TestingTypeSelector.tsx
 
-3. **developer-dashboard/src/components/CommandCenter.tsx**
-   - Changes:
-     - Display `CLEANUP` status in visibility matrix
-     - Add visual indicator for cleanup state (locked inputs)
+3. **forensics/** (9 files)
+   - ClinicalForensicsDashboard.tsx, ForensicReport.tsx, ForensicTrail.tsx, ReproductionTrail.tsx, ReproducibleSteps.tsx, CoverageProgressBar.tsx, LiveFeed.tsx
 
-4. **developer-dashboard/src/types.ts**
-   - Changes:
-     - Export new status type if needed
+4. **layout/** (2 files)
+   - Sidebar.tsx, SidebarLayout.tsx
 
-5. **testing-core/src/presentation/api/registerRoutes.ts**
-   - Changes:
-     - Register `/api/safari/stop` endpoint
+5. **common/** (4 files)
+   - DeleteConfirmDialog.tsx, RowActionMenu.tsx, HelpMenuIcon.tsx, SupportModal.tsx
 
-6. **testing-core/src/infrastructure/workers/SafariWorker.ts** (if exists)
-   - Changes:
-     - Add explicit termination on connection drop
+6. **history/** (2 files)
+   - SessionHistoryTable.tsx, SavedEvaluationSafaris.tsx
 
-7. **shared/types.ts**
-   - Changes:
-     - Add `CLEANUP` to related status types if needed
+7. **settings/** (1 file)
+   - Settings.tsx
 
-### Configuration Files
-No configuration files need modification.
+### Files to Delete
 
-## [Functions]
+- `developer-dashboard/src/components/index.ts` - Only if it was a flat export (check before deleting)
+- `developer-dashboard/src/components/icons/index.ts` - Keep, already organized
+- `developer-dashboard/src/components/telemetry/index.ts` - Keep, already organized
 
-### Key Finding: Backend Already Has Cleanup
+### Files to Modify
 
-The backend socket handlers already contain proper cleanup logic:
-- `socket.on('stop-test', ...)` - calls engine.stop() and emits IDLE status
-- `socket.on('disconnect', ...)` - stops engine when dashboard disconnects
+1. **App.tsx** - Update all component import paths
+2. **SidebarLayout.tsx** - Update Sidebar import path
+3. **CommandCenter.tsx** - Update SessionTimer, TestingTypeSelector import paths
 
-**The gap**: Frontend timeout handler resets local state WITHOUT dispatching stop command.
+## Dependencies
 
-### New Functions
+N/A - No new dependencies required. This is purely a file reorganization.
 
-1. **useDashboardController** (modified - add cleanup state)
-   - Location: `developer-dashboard/src/application/useCases/useDashboardController.ts`
-   - Signature: Existing hook now manages additional cleanup state
-   - Purpose: Handle timeout → cleanup → state reset flow
-
-2. **handleTimeoutCleanup** (NEW)
-   - Location: `developer-dashboard/src/application/useCases/useDashboardController.ts`
-   - Signature: `function handleTimeoutCleanup(): Promise<void>`
-   - Purpose: Dispatch explicit stop command, wait for confirmation, then reset state
-
-3. **forceStop** (NEW - in gateway)
-   - Location: `developer-dashboard/src/infrastructure/engine/SocketHttpEngineGateway.ts`
-   - Signature: `async forceStop(): Promise<void>`
-   - Purpose: Send stop command via socket, fallback to HTTP if needed
-
-4. **checkHealth** (NEW - in gateway)
-   - Location: `developer-dashboard/src/infrastructure/engine/SocketHttpEngineGateway.ts`
-   - Signature: `async checkHealth(): Promise<boolean>`
-   - Purpose: Verify backend is responsive before sending commands
-
-5. **safariStopHandler** (NEW - backend endpoint)
-   - Location: `testing-core/src/presentation/api/safariStopRoute.ts`
-   - Signature: `async function safariStopHandler(req, res)`
-   - Purpose: Handle explicit stop command from frontend
-
-### Modified Functions
-
-1. **useDashboardController** (existing)
-   - Location: `developer-dashboard/src/application/useCases/useDashboardController.ts`
-   - Changes: 
-     - Add `useState` for cleanup tracking
-     - Modify timeout effect to call `handleTimeoutCleanup`
-     - Add cleanup state to returned state object
-
-2. **SocketHttpEngineGateway.startTest** (existing)
-   - Minor: Already properly handles errors, no changes needed
-
-3. **SocketHttpEngineGateway.stopTest** (existing)
-   - Purpose: Already exists, will be supplemented by `forceStop`
-
-4. **PlaywrightBrowserEngine.stop** (existing)
-   - Already proper, will be called by new endpoint
-
-## [Classes]
-
-### New Classes
-
-No new classes required. Using composition over class creation.
-
-### Modified Classes
-
-1. **SocketHttpEngineGateway** (existing)
-   - Location: `developer-dashboard/src/infrastructure/engine/SocketHttpEngineGateway.ts`
-   - Modifications:
-     - Add `forceStop()` method
-     - Add `checkHealth()` method  
-     - Add `STOP_TIMEOUT_MS` constant (5000ms)
-
-2. **StartExplorationUseCase** (existing)
-   - Location: `testing-core/src/application/useCases/StartExplorationUseCase.ts`
-   - Minor: Already has proper cleanup, may add connection drop handler
-
-## [Dependencies]
-
-### New Dependencies
-
-None required - existingSocket.IO and Express are sufficient.
-
-### Version Changes
-
-- No version changes needed
-
-### Integration Requirements
-
-- Socket.IO already configured in both frontend and backend
-- Express already configured in backend
-
-## [Testing]
-
-### Test File Requirements
-
-1. Create `developer-dashboard/testing/cleanupState.spec.ts` (optional - new)
-   - Test cleanup state transitions
-   - Test timeout → stop flow
-
-2. Modify existing tests if applicable
+## Testing
 
 ### Validation Strategy
 
-1. **Manual Testing**:
-   - Start test, let timeout occur → verify backend process terminates
-   - Start test, disconnect socket → verify cleanup occurs
-   - Start test, explicit stop → verify symmetric cleanup
+1. Run TypeScript compiler to verify all imports resolve:
+   ```bash
+   cd developer-dashboard && npx tsc --noEmit
+   ```
 
-2. **Validation**:
-   - Check `ps aux | grep chromium` shows no orphaned processes after timeout
-   - Check socket connection closes properly
-   - Check telemetry shows cleanup handshake events
+2. Verify build succeeds:
+   ```bash
+   cd developer-dashboard && npm run build
+   ```
 
-## [Implementation Order]
+3. Test that application runs without console errors:
+   ```bash
+   cd developer-dashboard && npm run dev
+   ```
 
-### Step-by-Step Implementation
+### Test File Requirements
 
-1. **Step 1**: Add `/api/safari/stop` endpoint to backend
-   - File: `testing-core/src/presentation/api/registerRoutes.ts`
-   - Add route: `app.post('/api/safari/stop', ...)`
-   - Action: Call engine.stop() and emit cleanup telemetry
+No test file modifications expected - imports are path-only changes that don't affect test logic.
 
-2. **Step 2**: Extend SocketHttpEngineGateway with forceStop
-   - File: `developer-dashboard/src/infrastructure/engine/SocketHttpEngineGateway.ts`
-   - Add `forceStop()` method with socket + HTTP fallback
-   - Add `checkHealth()` method
+## Implementation Order
 
-3. **Step 3**: Modify useDashboardController with CLEANUP state
-   - File: `developer-dashboard/src/application/useCases/useDashboardController.ts`
-   - Add `'CLEANUP'` to status type
-   - Add CleanupState tracking
-   - Modify timeout effect to call cleanup handler
-   - Add `handleTimeoutCleanup()` method
+### Phase 1: Create Directory Structure
+1. Create empty directories: auth/, control-panels/, forensics/, layout/, common/, history/, settings/
 
-4. **Step 4**: Update CommandCenter visibility matrix
-   - File: `developer-dashboard/src/components/CommandCenter.tsx`
-   - Add CLEANUP to control visibility
-   - Show locked state during cleanup
+### Phase 2: Move Files (in order to minimize conflicts)
+2. Move auth/ components first (lowest dependencies)
+3. Move layout/ components next 
+4. Move control-panels/ components (depends on common/)
+5. Move forensics/ components
+6. Move remaining: history/, settings/, common/
 
-5. **Step 5**: Test the full flow
-   - Manual verification
-   - Verify no orphaned processes remain after timeout
+### Phase 3: Create Barrel Exports
+7. Create index.ts files in each new directory
 
-### Expected Behavior After Implementation
+### Phase 4: Update Import Paths
+8. Update App.tsx imports
+9. Update SidebarLayout.tsx imports
+10. Update CommandCenter.tsx imports
+11. Update any other files with cross-references
 
-```
-Timeline:
-1. User clicks Start → frontend ACTIVE, backend starts
-2. 30 seconds pass → no live frame received
-3. Frontend: CLEANUP state (inputs locked)
-4. Frontend dispatches stop command (socket or HTTP)
-5. Backend receives stop → cleanupResources() called
-6. Backend emits cleanupConfirmed telemetry
-7. Frontend receives confirmation → resets to IDLE
-8. Both sides now symmetrical (no orphans)
-```
+### Phase 5: Validation
+12. Run TypeScript check
+13. Run build
+14. Test application runtime
 
-## [Additional Notes]
+## Import Path Migration Reference
 
-### Edge Cases Handled
+| Original Import | New Import Path |
+|-----------------|-----------------|
+| ./components/LoginForm | ./components/auth/LoginForm |
+| ./components/SignupForm | ./components/auth/SignupForm |
+| ./components/ForgotPasswordForm | ./components/auth/ForgotPasswordForm |
+| ./components/ResetPasswordForm | ./components/auth/ResetPasswordForm |
+| ./components/AuthGuard | ./components/auth/AuthGuard |
+| ./components/CommandCenter | ./components/control-panels/CommandCenter |
+| ./components/SessionTimer | ./components/control-panels/SessionTimer |
+| ./components/TestingTypeSelector | ./components/control-panels/TestingTypeSelector |
+| ./components/ClinicalForensicsDashboard | ./components/forensics/ClinicalForensicsDashboard |
+| ./components/ForensicReport | ./components/forensics/ForensicReport |
+| ./components/ForensicTrail | ./components/forensics/ForensicTrail |
+| ./components/ReproductionTrail | ./components/forensics/ReproductionTrail |
+| ./components/ReproducibleSteps | ./components/forensics/ReproducibleSteps |
+| ./components/CoverageProgressBar | ./components/forensics/CoverageProgressBar |
+| ./components/LiveFeed | ./components/forensics/LiveFeed |
+| ./components/Sidebar | ./components/layout/Sidebar |
+| ./components/SidebarLayout | ./components/layout/SidebarLayout |
+| ./components/DeleteConfirmDialog | ./components/common/DeleteConfirmDialog |
+| ./components/RowActionMenu | ./components/common/RowActionMenu |
+| ./components/HelpMenuIcon | ./components/common/HelpMenuIcon |
+| ./components/SupportModal | ./components/common/SupportModal |
+| ./components/SessionHistoryTable | ./components/history/SessionHistoryTable |
+| ./components/SavedEvaluationSafaris | ./components/history/SavedEvaluationSafaris |
+| ./components/Settings | ./components/settings/Settings |
+| ./components/TelemetryStream | ./components/telemetry/TelemetryStream |
+| ./components/icons | ./components/icons (unchanged) |
+| ./components/telemetry | ./components/telemetry (unchanged) |
 
-1. **Socket disconnection during stop**: HTTP fallback ensures reliability
-2. **Backend already stopped**: Gracefully handle "already stopped" state
-3. **Connection timeout**: 5 second timeout on stop command
-4. **Multiple rapid stops**: Debounce/dedupe stop commands
+## Special Considerations
 
-### Security Considerations
-
-- `/api/safari/stop` should require authentication (use requireAuth middleware)
-- Rate limiting on stop endpoint to prevent abuse
-
-### Performance Impact
-
-- Minimal: Cleanup adds ~100-500ms to timeout flow
-- No impact on normal operation (ACTIVE/PAUSED states)
+1. **Already Organized**: telemetry/ and icons/ directories already exist - keep their current structure
+2. **Icons**: icons/index.ts re-exports from designs/icons - verify after move
+3. **Backward Compatibility**: Consider adding barrel exports for each folder to maintain clean import paths
+4. **No Breaking Changes**: Since this is internal refactoring, no API or contract changes

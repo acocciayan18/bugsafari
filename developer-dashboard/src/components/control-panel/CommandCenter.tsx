@@ -4,11 +4,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { useState, type FormEvent, type ReactNode } from 'react';
-import SessionTimer from './SessionTimer';
-import TestingTypeSelector from './TestingTypeSelector';
-import { ALL_TESTING_TYPE_IDS } from '../types';
-import type { TestingTypeId } from '../types';
-import type { TestSessionStatus } from '../application/useCases/useDashboardController';
+import SessionTimer from '../common/SessionTimer';
+import TestingTypeSelector from '../common/TestingTypeSelector';
+import { ALL_TESTING_TYPE_IDS } from '../../types';
+import type { TestingTypeId } from '../../types';
+import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 
 // const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 

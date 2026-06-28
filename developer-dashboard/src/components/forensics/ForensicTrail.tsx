@@ -1,5 +1,5 @@
-import type { ForensicCrashReport } from '../types';
-import { mapForensicReportToPlaybook } from '../utils/semanticInstructionMapper';
+import type { ForensicCrashReport } from '../../types';
+import { mapForensicReportToPlaybook } from '../../utils/semanticInstructionMapper';
 
 interface ForensicTrailProps {
   reports: ForensicCrashReport[];

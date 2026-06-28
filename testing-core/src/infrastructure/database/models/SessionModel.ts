@@ -38,6 +38,17 @@ export interface IForensicTrace {
   caughtBugs: ICaughtBug[];
 }
 
+export type ActionStepActionType = 'click' | 'input' | 'navigation' | 'bypass';
+
+export interface ActionStepTrace {
+  stepNumber: number;
+  timestamp: string;
+  actionType: ActionStepActionType;
+  selector: string;
+  payloadText?: string;
+  resultingStateHash: string;
+}
+
 export interface ISessionMetrics {
   totalActions: number;
   totalBugsFound: number;
@@ -202,6 +213,26 @@ const sessionSchema = new Schema(
       required: false,
       default: { finalBreadcrumbSteps: [], caughtBugs: [] },
     },
+    actionSteps: {
+      type: [{
+        stepNumber:         { type: Number, required: true, min: 1 },
+        timestamp:          { type: String, required: true },
+        actionType: {
+          type: String,
+          required: true,
+          enum: ['click', 'input', 'navigation', 'bypass'],
+        },
+        selector:           { type: String, required: true, default: '' },
+        payloadText:        { type: String, required: false, default: null },
+        resultingStateHash: { type: String, required: false, default: '' },
+      }],
+      required: false,
+      default: [],
+      validate: {
+        validator: (steps: unknown[]) => steps.length <= 20,
+        message: 'actionSteps cannot exceed the 20-step limit.',
+      },
+    },
   },
   {
     timestamps: true,
@@ -230,6 +261,7 @@ export interface ISession extends Document {
   timeElapsed: number;
   metrics: ISessionMetrics;
   forensicTrace: IForensicTrace;
+  actionSteps: ActionStepTrace[];
   error?: {
     message?: string;
     stackTrace?: string;

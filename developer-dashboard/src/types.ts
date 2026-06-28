@@ -52,6 +52,86 @@ export interface SessionHistoryEntry {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 🔬 FORENSIC INSPECTION REPORT TYPES
+// Mirrors the `report` object returned by GET /api/forensic/report/:sessionId
+// (testing-core/src/presentation/api/registerRoutes.ts). Only the fields the
+// inspection drawer renders are modelled here.
+// ─────────────────────────────────────────────────────────────
+
+export interface ForensicActionStep {
+  stepNumber: number;
+  timestamp: string;
+  actionType: string;
+  selector: string;
+  payloadText?: string;
+  resultingStateHash: string;
+}
+
+export interface ForensicReportError {
+  id?: string;
+  type?: string;
+  severity?: string;
+  message?: string;
+  stackTrace?: string;
+  url?: string;
+  endpoint?: string;
+  method?: string;
+  statusCode?: number;
+  selector?: string;
+  action?: string;
+  createdAt?: string;
+}
+
+export interface ForensicCaughtBug {
+  bugId: string;
+  type: string;
+  message: string;
+  selector: string;
+  payloadUsed: string;
+  advice: string;
+  timestamp: string;
+}
+
+export interface ForensicReportResponse {
+  runId: string;
+  url: string;
+  date: string;
+  status: 'COMPLETED' | 'CRASHED' | 'HALTED' | string;
+  coverage: number;
+  duration: number; // milliseconds
+  riskScore: number;
+  findings: {
+    vulnerabilities?: number;
+    securityIssues?: number;
+    functionalFailures?: number;
+    totalBugsFound: number;
+    bugsByCategory: Record<string, number>;
+  };
+  errorLogs: {
+    consoleErrors?: number;
+    apiFailures?: number;
+    jsExceptions?: number;
+    totalErrors: number;
+    errors: ForensicReportError[];
+  };
+  aiAnalysis: {
+    rootCause?: string;
+    recommendations?: string[];
+    riskLevel?: string;
+  } | null;
+  metrics: {
+    totalActions: number;
+    totalBugsFound: number;
+    bugsByCategory: Record<string, number>;
+  };
+  forensicTrace: {
+    finalBreadcrumbSteps: string[];
+    caughtBugs: ForensicCaughtBug[];
+  };
+  actionSteps: ForensicActionStep[];
+}
+
+// ─────────────────────────────────────────────────────────────
 // 👤 USER SETTINGS TYPES
 // ─────────────────────────────────────────────────────────────
 

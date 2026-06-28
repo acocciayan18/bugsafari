@@ -83,6 +83,14 @@ interface SessionReportData {
     finalBreadcrumbSteps?: string[];
     caughtBugs?: Array<{ type?: string }>;
   };
+  actionSteps?: Array<{
+    stepNumber: number;
+    timestamp: string;
+    actionType: string;
+    selector: string;
+    payloadText?: string;
+    resultingStateHash: string;
+  }>;
 }
 
 
@@ -597,6 +605,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
           finalBreadcrumbSteps: [],
           caughtBugs: [],
         },
+        actionSteps: sessionDoc.actionSteps ?? [],
       };
 
       // Fetch errors
@@ -701,6 +710,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         // Metadata
         metrics: session.metrics,
         forensicTrace: session.forensicTrace,
+        actionSteps: session.actionSteps ?? [],
       };
 
       console.log('[API] Returning complete forensic report for session:', sessionId);

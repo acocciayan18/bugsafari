@@ -6,6 +6,7 @@ import { setActiveEngine } from '../../presentation/socket/registerSocketHandler
 import type { ActionRecord } from '../../../../shared/types.js';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
+import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 
 interface RunState {
@@ -67,6 +68,34 @@ export class StartExplorationUseCase {
         });
     }
 
+    private mapActionType(type: ActionRecord['type']): ActionStepTrace['actionType'] {
+        switch (type) {
+            case 'CLICK':      return 'click';
+            case 'INPUT':      return 'input';
+            case 'TYPE':       return 'input';
+            case 'NAVIGATION': return 'navigation';
+            case 'NAVIGATE':   return 'navigation';
+            case 'SUBMIT':     return 'bypass';
+            case 'HOVER':      return 'click';
+            default: {
+                const _exhaustive: never = type;
+                void _exhaustive;
+                return 'click';
+            }
+        }
+    }
+
+    private buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
+        return records.map((record, index) => ({
+            stepNumber:         index + 1,
+            timestamp:          record.timestamp,
+            actionType:         this.mapActionType(record.type),
+            selector:           record.selector ?? '',
+            payloadText:        record.payload,
+            resultingStateHash: '',
+        }));
+    }
+
 /**
      * Manual save triggered by user clicking "Save to History" button.
      * Called externally via the API endpoint /api/history/save-session.
@@ -83,6 +112,7 @@ export class StartExplorationUseCase {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
+        const actionSteps = this.buildActionSteps(actionRecords);
 
         // Fetch only verified bugs from the engine's confirmed memory
         const realBugsFound = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
@@ -158,6 +188,7 @@ export class StartExplorationUseCase {
                     finalBreadcrumbSteps,
                     caughtBugs,
                 },
+                actionSteps,
                 executionDate: startedAt,
                 timeElapsed: runtimeMs,
             });

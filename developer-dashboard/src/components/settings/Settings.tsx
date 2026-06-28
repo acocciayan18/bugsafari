@@ -9,10 +9,10 @@
 import { useState, useEffect, memo } from 'react';
 import { toast } from 'sonner';
 
-import { UserIcon, LockClosedIcon, EyeIcon, EyeSlashIcon } from './icons';
-import { useAuth } from '../hooks/useAuth';
-import { useUserSettings } from '../hooks/useUserSettings';
-import { useDarkMode } from '../context/DarkModeContext';
+import { UserIcon, LockClosedIcon, EyeIcon, EyeSlashIcon } from '../icons';
+import { useAuth } from '../../hooks/useAuth';
+import { useUserSettings } from '../../hooks/useUserSettings';
+import { useDarkMode } from '../../context/DarkModeContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline spinner — no external dep, reusable via copy

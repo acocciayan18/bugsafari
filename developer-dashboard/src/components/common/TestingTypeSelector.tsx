@@ -6,8 +6,8 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { memo } from 'react';
-import { TESTING_TYPE_CATALOG } from '../types';
-import type { TestingTypeId } from '../types';
+import { TESTING_TYPE_CATALOG } from '../../types';
+import type { TestingTypeId } from '../../types';
 
 interface TestingTypeSelectorProps {
   selected: TestingTypeId[];

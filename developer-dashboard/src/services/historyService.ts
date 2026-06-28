@@ -3,7 +3,7 @@
  * Extracted from useDashboardController for better modularity and debugging
  */
 
-import type { SessionHistoryEntry } from '../types';
+import type { SessionHistoryEntry, ForensicReportResponse } from '../types';
 
 /**
  * Get authentication token from localStorage
@@ -153,6 +153,43 @@ const response = await fetch(
     console.error('[historyService] fetchSessionHistory error:', error);
     throw error;
   }
+}
+
+/**
+ * Fetch the complete forensic inspection report for a single session.
+ * Hits GET /api/forensic/report/:sessionId and unwraps the `report` envelope.
+ * This is the only client-side source of the persisted actionSteps, caughtBugs,
+ * and error stack traces (the history-list endpoint does not carry them).
+ * @param sessionId - The session/record ObjectId
+ * @returns Promise<ForensicReportResponse> - The unwrapped report object
+ */
+export async function fetchForensicReport(sessionId: string): Promise<ForensicReportResponse> {
+  console.log('[historyService] fetchForensicReport called for session:', sessionId);
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    throw new Error('Invalid sessionId: must be a non-empty string');
+  }
+
+  const response = await fetch(`/api/forensic/report/${sessionId}`, getFetchOptions('GET'));
+  console.log('[historyService] fetchForensicReport response status:', response.status);
+
+  if (!response.ok) {
+    let errorMessage = `Could not fetch forensic report (${response.status})`;
+    try {
+      const data = await response.json() as { error?: string };
+      if (data?.error) errorMessage = data.error;
+    } catch {
+      // Non-JSON error body — keep the status-based message.
+    }
+    console.error('[historyService] ❌ fetchForensicReport failed:', errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  const data = (await response.json()) as { report?: ForensicReportResponse };
+  if (!data.report) {
+    throw new Error('Report payload missing from server response');
+  }
+  return data.report;
 }
 
 /**

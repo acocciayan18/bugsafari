@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import type { TelemetryEvent } from '../types';
+import type { TelemetryEvent } from '../../types';
 
 // (Types are imported above; kept file-local Describe logic only.)
 

@@ -8,12 +8,12 @@
 // Receives all telemetry data via props from App.tsx
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage } from '../types';
-import type { TestSessionStatus } from '../application/useCases/useDashboardController';
-import LiveFeed from './LiveFeed';
-import ForensicHelpIcon from '../designs/icons/ForensicHelpIcon';
-import SessionTimer from './SessionTimer';
-import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel } from './telemetry';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage } from '../../types';
+import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
+import LiveFeed from '../common/LiveFeed';
+import ForensicHelpIcon from '../../designs/icons/ForensicHelpIcon';
+import SessionTimer from '../common/SessionTimer';
+import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
 
 // Tab state type for the bottom terminal
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
@@ -315,8 +315,8 @@ const formattedTelemetry = useMemo(() => {
                         {logObj.rawText}
                       </div>
 
-                      {/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
-                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
+{/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
+                      <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
                   <div className="flex items-center gap-2 py-2 text-slate-500">
@@ -346,7 +346,7 @@ const formattedTelemetry = useMemo(() => {
                       >
                         {logObj.rawText}
                       </div>
-                      <AiForensicDiagnosticCard ai={logObj.aiDiagnostics} />
+<AiDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
                   <div className="py-2 text-slate-800">

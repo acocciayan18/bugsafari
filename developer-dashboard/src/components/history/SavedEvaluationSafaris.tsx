@@ -3,13 +3,13 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import type { SessionHistoryEntry } from '../types';
-import { ReproducibleSteps } from './ReproducibleSteps';
+import { useAuth } from '../../hooks/useAuth';
+import type { SessionHistoryEntry } from '../../types';
+import ForensicInspectionDrawer from '../forensics/ForensicInspectionDrawer';
 import { CoverageDisplay } from './CoverageProgressBar';
-import { RowActionMenu } from './RowActionMenu';
-import { DeleteConfirmDialog } from './DeleteConfirmDialog';
-import { deleteRecord as deleteSafariRecord, exportRecord, fetchSessionHistory } from '../services/historyService';
+import { RowActionMenu } from '../common/RowActionMenu';
+import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
+import { deleteRecord as deleteSafariRecord, exportRecord, fetchSessionHistory } from '../../services/historyService';
 import { toast } from 'sonner';
 
 // Types matching the saved safari document from backend
@@ -234,7 +234,8 @@ export default function SavedEvaluationSafaris() {
 const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<SeverityFilter>('ALL');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'date', direction: 'desc' });
-const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // Selected session drives the side-sliding ForensicInspectionDrawer (null = closed).
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
@@ -440,18 +441,6 @@ const filteredEvaluations = useMemo(() => {
 const totalPages = Math.ceil(sortedEvaluations.length / ITEMS_PER_PAGE);
   const showingStart = sortedEvaluations.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0;
   const showingEnd = Math.min(currentPage * ITEMS_PER_PAGE, sortedEvaluations.length);
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
 
 const progressSegments = [0, 1, 2, 3, 4];
 
@@ -756,12 +745,11 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
 ) : (
 paginatedEvaluations.map((evalItem) => {
-              const isExpanded = expandedIds.has(evalItem.id);
               return (
                 <div key={evalItem.id}>
                   <div
                     className="cursor-pointer transition-colors hover:bg-slate-100 bg-white"
-                    onClick={() => toggleExpand(evalItem.id)}
+                    onClick={() => setSelectedSessionId(evalItem.id)}
                   >
 <div className="flex items-center justify-between px-6 py-4">
 <div className="flex-1">
@@ -800,138 +788,17 @@ paginatedEvaluations.map((evalItem) => {
                         />
                         <div className="flex h-6 w-6 items-center justify-center">
                           <svg
-                            className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''
-                              }`}
+                            className="h-4 w-4 text-slate-400"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
                             strokeWidth="2"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
                         </div>
                       </div>
                     </div>
-
-{isExpanded && (
-                      <div className="border-t border-slate-200 bg-slate-50 px-6 pb-6">
-                        {/* Run Info Header */}
-                        <div className="grid grid-cols-5 gap-4 pt-4 mb-4">
-                          <div>
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Run ID</div>
-                            <div className="text-xs font-mono text-slate-700 truncate" title={evalItem.id}>{evalItem.id.slice(-12)}</div>
-                          </div>
-                          <div className="col-span-2">
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Target URL</div>
-                            <div className="text-xs text-slate-700 truncate" title={evalItem.targetUrl}>{evalItem.targetUrl}</div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</div>
-                            <div className={`text-xs font-medium ${evalItem.status === 'COMPLETED' ? 'text-green-600' : evalItem.status === 'CRASHED' ? 'text-red-600' : 'text-amber-600'}`}>
-                              {evalItem.status}
-                            </div>
-                          </div>
-<div>
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Executed</div>
-                            <div className="text-xs text-slate-700">
-                              {formatExecutionTime(evalItem.timeElapsed)}
-                            </div>
-                          </div>
-                        </div>
-
-{/* Coverage and Actions Row */}
-                        <div className="flex items-center gap-6 mb-4 p-3 bg-white rounded-lg border border-slate-200">
-                          <div className="flex-1">
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Coverage</div>
-                            <CoverageDisplay percentage={evalItem.coverage} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Actions Executed</div>
-                            <div className="text-xs text-slate-700">{evalItem.steps} steps</div>
-                          </div>
-                        </div>
-
-                        {/* Error Summary Section */}
-                        {evalItem.forensicTrace?.caughtBugs && evalItem.forensicTrace.caughtBugs.length > 0 && (
-                          <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="text-xs font-semibold text-red-700 flex items-center gap-2">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                                Errors Detected: {evalItem.severityCount}
-                              </div>
-                              <div className="flex gap-1">
-                                {Object.entries(evalItem.bugsByCategory || {}).map(([type, count]) => (
-                                  <span key={type} className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-medium">
-                                    {type}: {count}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            {evalItem.forensicTrace.caughtBugs[0] && (
-                              <div className="text-xs text-red-800 bg-white p-2 rounded border border-red-100">
-                                <span className="font-semibold">Latest Error: </span>
-                                {evalItem.forensicTrace.caughtBugs[0].message}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Reproduction Steps Section */}
-                        <div className="mb-4">
-                          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            Reproduction Steps
-                          </div>
-                          <ReproducibleSteps
-                            steps={evalItem.forensicTrace?.finalBreadcrumbSteps || []}
-                            findings={evalItem.forensicTrace?.caughtBugs || []}
-                          />
-                        </div>
-
-                        {/* AI Suggested Fix Section */}
-                        <div className="border-t border-slate-200 pt-4">
-                          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                            </svg>
-                            AI SUGGESTED FIX
-                          </div>
-                          <div className="space-y-3 text-xs text-slate-600">
-                            {!evalItem.forensicTrace?.caughtBugs?.length ? (
-                              <div className="text-sm text-slate-500 italic">
-                                No critical vulnerabilities detected in this trace.
-                              </div>
-                            ) : (
-                              evalItem.forensicTrace?.caughtBugs?.map((bug) => (
-                                <div key={bug.bugId} className="p-3 border border-slate-200 rounded">
-                                  <div className="font-semibold text-red-600">{bug.type}</div>
-                                  <div className="text-slate-700">{bug.message}</div>
-                                  {bug.selector && (
-                                    <div className="text-xs text-slate-500 mt-1">
-                                      Selector: <code className="bg-slate-100 px-1 rounded">{bug.selector}</code>
-                                    </div>
-                                  )}
-                                  {bug.payloadUsed && (
-                                    <div className="text-xs text-slate-500 mt-1">
-                                      Payload: <code className="bg-slate-100 px-1 rounded truncate">{bug.payloadUsed}</code>
-                                    </div>
-                                  )}
-                                  {bug.advice && (
-                                    <div className="mt-2 text-xs text-slate-600">
-                                      <span className="font-medium">Advice: </span>{bug.advice}
-                                    </div>
-                                  )}
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -1001,6 +868,12 @@ paginatedEvaluations.map((evalItem) => {
         message={`Are you sure you want to delete ${bulkDeleteDialogState.count} evaluation record${bulkDeleteDialogState.count > 1 ? 's' : ''}? This action cannot be undone.`}
         confirmLabel="Delete All"
         isLoading={bulkDeleteDialogState.isDeleting}
+      />
+
+      {/* Side-sliding forensic inspection drawer (opens on row click) */}
+      <ForensicInspectionDrawer
+        sessionId={selectedSessionId}
+        onClose={() => setSelectedSessionId(null)}
       />
     </div>
   );

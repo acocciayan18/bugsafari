@@ -3,7 +3,7 @@
 // Dark container for canvas streaming
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { LiveFeedRenderer } from '../infrastructure/socket/BinaryFrameReceiver';
+import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
 
 interface LiveFeedProps {
   frame: string | null;

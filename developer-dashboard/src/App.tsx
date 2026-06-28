@@ -11,16 +11,16 @@ import { useDashboardController } from './application/useCases/useDashboardContr
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
-import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
-import CommandCenter from './components/CommandCenter';
-import ForensicReport from './components/ForensicReport';
-import LoginForm from './components/LoginForm';
-import SignupForm from './components/SignupForm';
-import ForgotPasswordForm from './components/ForgotPasswordForm';
-import ResetPasswordForm from './components/ResetPasswordForm';
-import SidebarLayout from './components/SidebarLayout';
-import SavedEvaluationSafaris from './components/SavedEvaluationSafaris';
-import Settings from './components/Settings';
+import ClinicalForensicsDashboard from './components/forensics/ClinicalForensicsDashboard';
+import CommandCenter from './components/control-panel/CommandCenter';
+import ForensicReport from './components/forensics/ForensicReport';
+import LoginForm from './components/auth/LoginForm';
+import SignupForm from './components/auth/SignupForm';
+import ForgotPasswordForm from './components/auth/ForgotPasswordForm';
+import ResetPasswordForm from './components/auth/ResetPasswordForm';
+import SidebarLayout from './components/layout/SidebarLayout';
+import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
+import Settings from './components/settings/Settings';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 

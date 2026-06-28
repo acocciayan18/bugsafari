@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import type { SessionHistoryEntry } from '../types';
+import type { SessionHistoryEntry } from '../../types';
 
 interface SessionHistoryTableProps {
   sessions: SessionHistoryEntry[];

@@ -3,7 +3,7 @@
 
 import type { ReactNode } from 'react';
 import Sidebar from './Sidebar';
-import type { AuthUser } from '../context/AuthContext';
+import type { AuthUser } from '../../context/AuthContext';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 

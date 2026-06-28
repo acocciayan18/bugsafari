@@ -1,4 +1,4 @@
-import type { IncidentReport } from '../types';
+import type { IncidentReport } from '../../types';
 
 interface ReproductionTrailProps {
   incidents: IncidentReport[];
