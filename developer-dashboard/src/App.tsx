@@ -4,12 +4,13 @@
 // Uses AuthContext for centralized authentication state management
 // AuthGuard handles route protection automatically
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { SocketHttpEngineGateway } from './infrastructure/engine/SocketHttpEngineGateway';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DarkModeProvider } from './context/DarkModeContext';
 import ClinicalForensicsDashboard from './components/ClinicalForensicsDashboard';
 import CommandCenter from './components/CommandCenter';
 import ForensicReport from './components/ForensicReport';
@@ -41,6 +42,13 @@ function AuthAppContent() {
   // Use centralized auth state from context
   const { user, isAuthenticated, isGuestMode, logout } = useAuth();
   const token = localStorage.getItem('bugsafari_token'); // Used for gateway connection
+
+  // Single global handler: any useUserSettings() instance that gets a 401 fires this event
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener('bugsafari:session-expired', handler);
+    return () => window.removeEventListener('bugsafari:session-expired', handler);
+  }, [logout]);
   
   const location = useLocation();
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
@@ -225,10 +233,12 @@ function AuthAppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/*" element={<AuthAppContent />} />
-      </Routes>
-    </AuthProvider>
+    <DarkModeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/*" element={<AuthAppContent />} />
+        </Routes>
+      </AuthProvider>
+    </DarkModeProvider>
   );
 }

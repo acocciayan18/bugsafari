@@ -16,6 +16,32 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PathfinderMode — scenario-aware traversal personality
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Traversal personality preset driven by the operator's active scenario matrix.
+ * - exploration: aggressive deep traversal with a very low boredom floor — ideal
+ *   for multi-page user flows where the engine must follow sparse form sequences
+ *   without backtracking prematurely.
+ * - coverage: broad, fast, shallow sweep; boredom adaptation is disabled so the
+ *   engine touches every immediately visible structural-layer element before moving
+ *   on, regardless of how sparse the page is.
+ * - probe: neutral default — matches the original static behaviour.
+ */
+export type PathfinderMode = 'exploration' | 'coverage' | 'probe';
+
+/**
+ * One sample in the recency-diversity ring buffer.
+ * Tracks what kind of element the engine has been interacting with so the
+ * diversity penalty can steer away from monotone action categories.
+ */
+export interface EdgeTypeSample {
+  readonly elementType: string;               // HTML tagName, e.g. 'BUTTON', 'INPUT'
+  readonly actionType: 'click' | 'type' | 'select';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Primitive types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -112,6 +138,21 @@ export interface GraphEdge {
 
   /** Wall-clock timestamp of the most recent traversal attempt */
   lastAttemptAt: number | null;
+
+  /**
+   * HTML tag name of this element at discovery time (e.g. 'BUTTON', 'INPUT').
+   * Used by the diversity penalty ring buffer to detect monotone action loops.
+   * Null when the element type was not provided by the scoring pipeline.
+   */
+  readonly elementType: string | null;
+
+  /**
+   * Viewport-relative bounding box captured at discovery time.
+   * Used as a secondary sort key in the fallback tie-breaker: elements higher
+   * on the page (lower Y) are preferred when scores are within a tight band.
+   * Null when coordinates were not provided.
+   */
+  readonly boundingBox: { x: number; y: number; width: number; height: number } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,7 +227,9 @@ export type PathfinderEventKind =
   | 'graph-exhausted'
   | 'loop-penalty-applied'
   | 'boredom-triggered-backtrack'
-  | 'boredom-check-passed';
+  | 'boredom-check-passed'
+  | 'diversity-penalty-applied'
+  | 'tiebreaker-sort-applied';
 
 export interface PathfinderEvent {
   readonly kind: PathfinderEventKind;
@@ -208,4 +251,8 @@ export interface PathfinderEvent {
 export interface PathfinderElement {
   readonly selector: EdgeSelector;
   readonly score: number;
+  /** HTML tag name — forwarded to GraphEdge for diversity-penalty tracking */
+  readonly elementType?: string;
+  /** Viewport bounding box — forwarded to GraphEdge for tie-breaker Y-sort */
+  readonly boundingBox?: { x: number; y: number; width: number; height: number };
 }

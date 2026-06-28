@@ -52,7 +52,7 @@ function getFetchOptions(method: string, body?: object): RequestInit {
  */
 export async function saveSessionToHistory(
   targetUrl: string,
-  options?: { initialUrl?: string }
+  options?: { initialUrl?: string; elapsedTimeMs?: number }
 ): Promise<void> {
   const token = localStorage.getItem('bugsafari_token');
   console.log('[historyService] 📤 saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
@@ -65,6 +65,7 @@ export async function saveSessionToHistory(
   const payload = {
     targetUrl: trimmedUrl,
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
+    ...(typeof options?.elapsedTimeMs === 'number' && { elapsedTimeMs: options.elapsedTimeMs }),
   };
 
   if (!token) {

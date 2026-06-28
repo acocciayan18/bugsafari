@@ -180,10 +180,13 @@ export class ExplorationLoop {
           stagnationCounter = 0; // reset strike counter; fresh window after escape
         }
 
-        // Convert ranked elements to PathfinderElement format for StateGraphNavigator
+        // Convert ranked elements to PathfinderElement format for StateGraphNavigator.
+        // elementType and boundingBox feed the diversity penalty and tie-breaker sort.
         const pathfinderElements: PathfinderElement[] = ranked.map(el => ({
           selector: el.selector,
           score: el.riskScore,
+          elementType: el.tagName,
+          boundingBox: el.boundingBox,
         }));
 
         // Use StateGraphNavigator to make decision

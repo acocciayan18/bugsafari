@@ -1,15 +1,18 @@
 /**
  * useUserSettings Hook
- * Custom hook for managing user settings, profile, and preferences
- * Provides centralized state management for settings-related operations
+ * Custom hook for managing user settings, profile, and preferences.
+ * Supports authenticated backend sync and guest-mode localStorage fallback.
+ * On login, migrates any non-default guest settings to the backend automatically.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import type { UserProfile, UserSettings, ProfileUpdateData } from '../types';
+import { loadGuestSettings, saveGuestSettings, clearGuestSettings } from '../utils/settingsStorage';
 
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+// Empty string → Vite proxy routes /api/* to backend (matches AuthContext.tsx behaviour)
+const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
 
 // API Response types
 interface ApiResponse<T> {
@@ -23,27 +26,17 @@ interface SettingsResponse {
     autoSave: boolean;
 }
 
-/**
- * useUserSettings hook
- * Manages user profile and settings state with backend integration
- */
 export function useUserSettings() {
-    const { token, user: authUser, logout } = useAuth();
+    const { token, user: authUser } = useAuth();
 
     // Profile state
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isProfileLoading, setIsProfileLoading] = useState(false);
     const [profileError, setProfileError] = useState<string>('');
 
-    // Settings state
-    const [settings, setSettings] = useState<UserSettings>({
-        theme: 'light',
-        notifications: true,
-        autoSave: true,
-    });
-    // UseRef for settings rollback (fixes stale closure issue)
+    // Settings state — seeded from localStorage so guest users get persistence immediately
+    const [settings, setSettings] = useState<UserSettings>(() => loadGuestSettings());
     const settingsRef = useRef<UserSettings>(settings);
-    // Keep ref in sync with state
     useEffect(() => {
         settingsRef.current = settings;
     }, [settings]);
@@ -62,22 +55,21 @@ export function useUserSettings() {
     // General loading state
     const [isLoading, setIsLoading] = useState(true);
 
-    /**
-     * Get authorization headers
-     */
+    // Exposed to consumers so they can decide to call logout() — keeps auth decisions out of this hook
+    const [sessionExpired, setSessionExpired] = useState(false);
+
+    // Migration tracking refs
+    const prevTokenRef = useRef<string | null | undefined>(undefined); // undefined = first render sentinel
+    const hasMigratedRef = useRef(false);
+
     const getAuthHeaders = useCallback(() => {
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-        };
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
         return headers;
     }, [token]);
 
-    /**
-     * Fetch user profile from backend
-     */
     const fetchProfile = useCallback(async () => {
         if (!token) {
             setProfileError('Not authenticated');
@@ -95,7 +87,8 @@ export function useUserSettings() {
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    logout();
+                    setSessionExpired(true);
+                    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
                     throw new Error('Session expired');
                 }
                 const errorData = await response.json();
@@ -106,35 +99,22 @@ export function useUserSettings() {
 
             if (data.data) {
                 setProfile(data.data);
-            } else {
-                // Fallback to auth user if no profile data
-                if (authUser) {
-                    setProfile({
-                        id: authUser.id,
-                        email: authUser.email,
-                    });
-                }
+            } else if (authUser) {
+                setProfile({ id: authUser.id, email: authUser.email });
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to fetch profile';
             setProfileError(errorMessage);
             console.error('[useUserSettings] Fetch profile error:', error);
 
-            // Fallback to auth user
             if (authUser) {
-                setProfile({
-                    id: authUser.id,
-                    email: authUser.email,
-                });
+                setProfile({ id: authUser.id, email: authUser.email });
             }
         } finally {
             setIsProfileLoading(false);
         }
-    }, [token, authUser, logout, getAuthHeaders]);
+    }, [token, authUser, getAuthHeaders]);
 
-    /**
-     * Fetch user settings from backend
-     */
     const fetchSettings = useCallback(async () => {
         if (!token) {
             setSettingsError('Not authenticated');
@@ -152,7 +132,8 @@ export function useUserSettings() {
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    logout();
+                    setSessionExpired(true);
+                    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
                     throw new Error('Session expired');
                 }
                 const errorData = await response.json();
@@ -175,11 +156,8 @@ export function useUserSettings() {
         } finally {
             setIsSettingsLoading(false);
         }
-    }, [token, logout, getAuthHeaders]);
+    }, [token, getAuthHeaders]);
 
-    /**
-     * Update user profile
-     */
     const updateProfile = useCallback(async (updateData: ProfileUpdateData): Promise<boolean> => {
         if (!token) {
             setProfileUpdateError('Not authenticated');
@@ -199,7 +177,8 @@ export function useUserSettings() {
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    logout();
+                    setSessionExpired(true);
+                    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
                     throw new Error('Session expired');
                 }
                 const errorData = await response.json();
@@ -224,11 +203,8 @@ export function useUserSettings() {
         } finally {
             setIsProfileUpdating(false);
         }
-    }, [token, logout, getAuthHeaders]);
+    }, [token, getAuthHeaders]);
 
-    /**
-     * Change password
-     */
     const changePassword = useCallback(async (
         currentPassword: string,
         newPassword: string
@@ -246,15 +222,13 @@ export function useUserSettings() {
             const response = await fetch(`${API_BASE_URL}/api/users/password`, {
                 method: 'PUT',
                 headers: getAuthHeaders(),
-                body: JSON.stringify({
-                    currentPassword,
-                    newPassword,
-                }),
+                body: JSON.stringify({ currentPassword, newPassword }),
             });
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    logout();
+                    setSessionExpired(true);
+                    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
                     throw new Error('Session expired');
                 }
                 const errorData = await response.json();
@@ -273,23 +247,21 @@ export function useUserSettings() {
         } finally {
             setIsPasswordChanging(false);
         }
-    }, [token, logout, getAuthHeaders]);
+    }, [token, getAuthHeaders]);
 
-    /**
-     * Update user settings
-     */
     const updateSettings = useCallback(async (newSettings: Partial<UserSettings>): Promise<boolean> => {
+        // Guest mode: persist to localStorage only, no API call needed
         if (!token) {
-            setSettingsError('Not authenticated');
-            return false;
+            const merged = { ...settingsRef.current, ...newSettings };
+            setSettings(merged);
+            saveGuestSettings(merged);
+            return true;
         }
 
         setIsSettingsLoading(true);
         setSettingsError('');
 
-        // Store previous settings for rollback
         const previousSettings = { ...settingsRef.current };
-
         // Optimistic update
         const optimisticSettings = { ...settingsRef.current, ...newSettings };
         setSettings(optimisticSettings);
@@ -303,10 +275,11 @@ export function useUserSettings() {
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    logout();
+                    setSessionExpired(true);
+                    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
+                    setSettings(previousSettings);
                     throw new Error('Session expired');
                 }
-                // Rollback on error using ref (fixes stale closure)
                 setSettings(previousSettings);
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Failed to update settings');
@@ -327,7 +300,6 @@ export function useUserSettings() {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to update settings';
             setSettingsError(errorMessage);
-            // Rollback on error using ref (fixes stale closure)
             setSettings(previousSettings);
             toast.error(errorMessage);
             console.error('[useUserSettings] Update settings error:', error);
@@ -335,18 +307,12 @@ export function useUserSettings() {
         } finally {
             setIsSettingsLoading(false);
         }
-    }, [token, logout, getAuthHeaders]);
+    }, [token, getAuthHeaders]);
 
-    /**
-     * Clear password success state
-     */
     const clearPasswordSuccess = useCallback(() => {
         setPasswordSuccess(false);
     }, []);
 
-    /**
-     * Clear all errors
-     */
     const clearErrors = useCallback(() => {
         setProfileError('');
         setSettingsError('');
@@ -354,23 +320,72 @@ export function useUserSettings() {
         setProfileUpdateError('');
     }, []);
 
-    // Initial fetch on mount
+    // ─────────────────────────────────────────────────────────────────────────
+    // Initialization + login migration effect
+    //
+    // prevTokenRef starts as `undefined` (sentinel). Only a null → string
+    // transition triggers migration, so a returning authenticated user on
+    // first render does NOT accidentally migrate (undefined ≠ null).
+    // ─────────────────────────────────────────────────────────────────────────
     useEffect(() => {
-        const initializeSettings = async () => {
-            setIsLoading(true);
-            await Promise.all([fetchProfile(), fetchSettings()]);
-            setIsLoading(false);
-        };
+        const previousToken = prevTokenRef.current;
+        const wasGuest = previousToken === null;
+        const isNowAuthenticated = token !== null && token !== undefined;
+
+        if (wasGuest && isNowAuthenticated && !hasMigratedRef.current) {
+            // Guest just logged in — migrate any non-default guest settings
+            hasMigratedRef.current = true;
+            setSessionExpired(false);
+
+            const guestSettings = loadGuestSettings();
+            const hasNonDefaultSettings =
+                guestSettings.theme !== 'light' ||
+                guestSettings.notifications !== true ||
+                guestSettings.autoSave !== true;
+
+            const runMigrationThenFetch = async () => {
+                setIsLoading(true);
+
+                if (hasNonDefaultSettings) {
+                    try {
+                        await fetch(`${API_BASE_URL}/api/settings`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`,
+                            },
+                            body: JSON.stringify(guestSettings),
+                        });
+                        console.log('[useUserSettings] Guest settings migrated to backend');
+                    } catch {
+                        // Migration failure is non-fatal; proceed to regular fetch
+                        console.warn('[useUserSettings] Guest settings migration failed, proceeding with fetch');
+                    }
+                }
+
+                clearGuestSettings();
+                await Promise.all([fetchProfile(), fetchSettings()]);
+                setIsLoading(false);
+            };
+
+            prevTokenRef.current = token;
+            runMigrationThenFetch();
+            return;
+        }
+
+        prevTokenRef.current = token ?? null;
 
         if (token) {
-            initializeSettings();
+            // Returning authenticated user or normal mount
+            hasMigratedRef.current = false;
+            setSessionExpired(false);
+            setIsLoading(true);
+            Promise.all([fetchProfile(), fetchSettings()]).then(() => setIsLoading(false));
         } else {
-            // Fallback to auth user for guest mode
+            // Guest mode — load from localStorage and build profile from authUser if available
+            setSettings(loadGuestSettings());
             if (authUser) {
-                setProfile({
-                    id: authUser.id,
-                    email: authUser.email,
-                });
+                setProfile({ id: authUser.id, email: authUser.email });
             }
             setIsLoading(false);
         }
@@ -399,6 +414,9 @@ export function useUserSettings() {
         passwordSuccess,
         changePassword,
         clearPasswordSuccess,
+
+        // Session
+        sessionExpired,
 
         // General
         isLoading,

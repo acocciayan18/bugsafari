@@ -41,6 +41,8 @@ import type {
   PathfinderElement,
   PathfinderEvent,
   PathfinderEventKind,
+  PathfinderMode,
+  EdgeTypeSample,
 } from './DIrectedPathFinder.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +135,35 @@ export interface StateGraphNavigatorConfig {
    * Default: 0.5
    */
   unstablePenaltyFactor: number;
+
+  /**
+   * Scenario-aware traversal personality. Overrides boredom bounds and
+   * adaptation flags without requiring the caller to set each field individually.
+   * Default: 'probe' (mirrors the original static behaviour)
+   */
+  mode: PathfinderMode;
+
+  /**
+   * How many recent confirmed-traversal samples to retain for the edge-category
+   * diversity penalty. When this many consecutive edges share the same elementType
+   * the penalty multiplier reaches its floor (see diversityPenaltyPerStep).
+   * Default: 5
+   */
+  diversityWindow: number;
+
+  /**
+   * Score multiplier reduction applied per matching slot in the diversity window.
+   * E.g. 0.15 with 3 matches → multiplier = max(0.3, 1 − 0.45) = 0.55.
+   * Default: 0.15
+   */
+  diversityPenaltyPerStep: number;
+
+  /**
+   * Score-range (max − min) below which the fallback tie-breaker sort chain
+   * activates instead of the standard diversity-penalized argmax.
+   * Default: 5.0
+   */
+  tiebreakVarianceThreshold: number;
 }
 
 const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -148,6 +179,37 @@ const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   boredomThresholdMax: 40,
   unstableRetryLimit: 2,
   unstablePenaltyFactor: 0.5,
+  mode: 'probe',
+  diversityWindow: 5,
+  diversityPenaltyPerStep: 0.15,
+  tiebreakVarianceThreshold: 5.0,
+};
+
+/**
+ * Per-mode boredom parameter overrides.
+ * Applied between DEFAULT_CONFIG and the caller's explicit config, so a caller
+ * can always override any field regardless of mode.
+ */
+const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphNavigatorConfig>> = {
+  exploration: {
+    // Aggressive deep traversal — very low boredom floor so sparse multi-page
+    // flows (2–3 inputs) never trigger premature backtracking.
+    boredomThreshold: 8,
+    boredomThresholdMin: 3,
+    boredomThresholdMax: 30,
+    boredomReferenceDensity: 6,
+  },
+  coverage: {
+    // Broad, fast, shallow sweep — almost never bored so every immediately
+    // visible structural-layer element is touched regardless of page density.
+    boredomThreshold: 5,
+    adaptiveBoredom: false,
+    boredomThresholdMin: 2,
+    boredomThresholdMax: 8,
+  },
+  probe: {
+    // Neutral default — no overrides, mirrors original static behaviour.
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,12 +243,22 @@ export class StateGraphNavigator {
   // Per-node argmax cache for Best-First selection. Keyed by node hash; holds
   // the selector of the highest-scored unvisited edge. Presence = "clean";
   // any edge add/score/status change deletes the entry (invalidateEdgeIndex).
+  // NOTE: bypassed when the diversity ring buffer is non-empty (effective scores
+  // change per-traversal, not per-edge-mutation).
   private readonly edgeIndexCache = new Map<StateHash, { bestSelector: string | null }>();
+
+  // Ring buffer of the last `diversityWindow` confirmed edge traversals.
+  // Used to compute the recency penalty that steers selection away from
+  // monotone action categories.
+  private readonly recentEdgeTypes: EdgeTypeSample[] = [];
 
   private readonly config: StateGraphNavigatorConfig;
 
   constructor(config: Partial<StateGraphNavigatorConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Merge precedence: DEFAULT_CONFIG < mode preset < caller config (caller wins).
+    const withDefaults = { ...DEFAULT_CONFIG, ...config };
+    const preset = PATHFINDER_MODE_PRESETS[withDefaults.mode];
+    this.config = { ...DEFAULT_CONFIG, ...preset, ...config };
     this.currentBoredomThreshold = this.config.boredomThreshold;
   }
 
@@ -302,6 +374,17 @@ export class StateGraphNavigator {
     edge.status = 'explored';
     edge.childHash = childHash;
     this.invalidateEdgeIndex(fromHash);
+
+    // Track edge type in the diversity ring buffer so subsequent selections
+    // receive a recency penalty for the same element category.
+    const sample: EdgeTypeSample = {
+      elementType: edge.elementType ?? 'UNKNOWN',
+      actionType: inferActionType(edge.elementType ?? ''),
+    };
+    this.recentEdgeTypes.push(sample);
+    if (this.recentEdgeTypes.length > this.config.diversityWindow) {
+      this.recentEdgeTypes.shift();
+    }
 
     // Ensure the child node is recorded in the graph even if elements
     // haven't been scored yet (we may be mid-navigation)
@@ -673,6 +756,8 @@ export class StateGraphNavigator {
           attempts: 0,
           failedVerifications: 0,
           lastAttemptAt: null,
+          elementType: el.elementType ?? null,
+          boundingBox: el.boundingBox ?? null,
         };
         node.edges.set(el.selector, edge);
       }
@@ -702,36 +787,146 @@ export class StateGraphNavigator {
   }
 
   /**
-   * Single-pass Best-First scan: returns the highest-scored unvisited edge and
-   * its score in one linear traversal (argmax — no sort). Memoised per node in
-   * `edgeIndexCache`: a cache hit whose stored best is still 'unvisited' is
-   * returned directly; otherwise the node is rescanned and re-cached. Any edge
-   * add/score/status mutation invalidates the entry (invalidateEdgeIndex), so a
-   * hit is only taken when the node's edges have not changed since — which is
-   * exactly the case for parent nodes walked during backtracking (not re-scored
-   * this step).
+   * Scan unvisited edges and pick the best candidate using:
+   *   1. Edge-category diversity penalty (recency ring buffer)
+   *   2. Fallback tie-breaker sort when score variance is below threshold
+   *
+   * Cache behaviour: the argmax cache is bypassed whenever the diversity ring
+   * buffer is non-empty, because effective scores depend on recentEdgeTypes
+   * state (which changes per confirmed traversal, not per edge mutation). The
+   * cache is still written so a second read within the same scan step is fast.
    */
   private scanUnvisited(node: GraphNode): { best: GraphEdge | null; maxScore: number } {
-    const cached = this.edgeIndexCache.get(node.hash);
-    if (cached) {
-      if (cached.bestSelector === null) {
-        return { best: null, maxScore: 0 };
+    // Only use the cache when no diversity tracking is active (early in the run
+    // before any traversals are confirmed) — avoids stale penalty-free results.
+    if (this.recentEdgeTypes.length === 0) {
+      const cached = this.edgeIndexCache.get(node.hash);
+      if (cached) {
+        if (cached.bestSelector === null) {
+          return { best: null, maxScore: 0 };
+        }
+        const cachedEdge = node.edges.get(cached.bestSelector);
+        if (cachedEdge && cachedEdge.status === 'unvisited') {
+          return { best: cachedEdge, maxScore: cachedEdge.score };
+        }
+        // Stale (edge mutated without invalidation) — fall through to rebuild.
       }
-      const cachedEdge = node.edges.get(cached.bestSelector);
-      if (cachedEdge && cachedEdge.status === 'unvisited') {
-        return { best: cachedEdge, maxScore: cachedEdge.score };
-      }
-      // Stale (edge mutated without invalidation) — fall through to rebuild.
     }
 
-    let best: GraphEdge | null = null;
+    // Collect all unvisited candidates in one pass.
+    const candidates: GraphEdge[] = [];
     for (const edge of node.edges.values()) {
-      if (edge.status !== 'unvisited') continue;
-      if (best === null || edge.score > best.score) best = edge;
+      if (edge.status === 'unvisited') candidates.push(edge);
     }
 
-    this.edgeIndexCache.set(node.hash, { bestSelector: best?.selector ?? null });
-    return { best, maxScore: best?.score ?? 0 };
+    if (candidates.length === 0) {
+      this.edgeIndexCache.set(node.hash, { bestSelector: null });
+      return { best: null, maxScore: 0 };
+    }
+
+    let best: GraphEdge;
+
+    if (candidates.length > 1) {
+      // Check whether raw score variance is low enough to need the tie-breaker.
+      let maxS = candidates[0]!.score;
+      let minS = candidates[0]!.score;
+      for (let i = 1; i < candidates.length; i++) {
+        const s = candidates[i]!.score;
+        if (s > maxS) maxS = s;
+        if (s < minS) minS = s;
+      }
+      const range = maxS - minS;
+
+      if (range < this.config.tiebreakVarianceThreshold) {
+        this.recordEvent(
+          'tiebreaker-sort-applied',
+          node.hash,
+          `Score range ${range.toFixed(2)} < threshold ${this.config.tiebreakVarianceThreshold}. ` +
+          `Applying tie-breaker: element type > viewport Y > selector complexity.`,
+        );
+        best = this.applyTiebreakerSort(candidates, node.hash);
+      } else {
+        best = this.selectWithDiversityPenalty(candidates, node.hash);
+      }
+    } else {
+      best = candidates[0]!;
+    }
+
+    this.edgeIndexCache.set(node.hash, { bestSelector: best.selector });
+    return { best, maxScore: best.score };
+  }
+
+  /**
+   * Diversity-penalized argmax: returns the candidate with the highest
+   * effective score after applying recency multipliers for repeated element types.
+   */
+  private selectWithDiversityPenalty(candidates: GraphEdge[], nodeHash: StateHash): GraphEdge {
+    let best = candidates[0]!;
+    let bestES = this.effectiveScore(best);
+    let penaltyApplied = false;
+
+    for (let i = 1; i < candidates.length; i++) {
+      const edge = candidates[i]!;
+      const es = this.effectiveScore(edge);
+      if (es !== edge.score) penaltyApplied = true;
+      if (es > bestES) {
+        best = edge;
+        bestES = es;
+      }
+    }
+
+    if (penaltyApplied) {
+      this.recordEvent(
+        'diversity-penalty-applied',
+        nodeHash,
+        `Diversity recency penalty applied. Selected "${best.selector}" ` +
+        `(effectiveScore=${bestES.toFixed(3)}, rawScore=${best.score.toFixed(3)}).`,
+      );
+    }
+    return best;
+  }
+
+  /**
+   * Compute the effective (diversity-penalized) score for a candidate edge.
+   * Penalty multiplier: max(0.3, 1 − matchCount × diversityPenaltyPerStep).
+   */
+  private effectiveScore(edge: GraphEdge): number {
+    if (!edge.elementType || this.recentEdgeTypes.length === 0) return edge.score;
+    const tag = edge.elementType.toUpperCase();
+    const matches = this.recentEdgeTypes.filter(
+      (s) => s.elementType.toUpperCase() === tag,
+    ).length;
+    if (matches === 0) return edge.score;
+    const mult = Math.max(0.3, 1 - matches * this.config.diversityPenaltyPerStep);
+    return edge.score * mult;
+  }
+
+  /**
+   * Fallback tie-breaker sort chain, activated when score variance is below
+   * `tiebreakVarianceThreshold`. Sort priority:
+   *   1. Element types NOT in the recent history window (fresh diversity wins)
+   *   2. Viewport Y position ascending (elements higher on screen preferred)
+   *   3. Selector complexity ascending (simpler selectors preferred)
+   */
+  private applyTiebreakerSort(candidates: GraphEdge[], _nodeHash: StateHash): GraphEdge {
+    const recentSet = new Set(
+      this.recentEdgeTypes.map((s) => s.elementType.toUpperCase()),
+    );
+
+    return candidates.slice().sort((a, b) => {
+      // Tier 1: fresh element type beats recently seen type
+      const aFresh = !recentSet.has((a.elementType ?? '').toUpperCase());
+      const bFresh = !recentSet.has((b.elementType ?? '').toUpperCase());
+      if (aFresh !== bFresh) return aFresh ? -1 : 1;
+
+      // Tier 2: lower Y = higher on page = prefer
+      const aY = a.boundingBox?.y ?? Number.MAX_SAFE_INTEGER;
+      const bY = b.boundingBox?.y ?? Number.MAX_SAFE_INTEGER;
+      if (aY !== bY) return aY - bY;
+
+      // Tier 3: simpler selector preferred
+      return computeSelectorComplexity(a.selector) - computeSelectorComplexity(b.selector);
+    })[0]!;
   }
 
   /** Drop the cached argmax for a node after any edge add/score/status change. */
@@ -915,4 +1110,23 @@ export class StateGraphNavigator {
 /** Return a short 8-character prefix of a SHA-256 hash for readable logs */
 function shortHash(hash: StateHash): string {
   return hash.substring(0, 8);
+}
+
+/** Infer the dominant action type for an element from its tag name. */
+function inferActionType(tag: string): 'click' | 'type' | 'select' {
+  const t = tag.toUpperCase();
+  if (t === 'INPUT' || t === 'TEXTAREA') return 'type';
+  if (t === 'SELECT') return 'select';
+  return 'click';
+}
+
+/**
+ * Proxy for CSS selector complexity used as the final tie-breaker.
+ * Counts ID segments (weight 3), class/attribute segments (weight 2),
+ * plus a length bonus — lower = simpler = preferred.
+ */
+function computeSelectorComplexity(selector: string): number {
+  const ids = (selector.match(/#/g) ?? []).length;
+  const classes = (selector.match(/[.[]/g) ?? []).length;
+  return ids * 3 + classes * 2 + Math.floor(selector.length / 10);
 }

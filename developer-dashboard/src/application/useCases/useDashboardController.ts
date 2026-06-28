@@ -197,8 +197,7 @@ return () => {
         setLiveFrame(null);
         setIsInitializing(false);
         setRemainingTimeMs(180000);
-        setElapsedTimeMs(0);
-        void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
+        // elapsedTimeMs is intentionally preserved here so it can be included in the manual save payload.
       }
 
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_PAUSE_ACTIONS.has(event.meta.actionExecuted)) {
@@ -323,7 +322,7 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
       // Save now requires authentication (throws 403 for guests)
-      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim() });
+      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs });
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,

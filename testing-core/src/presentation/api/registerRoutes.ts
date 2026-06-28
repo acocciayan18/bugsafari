@@ -227,9 +227,12 @@ export function registerRoutes(
         return;
       }
 
-// Call manualSaveToHistory to save to sessions collection
-      // Pass ownerType in options for tracking authenticated saves
-      const result = await useCase.manualSaveToHistory(targetUrl, userId, { ownerType });
+      const elapsedTimeMs = typeof request.body?.elapsedTimeMs === 'number'
+        ? request.body.elapsedTimeMs as number
+        : undefined;
+
+      // Call manualSaveToHistory to save to sessions collection
+      const result = await useCase.manualSaveToHistory(targetUrl, userId, { ownerType, elapsedTimeMs });
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);

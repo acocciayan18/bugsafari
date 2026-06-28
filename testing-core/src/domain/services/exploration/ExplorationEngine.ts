@@ -22,6 +22,7 @@ import { Types } from 'mongoose';
 
 import { StateGraphNavigator } from '../StateGraphNavigator.js';
 import { ScenarioGate } from '../scenarioGate.js';
+import type { PathfinderMode } from '../DIrectedPathFinder.js';
 
 import { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
@@ -60,7 +61,8 @@ export class ExplorationEngine {
   private readonly visitedHashes = new Set<string>();
   private readonly recentActionTraceIds: string[] = [];
   // State Graph Navigator for directed path finding and loop prevention (Task 2)
-  private readonly pathNavigator = new StateGraphNavigator();
+  // Initialised in the constructor after mode is derived from selectedScenarios.
+  private readonly pathNavigator: StateGraphNavigator;
   private sessionId: string | null = null;
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
@@ -110,6 +112,22 @@ export class ExplorationEngine {
   // Operator-gated scenario matrix — resolves which stress/fuzz/bypass modes run.
   private readonly gate: ScenarioGate;
 
+  /**
+   * Derive the `PathfinderMode` that best matches the operator's scenario selection.
+   * - No selection / all enabled → 'exploration' (broadest coverage)
+   * - Exclusively form-centric scenarios (formBypass / dataFuzzing) → 'coverage'
+   *   (boredom nearly disabled so sparse input forms are fully swept)
+   * - Navigation or exploratory scenarios present → 'exploration'
+   * - Mixed/other selections → 'probe' (neutral, original behaviour)
+   */
+  private static derivePathfinderMode(selected?: TestingTypeId[]): PathfinderMode {
+    if (!selected || selected.length === 0) return 'exploration';
+    const formFocused = selected.every((s) => s === 'formBypass' || s === 'dataFuzzing');
+    if (formFocused) return 'coverage';
+    if (selected.includes('navigation') || selected.includes('exploratory')) return 'exploration';
+    return 'probe';
+  }
+
   constructor(
     private readonly findingRepo?: FindingRepository,
     private readonly optimizationSettings?: OptimizationSettings,
@@ -120,6 +138,11 @@ export class ExplorationEngine {
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
     console.log(`[ExplorationEngine] Active testing types:`, this.gate.activeCategories());
+
+    // Derive and wire the scenario-aware pathfinder mode.
+    const pathfinderMode = ExplorationEngine.derivePathfinderMode(selectedScenarios);
+    this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode });
+    console.log(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
 
     // Initialize ChaosTransactionManager with telemetry and action buffer callbacks
     this.fuzzManager = new ChaosTransactionManager(

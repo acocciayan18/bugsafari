@@ -5,7 +5,7 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
 import type { ActionRecord } from '../../../../shared/types.js';
 import { Types, isValidObjectId } from 'mongoose';
-import { SessionModel, type ISession } from '../../infrastructure/database/models/SessionModel.js';
+import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 
 interface RunState {
@@ -69,15 +69,16 @@ export class StartExplorationUseCase {
 
 /**
      * Manual save triggered by user clicking "Save to History" button.
-     * Called externally via the API endpoint /api/history/save-session
+     * Called externally via the API endpoint /api/history/save-session.
+     * This is the ONLY path that writes a session document to MongoDB.
      * @param targetUrl - The URL that was tested
-     * @param userId - The user ID or placeholder for anonymous users
-     * @param options - Optional parameters including ownerType for tracking anonymous vs authenticated
+     * @param userId - The authenticated user ID
+     * @param options - Optional parameters including ownerType and elapsedTimeMs from the frontend
      */
     public async manualSaveToHistory(
         targetUrl: string,
         userId: string,
-        options?: { ownerType?: string },
+        options?: { ownerType?: string; elapsedTimeMs?: number },
     ): Promise<{ success: boolean; message: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
@@ -118,70 +119,50 @@ export class StartExplorationUseCase {
             timestamp: bug.timestamp,
         }));
 
-// Handle userId validation - allow anonymous-guest-user placeholder
         const effectiveUserId = userId === 'anonymous-guest-user' ? '000000000000000000000000' : userId;
-        if (!effectiveUserId || !isValidObjectId(effectiveUserId)) {
-            console.warn('[StartExplorationUseCase] Invalid userId, using default for anonymous save');
-            // Use default guest user for anonymous saves
-        }
+        const userIdToSave = isValidObjectId(effectiveUserId) ? effectiveUserId : '000000000000000000000000';
+        const userObjectId = new Types.ObjectId(userIdToSave);
+
+        // Use frontend-reported elapsed time first, then fall back to server-side start time
+        const runtimeMs = options?.elapsedTimeMs ??
+            (this.executionStartTime > 0 ? Date.now() - this.executionStartTime : 0);
+        const startedAt = this.executionStartTime > 0
+            ? new Date(this.executionStartTime)
+            : new Date(Date.now() - runtimeMs);
+
+        const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
+        const coveragePercentage = Math.min(100, Math.round((actionRecords.length / maxActions) * 100));
 
         try {
-            // Use effectiveUserId (either the provided userId or default for anonymous)
-            const userIdToSave = isValidObjectId(effectiveUserId) ? effectiveUserId : '000000000000000000000000';
-            const userObjectId = new Types.ObjectId(userIdToSave);
-            const totalDuration = Date.now();
-
-            // Find the most recent session for this user+targetUrl to update (manual save flow)
-            // If no running session exists, create a new document in sessions collection
-            let savedDocument: ISession | null = await SessionModel.findOneAndUpdate(
-                { targetUrl, userId: userObjectId, status: SessionStatus.RUNNING },
-                {
-                    $set: {
-                        status: SessionStatus.COMPLETED,
-                        finishedAt: new Date(),
-                        endedReason: 'Manually saved by user',
-                        metrics: {
-                            totalActions: actionRecords.length,
-                            totalBugsFound: realBugsFound.length,
-                            bugsByCategory: breakdownCategories,
-                        },
-                        forensicTrace: {
-                            finalBreadcrumbSteps,
-                            caughtBugs,
-                        },
-                        executionDate: new Date(),
-                        timeElapsed: totalDuration,
-                    }
+            const savedDocument = await SessionModel.create({
+                userId: userObjectId,
+                targetUrl,
+                status: SessionStatus.COMPLETED,
+                startedAt,
+                finishedAt: new Date(),
+                savedManually: true,
+                endedReason: 'Manually saved by operator',
+                findingCount: realBugsFound.length,
+                actionTraceCount: actionRecords.length,
+                stats: {
+                    runtimeMs,
+                    actionsExecuted: actionRecords.length,
+                    coveragePercentage,
                 },
-                { new: true }
-            );
+                metrics: {
+                    totalActions: actionRecords.length,
+                    totalBugsFound: realBugsFound.length,
+                    bugsByCategory: breakdownCategories,
+                },
+                forensicTrace: {
+                    finalBreadcrumbSteps,
+                    caughtBugs,
+                },
+                executionDate: startedAt,
+                timeElapsed: runtimeMs,
+            });
 
-            // If no running session found, create a new document
-            if (!savedDocument) {
-                savedDocument = await SessionModel.create({
-                    userId: userObjectId,
-                    targetUrl,
-                    status: SessionStatus.COMPLETED,
-                    startedAt: new Date(Date.now() - totalDuration),
-                    finishedAt: new Date(),
-                    endedReason: 'Manually saved by user',
-                    findingCount: realBugsFound.length,
-                    actionTraceCount: actionRecords.length,
-                    metrics: {
-                        totalActions: actionRecords.length,
-                        totalBugsFound: realBugsFound.length,
-                        bugsByCategory: breakdownCategories,
-                    },
-                    forensicTrace: {
-                        finalBreadcrumbSteps,
-                        caughtBugs,
-                    },
-                    executionDate: new Date(),
-                    timeElapsed: totalDuration,
-                });
-            }
-
-            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length}`);
+            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length} | Runtime: ${runtimeMs}ms`);
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
@@ -203,7 +184,7 @@ export class StartExplorationUseCase {
         const TIMEBOX_MS = this.optimizationSettings?.['execution-timebox-ms'] ?? 180000;
         console.log(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
 
-        const executionStartTime = Date.now();
+        this.executionStartTime = Date.now();
         let executionStatus: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'TIMEOUT' = 'COMPLETED';
         const metrics: ExecutionMetrics = {
             totalActions: 0,
@@ -219,30 +200,9 @@ export class StartExplorationUseCase {
             }
         }
 
-// FIX: Create session in database BEFORE starting test
-        // CRITICAL: This operation MUST NOT block safari initialization
-        // If DB is down, we continue without forensic history - that's acceptable
+        // Sessions are in-memory only during execution; no DB document is created automatically.
+        // The operator must explicitly click "Save to History" to commit a record.
         this.currentSessionId = null;
-        if (this.findingRepository) {
-          try {
-            console.log(`[StartExplorationUseCase] Attempting to create session for ${targetUrl}...`);
-            console.log(`[StartExplorationUseCase] UserId for session: ${this.currentUserId}`);
-            this.currentSessionId = await this.findingRepository.createSession({
-              targetUrl,
-              startedAt: new Date().toISOString(),
-              userId: this.currentUserId,  // CRITICAL: Bind session to authenticated user
-            });
-            console.log(`[StartExplorationUseCase] ✓ Session created: ${this.currentSessionId} for userId: ${this.currentUserId}`);
-          } catch (sessionError) {
-            const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
-            console.error(`[StartExplorationUseCase] ⚠️ Session creation failed: ${errorMessage}`);
-            console.warn('[StartExplorationUseCase] Continuing launch WITHOUT forensic history - DB unavailable');
-            // DO NOT re-throw - continue without session tracking
-            // This ensures the safari can still launch even if DB is down
-          }
-        } else {
-          console.log('[StartExplorationUseCase] No findingRepository - running without forensic history');
-        }
 
         this.state.active = true;
 
@@ -339,56 +299,6 @@ try {
                 })),
             });
         } finally {
-            const executionDuration = Date.now() - executionStartTime;
-
-            // FIX: Auto-complete the session with execution duration
-            // This ensures the session record is always persisted, even if user doesn't click Save
-            if (this.currentSessionId && this.findingRepository) {
-                try {
-                    const completedAt = new Date().toISOString();
-                    console.log(`[StartExplorationUseCase] Marking session ${this.currentSessionId} as ${executionStatus}, duration: ${executionDuration}ms`);
-
-                    if (executionStatus === 'CRASHED') {
-                        await this.findingRepository.markSessionCrashed(
-                            this.currentSessionId,
-                            completedAt,
-                            `Test ${executionStatus.toLowerCase()} - ${metrics.totalActions} actions executed`
-                        );
-                    } else {
-                        await this.findingRepository.markSessionCompleted(
-                            this.currentSessionId,
-                            completedAt
-                        );
-                    }
-
-                    // Also update the stats with runtime and calculate coverage percentage
-                    const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
-                    const { Types } = await import('mongoose');
-
-                    // Get maxActions from config (default 100 if not specified)
-                    const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
-
-                    // Calculate coverage percentage (actions executed / maxActions * 100)
-                    const coveragePercentage = Math.min(100, Math.round((metrics.totalActions / maxActions) * 100));
-
-                    console.log(`[StartExplorationUseCase] Coverage: ${metrics.totalActions}/${maxActions} = ${coveragePercentage}%`);
-
-                    await SessionModel.updateOne(
-                        { _id: new Types.ObjectId(this.currentSessionId) },
-                        {
-                            $set: {
-                                'stats.runtimeMs': executionDuration,
-                                'stats.actionsExecuted': metrics.totalActions,
-                                'stats.coveragePercentage': coveragePercentage,
-                                'stats.maxActions': maxActions,
-                            }
-                        }
-                    );
-} catch (completionError) {
-                    console.error('[StartExplorationUseCase] Failed to complete session:', completionError);
-                }
-            }
-
             // CRITICAL: Emit explicit IDLE status to ensure deterministic state handshake
             // This prevents zombie backend processes by synchronizing UI state with actual engine state
             this.telemetry.emitTelemetry({

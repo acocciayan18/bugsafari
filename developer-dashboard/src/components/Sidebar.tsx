@@ -1,6 +1,6 @@
 // Sidebar Component - Monochrome Developer Aesthetic
-// Extracted from ClinicalForensicsDashboard for proper component separation
-// Handles navigation only - no telemetry logic
+// Handles navigation only - no telemetry logic.
+// Supports light and dark mode via Tailwind dark: variants.
 
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -36,46 +36,46 @@ export default function Sidebar({
   const sidebarWidth = isCollapsed ? 'w-20' : 'w-[18%]';
 
   return (
-    <section className={`${sidebarWidth} flex flex-col border-r border-slate-200 bg-slate-50 transition-[width] duration-300 ease-in-out overflow-hidden`}>
+    <section className={`${sidebarWidth} flex flex-col border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 transition-[width] duration-300 ease-in-out overflow-hidden`}>
       {/* Header */}
-      <div className={`border-b border-slate-200 transition-[padding] duration-300 ${isCollapsed ? 'p-2 flex justify-center' : 'p-5 flex items-center gap-3'}`}>
-        {/* Hamburger Toggle Button - on left side in expanded, centered in collapsed */}
+      <div className={`border-b border-slate-200 dark:border-slate-700 transition-[padding] duration-300 ${isCollapsed ? 'p-2 flex justify-center' : 'p-5 flex items-center gap-3'}`}>
         <button
           onClick={onToggleCollapse}
-          className={`flex items-center justify-center hover:bg-slate-200 transition-colors ${isCollapsed ? 'mb-2' : ''}`}
+          className={`flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isCollapsed ? 'mb-2' : ''}`}
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <svg className="h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <svg className="h-6 w-6 text-slate-600 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
 
-        {/* BUGSAFARI branding - shows on right when expanded, hidden when collapsed */}
+        {/* BUGSAFARI branding - visible when expanded */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-0 h-0' : 'w-auto h-auto flex-1'}`}>
-          <h1 className="text-xl font-bold uppercase tracking-wider text-slate-900 whitespace-nowrap">
+          <h1 className="text-xl font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100 whitespace-nowrap">
             BUGSAFARI
           </h1>
-          <p className="mt-1 text-xs text-slate-500 whitespace-nowrap">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
             Clinical Forensics Engine
           </p>
         </div>
 
-        {/* Help Menu Icon - shows only when collapsed */}
+        {/* Help Menu - visible when collapsed */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-auto h-auto' : 'w-0 h-0'}`}>
           <HelpMenuIcon />
         </div>
       </div>
 
-      {/* Navigation Links - Always showing, clipped when collapsed */}
+      {/* Navigation Links */}
       <nav className={`flex-1 ${isCollapsed ? 'p-1' : 'p-4'}`}>
         <ul className={`${isCollapsed ? 'space-y-3' : 'space-y-1'}`}>
           <li>
             <button
               onClick={() => navigate('/dashboard')}
-              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${activeView === 'dashboard'
-                ? 'bg-slate-200 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-100'
-                } ${isCollapsed ? 'justify-center px-2' : ''}`}
+              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+                activeView === 'dashboard'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              } ${isCollapsed ? 'justify-center px-2' : ''}`}
               title={isCollapsed ? 'Dashboard' : undefined}
             >
               <svg className="h-7 w-7 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -89,10 +89,11 @@ export default function Sidebar({
           <li>
             <button
               onClick={() => navigate('/history')}
-              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${activeView === 'history'
-                ? 'bg-slate-200 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-100'
-                } ${isCollapsed ? 'justify-center px-2' : ''}`}
+              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+                activeView === 'history'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              } ${isCollapsed ? 'justify-center px-2' : ''}`}
               title={isCollapsed ? 'Sessions History' : undefined}
             >
               <svg className="h-7 w-7 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -106,10 +107,11 @@ export default function Sidebar({
           <li>
             <button
               onClick={() => navigate('/settings')}
-              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${activeView === 'settings'
-                ? 'bg-slate-200 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-100'
-                } ${isCollapsed ? 'justify-center px-2' : ''}`}
+              className={`flex w-full items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+                activeView === 'settings'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              } ${isCollapsed ? 'justify-center px-2' : ''}`}
               title={isCollapsed ? 'Settings' : undefined}
             >
               <svg className="h-7 w-7 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -124,19 +126,19 @@ export default function Sidebar({
         </ul>
       </nav>
 
-      {/* Footer - User Profile Card - Shows only icon when collapsed */}
-      <div className={`border-t border-slate-200 transition-[padding] duration-300 ${isCollapsed ? 'p-2' : 'p-4'}`}>
+      {/* Footer - User Profile Card */}
+      <div className={`border-t border-slate-200 dark:border-slate-700 transition-[padding] duration-300 ${isCollapsed ? 'p-2' : 'p-4'}`}>
         {isLoggedIn && user ? (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
-            <div className={`flex items-center border border-slate-200 bg-white transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-slate-900 text-base font-bold text-white">
+            <div className={`flex items-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center bg-slate-900 dark:bg-slate-600 text-base font-bold text-white">
                 {(displayName || user.email).charAt(0).toUpperCase()}
               </div>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1 min-w-0'}`}>
-                <div className="text-xs font-medium text-slate-900 truncate">
+                <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
                   {displayName || user.email}
                 </div>
-                <div className="text-[10px] text-slate-500">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">
                   {displayName ? 'Logged in' : user.email}
                 </div>
               </div>
@@ -153,14 +155,12 @@ export default function Sidebar({
           </div>
         ) : (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
-            <div
-              className={`flex items-center border border-slate-200 bg-white transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}
-            >
+            <div className={`flex items-center border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
-                <div className="text-xs font-medium text-slate-900">
+                <div className="text-xs font-medium text-slate-900 dark:text-slate-100">
                   Guest User
                 </div>
-                <div className="text-[10px] text-slate-500">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">
                   Guest mode
                 </div>
               </div>

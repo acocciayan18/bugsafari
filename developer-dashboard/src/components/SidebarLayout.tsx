@@ -29,7 +29,7 @@ export default function SidebarLayout({
   isCollapsed,
   onToggleCollapse,
   children,
-  outerClassName = 'flex h-screen w-screen bg-white',
+  outerClassName = 'flex h-screen w-screen bg-white dark:bg-slate-900',
   contentClassName,
 }: SidebarLayoutProps) {
   return (

@@ -118,6 +118,10 @@ public async createSession(input: CreateSessionInput): Promise<string> {
   }
 
   public async save(input: SaveFindingInput): Promise<string> {
+    if (!input.sessionId) {
+      console.warn('[MongoFindingRepository] Skipping finding save — no active session (in-memory mode)');
+      return '';
+    }
     const objectId = toObjectId(input.sessionId);
     if (!objectId) {
       throw new Error(`Invalid session ID: ${input.sessionId}`);
