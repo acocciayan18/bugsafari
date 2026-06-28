@@ -690,6 +690,16 @@ telemetry.emitTelemetry(this.event('NETWORK', {
 
     page.on('framenavigated', handleFramenavigated);
 
+    // 🚀 Start the independent 33 ms frame loop the instant the page object
+    // exists — BEFORE page.goto. The page is at about:blank, so screenshots
+    // succeed and emit valid (blank) JPEGs immediately, clearing the dashboard's
+    // 30 s "no live frame" handshake within ~33 ms regardless of how long — or
+    // whether — navigation succeeds. captureAndEmitFrame guards
+    // page.isClosed()/in-flight and each screenshot is capped by
+    // SCREENSHOT_TIMEOUT_MS, so ticking before/during goto is safe. The loop
+    // begins streaming the painted page automatically once goto completes.
+    this.startFrameCaptureLoop(page, telemetry);
+
     try {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       this.emitSystemStatus(telemetry, `Navigating to ${targetUrl}...`);
@@ -717,18 +727,9 @@ telemetry.emitTelemetry(this.event('NETWORK', {
         { actionType: 'NAVIGATE', humanIdentifier: targetUrl, url: targetUrl },
       );
 
-      handleFramenavigated(); // initial capture so dashboard doesn't start blank
+      handleFramenavigated(); // emit the real post-navigation URL
 
-      // 🚀 Start the independent 33 ms frame loop the instant the page is
-      // navigable — BEFORE ensureDomReady / console-listener setup. Continuous
-      // streaming must not wait on those (~5 s) or on a single best-effort
-      // screenshot; this guarantees the dashboard clears its 30 s "no live
-      // frame" handshake regardless of page speed or selected scenarios.
-      // captureAndEmitFrame already guards page.isClosed()/in-flight, and each
-      // screenshot is capped by SCREENSHOT_TIMEOUT_MS, so this is safe here.
-      this.startFrameCaptureLoop(page, telemetry);
-
-await this.ensureDomReady(page, telemetry);
+      await this.ensureDomReady(page, telemetry);
 
       // 🛡️ Initialize stability monitoring - runs silently in background
       // Monitors JS Exceptions, 500 Errors, and System Lock-up (5s heartbeat timeout)
@@ -928,18 +929,12 @@ telemetry.emitTargets(
           // StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
 
           if (decision.kind === 'backtrack') {
-            // Emit backtrack telemetry and navigate to target URL
+            // Restore the parent state via the SPA-friendly recovery ladder
+            // (history → deep-link → hard reload) instead of a blind hard goto
+            // that would wipe client state and false-trip graph exhaustion.
             this.emitMilestone(telemetry, `↩️ Backtracking to ${decision.targetUrl}`);
             this.emitSystemStatus(telemetry, `Backtracking to ${decision.targetHash.substring(0, 8)}...`);
-            await page.goto(decision.targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-            this.recordActionTrace(
-              {
-                timestamp: new Date().toISOString(),
-                selector: decision.targetUrl,
-                action: 'navigation',
-              },
-              { actionType: 'NAVIGATE', humanIdentifier: decision.targetUrl, url: decision.targetUrl },
-            );
+            await this.restoreToState(page, telemetry, decision.targetHash, decision.targetUrl);
             await wait(350);
             continue;
           }
@@ -957,15 +952,53 @@ telemetry.emitTargets(
           // Store score for telemetry
           const targetScore = exploreDecision.score;
 
+          // 🔮 Forward lookahead (proactive): if this edge is an anchor/router-
+          // link whose resolved URL is a breadcrumb ancestor, clicking it would
+          // drop straight back into a loop. Mark it cyclic (score 0 + blocked),
+          // emit telemetry, and skip to the next-best pathway WITHOUT clicking.
+          const lookaheadHref = await this.probeStaticTarget(page, target.selector);
+          if (lookaheadHref && this.pathNavigator.ancestorUrls().includes(lookaheadHref)) {
+            this.pathNavigator.markEdgeCyclic(currentHash, target.selector);
+            this.emitMilestone(
+              telemetry,
+              `🔁 Cyclic-loop avoided: ${target.selector} → ${lookaheadHref} is a breadcrumb ancestor. Choosing another pathway.`,
+            );
+            telemetry.emitTelemetry(this.event('ACTION', {
+              actionExecuted: 'cyclic-loop-detected',
+              selector: target.selector,
+              message: `Forward lookahead skipped ${target.selector}: resolves to ancestor ${lookaheadHref}.`,
+            }));
+            continue;
+          }
+
           // Emit exploration milestone
           this.emitMilestone(telemetry, `🎯 Exploring edge: ${target.selector} (score: ${decision.score.toFixed(3)})`);
           this.emitSystemStatus(telemetry, `Clicking element ${target.selector}...`);
 
-          // Execute the action
+          // Execute the action, then VERIFY the traversal before confirming it.
+          // The edge stays 'traversing' in the navigator until we observe a new
+          // stable DOM state; an unverified/failed click is isolated as unstable
+          // and the parent is restored locally (never collapses the graph).
           this.logHighImpact(target, telemetry);
           const previousHashBeforeAction = currentHash;
 
-          await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+          let traversalOk = false;
+          let childHash = previousHashBeforeAction;
+          try {
+            await this.executeWeightedAction(page, telemetry, target, ranked, revisitedPage);
+            const verification = await this.verifyTraversal(page, previousHashBeforeAction, 3000);
+            traversalOk = verification.ok;
+            childHash = verification.childHash;
+          } catch (actionErr) {
+            // Operator-initiated stop must still propagate to the graceful handler.
+            if (isBrowserClosedError(actionErr)) throw actionErr;
+            // Detached element / intercepting overlay / click error → unstable edge.
+            traversalOk = false;
+            console.warn(
+              '[ExplorationEngine] Traversal action failed:',
+              actionErr instanceof Error ? actionErr.message : String(actionErr),
+            );
+          }
 
           // Phase 3: Track interaction count
           this.runtimeMetrics.interactionCount++;
@@ -978,17 +1011,50 @@ telemetry.emitTargets(
 
           await this.persistBrainSnapshot('runtime', step);
 
-          // Confirm edge traversal in the navigator
-          this.pathNavigator.confirmEdgeTraversal(
-            previousHashBeforeAction,
-            target.selector,
-            currentHash,
-          );
+          if (traversalOk) {
+            // Verified transition — record the REAL child hash (fixes the prior
+            // bug that passed the pre-action hash as the child).
+            this.pathNavigator.confirmEdgeTraversal(
+              previousHashBeforeAction,
+              target.selector,
+              childHash,
+            );
+
+            // 🔁 Forward lookahead (reactive): the click landed on a state that
+            // is already an ancestor on our breadcrumb path — a genuine backward
+            // loop the static probe couldn't predict (JS-driven navigation).
+            // Permanently mark the edge cyclic so it's never retried. syncStack
+            // will re-anchor the breadcrumb to the ancestor on the next step.
+            if (this.pathNavigator.isAncestorHash(childHash)) {
+              this.pathNavigator.markEdgeCyclic(previousHashBeforeAction, target.selector);
+              this.emitMilestone(
+                telemetry,
+                `🔁 Cyclic-loop detected: ${target.selector} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
+              );
+              telemetry.emitTelemetry(this.event('ACTION', {
+                actionExecuted: 'cyclic-loop-detected',
+                selector: target.selector,
+                stateHash: childHash,
+                message: `Reactive lookahead: ${target.selector} looped back to ancestor ${childHash.substring(0, 8)}.`,
+              }));
+            }
+          } else {
+            // Unverified — isolate this single branch and restore the parent
+            // locally rather than letting the graph exhaust falsely.
+            this.pathNavigator.markEdgeUnstable(previousHashBeforeAction, target.selector);
+            this.emitMilestone(
+              telemetry,
+              `🩹 Edge unstable — restoring parent locally (no false exhaustion).`,
+            );
+            await this.restoreToState(page, telemetry, previousHashBeforeAction, currentUrl);
+          }
 
           // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
-          // If the resulting state has low visitation count (novel), reward the weights
+          // If the resulting state has low visitation count (novel), reward the weights.
+          // Uses the verified post-action childHash so the reward reflects the
+          // state the click actually produced, not the pre-action fingerprint.
           const currentNode = this.pathNavigator.snapshot();
-          const isNovelState = this.visitedHashes.has(currentHash) === false;
+          const isNovelState = traversalOk && this.visitedHashes.has(childHash) === false;
 
           if (isNovelState) {
             // Novel state discovered - fire Perceptron's Delta Rule to reward the element weights
@@ -1459,6 +1525,187 @@ telemetry.emitTelemetry({
         message: 'No interactive selector found during 5s wait window.',
       }));
     }
+  }
+
+  /**
+   * Cheap static lookahead probe. For a candidate selector, resolve its
+   * navigation target WITHOUT clicking: anchors → resolved absolute `href`;
+   * router-links → `data-route`/`data-href`/`to` resolved against the origin.
+   * Returns the absolute URL the element would navigate to, or null if it has
+   * no statically-knowable destination (plain buttons / JS handlers). Never
+   * throws — a probe failure simply yields null so the engine clicks normally.
+   */
+  private async probeStaticTarget(page: Page, selector: string): Promise<string | null> {
+    try {
+      return await page.evaluate((sel: string) => {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (!el) return null;
+        const anchor = el.closest('a') as HTMLAnchorElement | null;
+        if (anchor && anchor.href) {
+          // anchor.href is already resolved to an absolute URL by the browser.
+          return anchor.href;
+        }
+        const route =
+          el.getAttribute('data-route') ??
+          el.getAttribute('data-href') ??
+          el.getAttribute('to');
+        if (route) {
+          try {
+            return new URL(route, document.baseURI).href;
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }, selector);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Post-click traversal verification. Polls the DOM fingerprint for up to
+   * `timeoutMs` and succeeds once a NEW state hash (different from the parent)
+   * appears — preferring one that holds steady across two consecutive reads
+   * ("any new stable hash"), but still accepting a late transition observed
+   * just before the deadline. If the hash never diverges from the parent the
+   * traversal is a no-op failure. Never throws: a hashing/closed-page error is
+   * treated as a failed (unstable) traversal so the caller restores the parent.
+   */
+  private async verifyTraversal(
+    page: Page,
+    parentHash: string,
+    timeoutMs = 3000,
+  ): Promise<{ ok: boolean; childHash: string }> {
+    const pollIntervalMs = 300;
+    const deadline = Date.now() + timeoutMs;
+    let lastDivergent = parentHash;
+
+    while (Date.now() < deadline) {
+      if (page.isClosed()) break;
+      let hash = parentHash;
+      try {
+        hash = await this.hashManager.hash(page);
+      } catch {
+        // Transient hashing failure (mid-navigation) — retry until the deadline.
+        await wait(pollIntervalMs);
+        continue;
+      }
+
+      if (hash !== parentHash) {
+        // Stable transition: the same new hash seen twice in a row — accept now.
+        if (hash === lastDivergent) {
+          return { ok: true, childHash: hash };
+        }
+        lastDivergent = hash;
+      }
+      await wait(pollIntervalMs);
+    }
+
+    // Accept a late/single divergence rather than discarding a real transition;
+    // only an unchanged hash counts as a failed (no-op) traversal.
+    return lastDivergent !== parentHash
+      ? { ok: true, childHash: lastDivergent }
+      : { ok: false, childHash: parentHash };
+  }
+
+  /** Poll until the DOM fingerprint equals `expectedHash` or the window lapses. */
+  private async verifyReachedHash(
+    page: Page,
+    expectedHash: string,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    const pollIntervalMs = 300;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (page.isClosed()) return false;
+      try {
+        if ((await this.hashManager.hash(page)) === expectedHash) return true;
+      } catch {
+        // Mid-navigation hashing failure — retry until the deadline.
+      }
+      await wait(pollIntervalMs);
+    }
+    return false;
+  }
+
+  /**
+   * SPA-friendly state-recovery ladder used for both backtracking and local
+   * parent restoration after an unstable edge. Tries, in order:
+   *   A) page.goBack()        — preserves client-side state (no full reload)
+   *   B) page.goto(targetUrl) — cached deep-link route jump
+   *   C) page.goto(origin)    — hard root reload (last resort)
+   * Strategy A is accepted only if it verifiably lands on `targetHash`; B/C are
+   * accepted on a successful load (SPA fingerprint drift tolerated). Returns
+   * true if any rung completed without throwing.
+   */
+  private async restoreToState(
+    page: Page,
+    telemetry: TelemetryGateway,
+    targetHash: string,
+    targetUrl: string,
+  ): Promise<boolean> {
+    // Strategy A — history navigation (preserves in-memory client state).
+    // Uses waitUntil:'commit' (the most permissive load state) and verifies by
+    // hash rather than by goBack's return value: a same-document SPA history
+    // entry (pushState) resolves null and never fires domcontentloaded, yet is
+    // still a successful back — only the restored DOM fingerprint proves it.
+    try {
+      await page.goBack({ waitUntil: 'commit', timeout: 5000 });
+      if (await this.verifyReachedHash(page, targetHash, 3000)) {
+        console.log('[ExplorationEngine] restore strategy A (history) succeeded');
+        this.emitSystemStatus(telemetry, 'Restored via history navigation.');
+        this.recordRestoreTrace(targetUrl, 'history-back');
+        return true;
+      }
+    } catch (err) {
+      console.warn(
+        '[ExplorationEngine] restore strategy A (history) failed:',
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // Strategy B — deep-link route jump to the cached parent URL.
+    try {
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      console.log('[ExplorationEngine] restore strategy B (deep-link) succeeded');
+      this.emitSystemStatus(telemetry, 'Restored via deep-link jump.');
+      this.recordRestoreTrace(targetUrl, 'deep-link');
+      return true;
+    } catch (err) {
+      console.warn(
+        '[ExplorationEngine] restore strategy B (deep-link) failed:',
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // Strategy C — hard root reload (last resort).
+    try {
+      const rootUrl = this.targetOrigin ?? targetUrl;
+      await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      console.log('[ExplorationEngine] restore strategy C (root reload) succeeded');
+      this.emitSystemStatus(telemetry, 'Restored via hard root reload.');
+      this.recordRestoreTrace(rootUrl, 'root-reload');
+      return true;
+    } catch (err) {
+      console.error(
+        '[ExplorationEngine] restore strategy C (root reload) failed:',
+        err instanceof Error ? err.message : String(err),
+      );
+      return false;
+    }
+  }
+
+  /** Record the recovery navigation in the reproduction playbook. */
+  private recordRestoreTrace(url: string, strategy: string): void {
+    this.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: url,
+        action: `restore-${strategy}`,
+      },
+      { actionType: 'NAVIGATE', humanIdentifier: `restore via ${strategy}`, url },
+    );
   }
 
   private async executeWeightedAction(

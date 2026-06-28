@@ -178,6 +178,15 @@ return () => {
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
 
+      // 🛑 A backend EXCEPTION during init (e.g. navigation failure: bad URL,
+      // DNS, unreachable host, cert error) means no live frame will ever arrive.
+      // Clear isInitializing so the 30 s "no live frame" timeout doesn't fire on
+      // top of an already-surfaced error — the operator sees the real cause
+      // immediately instead of a misleading handshake timeout.
+      if (event.type === 'EXCEPTION') {
+        setIsInitializing(false);
+      }
+
       // 🚨 Auto-reset status if the engine crashes or stops naturally
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);

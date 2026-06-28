@@ -7,6 +7,10 @@ import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeSce
 export interface RouteTrashResult {
   attempted: number;
   completed: number;
+  /** The page URL after the bursts and origin-restore (cycle-awareness signal). */
+  finalUrl: string;
+  /** Whether the bursts net-landed back on the origin path (an ancestor return). */
+  returnedToOrigin: boolean;
 }
 
 /**
@@ -186,6 +190,11 @@ const originPath = page.url();
 
     let completed = 0;
     let attempted = 0;
+    // Cycle-awareness: where the bursts left the page, and whether we had to
+    // restore. The engine's breadcrumb/verify must see the true pre-stress
+    // state, so this scenario is non-relocating — it always returns to origin.
+    let finalUrl = originPath;
+    let returnedToOrigin = true;
 
     try {
       for (let i = 0; i < repetitions; i++) {
@@ -301,6 +310,27 @@ const originPath = page.url();
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 } finally {
+      // Cycle-aware restore: the bursts may have left the page on an ancestor
+      // (history back) or a mutated query URL. Net-land back on origin so the
+      // engine's breadcrumb/verify sees the true pre-stress state instead of a
+      // history-displaced one. Record whether it had drifted (the cyclic signal).
+      try {
+        const landed = page.url();
+        returnedToOrigin = landed === originPath;
+        if (!returnedToOrigin) {
+          ActiveScenarioTracker.record(
+            `Route bursts drifted to ${landed}; restoring to origin ${originPath}.`,
+          );
+          await page.goto(originPath, { waitUntil: 'domcontentloaded', timeout: 5000 });
+        }
+        finalUrl = page.url();
+      } catch (error) {
+        console.warn(
+          `[StressScenario:RouteTrasher] Origin restore failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        finalUrl = page.url();
+      }
+
       // Wait for network settlement before ending transaction to prevent async telemetry leak
       // This ensures pending network requests are captured before transaction closes
       try {
@@ -319,10 +349,10 @@ const originPath = page.url();
     }
 
     console.log(
-      `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions`
+      `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions (returnedToOrigin=${returnedToOrigin})`
     );
 
-    return { attempted, completed };
+    return { attempted, completed, finalUrl, returnedToOrigin };
   },
 };
 

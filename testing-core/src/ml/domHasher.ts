@@ -339,30 +339,80 @@ export class DomHasher {
   }
 
   /**
-   * Capture a DOM hash snapshot from the page.
-   * This provides a simplified hashing method compatible with StructuralHashManager.
+   * Capture an ABSTRACT STRUCTURAL hash of the page — the engine's single state
+   * key (loop detection, graph-node identity, and traversal verification).
+   *
+   * Unlike a raw fingerprint, this strips dynamic noise so that real-time UI
+   * churn (clocks, rolling data rows, loading animations, placeholder swaps)
+   * does NOT change the state key, while genuinely different layouts still do:
+   *   - only structural/interactive/landmark tags are emitted (cosmetic/inline
+   *     wrappers are skipped but their children are still walked);
+   *   - text content and `id` are dropped (kills variable text + random ids);
+   *   - attributes reduce to `type` + a normalized `class` (dynamic/hashed
+   *     class tokens — anything with a digit or a CSS-module/styled hash — are
+   *     stripped, survivors sorted);
+   *   - `childrenCount` is dropped and runs of structurally-identical sibling
+   *     subtrees are collapsed, so a list/table hashes the same regardless of
+   *     how many identical rows it currently holds.
+   *
    * @param page - Playwright page object
-   * @returns SHA-256 hash of the DOM structure
+   * @returns SHA-256 hash of the normalized structural skeleton
    */
   public async hash(page: Page): Promise<string> {
-    const snapshot = await page.evaluate(() => {
-      const parts: string[] = [];
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-      let current = walker.currentNode as Element | null;
+    const cap = this.config.maxElements ?? 5000;
+    // The evaluate body is passed as a STRING (matching createStructuralFingerprint
+    // below) so no bundler/transpiler name-keeping helpers leak into the browser
+    // context. `cap` is injected as a literal.
+    const skeleton = await page.evaluate<string>(`
+      (function () {
+        var STRUCTURAL = new Set([
+          'div','section','main','header','footer','nav','aside','article',
+          'ul','ol','li','table','thead','tbody','tr','td','th',
+          'form','fieldset','input','select','textarea','button','a','label',
+          'h1','h2','h3','h4','h5','h6','img','dialog'
+        ]);
+        // A class token is "dynamic" if it carries a digit (animation/state-with-
+        // number) or looks like a generated/hashed class (css-modules, styled).
+        function isDynamicClass(token) {
+          return /\\d/.test(token) ||
+            /^css-[a-z0-9]+$/i.test(token) ||
+            /^sc-[a-z0-9]+$/i.test(token) ||
+            /^[_-][a-z0-9]{4,}$/i.test(token);
+        }
+        function normalizeClass(raw) {
+          return raw.split(/\\s+/).filter(function (t) { return t && !isDynamicClass(t); }).sort().join('.');
+        }
+        var budget = ${cap};
+        function serialize(el) {
+          if (budget <= 0) return '';
+          budget--;
+          var tag = el.tagName.toLowerCase();
+          var emit = STRUCTURAL.has(tag);
+          // Serialize children, collapsing runs of identical consecutive siblings.
+          var childSigs = [];
+          var prev = '';
+          var run = 0;
+          function flush() { if (run > 0) childSigs.push(run > 1 ? prev + '*' : prev); }
+          var children = Array.prototype.slice.call(el.children);
+          for (var i = 0; i < children.length; i++) {
+            var sig = serialize(children[i]);
+            if (!sig) continue;
+            if (sig === prev) { run++; } else { flush(); prev = sig; run = 1; }
+          }
+          flush();
+          var childrenStr = childSigs.join('');
+          // Skip cosmetic/inline wrappers but keep their structural children.
+          if (!emit) return childrenStr;
+          var type = (el.getAttribute('type') || '').toLowerCase();
+          var cls = normalizeClass((el.className && el.className.toString()) || '');
+          var attrs = [type ? 't=' + type : '', cls ? 'c=' + cls : ''].filter(Boolean).join(',');
+          return '<' + tag + (attrs ? ' ' + attrs : '') + '>' + childrenStr + '</' + tag + '>';
+        }
+        return document.body ? serialize(document.body) : '';
+      })();
+    `);
 
-      while (current) {
-        const element = current as HTMLElement;
-        const childrenCount = element.children.length;
-        const className = element.className?.toString().slice(0, 64) ?? '';
-        const signature = `${element.tagName.toLowerCase()}|${childrenCount}|${className}`;
-        parts.push(signature);
-        current = walker.nextNode() as Element | null;
-      }
-
-      return parts.join('>');
-    });
-
-    return crypto.createHash('sha256').update(snapshot).digest('hex');
+    return crypto.createHash('sha256').update(skeleton).digest('hex');
   }
 
   /**

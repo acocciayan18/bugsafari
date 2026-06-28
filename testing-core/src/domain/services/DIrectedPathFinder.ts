@@ -76,8 +76,9 @@ export interface GraphNode {
 /** Lifecycle state of a single graph edge */
 export type EdgeStatus =
   | 'unvisited'   // discovered but not yet traversed
-  | 'in-flight'   // currently being executed by the engine
-  | 'explored'    // traversal completed (may or may not have produced a new node)
+  | 'traversing'  // click fired; awaiting post-action DOM verification
+  | 'explored'    // verified traversal — produced a confirmed child state
+  | 'unstable'    // post-click verification failed; re-queued or pending block
   | 'blocked';    // permanently excluded from this session (loop penalty applied)
 
 /**
@@ -101,6 +102,13 @@ export interface GraphEdge {
 
   /** Number of times this specific edge has been attempted */
   attempts: number;
+
+  /**
+   * Number of times post-click verification has FAILED for this edge
+   * (distinct from `attempts`, which counts every pick). Drives the
+   * retry-then-block policy in StateGraphNavigator.markEdgeUnstable().
+   */
+  failedVerifications: number;
 
   /** Wall-clock timestamp of the most recent traversal attempt */
   lastAttemptAt: number | null;
@@ -171,6 +179,8 @@ export type PathfinderEventKind =
   | 'node-registered'
   | 'edge-explored'
   | 'edge-blocked'
+  | 'edge-unstable'
+  | 'cyclic-loop'
   | 'backtrack-initiated'
   | 'node-exhausted'
   | 'graph-exhausted'

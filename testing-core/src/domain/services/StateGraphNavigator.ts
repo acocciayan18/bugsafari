@@ -80,13 +80,59 @@ export interface StateGraphNavigatorConfig {
   maxNodes: number;
 
   /**
-   * Boredom threshold for curiosity-driven backtracking.
-   * If the highest hybridScore on the current DOM state falls below this,
-   * the engine considers the page "exhausted of interesting actions" and
-   * triggers backtracking to explore a different branch.
+   * Base boredom threshold for curiosity-driven backtracking, and the neutral
+   * anchor for the adaptive calculation below. If the highest hybridScore on the
+   * current DOM state falls below the *effective* (adaptive) threshold, the
+   * engine considers the page "exhausted of interesting actions" and triggers
+   * backtracking to explore a different branch.
    * Default: 15
    */
   boredomThreshold: number;
+
+  /**
+   * When true, the effective boredom threshold adapts to page density: dense
+   * states decay it lower (protect deep search), flat states raise it (leave
+   * faster). When false the static `boredomThreshold` is used as-is.
+   * Default: true
+   */
+  adaptiveBoredom: boolean;
+
+  /**
+   * How many recent state nodes feed the rolling density moving-average that
+   * drives the adaptive boredom threshold.
+   * Default: 5
+   */
+  boredomDensityWindow: number;
+
+  /**
+   * The "typical" interactive-element count for a node. When the rolling
+   * average density equals this, the effective threshold equals the base
+   * `boredomThreshold` (neutral). Denser → lower; flatter → higher.
+   * Default: 12
+   */
+  boredomReferenceDensity: number;
+
+  /** Lower clamp for the adaptive boredom threshold. Default: 5 */
+  boredomThresholdMin: number;
+
+  /** Upper clamp for the adaptive boredom threshold. Default: 40 */
+  boredomThresholdMax: number;
+
+  /**
+   * How many times an edge may fail post-click traversal verification before
+   * it is permanently `blocked`. Below this limit a failed edge is re-queued
+   * as `unvisited` (with a score penalty) so transient overlays/animations get
+   * another chance.
+   * Default: 2
+   */
+  unstableRetryLimit: number;
+
+  /**
+   * Multiplier applied to an unstable edge's score when it is re-queued, so a
+   * flaky edge is de-prioritised relative to clean siblings on retry.
+   * Default: 0.5
+   */
+  unstablePenaltyFactor: number;
 }
 
 const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -95,6 +141,13 @@ const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   maxStackDepth: 60,
   maxNodes: 500,
   boredomThreshold: 15,
+  adaptiveBoredom: true,
+  boredomDensityWindow: 5,
+  boredomReferenceDensity: 12,
+  boredomThresholdMin: 5,
+  boredomThresholdMax: 40,
+  unstableRetryLimit: 2,
+  unstablePenaltyFactor: 0.5,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,10 +172,22 @@ export class StateGraphNavigator {
   private readonly events: PathfinderEvent[] = [];
   private readonly maxEvents = 200;
 
+  // Rolling window of recent per-node interactive-element densities, feeding the
+  // adaptive boredom threshold. Capped at config.boredomDensityWindow.
+  private readonly recentDensities: number[] = [];
+  // The effective boredom threshold for the most recent decision (adaptive).
+  private currentBoredomThreshold: number;
+
+  // Per-node argmax cache for Best-First selection. Keyed by node hash; holds
+  // the selector of the highest-scored unvisited edge. Presence = "clean";
+  // any edge add/score/status change deletes the entry (invalidateEdgeIndex).
+  private readonly edgeIndexCache = new Map<StateHash, { bestSelector: string | null }>();
+
   private readonly config: StateGraphNavigatorConfig;
 
   constructor(config: Partial<StateGraphNavigatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.currentBoredomThreshold = this.config.boredomThreshold;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -158,38 +223,48 @@ export class StateGraphNavigator {
     // 3. Sync edges: add any newly discovered elements, update scores
     this.syncEdges(node, elements);
 
+    // 3a. Track rolling node density and refresh the adaptive boredom threshold
+    // BEFORE any boredom decision this step.
+    this.trackDensity(elements.length);
+    this.currentBoredomThreshold = this.computeAdaptiveBoredomThreshold();
+
     // 4. Update the traversal stack so it reflects the current position
     this.syncStack(currentHash, currentUrl);
 
-    // 5. Determine whether to explore, backtrack, or signal exhaustion
+    // 5. Single Best-First scan: the highest-scored unvisited edge AND its score
+    // in one linear pass (no sort), reused for both the boredom check and the
+    // edge pick below.
+    const { best: nextEdge, maxScore } = this.scanUnvisited(node);
+
     const loopDetected =
       this.consecutiveRepeatCount >= this.config.loopStrikeThreshold;
 
-    // 5a. Check boredom threshold - if all interesting actions exhausted, backtrack
-    const bored = this.isBoredomTriggered(node);
+    // 5a. Boredom: unvisited edges exist but none clear the adaptive threshold.
+    const bored = nextEdge !== null && maxScore < this.currentBoredomThreshold;
 
     if (forcedBacktrack || loopDetected || node.exhausted || bored) {
       if (bored) {
         this.recordEvent(
           'boredom-triggered-backtrack',
           currentHash,
-          `Boredom threshold triggered (max score ${this.getCurrentMaxScore(node)} < ${this.config.boredomThreshold}). Backtracking to explore new branches.`,
+          `Boredom threshold triggered (max score ${maxScore.toFixed(2)} < ${this.currentBoredomThreshold.toFixed(2)}). Backtracking to explore new branches.`,
         );
       }
       return this.handleDeadEnd(node, loopDetected);
     }
 
-    const nextEdge = this.pickBestUnvisitedEdge(node);
     if (!nextEdge) {
       node.exhausted = true;
       this.recordEvent('node-exhausted', currentHash, `All edges on ${shortHash(currentHash)} exhausted.`);
       return this.handleDeadEnd(node, false);
     }
 
-    // Mark it in-flight so concurrent calls cannot double-select it
-    nextEdge.status = 'in-flight';
+    // Mark it traversing so concurrent calls cannot double-select it and so the
+    // node is not considered exhausted while we await post-click verification.
+    nextEdge.status = 'traversing';
     nextEdge.attempts += 1;
     nextEdge.lastAttemptAt = Date.now();
+    this.invalidateEdgeIndex(node.hash); // picked edge is no longer 'unvisited'
 
     this.recordEvent(
       'edge-explored',
@@ -226,6 +301,7 @@ export class StateGraphNavigator {
 
     edge.status = 'explored';
     edge.childHash = childHash;
+    this.invalidateEdgeIndex(fromHash);
 
     // Ensure the child node is recorded in the graph even if elements
     // haven't been scored yet (we may be mid-navigation)
@@ -247,8 +323,100 @@ export class StateGraphNavigator {
     if (!edge) return;
 
     edge.status = 'blocked';
+    this.invalidateEdgeIndex(fromHash);
     this.recordEvent('edge-blocked', fromHash, `Edge "${selector}" permanently blocked.`);
     this.checkNodeExhaustion(node);
+  }
+
+  /**
+   * Mark an edge as a confirmed cyclic loop — it leads back to an ancestor on
+   * the current breadcrumb path. Drives selection probability to 0 and blocks
+   * the edge permanently so the engine never re-attempts the loop, and emits a
+   * distinct 'cyclic-loop' event for the dashboard. Used by the engine's
+   * forward-lookahead (proactive anchor/url match) and reactive (post-click
+   * childHash ∈ ancestors) loop detection.
+   */
+  public markEdgeCyclic(fromHash: StateHash, selector: EdgeSelector): void {
+    const node = this.nodes.get(fromHash);
+    if (!node) return;
+
+    const edge = node.edges.get(selector);
+    if (!edge) return;
+
+    edge.score = 0;
+    edge.status = 'blocked';
+    this.invalidateEdgeIndex(fromHash);
+    this.recordEvent(
+      'cyclic-loop',
+      fromHash,
+      `Edge "${selector}" marked cyclic-loop (returns to a breadcrumb ancestor); score zeroed and blocked.`,
+    );
+    this.checkNodeExhaustion(node);
+  }
+
+  /**
+   * Hashes of the genuine ancestors on the current path — every breadcrumb
+   * frame EXCEPT the current top (where we are now). Returning to one of these
+   * is a backward loop.
+   */
+  public ancestorHashes(): StateHash[] {
+    return this.stack.slice(0, -1).map((f) => f.nodeHash);
+  }
+
+  /** URLs of the genuine ancestors on the current path (top frame excluded). */
+  public ancestorUrls(): string[] {
+    return this.stack.slice(0, -1).map((f) => f.url);
+  }
+
+  /** Whether `hash` is an ancestor on the current path (excludes the current node). */
+  public isAncestorHash(hash: StateHash): boolean {
+    for (let i = 0; i < this.stack.length - 1; i++) {
+      if (this.stack[i]?.nodeHash === hash) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Failure transition for a traversal that could not be verified (the click
+   * produced no new stable state, the element detached, or an overlay
+   * intercepted it). Implements retry-then-block:
+   *  - Below `unstableRetryLimit`: re-queue the edge as `unvisited` with a
+   *    score penalty so it can be retried later but is de-prioritised.
+   *  - At/above the limit: permanently `blocked`.
+   *
+   * Critically, this isolates a single flaky branch WITHOUT popping the stack
+   * or marking the node exhausted — so a broken edge never collapses the graph
+   * into a false `exhausted` state. The engine restores the parent locally and
+   * keeps exploring its remaining siblings.
+   */
+  public markEdgeUnstable(fromHash: StateHash, selector: EdgeSelector): void {
+    const node = this.nodes.get(fromHash);
+    if (!node) return;
+
+    const edge = node.edges.get(selector);
+    if (!edge) return;
+
+    edge.failedVerifications += 1;
+    this.invalidateEdgeIndex(fromHash);
+
+    if (edge.failedVerifications >= this.config.unstableRetryLimit) {
+      edge.status = 'blocked';
+      this.recordEvent(
+        'edge-blocked',
+        fromHash,
+        `Edge "${selector}" blocked after ${edge.failedVerifications} failed verifications.`,
+      );
+      this.checkNodeExhaustion(node);
+      return;
+    }
+
+    edge.status = 'unvisited';
+    edge.score *= this.config.unstablePenaltyFactor;
+    this.recordEvent(
+      'edge-unstable',
+      fromHash,
+      `Edge "${selector}" unstable (attempt ${edge.failedVerifications}/${this.config.unstableRetryLimit}); re-queued with penalty (score=${edge.score.toFixed(3)}).`,
+    );
   }
 
   /**
@@ -263,10 +431,11 @@ export class StateGraphNavigator {
     if (!node) return;
 
     for (const edge of node.edges.values()) {
-      if (edge.status === 'unvisited' || edge.status === 'in-flight') {
+      if (edge.status === 'unvisited' || edge.status === 'traversing') {
         edge.status = 'blocked';
       }
     }
+    this.invalidateEdgeIndex(frame.nodeHash);
 
     node.exhausted = true;
     this.recordEvent(
@@ -354,6 +523,7 @@ export class StateGraphNavigator {
           edge.status = 'blocked';
         }
       }
+      this.invalidateEdgeIndex(node.hash);
       node.exhausted = true;
       // Reset so the parent node gets a clean counter
       this.consecutiveRepeatCount = 0;
@@ -457,6 +627,7 @@ export class StateGraphNavigator {
     }
     if (oldest) {
       this.nodes.delete(oldest.hash);
+      this.edgeIndexCache.delete(oldest.hash);
       // Note: seenHashes intentionally keeps the hash so we never re-register it
     }
   }
@@ -465,6 +636,7 @@ export class StateGraphNavigator {
     for (const edge of node.edges.values()) {
       edge.status = 'blocked';
     }
+    this.invalidateEdgeIndex(node.hash);
     node.exhausted = true;
   }
 
@@ -484,8 +656,14 @@ export class StateGraphNavigator {
     for (const el of elements) {
       const existing = node.edges.get(el.selector);
       if (existing) {
-        // Always refresh score — perceptron may have updated weights
-        existing.score = el.score;
+        // Always refresh score — perceptron may have updated weights — but fold
+        // back any unstable penalty so a re-queued flaky edge stays
+        // de-prioritised instead of being reset to full score on every sync.
+        existing.score =
+          existing.failedVerifications > 0
+            ? el.score *
+              Math.pow(this.config.unstablePenaltyFactor, existing.failedVerifications)
+            : el.score;
       } else {
         const edge: GraphEdge = {
           selector: el.selector,
@@ -493,18 +671,21 @@ export class StateGraphNavigator {
           status: 'unvisited',
           childHash: null,
           attempts: 0,
+          failedVerifications: 0,
           lastAttemptAt: null,
         };
         node.edges.set(el.selector, edge);
       }
     }
+    // Scores/edges just changed — drop the cached argmax for this node.
+    this.invalidateEdgeIndex(node.hash);
     this.checkNodeExhaustion(node);
   }
 
   private checkNodeExhaustion(node: GraphNode): void {
     if (node.exhausted) return;
     const anyOpen = [...node.edges.values()].some(
-      (e) => e.status === 'unvisited' || e.status === 'in-flight',
+      (e) => e.status === 'unvisited' || e.status === 'traversing',
     );
     if (!anyOpen) {
       node.exhausted = true;
@@ -512,22 +693,80 @@ export class StateGraphNavigator {
   }
 
   /**
-     * Return the highest-scored unvisited edge on this node, or null if none.
-     * Uses explicit sorting by hybridScore (descending) for Best-First Search.
-     */
+   * Return the highest-scored unvisited edge on this node, or null if none.
+   * Best-First Search via a single linear argmax pass (no sort), backed by the
+   * per-node argmax cache (see scanUnvisited).
+   */
   private pickBestUnvisitedEdge(node: GraphNode): GraphEdge | null {
-    // Convert to array and sort by score descending (Best-First Search)
-    const unvisitedEdges = [...node.edges.values()].filter(
-      (e) => e.status === 'unvisited'
-    );
+    return this.scanUnvisited(node).best;
+  }
 
-    if (unvisitedEdges.length === 0) {
-      return null;
+  /**
+   * Single-pass Best-First scan: returns the highest-scored unvisited edge and
+   * its score in one linear traversal (argmax — no sort). Memoised per node in
+   * `edgeIndexCache`: a cache hit whose stored best is still 'unvisited' is
+   * returned directly; otherwise the node is rescanned and re-cached. Any edge
+   * add/score/status mutation invalidates the entry (invalidateEdgeIndex), so a
+   * hit is only taken when the node's edges have not changed since — which is
+   * exactly the case for parent nodes walked during backtracking (not re-scored
+   * this step).
+   */
+  private scanUnvisited(node: GraphNode): { best: GraphEdge | null; maxScore: number } {
+    const cached = this.edgeIndexCache.get(node.hash);
+    if (cached) {
+      if (cached.bestSelector === null) {
+        return { best: null, maxScore: 0 };
+      }
+      const cachedEdge = node.edges.get(cached.bestSelector);
+      if (cachedEdge && cachedEdge.status === 'unvisited') {
+        return { best: cachedEdge, maxScore: cachedEdge.score };
+      }
+      // Stale (edge mutated without invalidation) — fall through to rebuild.
     }
 
-    // Sort by score descending - highest scores first
-    unvisitedEdges.sort((a, b) => b.score - a.score);
-    return unvisitedEdges[0] ?? null;
+    let best: GraphEdge | null = null;
+    for (const edge of node.edges.values()) {
+      if (edge.status !== 'unvisited') continue;
+      if (best === null || edge.score > best.score) best = edge;
+    }
+
+    this.edgeIndexCache.set(node.hash, { bestSelector: best?.selector ?? null });
+    return { best, maxScore: best?.score ?? 0 };
+  }
+
+  /** Drop the cached argmax for a node after any edge add/score/status change. */
+  private invalidateEdgeIndex(hash: StateHash): void {
+    this.edgeIndexCache.delete(hash);
+  }
+
+  /** Push the current node's interactive-element density onto the rolling window. */
+  private trackDensity(density: number): void {
+    this.recentDensities.push(density);
+    if (this.recentDensities.length > this.config.boredomDensityWindow) {
+      this.recentDensities.shift();
+    }
+  }
+
+  /**
+   * Effective boredom threshold for this step. Scales the base threshold
+   * inversely with the rolling average node density:
+   *   dense  (avg > reference) → ratio < 1 → LOWER threshold (protect deep search)
+   *   flat   (avg < reference) → ratio > 1 → HIGHER threshold (leave faster)
+   * Clamped to [min, max]. Falls back to the static base when adaptation is off
+   * or no density samples exist yet.
+   */
+  private computeAdaptiveBoredomThreshold(): number {
+    if (!this.config.adaptiveBoredom || this.recentDensities.length === 0) {
+      return this.config.boredomThreshold;
+    }
+    const avg =
+      this.recentDensities.reduce((sum, d) => sum + d, 0) / this.recentDensities.length;
+    const adaptive =
+      this.config.boredomThreshold * (this.config.boredomReferenceDensity / Math.max(avg, 1));
+    return Math.min(
+      this.config.boredomThresholdMax,
+      Math.max(this.config.boredomThresholdMin, adaptive),
+    );
   }
 
   /**
@@ -550,51 +789,12 @@ export class StateGraphNavigator {
   }
 
   /**
-   * Check if the current DOM state has fallen below the boredom threshold.
-   * If the highest available hybridScore is below boredomThreshold, the page is considered
-   * "exhausted of interesting actions" and should trigger backtracking.
-   * 
-   * @param node The current graph node
-   * @returns true if boredom-triggered backtracking should occur
+   * The effective (adaptive) boredom threshold used for the most recent
+   * decision. Surfaced for engine telemetry/debugging so curiosity logging
+   * reflects the live adaptive value rather than the static base.
    */
-  private isBoredomTriggered(node: GraphNode): boolean {
-    const unvisitedEdges = [...node.edges.values()].filter(
-      (e) => e.status === 'unvisited'
-    );
-
-    if (unvisitedEdges.length === 0) {
-      return false; // No edges to judge - let other logic handle it
-    }
-
-    // Get the maximum score among unvisited edges
-    const maxScore = Math.max(...unvisitedEdges.map((e) => e.score));
-
-    // If highest score is below boredom threshold, trigger backtracking
-    return maxScore < this.config.boredomThreshold;
-  }
-
-  /**
-     * Get the current boredom threshold value.
-     * Useful for telemetry and debugging.
-     */
   public getBoredomThreshold(): number {
-    return this.config.boredomThreshold;
-  }
-
-  /**
-   * Get the maximum score among unvisited edges on a node.
-   * Useful for telemetry and debugging.
-   */
-  private getCurrentMaxScore(node: GraphNode): number {
-    const unvisitedEdges = [...node.edges.values()].filter(
-      (e) => e.status === 'unvisited'
-    );
-
-    if (unvisitedEdges.length === 0) {
-      return 0;
-    }
-
-    return Math.max(...unvisitedEdges.map((e) => e.score));
+    return this.currentBoredomThreshold;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -618,7 +818,7 @@ export class StateGraphNavigator {
     }
 
     // New frame — derive the arrivedViaEdge from the top frame's
-    // in-flight edge (if any), then push
+    // traversing edge (if any), then push
     const arrivedVia = this.resolveArrivedViaEdge();
 
     if (this.stack.length >= this.config.maxStackDepth) {
@@ -640,10 +840,10 @@ export class StateGraphNavigator {
     const node = this.nodes.get(top.nodeHash);
     if (!node) return null;
 
-    // Find the edge we most recently put 'in-flight'
+    // Find the edge we most recently put 'traversing'
     let candidate: GraphEdge | null = null;
     for (const edge of node.edges.values()) {
-      if (edge.status === 'in-flight') {
+      if (edge.status === 'traversing') {
         if (!candidate || (edge.lastAttemptAt ?? 0) > (candidate.lastAttemptAt ?? 0)) {
           candidate = edge;
         }
