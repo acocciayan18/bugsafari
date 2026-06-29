@@ -1,11 +1,87 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
-import { saveSessionToHistory } from '../../services/historyService';
+import { saveSessionToHistory, type SaveFindingPayload } from '../../services/historyService';
+import { mapIncidentStepsToPlaybook, mapForensicReportToPlaybook, type PlaybookStep } from '../../utils/semanticInstructionMapper';
+import { dedupeReportsAgainstIncidents } from '../../utils/errorDeduplication';
 import { useAuth } from '../../context/AuthContext';
 
 // 👈 Unified Test Session Status Type for visibility matrix
 export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED';
+
+// ── Live → History parity helpers ───────────────────────────────────────────
+// Serialize a playbook into a sequentially numbered, human-readable checklist,
+// matching exactly what the live Error Tab renders.
+function formatChecklist(steps: PlaybookStep[]): string[] {
+  return steps.map((s) => `Step ${s.stepNumber}: ${s.instruction}`);
+}
+
+// Templated remediation snippet (diagnostic-layer placeholder) — clean & copyable.
+function generateSuggestedFix(type: string, reason: string, statusCode?: number): string {
+  if (type === 'NETWORK') {
+    return [
+      `// Suggested remediation — ${statusCode ?? 'network'} failure`,
+      `// 1. Verify endpoint health / response for: ${reason}`,
+      `// 2. Add retry with backoff and a user-facing error state`,
+      `// 3. Guard the call site against null / timeout responses`,
+    ].join('\n');
+  }
+  return [
+    `// Suggested remediation — runtime exception`,
+    `// 1. Reproduce via the checklist above`,
+    `// 2. Wrap the failing operation in try/catch; add a null guard before: ${reason}`,
+    `// 3. Add a regression test asserting the element/handler stays stable`,
+  ].join('\n');
+}
+
+function classifyFinding(statusCode?: number): string {
+  return typeof statusCode === 'number' && statusCode >= 400 ? 'NETWORK' : 'EXCEPTION';
+}
+
+// Build the complete, uncompressed findings array from the exact incidents and
+// crash reports the operator saw live — no dedup, no filter, no truncation.
+function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
+  const fromIncidents: SaveFindingPayload[] = incidents.map((inc, i) => {
+    const checklist = inc.reproductionPlaybook && inc.reproductionPlaybook.length > 0
+      ? inc.reproductionPlaybook
+      : formatChecklist(mapIncidentStepsToPlaybook(inc.steps));
+    const type = classifyFinding(inc.statusCode);
+    return {
+      bugId: `incident-${i + 1}`,
+      type,
+      message: inc.reason,
+      selector: '',
+      payloadUsed: '',
+      stackTrace: inc.stackTrace ?? '',
+      reproductionSteps: checklist,
+      advice: generateSuggestedFix(type, inc.reason, inc.statusCode),
+      timestamp: inc.timestamp,
+    };
+  });
+
+  // Drop crash reports that mirror an incident so the transferred findings match
+  // the de-duplicated live Errors Tab (one slot per fault).
+  const uniqueReports = dedupeReportsAgainstIncidents(incidents, reports);
+  const fromReports: SaveFindingPayload[] = uniqueReports.map((rep, i) => {
+    const checklist = rep.reproductionPlaybook && rep.reproductionPlaybook.length > 0
+      ? rep.reproductionPlaybook
+      : formatChecklist(mapForensicReportToPlaybook(rep));
+    const type = classifyFinding(rep.statusCode);
+    return {
+      bugId: `report-${i + 1}`,
+      type,
+      message: rep.reason,
+      selector: '',
+      payloadUsed: '',
+      stackTrace: rep.stackTrace ?? '',
+      reproductionSteps: checklist,
+      advice: generateSuggestedFix(type, rep.reason, rep.statusCode),
+      timestamp: rep.timestamp,
+    };
+  });
+
+  return [...fromIncidents, ...fromReports];
+}
 
 export interface DashboardState {
   isConnected: boolean;
@@ -321,8 +397,11 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
     setIsSavingSession(true);
     try {
       const runtimeUrl = currentUrl || inputTargetUrl;
+      // Transfer the exact live findings (incidents + crash reports) so saved
+      // history mirrors the Error Tab with 100% parity.
+      const liveFindings = buildLiveFindings(incidents, reports);
       // Save now requires authentication (throws 403 for guests)
-      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs });
+      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs, findings: liveFindings });
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,

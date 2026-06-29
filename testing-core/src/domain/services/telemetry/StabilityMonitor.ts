@@ -61,6 +61,36 @@ export function sanitizeException(error: Error | string): { message: string; sta
 }
 
 /**
+ * Generate a clean, copyable remediation snippet (the diagnostic-layer
+ * `suggestedFix` placeholder) for a confirmed finding.
+ */
+export function buildRemediation(type: string, reason: string): string {
+  if (type === 'NETWORK') {
+    return [
+      `// Suggested remediation — network/server fault`,
+      `// 1. Verify endpoint health and response for: ${reason}`,
+      `// 2. Add retry with backoff plus a user-facing error state`,
+      `// 3. Guard the call site against null / timeout responses`,
+    ].join('\n');
+  }
+  return [
+    `// Suggested remediation — runtime exception`,
+    `// 1. Reproduce via the replication checklist above`,
+    `// 2. Wrap the failing operation in try/catch; add a null guard before: ${reason}`,
+    `// 3. Add a regression test asserting the element/handler stays stable`,
+  ].join('\n');
+}
+
+// Monotonic sequence guaranteeing every confirmed-bug id is unique even when
+// many errors fire within the same millisecond — required so identity-only
+// dedup retains every distinct instance instead of merging same-timestamp ones.
+let confirmedBugSeq = 0;
+function nextBugSeq(): number {
+  confirmedBugSeq += 1;
+  return confirmedBugSeq;
+}
+
+/**
  * Checks if the error is a browser/context closed error that occurs when operator
  * manually stops the test. These should be treated as graceful shutdown, not fatal errors.
  * Playwright throws "Target page, context or browser has been closed" when browser closes
@@ -129,6 +159,9 @@ export class StabilityMonitor {
       // Freeze the rolling buffer and flush the active scenario's deliberate steps
       // (falling back to the rolling action log) at the exact moment of the crash.
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // One remediation string, bound identically to the live reports and the
+      // saved confirmed bug so the dashboard's Suggested Fix matches history.
+      const remediation = buildRemediation('EXCEPTION', message);
       this.deps.setFreeze();
 
       t.emit('EXCEPTION', {
@@ -144,6 +177,7 @@ export class StabilityMonitor {
         stackTrace,
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
         reproductionPlaybook,
+        advice: remediation,
       });
 
       t.gateway.emitForensicReport({
@@ -153,6 +187,7 @@ export class StabilityMonitor {
         stackTrace,
         breadcrumbs,
         reproductionPlaybook,
+        advice: remediation,
       });
 
       // Persist error to forensic_errors database (Phase 2: Error Logging System)
@@ -162,6 +197,21 @@ export class StabilityMonitor {
         message: `🔴 Unhandled JS Exception: ${message}`,
         stackTrace,
         url,
+      });
+
+      // CRITICAL: register the exception into confirmed-bug memory so the saved
+      // history mirrors the live Errors Tab. Previously only HTTP/network faults
+      // were registered, so JS exceptions silently vanished from saved history.
+      this.deps.registerConfirmedBug({
+        bugId: `js-exception-${timestamp}-${nextBugSeq()}`,
+        type: 'EXCEPTION',
+        message: `Unhandled JS Exception: ${message}`,
+        selector: '',
+        payloadUsed: '',
+        advice: remediation,
+        stackTrace,
+        reproductionSteps: reproductionPlaybook,
+        timestamp: new Date(timestamp),
       });
     });
 
@@ -185,6 +235,9 @@ export class StabilityMonitor {
       // Freeze the rolling buffer and flush the active scenario's deliberate steps
       // (falling back to the rolling action log) at the exact moment of the crash.
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // One remediation string, bound identically to the live reports and the
+      // saved confirmed bug (see the pageerror handler).
+      const remediation = buildRemediation('EXCEPTION', text);
       this.deps.setFreeze();
 
       t.emit('EXCEPTION', {
@@ -200,6 +253,7 @@ export class StabilityMonitor {
         stackTrace: text,
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
         reproductionPlaybook,
+        advice: remediation,
       });
 
       t.gateway.emitForensicReport({
@@ -209,6 +263,7 @@ export class StabilityMonitor {
         stackTrace: text,
         breadcrumbs,
         reproductionPlaybook,
+        advice: remediation,
       });
 
       // Persist console error to forensic_errors database (Phase 2: Error Logging System)
@@ -218,6 +273,20 @@ export class StabilityMonitor {
         message: `🔴 Console Error: ${text}`,
         stackTrace: text,
         url,
+      });
+
+      // CRITICAL: register the console error into confirmed-bug memory too, so
+      // saved history retains every error the live Errors Tab displayed.
+      this.deps.registerConfirmedBug({
+        bugId: `console-error-${timestamp}-${nextBugSeq()}`,
+        type: 'EXCEPTION',
+        message: `Console Error: ${text}`,
+        selector: '',
+        payloadUsed: '',
+        advice: remediation,
+        stackTrace: text,
+        reproductionSteps: reproductionPlaybook,
+        timestamp: new Date(timestamp),
       });
     });
   }
@@ -263,12 +332,19 @@ export class StabilityMonitor {
         // Phase 3: Track failed requests count
         this.deps.onApiFailure();
 
+        // One immutable snapshot, frozen at the moment this response failed, bound
+        // identically to the live telemetry and the saved confirmed bug. Reading
+        // the global rolling buffer twice (once per consumer) risks the live card
+        // and the stored record diverging if an action lands between the reads.
+        const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+        const remediation = buildRemediation('NETWORK', `HTTP ${status} ${method} ${url}`);
+
         t.emit('NETWORK', {
           statusCode: status,
           url,
           method,
           message: `Network ${status} ${method} ${url}`,
-          reproductionSteps: ActiveScenarioTracker.flushPlaybook(),
+          reproductionSteps: reproductionPlaybook,
         });
 
         // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
@@ -284,14 +360,18 @@ export class StabilityMonitor {
           responseText: bodyContent.slice(0, 500),
         });
 
-        // NEW: Register HTTP error bug to memory
+        // Register HTTP error bug to memory — one distinct instance PER failing
+        // response (unique sequenced id), enriched with the stack/body, the
+        // replication checklist, and a copyable suggested fix for the drawer.
         this.deps.registerConfirmedBug({
-          bugId: `http-${status}-${Date.now()}`,
+          bugId: `http-${status}-${Date.now()}-${nextBugSeq()}`,
           type: 'NETWORK',
           message: `HTTP ${status} Error: ${method} ${url}`,
           selector: '',
           payloadUsed: method,
-          advice: `HTTP ${status} indicates server or network issue. Check backend.`,
+          advice: remediation,
+          stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+          reproductionSteps: reproductionPlaybook,
           timestamp: new Date(),
         });
       }
@@ -325,6 +405,9 @@ export class StabilityMonitor {
 
       // Process as EXCEPTION for real network failures
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // One remediation string, bound identically to the live reports and the
+      // saved confirmed bug (see the pageerror handler).
+      const remediation = buildRemediation('NETWORK', `${method} ${url} - ${reason}`);
 
       t.emit('EXCEPTION', {
         url,
@@ -340,6 +423,7 @@ export class StabilityMonitor {
         stackTrace: `${method} ${url} - ${reason}`,
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
         reproductionPlaybook,
+        advice: remediation,
       });
 
       t.gateway.emitForensicReport({
@@ -349,6 +433,7 @@ export class StabilityMonitor {
         stackTrace: `${method} ${url} - ${reason}`,
         breadcrumbs,
         reproductionPlaybook,
+        advice: remediation,
       });
 
       // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
@@ -362,14 +447,17 @@ export class StabilityMonitor {
         method,
       });
 
-      // NEW: Register network failure bug to memory
+      // Register network failure bug to memory — one distinct instance per
+      // failed request (unique sequenced id), with stack/checklist/suggested fix.
       this.deps.registerConfirmedBug({
-        bugId: `network-failed-${Date.now()}`,
+        bugId: `network-failed-${Date.now()}-${nextBugSeq()}`,
         type: 'NETWORK',
         message: `Network Request Failed: ${reason}`,
         selector: '',
         payloadUsed: method,
-        advice: 'Check network connectivity and server availability.',
+        advice: remediation,
+        stackTrace: `${method} ${url} - ${reason}`,
+        reproductionSteps: reproductionPlaybook,
         timestamp: new Date(),
       });
     });

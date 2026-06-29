@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import type { IncidentReport, ForensicCrashReport, IntelligentDiagnosis } from '../../types';
-import { mapForensicReportToPlaybook, mapIncidentStepsToPlaybook } from '../../utils/semanticInstructionMapper';
+import { dedupeReportsAgainstIncidents } from '../../utils/errorDeduplication';
 import ReproductionChecklist from './ReproductionChecklist';
 
 // ─────────────────────────────────────────────────────────────
@@ -157,21 +157,43 @@ const AiForensicDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) =
 };
 
 /**
- * Resolve the ordered, human-readable reproduction steps for an error entry.
- * Priority: pre-generated backend playbook → frontend fallback mapper → none.
+ * Bind directly to the frozen, backend-narrated reproduction playbook attached to
+ * this finding. No fallback recompilation from raw steps/breadcrumbs — the steps
+ * shown live are exactly the steps captured at the moment of the fault and saved
+ * to history.
  */
-const resolveIncidentPlaybook = (incident: IncidentReport): string[] => {
-  if (incident.reproductionPlaybook && incident.reproductionPlaybook.length > 0) {
-    return incident.reproductionPlaybook;
+const ReproductionSection = ({ steps }: { steps: string[] | undefined }) => {
+  if (steps && steps.length > 0) {
+    return <ReproductionChecklist steps={steps} />;
   }
-  return mapIncidentStepsToPlaybook(incident.steps).map((s) => `Step ${s.stepNumber}. ${s.instruction}`);
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+      No deterministic steps were recorded for this fault.
+    </div>
+  );
 };
 
-const resolveReportPlaybook = (report: ForensicCrashReport): string[] => {
-  if (report.reproductionPlaybook && report.reproductionPlaybook.length > 0) {
-    return report.reproductionPlaybook;
+/**
+ * Per-finding remediation, bound directly to `finding.advice` (the buildRemediation
+ * output also persisted on the saved confirmed bug). Rendered as a copyable code
+ * block so the live Suggested Fix is identical to the one in Test History.
+ */
+const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) => {
+  if (!advice) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+        No remediation advisory generated for this fault.
+      </div>
+    );
   }
-  return mapForensicReportToPlaybook(report).map((s) => `Step ${s.stepNumber}. ${s.instruction}`);
+  return (
+    <div className="relative rounded-md border border-emerald-700 bg-slate-900 p-3 shadow-sm">
+      <div className="absolute right-2 top-2">
+        <CopyButton text={advice} label="Suggested Fix" />
+      </div>
+      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-emerald-300">{advice}</pre>
+    </div>
+  );
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -184,7 +206,10 @@ export default function ErrorTabPanel({
   const [expandedStackTrace, setExpandedStackTrace] = useState<Record<string, boolean>>({});
 
   const errorIncidents = errors?.incidents ?? [];
-  const errorReports = errors?.reports ?? [];
+  // A JS exception / console error arrives as BOTH an incident and a crash
+  // report; render the incident once and suppress the mirrored report so each
+  // fault is a single card (matching the engine's confirmed-bug count).
+  const errorReports = dedupeReportsAgainstIncidents(errorIncidents, errors?.reports ?? []);
 
   return (
     <div className="space-y-4 p-2">
@@ -200,7 +225,6 @@ export default function ErrorTabPanel({
 
             // 🧠 Safely lookup the context of AI diagnostic fields embedded in incidents
             const aiDiagnostics = (incident as any).aiDiagnostics;
-            const playbook = resolveIncidentPlaybook(incident);
 
             return (
               <div
@@ -243,7 +267,13 @@ export default function ErrorTabPanel({
 
                 {/* 🧭 Human-executable reproduction steps for this incident */}
                 <div className="px-4 pt-3">
-                  <ReproductionChecklist steps={playbook} />
+                  <ReproductionSection steps={incident.reproductionPlaybook} />
+                </div>
+
+                {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
+                <div className="px-4 pt-3">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+                  <SuggestedFixBlock advice={incident.advice} />
                 </div>
 
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
@@ -251,7 +281,7 @@ export default function ErrorTabPanel({
                     {incident.reason}
                   </div>
 
-                  {/* 🧠 Enforcing visibility of the structural remediation fix card inside error logs */}
+                  {/* 🧠 Optional AI enrichment (CWE/severity) when present — additive */}
                   <AiForensicDiagnosticCard ai={aiDiagnostics} />
                 </div>
 
@@ -274,7 +304,6 @@ export default function ErrorTabPanel({
             const metadata = extractErrorMetadata(report);
             const isExpanded = expandedStackTrace[reportKey];
             const aiDiagnostics = (report as any).aiDiagnostics;
-            const playbook = resolveReportPlaybook(report);
 
             return (
               <div
@@ -317,7 +346,13 @@ export default function ErrorTabPanel({
 
                 {/* 🧭 Human-executable reproduction steps for this crash report */}
                 <div className="px-4 pt-3">
-                  <ReproductionChecklist steps={playbook} />
+                  <ReproductionSection steps={report.reproductionPlaybook} />
+                </div>
+
+                {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
+                <div className="px-4 pt-3">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+                  <SuggestedFixBlock advice={report.advice} />
                 </div>
 
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">

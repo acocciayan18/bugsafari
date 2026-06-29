@@ -23,40 +23,26 @@ function toObjectId(id: string): Types.ObjectId | null {
 }
 
 /**
- * Bug filtering constants - must match BugClassifier.ts exactly
- * Note: Inlined for module resolution compatibility
+ * Telemetry that is never a finding (pure instrumentation, not an error).
  */
 const NON_BUG_TYPES = ['ACTION', 'HEURISTIC_SCORE'] as const;
-const VALID_BUG_TYPES = new Set(['EXCEPTION', 'RUNTIME_UI_FREEZE', 'SESSION_SYNC_FAULT', 'NETWORK']);
-const CRITICAL_NETWORK_STRINGS = ['server collapse', 'system lock-up', 'exception', 'fatal', 'crash'];
 
 /**
- * Check if a finding is an actual bug (inlined from BugClassifier)
+ * 100% retention policy: every real finding is persisted. Only pure non-bug
+ * telemetry (ACTION / HEURISTIC_SCORE) is skipped. Runtime exceptions, console
+ * and server-side rejections, and ALL network faults (no longer gated on a
+ * >= 400 status code or "critical string" allow-list) are retained so saved
+ * history mirrors the live Errors Tab exactly — no over-aggressive filtering.
  */
-function shouldSaveFinding(type: string, meta?: TelemetryMeta): boolean {
+function shouldSaveFinding(type: string, _meta?: TelemetryMeta): boolean {
   const bugType = type?.toUpperCase();
 
-  // Skip non-bug types
   if (bugType && NON_BUG_TYPES.includes(bugType as typeof NON_BUG_TYPES[number])) {
     return false;
   }
 
-  // For NETWORK type, only save if status >= 400 or has critical strings
-  if (bugType === 'NETWORK') {
-    const statusCode = meta?.statusCode ?? meta?.status;
-    if (typeof statusCode === 'number' && statusCode >= 400) {
-      return true;
-    }
-    const message = meta?.message?.toLowerCase() ?? '';
-    const hasCriticalString = CRITICAL_NETWORK_STRINGS.some(critical => message.includes(critical.toLowerCase()));
-    if (hasCriticalString) {
-      return true;
-    }
-    return false;
-  }
-
-  // Include only valid bug types
-  return Boolean(bugType && VALID_BUG_TYPES.has(bugType));
+  // Retain every other finding type, known or novel — nothing is truncated.
+  return Boolean(bugType);
 }
 
 

@@ -225,11 +225,14 @@ export function registerRoutes(
     const ownerType = 'authenticated';
 
     try {
-      // SECURITY: Sanitize targetUrl to prevent NoSQL injection
-      const targetUrl = sanitizeTargetUrl(request.body?.targetUrl);
-      console.log('[API] Target URL to save:', targetUrl);
+      // SECURITY: Sanitize both URLs to prevent NoSQL injection.
+      // Bug A fix: anchor the session header to the baseline *input* URL
+      // (initialUrl) rather than the runtime sub-route captured at save time.
+      // Older clients that don't send initialUrl fall back to targetUrl.
+      const baseUrl = sanitizeTargetUrl(request.body?.initialUrl) ?? sanitizeTargetUrl(request.body?.targetUrl);
+      console.log('[API] Base target URL to save:', baseUrl);
 
-      if (!targetUrl) {
+      if (!baseUrl) {
         console.warn('[API] No targetUrl provided in request body or invalid format');
         response.status(400).json({ error: 'targetUrl is required and must be a valid URL.' });
         return;
@@ -239,8 +242,29 @@ export function registerRoutes(
         ? request.body.elapsedTimeMs as number
         : undefined;
 
+      // Parity fix: accept the complete, uncompressed findings array transferred
+      // from the live dashboard Error Tab and pass it straight through. No
+      // dedup/filter/slice here — every finding is preserved.
+      const rawFindings: unknown = request.body?.findings;
+      const clientFindings = (Array.isArray(rawFindings) ? rawFindings : [])
+        .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
+        .map((f) => ({
+          bugId: typeof f.bugId === 'string' ? f.bugId : undefined,
+          type: typeof f.type === 'string' ? f.type : undefined,
+          message: typeof f.message === 'string' ? f.message : undefined,
+          selector: typeof f.selector === 'string' ? f.selector : undefined,
+          payloadUsed: typeof f.payloadUsed === 'string' ? f.payloadUsed : undefined,
+          advice: typeof f.advice === 'string' ? f.advice : undefined,
+          stackTrace: typeof f.stackTrace === 'string' ? f.stackTrace : undefined,
+          reproductionSteps: Array.isArray(f.reproductionSteps)
+            ? f.reproductionSteps.filter((s): s is string => typeof s === 'string')
+            : undefined,
+          timestamp: typeof f.timestamp === 'string' ? f.timestamp : undefined,
+        }));
+      console.log(`[API] Transferred live findings count: ${clientFindings.length}`);
+
       // Call manualSaveToHistory to save to sessions collection
-      const result = await useCase.manualSaveToHistory(targetUrl, userId, { ownerType, elapsedTimeMs });
+      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, clientFindings });
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);

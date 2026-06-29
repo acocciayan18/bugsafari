@@ -32,6 +32,10 @@ export interface IncidentReport {
   steps: ActionRecord[];
   // Pre-generated sequential narrative steps for human reproduction
   reproductionPlaybook?: string[];
+  // Per-finding remediation (buildRemediation output) — identical to the value
+  // saved on the matching confirmed bug, so the live card and history card show
+  // the same Suggested Fix.
+  advice?: string;
 }
 
 export interface ForensicCrashReport {
@@ -43,4 +47,6 @@ export interface ForensicCrashReport {
   breadcrumbs: ActionBreadcrumb[];
   // Pre-generated sequential narrative steps for human reproduction
   reproductionPlaybook?: string[];
+  // Per-finding remediation (buildRemediation output) — see IncidentReport.advice.
+  advice?: string;
 }

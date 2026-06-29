@@ -31,29 +31,6 @@ export const ReproducibleSteps: React.FC<ReproducibleStepsProps> = ({ steps, fin
 
     const hasFindings = hasValidFindings(findings);
 
-    // Phase Grouping: Group sequential identical steps into "Phases"
-    const groupedPhases = steps.reduce((acc: any[], rawStep, index) => {
-        const { formattedText, originalStepNumber, title } = parseAndFormatStep(rawStep);
-
-        const lastPhase = acc[acc.length - 1];
-
-        // If same title and formattedText, increment count
-        if (lastPhase && lastPhase.title === title && lastPhase.formattedText === formattedText) {
-            lastPhase.count += 1;
-            lastPhase.stepNumbers.push(originalStepNumber || index + 1);
-            return acc;
-        }
-
-        // New phase starts
-        return acc.concat([{
-            title,
-            formattedText,
-            originalStepNumber: originalStepNumber || index + 1,
-            count: 1,
-            stepNumbers: [originalStepNumber || index + 1]
-        }]);
-    }, []);
-
     // Vite Network Filter: Drop NETWORK bugs with Vite noise unless it's a real server collapse
     const filteredFindings = findings ? findings.filter(bug => {
         const msg = bug.message || "";
@@ -69,28 +46,10 @@ export const ReproducibleSteps: React.FC<ReproducibleStepsProps> = ({ steps, fin
         return true;
     }) : [];
 
-    // Smarter grouping: Group filtered findings by TYPE + first 30 chars of message
-    const uniqueFindings = filteredFindings.length > 0 ? filteredFindings.reduce((acc: any[], current: any) => {
-        const typeMatch = current.type || "UNKNOWN";
-        const messageSnippet = current.message ? current.message.substring(0, 30) : "";
-
-        const existing = acc.find(item =>
-            (item.type || "UNKNOWN") === typeMatch &&
-            (item.message || "").substring(0, 30) === messageSnippet
-        );
-
-        if (!existing) {
-            return acc.concat([{ ...current, duplicateCount: 1 }]);
-        } else {
-            existing.duplicateCount += 1;
-            return acc;
-        }
-    }, []) : [];
-
     console.log('[ReproducibleSteps] Rendering with:', {
         stepsCount: steps.length,
         findingsCount: findings?.length ?? 0,
-        uniqueFindingsCount: uniqueFindings?.length ?? 0,
+        filteredFindingsCount: filteredFindings.length,
         hasFindings,
         firstFinding: hasFindings ? findings?.[0] : null
     });
@@ -102,26 +61,25 @@ export const ReproducibleSteps: React.FC<ReproducibleStepsProps> = ({ steps, fin
             </h3>
 
             <div className="relative border-l-2 border-slate-200 ml-3">
-                {/* Render grouped phases instead of individual steps */}
-                {groupedPhases.map((phase, pIdx) => (
-                    <div key={`phase-${pIdx}`} className="mb-6 relative pl-6">
-                        <div className="absolute w-3 h-3 bg-slate-800 rounded-full -left-[7px] top-1 ring-4 ring-white"></div>
-                        <div className="flex flex-col">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-bold text-slate-400">PHASE {pIdx + 1}</span>
-                                <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase">{phase.title}</span>
-                                {phase.count > 1 && (
-                                    <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded">
-                                        Executed {phase.count}x
-                                    </span>
-                                )}
+                {/* Render each step individually under a unified "Step X." header */}
+                {steps.map((rawStep, index) => {
+                    const { formattedText, originalStepNumber, title } = parseAndFormatStep(rawStep);
+                    const stepNumber = originalStepNumber || index + 1;
+                    return (
+                        <div key={`step-${index}`} className="mb-6 relative pl-6">
+                            <div className="absolute w-3 h-3 bg-slate-800 rounded-full -left-[7px] top-1 ring-4 ring-white"></div>
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-bold text-slate-400">Step {stepNumber}.</span>
+                                    <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase">{title}</span>
+                                </div>
+                                <p className="text-slate-700 text-sm bg-slate-50 border border-slate-200 p-3 rounded-md shadow-sm">
+                                    {formattedText}
+                                </p>
                             </div>
-                            <p className="text-slate-700 text-sm bg-slate-50 border border-slate-200 p-3 rounded-md shadow-sm">
-                                {phase.formattedText}
-                            </p>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
 
                 {/* ALWAYS Render - Vulnerabilities Triggered Section */}
                 {/* This renders after all steps if findings exist, or shows fallback */}
@@ -136,18 +94,13 @@ export const ReproducibleSteps: React.FC<ReproducibleStepsProps> = ({ steps, fin
                             </h4>
 
                             <div className="flex flex-col gap-4">
-                                {uniqueFindings.map((bug, bIdx) => (
+                                {filteredFindings.map((bug, bIdx) => (
                                     <div key={`bug-${bIdx}`} className="border-2 border-red-200 bg-red-50 p-4 rounded-md shadow-sm">
                                         <div className="flex items-center gap-2 mb-2 border-b border-red-100 pb-2">
                                             <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
                                                 {bug.type || "CRITICAL ERROR"}
                                             </span>
                                             <span className="text-xs text-red-400 font-mono">ID: {bug.bugId || "Unknown"}</span>
-                                            {bug.duplicateCount && bug.duplicateCount > 1 && (
-                                                <span className="bg-slate-200 text-slate-700 text-xs font-bold px-2 py-1 rounded ml-2">
-                                                    Occurred {bug.duplicateCount} times
-                                                </span>
-                                            )}
                                         </div>
 
                                         <p className="text-sm text-slate-800 mb-3 font-semibold">

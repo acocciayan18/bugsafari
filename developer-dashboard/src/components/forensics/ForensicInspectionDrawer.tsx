@@ -23,8 +23,6 @@ interface ForensicInspectionDrawerProps {
   onClose: () => void;
 }
 
-type DrawerTab = 'timeline' | 'exceptions' | 'recommendations';
-
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
@@ -89,10 +87,12 @@ function deriveCategory(
 }
 
 // Build a clean markdown reproduction playbook ready to paste into a ticket.
+// Composed from the SAME per-finding failures rendered as cards, so the copied
+// snippet mirrors the on-screen content exactly (each fault, its own frozen
+// reproduction steps, and its own Suggested Fix).
 function buildReproductionMarkdown(report: ForensicReportResponse): string {
-  const bugs = report.forensicTrace?.caughtBugs ?? [];
-  const steps = report.actionSteps ?? [];
-  const actionCount = report.metrics?.totalActions || steps.length || 0;
+  const failures = buildFailures(report);
+  const actionCount = report.metrics?.totalActions || report.actionSteps?.length || 0;
 
   const lines: string[] = [
     '## 🦁 BugSafari Reproduction Playbook',
@@ -102,30 +102,30 @@ function buildReproductionMarkdown(report: ForensicReportResponse): string {
     '',
   ];
 
-  if (steps.length > 0) {
-    lines.push('### Steps to Reproduce');
-    steps.forEach((step, idx) => {
-      const category = deriveCategory(step, bugs, idx === steps.length - 1, report.status);
-      const target = step.selector || '(unknown target)';
-      let line = `${idx + 1}. **${CATEGORY_STYLE[category].verb}** \`${target}\``;
-      if (step.payloadText) line += ` — payload: \`${step.payloadText}\``;
-      lines.push(line);
-    });
-    lines.push('');
-  } else if (report.forensicTrace?.finalBreadcrumbSteps?.length) {
-    lines.push('### Steps to Reproduce');
-    report.forensicTrace.finalBreadcrumbSteps.forEach((s, idx) => lines.push(`${idx + 1}. ${s}`));
-    lines.push('');
+  if (failures.length === 0) {
+    lines.push('_Session completed without captured faults._', '');
+    return lines.join('\n');
   }
 
-  if (bugs.length > 0) {
-    lines.push('### Vulnerabilities Triggered');
-    bugs.forEach((bug) => {
-      const sel = bug.selector ? ` (\`${bug.selector}\`)` : '';
-      lines.push(`- **${bug.type || 'BUG'}** — ${bug.message || 'No message'}${sel}`);
-    });
-    lines.push('');
-  }
+  failures.forEach((failure, idx) => {
+    const sel = failure.selector ? ` (\`${failure.selector}\`)` : '';
+    lines.push(`### Failure #${idx + 1} — ${failure.type || 'FAILURE'}`);
+    lines.push(`${failure.message || 'No message'}${sel}`, '');
+
+    const steps = failure.reproductionSteps ?? [];
+    if (steps.length > 0) {
+      lines.push('**Steps to Reproduce**');
+      steps.forEach((step, sIdx) => {
+        // Normalize any pre-existing "Step N." prefix so numbering stays sequential.
+        lines.push(`${sIdx + 1}. ${step.replace(/^step\s*\d+[:.]\s*/i, '')}`);
+      });
+      lines.push('');
+    }
+
+    if (failure.advice) {
+      lines.push('**Suggested Fix**', '```', failure.advice, '```', '');
+    }
+  });
 
   return lines.join('\n');
 }
@@ -192,75 +192,218 @@ function CopyButton({ text, label, className }: { text: string; label?: string; 
   );
 }
 
-const TIMELINE_FILTERS: Array<{ id: 'all' | 'bypass' | 'input' | 'crash'; label: string; activeClass: string }> = [
-  { id: 'all',    label: 'All Steps',       activeClass: 'bg-slate-900 text-white' },
-  { id: 'bypass', label: 'Bypasses Only',   activeClass: 'bg-amber-500 text-white' },
-  { id: 'input',  label: 'Injections Only', activeClass: 'bg-cyan-500 text-white' },
-  { id: 'crash',  label: 'Crashes Only',    activeClass: 'bg-red-600 text-white' },
-];
+type StepFilter = 'all' | 'bypass' | 'input' | 'crash';
 
-function TimelineTab({ actionSteps, report }: { actionSteps: ForensicActionStep[]; report: ForensicReportResponse }) {
-  const [filter, setFilter] = useState<'all' | 'bypass' | 'input' | 'crash'>('all');
-
-  // Categorize every step once, then derive per-category counts for the pills.
-  const categorized = useMemo(() => {
-    const bugs = report.forensicTrace?.caughtBugs ?? [];
-    return actionSteps.map((step, idx) => ({
-      step,
-      category: deriveCategory(step, bugs, idx === actionSteps.length - 1, report.status),
-    }));
-  }, [actionSteps, report.forensicTrace?.caughtBugs, report.status]);
-
-  const counts = useMemo(() => {
-    const c: Record<'all' | 'bypass' | 'input' | 'crash', number> = { all: categorized.length, bypass: 0, input: 0, crash: 0 };
-    categorized.forEach(({ category }) => {
-      if (category === 'bypass') c.bypass++;
-      else if (category === 'input') c.input++;
-      else if (category === 'crash') c.crash++;
-    });
-    return c;
-  }, [categorized]);
-
-  // Prefer the structured actionSteps. Fall back to the human-readable
-  // breadcrumb strings for older sessions that predate it.
-  if (!actionSteps || actionSteps.length === 0) {
-    if (report.forensicTrace?.finalBreadcrumbSteps?.length) {
-      return (
-        <ReproducibleSteps
-          steps={report.forensicTrace.finalBreadcrumbSteps}
-          findings={report.forensicTrace.caughtBugs}
-        />
-      );
-    }
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-        <span className="text-3xl">🧭</span>
-        <span className="text-sm font-medium text-slate-600">No action trail recorded</span>
-        <span className="text-xs text-slate-400">This session ended before any steps were captured.</span>
-      </div>
-    );
-  }
-
+// The unified, category-colored "Step X." reproduction trail. Shared by every
+// failure card and the clean-run card, honoring the active category filter.
+function PlaybookStepList({ actionSteps, report, filter }: { actionSteps: ForensicActionStep[]; report: ForensicReportResponse; filter: StepFilter }) {
+  const bugs = report.forensicTrace?.caughtBugs ?? [];
+  const categorized = actionSteps.map((step, idx) => ({
+    step,
+    category: deriveCategory(step, bugs, idx === actionSteps.length - 1, report.status),
+  }));
   const visible = filter === 'all' ? categorized : categorized.filter((c) => c.category === filter);
 
+  if (visible.length === 0) {
+    return <div className="py-6 text-center text-xs text-slate-400">No steps in this category.</div>;
+  }
+
   return (
-    <div>
-      {/* QoL toolbar — category filter pills + copy reproduction snippet */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1 rounded-md bg-slate-100 p-1">
-          {TIMELINE_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilter(f.id)}
-              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f.id ? f.activeClass : 'text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {f.label} · {counts[f.id]}
-            </button>
-          ))}
+    <ol className="relative ml-3 border-l-2 border-slate-200">
+      {visible.map(({ step, category }) => {
+        const style = CATEGORY_STYLE[category];
+        return (
+          <li key={step.stepNumber} className="relative mb-4 pl-6">
+            <span className={`absolute -left-[9px] top-1 flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white ring-4 ring-white ${style.dot}`}>
+              {step.stepNumber}
+            </span>
+            <div className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-400">Step {step.stepNumber}.</span>
+                <span className="text-sm">{style.icon}</span>
+                <span className="text-sm font-semibold text-slate-800">{style.verb}</span>
+                <span className="font-mono text-xs text-slate-700">{step.selector || '(unknown target)'}</span>
+                <span className={`ml-auto rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${style.badge}`}>
+                  {style.label}
+                </span>
+              </div>
+              {step.payloadText && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Payload</span>
+                  <code className="max-w-full truncate rounded bg-red-50 px-2 py-0.5 font-mono text-xs text-red-600" title={step.payloadText}>
+                    {step.payloadText}
+                  </code>
+                </div>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// Render the shared reproduction trail, preferring structured actionSteps and
+// falling back to the human-readable breadcrumb strings for older sessions.
+function PlaybookStepsSection({ report, filter }: { report: ForensicReportResponse; filter: StepFilter }) {
+  if (report.actionSteps && report.actionSteps.length > 0) {
+    return <PlaybookStepList actionSteps={report.actionSteps} report={report} filter={filter} />;
+  }
+  if (report.forensicTrace?.finalBreadcrumbSteps?.length) {
+    return <ReproducibleSteps steps={report.forensicTrace.finalBreadcrumbSteps} findings={[]} />;
+  }
+  return <div className="py-4 text-center text-xs text-slate-400">No reproduction steps recorded.</div>;
+}
+
+// A normalized failure — sourced from either a caught bug or a forensic error
+// row. Every distinct entry is preserved (no collapsing).
+interface Failure {
+  key: string;
+  type: string;
+  message: string;
+  selector?: string;
+  payload?: string;
+  stackTrace?: string;
+  statusCode?: number;
+  endpoint?: string;
+  method?: string;
+  timestamp?: string;
+  advice?: string;
+  reproductionSteps?: string[];
+}
+
+function buildFailures(report: ForensicReportResponse): Failure[] {
+  // The engine's caughtBugs array is the lossless source of truth — each entry
+  // carries its own frozen `reproductionSteps` and `advice`. A given fault is
+  // also written to the separate forensic_errors collection (errorLogs.errors),
+  // so merging both would render every fault TWICE. Prefer caughtBugs; fall back
+  // to errorLogs only for legacy sessions saved before caughtBugs was lossless.
+  const fromBugs: Failure[] = (report.forensicTrace?.caughtBugs ?? []).map((b, i) => ({
+    key: b.bugId || `bug-${i}`,
+    type: b.type || 'BUG',
+    message: b.message,
+    selector: b.selector,
+    payload: b.payloadUsed,
+    stackTrace: b.stackTrace,
+    reproductionSteps: b.reproductionSteps,
+    timestamp: b.timestamp,
+    advice: b.advice,
+  }));
+  if (fromBugs.length > 0) {
+    return fromBugs;
+  }
+  return (report.errorLogs?.errors ?? []).map((e, i) => ({
+    key: e.id || `err-${i}`,
+    type: e.type || 'EXCEPTION',
+    message: e.message || 'No message provided',
+    selector: e.selector,
+    stackTrace: e.stackTrace,
+    statusCode: e.statusCode,
+    endpoint: e.endpoint,
+    method: e.method,
+    timestamp: e.createdAt,
+  }));
+}
+
+// A per-finding, sequentially numbered replication checklist (the exact steps
+// captured for THIS error). Any pre-existing "Step N:" prefix is normalized away
+// so numbering stays strictly sequential.
+function FindingChecklist({ steps }: { steps: string[] }) {
+  return (
+    <ol className="space-y-2">
+      {steps.map((step, idx) => (
+        <li key={idx} className="flex gap-3 rounded-md border border-slate-200 bg-white p-2.5 shadow-sm">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
+            {idx + 1}
+          </span>
+          <span className="text-sm text-slate-700">{step.replace(/^step\s*\d+[:.]\s*/i, '')}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// One distinct failure rendered as a vertical card: Header → Playbook Steps →
+// Suggested Fix (consolidated; no tabs).
+function FailureCard({ failure, index }: { failure: Failure; index: number }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+      {/* 1 — Bug Card Header: type, crash trace, captured metadata */}
+      <div className="border-b border-slate-200 bg-red-50 p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">{failure.type || 'FAILURE'}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Failure #{index + 1}</span>
+          {typeof failure.statusCode === 'number' && (
+            <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">HTTP {failure.statusCode}</span>
+          )}
+          {failure.timestamp && (
+            <span className="ml-auto font-mono text-[10px] text-slate-400">{failure.timestamp}</span>
+          )}
         </div>
+        <p className="text-sm font-semibold text-slate-800">{failure.message || 'No message provided'}</p>
+        {(failure.endpoint || failure.method) && (
+          <p className="mt-1 break-all font-mono text-xs text-slate-500">{failure.method ? `${failure.method} ` : ''}{failure.endpoint}</p>
+        )}
+        {(failure.selector || failure.payload) && (
+          <div className="mt-2 grid gap-1">
+            {failure.selector && (
+              <p className="break-all font-mono text-xs text-slate-600"><span className="font-semibold text-slate-400">Target: </span>{failure.selector}</p>
+            )}
+            {failure.payload && (
+              <p className="break-all font-mono text-xs text-red-600"><span className="font-semibold text-slate-400">Payload: </span>{failure.payload}</p>
+            )}
+          </div>
+        )}
+        {failure.stackTrace && (
+          <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-900 p-2 font-mono text-xs text-green-400">{failure.stackTrace}</pre>
+        )}
+      </div>
+
+      {/* 2 — Playbook Steps: human-actionable replication bound STRICTLY to THIS
+          finding's own frozen checklist. No fallback to the global session trail —
+          the steps shown are exactly the ones captured for this fault. */}
+      <div className="border-b border-slate-200 p-4">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Playbook Steps</div>
+        {failure.reproductionSteps && failure.reproductionSteps.length > 0 ? (
+          <FindingChecklist steps={failure.reproductionSteps} />
+        ) : (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+            No deterministic steps were recorded for this fault.
+          </div>
+        )}
+      </div>
+
+      {/* 3 — Suggested Fix: clean, copyable remediation code block */}
+      <div className="p-4">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+        {failure.advice ? (
+          <div className="relative rounded-md border border-emerald-700 bg-slate-900 p-3 shadow-sm">
+            <CopyButton
+              text={failure.advice}
+              className="absolute right-2 top-2 bg-slate-800/80 px-1.5 py-1 text-slate-300 hover:bg-slate-700 hover:text-white"
+            />
+            <pre className="whitespace-pre-wrap break-words pr-10 font-mono text-xs leading-relaxed text-emerald-300">{failure.advice}</pre>
+          </div>
+        ) : (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+            No remediation advisory generated for this failure.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The consolidated, tab-free workspace: a copy-snippet toolbar followed by one
+// vertical card per distinct failure, each bound strictly to its own finding.
+// A clean run shows a single steps-only card with the session trail.
+function ConsolidatedWorkspace({ report }: { report: ForensicReportResponse }) {
+  const failures = useMemo(() => buildFailures(report), [report]);
+
+  return (
+    <div className="space-y-5">
+      {/* Top toolbar — copy snippet (no tabs, no global-timeline filters) */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <CopyButton
           text={buildReproductionMarkdown(report)}
           label="Copy Reproduction Snippet"
@@ -268,171 +411,24 @@ function TimelineTab({ actionSteps, report }: { actionSteps: ForensicActionStep[
         />
       </div>
 
-      {visible.length === 0 ? (
-        <div className="py-10 text-center text-sm text-slate-400">No steps in this category.</div>
+      {failures.length > 0 ? (
+        <div className="space-y-5">
+          {failures.map((failure, idx) => (
+            <FailureCard key={failure.key} failure={failure} index={idx} />
+          ))}
+        </div>
       ) : (
-        <ol className="relative ml-3 border-l-2 border-slate-200">
-          {visible.map(({ step, category }) => {
-            const style = CATEGORY_STYLE[category];
-            return (
-              <li key={step.stepNumber} className="relative mb-5 pl-6">
-                <span className={`absolute -left-[9px] top-1 flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white ring-4 ring-white ${style.dot}`}>
-                  {step.stepNumber}
-                </span>
-                <div className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm">{style.icon}</span>
-                    <span className="text-sm font-semibold text-slate-800">{style.verb}</span>
-                    <span className="font-mono text-xs text-slate-700">{step.selector || '(unknown target)'}</span>
-                    <span className={`ml-auto rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${style.badge}`}>
-                      {style.label}
-                    </span>
-                  </div>
-                  {step.payloadText && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Payload</span>
-                      <code className="max-w-full truncate rounded bg-red-50 px-2 py-0.5 font-mono text-xs text-red-600" title={step.payloadText}>
-                        {step.payloadText}
-                      </code>
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-function ExceptionsTab({ report }: { report: ForensicReportResponse }) {
-  const errors = report.errorLogs?.errors ?? [];
-  const bugs = report.forensicTrace?.caughtBugs ?? [];
-
-  if (errors.length === 0 && bugs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-        <span className="text-3xl">✅</span>
-        <span className="text-sm font-medium text-slate-600">No technical exceptions</span>
-        <span className="text-xs text-slate-400">This run completed without captured faults or stack traces.</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {errors.map((err, idx) => (
-        <div key={err.id ?? `err-${idx}`} className="rounded-md border-2 border-red-200 bg-red-50 p-4 shadow-sm">
-          <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-red-100 pb-2">
-            <span className="rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">
-              {err.type ?? 'EXCEPTION'}
-            </span>
-            {err.severity && (
-              <span className="rounded bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">{err.severity}</span>
-            )}
-            {typeof err.statusCode === 'number' && (
-              <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">HTTP {err.statusCode}</span>
-            )}
+        // Clean run — a single steps-only card (no advisory). The session trail
+        // here is informational (no error card to map against), not a per-finding
+        // binding, so it legitimately renders the shared timeline.
+        <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-green-50 p-4">
+            <span className="rounded bg-green-600 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">No Failures</span>
+            <span className="text-sm font-semibold text-slate-700">Session completed without captured faults.</span>
           </div>
-          <p className="mb-2 text-sm font-semibold text-slate-800">{err.message ?? 'No message provided'}</p>
-          {(err.url || err.endpoint) && (
-            <p className="mb-2 break-all font-mono text-xs text-slate-500">{err.method ? `${err.method} ` : ''}{err.endpoint ?? err.url}</p>
-          )}
-          {err.stackTrace && (
-            <pre className="max-h-48 overflow-auto rounded bg-slate-900 p-2 font-mono text-xs text-green-400">
-              {err.stackTrace}
-            </pre>
-          )}
-        </div>
-      ))}
-
-      {bugs.map((bug) => (
-        <div key={bug.bugId} className="rounded-md border-2 border-red-200 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-red-100 pb-2">
-            <span className="rounded bg-red-600 px-2 py-1 text-xs font-bold uppercase tracking-wider text-white">{bug.type || 'BUG'}</span>
-            <span className="font-mono text-[10px] text-red-400">ID: {bug.bugId}</span>
-          </div>
-          <p className="mb-2 text-sm font-semibold text-slate-800">{bug.message || 'No message provided'}</p>
-          {bug.selector && (
-            <p className="mb-1 break-all font-mono text-xs text-slate-600">
-              <span className="font-semibold text-slate-400">Target: </span>{bug.selector}
-            </p>
-          )}
-          {bug.payloadUsed && (
-            <p className="break-all font-mono text-xs text-red-600">
-              <span className="font-semibold text-slate-400">Payload: </span>{bug.payloadUsed}
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RecommendationsTab({ report }: { report: ForensicReportResponse }) {
-  const recommendations = report.aiAnalysis?.recommendations ?? [];
-  const adviceBugs = (report.forensicTrace?.caughtBugs ?? []).filter((b) => b.advice);
-
-  if (recommendations.length === 0 && adviceBugs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-        <span className="text-3xl">💡</span>
-        <span className="text-sm font-medium text-slate-600">No recommendations available</span>
-        <span className="text-xs text-slate-400">No remediation guidance was generated for this session.</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      {report.aiAnalysis?.rootCause && (
-        <div className="rounded-md border border-indigo-200 bg-indigo-50 p-4">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-indigo-500">Root Cause</div>
-          <p className="text-sm text-slate-800">{report.aiAnalysis.rootCause}</p>
-        </div>
-      )}
-
-      {recommendations.length > 0 && (
-        <div>
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-700">Proactive Recommendations</h4>
-          <div className="space-y-3">
-            {recommendations.map((rec, idx) => (
-              <div key={`rec-${idx}`} className="relative rounded-md border border-slate-700 bg-slate-900 p-3 shadow-sm">
-                <CopyButton
-                  text={rec}
-                  className="absolute right-2 top-2 bg-slate-800/80 px-1.5 py-1 text-slate-300 hover:bg-slate-700 hover:text-white"
-                />
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
-                    {idx + 1}
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Recommendation</span>
-                </div>
-                <pre className="whitespace-pre-wrap break-words pr-10 font-mono text-xs leading-relaxed text-green-400">{rec}</pre>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {adviceBugs.length > 0 && (
-        <div>
-          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-700">Fixes Mapped to Detected Errors</h4>
-          <div className="space-y-3">
-            {adviceBugs.map((bug) => (
-              <div key={bug.bugId} className="relative rounded-md border border-emerald-700 bg-slate-900 p-3 shadow-sm">
-                <CopyButton
-                  text={bug.advice}
-                  className="absolute right-2 top-2 bg-slate-800/80 px-1.5 py-1 text-slate-300 hover:bg-slate-700 hover:text-white"
-                />
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">{bug.type || 'FIX'}</span>
-                  {bug.selector && <span className="font-mono text-[11px] text-slate-400">{bug.selector}</span>}
-                </div>
-                <pre className="whitespace-pre-wrap break-words pr-10 font-mono text-xs leading-relaxed text-emerald-300">{bug.advice}</pre>
-              </div>
-            ))}
+          <div className="p-4">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Session Trail</div>
+            <PlaybookStepsSection report={report} filter="all" />
           </div>
         </div>
       )}
@@ -444,17 +440,10 @@ function RecommendationsTab({ report }: { report: ForensicReportResponse }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────
 
-const TAB_LABELS: Record<DrawerTab, string> = {
-  timeline: 'Timeline Steps',
-  exceptions: 'Technical Exceptions',
-  recommendations: 'Intelligent Recommendations',
-};
-
 export default function ForensicInspectionDrawer({ sessionId, onClose }: ForensicInspectionDrawerProps) {
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<DrawerTab>('timeline');
   // Drives the enter/exit slide transition independently of mount state.
   const [isVisible, setIsVisible] = useState(false);
   const reloadRef = useRef<() => void>(() => {});
@@ -470,8 +459,7 @@ export default function ForensicInspectionDrawer({ sessionId, onClose }: Forensi
 
     // All state mutation lives inside `load` (kept out of the effect body so it
     // runs as part of the fetch flow rather than as a synchronous render trigger).
-    const load = (resetTab: boolean) => {
-      if (resetTab) setActiveTab('timeline');
+    const load = () => {
       setReport(null);
       setError(null);
       setIsLoading(true);
@@ -487,9 +475,8 @@ export default function ForensicInspectionDrawer({ sessionId, onClose }: Forensi
         });
     };
 
-    // Retry button re-runs the fetch without resetting the active tab.
-    reloadRef.current = () => load(false);
-    load(true);
+    reloadRef.current = load;
+    load();
 
     return () => {
       cancelled = true;
@@ -573,24 +560,7 @@ export default function ForensicInspectionDrawer({ sessionId, onClose }: Forensi
           </div>
         </header>
 
-        {/* Tab bar */}
-        <nav className="flex shrink-0 border-b border-slate-200 bg-slate-50">
-          {(Object.keys(TAB_LABELS) as DrawerTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`border-b-2 px-4 py-2.5 text-xs font-medium tracking-wide transition-colors ${
-                activeTab === tab
-                  ? 'border-black text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
-        </nav>
-
-        {/* Tab content */}
+        {/* Consolidated workspace (no tabs) */}
         <div className="flex-1 overflow-y-auto p-5">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16">
@@ -612,11 +582,7 @@ export default function ForensicInspectionDrawer({ sessionId, onClose }: Forensi
               </button>
             </div>
           ) : report ? (
-            <>
-              {activeTab === 'timeline' && <TimelineTab actionSteps={report.actionSteps ?? []} report={report} />}
-              {activeTab === 'exceptions' && <ExceptionsTab report={report} />}
-              {activeTab === 'recommendations' && <RecommendationsTab report={report} />}
-            </>
+            <ConsolidatedWorkspace report={report} />
           ) : null}
         </div>
       </section>

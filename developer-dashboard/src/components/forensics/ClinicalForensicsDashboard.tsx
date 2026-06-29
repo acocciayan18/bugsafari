@@ -303,7 +303,7 @@ const formattedTelemetry = useMemo(() => {
                   {formattedTelemetry.map((logObj, index) => (
                     <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
                       <div
-                        className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
+                        className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
                           ? 'text-slate-600'
                           : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                             ? 'text-red-600 font-semibold'

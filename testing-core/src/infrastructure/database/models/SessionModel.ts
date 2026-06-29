@@ -31,6 +31,10 @@ export interface ICaughtBug {
   payloadUsed: string;
   advice: string;
   timestamp: Date;
+  /** Full stack trace captured live — preserved verbatim, never truncated. */
+  stackTrace?: string;
+  /** Per-finding human-actionable replication checklist (sequentially numbered upstream). */
+  reproductionSteps?: string[];
 }
 
 export interface IForensicTrace {
@@ -208,6 +212,10 @@ const sessionSchema = new Schema(
           payloadUsed: { type: String, default: '' },
           advice: { type: String, default: '' },
           timestamp: { type: Date, default: Date.now },
+          // Full stack trace + per-finding checklist — stored uncompressed for
+          // exact parity with the live Error Tab.
+          stackTrace: { type: String, default: '' },
+          reproductionSteps: { type: [String], default: [] },
         }],
       },
       required: false,

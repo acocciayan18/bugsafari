@@ -37,6 +37,10 @@ export class SocketTelemetryGateway implements TelemetryGateway {
         url: report.url,
         payload: item.payload,
       })),
+      // Forward the frozen steps + remediation so the synthesized incident is a
+      // full copy, not a degraded one missing the playbook/fix.
+      reproductionPlaybook: report.reproductionPlaybook,
+      advice: report.advice,
     });
   }
 

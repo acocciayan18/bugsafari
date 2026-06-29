@@ -60,7 +60,7 @@ export default function ForgotPasswordForm() {
   // Show success message after email is sent
   if (emailSent) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 text-center">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -89,7 +89,7 @@ export default function ForgotPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
           <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">Forgot Password?</h2>

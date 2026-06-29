@@ -13,6 +13,23 @@ interface RunState {
     active: boolean;
 }
 
+/**
+ * A finding transferred verbatim from the live dashboard Error Tab at save time.
+ * This is the uncompromised, raw representation of what the operator saw live —
+ * persisted without dedup, filtering, or truncation to guarantee history parity.
+ */
+export interface ClientFinding {
+    bugId?: string;
+    type?: string;
+    message?: string;
+    selector?: string;
+    payloadUsed?: string;
+    advice?: string;
+    stackTrace?: string;
+    reproductionSteps?: string[];
+    timestamp?: string;
+}
+
 interface ExecutionMetrics {
     totalActions: number;
     totalBugsFound: number;
@@ -107,47 +124,67 @@ export class StartExplorationUseCase {
     public async manualSaveToHistory(
         targetUrl: string,
         userId: string,
-        options?: { ownerType?: string; elapsedTimeMs?: number },
+        options?: { ownerType?: string; elapsedTimeMs?: number; clientFindings?: ClientFinding[] },
     ): Promise<{ success: boolean; message: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
         const actionSteps = this.buildActionSteps(actionRecords);
 
-        // Fetch only verified bugs from the engine's confirmed memory
-        const realBugsFound = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
+        // SINGLE SOURCE OF TRUTH: the engine's confirmed-bug memory is now a
+        // lossless superset of the live Errors Tab (every JS exception, console
+        // error, network failure and HTTP fault registers a distinct instance,
+        // and dedup is identity-only). Persist that ENTIRE array verbatim — no
+        // slice, no filter, no truncation. The client-transferred findings are
+        // only a fallback for API-only saves where the engine memory is empty.
+        const clientFindings = options?.clientFindings ?? [];
+        const engineBugs = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
 
-        // Map categories cleanly using the isolated memory fields
-        const breakdownCategories: Record<string, number> = {
-            EXCEPTION: 0,
-            NETWORK: 0,
-            RUNTIME_UI_FREEZE: 0,
-            SESSION_SYNC_FAULT: 0,
-        };
-        realBugsFound.forEach((bug: { type?: string }) => {
-            if (bug.type && breakdownCategories[bug.type] !== undefined) {
-                breakdownCategories[bug.type]++;
-            }
+        const caughtBugs = engineBugs.length > 0
+            ? engineBugs.map((bug: {
+                bugId: string;
+                type: string;
+                message: string;
+                selector: string;
+                payloadUsed: string;
+                advice: string;
+                timestamp: Date;
+                stackTrace?: string;
+                reproductionSteps?: string[];
+            }) => ({
+                bugId: bug.bugId,
+                type: bug.type,
+                message: bug.message,
+                selector: bug.selector,
+                payloadUsed: bug.payloadUsed,
+                advice: bug.advice,
+                stackTrace: bug.stackTrace ?? '',
+                reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
+                timestamp: bug.timestamp,
+            }))
+            : clientFindings.map((finding, index) => ({
+                bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
+                type: finding.type ?? 'EXCEPTION',
+                message: finding.message ?? '',
+                selector: finding.selector ?? '',
+                payloadUsed: finding.payloadUsed ?? '',
+                advice: finding.advice ?? '',
+                stackTrace: finding.stackTrace ?? '',
+                reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
+                timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
+            }));
+
+        // Derive the category breakdown dynamically from the *actual* persisted
+        // findings so no category (known or novel) is ever silently zeroed out.
+        const breakdownCategories: Record<string, number> = {};
+        caughtBugs.forEach((bug) => {
+            const category = bug.type || 'UNKNOWN';
+            breakdownCategories[category] = (breakdownCategories[category] ?? 0) + 1;
         });
 
-        // Transform confirmed bugs to caughtBugs format for MongoDB
-        const caughtBugs = realBugsFound.map((bug: {
-            bugId: string;
-            type: string;
-            message: string;
-            selector: string;
-            payloadUsed: string;
-            advice: string;
-            timestamp: Date;
-        }) => ({
-            bugId: bug.bugId,
-            type: bug.type,
-            message: bug.message,
-            selector: bug.selector,
-            payloadUsed: bug.payloadUsed,
-            advice: bug.advice,
-            timestamp: bug.timestamp,
-        }));
+        // The persisted count is exactly the number of findings stored — the same
+        // count the operator saw live.
+        const findingsTotal = caughtBugs.length;
 
         const effectiveUserId = userId === 'anonymous-guest-user' ? '000000000000000000000000' : userId;
         const userIdToSave = isValidObjectId(effectiveUserId) ? effectiveUserId : '000000000000000000000000';
@@ -172,7 +209,7 @@ export class StartExplorationUseCase {
                 finishedAt: new Date(),
                 savedManually: true,
                 endedReason: 'Manually saved by operator',
-                findingCount: realBugsFound.length,
+                findingCount: findingsTotal,
                 actionTraceCount: actionRecords.length,
                 stats: {
                     runtimeMs,
@@ -181,7 +218,7 @@ export class StartExplorationUseCase {
                 },
                 metrics: {
                     totalActions: actionRecords.length,
-                    totalBugsFound: realBugsFound.length,
+                    totalBugsFound: findingsTotal,
                     bugsByCategory: breakdownCategories,
                 },
                 forensicTrace: {
@@ -193,7 +230,7 @@ export class StartExplorationUseCase {
                 timeElapsed: runtimeMs,
             });
 
-            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Bugs: ${realBugsFound.length} | Runtime: ${runtimeMs}ms`);
+            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);

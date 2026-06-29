@@ -90,6 +90,10 @@ export interface ForensicCaughtBug {
   payloadUsed: string;
   advice: string;
   timestamp: string;
+  /** Full stack trace captured live, preserved verbatim into history. */
+  stackTrace?: string;
+  /** Per-finding, human-actionable numbered replication checklist. */
+  reproductionSteps?: string[];
 }
 
 export interface ForensicReportResponse {

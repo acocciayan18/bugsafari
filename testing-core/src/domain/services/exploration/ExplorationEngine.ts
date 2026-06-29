@@ -173,9 +173,14 @@ export class ExplorationEngine {
   }
 
   public registerConfirmedBug(bug: ConfirmedBug): void {
-    // Deduplication: check if bug already exists in memory
+    // IDENTITY-ONLY dedup. Content-based dedup (type+message+selector+payload)
+    // catastrophically collapsed distinct error INSTANCES — e.g. 15 HTTP 500s to
+    // the same endpoint share an identical signature and were merged into 1,
+    // losing 14 findings before they ever reached the database. Every distinct
+    // registration carries a unique bugId, so we only skip a literal re-push of
+    // the exact same id. This retains all 15 instances for full telemetry parity.
     const isDuplicate = this.confirmedBugsMemory.some(
-      existing => existing.type === bug.type && existing.message === bug.message
+      existing => existing.bugId === bug.bugId
     );
 
     if (!isDuplicate) {

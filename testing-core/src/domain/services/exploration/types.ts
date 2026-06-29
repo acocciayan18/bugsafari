@@ -44,6 +44,10 @@ export interface ConfirmedBug {
   payloadUsed: string;
   advice: string;
   timestamp: Date;
+  /** Full sanitized stack trace — preserved so distinct exceptions never collapse. */
+  stackTrace?: string;
+  /** Per-finding sequentially-numbered replication checklist. */
+  reproductionSteps?: string[];
 }
 
 /** Parameters for persisting a single forensic error row (sans forensicRunId). */

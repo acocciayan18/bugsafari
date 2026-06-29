@@ -50,9 +50,25 @@ function getFetchOptions(method: string, body?: object): RequestInit {
  * @param targetUrl - The final/runtime URL that was actually tested
  * @param options - Optional parameters including initialUrl for the original input URL
  */
+/**
+ * A single finding transferred verbatim from the live Error Tab. Sent raw to the
+ * backend so saved history mirrors the live run with no dedup/filter/truncation.
+ */
+export interface SaveFindingPayload {
+  bugId?: string;
+  type?: string;
+  message?: string;
+  selector?: string;
+  payloadUsed?: string;
+  advice?: string;
+  stackTrace?: string;
+  reproductionSteps?: string[];
+  timestamp?: string;
+}
+
 export async function saveSessionToHistory(
   targetUrl: string,
-  options?: { initialUrl?: string; elapsedTimeMs?: number }
+  options?: { initialUrl?: string; elapsedTimeMs?: number; findings?: SaveFindingPayload[] }
 ): Promise<void> {
   const token = localStorage.getItem('bugsafari_token');
   console.log('[historyService] 📤 saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
@@ -66,6 +82,8 @@ export async function saveSessionToHistory(
     targetUrl: trimmedUrl,
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
     ...(typeof options?.elapsedTimeMs === 'number' && { elapsedTimeMs: options.elapsedTimeMs }),
+    // Transfer the complete raw findings array — every live error, untruncated.
+    ...(Array.isArray(options?.findings) && { findings: options.findings }),
   };
 
   if (!token) {
