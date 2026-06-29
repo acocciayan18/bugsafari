@@ -2,22 +2,25 @@
  * Interaction Simulator
  *
  * Provides methods for simulating rapid click operations:
- * - buttonSpammer: Rapid button spamming on a selector
- * - concurrentClicker: Concurrent clicking on multiple selectors
+ * - buttonSpammer: baseline rapid single-element clicking (exploratory baseline)
+ * - concurrentClicker: true zero-wait concurrent clicking across sibling elements
  */
 
 import type { Page } from 'playwright';
-import { isObscuredOrDetached, wait } from './utils.js';
+import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
+import { wait } from './utils.js';
+import { executeConcurrentBurst } from './concurrentBurst.js';
+import { StressClickMetadataRecorder } from './metadata.js';
+import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 
 /**
  * Interaction Simulator for executing rapid click operations.
- *
- * This class provides methods for button spamming and concurrent clicking,
- * wrapping the consolidated stress scenario functions.
  */
 export class InteractionSimulator {
   /**
-   * Performs rapid button spamming on a selector.
+   * Performs rapid baseline button clicking on a single selector via in-page
+   * dispatch. This is the exploratory-baseline interaction, not the concurrent
+   * stress path (see {@link concurrentClicker}).
    *
    * @param page Playwright Page object
    * @param selector CSS selector to spam clicks on
@@ -40,24 +43,48 @@ export class InteractionSimulator {
   }
 
   /**
-   * Performs concurrent clicking on multiple selectors.
+   * Fires a true zero-wait concurrent burst across up to 5 sibling selectors to
+   * expose overlapping-update race conditions. When a ChaosTransactionManager is
+   * injected, it opens a STRESS_CLICK transaction and records deterministic
+   * execution metadata so any fault during the burst is attributed and
+   * reproducible. The caller owns the ActiveScenarioTracker window.
    *
    * @param page Playwright Page object
    * @param selectors Array of CSS selectors to click concurrently
+   * @param chaosManager Optional shared transaction manager for live tracking
    */
-  public async concurrentClicker(page: Page, selectors: string[]): Promise<void> {
-    const targetSelectors = selectors.slice(0, 5);
+  public async concurrentClicker(
+    page: Page,
+    selectors: string[],
+    chaosManager?: ChaosTransactionManager<StressClickMetadata> | null,
+  ): Promise<void> {
+    const targetSelectors = selectors.slice(0, 5).filter(Boolean);
+    if (targetSelectors.length === 0) {
+      return;
+    }
 
-    const clickTasks = targetSelectors.map(async (selector: string) => {
-      try {
-        await page.click(selector, { timeout: 1000 });
-      } catch (error) {
-        if (isObscuredOrDetached(error)) {
-          return;
-        }
-        return;
-      }
-    });
-    await Promise.all(clickTasks);
+    const manager = chaosManager ?? null;
+    const metadata: StressClickMetadata = {
+      velocity: 0,
+      elementChain: [...targetSelectors],
+      targetSelector: targetSelectors[0],
+      clickCount: targetSelectors.length,
+    };
+    if (manager) {
+      manager.startTransaction(targetSelectors[0], 'STRESS_CLICK', metadata);
+    }
+
+    const recorder = new StressClickMetadataRecorder(metadata);
+
+    try {
+      const result = await executeConcurrentBurst(page, targetSelectors);
+      recorder.record(result);
+      ActiveScenarioTracker.record(
+        `Concurrent zero-wait burst across ${result.attempted} sibling elements ` +
+          `→ ${result.completed}/${result.attempted} completed in ${result.durationMs}ms`,
+      );
+    } finally {
+      manager?.endTransaction();
+    }
   }
 }

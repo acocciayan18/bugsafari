@@ -2,12 +2,10 @@
  * RapidClicker Stress Scenarios - Modular Export
  *
  * This module re-exports all rapid clicker stress scenario functionality:
- * - buttonSpammer: Rapid button clicking stress scenario
- * - coordinateBombing: Random coordinate clicking stress scenario
- * - burstClickElement: Concurrent burst clicking on single element
- * - concurrentEventSpam: Concurrent clicking on multiple targets
- * - executeSpam: Utility function for button spam
- * - InteractionSimulator: Class for simulating rapid click operations
+ * - buttonSpammer: zero-wait concurrent burst on a single element
+ * - coordinateBombing: deterministic grid coordinate clicking
+ * - executeConcurrentBurst: the single true zero-wait click primitive
+ * - InteractionSimulator: class for concurrent sibling clicking
  *
  * All exports are consolidated here for clarity and maintainability.
  */
@@ -16,13 +14,13 @@
 export { buttonSpammer } from './buttonSpammer.js';
 export { coordinateBombing, executeBombing } from './coordinateBombing.js';
 
-// Re-export burst click utilities
+// Re-export the zero-wait concurrency primitive + result shape
 export {
-  burstClickElement,
-  concurrentEventSpam,
-  executeSpam,
-  type BurstClickResult,
-} from './burstClicker.js';
+  executeConcurrentBurst,
+  type ConcurrentBurstResult,
+  type ConcurrentBurstOptions,
+  type BurstResultingState,
+} from './concurrentBurst.js';
 
 // Re-export InteractionSimulator class
 export { InteractionSimulator } from './interactionSimulator.js';
@@ -40,8 +38,6 @@ export {
   isObscuredOrDetached,
   randomInt,
   wait,
-  setChaosTransactionManager,
-  getChaosTransactionManager,
 } from './utils.js';
 
 // Re-export types

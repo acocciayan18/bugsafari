@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
-import { stressScenarioMap, formBypasser } from '../../scenarios/index.js';
+import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { getStrategyByCategory } from '../../scenarios/fuzzing/strategies/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -139,6 +139,38 @@ export class ActionExecutor {
   }
 
   /**
+   * Build the RouteTrasher adapter bound to this run's shared
+   * ChaosTransactionManager. Routing through here (instead of the null-injecting
+   * static stressScenarioMap entry) is what opens a real ROUTE_TRASH transaction
+   * during thrashing, so deterministic metadata and the failure snapshot are
+   * attributed correctly.
+   */
+  private buildRouteTrasherScenario(): StressScenario {
+    return {
+      name: routeTrasher.name,
+      execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
+        await routeTrasher.execute(page, target, this.deps.fuzzManager);
+      },
+    };
+  }
+
+  /**
+   * Build the ButtonSpammer adapter bound to this run's shared
+   * ChaosTransactionManager. Routing through here (instead of the null-injecting
+   * static stressScenarioMap entry) is what opens a real STRESS_CLICK transaction
+   * during the zero-wait burst, so deterministic metadata and the failure
+   * snapshot are attributed correctly.
+   */
+  private buildButtonSpammerScenario(): StressScenario {
+    return {
+      name: buttonSpammer.name,
+      execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
+        await buttonSpammer.execute(page, target, this.deps.fuzzManager);
+      },
+    };
+  }
+
+  /**
    * Heuristically rank the stress scenarios that suit this element, then return
    * the first whose owning testing-type the operator left enabled. Returns null
    * when every applicable scenario has been deactivated for this run.
@@ -163,8 +195,9 @@ export class ActionExecutor {
     if (isTextInput) {
       candidates.push(formBypasser);
     } else {
-      if (revisitedPage) candidates.push(stressScenarioMap.RouteTrasher);
+      if (revisitedPage) candidates.push(this.buildRouteTrasherScenario());
       if (buttonLike) candidates.push(formBypasser);
+      if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
       candidates.push(stressScenarioMap.CoordinateBombing);
     }
 
@@ -331,8 +364,20 @@ export class ActionExecutor {
     }
 
     // Overlapping concurrency stress across sibling elements — gated separately.
+    // Open an ActiveScenarioTracker window and inject the shared
+    // ChaosTransactionManager so the zero-wait burst opens a real STRESS_CLICK
+    // transaction and is recorded verbatim into any fault snapshot it triggers.
     if (this.deps.gate.isEnabled('concurrency')) {
-      await this.deps.simulator.concurrentClicker(page, ranked.slice(1, 6).map((item) => item.selector));
+      ActiveScenarioTracker.begin('ConcurrentClicker', page.url() ?? this.deps.getTargetOrigin());
+      try {
+        await this.deps.simulator.concurrentClicker(
+          page,
+          ranked.slice(1, 6).map((item) => item.selector),
+          this.deps.fuzzManager,
+        );
+      } finally {
+        ActiveScenarioTracker.end();
+      }
     }
   }
 

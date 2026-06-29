@@ -12,7 +12,7 @@ import type { StateGraphNavigator } from '../StateGraphNavigator.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { SeededRandomGenerator } from '../SeededRandomGenerator.js';
 import type { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
-import type { InteractionSimulator } from '../../scenarios/rapidClickerStress.js';
+import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type {
   ForensicErrorType,

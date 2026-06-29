@@ -3,8 +3,6 @@
  * Extracted error handling and common helper functions.
  */
 
-import { type ChaosTransactionManager, type StressClickMetadata } from '../../fuzzing/ChaosTransactionManager.js';
-
 // ============================================================================
 // Configuration Constants
 // ============================================================================
@@ -71,30 +69,4 @@ export function randomInt(min: number, max: number): number {
  */
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ============================================================================
-// ChaosTransactionManager Singleton Accessor
-// ============================================================================
-
-let chaosManagerInstance: ChaosTransactionManager<StressClickMetadata> | null = null;
-
-/**
- * Sets the global ChaosTransactionManager instance for rapid clicker stress scenarios.
- * Call this during application initialization before using stress scenarios.
- *
- * @param manager The ChaosTransactionManager instance to use
- */
-export function setChaosTransactionManager(
-  manager: ChaosTransactionManager<StressClickMetadata> | null
-): void {
-  chaosManagerInstance = manager;
-}
-
-/**
- * Gets the current ChaosTransactionManager instance.
- * @returns The ChaosTransactionManager instance or null if not set
- */
-export function getChaosTransactionManager(): ChaosTransactionManager<StressClickMetadata> | null {
-  return chaosManagerInstance;
 }

@@ -7,9 +7,11 @@ import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { SeededRandomGenerator } from '../SeededRandomGenerator.js';
-import { InteractionSimulator } from '../../scenarios/rapidClickerStress.js';
+import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
+import { setChaosManagerAccessor as setStructuralProbeAccessor } from '../../../bugs/finders/structuralProbe.js';
+import { setChaosManagerAccessor as setConcurrentStressAccessor } from '../../../bugs/finders/concurrentStress.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -153,6 +155,16 @@ export class ExplorationEngine {
       // Recent steps callback - queries the circular action buffer for crash context
       () => this.actions.snapshot()
     );
+
+    // Expose this run's transaction manager to the route-mutation finder so it can
+    // read live ROUTE_TRASH metadata. NOTE: the bugs/ finder registry currently has
+    // no runner, so structuralProbe stays dormant until one is added — live failure
+    // capture during thrashing already flows through StabilityMonitor regardless.
+    setStructuralProbeAccessor(this.fuzzManager);
+    // Same wiring for the concurrent-stress guard so it can read live STRESS_CLICK
+    // metadata. Same dormant-runner caveat applies; StabilityMonitor handles live
+    // capture during the burst regardless.
+    setConcurrentStressAccessor(this.fuzzManager);
 
     // Initialize SeededRandomGenerator for deterministic fuzzing decisions
     // Use seed from optimizationSettings if provided, otherwise undefined (non-reproducible mode)

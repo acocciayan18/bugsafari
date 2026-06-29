@@ -1,241 +1,204 @@
 import { useNavigate } from 'react-router-dom';
-import { useTheme, type ColorPalette } from './ThemeContext';
-import MagicBento from './components/MagicBento';
-import CircularGallery from './components/CircularGallery';
-import FlowingMenu from './components/FlowingMenu';
-import ChromaGrid from './components/ChromaGrid';
 import './globals.css';
 
-// Feature cards for the "Why Us" section
-const whyUsCards = [
+const featureCards = [
     {
-        icon: 'S',
+        icon: '⟳',
         title: 'Scriptless Traversal',
-        description: 'Automated SPA exploration using advanced DOM parsing and heuristic path discovery. No manual test scripts required.',
+        description:
+            'Navigate complex application states without writing brittle scripts. BugSafari maps and explores interaction paths automatically.',
     },
     {
-        icon: 'A',
+        icon: '✦',
         title: 'Adaptive Intelligence',
-        description: 'ML-powered risk scoring prioritizes high-risk UI states and edge cases automatically.',
+        description:
+            'Signal-driven prioritization continuously focuses on volatile surfaces so critical defects are surfaced first.',
     },
     {
-        icon: 'F',
-        title: 'Real-time Forensics',
-        description: 'Live telemetry streaming provides instant bug detection with detailed reproduction steps.',
-    },
-    {
-        icon: 'C',
-        title: 'Continuous Learning',
-        description: 'The engine learns from each run, improving bug detection accuracy over time.',
+        icon: '▣',
+        title: 'Real-Time Forensics',
+        description:
+            'Capture telemetry, console anomalies, and reproducible traces as sessions unfold to accelerate diagnosis.',
     },
 ];
 
-// Footer links
-const footerColumns = [
-    {
-        title: 'Product',
-        links: ['Features', 'Pricing', 'Documentation', 'API'],
-    },
-    {
-        title: 'Company',
-        links: ['About', 'Blog', 'Careers', 'Contact'],
-    },
-    {
-        title: 'Legal',
-        links: ['Privacy', 'Terms', 'Security', 'Cookies'],
-    },
-    {
-        title: 'Social',
-        links: ['GitHub', 'Twitter', 'Discord', 'LinkedIn'],
-    },
+const deepTraceChecks = [
+    'Session-scoped anomaly tracing',
+    'Correlated console + network timelines',
+    'Visual state diffing for rapid verification',
+    'Auto-generated reproduction context',
 ];
 
 const LandingPage = () => {
     const navigate = useNavigate();
-    const { colorPalette, setColorPalette, theme, themeRGB } = useTheme();
-
-    const handlePaletteChange = (palette: ColorPalette) => {
-        setColorPalette(palette);
-    };
 
     return (
-        <div className="min-h-screen" style={{ background: 'var(--color-background)' }}>
-            {/* ============================================
-       * SECTION 1: NAVIGATION BAR
-       * ============================================ */}
-            <nav className="navbar">
-                <div className="navbar__brand">BUGSAFARI</div>
+        <div className="lp-page">
+            <header className="lp-header">
+                <div className="lp-container lp-header__inner">
+                    <a href="#" className="lp-logo" aria-label="BugSafari home">
+                        BugSafari
+                    </a>
 
-                <div className="navbar__nav">
-                    <a href="#features" className="navbar__link">Features</a>
-                    <a href="#why-us" className="navbar__link">Why Us</a>
-                    <a href="#showcase" className="navbar__link">Showcase</a>
-                    <a href="#community" className="navbar__link">Community</a>
+                    <nav className="lp-nav" aria-label="Primary">
+                        <a href="#" className="lp-nav__link lp-nav__link--active">Product</a>
+                        <a href="#" className="lp-nav__link">Solutions</a>
+                        <a href="#" className="lp-nav__link">Pricing</a>
+                        <a href="#" className="lp-nav__link">Docs</a>
+                    </nav>
+
+                    <div className="lp-utilities" aria-label="Utilities">
+                        <button className="lp-icon-btn lp-icon-btn--plain" aria-label="Notifications">
+                            <svg viewBox="0 0 24 24" className="lp-icon-svg" aria-hidden="true">
+                                <path
+                                    d="M9 18h6M10.5 21h3M6 17h12c-1.2-1.1-2-2.7-2-4.4V10a4 4 0 1 0-8 0v2.6C8 14.3 7.2 15.9 6 17Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </svg>
+                        </button>
+                        <button className="lp-icon-btn lp-icon-btn--plain" aria-label="Help">
+                            <svg viewBox="0 0 24 24" className="lp-icon-svg" aria-hidden="true">
+                                <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="9"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                />
+                                <path
+                                    d="M9.8 9.1a2.5 2.5 0 0 1 4.4 1.6c0 1.7-1.8 2.1-2.2 3.3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                />
+                                <circle cx="12" cy="16.8" r="1" fill="currentColor" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
+            </header>
 
-                <div className="navbar__actions">
-                    <button
-                        onClick={() => navigate('/login')}
-                        className="navbar__link"
-                    >
-                        Sign in
-                    </button>
-                    <button
-                        className="btn btn--primary"
-                        onClick={() => {
-                            // Set guest mode and navigate to dashboard
-                            localStorage.setItem('bugsafari_guest', 'true');
-                            navigate('/dashboard');
-                        }}
-                        style={{ background: theme.primary }}
-                    >
-                        Get Started
-                    </button>
-                </div>
-            </nav>
+            <main>
+                <section className="lp-section lp-hero">
+                    <div className="lp-container lp-hero__grid">
+                        <div className="lp-hero__content">
+                            <span className="lp-pill">New: Omnichannel Integration</span>
+                            <h1 className="lp-hero__title">Ignite Your Ideas with BugSafari</h1>
+                            <p className="lp-hero__desc">
+                                Build with confidence using autonomous exploration, forensic telemetry,
+                                and adaptive guidance designed to keep delivery momentum high.
+                            </p>
 
-            {/* ============================================
-       * SECTION 2: HERO SECTION
-       * ============================================ */}
-            <section className="hero">
-                <div className="hero__background" />
-
-                <h1 className="hero__title">
-                    Autonomous Testing<br />
-                    <span style={{ color: theme.primary }}>For Modern SPAs</span>
-                </h1>
-
-                <p className="hero__subtitle">
-                    BugSafari is an independent digital investigator that helps student developers
-                    bridge the "predictability gap" by autonomously finding unhandled exceptions,
-                    race conditions, and hidden bugs without requiring any manual test scripts.
-                </p>
-
-                <div className="hero__cta">
-                    <button
-                        className="btn btn--primary"
-                        onClick={() => navigate('/login')}
-                        style={{ background: theme.primary }}
-                    >
-                        Start Free Trial
-                    </button>
-                    <button
-                        className="btn btn--secondary"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
-                    >
-                        Watch Demo
-                    </button>
-                </div>
-            </section>
-
-            {/* ============================================
-       * SECTION 3: FEATURES - MagicBento
-       * ============================================ */}
-            <section id="features" className="features">
-                <MagicBento glowColor={themeRGB.primary} enableStars={true} enableSpotlight={true} />
-            </section>
-
-            {/* ============================================
-       * SECTION 4: WHY US
-       * ============================================ */}
-            <section id="why-us" className="features">
-                <div className="features__grid">
-                    {whyUsCards.map((card, index) => (
-                        <div key={index} className="feature-card">
-                            <div
-                                className="feature-card__icon"
-                                style={{ background: theme.secondary }}
-                            >
-                                <span style={{ fontSize: '1.5rem', color: theme.primary }}>{card.icon}</span>
+                            <div className="lp-actions">
+                                <button className="lp-btn lp-btn--primary" onClick={() => navigate('/login')}>
+                                    Try BugSafari
+                                </button>
+                                <button className="lp-btn lp-btn--ghost">Watch Demo</button>
                             </div>
-                            <h3 className="feature-card__title">{card.title}</h3>
-                            <p className="feature-card__description">{card.description}</p>
+
+                            <div className="lp-proof">
+                                <div className="lp-proof__avatars" aria-hidden="true">
+                                    <span className="lp-avatar" />
+                                    <span className="lp-avatar" />
+                                    <span className="lp-avatar" />
+                                </div>
+                                <p className="lp-proof__text">Trusted by 2,500+ product teams worldwide.</p>
+                            </div>
                         </div>
-                    ))}
-                </div>
-            </section>
 
-            {/* ============================================
-       * SECTION 5: VISUAL SHOWCASE - CircularGallery
-       * ============================================ */}
-            <section id="showcase" className="showcase">
-                <h2 style={{
-                    textAlign: 'center',
-                    fontSize: '2.5rem',
-                    fontWeight: 800,
-                    marginBottom: '2rem',
-                    color: 'var(--color-text-primary)'
-                }}>
-                    Visual Showcase
-                </h2>
-                <div style={{ height: '600px', display: 'flex', justifyContent: 'center' }}>
-                    <CircularGallery textColor={theme.primary} />
-                </div>
-            </section>
-
-            {/* ============================================
-       * SECTION 6: NAVIGATION LINKS - FlowingMenu
-       * ============================================ */}
-            <section>
-                <FlowingMenu
-                    bgColor="var(--color-surface)"
-                    marqueeBgColor={theme.primary}
-                    textColor="var(--color-text-primary)"
-                />
-            </section>
-
-            {/* ============================================
-       * SECTION 7: COMMUNITY/TEAM CTA - ChromaGrid
-       * ============================================ */}
-            <section id="community" className="cta-section">
-                <div className="cta-section__grid">
-                    <div className="cta-section__content">
-                        <h2 className="cta-section__title">
-                            Join the <span style={{ color: theme.primary }}>Community</span>
-                        </h2>
-                        <p className="cta-section__description">
-                            Connect with thousands of developers who are already using BugSafari to build better applications.
-                            Share your experiences, get help, and contribute to the open-source project.
-                        </p>
-                        <div className="hero__cta">
-                            <button
-                                className="btn btn--primary"
-                                style={{ background: theme.primary }}
-                            >
-                                Join Discord
-                            </button>
-                            <button
-                                className="btn btn--secondary"
-                                style={{ borderColor: theme.primary, color: theme.primary }}
-                            >
-                                Star on GitHub
-                            </button>
+                        <div className="lp-hero__visual" aria-label="Dashboard preview">
+                            <div className="lp-dashboard">
+                                <div className="lp-dashboard__top">
+                                    <span />
+                                    <span />
+                                    <span />
+                                </div>
+                                <div className="lp-dashboard__body">
+                                    <div className="lp-panel lp-panel--lg" />
+                                    <div className="lp-panel-group">
+                                        <div className="lp-panel" />
+                                        <div className="lp-panel" />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                </section>
 
-                    <ChromaGrid
-                        borderColor={theme.primary}
-                        gradient={`linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`}
-                    />
-                </div>
-            </section>
+                <section className="lp-section lp-features">
+                    <div className="lp-container">
+                        <header className="lp-section-head">
+                            <h2>Engineered for Momentum</h2>
+                        </header>
 
-            {/* ============================================
-       * SECTION 8: FOOTER
-       * ============================================ */}
-            <footer className="footer">
-                <div className="footer__grid">
-                    {footerColumns.map((column, index) => (
-                        <div key={index} className="footer__column">
-                            <h4 className="footer__title">{column.title}</h4>
-                            {column.links.map((link, linkIndex) => (
-                                <a key={linkIndex} href="#" className="footer__link">{link}</a>
+                        <div className="lp-feature-grid">
+                            {featureCards.map((card) => (
+                                <article key={card.title} className="lp-feature-card">
+                                    <div className="lp-feature-card__icon">{card.icon}</div>
+                                    <h3>{card.title}</h3>
+                                    <p>{card.description}</p>
+                                </article>
                             ))}
                         </div>
-                    ))}
-                </div>
-                <div className="footer__bottom">
-                    <p>© 2024 BugSafari Engine. All rights reserved.</p>
+                    </div>
+                </section>
+
+                <section className="lp-section">
+                    <div className="lp-container">
+                        <div className="lp-deep-dive">
+                            <div className="lp-deep-dive__content">
+                                <h2>Deep Trace Analysis</h2>
+                                <p>
+                                    Visualize failures with context-rich diagnostics that map root causes
+                                    across event streams, runtime signals, and interaction transitions.
+                                </p>
+                                <ul className="lp-checklist">
+                                    {deepTraceChecks.map((item) => (
+                                        <li key={item}>{item}</li>
+                                    ))}
+                                </ul>
+                                <button className="lp-btn lp-btn--primary">Explore the Visualizer</button>
+                            </div>
+
+                            <div className="lp-deep-dive__visual" aria-label="Deep trace dashboard">
+                                <div className="lp-node-canvas">
+                                    <div className="lp-node lp-node--center" />
+                                    <div className="lp-node lp-node--a" />
+                                    <div className="lp-node lp-node--b" />
+                                    <div className="lp-node lp-node--c" />
+                                    <div className="lp-node lp-node--d" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="lp-section lp-cta">
+                    <div className="lp-container lp-cta__inner">
+                        <h2>Ready to start your safari?</h2>
+                        <div className="lp-actions">
+                            <button className="lp-btn lp-btn--primary">Start Free Trial</button>
+                            <button className="lp-btn lp-btn--ghost">Schedule Demo</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+
+            <footer className="lp-footer">
+                <div className="lp-container lp-footer__inner">
+                    <p>© 2024 BugSafari. All rights reserved.</p>
+                    <nav className="lp-footer__links" aria-label="Legal">
+                        <a href="#">Privacy Policy</a>
+                        <a href="#">Terms of Service</a>
+                        <a href="#">Contact Support</a>
+                    </nav>
+                    <div className="lp-footer__locale">English (US)</div>
                 </div>
             </footer>
         </div>

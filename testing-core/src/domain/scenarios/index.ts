@@ -7,8 +7,8 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 // Import scenario implementations
 import { dataFuzzer, setChaosManager as setDataFuzzerChaosManager, smartActionChain } from './fuzzing/dataFuzzer.js';
 import type { SmartActionResult } from './fuzzing/dataFuzzer.js';
-import { buttonSpammer, coordinateBombing } from './rapidClicker/index.js';
-import { routeTrasher } from './routeTrasher.js';
+import { buttonSpammer, coordinateBombing, InteractionSimulator } from './rapidClicker/index.js';
+import { routeTrasher } from './routeTrasher/index.js';
 import { formBypasser } from './formBypasser.js';
 import { networkSaboteur } from './networkSaboteur.js';
 
@@ -41,15 +41,6 @@ import {
   type StrategyPayload,
   getStrategyByCategory,
 } from './fuzzing/strategies/index.js';
-
-// Import rapid clicker items
-import {
-  burstClickElement,
-  concurrentEventSpam,
-  executeSpam,
-  InteractionSimulator,
-  type BurstClickResult,
-} from './rapidClicker/index.js';
 
 export interface StressScenarioRegistryOptions {
   /** Optional telemetry gateway for broadcasting events */
@@ -91,21 +82,37 @@ export function createStressScenarioRegistry(
   const routeTrasherScenario: StressScenario = {
     name: routeTrasher.name,
     async execute(page: Page, target?: InteractiveElement): Promise<void> {
-      // Wrap routeTrasher.execute call to return void (StressScenario interface)
-      // routeTrasher.execute expects 3 args: (page, target, chaosManager)
-      // Inject required chaosManager downstream and capture/await process cleanly
+      // Adapt routeTrasher's richer signature (page, target?, chaosManager?) to the
+      // StressScenario contract, injecting the shared chaosManager downstream.
       try {
-        // Capture the promise result - await ensures process completes cleanly
-        const result = (routeTrasher as any).execute(page, target, chaosManager);
-        // Await if result is a promise to ensure clean completion
-        if (result instanceof Promise) {
-          await result;
-        }
+        await routeTrasher.execute(page, target, chaosManager);
       } catch (error) {
         console.error(`[StressScenario:RouteTrasher] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
       }
-      // Explicitly return void to satisfy StressScenario interface
-      return;
+    },
+  };
+
+  // Wrap the concurrent-stress scenarios so they open a real STRESS_CLICK
+  // transaction on the shared manager (precise signature, no `as any`).
+  const buttonSpammerScenario: StressScenario = {
+    name: buttonSpammer.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      try {
+        await buttonSpammer.execute(page, target, chaosManager);
+      } catch (error) {
+        console.error(`[StressScenario:ButtonSpammer] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    },
+  };
+
+  const coordinateBombingScenario: StressScenario = {
+    name: coordinateBombing.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      try {
+        await coordinateBombing.execute(page, target, chaosManager);
+      } catch (error) {
+        console.error(`[StressScenario:CoordinateBombing] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
     },
   };
 
@@ -133,8 +140,8 @@ export function createStressScenarioRegistry(
   // Use smartActionChain directly from dataFuzzer module for intelligent fuzzing integration
   return [
     dataFuzzer,
-    buttonSpammer,
-    coordinateBombing,
+    buttonSpammerScenario,
+    coordinateBombingScenario,
     routeTrasherScenario,
     formBypasser,
     networkSaboteurScenario,
@@ -163,7 +170,9 @@ export const stressScenarioMap: Record<string, StressScenario> = {
   RouteTrasher: {
     name: routeTrasher.name,
     async execute(page: Page, target?: InteractiveElement): Promise<void> {
-      return (routeTrasher as any).execute(page, target, null);
+      // No transaction manager in the static map path; the live engine path uses
+      // the ActionExecutor adapter which injects the real ChaosTransactionManager.
+      await routeTrasher.execute(page, target, null);
     },
   },
   CoordinateBombing: coordinateBombing,
@@ -181,11 +190,7 @@ export const stressScenarioMap: Record<string, StressScenario> = {
 export {
   buttonSpammer,
   coordinateBombing,
-  burstClickElement,
-  concurrentEventSpam,
-  executeSpam,
   InteractionSimulator,
-  type BurstClickResult,
   formBypasser,
   networkSaboteur,
   routeTrasher,

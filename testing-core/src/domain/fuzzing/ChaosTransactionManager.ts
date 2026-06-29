@@ -51,11 +51,28 @@ export interface NetworkMetadata {
 
 /**
  * StressClickMetadata - Rapid clicking parameters
- * Type-safe fields per requirement: { velocity: number, elementChain: string[] }
+ *
+ * The deterministic-execution fields (targetSelector, clickCount, completed,
+ * durationMs, executionOrder, resultingState) are additive and optional so
+ * existing consumers (e.g. concurrentStressGuard, which reads velocity/
+ * elementChain) keep working unchanged. They make telemetry, live execution,
+ * and stored findings reproducible by recording exactly what the burst did.
  */
 export interface StressClickMetadata {
   velocity: number;
   elementChain: string[];
+  /** The primary element selector the burst targeted. */
+  targetSelector?: string;
+  /** Total clicks the burst was configured to fire (attempted). */
+  clickCount?: number;
+  /** Clicks that actually landed without a fatal error. */
+  completed?: number;
+  /** Wall-clock duration of the burst in milliseconds. */
+  durationMs?: number;
+  /** Click indices in the order their promises settled (concurrency fingerprint). */
+  executionOrder?: number[];
+  /** Where the burst ended up once all clicks settled. */
+  resultingState?: 'all-completed' | 'partial' | 'error';
 }
 
 /**

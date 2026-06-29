@@ -1,116 +1,91 @@
 /**
  * Button Spammer Stress Scenario
  *
- * Clicks the target element 15 times rapidly with 50ms delays between each click.
- * Does not await individual clicks to flood the browser event queue.
+ * Fires CLICK_COUNT clicks at the target element as a single true zero-wait
+ * concurrent burst (all clicks in flight before the first resolves), flooding
+ * the SPA event loop to surface race conditions, double-submit bugs, and memory
+ * leaks in click handlers.
  *
- * This stress test is designed to:
- * - Overwhelm SPA state management
- * - Trigger race conditions in event handlers
- * - Test for memory leaks in click handlers
+ * It opens a real STRESS_CLICK transaction on the injected ChaosTransactionManager
+ * and records deterministic execution metadata (click count, completed, duration,
+ * settle order) so telemetry, the live transaction, and stored findings stay
+ * consistent and reproducible. The burst is recorded as ONE reproduction step so
+ * the immutable failure snapshot reflects the concurrent burst, not 15 entries.
  */
 
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import type { StressScenario } from '../types.js';
-import {
-  CLICK_COUNT,
-  CLICK_DELAY_MS,
-  getChaosTransactionManager,
-  isNonFatalNavigationError,
-  wait,
-} from './utils.js';
+import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
+import { CLICK_COUNT } from './utils.js';
+import { executeConcurrentBurst } from './concurrentBurst.js';
+import { StressClickMetadataRecorder, describeBurst } from './metadata.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel, genericElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
 
-/**
- * Button Spammer stress scenario.
- *
- * Clicks the target element 15 times rapidly with 50ms delays between each click.
- * Does not await individual clicks to flood the browser event queue.
- *
- * This stress test is designed to:
- * - Overwhelm SPA state management
- * - Trigger race conditions in event handlers
- * - Test for memory leaks in click handlers
- */
-export const buttonSpammer: StressScenario = {
+export const buttonSpammer = {
   name: 'ButtonSpammer',
 
-  async execute(page: Page, target?: InteractiveElement): Promise<void> {
+  async execute(
+    page: Page,
+    target?: InteractiveElement,
+    chaosManager?: ChaosTransactionManager<StressClickMetadata> | null,
+  ): Promise<void> {
     const selector = target?.selector ?? 'button, [role="button"], a';
 
     console.log(
-      `[StressScenario:ButtonSpammer] Starting spam with ${CLICK_COUNT} clicks on '${selector}'`
+      `[StressScenario:ButtonSpammer] Starting zero-wait burst of ${CLICK_COUNT} clicks on '${selector}'`,
     );
 
-    // Build the element chain from target selector
-    const elementChain: string[] = [selector];
-
-    // Create metadata for the chaos transaction
-    const metadata = {
-      velocity: CLICK_DELAY_MS,
-      elementChain: elementChain,
+    // velocity 0 reflects the zero-wait flood (no inter-click delay). The same
+    // metadata object is exposed via getActiveMetadata() by reference, so the
+    // recorder's mutations flow straight into the live transaction.
+    const metadata: StressClickMetadata = {
+      velocity: 0,
+      elementChain: [selector],
+      targetSelector: selector,
+      clickCount: CLICK_COUNT,
     };
 
-    // Start the chaos transaction with STRESS_CLICK type
-    // Use global singleton pattern for the transaction manager
-    const chaosManager = getChaosTransactionManager();
-    if (chaosManager) {
-      chaosManager.startTransaction(selector, 'STRESS_CLICK', metadata);
+    const manager = chaosManager ?? null;
+    if (manager) {
+      manager.startTransaction(selector, 'STRESS_CLICK', metadata);
+    } else {
+      console.log(
+        '[StressScenario:ButtonSpammer] No ChaosTransactionManager provided - running without transaction tracking',
+      );
     }
 
-    const clickPromises: Promise<void>[] = [];
+    const recorder = new StressClickMetadataRecorder(metadata);
 
-    // Record the burst as a SINGLE reproduction step (not one per click) so the
-    // 20-slot playbook buffer is not flooded with redundant rapid-click entries.
-    ActionRecorder.recordStep({
-      actionType: 'CLICK',
-      humanIdentifier: target?.innerText?.trim() || selector,
-      value: `Rapidly clicked ${CLICK_COUNT} times`,
-      selector: selector,
-      url: page.url(),
-    });
-    const clickLabel = target ? resolveElementLabel(target) : 'button';
-    const clickKind = genericElementLabel(target?.tagName, target?.type);
-    ActiveScenarioTracker.record(`Click interaction triggered on element ${clickKind}: "${clickLabel}" (concurrent ${CLICK_COUNT}× burst)`);
+    try {
+      // Fire CLICK_COUNT concurrent clicks at the single target (zero-wait).
+      const result = await executeConcurrentBurst(
+        page,
+        Array.from({ length: CLICK_COUNT }, () => selector),
+      );
+      recorder.record(result);
 
-    // Execute clicks rapidly without awaiting individual clicks
-    // This floods the browser event queue
-    for (let i = 0; i < CLICK_COUNT; i++) {
-        const clickPromise = page
-        .click(selector, { force: true })
-        .then(() => {
-          console.log(`[StressScenario:ButtonSpammer] Click ${i + 1}/${CLICK_COUNT} completed`);
-        })
-        .catch((error: Error) => {
-          // Handle errors gracefully - don't let one failed click stop the scenario
-          if (isNonFatalNavigationError(error)) {
-            console.log(
-              `[StressScenario:ButtonSpammer] Ignored navigation error on click ${i + 1}: ${error.message}`
-            );
-          } else {
-            console.error(
-              `[StressScenario:ButtonSpammer] Non-fatal error on click ${i + 1}: ${error.message}`
-            );
-          }
-        });
+      // Record the burst as a SINGLE reproduction step so the 20-slot playbook
+      // buffer is not flooded with redundant rapid-click entries.
+      ActionRecorder.recordStep({
+        actionType: 'CLICK',
+        humanIdentifier: target?.innerText?.trim() || selector,
+        value: `Concurrent zero-wait burst ×${CLICK_COUNT}`,
+        selector,
+        url: page.url(),
+      });
+      const label = target ? resolveElementLabel(target) : 'button';
+      const kind = genericElementLabel(target?.tagName, target?.type);
+      ActiveScenarioTracker.record(describeBurst(result, label, kind));
 
-      clickPromises.push(clickPromise);
-
-      // Small delay between clicks (but we don't await the click itself)
-      await wait(CLICK_DELAY_MS);
+      console.log(
+        `[StressScenario:ButtonSpammer] Burst completed ${result.completed}/${result.attempted} in ${result.durationMs}ms`,
+      );
+    } finally {
+      manager?.endTransaction();
     }
-
-    // Wait for all click promises to settle (or fail)
-    await Promise.allSettled(clickPromises);
-
-    // Close the chaos transaction
-    if (chaosManager) {
-      chaosManager.closeTransaction();
-    }
-
-    console.log(`[StressScenario:ButtonSpammer] Spam completed with ${CLICK_COUNT} clicks`);
   },
 };
+
+export type ButtonSpammer = typeof buttonSpammer;
