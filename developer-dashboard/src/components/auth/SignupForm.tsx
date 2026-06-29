@@ -1,299 +1,151 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 
-// Icons
-const UserIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-  </svg>
-);
-
 const EnvelopeIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v11.25a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75" />
   </svg>
 );
 
 const LockClosedIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
   </svg>
 );
 
 const EyeIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
 
 const EyeSlashIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
   </svg>
 );
 
-const CheckIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+const WarningIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.9}>
+    <circle cx="12" cy="12" r="8.25" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.7v4.2" />
+    <circle cx="12" cy="15.75" r="0.6" fill="currentColor" stroke="none" />
   </svg>
 );
 
-const XIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+const GoogleIcon = () => (
+  <svg className="w-[1.125rem] h-[1.125rem]" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.654 32.657 29.233 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.153 7.958 3.042l5.657-5.657C34.233 6.053 29.366 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+    <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 16.108 19.002 13 24 13c3.059 0 5.842 1.153 7.958 3.042l5.657-5.657C34.233 6.053 29.366 4 24 4c-7.682 0-14.347 4.337-17.694 10.691z" />
+    <path fill="#4CAF50" d="M24 44c5.176 0 9.944-1.977 13.545-5.197l-6.26-5.298C29.268 35.091 26.761 36 24 36c-5.211 0-9.617-3.316-11.283-7.946l-6.522 5.024C9.509 39.556 16.227 44 24 44z" />
+    <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.05 12.05 0 01-4.018 5.505l.003-.002 6.26 5.298C37.102 39.2 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
   </svg>
 );
 
 export default function SignupForm() {
-  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
-
   const [showPassword, setShowPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const navigate = useNavigate();
-  
-  // Use AuthContext for consistent authentication handling
   const { signup, isLoading, setNavigate: setAuthNavigate } = useAuth();
 
-  // Set navigate callback for AuthContext
   useEffect(() => {
     setAuthNavigate(navigate);
   }, [navigate, setAuthNavigate]);
 
-  // Password validation
-  const hasMinLength = password.length >= 12;
+  const hasMinLength = password.length >= 8;
   const hasSymbol = /[_!@#$%^&*(),.?":{}|<>]/.test(password);
   const hasNumber = /[0-9]/.test(password);
-  const hasNoSequential = !/(.)\1{2,}|abc|123|qwe|password|pass/i.test(password);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFormError('');
-
-    if (!fullName.trim()) {
-      setFormError('Please enter your full name.');
-      return;
-    }
-
-    if (!email.trim() || !email.includes('@')) {
-      setFormError('Please enter a valid email address.');
-      return;
-    }
-
-    if (!password || password.length < 12) {
-      setFormError('Password must be at least 12 characters.');
-      return;
-    }
-
-    if (!hasSymbol || !hasNumber) {
-      setFormError('Password must include symbols and numbers.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setFormError('Passwords do not match.');
-      return;
-    }
+    if (!email.trim() || !email.includes('@')) return setFormError('Please enter a valid email address.');
+    if (!password || password.length < 8) return setFormError('Password must be at least 8 characters.');
+    if (!hasSymbol || !hasNumber) return setFormError('Password must include symbols and numbers.');
+    if (password !== confirmPassword) return setFormError('Passwords do not match.');
 
     try {
       const success = await signup({ email: email.trim(), password });
-      if (!success) {
-        // AuthContext.signup() already handles error toasts
-        setFormError('Registration failed. Please try again.');
-      }
-      // On success, AuthContext automatically navigates to /login after 2s delay
+      if (!success) setFormError('Registration failed. Please try again.');
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
       setFormError('Unable to connect to server. Please try again.');
     }
   };
 
-  const handleGuestLogin = () => {
-    navigate('/dashboard');
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-      <div className="w-full max-w-md mx-auto">
-        <div className="bg-white p-8 border border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900 text-center mb-2">BugSafari</h2>
-          <p className="text-base text-gray-600 text-center mb-6">Create your account</p>
-          <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#F8FAFC]">
+      <div className="w-full max-w-[420px]">
+        <div className="bg-white border border-[#E5E7EB] rounded-[1rem] shadow-[0_8px_24px_rgba(15,23,42,0.08)] px-8 py-8">
+          <h1 className="text-center text-[28px] leading-tight tracking-[-0.7px] font-semibold text-[#191B23] mb-2">Create Account</h1>
+          <p className="text-center text-[15px] font-normal text-[#434655] mb-7">Start hunting bugs with BugSafari today.</p>
 
-            {/* FULL NAME */}
-            <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-5">
+              <label htmlFor="email" className="inline-flex w-[59px] h-[17px] items-center font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Email</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <UserIcon />
-                </div>
-                <input
-                  id="fullName"
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full border border-gray-300 px-4 py-3 pl-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
-                  placeholder="Your name"
-                  required
-                />
+                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><EnvelopeIcon /></span>
+                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@company.com" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-3 text-[0.875rem] text-[#1F2937] placeholder:text-[#C4B5FD] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
               </div>
             </div>
 
-            {/* WORK EMAIL */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Work Email
-              </label>
+            <div className="mb-5">
+              <label htmlFor="password" className="inline-flex w-[59px] h-[17px] items-center font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Password</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <EnvelopeIcon />
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full border border-gray-300 px-4 py-3 pl-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
-                  placeholder="user@example.com"
-                  required
-                />
+                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><LockClosedIcon /></span>
+                <input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-10 text-[0.875rem] text-[#1F2937] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-3 flex items-center text-[#9CA3AF]">{showPassword ? <EyeSlashIcon /> : <EyeIcon />}</button>
               </div>
             </div>
 
-            {/* PASSWORD */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
+            <div className="mb-5">
+              <label htmlFor="confirmPassword" className="block font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Confirm Password</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <LockClosedIcon />
-                </div>
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full border border-gray-300 px-4 py-3 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
-                  placeholder="Enter password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none"
-                >
-                  {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
-                </button>
+                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><LockClosedIcon /></span>
+                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-10 text-[0.875rem] text-[#1F2937] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-3 flex items-center text-[#9CA3AF]">{showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}</button>
               </div>
             </div>
 
-            {/* CONFIRM PASSWORD */}
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <LockClosedIcon />
-                </div>
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full border border-gray-300 px-4 py-3 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-500"
-                  placeholder="Confirm password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none"
-                >
-                  {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
-                </button>
+            <div className="rounded-[0.5rem] border border-[#E0E7FF] bg-[#EEF2FF] p-4 mb-0">
+              <p className="text-[12px] font-medium text-[#434655] mb-2">Security requirements:</p>
+              <div className="space-y-[0.375rem]">
+                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>At least 8 characters long</span></div>
+                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>Include 1 special character (@, #, $)</span></div>
+                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>Include at least one number</span></div>
               </div>
             </div>
 
-            {/* PASSWORD REQUIREMENTS */}
-            <div className="pt-2">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Password Requirements
-              </p>
-              <div className="space-y-1">
-                <div className={`flex items-center gap-2 text-xs ${hasMinLength ? 'text-green-600' : 'text-red-500'}`}>
-                  <span className={hasMinLength ? 'text-green-600' : 'text-red-500'}>
-                    {hasMinLength ? <CheckIcon /> : <XIcon />}
-                  </span>
-                  <span>Minimum 12 characters</span>
-                </div>
-                <div className={`flex items-center gap-2 text-xs ${hasSymbol && hasNumber ? 'text-green-600' : 'text-gray-400'}`}>
-                  <span className={hasSymbol && hasNumber ? 'text-green-600' : 'text-gray-400'}>
-                    <CheckIcon />
-                  </span>
-                  <span>Include symbols and numbers</span>
-                </div>
-                <div className={`flex items-center gap-2 text-xs ${hasNoSequential ? 'text-green-600' : 'text-gray-400'}`}>
-                  <span className={hasNoSequential ? 'text-green-600' : 'text-gray-400'}>
-                    <CheckIcon />
-                  </span>
-                  <span>No sequential strings</span>
-                </div>
+            {formError && <div className="rounded-[0.5rem] border border-[#EF4444]/40 bg-[#FEF2F2] px-3 py-2 mt-4"><p className="text-sm text-[#B91C1C]">{formError}</p></div>}
+
+            <div className="mt-5">
+              <button type="submit" disabled={isLoading || !email || !password || !confirmPassword || !hasMinLength || !hasSymbol || !hasNumber || password !== confirmPassword} className="w-full h-11 rounded-[0.5rem] bg-[#0052CC] text-white text-[15px] font-medium hover:bg-[#0047B3] disabled:opacity-50">
+                {isLoading ? 'Creating account...' : 'Create Account'}
+              </button>
+
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-[#E5E7EB]" />
+                <span className="text-[0.875rem] text-[#6B7280]">OR</span>
+                <div className="h-px flex-1 bg-[#E5E7EB]" />
               </div>
+
+              <button type="button" className="w-full h-11 rounded-[0.5rem] border border-[#D1D5DB] bg-white text-[#191B23] text-[15px] font-medium flex items-center justify-center gap-2.5">
+                <GoogleIcon />
+                <span>Sign up with Google</span>
+              </button>
             </div>
-
-            {formError && (
-              <div className="p-3 bg-red-50 border border-red-200">
-                <p className="text-sm text-red-600">{formError}</p>
-              </div>
-            )}
-
-            {/* SUBMIT BUTTON */}
-            <button
-              type="submit"
-              disabled={isLoading || !fullName || !email || !password || !confirmPassword}
-              className="w-full border border-gray-800 bg-gray-800 px-4 py-3 mt-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Creating account...</span>
-                </>
-              ) : (
-                'Create Account'
-              )}
-            </button>
           </form>
 
-          {/* LINKS */}
-          <div className="mt-6 flex flex-col items-center space-y-4">
-            <Link
-              to="/login"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Already have an account? Log in
-            </Link>
-            <button
-              type="button"
-              onClick={handleGuestLogin}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Continue As Guest
-            </button>
-          </div>
+        </div>
+        <div className="mt-5 text-center text-[15px] font-normal text-[#434655]">
+          Already have an account? <Link to="/login" className="text-[#004AC6] hover:text-[#003EA5]">Log in</Link>
         </div>
       </div>
     </div>
