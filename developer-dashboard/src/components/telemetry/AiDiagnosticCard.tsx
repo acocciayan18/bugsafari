@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ═══════════════════════════════════════════════════════════════════════
 // AiDiagnosticCard.tsx - UNIFIED AI FORENSIC DIAGNOSTIC COMPONENT
 // ═══════════════════════════════════════════════════════════════════════

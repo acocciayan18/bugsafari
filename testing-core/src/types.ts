@@ -22,13 +22,9 @@ export interface DomElementSnapshot {
   score: number;
 }
 
-export interface ActionBreadcrumb {
-  timestamp: string;
-  selector: string;
-  action: string;
-  payload?: string;
-  score?: number;
-}
+// ActionBreadcrumb is the canonical shape exported from shared/types/bug.ts.
+// Import it from '@bugsafari/shared' (type-only) or '../../shared/types.js'
+// rather than redefining it here.
 
 export interface ExplorerHooks {
   emitTelemetry: (event: TelemetryEvent) => void;

@@ -67,36 +67,6 @@ function determineSeverity(bugCount: number): 'CRITICAL' | 'HIGH' | 'CLEAR' {
   return 'CLEAR';
 }
 
-// Helper to format execution time (handles both duration ms and timestamps)
-function formatExecutionTime(timeValue: number): string {
-  if (!timeValue) return 'N/A';
-  
-  // If value is very large (> 1 billion), it's likely a Unix timestamp
-  if (timeValue > 1_000_000_000) {
-    const date = new Date(timeValue);
-    if (isNaN(date.getTime())) return 'N/A';
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  
-  // Otherwise treat as duration in milliseconds
-  const seconds = Math.round(timeValue / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return `${hours}h ${remainingMinutes}m`;
-}
-
-
-
 // Helper to format date
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
