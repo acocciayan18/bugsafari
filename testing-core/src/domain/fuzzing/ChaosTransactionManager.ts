@@ -60,13 +60,27 @@ export interface StressClickMetadata {
 
 /**
  * RouteTrashMetadata - Route navigation parameters
- * Enhanced type-safe fields with navigation type detection
+ * Enhanced type-safe fields with navigation type detection.
+ *
+ * The deterministic-execution fields (repetitions, historyIndex, visitedRoutes,
+ * resultingState) are additive and optional so existing consumers (e.g.
+ * structuralProbe, which reads originPath/targetPath/injectedPath/navigationType)
+ * keep working unchanged. They make telemetry, live execution, and stored
+ * findings reproducible by recording exactly what the route trasher did.
  */
 export interface RouteTrashMetadata {
   originPath: string;
   targetPath?: string; // Preserve for backward compatibility
   injectedPath?: string;
   navigationType?: 'history_back' | 'history_forward' | 'query_mutation' | 'malformed_push';
+  /** Total back/forward/mutation iterations the scenario was configured to run. */
+  repetitions?: number;
+  /** Running history-depth offset relative to the origin (negative = back, positive = forward). */
+  historyIndex?: number;
+  /** Ordered, de-duplicated list of routes the bursts landed on, for reproduction. */
+  visitedRoutes?: string[];
+  /** Where the page ended up once the bursts and origin-restore completed. */
+  resultingState?: 'restored-to-origin' | 'drifted' | 'error';
 }
 
 /**
