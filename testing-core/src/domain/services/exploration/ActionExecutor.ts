@@ -3,10 +3,16 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
-import { getStrategyByCategory } from '../../scenarios/fuzzing/strategies/index.js';
+import { getStrategyByCategory, categoryToStrategyType } from '../../scenarios/fuzzing/strategies/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
+import {
+  resolveElementLabel,
+  describeConstraintBypass,
+  describeInputInjection,
+  describeNavigation,
+} from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
+import type { FuzzMetadata } from '../../fuzzing/index.js';
 import type { ActionExecutorDeps } from './types.js';
 
 /**
@@ -17,29 +23,6 @@ import type { ActionExecutorDeps } from './types.js';
  */
 export class ActionExecutor {
   constructor(private readonly deps: ActionExecutorDeps) {}
-
-  /**
-   * Determines whether to use data fuzzer based on hybrid approach:
-   * - Heuristic mode (default): Use data fuzzer when target risk score >= threshold
-   * - Seeded mode: Use seeded RNG for deterministic decision when seed provided
-   */
-  private shouldUseDataFuzzer(target: InteractiveElement): boolean {
-    const isInputField = target.tagName === 'input' || target.tagName === 'textarea';
-
-    if (!isInputField) {
-      return false;
-    }
-
-    // If seeded random generator is configured, use deterministic mode
-    if (this.deps.seededRandom.isSeeded()) {
-      const randomValue = this.deps.seededRandom.next();
-      return randomValue < 0.5; // 50% chance when seeded for backwards compatibility
-    }
-
-    // Heuristic mode: Use data fuzzer based on risk score threshold
-    const riskScore = Number(target.riskScore);
-    return riskScore >= this.deps.dataFuzzerThreshold;
-  }
 
   public logHighImpact(target: InteractiveElement): void {
     const source = `${target.id} ${target.className} ${target.innerText}`.toLowerCase();
@@ -58,41 +41,94 @@ export class ActionExecutor {
     ranked: InteractiveElement[],
     revisitedPage: boolean,
   ): Promise<void> {
-    const t = this.deps.telemetry;
-    const exploratoryEnabled = this.deps.gate.isEnabled('exploratory');
-    // Bias toward stress when the standard (exploratory) path is disabled, so the
-    // operator's enabled stress scenarios still receive execution time.
-    const wantStress = !exploratoryEnabled || Math.random() < 0.3;
+    // Highlight the element the navigator chose to traverse.
+    await this.deps.highlighter.flashHighlight(page, target.selector);
 
-    const scenario = wantStress ? this.pickStressScenario(target, revisitedPage) : null;
-
-    if (!scenario) {
-      // No enabled stress scenario applies to this element this step — fall back
-      // to the standard per-target dispatcher when the exploratory baseline OR
-      // data fuzzing (which lives inside that path) is enabled.
-      if (exploratoryEnabled || this.deps.gate.isEnabled('dataFuzzing')) {
-        await this.executeStandardInteraction(page, target, ranked);
-      } else {
-        // Every active category has no applicable scenario for this element type
-        // (e.g. only "Concurrency" is selected but the target is a plain div).
-        // Perform a minimal baseline click so the run stays visible in telemetry
-        // rather than silently skipping the step.
-        t.emitMilestone(
-          `⚡ No active scenario matched ${target.selector} — minimal fallback click`,
-        );
-        await this.safeButtonSpammer(page, target);
+    // INPUT FIELDS are payload targets, not navigation controls: apply only the
+    // gated input-mutation strategy (Data Fuzzing is exclusive when enabled). The
+    // type+submit it performs IS the input's interaction.
+    if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
+      if (this.deps.gate.isEnabled('dataFuzzing')) {
+        await this.executeInputFuzzing(page, target, 'fuzz');
+      } else if (this.deps.gate.isEnabled('exploratory')) {
+        await this.executeInputFuzzing(page, target, 'exploratory');
       }
+      // No input strategy enabled → leave the field untouched.
       return;
     }
 
-    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${target.selector}`;
+    // NON-INPUT NAVIGATION CONTROL.
+    // 1) Navigation substrate — ALWAYS traverse the navigator-chosen edge so the
+    //    state graph keeps expanding regardless of which payload scenarios are
+    //    active. Restricting Data Fuzzing (or any scenario) restricts payload
+    //    execution only, never navigation.
+    await this.navigateTarget(page, target);
 
+    // 2) Payload layer — run the deterministic, operator-gated stress scenario for
+    //    this element (if any) AFTER navigation, so scenario-specific actions
+    //    execute on the freshly discovered state rather than replacing traversal.
+    const scenario = this.pickStressScenario(target, revisitedPage);
+    if (scenario) {
+      await this.runStressScenario(page, target, scenario);
+    }
+
+    // 3) Overlapping concurrency stress across sibling elements — gated separately.
+    if (this.deps.gate.isEnabled('concurrency')) {
+      ActiveScenarioTracker.begin('ConcurrentClicker', page.url() ?? this.deps.getTargetOrigin());
+      try {
+        await this.deps.simulator.concurrentClicker(
+          page,
+          ranked.slice(1, 6).map((item) => item.selector),
+          this.deps.fuzzManager,
+        );
+      } finally {
+        ActiveScenarioTracker.end();
+      }
+    }
+  }
+
+  /**
+   * Navigation substrate: record the traversal step through the centralized
+   * forensics layer and click the navigator-chosen control. Unconditional by
+   * design — payload scenarios layer on top, but navigation always runs so the
+   * StateGraphNavigator can keep discovering new application states.
+   */
+  private async navigateTarget(page: Page, target: InteractiveElement): Promise<void> {
+    const label = resolveElementLabel(target);
+    this.deps.telemetry.emitMilestone(describeNavigation(label));
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'navigate',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'CLICK',
+        humanIdentifier: label,
+      },
+    );
+    await this.safeButtonSpammer(page, target);
+  }
+
+  /**
+   * Run an operator-gated stress scenario as the payload layer on the current
+   * state. The navigation click has already happened; this executes
+   * scenario-specific actions inside an ActiveScenarioTracker window so any fault
+   * is attributed to the scenario in the forensic snapshot.
+   */
+  private async runStressScenario(
+    page: Page,
+    target: InteractiveElement,
+    scenario: StressScenario,
+  ): Promise<void> {
+    const t = this.deps.telemetry;
+    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${target.selector}`;
     t.emit('ACTION', {
       actionExecuted: 'stress-scenario-escalation',
       selector: target.selector,
       message: escalationMessage,
     });
-
     t.emitMilestone(escalationMessage);
 
     this.deps.recordActionTrace(
@@ -113,7 +149,7 @@ export class ActionExecutor {
     ActiveScenarioTracker.begin(scenario.name, page.url() ?? this.deps.getTargetOrigin());
 
     try {
-      // For security scenarios on text inputs, strip constraints first
+      // For security scenarios on text inputs, strip constraints first.
       if (scenario.name === 'FormBypasser') {
         try {
           await this.stripConstraints(page);
@@ -126,7 +162,7 @@ export class ActionExecutor {
           console.warn('[ActionExecutor] Constraint stripping failed before security scenario:', error);
         }
 
-        // Enhance security testing with data fuzzer payloads (gated by Data Fuzzing)
+        // Enhance security testing with data fuzzer payloads (gated by Data Fuzzing).
         if (this.deps.gate.isEnabled('dataFuzzing')) {
           await this.executeSecurityFuzzerPayloads(page, target);
         }
@@ -210,174 +246,92 @@ export class ActionExecutor {
     return null;
   }
 
-  private async executeStandardInteraction(
+  /**
+   * The single, isolated input-mutation flow. When Data Fuzzing is the selected
+   * strategy this is the EXCLUSIVE path for input fields; the exploratory baseline
+   * reuses the identical flow (same strategy payloads) under a different label.
+   *
+   * Coordinated sequence: identify → strip client constraints → inject payload →
+   * commit via realistic submission → settle for the monitors. The deliberate
+   * steps are recorded into ONE ActiveScenarioTracker window and a real FUZZ
+   * ChaosTransaction (FuzzMetadata), so the reproduction playbook is compiled
+   * exclusively by the centralized forensics layer and stays consistent across
+   * live telemetry, the UI, and persisted findings.
+   */
+  private async executeInputFuzzing(
     page: Page,
     target: InteractiveElement,
-    ranked: InteractiveElement[],
+    mode: 'fuzz' | 'exploratory',
   ): Promise<void> {
     const t = this.deps.telemetry;
+    const label = resolveElementLabel(target);
 
-    // Highlight the target element being interacted with
-    await this.deps.highlighter.flashHighlight(page, target.selector);
+    // 1) Identify: classify the field, resolve its targeted strategy payload.
+    const category = classifyInputElement(target);
+    const strategyPayload = getStrategyByCategory(category);
+    const payload = strategyPayload.value;
 
-    if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
-      const fuzzEnabled = this.deps.gate.isEnabled('dataFuzzing');
-      const exploratoryEnabled = this.deps.gate.isEnabled('exploratory');
+    // Breadcrumb trail (technical) for the forensic crash report.
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: mode === 'fuzz' ? 'data-fuzzer-injection' : 'payload-injection',
+        payload: mode === 'fuzz' ? category : payload,
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'TYPE',
+        humanIdentifier: label,
+        value: payload,
+      },
+    );
 
-      // Data fuzzing runs when its testing-type is enabled AND either the heuristic
-      // selects it, or the exploratory baseline (normal injection) is disabled so
-      // fuzzing is the only enabled way to exercise this field.
-      const useDataFuzzer = fuzzEnabled && (this.shouldUseDataFuzzer(target) || !exploratoryEnabled);
+    // Open the unified forensic event: a deliberate scenario window + a real FUZZ
+    // transaction carrying full metadata (replaces the legacy openFuzzTransaction).
+    ActiveScenarioTracker.begin('DataFuzzer', page.url() ?? this.deps.getTargetOrigin());
+    const metadata: FuzzMetadata = {
+      payload,
+      fieldType: target.tagName,
+      category,
+      strategy: categoryToStrategyType(category),
+    };
+    this.deps.fuzzManager.startTransaction(target.selector, 'FUZZ', metadata);
 
-      if (useDataFuzzer) {
-        // Use Data Fuzzer: Delegate to strategy pattern
-        const category = classifyInputElement(target);
-        const strategyPayload = getStrategyByCategory(category);
-        const payload = strategyPayload.value;
+    try {
+      // 2) Remove client-side validation constraints so large/malformed payloads land.
+      await this.stripConstraints(page);
+      ActiveScenarioTracker.record(describeConstraintBypass(label));
 
-        this.deps.recordActionTrace(
-          {
-            timestamp: new Date().toISOString(),
-            selector: target.selector,
-            action: 'data-fuzzer-injection',
-            payload: category,
-            score: Number(target.riskScore.toFixed(4)),
-          },
-          {
-            actionType: 'TYPE',
-            humanIdentifier: resolveElementLabel(target),
-            value: payload,
-          },
-        );
+      // 3) Inject the generated payload.
+      await this.injectPayload(page, target.selector, payload);
+      ActiveScenarioTracker.record(describeInputInjection(label, payload));
 
-        // Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
-        this.deps.fuzzManager.openFuzzTransaction(target.selector, payload);
+      // 4) Commit through realistic interactions: fill empty siblings in the same
+      //    <form>, then explicitly submit so the payload reaches the backend.
+      await this.fillEmptyFormSiblings(page, target.selector);
+      const submissionMethod = await triggerFormSubmission(page, target.selector);
 
-        try {
-          // Strip constraints first (maxlength, pattern) to allow large payloads
-          await this.stripConstraints(page);
-
-          // Inject the fuzz payload
-          await this.injectPayload(page, target.selector, payload);
-
-          // Populate any empty sibling inputs in the same <form> so multi-field
-          // flows (e.g. username + password) are fully exercised before submit.
-          await this.fillEmptyFormSiblings(page, target.selector);
-
-          // Close the validation loop: explicitly submit the fuzzed form so the
-          // payload reaches the backend for deep API validation.
-          const submissionMethod = await triggerFormSubmission(page, target.selector);
-
-          // Emit telemetry with the required format
-          t.emit('ACTION', {
-            actionExecuted: 'data-fuzzer-injection',
-            selector: target.selector,
-            message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
-          });
-          t.emit('ACTION', {
-            actionExecuted: 'form-submission-triggered',
-            selector: target.selector,
-            message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
-          });
-
-          // In-flight settle: hold the transaction window open so network (≥400)
-          // and exception monitors can correlate backend rejections to this submit.
-          await page.waitForTimeout(600);
-        } finally {
-          // Ensure transaction window never leaks between subsequent element exploration selections
-          this.deps.fuzzManager.closeTransaction();
-        }
-
-        return;
-      }
-
-      // Normal (non-fuzz) payload injection is part of the exploratory baseline.
-      // If exploratory testing is disabled, leave the field untouched this step.
-      if (!exploratoryEnabled) {
-        return;
-      }
-
-      // Standard payload injection using strategy pattern
-      const category = classifyInputElement(target);
-      const strategyPayload = getStrategyByCategory(category);
-      const payload = strategyPayload.value;
-
-      this.deps.recordActionTrace(
-        {
-          timestamp: new Date().toISOString(),
-          selector: target.selector,
-          action: 'payload-injection',
-          payload,
-          score: Number(target.riskScore.toFixed(4)),
-        },
-        {
-          actionType: 'TYPE',
-          humanIdentifier: resolveElementLabel(target),
-          value: payload,
-        },
-      );
-
-      // Wrap fuzzing sequence with transaction lifecycle (backward-compatible method)
-      this.deps.fuzzManager.openFuzzTransaction(target.selector, payload);
-
-      try {
-        await this.stripConstraints(page);
-        await this.injectPayload(page, target.selector, payload);
-
-        // Fill empty sibling inputs in the same <form>, then explicitly submit so
-        // the typed exploratory data is validated by the target backend.
-        await this.fillEmptyFormSiblings(page, target.selector);
-        const submissionMethod = await triggerFormSubmission(page, target.selector);
+      if (mode === 'fuzz') {
         t.emit('ACTION', {
-          actionExecuted: 'form-submission-triggered',
+          actionExecuted: 'data-fuzzer-injection',
           selector: target.selector,
-          message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+          message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
         });
-
-        // In-flight settle: hold the transaction window open so network (≥400)
-        // and exception monitors can correlate backend rejections to this submit.
-        await page.waitForTimeout(600);
-      } finally {
-        // Ensure transaction window never leaks between subsequent element exploration selections
-        this.deps.fuzzManager.closeTransaction();
       }
+      t.emit('ACTION', {
+        actionExecuted: 'form-submission-triggered',
+        selector: target.selector,
+        message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+      });
 
-      return;
-    }
-
-    // Baseline interaction with the scored target — part of exploratory testing.
-    if (this.deps.gate.isEnabled('exploratory')) {
-      this.deps.recordActionTrace(
-        {
-          timestamp: new Date().toISOString(),
-          selector: target.selector,
-          action: 'button-spammer',
-          score: Number(target.riskScore.toFixed(4)),
-        },
-        {
-          actionType: 'CLICK',
-          humanIdentifier: resolveElementLabel(target),
-        },
-      );
-
-      await this.safeButtonSpammer(page, target);
-    }
-
-    // Overlapping concurrency stress across sibling elements — gated separately.
-    // Open an ActiveScenarioTracker window and inject the shared
-    // ChaosTransactionManager so the zero-wait burst opens a real STRESS_CLICK
-    // transaction and is recorded verbatim into any fault snapshot it triggers.
-    if (this.deps.gate.isEnabled('concurrency')) {
-      ActiveScenarioTracker.begin('ConcurrentClicker', page.url() ?? this.deps.getTargetOrigin());
-      try {
-        await this.deps.simulator.concurrentClicker(
-          page,
-          ranked.slice(1, 6).map((item) => item.selector),
-          this.deps.fuzzManager,
-        );
-      } finally {
-        ActiveScenarioTracker.end();
-      }
+      // 5) Monitor: hold the transaction window open so network (≥400) and
+      //    exception monitors can correlate backend rejections to this submit.
+      await page.waitForTimeout(600);
+    } finally {
+      // 6) Close the unified forensic event so it never leaks into the next element.
+      this.deps.fuzzManager.closeTransaction();
+      ActiveScenarioTracker.end();
     }
   }
 

@@ -10,8 +10,9 @@ import type { Page } from 'playwright';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
 import { wait } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
-import { StressClickMetadataRecorder } from './metadata.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { describeConcurrentBurstSiblings } from '../../services/forensics/narration.js';
+import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
 /**
  * Interaction Simulator for executing rapid click operations.
@@ -79,10 +80,7 @@ export class InteractionSimulator {
     try {
       const result = await executeConcurrentBurst(page, targetSelectors);
       recorder.record(result);
-      ActiveScenarioTracker.record(
-        `Concurrent zero-wait burst across ${result.attempted} sibling elements ` +
-          `→ ${result.completed}/${result.attempted} completed in ${result.durationMs}ms`,
-      );
+      ActiveScenarioTracker.record(describeConcurrentBurstSiblings(result));
     } finally {
       manager?.endTransaction();
     }

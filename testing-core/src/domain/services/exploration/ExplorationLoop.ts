@@ -3,6 +3,7 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { PathfinderElement } from '../DIrectedPathFinder.js';
 import { networkSaboteur } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { describeRecovery } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, wait } from './types.js';
 import type { ExplorationLoopDeps } from './types.js';
@@ -31,6 +32,16 @@ export class ExplorationLoop {
     // When > 0, the engine is in "escape mode": picks the lowest-scored target
     // instead of the highest, and all current-page elements carry a score penalty.
     let penaltyStepsRemaining = 0;
+
+    // --- Adaptive exhaustion recovery state ---
+    // Consecutive recovery rounds since the last genuine progress (novel state).
+    // Bounded so the run terminates deterministically when truly exhausted.
+    let recoveryRounds = 0;
+    const MAX_RECOVERY_ROUNDS = 2;
+    // Deterministic NetworkSaboteur cadence: fire on every Nth eligible step
+    // instead of a random dice roll, so scenario execution is reproducible.
+    let sabotageStepCounter = 0;
+    const SABOTAGE_CADENCE = 10;
 
     for (let step = 1; step <= maxSteps; step++) {
       if (this.deps.isStopRequested()) {
@@ -67,11 +78,15 @@ export class ExplorationLoop {
         }
 
 
-        // 📡 Network Sabotage: 10% random chance to sabotage network requests
-        // This tests if the UI breaks when network calls are delayed/aborted
+        // 📡 Network Sabotage: deterministic cadence (every Nth eligible step) so
+        // scenario execution is reproducible across runs with the same config.
         // Gated by the Navigational/Traversal testing type (owns NetworkSaboteur).
-        const sabotageDice = Math.random();
-        if (this.deps.gate.isScenarioEnabled('NetworkSaboteur') && sabotageDice < 0.1) {
+        let sabotageThisStep = false;
+        if (this.deps.gate.isScenarioEnabled('NetworkSaboteur')) {
+          sabotageStepCounter += 1;
+          sabotageThisStep = sabotageStepCounter % SABOTAGE_CADENCE === 0;
+        }
+        if (sabotageThisStep) {
           telemetry.emitMilestone('📡 Chaos Mode: Sabotaging network requests for this step...');
           telemetry.emit('ACTION', {
             actionExecuted: 'network-sabotage',
@@ -201,8 +216,39 @@ export class ExplorationLoop {
         let target: InteractiveElement = ranked[0];
 
         if (decision.kind === 'exhausted') {
-          telemetry.emitMilestone('🔚 Graph exhausted. Exploration complete.');
-          return { completed: true, reason: 'Full reachable graph exhausted.' };
+          // Adaptive recovery before accepting termination: re-evaluate soft-blocked
+          // edges (unstable/branch/sweep — never true cycles), reset the boredom
+          // floor, and re-seed if needed. Only terminate after MAX_RECOVERY_ROUNDS
+          // consecutive rounds (since the last novel state) yield no new frontier.
+          if (recoveryRounds >= MAX_RECOVERY_ROUNDS) {
+            telemetry.emitMilestone('🔚 Graph exhausted after adaptive recovery. Exploration complete.');
+            return { completed: true, reason: 'Full reachable graph exhausted (post-recovery).' };
+          }
+
+          recoveryRounds++;
+          const recovery = this.deps.pathNavigator.recoverFromExhaustion();
+          telemetry.emitMilestone(
+            `♻️ ${describeRecovery(recovery.requeuedEdges)} (round ${recoveryRounds}/${MAX_RECOVERY_ROUNDS}).`,
+          );
+          telemetry.emit('ACTION', {
+            actionExecuted: 'adaptive-recovery',
+            message: describeRecovery(recovery.requeuedEdges),
+          });
+          // Record the recovery deliberately through centralized forensics so the
+          // reproduction playbook reflects it.
+          ActiveScenarioTracker.begin('AdaptiveRecovery', currentUrl);
+          ActiveScenarioTracker.record(describeRecovery(recovery.requeuedEdges));
+          ActiveScenarioTracker.end();
+
+          if (recovery.requeuedEdges === 0) {
+            // Nothing soft-blocked left to re-queue — re-seed from the origin once
+            // to surface states the run may have drifted away from.
+            const origin = this.deps.getTargetOrigin();
+            telemetry.emitMilestone(`♻️ Re-seeding exploration from origin: ${origin}`);
+            await this.deps.stateRestorer.restoreToState(page, '', origin);
+            await wait(350);
+          }
+          continue;
         }
 
         telemetry.emit('ACTION', {
@@ -340,6 +386,8 @@ export class ExplorationLoop {
         const isNovelState = traversalOk && this.deps.visitedHashes.has(childHash) === false;
 
         if (isNovelState) {
+          // Genuine progress — refresh the adaptive-recovery budget.
+          recoveryRounds = 0;
           // Novel state discovered - fire Perceptron's Delta Rule to reward the element weights
           this.deps.scorer.rewardFromNetworkSignal(target);
 

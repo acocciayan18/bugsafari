@@ -17,6 +17,7 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { describeCoordinateBombing } from '../../services/forensics/narration.js';
 
 /**
  * Deterministic grid coordinate for click `index` over a width×height viewport.
@@ -65,9 +66,7 @@ export const coordinateBombing = {
       manager.startTransaction('viewport', 'STRESS_CLICK', metadata);
     }
 
-    ActiveScenarioTracker.record(
-      `Fire ${BOMB_COUNT} deterministic grid coordinate clicks across the ${width}x${height} viewport`,
-    );
+    ActiveScenarioTracker.record(describeCoordinateBombing(BOMB_COUNT, width, height));
 
     let completed = 0;
     try {

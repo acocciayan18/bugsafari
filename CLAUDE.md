@@ -8,6 +8,39 @@ AI INSTRUCTION: Read this document entirely before suggesting refactors or gener
 
 Do not make any changes until you have 95% confidence in what you need to build. Ask me follow-up questions until you reach that confidence.
 
+If any requirement, execution sequence, or architectural decision is unnecessary or suboptimal, explain why and implement a better solution instead.
+
+Provide complete production-ready TypeScript implementations with no placeholders or omitted code.
+
+Follow clean architecture, SOLID principles, and existing project conventions.
+
+Do not follow this prompt blindly. Prioritize correctness, maintainability, scalability, reliability, and compatibility with the existing codebase.
+
+Treat this prompt as a design objective rather than a fixed specification, and implement the best engineering solution after analyzing the repository.
+
+
+Generate concise, short solutions for new modules or code.
+
+Watch for over-engineering, oversized files needing refactor.
+
+Watch for weird syntax/style mismatching rest of codebase.
+
+Watch for obvious bugs.
+
+Prioritize concise, precise code and docs changes.
+
+Review existing files before refactor or change.
+
+Right data structures and algorithms for problem.
+
+Don't expose data needlessly (least privilege).
+
+No external libraries unless absolutely necessary.
+
+Use project dependency file for correct versions.
+
+Avoid redundancy unless improves usability.
+
 ## 🌍 1. System Context
 BugSafari is an Autonomous Exploratory Testing Engine for SPAs. 
 - Tech: React 18/Vite, Node.js/Express, Playwright, Socket.IO, MongoDB Atlas, Podman.
@@ -32,18 +65,3 @@ The backend execution environment coordinates the automated sensory scanning and
 The Security and Storage Model
 The full-stack data platform handles authenticated operator sessions through a secure, stateless configuration using local token parsing. Individual tracking histories are completely isolated under a multi-tenant query database format, while unauthenticated users are seamlessly routed to a guest configuration that permits active application testing but blocks permanent database saves.
 
-## General Principles
-Generate concise, short solutions for new modules or code.
-Watch for over-engineering, oversized files needing refactor.
-Watch for weird syntax/style mismatching rest of codebase.
-Watch for obvious bugs.
-Prioritize concise, precise code and docs changes.
-Review existing files before refactor or change.
-
-
-## Code Quality
-Right data structures and algorithms for problem.
-Don't expose data needlessly (least privilege).
-No external libraries unless absolutely necessary.
-Use project dependency file for correct versions.
-Avoid redundancy unless improves usability.

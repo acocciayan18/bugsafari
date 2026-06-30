@@ -5,10 +5,27 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import { wait } from '../rapidClicker/utils.js';
 import { safeNavigation, safeGoto } from './navigation.js';
 import { mutateQueryParams, QUERY_MUTATIONS } from './queryMutation.js';
-import { RouteTrashMetadataRecorder, type RouteTrashResult } from './metadata.js';
+import { RouteTrashMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
+import {
+  describeRouteTrashStart,
+  describeRouteTrashNavigation,
+  describeRouteTrashMutation,
+  describeRouteTrashDrift,
+} from '../../services/forensics/narration.js';
 
-export type { RouteTrashResult } from './metadata.js';
 export { QUERY_MUTATIONS, type QueryMutationType } from './queryMutation.js';
+
+/**
+ * The summary returned to the engine after a route-trash run. Cycle-aware:
+ * `returnedToOrigin` signals whether the bursts net-landed back on the origin
+ * path, `finalUrl` is where the page rests after origin-restore.
+ */
+export interface RouteTrashResult {
+  attempted: number;
+  completed: number;
+  finalUrl: string;
+  returnedToOrigin: boolean;
+}
 
 /** Default number of back/forward/mutation iterations. */
 const NAVIGATION_REPETITIONS = 5;
@@ -72,9 +89,7 @@ export const routeTrasher = {
     const recorder = new RouteTrashMetadataRecorder(metadata);
 
     console.log(`[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`);
-    ActiveScenarioTracker.record(
-      `Trash navigation history (back/forward ${repetitions}×) and mutate URL query params from ${originPath}`,
-    );
+    ActiveScenarioTracker.record(describeRouteTrashStart(repetitions, originPath));
 
     let attempted = 0;
     let completed = 0;
@@ -91,7 +106,9 @@ export const routeTrasher = {
           completed++;
           const url = page.url();
           recorder.record('history_back', url);
-          ActiveScenarioTracker.record(`Iteration ${i + 1}: history back (index ${recorder.historyIndex}) → ${url}`);
+          ActiveScenarioTracker.record(
+            describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, url),
+          );
         }
         await wait(INTER_ACTION_DELAY_MS);
 
@@ -101,7 +118,9 @@ export const routeTrasher = {
           completed++;
           const url = page.url();
           recorder.record('history_forward', url);
-          ActiveScenarioTracker.record(`Iteration ${i + 1}: history forward (index ${recorder.historyIndex}) → ${url}`);
+          ActiveScenarioTracker.record(
+            describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, url),
+          );
         }
         await wait(INTER_ACTION_DELAY_MS);
 
@@ -113,7 +132,7 @@ export const routeTrasher = {
           completed++;
           recorder.record('query_mutation', outcome.resultingUrl);
           ActiveScenarioTracker.record(
-            `Iteration ${i + 1}: mutate query '${outcome.param}' via ${outcome.mutation} → ${outcome.resultingUrl}`,
+            describeRouteTrashMutation(i + 1, outcome.param, outcome.mutation, outcome.resultingUrl),
           );
         }
         await wait(INTER_ACTION_DELAY_MS);
@@ -125,7 +144,7 @@ export const routeTrasher = {
         const landed = page.url();
         returnedToOrigin = landed === originPath;
         if (!returnedToOrigin) {
-          ActiveScenarioTracker.record(`Route bursts drifted to ${landed}; restoring to origin ${originPath}.`);
+          ActiveScenarioTracker.record(describeRouteTrashDrift(landed, originPath));
           await safeGoto(page, originPath, 5000);
         }
         finalUrl = page.url();

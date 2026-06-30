@@ -3,7 +3,7 @@ import type { InteractiveElement } from '../../domain/entities/InteractiveElemen
 import type { StressScenario } from './types.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel } from '../../infrastructure/monitoring/playbookNarrator.js';
+import { resolveElementLabel, describeConstraintBypass } from '../services/forensics/narration.js';
 
 /**
  * Attributes stripped by FormBypasser to force interactions.
@@ -233,7 +233,7 @@ const result = JSON.parse(affectedSelector);
         url: pageUrl,
       });
       const bypassLabel = target ? resolveElementLabel(target) : 'input field';
-      ActiveScenarioTracker.record(`Bypassed interface safeguards on input field: "${bypassLabel}" by removing client constraint hooks`);
+      ActiveScenarioTracker.record(describeConstraintBypass(bypassLabel));
 
       // Emit detailed telemetry
       console.log(

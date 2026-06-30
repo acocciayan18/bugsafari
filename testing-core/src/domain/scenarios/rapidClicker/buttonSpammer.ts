@@ -18,10 +18,14 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
 import { CLICK_COUNT } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
-import { StressClickMetadataRecorder, describeBurst } from './metadata.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel, genericElementLabel } from '../../../infrastructure/monitoring/playbookNarrator.js';
+import {
+  resolveElementLabel,
+  genericElementLabel,
+  describeConcurrentBurst,
+} from '../../services/forensics/narration.js';
+import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
 export const buttonSpammer = {
   name: 'ButtonSpammer',
@@ -77,7 +81,7 @@ export const buttonSpammer = {
       });
       const label = target ? resolveElementLabel(target) : 'button';
       const kind = genericElementLabel(target?.tagName, target?.type);
-      ActiveScenarioTracker.record(describeBurst(result, label, kind));
+      ActiveScenarioTracker.record(describeConcurrentBurst(result, label, kind));
 
       console.log(
         `[StressScenario:ButtonSpammer] Burst completed ${result.completed}/${result.attempted} in ${result.durationMs}ms`,

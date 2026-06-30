@@ -5,8 +5,10 @@
  * Each strategy generates targeted payloads based on field category classification.
  */
 
-import { 
-  type NumericPayload, 
+import type { FuzzingStrategyType } from '../../../fuzzing/index.js';
+
+import {
+  type NumericPayload,
   generateNumericBoundaryPayload, 
   getAllNumericPayloads, 
   isBoundaryPayload 
@@ -167,6 +169,30 @@ export function getStrategyByCategory(category: FieldCategory): StrategyPayload 
       const result = generateChaosPayload();
       return { value: result.value, description: result.description };
     }
+  }
+}
+
+/**
+ * Maps a classified FieldCategory to the FuzzingStrategyType label recorded in
+ * FuzzMetadata, so forensic findings name the strategy that generated a payload.
+ */
+export function categoryToStrategyType(category: FieldCategory): FuzzingStrategyType {
+  switch (category) {
+    case 'NUMERIC':
+      return 'boundary';
+    case 'TEXT_SEARCH':
+      return 'injection';
+    case 'DATABASE_AUTH':
+      return 'injection';
+    case 'EMAIL':
+      return 'mutating';
+    case 'DATE':
+      return 'boundary';
+    case 'JSON':
+      return 'encoding';
+    case 'CHAOS_FALLBACK':
+    default:
+      return 'chaos';
   }
 }
 

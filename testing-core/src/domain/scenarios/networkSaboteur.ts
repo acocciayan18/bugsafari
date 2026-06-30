@@ -4,6 +4,7 @@ import type { StressScenario } from './types.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../../../shared/types.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+import { describeNetworkSabotage } from '../services/forensics/narration.js';
 
 type SabotageMode = 'Delayed' | 'Aborted';
 
@@ -235,7 +236,7 @@ export const networkSaboteur: StressScenario = {
     let sabotaged = false;
     let sabotagedUrl = 'unknown-url';
 
-    ActiveScenarioTracker.record(`Sabotage the next API/XHR request (${mode} mode) to test error resilience`);
+    ActiveScenarioTracker.record(describeNetworkSabotage(mode));
 
     const handler = async (route: Route, request: Request): Promise<void> => {
       if (sabotaged) {

@@ -108,6 +108,13 @@ export type EdgeStatus =
   | 'blocked';    // permanently excluded from this session (loop penalty applied)
 
 /**
+ * Why an edge was blocked. Drives adaptive recovery: SOFT reasons
+ * (unstable/branch/sweep) may be re-queued when the graph looks exhausted;
+ * `cyclic` is a true cycle and is NEVER re-queued.
+ */
+export type BlockReason = 'cyclic' | 'unstable' | 'branch' | 'sweep';
+
+/**
  * A directed edge from a parent GraphNode to a (potentially unknown) child node.
  */
 export interface GraphEdge {
@@ -128,6 +135,13 @@ export interface GraphEdge {
 
   /** Number of times this specific edge has been attempted */
   attempts: number;
+
+  /**
+   * Why this edge was blocked (set only when `status === 'blocked'`). Lets the
+   * adaptive-recovery sweep re-queue soft blocks (unstable/branch/sweep) while
+   * leaving true cycles permanently blocked.
+   */
+  blockReason?: BlockReason;
 
   /**
    * Number of times post-click verification has FAILED for this edge
@@ -229,7 +243,8 @@ export type PathfinderEventKind =
   | 'boredom-triggered-backtrack'
   | 'boredom-check-passed'
   | 'diversity-penalty-applied'
-  | 'tiebreaker-sort-applied';
+  | 'tiebreaker-sort-applied'
+  | 'recovery-attempt';
 
 export interface PathfinderEvent {
   readonly kind: PathfinderEventKind;

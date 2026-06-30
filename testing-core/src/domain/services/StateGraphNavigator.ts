@@ -406,6 +406,7 @@ export class StateGraphNavigator {
     if (!edge) return;
 
     edge.status = 'blocked';
+    edge.blockReason = 'branch';
     this.invalidateEdgeIndex(fromHash);
     this.recordEvent('edge-blocked', fromHash, `Edge "${selector}" permanently blocked.`);
     this.checkNodeExhaustion(node);
@@ -428,6 +429,7 @@ export class StateGraphNavigator {
 
     edge.score = 0;
     edge.status = 'blocked';
+    edge.blockReason = 'cyclic';
     this.invalidateEdgeIndex(fromHash);
     this.recordEvent(
       'cyclic-loop',
@@ -484,6 +486,7 @@ export class StateGraphNavigator {
 
     if (edge.failedVerifications >= this.config.unstableRetryLimit) {
       edge.status = 'blocked';
+      edge.blockReason = 'unstable';
       this.recordEvent(
         'edge-blocked',
         fromHash,
@@ -516,6 +519,7 @@ export class StateGraphNavigator {
     for (const edge of node.edges.values()) {
       if (edge.status === 'unvisited' || edge.status === 'traversing') {
         edge.status = 'blocked';
+        edge.blockReason = 'branch';
       }
     }
     this.invalidateEdgeIndex(frame.nodeHash);
@@ -604,6 +608,7 @@ export class StateGraphNavigator {
       for (const edge of node.edges.values()) {
         if (edge.status === 'unvisited') {
           edge.status = 'blocked';
+          edge.blockReason = 'branch';
         }
       }
       this.invalidateEdgeIndex(node.hash);
@@ -718,9 +723,66 @@ export class StateGraphNavigator {
   private blockNodePermanently(node: GraphNode): void {
     for (const edge of node.edges.values()) {
       edge.status = 'blocked';
+      edge.blockReason = 'sweep';
     }
     this.invalidateEdgeIndex(node.hash);
     node.exhausted = true;
+  }
+
+  /**
+   * Adaptive recovery after the navigator has reported full graph exhaustion.
+   *
+   * Re-queues edges that were blocked for SOFT reasons (unstable retries, branch
+   * penalties, exhaustion sweeps) back to `unvisited`, restoring a modest score
+   * floor so best-first selection can re-evaluate them. True cycles
+   * (`blockReason === 'cyclic'`, score already zeroed) are NEVER re-queued, which
+   * guarantees recovery cannot loop forever. Also reopens the affected nodes,
+   * resets the boredom floor + repeat counter, and clears the argmax cache so the
+   * next decision re-scans the frontier.
+   *
+   * Returns how much frontier was recovered so the coordinator can decide whether
+   * to keep exploring or finally terminate.
+   */
+  public recoverFromExhaustion(): { requeuedEdges: number; nodesReopened: number } {
+    const RECOVERY_SCORE_FLOOR = 1;
+    let requeuedEdges = 0;
+    let nodesReopened = 0;
+
+    for (const node of this.nodes.values()) {
+      let reopenedHere = false;
+      for (const edge of node.edges.values()) {
+        if (edge.status !== 'blocked') continue;
+        // Never resurrect a true cycle.
+        if (edge.blockReason === 'cyclic') continue;
+        // Only soft blocks are eligible (unstable / branch / sweep). Edges blocked
+        // before this field existed (undefined reason) are treated as soft too.
+        edge.status = 'unvisited';
+        edge.blockReason = undefined;
+        edge.score = Math.max(edge.score, RECOVERY_SCORE_FLOOR);
+        requeuedEdges += 1;
+        reopenedHere = true;
+      }
+      if (reopenedHere && node.exhausted) {
+        node.exhausted = false;
+        node.backtracksFromHere = 0;
+        nodesReopened += 1;
+      }
+      if (reopenedHere) {
+        this.invalidateEdgeIndex(node.hash);
+      }
+    }
+
+    // Reset stagnation/boredom state so the re-queued frontier gets a fair pass.
+    this.consecutiveRepeatCount = 0;
+    this.currentBoredomThreshold = this.config.boredomThresholdMin;
+
+    this.recordEvent(
+      'recovery-attempt',
+      this.currentFrame()?.nodeHash ?? this.lastObservedHash,
+      `Adaptive recovery re-queued ${requeuedEdges} soft-blocked edge(s) across ${nodesReopened} node(s); boredom floor reset.`,
+    );
+
+    return { requeuedEdges, nodesReopened };
   }
 
   // ───────────────────────────────────────────────────────────────────────────

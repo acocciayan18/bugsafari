@@ -6,12 +6,12 @@ import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
-import { SeededRandomGenerator } from '../SeededRandomGenerator.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
 import { setChaosManagerAccessor as setStructuralProbeAccessor } from '../../../bugs/finders/structuralProbe.js';
 import { setChaosManagerAccessor as setConcurrentStressAccessor } from '../../../bugs/finders/concurrentStress.js';
+import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -105,12 +105,6 @@ export class ExplorationEngine {
   // ChaosTransactionManager for wrapping input field fuzzing sequences
   private fuzzManager: ChaosTransactionManager;
 
-  // SeededRandomGenerator for deterministic/reproducible fuzzing decisions
-  private seededRandom: SeededRandomGenerator;
-
-  // Data fuzzer decision threshold - use heuristic scoring for intelligent decision
-  private dataFuzzerThreshold = 0.3; // Use data fuzzer when target risk score >= 0.3
-
   // Operator-gated scenario matrix — resolves which stress/fuzz/bypass modes run.
   private readonly gate: ScenarioGate;
 
@@ -165,19 +159,9 @@ export class ExplorationEngine {
     // metadata. Same dormant-runner caveat applies; StabilityMonitor handles live
     // capture during the burst regardless.
     setConcurrentStressAccessor(this.fuzzManager);
-
-    // Initialize SeededRandomGenerator for deterministic fuzzing decisions
-    // Use seed from optimizationSettings if provided, otherwise undefined (non-reproducible mode)
-    // Note: randomSeed can be added to OptimizationSettings interface for reproducible testing
-    const seed = (this.optimizationSettings as any)?.randomSeed as number | undefined;
-    this.seededRandom = new SeededRandomGenerator(seed);
-
-    // Log mode for thesis panel demonstration
-    if (seed !== undefined) {
-      console.log(`[ExplorationEngine] Running in SEEDED mode (seed: ${seed}) for reproducible testing`);
-    } else {
-      console.log(`[ExplorationEngine] Running in HEURISTIC mode for intelligent data fuzzer decisions`);
-    }
+    // Same wiring for the data-fuzz guard so it can read live FUZZ metadata. Same
+    // dormant-runner caveat; StabilityMonitor handles live capture regardless.
+    setFuzzGuardAccessor(this.fuzzManager);
   }
 
   public getConfirmedBugsFromMemory(): ConfirmedBug[] {
@@ -394,10 +378,8 @@ export class ExplorationEngine {
     const actionExecutor = new ActionExecutor({
       gate: this.gate,
       fuzzManager: this.fuzzManager,
-      seededRandom: this.seededRandom,
       simulator: this.simulator,
       highlighter: this.highlighter,
-      dataFuzzerThreshold: this.dataFuzzerThreshold,
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
@@ -531,6 +513,7 @@ export class ExplorationEngine {
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         getTimeboxMs: () => this.timeboxMs,
         getLastKnownUrl: () => lastKnownUrl,
+        getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),

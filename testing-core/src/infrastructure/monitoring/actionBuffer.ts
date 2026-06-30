@@ -1,7 +1,7 @@
 import type { ActionRecord, ActionType } from '../../../../shared/types.ts';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
-import { narrateActionRecords } from './playbookNarrator.js';
+import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 
 export interface ActionEntryInput {
   type: ActionType;

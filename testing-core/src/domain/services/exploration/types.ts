@@ -10,7 +10,6 @@ import type { DomHasher } from '../../../ml/domHasher.js';
 import type { RiskScorer } from '../RiskScorer.js';
 import type { StateGraphNavigator } from '../StateGraphNavigator.js';
 import type { ScenarioGate } from '../scenarioGate.js';
-import type { SeededRandomGenerator } from '../SeededRandomGenerator.js';
 import type { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
 import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -112,10 +111,8 @@ export interface StateRestorerDeps {
 export interface ActionExecutorDeps {
   gate: ScenarioGate;
   fuzzManager: ChaosTransactionManager;
-  seededRandom: SeededRandomGenerator;
   simulator: InteractionSimulator;
   highlighter: BoundingBoxHighlighter;
-  dataFuzzerThreshold: number;
   telemetry: TelemetryEmitter;
   recordActionTrace: RecordActionTrace;
   getTargetOrigin(): string;
@@ -139,6 +136,8 @@ export interface ExplorationLoopDeps {
   checkTimebox(): boolean;
   getTimeboxMs(): number;
   getLastKnownUrl(): string;
+  /** Target origin URL — used to re-seed exploration during adaptive recovery. */
+  getTargetOrigin(): string;
   persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void>;
   setFreeze(): void;
   ensureDomReady(page: Page): Promise<void>;

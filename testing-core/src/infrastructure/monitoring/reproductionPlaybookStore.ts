@@ -1,6 +1,6 @@
 import type { ActionRecord } from '../../../../shared/types.ts';
 
-import { narrateActionRecords } from './playbookNarrator.js';
+import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 
 /**
  * Persistent per-Safari-run action history.
