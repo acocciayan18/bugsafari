@@ -4,9 +4,11 @@
 // Displays forensic analysis report with placeholder sections
 // Uses mock data - no database connection yet
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
+import { fetchForensicReport } from '../../services/historyService';
+import type { ForensicReportResponse } from '../../types';
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCH: XSS Sanitization (Task 2)
@@ -28,120 +30,102 @@ interface ReportSection {
   content: string;
 }
 
-// Mock placeholder data - Phase A only
-const MOCK_REPORT_DATA = {
-  runId: '',
-  targetUrl: 'https://cafesplatform.elementfx.com/',
-  executedAt: new Date().toISOString(),
-  status: 'COMPLETED',
-  duration: '4m 32s',
-  totalActions: 47,
-  bugsFound: 3,
-  coverage: 78,
-};
+function formatDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return 'N/A';
 
-const MOCK_EXECUTIVE_SUMMARY: ReportSection = {
-  id: 'executive-summary',
-  title: 'Executive Summary',
-  content: `This autonomous exploration session executed 47 actions against the target URL.
-  
-Key Findings:
-- 3 security vulnerabilities detected (1 CRITICAL, 2 HIGH)
-- Session completed successfully with 78% DOM coverage
-- Primary vulnerability: Client-side input validation bypass
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
 
-Risk Assessment: HIGH
-The application exhibits critical security flaws in form input handling that could 
-allow malicious payload injection. Immediate remediation recommended.`,
-};
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
 
-const MOCK_FINDINGS: ReportSection = {
-  id: 'findings',
-  title: 'Findings',
-  content: `CRITICAL - Input Validation Bypass (CWE-20)
-  Location: /login form
-  Selector: #username-input
-  Payload: <script>alert('xss')</script>
-  Impact: Cross-site scripting vulnerability
-  
-HIGH - DOM XSS (CWE-79)
-  Location: Search component  
-  Selector: #search-field
-  Payload: <img src=x onerror=alert(1)>
-  Impact: Unauthorized script execution
-  
-HIGH - Information Disclosure
-  Location: API response handler
-  Endpoint: /api/user/profile
-  Impact: Sensitive data exposure in console`,
-};
+  return `${seconds}s`;
+}
 
-const MOCK_ERROR_LOGS: ReportSection = {
-  id: 'error-logs',
-  title: 'Error Logs',
-  content: `[2024-01-15T10:23:45.123Z] ERROR: Uncaught TypeError: Cannot read property 'value' of null
-  at FormValidator.validate (line 42)
-  at HTMLFormElement.submit
-  
-[2024-01-15T10:24:12.456Z] WARN: Deprecated API called: /v1/auth
-  Please migrate to /v2/auth for security updates
-  
-[2024-01-15T10:25:33.789Z] ERROR: 401 Unauthorized - Invalid token
-  API Request: POST /api/user/update
-  Response: {"error": "token_expired"}`,
-};
+function formatDate(value?: string): string {
+  if (!value) return 'N/A';
 
-const MOCK_TELEMETRY: ReportSection = {
-  id: 'telemetry',
-  title: 'Telemetry',
-  content: `Session Start: 2024-01-15T10:20:00.000Z
-  Session End: 2024-01-15T10:24:32.123Z
-  Total Duration: 4m 32s
-  
-Navigation Events: 12
-Form Submissions: 8
-Click Events: 23
-Input Events: 15
-Network Requests: 34
-  
-Browser: Chrome 120.0 (Headless)
-Viewport: 1280x720
-User Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)`,
-};
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
 
-const MOCK_SCREENSHOTS: ReportSection = {
-  id: 'screenshots',
-  title: 'Screenshots',
-  content: `Screenshot 1: Initial Load (10:20:01)
-  Screenshot 2: Login Form (10:20:15)
-  Screenshot 3: Error State (10:23:45)
-  Screenshot 4: Final State (10:24:30)
-  
-[View Screenshot Gallery]`,
-};
+  return parsed.toLocaleString();
+}
 
-const MOCK_AI_ANALYSIS: ReportSection = {
-  id: 'ai-analysis',
-  title: 'AI Analysis',
-  content: `🧠 BUGSAFARI FORENSIC EXPERT SYSTEM ANALYSIS
+function buildReportSections(report: ForensicReportResponse): ReportSection[] {
+  const findingsLines = report.forensicTrace?.caughtBugs?.length
+    ? report.forensicTrace.caughtBugs.map((bug, index) => {
+        const payload = bug.payloadUsed ? `\nPayload: ${bug.payloadUsed}` : '';
+        return `${index + 1}. ${bug.type || 'UNKNOWN'}\nMessage: ${bug.message || 'No details provided'}\nSelector: ${bug.selector || 'N/A'}${payload}\nAdvice: ${bug.advice || 'No guidance available'}\nTimestamp: ${formatDate(bug.timestamp)}`;
+      }).join('\n\n')
+    : 'No findings were recorded for this session.';
 
-Vulnerability Classification:
-- Primary: Client-Side Validation Bypass (CWE-20)
-- Secondary: DOM-based XSS (CWE-79)
+  const errorLines = report.errorLogs?.errors?.length
+    ? report.errorLogs.errors.map((error, index) => {
+        const header = `${index + 1}. ${error.type || 'ERROR'}`;
+        const message = error.message ? `\nMessage: ${error.message}` : '';
+        const location = error.selector ? `\nSelector: ${error.selector}` : '';
+        const endpoint = error.endpoint ? `\nEndpoint: ${error.endpoint}` : '';
+        const status = error.statusCode ? `\nStatus: ${error.statusCode}` : '';
+        const timestamp = error.createdAt ? `\nTime: ${formatDate(error.createdAt)}` : '';
+        return `${header}${message}${location}${endpoint}${status}${timestamp}`;
+      }).join('\n\n')
+    : 'No error logs were captured for this session.';
 
-Attack Vector Analysis:
-The tester successfully bypassed client-side input validation using 
-specialized payload patterns designed to evade sanitization filters.
+  const actionStepsContent = report.actionSteps?.length
+    ? report.actionSteps.map((step) => {
+        const payload = step.payloadText ? ` with payload "${step.payloadText}"` : '';
+        return `Step ${step.stepNumber}: ${step.actionType}${payload} on ${step.selector || 'N/A'} (${formatDate(step.timestamp)})`;
+      }).join('\n')
+    : 'No action steps were recorded.';
 
-Recommended Remediation Strategy:
-1. Implement server-side input validation for all form fields
-2. Use Content Security Policy (CSP) headers
-3. Apply HTML encoding before rendering user input
-4. Enable secure flags on session cookies
+  const aiAnalysisText = report.aiAnalysis?.rootCause || report.aiAnalysis?.recommendations?.length
+    ? [
+        report.aiAnalysis?.rootCause ? `Root cause: ${report.aiAnalysis.rootCause}` : '',
+        report.aiAnalysis?.recommendations?.length
+          ? `Recommendations:\n${report.aiAnalysis.recommendations.map((recommendation) => `- ${recommendation}`).join('\n')}`
+          : '',
+      ].filter(Boolean).join('\n\n')
+    : 'No AI analysis was generated for this session.';
 
-Confidence Score: 94%
-Estimated Fix Complexity: Medium`,
-};
+  return [
+    {
+      id: 'executive-summary',
+      title: 'Executive Summary',
+      content: `This session ran against ${report.url || 'the target URL'}.
+
+Summary:
+- Status: ${report.status || 'UNKNOWN'}
+- Started: ${formatDate(report.date)}
+- Duration: ${formatDuration(report.duration)}
+- Actions executed: ${report.metrics?.totalActions ?? 0}
+- Findings recorded: ${report.findings?.totalBugsFound ?? 0}
+- Coverage: ${report.coverage ?? 0}%
+- Risk score: ${report.riskScore ?? 0}`,
+    },
+    {
+      id: 'findings',
+      title: 'Findings',
+      content: findingsLines,
+    },
+    {
+      id: 'error-logs',
+      title: 'Error Logs',
+      content: errorLines,
+    },
+    {
+      id: 'action-steps',
+      title: 'Action Steps',
+      content: actionStepsContent,
+    },
+    {
+      id: 'ai-analysis',
+      title: 'AI Analysis',
+      content: aiAnalysisText,
+    },
+  ];
+}
 
 interface SectionCardProps {
   section: ReportSection;
@@ -179,9 +163,48 @@ function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
 
 export default function ForensicReport() {
   const { runId } = useParams<{ runId: string }>();
+  const [report, setReport] = useState<ForensicReportResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['executive-summary'])
   );
+
+  useEffect(() => {
+    if (!runId) {
+      setError('Missing report ID.');
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadReport = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const data = await fetchForensicReport(runId);
+        if (!cancelled) {
+          setReport(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load forensic report.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadReport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections((prev) => {
@@ -195,14 +218,29 @@ export default function ForensicReport() {
     });
   };
 
-  const sections = [
-    MOCK_EXECUTIVE_SUMMARY,
-    MOCK_FINDINGS,
-    MOCK_ERROR_LOGS,
-    MOCK_TELEMETRY,
-    MOCK_SCREENSHOTS,
-    MOCK_AI_ANALYSIS,
-  ];
+  const sections = useMemo(() => (report ? buildReportSections(report) : []), [report]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="text-sm font-semibold text-slate-700">Loading forensic report…</div>
+          <div className="mt-2 text-xs text-slate-500">Fetching the latest session details from the backend.</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !report) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-white px-6">
+        <div className="max-w-md text-center">
+          <div className="text-sm font-semibold text-red-600">Failed to load report</div>
+          <div className="mt-2 text-xs text-slate-500">{error || 'No report data was returned for this session.'}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -239,27 +277,27 @@ export default function ForensicReport() {
           </div>
           <div>
             <span className="text-slate-500 font-medium">Target:</span>{' '}
-            <span className="text-slate-700">{MOCK_REPORT_DATA.targetUrl}</span>
+            <span className="text-slate-700">{report.url || 'N/A'}</span>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Status:</span>{' '}
-            <span className="font-medium text-green-600">{MOCK_REPORT_DATA.status}</span>
+            <span className={`font-medium ${report.status === 'CRASHED' ? 'text-red-600' : report.status === 'HALTED' ? 'text-amber-600' : 'text-green-600'}`}>{report.status}</span>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Duration:</span>{' '}
-            <span className="text-slate-700">{MOCK_REPORT_DATA.duration}</span>
+            <span className="text-slate-700">{formatDuration(report.duration)}</span>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Actions:</span>{' '}
-            <span className="text-slate-700">{MOCK_REPORT_DATA.totalActions}</span>
+            <span className="text-slate-700">{report.metrics?.totalActions ?? 0}</span>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Findings:</span>{' '}
-            <span className="font-medium text-red-600">{MOCK_REPORT_DATA.bugsFound}</span>
+            <span className="font-medium text-red-600">{report.findings?.totalBugsFound ?? 0}</span>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Coverage:</span>{' '}
-            <span className="text-slate-700">{MOCK_REPORT_DATA.coverage}%</span>
+            <span className="text-slate-700">{report.coverage ?? 0}%</span>
           </div>
         </div>
       </div>
@@ -282,7 +320,7 @@ export default function ForensicReport() {
       <footer className="border-t border-slate-200 px-6 py-4">
         <div className="text-center">
           <span className="font-mono text-xs text-slate-400">
-            END OF FORENSIC REPORT - PHASE A (PLACEHOLDER DATA)
+            END OF FORENSIC REPORT
           </span>
         </div>
       </footer>
