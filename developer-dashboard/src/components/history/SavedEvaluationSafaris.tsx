@@ -3,9 +3,9 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import type { SessionHistoryEntry } from '../../types';
-import ForensicInspectionDrawer from '../forensics/ForensicInspectionDrawer';
 import { CoverageDisplay } from './CoverageProgressBar';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
@@ -201,11 +201,10 @@ function StepRow({ step, stepStr }: { step?: ParsedStep | null; stepStr: string 
 }
 
 export default function SavedEvaluationSafaris() {
+  const navigate = useNavigate();
 const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<SeverityFilter>('ALL');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'date', direction: 'desc' });
-  // Selected session drives the side-sliding ForensicInspectionDrawer (null = closed).
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
@@ -343,9 +342,9 @@ const { token, isAuthLoading } = useAuth();
     }
   };
 
-  // Handle view report (navigate to forensic report page)
+  // Handle view report — SPA navigation to the full-screen forensic report page.
   const handleViewReport = (recordId: string) => {
-    window.location.href = `/forensic-report/${recordId}`;
+    navigate(`/forensic-report/${recordId}`);
   };
 
   // Use only API data (fetched from database)
@@ -718,8 +717,17 @@ paginatedEvaluations.map((evalItem) => {
               return (
                 <div key={evalItem.id}>
                   <div
-                    className="cursor-pointer transition-colors hover:bg-slate-100 bg-white"
-                    onClick={() => setSelectedSessionId(evalItem.id)}
+                    className="cursor-pointer transition-colors hover:bg-slate-100 active:bg-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View forensic report for ${evalItem.targetUrl}`}
+                    onClick={() => handleViewReport(evalItem.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleViewReport(evalItem.id);
+                      }
+                    }}
                   >
 <div className="flex items-center justify-between px-6 py-4">
 <div className="flex-1">
@@ -748,14 +756,16 @@ paginatedEvaluations.map((evalItem) => {
                         >
                           {evalItem.severityCount} {evalItem.severity}
                         </div>
-{/* Row Action Menu */}
-                        <RowActionMenu
-                          recordId={evalItem.id}
-                          targetUrl={evalItem.targetUrl}
-                          onViewReport={() => handleViewReport(evalItem.id)}
-                          onExportRecord={() => handleExportRecord(evalItem.id)}
-                          onDeleteRecord={() => handleDeleteClick(evalItem.id, evalItem.targetUrl)}
-                        />
+{/* Row Action Menu — isolate clicks so they don't bubble to the row's navigation handler */}
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <RowActionMenu
+                            recordId={evalItem.id}
+                            targetUrl={evalItem.targetUrl}
+                            onViewReport={() => handleViewReport(evalItem.id)}
+                            onExportRecord={() => handleExportRecord(evalItem.id)}
+                            onDeleteRecord={() => handleDeleteClick(evalItem.id, evalItem.targetUrl)}
+                          />
+                        </div>
                         <div className="flex h-6 w-6 items-center justify-center">
                           <svg
                             className="h-4 w-4 text-slate-400"
@@ -838,12 +848,6 @@ paginatedEvaluations.map((evalItem) => {
         message={`Are you sure you want to delete ${bulkDeleteDialogState.count} evaluation record${bulkDeleteDialogState.count > 1 ? 's' : ''}? This action cannot be undone.`}
         confirmLabel="Delete All"
         isLoading={bulkDeleteDialogState.isDeleting}
-      />
-
-      {/* Side-sliding forensic inspection drawer (opens on row click) */}
-      <ForensicInspectionDrawer
-        sessionId={selectedSessionId}
-        onClose={() => setSelectedSessionId(null)}
       />
     </div>
   );

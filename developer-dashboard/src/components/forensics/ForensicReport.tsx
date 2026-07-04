@@ -1,34 +1,28 @@
 // ═══════════════════════════════════════════════════════════════
-// ForensicReport.tsx - View Report Page (Phase A)
+// ForensicReport.tsx - Full-Screen Forensic Report Page
 // ═══════════════════════════════════════════════════════════════
-// Displays forensic analysis report with placeholder sections
-// Uses mock data - no database connection yet
+// Renders a saved session's forensic report as a single cohesive
+// document: an always-visible executive summary, an AI insights
+// panel (when available), and one self-contained card per finding
+// that groups its message, attribution, reproduction steps, and
+// suggested fix together — instead of four disconnected flat lists
+// (findings / error logs / action steps / AI analysis) a user
+// previously had to reconcile by hand.
+//
+// `forensicTrace.caughtBugs` is the authoritative, fully-classified
+// finding set (attribution, reproduction steps, advice all resolved
+// server-side) — `errorLogs.errors` is the same underlying event
+// stream pre-classification, so it is not rendered as a second,
+// duplicate list here.
 
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import DOMPurify from 'dompurify';
 import { fetchForensicReport } from '../../services/historyService';
-import type { ForensicReportResponse } from '../../types';
-
-// ─────────────────────────────────────────────────────────────
-// SECURITY PATCH: XSS Sanitization (Task 2)
-// ─────────────────────────────────────────────────────────────
-// Wrap all dynamically rendered HTML and stack traces through DOMPurify.sanitize()
-// to prevent XSS vulnerabilities if the testing engine ingests malicious payloads
-
-/** Sanitize HTML content to prevent XSS attacks */
-function sanitizeContent(content: string): string {
-  return DOMPurify.sanitize(content, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'code', 'pre', 'span', 'br', 'ul', 'ol', 'li'],
-    ALLOWED_ATTR: ['class'],
-  });
-}
-
-interface ReportSection {
-  id: string;
-  title: string;
-  content: string;
-}
+import type { ForensicActionStep, ForensicCaughtBug, ForensicReportResponse } from '../../types';
+import ReproductionChecklist from '../telemetry/ReproductionChecklist';
+import { CoverageDisplay } from '../history/CoverageProgressBar';
+import { AttributionBadges, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
 
 function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return 'N/A';
@@ -53,124 +47,257 @@ function formatDate(value?: string): string {
   return parsed.toLocaleString();
 }
 
-function buildReportSections(report: ForensicReportResponse): ReportSection[] {
-  const findingsLines = report.forensicTrace?.caughtBugs?.length
-    ? report.forensicTrace.caughtBugs.map((bug, index) => {
-        const payload = bug.payloadUsed ? `\nPayload: ${bug.payloadUsed}` : '';
-        // Prefer the deterministic knowledge-base classification as the finding class.
-        const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
-        const attributionParts = [
-          bug.attribution?.scenario ? `Scenario: ${bug.attribution.scenario}` : '',
-          bug.attribution?.cwe ? `CWE: ${bug.attribution.cwe}` : '',
-          typeof bug.attribution?.stepIndex === 'number' ? `Step: ${bug.attribution.stepIndex}` : '',
-        ].filter(Boolean);
-        const attributionLine = attributionParts.length ? `\n${attributionParts.join(' | ')}` : '';
-        return `${index + 1}. ${bugClass}${attributionLine}\nMessage: ${bug.message || 'No details provided'}\nSelector: ${bug.selector || 'N/A'}${payload}\nAdvice: ${bug.advice || 'No guidance available'}\nTimestamp: ${formatDate(bug.timestamp)}`;
-      }).join('\n\n')
-    : 'No findings were recorded for this session.';
-
-  const errorLines = report.errorLogs?.errors?.length
-    ? report.errorLogs.errors.map((error, index) => {
-        const header = `${index + 1}. ${error.bugClass || error.type || 'ERROR'}`;
-        const attributionParts = [
-          error.scenario ? `Scenario: ${error.scenario}` : '',
-          error.cwe ? `CWE: ${error.cwe}` : '',
-        ].filter(Boolean);
-        const attributionLine = attributionParts.length ? `\n${attributionParts.join(' | ')}` : '';
-        const message = error.message ? `\nMessage: ${error.message}` : '';
-        const location = error.selector ? `\nSelector: ${error.selector}` : '';
-        const endpoint = error.endpoint ? `\nEndpoint: ${error.endpoint}` : '';
-        const status = error.statusCode ? `\nStatus: ${error.statusCode}` : '';
-        const timestamp = error.createdAt ? `\nTime: ${formatDate(error.createdAt)}` : '';
-        return `${header}${attributionLine}${message}${location}${endpoint}${status}${timestamp}`;
-      }).join('\n\n')
-    : 'No error logs were captured for this session.';
-
-  const actionStepsContent = report.actionSteps?.length
-    ? report.actionSteps.map((step) => {
-        const payload = step.payloadText ? ` with payload "${step.payloadText}"` : '';
-        return `Step ${step.stepNumber}: ${step.actionType}${payload} on ${step.selector || 'N/A'} (${formatDate(step.timestamp)})`;
-      }).join('\n')
-    : 'No action steps were recorded.';
-
-  const aiAnalysisText = report.aiAnalysis?.rootCause || report.aiAnalysis?.recommendations?.length
-    ? [
-        report.aiAnalysis?.rootCause ? `Root cause: ${report.aiAnalysis.rootCause}` : '',
-        report.aiAnalysis?.recommendations?.length
-          ? `Recommendations:\n${report.aiAnalysis.recommendations.map((recommendation) => `- ${recommendation}`).join('\n')}`
-          : '',
-      ].filter(Boolean).join('\n\n')
-    : 'No AI analysis was generated for this session.';
-
-  return [
-    {
-      id: 'executive-summary',
-      title: 'Executive Summary',
-      content: `This session ran against ${report.url || 'the target URL'}.
-
-Summary:
-- Status: ${report.status || 'UNKNOWN'}
-- Started: ${formatDate(report.date)}
-- Duration: ${formatDuration(report.duration)}
-- Actions executed: ${report.metrics?.totalActions ?? 0}
-- Findings recorded: ${report.findings?.totalBugsFound ?? 0}
-- Coverage: ${report.coverage ?? 0}%
-- Risk score: ${report.riskScore ?? 0}`,
-    },
-    {
-      id: 'findings',
-      title: 'Findings',
-      content: findingsLines,
-    },
-    {
-      id: 'error-logs',
-      title: 'Error Logs',
-      content: errorLines,
-    },
-    {
-      id: 'action-steps',
-      title: 'Action Steps',
-      content: actionStepsContent,
-    },
-    {
-      id: 'ai-analysis',
-      title: 'AI Analysis',
-      content: aiAnalysisText,
-    },
-  ];
+function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
+  if (status === 'CRASHED') return { text: 'text-red-700', dot: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200' };
+  if (status === 'HALTED') return { text: 'text-amber-700', dot: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
+  return { text: 'text-emerald-700', dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200' };
 }
 
-interface SectionCardProps {
-  section: ReportSection;
-  isExpanded: boolean;
-  onToggle: () => void;
+function riskTheme(score: number): string {
+  if (score >= 70) return 'text-red-600';
+  if (score >= 40) return 'text-amber-600';
+  return 'text-emerald-600';
 }
 
-function SectionCard({ section, isExpanded, onToggle }: SectionCardProps) {
-  // Task 2: Sanitize content before rendering to prevent XSS
-  const sanitizedContent = sanitizeContent(section.content);
+// ─────────────────────────────────────────────────────────────
+// Executive summary — always-visible stat grid (no accordion; this
+// is the at-a-glance context every reader needs immediately).
+// ─────────────────────────────────────────────────────────────
+
+function StatBlock({ label, value, valueClassName = 'text-slate-900' }: { label: string; value: ReactNode; valueClassName?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+      <div className={`mt-0.5 text-sm font-semibold ${valueClassName}`}>{value}</div>
+    </div>
+  );
+}
+
+function ExecutiveSummary({ report, runId }: { report: ForensicReportResponse; runId: string }) {
+  const theme = statusTheme(report.status);
+  const findingsTotal = report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0;
 
   return (
-    <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-      >
-        <span className="text-sm font-semibold text-slate-800">{section.title}</span>
-        <span className="text-xs text-slate-500">
-          {isExpanded ? '▼ Collapse' : '▶ Expand'}
-        </span>
-      </button>
-      {isExpanded && (
-        <div className="border-t border-slate-200 px-4 py-4 bg-slate-50">
-          <pre
-            className="whitespace-pre-wrap text-xs font-mono text-slate-700 leading-relaxed"
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-          />
+    <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
+            <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+          </div>
+          <div className="mt-1 truncate text-sm font-medium text-slate-700" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+            <span>Run {runId}</span>
+            <span>•</span>
+            <span>Started {formatDate(report.date)}</span>
+          </div>
         </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-slate-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6">
+        <StatBlock label="Duration" value={formatDuration(report.duration)} />
+        <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
+        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600' : 'text-emerald-600'} />
+        <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
+        <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AI Insights — session-level analysis, shown as its own distinct,
+// always-visible panel (not per-finding data, so it isn't grouped
+// into the finding cards below).
+// ─────────────────────────────────────────────────────────────
+
+function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['aiAnalysis'] }) {
+  if (!aiAnalysis || (!aiAnalysis.rootCause && !aiAnalysis.recommendations?.length)) return null;
+
+  return (
+    <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-700">
+        <span>🧠</span>
+        <span>AI Insights</span>
+        {aiAnalysis.riskLevel && (
+          <span className="rounded bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+            {aiAnalysis.riskLevel} risk
+          </span>
+        )}
+      </div>
+      {aiAnalysis.rootCause && (
+        <p className="mt-3 text-sm leading-relaxed text-indigo-950">{aiAnalysis.rootCause}</p>
+      )}
+      {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {aiAnalysis.recommendations.map((recommendation, idx) => (
+            <li key={idx} className="flex gap-2 text-xs text-indigo-900">
+              <span className="text-indigo-500">→</span>
+              <span>{recommendation}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Finding card — the core of the redesign. Everything about ONE bug
+// (identity, attribution, message/selector/payload, reproduction
+// steps, suggested fix, stack trace) lives in a single card instead
+// of being spread across separate Findings / Error Logs / Action
+// Steps sections.
+// ─────────────────────────────────────────────────────────────
+
+function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
+  const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
+  return [
+    `Finding #${index + 1}: ${bugClass}`,
+    bug.message ? `Message: ${bug.message}` : '',
+    bug.selector ? `Selector: ${bug.selector}` : '',
+    bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
+    `Detected: ${formatDate(bug.timestamp)}`,
+    bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
+    bug.reproductionSteps?.length ? `\nReproduction Steps:\n${bug.reproductionSteps.join('\n')}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function FindingCard({ bug, index }: { bug: ForensicCaughtBug; index: number }) {
+  const [stackExpanded, setStackExpanded] = useState(false);
+  const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
+  const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-red-200 bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+            {index + 1}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-red-900">{bugClass}</div>
+            <div className="text-[11px] text-red-700 opacity-75">{formatDate(bug.timestamp)}</div>
+          </div>
+        </div>
+        <CopyButton text={summaryText} label="Finding" />
+      </div>
+
+      {/* Attribution */}
+      <div className="px-4 pt-3">
+        <AttributionBadges attribution={bug.attribution} />
+      </div>
+
+      {/* Message / Selector / Payload grid */}
+      <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Message</div>
+          <div className="mt-0.5 text-sm text-slate-800">{bug.message || 'No details provided'}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Selector</div>
+          <div className="mt-0.5 truncate font-mono text-xs text-slate-700" title={bug.selector}>{bug.selector || 'N/A'}</div>
+        </div>
+        {bug.payloadUsed && (
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Payload Used</div>
+            <div className="mt-0.5 truncate font-mono text-xs text-slate-700" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Reproduction steps */}
+      <div className="px-4 pt-3">
+        {bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
+          <ReproductionChecklist steps={bug.reproductionSteps} />
+        ) : (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+            No deterministic reproduction steps were recorded for this fault.
+          </div>
+        )}
+      </div>
+
+      {/* Suggested fix */}
+      <div className="px-4 pt-3 pb-4">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+        <SuggestedFixBlock advice={bug.advice} />
+      </div>
+
+      {/* Stack trace — kept as a disclosure since it's verbose/noisy evidence, not primary narrative */}
+      {bug.stackTrace && (
+        <ExpandableCodeBlock
+          title="Stack Trace"
+          content={bug.stackTrace}
+          isExpanded={stackExpanded}
+          onToggle={() => setStackExpanded((prev) => !prev)}
+          className="max-h-96"
+        />
       )}
     </div>
+  );
+}
+
+function CleanRunCard() {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
+      <span className="text-2xl">✅</span>
+      <div className="text-sm font-semibold text-emerald-800">No findings were recorded for this session</div>
+      <div className="text-xs text-emerald-700">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reference appendix — the full raw action timeline. This is
+// supplementary, low-level evidence (not tied 1:1 to any single
+// finding above), so it stays as a single de-emphasized disclosure
+// at the bottom rather than a peer section competing for attention.
+// ─────────────────────────────────────────────────────────────
+
+function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!steps.length) return null;
+
+  const timelineText = steps
+    .map((step) => {
+      const payload = step.payloadText ? ` with payload "${step.payloadText}"` : '';
+      return `Step ${step.stepNumber}: ${step.actionType}${payload} on ${step.selector || 'N/A'} (${formatDate(step.timestamp)})`;
+    })
+    .join('\n');
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-slate-50"
+      >
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Full Action Timeline ({steps.length} steps) — reference
+        </span>
+        <span className="text-xs text-slate-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+      </button>
+      {isOpen && (
+        <div className="border-t border-slate-200 px-4 py-4">
+          <div className="mb-3 flex justify-end">
+            <CopyButton text={timelineText} label="Action Timeline" />
+          </div>
+          <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-slate-600">
+            {steps.map((step) => (
+              <li key={step.stepNumber} className="border-b border-slate-100 py-1 last:border-0">
+                <span className="text-slate-400">#{step.stepNumber}</span>{' '}
+                <span className="font-semibold text-slate-700">{step.actionType}</span>
+                {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
+                {' on '}
+                <span>{step.selector || 'N/A'}</span>
+                <span className="text-slate-400"> ({formatDate(step.timestamp)})</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -179,9 +306,6 @@ export default function ForensicReport() {
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['executive-summary'])
-  );
 
   useEffect(() => {
     if (!runId) {
@@ -219,19 +343,7 @@ export default function ForensicReport() {
     };
   }, [runId]);
 
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  };
-
-  const sections = useMemo(() => (report ? buildReportSections(report) : []), [report]);
+  const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
 
   if (isLoading) {
     return (
@@ -256,85 +368,55 @@ export default function ForensicReport() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-white">
+    <div className="flex h-full w-full flex-col bg-slate-50">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-slate-900">
-            BUGSAFARI
-          </span>
+          <span className="text-sm font-bold tracking-wide text-slate-900">BUGSAFARI</span>
           <span className="mx-3 text-slate-400">/</span>
-          <span className="text-sm font-semibold text-slate-600">
-            FORENSIC REPORT
-          </span>
+          <span className="text-sm font-semibold text-slate-600">FORENSIC REPORT</span>
         </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => window.history.back()}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to History
-          </button>
-        </div>
+        <button
+          onClick={() => window.history.back()}
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to History
+        </button>
       </header>
 
-      {/* Report Info Bar */}
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-3">
-        <div className="flex items-center gap-6 text-xs">
-          <div>
-            <span className="text-slate-500 font-medium">Run ID:</span>{' '}
-            <span className="font-mono text-slate-700">{runId || 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Target:</span>{' '}
-            <span className="text-slate-700">{report.url || 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Status:</span>{' '}
-            <span className={`font-medium ${report.status === 'CRASHED' ? 'text-red-600' : report.status === 'HALTED' ? 'text-amber-600' : 'text-green-600'}`}>{report.status}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Duration:</span>{' '}
-            <span className="text-slate-700">{formatDuration(report.duration)}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Actions:</span>{' '}
-            <span className="text-slate-700">{report.metrics?.totalActions ?? 0}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Findings:</span>{' '}
-            <span className="font-medium text-red-600">{report.findings?.totalBugsFound ?? 0}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-medium">Coverage:</span>{' '}
-            <span className="text-slate-700">{report.coverage ?? 0}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Report Sections */}
+      {/* Report Body */}
       <main className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-4xl">
-          {sections.map((section) => (
-            <SectionCard
-              key={section.id}
-              section={section}
-              isExpanded={expandedSections.has(section.id)}
-              onToggle={() => toggleSection(section.id)}
-            />
-          ))}
+        <div className="mx-auto flex max-w-4xl flex-col gap-6">
+          <ExecutiveSummary report={report} runId={runId || 'N/A'} />
+
+          <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
+
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+              Findings {bugs.length > 0 ? `(${bugs.length})` : ''}
+            </h2>
+            {bugs.length > 0 ? (
+              <div className="flex flex-col gap-4">
+                {bugs.map((bug, index) => (
+                  <FindingCard key={bug.bugId || index} bug={bug} index={index} />
+                ))}
+              </div>
+            ) : (
+              <CleanRunCard />
+            )}
+          </section>
+
+          <ActionTimelineAppendix steps={report.actionSteps ?? []} />
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 px-6 py-4">
+      <footer className="border-t border-slate-200 bg-white px-6 py-4">
         <div className="text-center">
-          <span className="font-mono text-xs text-slate-400">
-            END OF FORENSIC REPORT
-          </span>
+          <span className="font-mono text-xs text-slate-400">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>
