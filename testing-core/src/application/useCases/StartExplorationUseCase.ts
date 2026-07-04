@@ -1,5 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
@@ -260,8 +261,9 @@ export class StartExplorationUseCase {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
 
-        // Phase 3: Get timebox from optimization settings (default: 180000ms = 3 minutes)
-        const TIMEBOX_MS = this.optimizationSettings?.['execution-timebox-ms'] ?? 180000;
+        // Phase 3: Get timebox from optimization settings (default: 600000ms = 10 minutes)
+        const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
+        const TIMEBOX_MS = this.optimizationSettings?.['execution-timebox-ms'] ?? DEFAULT_TIMEBOX_MS;
         console.log(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
 
         this.executionStartTime = Date.now();

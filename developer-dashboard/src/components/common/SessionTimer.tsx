@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// SessionTimer.tsx - 3-Minute Session Countdown Component
+// SessionTimer.tsx - 10-Minute Session Countdown Component
 // ═══════════════════════════════════════════════════════════════════════════════
 // Real-time countdown visualization for session time limit
 // Displays MM:SS format with progress bar and color transitions
@@ -7,9 +7,10 @@
 // Includes full UI interface with clock display and progress ring
 
 import { useEffect, useState, useCallback } from 'react';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 
 interface SessionTimerProps {
-    initialTimeMs?: number;  // Default: 180000 (3 minutes)
+    initialTimeMs?: number;  // Default: 600000 (10 minutes)
     isRunning?: boolean;     // Phase 3: Now optional - can be inferred from backend
     isPaused?: boolean;       // Phase 3: Now optional - can be inferred from backend
     onTimeUp?: () => void;
@@ -20,9 +21,11 @@ interface SessionTimerProps {
     variant?: 'compact' | 'full';  // UI variant: compact (inline) or full (standalone)
 }
 
+const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
+
 // Compact version for inline display
 function CompactTimer({
-    initialTimeMs = 180000,
+    initialTimeMs = DEFAULT_TIMEBOX_MS,
     isRunning: propIsRunning = true,
     isPaused: propIsPaused = false,
     onTimeUp,
@@ -110,7 +113,7 @@ function CompactTimer({
 
 // Full UI variant with clock display and progress ring
 function FullTimer({
-    initialTimeMs = 180000,
+    initialTimeMs = DEFAULT_TIMEBOX_MS,
     isRunning: propIsRunning = true,
     isPaused: propIsPaused = false,
     onTimeUp,
@@ -178,7 +181,7 @@ function FullTimer({
     const getStatusColor = () => {
         if (progressPercent > 50) return { ring: '#10b981', bg: '#d1fae5', text: '#065f46' };       // emerald
         if (progressPercent > 20) return { ring: '#f59e0b', bg: '#fef3c7', text: '#92400e' };       // amber
-        return { ring: '#ef4444', bg: '#fee2e2', text: '#991b1b' };                              // red
+        return { ring: '#ef4444', bg: '#fee2e2', text: '#991b1b' };                                // red
     };
 
     const colors = getStatusColor();

@@ -1,5 +1,6 @@
 import type { Page, Request } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
+import { defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
@@ -78,7 +79,7 @@ export class ExplorationEngine {
   private elapsedActiveTimeMs: number = 0;
   private timingInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTimestamp: number = 0;
-  private timeboxMs: number = 180000; // Default 3 minutes
+  private timeboxMs: number = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000; // Default 10 minutes
   private timeboxExceeded: boolean = false;
 
   // Timer snapshot tracking for pause/resume support
@@ -232,7 +233,7 @@ export class ExplorationEngine {
    * Check if the timebox has been exceeded.
    * Timebox exceeded only triggers when NOT paused.
    */
-  public isTimeboxExceeded(timeboxMs: number = 180000): boolean {
+  public isTimeboxExceeded(timeboxMs: number = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000): boolean {
     return this.elapsedActiveTimeMs >= timeboxMs && !this.isPaused;
   }
 
@@ -287,7 +288,7 @@ export class ExplorationEngine {
           tickCounter = 0;
           const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
           // INFRASTRUCTURE TIME UPDATES REMOVED - Internal tracking continues for hard stop enforcement
-          // The time tracking logic still runs internally to enforce 3-minute timeout
+          // The time tracking logic still runs internally to enforce the configured timeout
         }
       } else {
         // When paused or stopped, just update tick reference without accumulating

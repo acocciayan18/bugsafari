@@ -23,6 +23,7 @@ import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris'
 import Settings from './components/settings/Settings';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
+import { defaultOptimizationSettings } from '../../shared/types.js';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 // Hybrid fallback: Use env var if set, otherwise fall back to window.location.origin for proxy-aware routing
@@ -144,7 +145,7 @@ function AuthAppContent() {
                 isConnected={state.isConnected}
                 isCleaningUp={state.isCleaningUp}
                 onTimeUp={handleTimeLimitExceeded}
-                onStart={(url, selectedScenarios) => startTest(url, undefined, selectedScenarios)}
+                onStart={(url, selectedScenarios) => startTest(url, defaultOptimizationSettings, selectedScenarios)}
                 onPause={pauseTest}
                 onResume={resumeTest}
                 onStop={stopTest}

@@ -14,14 +14,14 @@ export interface OptimizationSettings {
   'state-aware-hashing': boolean;
   'concurrent-spam-event': boolean;
   // Phase 3: Bounded Compute Integration
-  'execution-timebox-ms'?: number;  // Time-based limit in milliseconds (default: 180000 = 3 minutes)
+  'execution-timebox-ms'?: number;  // Time-based limit in milliseconds (default: 600000 = 10 minutes)
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
   'adaptive-risk-scorer': true,
   'state-aware-hashing': true,
   'concurrent-spam-event': true,
-  'execution-timebox-ms': 180000,  // 3 minutes default
+  'execution-timebox-ms': 600000,  // 10 minutes default
 };
 
 // ─────────────────────────────────────────────────────────────

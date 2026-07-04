@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { useAuth } from '../../context/AuthContext';
@@ -65,6 +66,7 @@ function decodeTokenExpiration(token: string): { exp: number } | null {
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
   const { token, refreshToken } = useAuth();
+  const sessionTimeMs = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -88,7 +90,7 @@ const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [liveFrame, setLiveFrame] = useState<string | null>(null);
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]);
 
-const [remainingTimeMs, setRemainingTimeMs] = useState<number>(180000);
+const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
   const [elapsedTimeMs, setElapsedTimeMs] = useState<number>(0);
 
   // Ref to track current gateway instance - prevents stale closure in timeout
@@ -203,7 +205,7 @@ return () => {
         setHasRunCompleted(true);
         setLiveFrame(null);
         setIsInitializing(false);
-        setRemainingTimeMs(180000);
+        setRemainingTimeMs(sessionTimeMs);
         // elapsedTimeMs is intentionally preserved here so it can be included in the manual save payload.
       }
 
@@ -283,7 +285,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setReports([]);
     setIncidents([]);
     setCurrentUrl(targetUrl);
-    setRemainingTimeMs(180000);
+    setRemainingTimeMs(sessionTimeMs);
     setElapsedTimeMs(0);
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
@@ -291,7 +293,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     runStartedRef.current = true;
 
 try {
-      await gateway.startTest(targetUrl.trim(), optimizationSettings, selectedScenarios);
+      await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, selectedScenarios);
       setIsLaunching(false);
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing

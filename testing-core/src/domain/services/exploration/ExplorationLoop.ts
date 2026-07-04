@@ -51,7 +51,7 @@ export class ExplorationLoop {
 
       // ─────────────────────────────────────────────────────────────
       // TIMEBOX CHECK - CRITICAL: Must check at each iteration
-      // Only terminates when elapsedActiveTimeMs >= 180000 AND NOT paused
+      // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
       // ─────────────────────────────────────────────────────────────
       if (this.deps.checkTimebox()) {
         return {

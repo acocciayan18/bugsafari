@@ -7,6 +7,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from '../common/SessionTimer';
 import TestingTypeSelector from '../common/TestingTypeSelector';
 import { ALL_TESTING_TYPE_IDS } from '../../types';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { TestingTypeId } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 
@@ -53,7 +54,7 @@ export default function CommandCenter({
   onResume,
   onStop,
   onSaveSessionToHistory,
-  sessionTimeMs = 180000,
+  sessionTimeMs = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000,
   onTimeUp,
   children,
 }: CommandCenterProps) {
