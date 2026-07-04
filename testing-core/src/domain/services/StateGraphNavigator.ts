@@ -164,6 +164,32 @@ export interface StateGraphNavigatorConfig {
    * Default: 5.0
    */
   tiebreakVarianceThreshold: number;
+
+  /**
+   * Enable stochastic exploration: sample the next edge from a softmax over
+   * effective scores instead of pure argmax. Temperature anneals toward its floor
+   * as the run progresses, so early steps explore and later steps exploit.
+   * Default: true
+   */
+  explorationEnabled: boolean;
+
+  /**
+   * Initial softmax temperature (score units). Higher → more random early on.
+   * Default: 8
+   */
+  explorationTemperature: number;
+
+  /**
+   * Number of selections over which the temperature decays toward ~0.
+   * Default: 40
+   */
+  explorationAnnealSteps: number;
+
+  /**
+   * Optional PRNG seed for reproducible exploration (tests). When omitted,
+   * Math.random is used and behaviour is non-deterministic.
+   */
+  explorationSeed?: number;
 }
 
 const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -183,6 +209,9 @@ const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   diversityWindow: 5,
   diversityPenaltyPerStep: 0.15,
   tiebreakVarianceThreshold: 5.0,
+  explorationEnabled: true,
+  explorationTemperature: 8,
+  explorationAnnealSteps: 40,
 };
 
 /**
@@ -254,12 +283,27 @@ export class StateGraphNavigator {
 
   private readonly config: StateGraphNavigatorConfig;
 
+  // Monotonic selection counter driving the exploration-temperature anneal.
+  private selectionCount = 0;
+  // Seeded PRNG state (mulberry32); undefined → fall back to Math.random.
+  private rngState: number | undefined;
+
   constructor(config: Partial<StateGraphNavigatorConfig> = {}) {
     // Merge precedence: DEFAULT_CONFIG < mode preset < caller config (caller wins).
     const withDefaults = { ...DEFAULT_CONFIG, ...config };
     const preset = PATHFINDER_MODE_PRESETS[withDefaults.mode];
     this.config = { ...DEFAULT_CONFIG, ...preset, ...config };
     this.currentBoredomThreshold = this.config.boredomThreshold;
+    this.rngState = this.config.explorationSeed;
+  }
+
+  // Deterministic PRNG (mulberry32) when a seed is set; else Math.random.
+  private nextRandom(): number {
+    if (this.rngState === undefined) return Math.random();
+    let t = (this.rngState += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -923,29 +967,67 @@ export class StateGraphNavigator {
    * effective score after applying recency multipliers for repeated element types.
    */
   private selectWithDiversityPenalty(candidates: GraphEdge[], nodeHash: StateHash): GraphEdge {
-    let best = candidates[0]!;
-    let bestES = this.effectiveScore(best);
+    // Effective (diversity-penalized) score per candidate, plus argmax bookkeeping.
+    const scores = candidates.map((edge) => this.effectiveScore(edge));
+    let argmaxIdx = 0;
     let penaltyApplied = false;
-
-    for (let i = 1; i < candidates.length; i++) {
-      const edge = candidates[i]!;
-      const es = this.effectiveScore(edge);
-      if (es !== edge.score) penaltyApplied = true;
-      if (es > bestES) {
-        best = edge;
-        bestES = es;
-      }
+    for (let i = 0; i < candidates.length; i++) {
+      if (scores[i]! !== candidates[i]!.score) penaltyApplied = true;
+      if (scores[i]! > scores[argmaxIdx]!) argmaxIdx = i;
     }
 
-    if (penaltyApplied) {
+    this.selectionCount += 1;
+
+    // Stochastic exploration: sample from a softmax whose temperature anneals to ~0.
+    let chosenIdx = argmaxIdx;
+    if (this.config.explorationEnabled && candidates.length > 1) {
+      const temperature = this.currentTemperature();
+      const sampled = this.sampleSoftmax(scores, temperature);
+      if (sampled !== argmaxIdx) {
+        this.recordEvent(
+          'exploration-sample',
+          nodeHash,
+          `Explored "${candidates[sampled]!.selector}" (score=${scores[sampled]!.toFixed(3)}) ` +
+          `over argmax "${candidates[argmaxIdx]!.selector}" (score=${scores[argmaxIdx]!.toFixed(3)}) at T=${temperature.toFixed(2)}.`,
+        );
+      }
+      chosenIdx = sampled;
+    }
+
+    const best = candidates[chosenIdx]!;
+    if (penaltyApplied && chosenIdx === argmaxIdx) {
       this.recordEvent(
         'diversity-penalty-applied',
         nodeHash,
         `Diversity recency penalty applied. Selected "${best.selector}" ` +
-        `(effectiveScore=${bestES.toFixed(3)}, rawScore=${best.score.toFixed(3)}).`,
+        `(effectiveScore=${scores[chosenIdx]!.toFixed(3)}, rawScore=${best.score.toFixed(3)}).`,
       );
     }
     return best;
+  }
+
+  // Temperature annealed toward ~0 as selections accumulate (explore → exploit).
+  private currentTemperature(): number {
+    const { explorationTemperature: t0, explorationAnnealSteps: n } = this.config;
+    return t0 * (n / (n + this.selectionCount));
+  }
+
+  // Sample an index proportional to softmax(scores / T); collapses to argmax as T→0.
+  private sampleSoftmax(scores: number[], temperature: number): number {
+    if (temperature <= 1e-6) {
+      let argmax = 0;
+      for (let i = 1; i < scores.length; i++) if (scores[i]! > scores[argmax]!) argmax = i;
+      return argmax;
+    }
+    const maxScore = Math.max(...scores); // subtract max for numerical stability
+    const weights = scores.map((s) => Math.exp((s - maxScore) / temperature));
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let roll = this.nextRandom() * total;
+    for (let i = 0; i < weights.length; i++) {
+      roll -= weights[i]!;
+      if (roll <= 0) return i;
+    }
+    return weights.length - 1;
   }
 
   /**

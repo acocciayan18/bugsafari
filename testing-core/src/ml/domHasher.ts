@@ -225,14 +225,15 @@ export class DomHasher {
       .update(normalizedResult.html)
       .digest('hex');
 
-    // Track visits with bounded history
+    // Track visits with bounded LRU history (Map iteration order = insertion order).
     const visits = (this.visits.get(hash) ?? 0) + 1;
-    
-    // Prevent unbounded memory growth - trim old entries if needed
-    if (visits === 1 && this.visits.size >= MAX_VISIT_HISTORY) {
-      // Remove oldest entry (first key)
+
+    // Delete-then-reinsert marks this hash most-recently-used so recurring states aren't evicted.
+    this.visits.delete(hash);
+    if (this.visits.size >= MAX_VISIT_HISTORY) {
+      // Evict the least-recently-used (oldest) entry.
       const oldestKey = this.visits.keys().next().value;
-      if (oldestKey) {
+      if (oldestKey !== undefined) {
         this.visits.delete(oldestKey);
       }
     }

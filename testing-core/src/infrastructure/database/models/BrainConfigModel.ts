@@ -8,6 +8,12 @@ const brainConfigSchema = new Schema(
       required: [true, 'Session ID is required'],
       index: true,
     },
+    // Denormalized target URL so a run can load the latest brain for the same site (warm-start).
+    targetUrl: {
+      type: String,
+      default: '',
+      index: true,
+    },
     capturedAt: {
       type: Date,
       required: [true, 'Capture timestamp is required'],
@@ -44,9 +50,11 @@ const brainConfigSchema = new Schema(
 );
 
 brainConfigSchema.index({ sessionId: 1, capturedAt: -1 });
+brainConfigSchema.index({ targetUrl: 1, capturedAt: -1 });
 
 export interface IBrainConfig extends Document {
   sessionId: Types.ObjectId;
+  targetUrl: string;
   capturedAt: Date;
   source: 'start' | 'runtime' | 'finish' | 'crash';
   bias: number;

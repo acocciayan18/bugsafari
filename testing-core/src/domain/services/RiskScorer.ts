@@ -112,6 +112,7 @@ export class RiskScorer {
         type: element.type,
         text: element.text,
         disabled: element.isDisabled,
+        boundingBox: element.boundingBox,
       });
       const mlScore = this.perceptron.sigmoidScore(featureVector) * 100;
       
@@ -161,8 +162,9 @@ export class RiskScorer {
         type: element.type,
         text: element.innerText,
         disabled: false,
+        boundingBox: element.boundingBox,
       });
-      
+
       // Compute ML score using perceptron
       const mlScore = this.perceptron.sigmoidScore(featureVector) * 100;
       
@@ -241,6 +243,15 @@ export class RiskScorer {
   }
 
   /**
+   * Penalize perceptron for a revisited (non-novel) state — contrastive target=0 signal
+   */
+  penalizeRevisit(element: InteractiveElement): void {
+    if (element.featureVector) {
+      this.perceptron.penalizeRepeatedPath(element.featureVector);
+    }
+  }
+
+  /**
    * Export brain state for persistence
    */
   exportBrainState(): { bias: number; weights: Record<string, number> } {
@@ -248,6 +259,13 @@ export class RiskScorer {
       bias: this.perceptron.getBias(),
       weights: this.perceptron.exportWeights(),
     };
+  }
+
+  /**
+   * Seed the perceptron from a persisted brain (per-URL warm-start)
+   */
+  importBrainState(state: { bias: number; weights: Record<string, number> }): void {
+    this.perceptron.loadState(state.weights, state.bias);
   }
 
   // ============ PRIVATE HELPER METHODS ============

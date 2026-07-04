@@ -39,6 +39,11 @@ const XSS_SIGNATURE_PATTERNS = SIGNAL_PATTERNS.XSS_REFLECTION;
 const NOSQL_ERROR_PATTERNS = SIGNAL_PATTERNS.NOSQL_ERROR;
 const CRASH_SIGNATURES = [...SIGNAL_PATTERNS.SERVER_ERROR, ...SIGNAL_PATTERNS.CLIENT_CRASH];
 
+// Settle window (ms) to let a just-injected payload surface console/network errors.
+const NOSQL_SETTLE_MS = 500;
+// URL error indicators as delimited tokens (avoids '/error-tracking', '400px' false positives).
+const ERROR_URL_PATTERN = /\/(?:error|errors)(?:[/?#]|$)|[?&/](?:4\d{2}|5\d{2})(?:[/?#&]|$)/i;
+
 /**
  * Checks if the current context has an active FUZZ transaction
  */
@@ -107,39 +112,40 @@ async function detectXssSignatures(page: BugContext['page']): Promise<string[]> 
  */
 async function detectNoSqlErrors(page: BugContext['page']): Promise<string[]> {
   const errors: string[] = [];
-  
+
+  // Buffer console + failed-response bodies over a short settle window, then remove
+  // the listeners — fixes the prior race (read before events fired) and leak (never removed).
+  const onConsole = (msg: { text(): string }): void => {
+    const text = msg.text();
+    if (NOSQL_ERROR_PATTERNS.some((pattern) => pattern.test(text))) {
+      errors.push(text);
+    }
+  };
+  const onResponse = async (response: { status(): number; text(): Promise<string> }): Promise<void> => {
+    const status = response.status();
+    if (status < 400) return;
+    try {
+      const text = await response.text();
+      if (NOSQL_ERROR_PATTERNS.some((pattern) => pattern.test(text))) {
+        errors.push(`[HTTP ${status}] ${text.substring(0, 200)}`);
+      }
+    } catch {
+      // Response body might not be available
+    }
+  };
+
+  page.on('console', onConsole);
+  page.on('response', onResponse);
   try {
-    // Check console for NoSQL-related error messages
-    page.on('console', (msg) => {
-      const text = msg.text();
-      for (const pattern of NOSQL_ERROR_PATTERNS) {
-        if (pattern.test(text)) {
-          errors.push(text);
-        }
-      }
-    });
-    
-    // Also check response content if available
-    page.on('response', async (response) => {
-      const status = response.status();
-      if (status >= 400) {
-        try {
-          const text = await response.text();
-          for (const pattern of NOSQL_ERROR_PATTERNS) {
-            if (pattern.test(text)) {
-              errors.push(`[HTTP ${status}] ${text.substring(0, 200)}`);
-            }
-          }
-        } catch {
-          // Response body might not be available
-        }
-      }
-    });
-    
+    // Give the just-injected payload a brief window to produce console/network errors.
+    await new Promise((resolve) => setTimeout(resolve, NOSQL_SETTLE_MS));
   } catch {
     console.log('[FuzzGuard] Could not analyze network responses for NoSQL errors');
+  } finally {
+    page.off('console', onConsole);
+    page.off('response', onResponse);
   }
-  
+
   return errors;
 }
 
@@ -169,9 +175,9 @@ async function detectCrashSignatures(page: BugContext['page']): Promise<string[]
       }
     }
     
-    // Check page URL for error indicators
+    // Check page URL for error indicators (delimited tokens only, not substrings).
     const url = page.url();
-    if (url.includes('error') || url.includes('500') || url.includes('400')) {
+    if (ERROR_URL_PATTERN.test(url)) {
       crashes.push(`Error URL: ${url}`);
     }
     

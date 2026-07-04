@@ -18,9 +18,15 @@ export interface SaveActionTraceInput {
 
 export interface SaveBrainConfigInput {
   sessionId: string;
+  targetUrl: string;
   weights: Record<string, number>;
   bias: number;
   source: 'start' | 'runtime' | 'finish' | 'crash';
+}
+
+export interface BrainState {
+  bias: number;
+  weights: Record<string, number>;
 }
 
 export interface SessionHistoryRecord {
@@ -61,6 +67,11 @@ export interface FindingRepository {
   saveActionTrace(input: SaveActionTraceInput): Promise<string>;
   linkActionTracesToFinding(findingId: string, actionTraceIds: string[]): Promise<void>;
   saveBrainConfig(input: SaveBrainConfigInput): Promise<string>;
+  /**
+   * Load the most recently captured brain (weights + bias) for a target URL,
+   * used to warm-start the perceptron when re-testing the same site. Null if none.
+   */
+  loadLatestBrainConfig(targetUrl: string): Promise<BrainState | null>;
   markSessionSaved(sessionId: string): Promise<void>;
 markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
   /**

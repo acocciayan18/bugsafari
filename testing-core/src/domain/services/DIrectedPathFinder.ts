@@ -244,6 +244,7 @@ export type PathfinderEventKind =
   | 'boredom-check-passed'
   | 'diversity-penalty-applied'
   | 'tiebreaker-sort-applied'
+  | 'exploration-sample'
   | 'recovery-attempt';
 
 export interface PathfinderEvent {

@@ -37,7 +37,7 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AuthAppContent() {
-  const [targetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Use centralized auth state from context
@@ -152,7 +152,10 @@ function AuthAppContent() {
                 isCleaningUp={state.isCleaningUp}
                 sessionTimeMs={state.activeTimeboxMs}
                 onTimeUp={handleTimeLimitExceeded}
-                onStart={(url, selectedScenarios) => startTest(url, defaultOptimizationSettings, selectedScenarios)}
+                onStart={(url, selectedScenarios) => {
+                  setTargetUrl(url); // Capture the launched URL so Save History persists what was actually tested
+                  startTest(url, defaultOptimizationSettings, selectedScenarios);
+                }}
                 onPause={pauseTest}
                 onResume={resumeTest}
                 onStop={stopTest}

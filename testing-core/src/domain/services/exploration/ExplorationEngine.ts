@@ -74,6 +74,7 @@ export class ExplorationEngine {
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
+  private targetUrl = ''; // Full run URL — keyed for per-URL brain persistence/warm-start.
 
   private isPaused = false;
   private isStopRequested = false;
@@ -348,6 +349,7 @@ export class ExplorationEngine {
 
     telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.targetOrigin = new URL(targetUrl).origin;
+    this.targetUrl = targetUrl;
     this.freezeActionTraceRecording = false;
     ActiveScenarioTracker.reset();
     this.lastBrainSnapshotStep = 0;
@@ -393,6 +395,10 @@ export class ExplorationEngine {
 
     // Operator visibility: announce which testing strategies are active this run.
     emitter.emitMilestone(`🎛️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
+
+    // Warm-start the perceptron from the latest brain for this URL BEFORE creating the
+    // session, so "most recent session for this URL" is a genuine prior run (not this one).
+    await this.warmStartBrain(targetUrl, emitter);
 
     this.sessionId = await this.createSession(targetUrl);
     this.lastSessionId = this.sessionId;
@@ -714,12 +720,28 @@ export class ExplorationEngine {
     try {
       await this.findingRepo.saveBrainConfig({
         sessionId: this.sessionId,
+        targetUrl: this.targetUrl,
         source,
         bias: brainState.bias,
         weights: brainState.weights,
       });
     } catch (error) {
       console.error('[ExplorationEngine] Failed to persist brain snapshot:', error);
+    }
+  }
+
+  // Load the latest persisted brain for this URL (if any) and seed the scorer. Never throws.
+  private async warmStartBrain(targetUrl: string, emitter: TelemetryEmitter): Promise<void> {
+    if (!this.findingRepo) return;
+    try {
+      const prior = await this.findingRepo.loadLatestBrainConfig(targetUrl);
+      if (prior && Object.keys(prior.weights).length > 0) {
+        this.scorer.importBrainState(prior);
+        console.log(`[ExplorationEngine] Warm-started brain for ${targetUrl} (bias=${prior.bias.toFixed(3)})`);
+        emitter.emitMilestone('🧠 Warm-started brain from a prior session for this URL.');
+      }
+    } catch (error) {
+      console.error('[ExplorationEngine] Brain warm-start failed:', error);
     }
   }
 

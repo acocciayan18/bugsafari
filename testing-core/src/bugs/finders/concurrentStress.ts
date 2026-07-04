@@ -126,21 +126,25 @@ function detectFrameReconciliationErrors(stabilityData: StabilityData): boolean 
 }
 
 /**
- * Creates stability data from bug context (for testing)
+ * Gathers real stability signals from the live page.
+ * Reconciliation/hang errors surface in the DOM (framework error overlays), so
+ * we scan actual page content instead of feeding the DOM state-hash as a fake
+ * exception message (which could never match the detection patterns).
  * @param ctx The bug context
  * @returns StabilityData representation
  */
-export function createStabilityDataFromContext(ctx: BugContext): StabilityData {
+export async function gatherStabilityData(ctx: BugContext): Promise<StabilityData> {
+  let pageText = '';
+  try {
+    pageText = await ctx.page.content();
+  } catch {
+    // Page may be closed/unresponsive mid-stress — fall back to crash flags only.
+  }
   return {
     hasUnhandledJsException: ctx.crashHalted,
     hasMainThreadLockup: ctx.crashHalted,
     hasServerCollapse: false,
-    exceptionDetails: ctx.stateHash
-      ? {
-          message: ctx.stateHash,
-          stackTrace: '',
-        }
-      : undefined,
+    exceptionDetails: pageText ? { message: pageText, stackTrace: '' } : undefined,
   };
 }
 
@@ -189,9 +193,8 @@ export const concurrentStressGuard: BugFinder = {
       `[ConcurrentStressGuard] Analyzing stability for concurrent stress: velocity=${metadata.velocity}ms, chain=${metadata.elementChain.join(', ')}`
     );
 
-    // Create stability data from the context
-    // In production, this would be injected from stabilityMonitor
-    const stabilityData: StabilityData = createStabilityDataFromContext(ctx);
+    // Gather real stability signals from the live page (crash flags + DOM error text).
+    const stabilityData: StabilityData = await gatherStabilityData(ctx);
 
 // Check for main thread hang
     if (detectMainThreadHang(stabilityData)) {

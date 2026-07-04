@@ -1,5 +1,6 @@
 import { Types, isValidObjectId } from "mongoose";
 import type {
+  BrainState,
   BugFinding,
   CreateSessionInput,
   FindingRepository,
@@ -206,6 +207,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
 
     const brain = await BrainConfigModel.create({
       sessionId: objectId,
+      targetUrl: input.targetUrl,
       source: input.source,
       bias: input.bias,
       weights: input.weights,
@@ -216,6 +218,28 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       { $inc: { brainSnapshotCount: 1 } },
     );
     return brain._id.toString();
+  }
+
+  public async loadLatestBrainConfig(targetUrl: string): Promise<BrainState | null> {
+    if (!targetUrl) return null;
+    try {
+      const doc = await BrainConfigModel.findOne({ targetUrl })
+        .sort({ capturedAt: -1 })
+        .lean()
+        .exec();
+      if (!doc) return null;
+      // lean() returns Map fields as either a Map or a plain object depending on driver.
+      const rawWeights = doc.weights as unknown;
+      const weights =
+        rawWeights instanceof Map
+          ? Object.fromEntries(rawWeights as Map<string, number>)
+          : ((rawWeights as Record<string, number>) ?? {});
+      if (Object.keys(weights).length === 0) return null;
+      return { bias: doc.bias, weights };
+    } catch (error) {
+      console.error("[MongoFindingRepository] Error loading brain config:", error);
+      return null;
+    }
   }
 
   public async markSessionSaved(sessionId: string): Promise<void> {

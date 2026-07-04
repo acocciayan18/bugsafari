@@ -8,6 +8,9 @@ import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityM
 import { inferSemanticRole, wait } from './types.js';
 import type { ExplorationLoopDeps } from './types.js';
 
+// Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
+const MAX_VISITED_HASHES = 5000;
+
 /**
  * Handles the incremental step-by-step exploration logic: per-step parse →
  * score → DOM-hash → loop detection → StateGraphNavigator decision → action
@@ -164,6 +167,11 @@ export class ExplorationLoop {
         const revisitedPage = this.deps.visitedUrls.has(currentUrl) || this.deps.visitedHashes.has(currentHash);
         this.deps.visitedUrls.add(currentUrl);
         this.deps.visitedHashes.add(currentHash);
+        if (this.deps.visitedHashes.size > MAX_VISITED_HASHES) {
+          // Bound memory: evict the oldest observed hash (insertion-ordered Set).
+          const oldest = this.deps.visitedHashes.values().next().value;
+          if (oldest !== undefined) this.deps.visitedHashes.delete(oldest);
+        }
 
         if (currentHash !== previousHash) {
           // Page state changed — bot successfully moved to a new state.
@@ -397,12 +405,13 @@ export class ExplorationLoop {
             message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${target.selector}.`,
           });
         } else {
-          // Get the visit count for telemetry
+          // Non-novel state — feed the perceptron a contrastive target=0 example so weights can move down.
+          this.deps.scorer.penalizeRevisit(target);
           const visitCount = this.deps.visitedHashes.size;
           telemetry.emit('ACTION', {
             actionExecuted: 'state-revisited',
             selector: target.selector,
-            message: `State revisitted (visitCount: ${visitCount}). No novelty reward applied.`,
+            message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty for ${target.selector}.`,
           });
         }
 

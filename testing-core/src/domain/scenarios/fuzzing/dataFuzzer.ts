@@ -350,6 +350,53 @@ function isInputField(tagName: string): boolean {
 }
 
 /**
+ * HTML5 validation constraints read from a live input, used to derive targeted boundary values.
+ */
+interface InputConstraints {
+  min: number | null;
+  max: number | null;
+  maxLength: number | null;
+}
+
+/**
+ * Reads min/max/maxlength from the element BEFORE dataFuzzer strips them.
+ */
+async function readInputConstraints(page: Page, selector: string): Promise<InputConstraints> {
+  try {
+    return await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const num = (v: string | null): number | null =>
+        v !== null && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : null;
+      return {
+        min: el ? num(el.getAttribute('min')) : null,
+        max: el ? num(el.getAttribute('max')) : null,
+        maxLength: el ? num(el.getAttribute('maxlength')) : null,
+      };
+    }, selector);
+  } catch {
+    return { min: null, max: null, maxLength: null };
+  }
+}
+
+/**
+ * Derives a boundary payload just outside a numeric field's declared range.
+ * Returns null when no meaningful constraint exists (leaving the specialized
+ * XSS/SQL/chaos vectors untouched for non-numeric fields).
+ */
+function deriveBoundaryPayload(
+  category: FieldCategory,
+  c: InputConstraints,
+): { value: string; description: string } | null {
+  if (category !== 'NUMERIC') return null;
+  if (c.max !== null) return { value: String(c.max + 1), description: `max(${c.max})+1` };
+  if (c.min !== null) return { value: String(c.min - 1), description: `min(${c.min})-1` };
+  if (c.maxLength !== null && c.maxLength > 0 && c.maxLength < 100000) {
+    return { value: '9'.repeat(c.maxLength + 1), description: `maxlength(${c.maxLength})+1` };
+  }
+  return null;
+}
+
+/**
  * Data Fuzzer stress scenario.
  *
  * Performs field-level fuzzing to test for vulnerabilities like:
@@ -395,9 +442,20 @@ export const dataFuzzer: StressScenario = {
 
     // Get strategy-based payload using heuristic classification
     const strategyPayload = getStrategyByCategory(category);
-    const payload = strategyPayload.value;
-    const strategyDescription = strategyPayload.description;
     const strategyUsed = categoryToStrategyType(category);
+    let payload = strategyPayload.value;
+    let strategyDescription = strategyPayload.description;
+
+    // Constraint-aware override: read HTML5 min/max/maxlength BEFORE they are stripped and,
+    // for numeric fields, inject a value just outside the declared range (higher bug yield
+    // than a random static boundary vector).
+    const constraints = await readInputConstraints(page, selector);
+    const boundary = deriveBoundaryPayload(category, constraints);
+    if (boundary) {
+      payload = boundary.value;
+      strategyDescription = `constraint-boundary: ${boundary.description}`;
+      console.log(`🎯 [CONSTRAINT-AWARE] Injecting boundary value (${boundary.description}) outside declared range`);
+    }
 
     // Start chaos transaction with comprehensive metadata
     const fuzzMetadata: FuzzMetadata = {
