@@ -3,25 +3,55 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Real-time countdown visualization for session time limit
 // Displays MM:SS format with progress bar and color transitions
-// Phase 3: Enhanced to receive time remaining from backend via WebSocket
-// Includes full UI interface with clock display and progress ring
+// Runs a local countdown only — the backend does not emit live tick telemetry.
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 
 interface SessionTimerProps {
     initialTimeMs?: number;  // Default: 600000 (10 minutes)
-    isRunning?: boolean;     // Phase 3: Now optional - can be inferred from backend
-    isPaused?: boolean;       // Phase 3: Now optional - can be inferred from backend
+    isRunning?: boolean;
+    isPaused?: boolean;
     onTimeUp?: () => void;
-    socket?: {
-        on(event: string, callback: (data: number) => void): void;
-        off(event: string, callback: (data: number) => void): void;
-    };
     variant?: 'compact' | 'full';  // UI variant: compact (inline) or full (standalone)
 }
 
 const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
+
+function useCountdown(
+    initialTimeMs: number,
+    isRunning: boolean,
+    isPaused: boolean,
+    onTimeUp?: () => void,
+): number {
+    const [timeRemaining, setTimeRemaining] = useState(initialTimeMs);
+    const hasTimeUpFired = useRef(false);
+
+    // Reset the clock whenever a fresh run starts.
+    useEffect(() => {
+        if (isRunning && !isPaused) {
+            setTimeRemaining(initialTimeMs);
+            hasTimeUpFired.current = false;
+        }
+    }, [isRunning, isPaused, initialTimeMs]);
+
+    useEffect(() => {
+        if (!isRunning || isPaused) return;
+        const interval = setInterval(() => {
+            setTimeRemaining((prev) => Math.max(0, prev - 1000));
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [isRunning, isPaused]);
+
+    useEffect(() => {
+        if (timeRemaining <= 0 && !hasTimeUpFired.current) {
+            hasTimeUpFired.current = true;
+            onTimeUp?.();
+        }
+    }, [timeRemaining, onTimeUp]);
+
+    return timeRemaining;
+}
 
 // Compact version for inline display
 function CompactTimer({
@@ -29,57 +59,8 @@ function CompactTimer({
     isRunning: propIsRunning = true,
     isPaused: propIsPaused = false,
     onTimeUp,
-    socket
 }: SessionTimerProps) {
-    const [timeRemaining, setTimeRemaining] = useState(initialTimeMs);
-    const [isRunning, setIsRunning] = useState(propIsRunning);
-    const [isPaused, setIsPaused] = useState(propIsPaused);
-
-    useEffect(() => {
-        if (!socket) return;
-
-        const handleTimeRemaining = (newTime: number) => {
-            setTimeRemaining(newTime);
-            if (newTime <= 0) {
-                onTimeUp?.();
-            }
-        };
-
-        socket.on('time-remaining', handleTimeRemaining);
-        return () => {
-            socket.off('time-remaining', handleTimeRemaining);
-        };
-    }, [socket, onTimeUp]);
-
-    const startLocalCountdown = useCallback(() => {
-        const interval = setInterval(() => {
-            setTimeRemaining(prev => {
-                if (prev <= 1000) {
-                    onTimeUp?.();
-                    return 0;
-                }
-                return prev - 1000;
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [onTimeUp]);
-
-    useEffect(() => {
-        if (!socket && isRunning && !isPaused) {
-            return startLocalCountdown();
-        }
-    }, [socket, isRunning, isPaused, startLocalCountdown]);
-
-    useEffect(() => {
-        setIsRunning(propIsRunning);
-        setIsPaused(propIsPaused);
-    }, [propIsRunning, propIsPaused]);
-
-    useEffect(() => {
-        if (isRunning && !isPaused) {
-            setTimeRemaining(initialTimeMs);
-        }
-    }, [isRunning, isPaused, initialTimeMs]);
+    const timeRemaining = useCountdown(initialTimeMs, propIsRunning, propIsPaused, onTimeUp);
 
     const minutes = Math.floor(timeRemaining / 60000);
     const seconds = Math.floor((timeRemaining % 60000) / 1000);
@@ -117,57 +98,8 @@ function FullTimer({
     isRunning: propIsRunning = true,
     isPaused: propIsPaused = false,
     onTimeUp,
-    socket
 }: SessionTimerProps) {
-    const [timeRemaining, setTimeRemaining] = useState(initialTimeMs);
-    const [isRunning, setIsRunning] = useState(propIsRunning);
-    const [isPaused, setIsPaused] = useState(propIsPaused);
-
-    useEffect(() => {
-        if (!socket) return;
-
-        const handleTimeRemaining = (newTime: number) => {
-            setTimeRemaining(newTime);
-            if (newTime <= 0) {
-                onTimeUp?.();
-            }
-        };
-
-        socket.on('time-remaining', handleTimeRemaining);
-        return () => {
-            socket.off('time-remaining', handleTimeRemaining);
-        };
-    }, [socket, onTimeUp]);
-
-    const startLocalCountdown = useCallback(() => {
-        const interval = setInterval(() => {
-            setTimeRemaining(prev => {
-                if (prev <= 1000) {
-                    onTimeUp?.();
-                    return 0;
-                }
-                return prev - 1000;
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [onTimeUp]);
-
-    useEffect(() => {
-        if (!socket && isRunning && !isPaused) {
-            return startLocalCountdown();
-        }
-    }, [socket, isRunning, isPaused, startLocalCountdown]);
-
-    useEffect(() => {
-        setIsRunning(propIsRunning);
-        setIsPaused(propIsPaused);
-    }, [propIsRunning, propIsPaused]);
-
-    useEffect(() => {
-        if (isRunning && !isPaused) {
-            setTimeRemaining(initialTimeMs);
-        }
-    }, [isRunning, isPaused, initialTimeMs]);
+    const timeRemaining = useCountdown(initialTimeMs, propIsRunning, propIsPaused, onTimeUp);
 
     const minutes = Math.floor(timeRemaining / 60000);
     const seconds = Math.floor((timeRemaining % 60000) / 1000);
@@ -190,17 +122,17 @@ function FullTimer({
     // Status text
     const getStatusText = () => {
         if (timeRemaining <= 0) return 'TIME UP';
-        if (isPaused) return 'PAUSED';
-        if (!isRunning) return 'READY';
+        if (propIsPaused) return 'PAUSED';
+        if (!propIsRunning) return 'READY';
         return 'RUNNING';
     };
 
     return (
         <div className="flex flex-col items-center gap-3 p-4 bg-white rounded-xl shadow-md border border-slate-200">
             {/* Status Badge */}
-            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isPaused ? 'bg-amber-100 text-amber-700' :
+            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${propIsPaused ? 'bg-amber-100 text-amber-700' :
                     timeRemaining <= 0 ? 'bg-red-100 text-red-700' :
-                        isRunning ? 'bg-emerald-100 text-emerald-700' :
+                        propIsRunning ? 'bg-emerald-100 text-emerald-700' :
                             'bg-slate-100 text-slate-600'
                 }`}>
                 {getStatusText()}

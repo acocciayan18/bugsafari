@@ -42,6 +42,7 @@ interface ClinicalForensicsDashboardProps {
   hasRunCompleted?: boolean; // 👈 True after first test run completes
   isInitializing?: boolean; // 👈 True when test started but no frame received yet
   liveFrame?: string | null; // 👈 Active frame buffer - cleared on test conclusion
+  sessionTimeMs?: number; // Total timebox for the active run, from optimizationSettings
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
@@ -66,6 +67,7 @@ export default function ClinicalForensicsDashboard({
   hasRunCompleted = false,
   isInitializing = false,
   liveFrame = null,
+  sessionTimeMs,
   onPause,
   onResume,
   onStop,
@@ -154,6 +156,7 @@ const formattedTelemetry = useMemo(() => {
                 {testStatus}
               </span>
               <SessionTimer
+                initialTimeMs={sessionTimeMs}
                 isRunning={isTestRunning}
                 isPaused={testStatus === 'PAUSED'}
               />

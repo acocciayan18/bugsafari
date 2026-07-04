@@ -351,11 +351,13 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
 
       console.log('[API] Fetching session history for userId:', userId);
       
-      // Query sessions collection by userId (unified history)
+      // Query sessions collection by userId (unified history). Only manually
+      // saved sessions count as "history" — auto-tracked runs stay invisible
+      // until the operator explicitly clicks Save.
       const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
       const { Types } = await import('mongoose');
-      
-      const sessions = await SessionModel.find({ userId: new Types.ObjectId(userId) })
+
+      const sessions = await SessionModel.find({ userId: new Types.ObjectId(userId), savedManually: true })
         .sort({ startedAt: -1 })
         .lean();
       

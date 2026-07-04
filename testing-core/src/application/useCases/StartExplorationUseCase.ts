@@ -41,6 +41,9 @@ interface ExecutionMetrics {
 export class StartExplorationUseCase {
     private currentUserId: string | null;
     private currentSessionId: string | null = null;
+    // Captured after run() returns and NOT cleared by execute()'s finally block —
+    // it must survive until the operator's later, independent Save request.
+    private lastCompletedSessionId: string | null = null;
     private executionStartTime: number = 0;
     private optimizationSettings: OptimizationSettings | undefined;
 
@@ -213,37 +216,56 @@ export class StartExplorationUseCase {
         const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
         const coveragePercentage = Math.min(100, Math.round((actionRecords.length / maxActions) * 100));
 
-        try {
-            const savedDocument = await SessionModel.create({
-                userId: userObjectId,
-                targetUrl,
-                status: SessionStatus.COMPLETED,
-                startedAt,
-                finishedAt: new Date(),
-                savedManually: true,
-                endedReason: 'Manually saved by operator',
-                findingCount: findingsTotal,
-                actionTraceCount: actionRecords.length,
-                stats: {
-                    runtimeMs,
-                    actionsExecuted: actionRecords.length,
-                    coveragePercentage,
-                },
-                metrics: {
-                    totalActions: actionRecords.length,
-                    totalBugsFound: findingsTotal,
-                    bugsByCategory: breakdownCategories,
-                },
-                forensicTrace: {
-                    finalBreadcrumbSteps,
-                    caughtBugs,
-                },
-                actionSteps,
-                executionDate: startedAt,
-                timeElapsed: runtimeMs,
-            });
+        const sessionFields = {
+            userId: userObjectId,
+            targetUrl,
+            status: SessionStatus.COMPLETED,
+            startedAt,
+            finishedAt: new Date(),
+            savedManually: true,
+            endedReason: 'Manually saved by operator',
+            findingCount: findingsTotal,
+            actionTraceCount: actionRecords.length,
+            stats: {
+                runtimeMs,
+                actionsExecuted: actionRecords.length,
+                coveragePercentage,
+            },
+            metrics: {
+                totalActions: actionRecords.length,
+                totalBugsFound: findingsTotal,
+                bugsByCategory: breakdownCategories,
+            },
+            forensicTrace: {
+                finalBreadcrumbSteps,
+                caughtBugs,
+            },
+            actionSteps,
+            executionDate: startedAt,
+            timeElapsed: runtimeMs,
+        };
 
-            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions: ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
+        try {
+            // Prefer updating the engine's own auto-created session document in
+            // place — this is the SAME record used as the forensic correlation
+            // id during the run, so saving no longer produces a second, duplicate
+            // document. Only fall back to creating a new one if that document
+            // doesn't exist (e.g. the initial DB write failed at run-start).
+            let savedDocument = this.lastCompletedSessionId && isValidObjectId(this.lastCompletedSessionId)
+                ? await SessionModel.findOneAndUpdate(
+                    { _id: new Types.ObjectId(this.lastCompletedSessionId), userId: userObjectId },
+                    { $set: sessionFields },
+                    { new: true },
+                )
+                : null;
+
+            let source = 'update-in-place';
+            if (!savedDocument) {
+                savedDocument = await SessionModel.create(sessionFields);
+                source = 'fallback-create';
+            }
+
+            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions (${source}): ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
@@ -282,8 +304,10 @@ export class StartExplorationUseCase {
             }
         }
 
-        // Sessions are in-memory only during execution; no DB document is created automatically.
-        // The operator must explicitly click "Save to History" to commit a record.
+        // The engine auto-creates a DB session document for internal forensic
+        // correlation (RUNNING -> COMPLETED/CRASHED), but it is never surfaced as
+        // "history" and is not the record manualSaveToHistory() writes to unless
+        // the operator explicitly clicks "Save to History".
         this.currentSessionId = null;
 
         this.state.active = true;
@@ -308,6 +332,10 @@ try {
             // The engine now tracks elapsedActiveTimeMs internally and only counts time when NOT paused.
             // This prevents timebox from expiring during pause state.
             const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios, this.currentUserId ?? undefined);
+
+            // Capture the engine's auto-created session id now, before it's
+            // needed by a later, independent manualSaveToHistory() call.
+            this.lastCompletedSessionId = this.browserEngine.getLastSessionId?.() ?? null;
 
 // Check if the engine detected timebox exceeded (via its internal timing interval)
             if (!result.completed && result.reason.includes('timebox')) {
@@ -352,6 +380,9 @@ try {
             });
         } catch (error) {
             executionStatus = 'CRASHED';
+            // Capture even on crash so a fatal engine error doesn't strand the
+            // operator with no session to save.
+            this.lastCompletedSessionId = this.browserEngine.getLastSessionId?.() ?? null;
             const message = error instanceof Error ? error.message : String(error);
             const stackTrace = error instanceof Error ? error.stack ?? message : message;
 

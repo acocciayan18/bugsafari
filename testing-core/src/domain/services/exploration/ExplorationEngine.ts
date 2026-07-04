@@ -67,6 +67,10 @@ export class ExplorationEngine {
   // Initialised in the constructor after mode is derived from selectedScenarios.
   private readonly pathNavigator: StateGraphNavigator;
   private sessionId: string | null = null;
+  // Survives past the run's `finally` block (unlike sessionId, which is nulled
+  // there) so StartExplorationUseCase can look it up after run() returns, to
+  // update-in-place instead of creating a second document on manual save.
+  private lastSessionId: string | null = null;
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
@@ -79,7 +83,7 @@ export class ExplorationEngine {
   private elapsedActiveTimeMs: number = 0;
   private timingInterval: ReturnType<typeof setInterval> | null = null;
   private lastTickTimestamp: number = 0;
-  private timeboxMs: number = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000; // Default 10 minutes
+  private timeboxMs: number; // Resolved in the constructor from optimizationSettings (default 10 minutes)
   private timeboxExceeded: boolean = false;
 
   // Timer snapshot tracking for pause/resume support
@@ -132,6 +136,13 @@ export class ExplorationEngine {
     private readonly userId?: string,
   ) {
     console.log(`[ExplorationEngine] Optimization settings:`, optimizationSettings);
+
+    // Resolve the enforced timebox from the caller-supplied settings, falling
+    // back to the shared default. Previously this was hardcoded at field
+    // declaration and optimizationSettings was ignored entirely.
+    this.timeboxMs = optimizationSettings?.['execution-timebox-ms']
+      ?? defaultOptimizationSettings['execution-timebox-ms']
+      ?? 600000;
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
@@ -209,6 +220,14 @@ export class ExplorationEngine {
     return Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
   }
 
+  /**
+   * Get the DB session id of the most recently started run, surviving past
+   * run()'s finally block (unlike sessionId). Null for guests/in-memory runs.
+   */
+  public getLastSessionId(): string | null {
+    return this.lastSessionId;
+  }
+
   public stop() {
     this.isStopRequested = true;
     this.isPaused = false;
@@ -233,7 +252,7 @@ export class ExplorationEngine {
    * Check if the timebox has been exceeded.
    * Timebox exceeded only triggers when NOT paused.
    */
-  public isTimeboxExceeded(timeboxMs: number = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000): boolean {
+  public isTimeboxExceeded(timeboxMs: number = this.timeboxMs): boolean {
     return this.elapsedActiveTimeMs >= timeboxMs && !this.isPaused;
   }
 
@@ -268,12 +287,11 @@ export class ExplorationEngine {
   /**
    * Start the timing interval that accumulates active time.
    * Time only accumulates when NOT paused.
-   * Emits TIME_REMAINING telemetry every 1 second to sync with frontend.
+   * No telemetry is emitted here — the frontend runs its own local countdown.
    */
-  private startTimingInterval(telemetry: TelemetryGateway): void {
+  private startTimingInterval(_telemetry: TelemetryGateway): void {
     this.elapsedActiveTimeMs = 0;
     this.lastTickTimestamp = Date.now();
-    let tickCounter = 0;
 
     this.timingInterval = setInterval(() => {
       if (!this.isPaused && !this.isStopRequested) {
@@ -281,15 +299,6 @@ export class ExplorationEngine {
         const delta = now - this.lastTickTimestamp;
         this.elapsedActiveTimeMs += delta;
         this.lastTickTimestamp = now;
-
-        // Emit TIME_REMAINING every 10 ticks (1 second)
-        tickCounter++;
-        if (tickCounter >= 10) {
-          tickCounter = 0;
-          const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
-          // INFRASTRUCTURE TIME UPDATES REMOVED - Internal tracking continues for hard stop enforcement
-          // The time tracking logic still runs internally to enforce the configured timeout
-        }
       } else {
         // When paused or stopped, just update tick reference without accumulating
         this.lastTickTimestamp = Date.now();
@@ -386,6 +395,7 @@ export class ExplorationEngine {
     emitter.emitMilestone(`🎛️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
 
     this.sessionId = await this.createSession(targetUrl);
+    this.lastSessionId = this.sessionId;
 
     // 🕐 Start timing interval that accumulates active time (only when NOT paused)
     // This replaces the fixed timeout approach with accumulative time tracking

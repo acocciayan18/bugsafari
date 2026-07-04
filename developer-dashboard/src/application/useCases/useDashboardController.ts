@@ -23,6 +23,7 @@ export interface DashboardState {
   liveFrame: string | null;
   remainingTimeMs: number;
   elapsedTimeMs: number;
+  activeTimeboxMs: number;
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
@@ -66,7 +67,13 @@ function decodeTokenExpiration(token: string): { exp: number } | null {
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
   const { token, refreshToken } = useAuth();
-  const sessionTimeMs = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
+  // The total duration for the CURRENTLY ACTIVE (or most recently started) run.
+  // Set from the actual optimizationSettings passed to startTest(), not just
+  // the static default, so the displayed timer matches whatever the backend
+  // is really enforcing for this run.
+  const [sessionTimeMs, setSessionTimeMs] = useState<number>(
+    defaultOptimizationSettings['execution-timebox-ms'] ?? 600000,
+  );
   const [isConnected, setIsConnected] = useState(false);
   const [isLaunching, setIsLaunching] = useState(false);
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -275,6 +282,13 @@ return () => {
 const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> => {
     if (!targetUrl.trim()) return;
 
+    // Reflect the timebox actually being sent to the backend for this run,
+    // rather than always assuming the default.
+    const resolvedTimeboxMs = (optimizationSettings ?? defaultOptimizationSettings)['execution-timebox-ms']
+      ?? defaultOptimizationSettings['execution-timebox-ms']
+      ?? 600000;
+    setSessionTimeMs(resolvedTimeboxMs);
+
     setIsThinking(true);
     setIsLaunching(true);
     setIsTestRunning(true);
@@ -285,7 +299,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setReports([]);
     setIncidents([]);
     setCurrentUrl(targetUrl);
-    setRemainingTimeMs(sessionTimeMs);
+    setRemainingTimeMs(resolvedTimeboxMs);
     setElapsedTimeMs(0);
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
@@ -409,6 +423,7 @@ return {
       liveFrame,
       remainingTimeMs,
       elapsedTimeMs,
+      activeTimeboxMs: sessionTimeMs,
       telemetry,
       reports,
       incidents,

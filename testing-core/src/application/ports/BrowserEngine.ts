@@ -24,4 +24,6 @@ export interface BrowserEngine {
     timestamp: Date;
   }>;
   getConfig?(): BrowserEngineConfig;
+  /** DB session id of the most recently started run (survives after run() returns). Null for guests/in-memory runs. */
+  getLastSessionId?(): string | null;
 }

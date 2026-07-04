@@ -144,6 +144,7 @@ function AuthAppContent() {
                 hasTimeLimitExceeded={state.hasTimeLimitExceeded}
                 isConnected={state.isConnected}
                 isCleaningUp={state.isCleaningUp}
+                sessionTimeMs={state.activeTimeboxMs}
                 onTimeUp={handleTimeLimitExceeded}
                 onStart={(url, selectedScenarios) => startTest(url, defaultOptimizationSettings, selectedScenarios)}
                 onPause={pauseTest}
@@ -167,6 +168,7 @@ function AuthAppContent() {
                     hasRunCompleted={state.hasRunCompleted}
                     isInitializing={state.isInitializing}
                     liveFrame={state.liveFrame}
+                    sessionTimeMs={state.activeTimeboxMs}
                   />
                 </div>
               </CommandCenter>

@@ -274,8 +274,11 @@ public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHis
     console.log("[Repository] listSessionHistory called with limit:", limit, "userId:", userId ?? "none");
 
     try {
-      // Build filter based on userId for multi-tenancy
-      const filter: Record<string, unknown> = {};
+      // Build filter based on userId for multi-tenancy. Only sessions the
+      // operator explicitly saved are "history" — auto-tracked runs (created
+      // the instant a run starts, for forensic correlation) stay invisible
+      // until the Save button flips this flag.
+      const filter: Record<string, unknown> = { savedManually: true };
 
       // CRITICAL: If userId provided, filter by userId for data isolation
       // If no userId (shouldn't happen with requireAuth but handle safely), return empty array

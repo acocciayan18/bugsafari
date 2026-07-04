@@ -1,7 +1,6 @@
 import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
@@ -60,8 +59,13 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
    * Check if the timebox has been exceeded.
    * Returns true only when elapsed active time >= timeboxMs AND engine is NOT paused.
    */
-  public isTimeboxExceeded(timeboxMs: number = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000): boolean {
+  public isTimeboxExceeded(timeboxMs?: number): boolean {
     return this.activeEngine?.isTimeboxExceeded(timeboxMs) ?? false;
+  }
+
+  /** DB session id of the most recently started run. Null for guests/in-memory runs. */
+  public getLastSessionId(): string | null {
+    return this.activeEngine?.getLastSessionId() ?? null;
   }
 
   public async stop(): Promise<void> {
