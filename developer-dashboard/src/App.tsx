@@ -85,8 +85,14 @@ function AuthAppContent() {
     );
   };
 
-  // Derive activeView from URL path for sidebar highlighting
-  const activeView: ViewType = location.pathname === '/history' ? 'history' : location.pathname === '/settings' ? 'settings' : 'dashboard';
+  // Derive activeView from URL path for sidebar highlighting. Prefix match
+  // (not exact) so nested routes (e.g. /history/forensic-report/:sessionId)
+  // keep their parent nav item highlighted.
+  const activeView: ViewType = location.pathname.startsWith('/history')
+    ? 'history'
+    : location.pathname.startsWith('/settings')
+      ? 'settings'
+      : 'dashboard';
 
   // ─────────────────────────────────────────────────────────────
   // Public Routes: LandingPage FIRST, then /login
@@ -129,7 +135,7 @@ function AuthAppContent() {
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
-              onLogout={logout}
+
               activeView={activeView}
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -181,7 +187,7 @@ function AuthAppContent() {
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
-              onLogout={logout}
+
               activeView={activeView}
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -197,7 +203,7 @@ function AuthAppContent() {
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
-              onLogout={logout}
+
               activeView={activeView}
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -208,12 +214,12 @@ function AuthAppContent() {
           }
         />
         <Route
-          path="/forensic-report/:runId"
+          path="/history/forensic-report/:sessionId"
           element={
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
-              onLogout={logout}
+
               activeView={activeView}
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}

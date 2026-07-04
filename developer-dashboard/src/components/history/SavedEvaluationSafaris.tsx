@@ -344,7 +344,7 @@ const { token, isAuthLoading } = useAuth();
 
   // Handle view report — SPA navigation to the full-screen forensic report page.
   const handleViewReport = (recordId: string) => {
-    navigate(`/forensic-report/${recordId}`);
+    navigate(`/history/forensic-report/${recordId}`);
   };
 
   // Use only API data (fetched from database)
@@ -518,7 +518,7 @@ const progressSegments = [0, 1, 2, 3, 4];
     const idsToCompare = Array.from(selectedIds);
     if (idsToCompare.length > 0) {
       toast.info(`Comparing ${idsToCompare.length} records - opening first record`);
-      window.location.href = `/forensic-report/${idsToCompare[0]}`;
+      navigate(`/history/forensic-report/${idsToCompare[0]}`);
     }
   };
 

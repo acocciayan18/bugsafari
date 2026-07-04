@@ -15,7 +15,6 @@ interface User {
 interface SidebarProps {
   user: User | null;
   isLoggedIn: boolean;
-  onLogout?: () => void;
   activeView?: 'dashboard' | 'history' | 'settings';
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -26,7 +25,6 @@ interface SidebarProps {
 export default function Sidebar({
   user,
   isLoggedIn,
-  onLogout,
   activeView = 'dashboard',
   isCollapsed = false,
   onToggleCollapse,
@@ -143,15 +141,6 @@ export default function Sidebar({
                 </div>
               </div>
             </div>
-            <button
-              onClick={onLogout}
-              className={`flex w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition-all duration-200 ${isCollapsed ? 'h-0 p-0 opacity-0 overflow-hidden' : 'opacity-100 py-2'}`}
-            >
-              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0m-4 4V4m0 0l4 4m-4-4H3" />
-              </svg>
-              Logout
-            </button>
           </div>
         ) : (
           <div className={`${isCollapsed ? '' : 'space-y-2'}`}>

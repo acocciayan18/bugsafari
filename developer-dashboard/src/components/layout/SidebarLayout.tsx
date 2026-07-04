@@ -10,7 +10,6 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 interface SidebarLayoutProps {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  onLogout: () => void;
   activeView: ViewType;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -24,7 +23,6 @@ interface SidebarLayoutProps {
 export default function SidebarLayout({
   user,
   isAuthenticated,
-  onLogout,
   activeView,
   isCollapsed,
   onToggleCollapse,
@@ -37,7 +35,6 @@ export default function SidebarLayout({
       <Sidebar
         user={user}
         isLoggedIn={isAuthenticated}
-        onLogout={onLogout}
         activeView={activeView}
         isCollapsed={isCollapsed}
         onToggleCollapse={onToggleCollapse}

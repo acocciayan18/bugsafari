@@ -73,7 +73,7 @@ function StatBlock({ label, value, valueClassName = 'text-slate-900' }: { label:
   );
 }
 
-function ExecutiveSummary({ report, runId }: { report: ForensicReportResponse; runId: string }) {
+function ExecutiveSummary({ report, sessionId }: { report: ForensicReportResponse; sessionId: string }) {
   const theme = statusTheme(report.status);
   const findingsTotal = report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0;
 
@@ -87,7 +87,7 @@ function ExecutiveSummary({ report, runId }: { report: ForensicReportResponse; r
           </div>
           <div className="mt-1 truncate text-sm font-medium text-slate-700" title={report.url}>{report.url || 'N/A'}</div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-            <span>Run {runId}</span>
+            <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
           </div>
@@ -302,13 +302,13 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
 }
 
 export default function ForensicReport() {
-  const { runId } = useParams<{ runId: string }>();
+  const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!runId) {
+    if (!sessionId) {
       setError('Missing report ID.');
       setIsLoading(false);
       return;
@@ -321,7 +321,7 @@ export default function ForensicReport() {
       setError(null);
 
       try {
-        const data = await fetchForensicReport(runId);
+        const data = await fetchForensicReport(sessionId);
         if (!cancelled) {
           setReport(data);
         }
@@ -341,7 +341,7 @@ export default function ForensicReport() {
     return () => {
       cancelled = true;
     };
-  }, [runId]);
+  }, [sessionId]);
 
   const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
 
@@ -390,7 +390,7 @@ export default function ForensicReport() {
       {/* Report Body */}
       <main className="flex-1 overflow-auto p-6">
         <div className="mx-auto flex max-w-4xl flex-col gap-6">
-          <ExecutiveSummary report={report} runId={runId || 'N/A'} />
+          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} />
 
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 

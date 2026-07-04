@@ -444,6 +444,7 @@ function AccountSection() {
   const [displayName, setDisplayName] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     if (profile?.name) {
@@ -569,12 +570,32 @@ function AccountSection() {
       </div>
 
       <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
-        <button
-          onClick={handleLogout}
-          className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
-        >
-          Sign Out
-        </button>
+        {showLogoutConfirm ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-700 dark:text-slate-300">Are you sure you want to sign out?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleLogout}
+                className="flex-1 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+              >
+                Yes, Sign Out
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+          >
+            Sign Out
+          </button>
+        )}
       </div>
     </div>
   );
