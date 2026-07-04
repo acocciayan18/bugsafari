@@ -3,7 +3,7 @@
  * Extracted from useDashboardController for better modularity and debugging
  */
 
-import type { SessionHistoryEntry, ForensicReportResponse } from '../types';
+import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
 
 /**
  * Get authentication token from localStorage
@@ -64,6 +64,8 @@ export interface SaveFindingPayload {
   stackTrace?: string;
   reproductionSteps?: string[];
   timestamp?: string;
+  /** Deterministic knowledge-base classification + scenario/step attribution. */
+  attribution?: FindingAttribution;
 }
 
 export async function saveSessionToHistory(

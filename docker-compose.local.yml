@@ -66,6 +66,7 @@ services:
       - bugsafari-local
     command: >
       sh -c "npm run dev --workspace testing-core"
+      
 
   worker:
     container_name: bugsafari-worker

@@ -13,8 +13,6 @@ export {
   type StressClickMetadata,
   type RouteTrashMetadata,
   type VulnScoutMetadata,
-  type BugFindingType,
-  type LiveBugPayload,
 } from './ChaosTransactionManager.js';
 
 // Backward compatibility exports

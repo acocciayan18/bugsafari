@@ -1,10 +1,9 @@
-# CLAUDE.md
+d
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# 🦁 BugSafari: AI System Prompt & Guardrails
 
-AI INSTRUCTION: Read this document entirely before suggesting refactors or generating code. Prioritize these absolute project constraints over generalized best practices.
+Read this document entirely before suggesting refactors or generating code. Prioritize these absolute project constraints over generalized best practices.
 
 Do not make any changes until you have 95% confidence in what you need to build. Ask me follow-up questions until you reach that confidence.
 
@@ -28,6 +27,8 @@ Watch for weird syntax/style mismatching rest of codebase.
 Watch for obvious bugs.
 
 Prioritize concise, precise code and docs changes.
+
+ig you would Comment codes, comment only in one liner
 
 Review existing files before refactor or change.
 

@@ -12,6 +12,7 @@
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, FuzzMetadata } from '../../domain/fuzzing/index.js';
+import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 
 // Singleton reference to the active chaos transaction manager
 // In a full implementation, this would be injected via dependency injection
@@ -30,67 +31,13 @@ export function setChaosManagerAccessor(
   chaosManagerAccessor = accessor;
 }
 
-/**
- * XSS signature patterns to detect in DOM
- * These indicate potential reflected XSS vulnerabilities
- */
-const XSS_SIGNATURE_PATTERNS = [
-  /<script[^>]*>.*?<\/script>/gi,
-  /javascript:/gi,
-  /on\w+\s*=/gi,
-  /<img[^>]+onerror=/gi,
-  /<svg[^>]+onload=/gi,
-  /eval\s*\(/gi,
-  /innerHTML\s*=/gi,
-  /outerHTML\s*=/gi,
-  /document\.cookie/gi,
-  /<iframe[^>]*>/gi,
-  /<embed[^>]*>/gi,
-  /<object[^>]*>/gi,
-];
-
-/**
- * NoSQL/MongoDB error patterns
- * These indicate potential NoSQL injection vulnerabilities
- */
-const NOSQL_ERROR_PATTERNS = [
-  /MongoError/i,
-  /BSON/i,
-  /\$ne[^a-zA-Z]/i,
-  /\$gt[^a-zA-Z]/i,
-  /\$lt[^a-zA-Z]/i,
-  /\$where/i,
-  /\$regex/i,
-  /no\s+cursor/i,
-  /Invalid\s+Modifiers/i,
-  /SyntaxError.*Mongo/i,
-  /Unrecognized/i,
-  /dollar.*operator/i,
-  /modifier.*must/i,
-];
-
-/**
- * Server crash signature patterns
- * These indicate potential server-side instabilities
- */
-const CRASH_SIGNATURES = [
-  /stack\s+trace/i,
-  /at\s+[^(\s]+\s*\(/i,
-  /fatal\s+error/i,
-  /segmentation\s+fault/i,
-  /core\s+dump/i,
-  /SIGSEGV/i,
-  /SIGABRT/i,
-  /uncaught\s+exception/i,
-  /unhandled\s+rejection/i,
-  /Cannot\s+read\s+property/i,
-  /undefined\s+is\s+not\s+(a|an)\s+(function|object)/i,
-  /is\s+not\s+defined/i,
-  /null\s+is\s+not\s+(a|an)\s+(function|object)/i,
-  /500\s+Internal\s+Server\s+Error/i,
-  /Service\s+Unavailable/i,
-  /Bad\s+Gateway/i,
-];
+// Runtime-signal signatures are sourced from the centralized knowledge base
+// (knowledgeBase/signalPatterns.ts) so XSS / NoSQL / crash detection stays
+// consistent with the classifier. Server-side crash detection combines the
+// server-error and client-crash catalogs (the original CRASH_SIGNATURES mixed both).
+const XSS_SIGNATURE_PATTERNS = SIGNAL_PATTERNS.XSS_REFLECTION;
+const NOSQL_ERROR_PATTERNS = SIGNAL_PATTERNS.NOSQL_ERROR;
+const CRASH_SIGNATURES = [...SIGNAL_PATTERNS.SERVER_ERROR, ...SIGNAL_PATTERNS.CLIENT_CRASH];
 
 /**
  * Checks if the current context has an active FUZZ transaction

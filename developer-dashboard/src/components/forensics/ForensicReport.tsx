@@ -57,19 +57,32 @@ function buildReportSections(report: ForensicReportResponse): ReportSection[] {
   const findingsLines = report.forensicTrace?.caughtBugs?.length
     ? report.forensicTrace.caughtBugs.map((bug, index) => {
         const payload = bug.payloadUsed ? `\nPayload: ${bug.payloadUsed}` : '';
-        return `${index + 1}. ${bug.type || 'UNKNOWN'}\nMessage: ${bug.message || 'No details provided'}\nSelector: ${bug.selector || 'N/A'}${payload}\nAdvice: ${bug.advice || 'No guidance available'}\nTimestamp: ${formatDate(bug.timestamp)}`;
+        // Prefer the deterministic knowledge-base classification as the finding class.
+        const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
+        const attributionParts = [
+          bug.attribution?.scenario ? `Scenario: ${bug.attribution.scenario}` : '',
+          bug.attribution?.cwe ? `CWE: ${bug.attribution.cwe}` : '',
+          typeof bug.attribution?.stepIndex === 'number' ? `Step: ${bug.attribution.stepIndex}` : '',
+        ].filter(Boolean);
+        const attributionLine = attributionParts.length ? `\n${attributionParts.join(' | ')}` : '';
+        return `${index + 1}. ${bugClass}${attributionLine}\nMessage: ${bug.message || 'No details provided'}\nSelector: ${bug.selector || 'N/A'}${payload}\nAdvice: ${bug.advice || 'No guidance available'}\nTimestamp: ${formatDate(bug.timestamp)}`;
       }).join('\n\n')
     : 'No findings were recorded for this session.';
 
   const errorLines = report.errorLogs?.errors?.length
     ? report.errorLogs.errors.map((error, index) => {
-        const header = `${index + 1}. ${error.type || 'ERROR'}`;
+        const header = `${index + 1}. ${error.bugClass || error.type || 'ERROR'}`;
+        const attributionParts = [
+          error.scenario ? `Scenario: ${error.scenario}` : '',
+          error.cwe ? `CWE: ${error.cwe}` : '',
+        ].filter(Boolean);
+        const attributionLine = attributionParts.length ? `\n${attributionParts.join(' | ')}` : '';
         const message = error.message ? `\nMessage: ${error.message}` : '';
         const location = error.selector ? `\nSelector: ${error.selector}` : '';
         const endpoint = error.endpoint ? `\nEndpoint: ${error.endpoint}` : '';
         const status = error.statusCode ? `\nStatus: ${error.statusCode}` : '';
         const timestamp = error.createdAt ? `\nTime: ${formatDate(error.createdAt)}` : '';
-        return `${header}${message}${location}${endpoint}${status}${timestamp}`;
+        return `${header}${attributionLine}${message}${location}${endpoint}${status}${timestamp}`;
       }).join('\n\n')
     : 'No error logs were captured for this session.';
 

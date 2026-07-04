@@ -108,6 +108,22 @@ const forensicErrorSchema = new Schema(
       required: false,
       default: null,
     },
+    // Knowledge-base attribution (deterministic classification + scenario)
+    bugClass: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    scenario: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    cwe: {
+      type: String,
+      required: false,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -119,6 +135,7 @@ const forensicErrorSchema = new Schema(
 forensicErrorSchema.index({ forensicRunId: 1, type: 1 });
 forensicErrorSchema.index({ forensicRunId: 1, severity: 1 });
 forensicErrorSchema.index({ forensicRunId: 1, timestamp: -1 });
+forensicErrorSchema.index({ forensicRunId: 1, bugClass: 1 });
 
 export interface IForensicError extends Document {
   forensicRunId: Types.ObjectId;
@@ -136,6 +153,9 @@ export interface IForensicError extends Document {
   columnNumber?: number;
   selector?: string;
   action?: string;
+  bugClass?: string;
+  scenario?: string;
+  cwe?: string;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -3,6 +3,7 @@ import type {
   ActionBreadcrumb,
   ActionRecord,
   ActionType,
+  FindingAttribution,
 } from '../../../../../shared/types.ts';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { RecursiveDomParser } from '../../heuristics/domParser.js';
@@ -47,6 +48,8 @@ export interface ConfirmedBug {
   stackTrace?: string;
   /** Per-finding sequentially-numbered replication checklist. */
   reproductionSteps?: string[];
+  /** Deterministic classification + scenario/step attribution (knowledge base). */
+  attribution?: FindingAttribution;
 }
 
 /** Parameters for persisting a single forensic error row (sans forensicRunId). */
@@ -65,6 +68,12 @@ export interface ForensicErrorParams {
   columnNumber?: number;
   selector?: string;
   action?: string;
+  /** Knowledge-base BugClass classifying this error (e.g. 'NOSQL_INJECTION'). */
+  bugClass?: string;
+  /** Scenario that provoked the error (e.g. 'DataFuzzer', 'Exploratory'). */
+  scenario?: string;
+  /** MITRE CWE identifier for the classified bug class. */
+  cwe?: string;
 }
 
 /**

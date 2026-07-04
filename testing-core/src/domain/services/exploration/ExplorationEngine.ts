@@ -140,15 +140,10 @@ export class ExplorationEngine {
     this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode });
     console.log(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
 
-    // Initialize ChaosTransactionManager with telemetry and action buffer callbacks
-    this.fuzzManager = new ChaosTransactionManager(
-      // WebSocket emitter callback - uses the event helper for consistent telemetry format
-      (type: string, payload: any) => {
-        console.log(`[ChaosTransactionManager] Emitting ${type}:`, payload.message ?? payload.bugType);
-      },
-      // Recent steps callback - queries the circular action buffer for crash context
-      () => this.actions.snapshot()
-    );
+    // Initialize ChaosTransactionManager (transaction lifecycle only — bug
+    // evaluation/telemetry now flows through the knowledge-base FaultClassifier
+    // in StabilityMonitor, so no callbacks are needed here).
+    this.fuzzManager = new ChaosTransactionManager();
 
     // Expose this run's transaction manager to the route-mutation finder so it can
     // read live ROUTE_TRASH metadata. NOTE: the bugs/ finder registry currently has

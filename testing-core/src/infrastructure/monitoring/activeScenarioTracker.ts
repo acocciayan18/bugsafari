@@ -65,6 +65,34 @@ export class ActiveScenarioTracker {
     return ActiveScenarioTracker.active !== null;
   }
 
+  /**
+   * The scenario name to attribute a fault to: the active window, else the
+   * most-recently-closed one (a fault can fire just after a scenario ends).
+   * Returns undefined when idle so the classifier falls back to exploratory.
+   */
+  public static getActiveScenarioName(): string | undefined {
+    return (
+      ActiveScenarioTracker.active?.scenario ??
+      ActiveScenarioTracker.lastClosed?.scenario ??
+      undefined
+    );
+  }
+
+  /**
+   * The chronological step index at fault time — the number of deliberate steps
+   * recorded so far in the window used for the reproduction snapshot. Falls back
+   * to the rolling action-log length when no scenario window is populated.
+   */
+  public static getCurrentStepIndex(): number {
+    const window = ActiveScenarioTracker.active?.steps.length
+      ? ActiveScenarioTracker.active
+      : ActiveScenarioTracker.lastClosed?.steps.length
+        ? ActiveScenarioTracker.lastClosed
+        : null;
+    if (window) return window.steps.length;
+    return ReproductionPlaybookStore.snapshot().length;
+  }
+
   public static reset(): void {
     ActiveScenarioTracker.active = null;
     ActiveScenarioTracker.lastClosed = null;

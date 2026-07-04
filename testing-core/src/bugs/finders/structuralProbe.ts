@@ -11,6 +11,7 @@
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, RouteTrashMetadata } from '../../domain/fuzzing/index.js';
+import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 
 // Singleton accessor following fuzzGuard pattern
 let chaosManagerAccessor: {
@@ -51,39 +52,12 @@ function getActiveRouteMetadata(): RouteTrashMetadata | undefined {
   return chaosManagerAccessor.getActiveMetadata();
 }
 
-/**
- * Redirect loop detection patterns
- */
-const REDIRECT_LOOP_PATTERNS = [
-  /redirected/i,
-  /too many redirects/i,
-  /redirect loop/i,
-  /ERR_TOO_MANY_REDIRECTS/i,
-];
-
-/**
- * Component resolution failure patterns
- */
-const COMPONENT_FAIL_PATTERNS = [
-  /cannot read property .* of undefined/i,
-  /is not a function/i,
-  /failed to resolve/i,
-  /module not found/i,
-  /chunk.*not found/i,
-  /loading failed/i,
-  /network error/i,
-];
-
-/**
- * Query mutation patterns (detecting malformed query params)
- */
-const QUERY_MUTATION_PATTERNS = [
-  /%3D/i,  // URL encoded =
-  /%26/i,  // URL encoded &
-  /undefined/i,
-  /null/i,
-  /NaN/i,
-];
+// Runtime-signal signatures are sourced from the centralized knowledge base
+// (knowledgeBase/signalPatterns.ts) — previously these arrays duplicated the
+// ones in structuralNavigation.ts verbatim.
+const REDIRECT_LOOP_PATTERNS = SIGNAL_PATTERNS.REDIRECT_LOOP;
+const COMPONENT_FAIL_PATTERNS = SIGNAL_PATTERNS.COMPONENT_FAIL;
+const QUERY_MUTATION_PATTERNS = SIGNAL_PATTERNS.QUERY_MUTATION;
 
 /**
  * Analyzes the page for redirect loops

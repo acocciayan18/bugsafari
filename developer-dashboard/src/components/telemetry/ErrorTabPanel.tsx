@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
-import type { IncidentReport, ForensicCrashReport } from '../../types';
+import type { IncidentReport, ForensicCrashReport, FindingAttribution } from '../../types';
 import { dedupeReportsAgainstIncidents } from '../../utils/errorDeduplication';
 import ReproductionChecklist from './ReproductionChecklist';
 import AiDiagnosticCard from './AiDiagnosticCard';
@@ -108,6 +108,38 @@ const ExpandableCodeBlock = ({
             <CopyButton text={content} label={title} />
           </div>
         </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Deterministic classification + scenario/step attribution for a finding, bound
+ * directly to the knowledge-base FaultClassifier output persisted with the bug.
+ * Renders nothing when attribution is absent (older records remain valid).
+ */
+const AttributionBadges = ({ attribution }: { attribution?: FindingAttribution }) => {
+  if (!attribution?.bugClass) return null;
+  const chip = 'inline-flex items-center rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide';
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+      <span className={`${chip} bg-red-600 text-white`} title="Knowledge-base bug class">
+        {attribution.bugClass}
+      </span>
+      {attribution.scenario && (
+        <span className={`${chip} bg-slate-800 text-slate-100`} title="Scenario that provoked the fault">
+          {attribution.scenario}
+        </span>
+      )}
+      {attribution.cwe && (
+        <span className={`${chip} bg-amber-600 text-white`} title="MITRE CWE identifier">
+          {attribution.cwe}
+        </span>
+      )}
+      {typeof attribution.stepIndex === 'number' && (
+        <span className={`${chip} bg-slate-200 text-slate-700`} title="Execution step at fault time">
+          Step {attribution.stepIndex}
+        </span>
       )}
     </div>
   );
@@ -222,6 +254,9 @@ export default function ErrorTabPanel({
                   </div>
                 </div>
 
+                {/* 🏷 Deterministic classification + scenario/step attribution */}
+                <AttributionBadges attribution={incident.attribution} />
+
                 {/* 🧭 Human-executable reproduction steps for this incident */}
                 <div className="px-4 pt-3">
                   <ReproductionSection steps={incident.reproductionPlaybook} />
@@ -300,6 +335,9 @@ export default function ErrorTabPanel({
                     <div className="text-xs font-mono text-red-900">#{idx}</div>
                   </div>
                 </div>
+
+                {/* 🏷 Deterministic classification + scenario/step attribution */}
+                <AttributionBadges attribution={report.attribution} />
 
                 {/* 🧭 Human-executable reproduction steps for this crash report */}
                 <div className="px-4 pt-3">

@@ -53,8 +53,11 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
-      advice: generateSuggestedFix(type, inc.reason, inc.statusCode),
+      // Prefer the knowledge-base remediation bound to this finding; fall back to
+      // the local template only for legacy incidents lacking classifier advice.
+      advice: inc.advice ?? generateSuggestedFix(type, inc.reason, inc.statusCode),
       timestamp: inc.timestamp,
+      attribution: inc.attribution,
     };
   });
 
@@ -74,8 +77,10 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       payloadUsed: '',
       stackTrace: rep.stackTrace ?? '',
       reproductionSteps: checklist,
-      advice: generateSuggestedFix(type, rep.reason, rep.statusCode),
+      // Prefer the knowledge-base remediation bound to this finding (see above).
+      advice: rep.advice ?? generateSuggestedFix(type, rep.reason, rep.statusCode),
       timestamp: rep.timestamp,
+      attribution: rep.attribution,
     };
   });
 

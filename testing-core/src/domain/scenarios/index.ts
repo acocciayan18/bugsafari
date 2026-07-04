@@ -156,11 +156,8 @@ export const stressScenarioRegistry: StressScenario[] = [
 // Backward-compatible factory - creates scenarios with their own internal managers
 export function createDefaultStressScenarioRegistry(): StressScenario[] {
   // Create internal chaos manager for backward compatibility
-  const defaultManager = new ChaosTransactionManager<any>(
-    (type, payload) => console.log(`[Telemetry] ${type}`, payload),
-    () => []
-  );
-  
+  const defaultManager = new ChaosTransactionManager<any>();
+
   return createStressScenarioRegistry(defaultManager);
 }
 

@@ -35,6 +35,14 @@ export interface ICaughtBug {
   stackTrace?: string;
   /** Per-finding human-actionable replication checklist (sequentially numbered upstream). */
   reproductionSteps?: string[];
+  /** Deterministic classification + scenario/step attribution (knowledge base). */
+  attribution?: {
+    bugClass: string;
+    cwe?: string;
+    scenario?: string;
+    testingType?: string;
+    stepIndex?: number;
+  };
 }
 
 export interface IForensicTrace {
@@ -216,6 +224,18 @@ const sessionSchema = new Schema(
           // exact parity with the live Error Tab.
           stackTrace: { type: String, default: '' },
           reproductionSteps: { type: [String], default: [] },
+          // Deterministic knowledge-base classification + scenario/step attribution.
+          attribution: {
+            type: {
+              bugClass: { type: String, default: '' },
+              cwe: { type: String, default: '' },
+              scenario: { type: String, default: '' },
+              testingType: { type: String, default: '' },
+              stepIndex: { type: Number, default: null },
+            },
+            required: false,
+            default: null,
+          },
         }],
       },
       required: false,

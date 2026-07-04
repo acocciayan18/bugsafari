@@ -5,6 +5,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../../../shared/types.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeNetworkSabotage } from '../services/forensics/narration.js';
+import { FREEZE_SELECTORS, INPUT_BLOCK_SELECTORS } from '../../bugs/knowledgeBase/index.js';
 
 type SabotageMode = 'Delayed' | 'Aborted';
 
@@ -46,43 +47,9 @@ const DEFAULT_CONFIG: InterceptionConfig = {
   interceptionTimeoutMs: 5000,
 };
 
-/**
- * Expanded stuckSelectors array for freeze detection.
- * Includes modern SPA blocking patterns: spinners, skeletons, overlays, backdrops.
- */
-const STUCK_SELECTORS = [
-  // Original loading states
-  '[aria-busy="true"]',
-  '.loading',
-  '.spinner',
-  '.infinite-spinner',
-  '[data-loading="true"]',
-  // Skeleton placeholder components (modern SPA loaders)
-  '.skeleton',
-  '[class*="skeleton"]',
-  '[data-skeleton="true"]',
-  // Full-screen blocking overlays
-  '.overlay',
-  '.modal-overlay',
-  '[class*="overlay"]',
-  '[class*="backdrop"]',
-  // Blocking dialogs/containers
-  '[role="alertdialog"]',
-  '[aria-modal="true"]',
-];
-
-/**
- * Input field selectors for aria-disabled detection.
- * Checks if core input fields are stuck with disabled flags.
- */
-const INPUT_BLOCK_SELECTORS = [
-  'input[aria-disabled="true"]',
-  'textarea[aria-disabled="true"]',
-  'select[aria-disabled="true"]',
-  'input[disabled]',
-  'textarea[disabled]',
-  'select[disabled]',
-];
+// Freeze-detection selectors (STUCK_SELECTORS) and input-block selectors are
+// sourced from the centralized knowledge base (knowledgeBase/signalPatterns.ts)
+// so they stay consistent across the platform.
 
 const NON_FATAL_ERRORS = {
   TARGET_CLOSED: 'target closed',
@@ -163,18 +130,20 @@ function emitFreezeTelemetry(telemetry: TelemetryGateway | undefined, isFrozen: 
  */
 async function checkForFreezeState(page: Page): Promise<string> {
   try {
-    return await page.evaluate(() => {
+    // Selectors are passed as an argument — Node module closures are NOT visible
+    // inside the browser context, so referencing them directly would silently
+    // no-op (a latent bug the previous inline reference concealed).
+    return await page.evaluate((selectors) => {
       const bodyText = document.body?.innerText?.toLowerCase() ?? '';
       if (bodyText.includes('system locked')) return 'system-locked-text';
 
-      // Check expanded stuckSelectors
-      for (const sel of STUCK_SELECTORS) {
+      for (const sel of selectors) {
         if (document.querySelector(sel)) {
           return sel;
         }
       }
       return '';
-    });
+    }, [...FREEZE_SELECTORS]);
   } catch {
     return '';
   }
@@ -186,15 +155,15 @@ async function checkForFreezeState(page: Page): Promise<string> {
  */
 async function checkInputFieldsDisabled(page: Page): Promise<boolean> {
   try {
-    return await page.evaluate(() => {
+    return await page.evaluate((selectors) => {
       let disabledCount = 0;
-      for (const sel of INPUT_BLOCK_SELECTORS) {
+      for (const sel of selectors) {
         const elements = document.querySelectorAll(sel);
         disabledCount += elements.length;
       }
       // Consider stuck if 2+ inputs are disabled
       return disabledCount >= 2;
-    });
+    }, [...INPUT_BLOCK_SELECTORS]);
   } catch {
     return false;
   }

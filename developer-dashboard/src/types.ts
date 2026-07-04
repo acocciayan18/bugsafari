@@ -7,6 +7,7 @@ export type {
   ActionType,
   ForensicCrashReport,
   IncidentReport,
+  FindingAttribution,
   TelemetryEvent,
   TelemetryType,
   TelemetryMeta,
@@ -26,6 +27,9 @@ export type {
 
 // Value re-exports (runtime constants used to render the selector + defaults).
 export { TESTING_TYPE_CATALOG, ALL_TESTING_TYPE_IDS } from '../../shared/types.js';
+
+// Local binding (the re-export above does not bring the name into local scope).
+import type { FindingAttribution } from '../../shared/types.js';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -79,6 +83,10 @@ export interface ForensicReportError {
   statusCode?: number;
   selector?: string;
   action?: string;
+  // Deterministic knowledge-base classification + scenario attribution.
+  bugClass?: string;
+  scenario?: string;
+  cwe?: string;
   createdAt?: string;
 }
 
@@ -94,6 +102,8 @@ export interface ForensicCaughtBug {
   stackTrace?: string;
   /** Per-finding, human-actionable numbered replication checklist. */
   reproductionSteps?: string[];
+  /** Deterministic knowledge-base classification + scenario/step attribution. */
+  attribution?: FindingAttribution;
 }
 
 export interface ForensicReportResponse {

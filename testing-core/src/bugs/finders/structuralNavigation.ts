@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
+import { SIGNAL_PATTERNS, matchesCategory } from '../knowledgeBase/index.js';
 
 /**
  * Result of a structural navigation probe.
@@ -9,39 +10,12 @@ export interface StructuralNavigationResult {
   details: string;
 }
 
-/**
- * Patterns indicating navigation loops
- */
-const LOOP_PATTERNS = [
-  /redirected/i,
-  /too many redirects/i,
-  /redirect loop/i,
-  /ERR_TOO_MANY_REDIRECTS/i,
-];
-
-/**
- * Patterns indicating dead-ends or hidden crashes
- */
-const DEAD_END_PATTERNS = [
-  /not found/i,
-  /404/i,
-  /cannot get/i,
-  /failed to load/i,
-  /network error/i,
-  /page not found/i,
-];
-
-/**
- * Patterns indicating hidden crashes
- */
-const CRASH_PATTERNS = [
-  /cannot read property/i,
-  /is not defined/i,
-  /undefined is not a function/i,
-  /cannot read/i,
-  /script error/i,
-  /chunk.*not found/i,
-];
+// Runtime-signal signatures are sourced from the centralized knowledge base
+// (knowledgeBase/signalPatterns.ts) so redirect/dead-end/crash detection stays
+// consistent with the classifier and the other finders.
+const LOOP_PATTERNS = SIGNAL_PATTERNS.REDIRECT_LOOP;
+const DEAD_END_PATTERNS = SIGNAL_PATTERNS.DEAD_END;
+const CRASH_PATTERNS = SIGNAL_PATTERNS.CLIENT_CRASH;
 
 /**
  * Probes the page for structural navigation issues.
@@ -89,8 +63,8 @@ export async function probeStructuralNavigation(
       }
     }
     
-    // Check for suspicious URL patterns ( malformed navigation)
-    if (url.includes('undefined') || url.includes('NaN') || url.includes('%3D') || url.includes('%26')) {
+    // Check for suspicious URL patterns (malformed navigation)
+    if (matchesCategory('QUERY_MUTATION', url)) {
       return {
         detected: true,
         details: `Malformed URL detected: suspicious characters in navigation URL`,

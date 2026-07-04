@@ -3,7 +3,7 @@ import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
-import type { ActionRecord } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution } from '../../../../shared/types.js';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
@@ -28,6 +28,7 @@ export interface ClientFinding {
     stackTrace?: string;
     reproductionSteps?: string[];
     timestamp?: string;
+    attribution?: FindingAttribution;
 }
 
 interface ExecutionMetrics {
@@ -151,6 +152,7 @@ export class StartExplorationUseCase {
                 timestamp: Date;
                 stackTrace?: string;
                 reproductionSteps?: string[];
+                attribution?: FindingAttribution;
             }) => ({
                 bugId: bug.bugId,
                 type: bug.type,
@@ -161,6 +163,7 @@ export class StartExplorationUseCase {
                 stackTrace: bug.stackTrace ?? '',
                 reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
                 timestamp: bug.timestamp,
+                attribution: bug.attribution,
             }))
             : clientFindings.map((finding, index) => ({
                 bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
@@ -172,13 +175,16 @@ export class StartExplorationUseCase {
                 stackTrace: finding.stackTrace ?? '',
                 reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
+                attribution: finding.attribution,
             }));
 
         // Derive the category breakdown dynamically from the *actual* persisted
         // findings so no category (known or novel) is ever silently zeroed out.
         const breakdownCategories: Record<string, number> = {};
         caughtBugs.forEach((bug) => {
-            const category = bug.type || 'UNKNOWN';
+            // Prefer the deterministic knowledge-base bug class; fall back to the
+            // raw fault type so older/unclassified findings are never zeroed out.
+            const category = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
             breakdownCategories[category] = (breakdownCategories[category] ?? 0) + 1;
         });
 

@@ -649,6 +649,10 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         columnNumber: e.columnNumber,
         selector: e.selector,
         action: e.action,
+        // Deterministic knowledge-base attribution.
+        bugClass: e.bugClass,
+        scenario: e.scenario,
+        cwe: e.cwe,
         createdAt: e.createdAt?.toISOString(),
       }));
 

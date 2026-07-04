@@ -1,17 +1,44 @@
 import type { Page, Response } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import type { FindingAttribution } from '../../../../shared/types.js';
+import { classifyFault, matchesCategory, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
 
-const DEEP_SCAN_PATTERNS: RegExp[] = [
-  /internal server error/i,
-  /database error/i,
-  /sql execution failed/i,
-];
-
 type Cleanup = () => void;
+
+/**
+ * Classify a background-monitor fault against the knowledge base and attribute it
+ * to the scenario/step active at fault time — keeping this secondary detector's
+ * findings consistent with the primary StabilityMonitor.
+ */
+function classify(
+  faultType: FaultType,
+  message: string,
+  opts?: { statusCode?: number; url?: string; content?: string },
+): { advice: string; attribution: FindingAttribution } {
+  const c = classifyFault({
+    faultType,
+    message,
+    statusCode: opts?.statusCode,
+    url: opts?.url,
+    content: opts?.content,
+    scenario: ActiveScenarioTracker.getActiveScenarioName(),
+    stepIndex: ActiveScenarioTracker.getCurrentStepIndex(),
+  });
+  return {
+    advice: c.advice,
+    attribution: {
+      bugClass: c.bugClass,
+      cwe: c.cwe,
+      scenario: c.scenario,
+      testingType: c.testingType,
+      stepIndex: c.stepIndex,
+    },
+  };
+}
 
 /** Bug registration callback for confirmed bugs */
 export type BugRegistrationCallback = (bug: {
@@ -22,6 +49,7 @@ export type BugRegistrationCallback = (bug: {
   payloadUsed: string;
   advice: string;
   timestamp: Date;
+  attribution?: FindingAttribution;
 }) => void;
 
 /**
@@ -45,6 +73,7 @@ export function setupStabilityMonitoring(
     const timestamp = new Date().toISOString();
     const url = page.url();
     const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+    const { advice, attribution } = classify('EXCEPTION', errorMessage, { url, content: stackTrace });
 
     telemetry.emitTelemetry({
       timestamp,
@@ -56,6 +85,7 @@ export function setupStabilityMonitoring(
           stackTrace,
         },
         reproductionSteps: reproductionPlaybook,
+        attribution,
       },
     });
 
@@ -67,6 +97,8 @@ export function setupStabilityMonitoring(
       stackTrace,
       steps: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // Emit as forensic report
@@ -77,6 +109,8 @@ export function setupStabilityMonitoring(
       stackTrace,
       breadcrumbs: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // NEW: Register bug to memory if callback provided
@@ -87,8 +121,9 @@ export function setupStabilityMonitoring(
         message: `Unhandled JS Exception: ${errorMessage}`,
         selector: '',
         payloadUsed: '',
-        advice: 'Check browser console for details. Fix the JavaScript error.',
+        advice,
         timestamp: new Date(),
+        attribution,
       });
     }
   };
@@ -97,6 +132,11 @@ export function setupStabilityMonitoring(
     const timestamp = new Date().toISOString();
     const detailSuffix = evidence ? ` Evidence: ${evidence}` : '';
     const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+    const { advice, attribution } = classify('NETWORK', `HTTP ${statusCode} from ${url}`, {
+      statusCode,
+      url,
+      content: evidence,
+    });
 
     telemetry.emitTelemetry({
       timestamp,
@@ -107,6 +147,7 @@ export function setupStabilityMonitoring(
         statusCode,
         message: `🔥 Server Collapse: Backend returned a ${statusCode} error. The application's data layer is failing.${detailSuffix}`,
         reproductionSteps: reproductionPlaybook,
+        attribution,
       },
     });
 
@@ -119,6 +160,8 @@ export function setupStabilityMonitoring(
       stackTrace: evidence ?? `HTTP ${statusCode}`,
       steps: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // Emit as forensic report
@@ -130,6 +173,8 @@ export function setupStabilityMonitoring(
       stackTrace: evidence ?? `HTTP ${statusCode}`,
       breadcrumbs: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // NEW: Register bug to memory if callback provided
@@ -140,8 +185,9 @@ export function setupStabilityMonitoring(
         message: `Server Collapse: HTTP ${statusCode} from ${url}`,
         selector: '',
         payloadUsed: method ?? 'GET',
-        advice: `Check backend server. HTTP ${statusCode} indicates server failure.`,
+        advice,
         timestamp: new Date(),
+        attribution,
       });
     }
   };
@@ -151,6 +197,7 @@ export function setupStabilityMonitoring(
     const url = page.url();
     const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
     const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+    const { advice, attribution } = classify('FREEZE', 'System Lock-up Detected: Main Thread unresponsive', { url });
 
     telemetry.emitTelemetry({
       timestamp,
@@ -163,6 +210,7 @@ export function setupStabilityMonitoring(
           stackTrace,
         },
         reproductionSteps: reproductionPlaybook,
+        attribution,
       },
     });
 
@@ -174,6 +222,8 @@ export function setupStabilityMonitoring(
       stackTrace,
       steps: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // Emit as forensic report
@@ -184,6 +234,8 @@ export function setupStabilityMonitoring(
       stackTrace,
       breadcrumbs: [],
       reproductionPlaybook,
+      advice,
+      attribution,
     });
 
     // NEW: Register bug to memory if callback provided
@@ -194,8 +246,9 @@ export function setupStabilityMonitoring(
         message: '🧊 System Lock-up Detected: Main Thread unresponsive',
         selector: '',
         payloadUsed: '',
-        advice: 'Check for infinite loops or heavy JavaScript operations blocking the main thread.',
+        advice,
         timestamp: new Date(),
+        attribution,
       });
     }
   };
@@ -222,7 +275,7 @@ export function setupStabilityMonitoring(
 
     try {
       const body = await response.text();
-      if (DEEP_SCAN_PATTERNS.some((pattern) => pattern.test(body))) {
+      if (matchesCategory('SERVER_ERROR', body)) {
         emitServerCollapse(statusCode, url, method, body.slice(0, 500));
       }
     } catch {

@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════════
 // Telemetry stream shapes plus the element/diagnosis payloads that feed them.
 
+import type { FindingAttribution } from './bug.js';
+
 export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE' | 'BUG';
 
 export type SemanticRole =
@@ -52,6 +54,8 @@ export interface TelemetryMeta {
   visualRegressionType?: 'CSS_BREAKAGE' | 'Z_INDEX_OVERLAP' | 'RENDER_FAILURE';
   // 🧠 Optional parameter allowing the React client state logic to read inference mappings
   aiDiagnostics?: IntelligentDiagnosis;
+  // Deterministic classification + scenario/step attribution for a fault event.
+  attribution?: FindingAttribution;
   // Session tracking for forensic history
   sessionId?: string;
   // Severity from AI inference (used by BugClassifier)
