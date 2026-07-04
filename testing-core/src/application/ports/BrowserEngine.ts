@@ -6,7 +6,7 @@ export interface BrowserEngineConfig {
 }
 
 export interface BrowserEngine {
-  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<{ completed: boolean; reason: string }>;
+  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<{ completed: boolean; reason: string }>;
   pause?(): void;
   resume?(): void;
   stop?(): Promise<void> | void;

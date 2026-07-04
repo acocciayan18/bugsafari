@@ -72,6 +72,9 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [status, setStatus] = useState<TestSessionStatus>('IDLE');
   const [hasRunCompleted, setHasRunCompleted] = useState(false);
   const [hasTimeLimitExceeded, setHasTimeLimitExceeded] = useState(false);
+  // Tracks whether a run actually started, so the IDLE handler can enable Save
+  // History after ANY finish — including a fatal crash that sends no terminal action.
+  const runStartedRef = useRef(false);
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -188,8 +191,11 @@ return () => {
         setIsInitializing(false);
       }
 
-      // 🚨 Auto-reset status if the engine crashes or stops naturally
-      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
+      // 🚨 Mark the run finished on ANY terminal signal — regardless of whether the
+      // engine classified it as ACTION (clean finish) or EXCEPTION (crash / halt /
+      // timeout). Gating on type === 'ACTION' previously hid the Save History button
+      // for every non-clean finish, which is the common case.
+      if (event.meta.actionExecuted && ENGINE_TERMINAL_ACTIONS.has(event.meta.actionExecuted)) {
         setIsTestRunning(false);
         // Map terminal actions to STOPPED or FINISHED based on action type
         const terminalStatus: TestSessionStatus = event.meta.actionExecuted === 'engine-finished' ? 'FINISHED' : 'STOPPED';
@@ -226,6 +232,12 @@ return () => {
         setIsInitializing(false);
         setStatus('IDLE');
         setLiveFrame(null);
+        // Safety net: the backend always emits IDLE in its finally block, even on a
+        // fatal crash that sent no terminal action. If a run had started, mark it
+        // completed so Save History is available after every finish.
+        if (runStartedRef.current) {
+          setHasRunCompleted(true);
+        }
       }
 
       if (event.type === 'ACTION' && event.meta.actionExecuted === 'time-remaining') {
@@ -276,6 +288,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
+    runStartedRef.current = true;
 
 try {
       await gateway.startTest(targetUrl.trim(), optimizationSettings, selectedScenarios);

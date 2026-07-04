@@ -87,11 +87,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<{ completed: boolean; reason: string }> {
+  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<{ completed: boolean; reason: string }> {
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
-    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios);
+    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios, userId);
     // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup

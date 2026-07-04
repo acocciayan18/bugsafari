@@ -20,7 +20,7 @@ import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightB
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { forensicErrorRepository } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
-import { Types } from 'mongoose';
+import { Types, isValidObjectId } from 'mongoose';
 
 import { StateGraphNavigator } from '../StateGraphNavigator.js';
 import { ScenarioGate } from '../scenarioGate.js';
@@ -128,6 +128,7 @@ export class ExplorationEngine {
     private readonly findingRepo?: FindingRepository,
     private readonly optimizationSettings?: OptimizationSettings,
     selectedScenarios?: TestingTypeId[],
+    private readonly userId?: string,
   ) {
     console.log(`[ExplorationEngine] Optimization settings:`, optimizationSettings);
 
@@ -591,7 +592,9 @@ export class ExplorationEngine {
   }
 
   private async createSession(targetUrl: string): Promise<string | null> {
-    if (!this.findingRepo) {
+    // Skip DB persistence for guests / missing id — the run continues fully
+    // in-memory (sessionId = null is a supported state). No dummy ObjectId is stamped.
+    if (!this.findingRepo || !this.userId || !isValidObjectId(this.userId)) {
       return null;
     }
 
@@ -599,6 +602,7 @@ export class ExplorationEngine {
       return await this.findingRepo.createSession({
         targetUrl,
         startedAt: new Date().toISOString(),
+        userId: this.userId,
       });
     } catch (error) {
       console.error('[ExplorationEngine] Failed to create Safari session:', error);

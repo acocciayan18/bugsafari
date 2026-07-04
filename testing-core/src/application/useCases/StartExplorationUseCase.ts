@@ -38,7 +38,7 @@ interface ExecutionMetrics {
 }
 
 export class StartExplorationUseCase {
-    private currentUserId: string;
+    private currentUserId: string | null;
     private currentSessionId: string | null = null;
     private executionStartTime: number = 0;
     private optimizationSettings: OptimizationSettings | undefined;
@@ -48,9 +48,9 @@ export class StartExplorationUseCase {
         private readonly telemetry: TelemetryGateway,
         private readonly state: RunState,
         private readonly findingRepository?: FindingRepository,
-        userId: string = '000000000000000000000000',
+        userId?: string,
     ) {
-        this.currentUserId = userId;
+        this.currentUserId = userId && isValidObjectId(userId) ? userId : null;
     }
 
     public isActive(): boolean {
@@ -61,20 +61,23 @@ export class StartExplorationUseCase {
      * Set the authenticated userId for the current exploration session.
      * This should be called before execute() when the user is authenticated.
      */
-    public setUserId(userId: string): void {
+    public setUserId(userId: string | null | undefined): void {
         if (userId && isValidObjectId(userId)) {
             this.currentUserId = userId;
             console.log(`[StartExplorationUseCase] UserId set to: ${userId}`);
         } else {
-            console.warn(`[StartExplorationUseCase] Invalid userId provided: ${userId}, keeping previous: ${this.currentUserId}`);
+            // Clear to null (guest / unauthenticated) — prevents a singleton use case
+            // from leaking the previous authenticated user's id into a later guest run.
+            this.currentUserId = null;
+            console.log(`[StartExplorationUseCase] UserId cleared (guest/unauthenticated)`);
         }
     }
 
     /**
      * Get the current userId for this exploration session.
-     * Returns the authenticated userId if set, otherwise the default.
+     * Returns the authenticated userId if set, otherwise null for guests.
      */
-    public getUserId(): string {
+    public getUserId(): string | null {
         return this.currentUserId;
     }
 
@@ -192,9 +195,12 @@ export class StartExplorationUseCase {
         // count the operator saw live.
         const findingsTotal = caughtBugs.length;
 
-        const effectiveUserId = userId === 'anonymous-guest-user' ? '000000000000000000000000' : userId;
-        const userIdToSave = isValidObjectId(effectiveUserId) ? effectiveUserId : '000000000000000000000000';
-        const userObjectId = new Types.ObjectId(userIdToSave);
+        // Ownership guard: a session document must belong to a real authenticated
+        // user. The route already enforces requireAuth, so this is defense-in-depth.
+        if (!isValidObjectId(userId)) {
+            return { success: false, message: 'A valid authenticated user is required to save history.' };
+        }
+        const userObjectId = new Types.ObjectId(userId);
 
         // Use frontend-reported elapsed time first, then fall back to server-side start time
         const runtimeMs = options?.elapsedTimeMs ??
@@ -299,7 +305,7 @@ try {
             // Phase 3: Execute engine with engine-managed timebox (FIXED: uses accumulative active time tracking)
             // The engine now tracks elapsedActiveTimeMs internally and only counts time when NOT paused.
             // This prevents timebox from expiring during pause state.
-            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios);
+            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios, this.currentUserId ?? undefined);
 
 // Check if the engine detected timebox exceeded (via its internal timing interval)
             if (!result.completed && result.reason.includes('timebox')) {

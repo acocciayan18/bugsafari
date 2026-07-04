@@ -62,6 +62,14 @@ function AuthAppContent() {
     return gateway;
   })[0];
 
+  // Keep the gateway's auth token in sync — the gateway is created once, but the
+  // token arrives after login (first render is unauthenticated). Without this,
+  // start-test would fire without the Bearer header and be treated as a guest,
+  // so its session would never carry the real userId.
+  useEffect(() => {
+    createGateway.setAuthToken(token);
+  }, [createGateway, token]);
+
   const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, handleTimeLimitExceeded } =
     useDashboardController(() => createGateway);
 

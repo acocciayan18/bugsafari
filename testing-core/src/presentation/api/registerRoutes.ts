@@ -179,13 +179,13 @@ export function registerRoutes(
       return;
     }
 
-    // Set the userId from auth middleware - this ensures saved documents use the real operator ID
-    if (request.userId) {
-      useCase.setUserId(request.userId);
-      console.log(`[API] ✓ Set userId for exploration session: ${request.userId}`);
-    } else {
-      console.log(`[API] ℹ️ No authenticated userId - using default for guest session`);
-    }
+    // Always (re)set the userId from auth middleware — this ensures saved documents
+    // use the real operator ID and resets the singleton's context so a guest run
+    // never inherits a previous authenticated user's id. Undefined => guest (no persist).
+    useCase.setUserId(request.userId ?? null);
+    console.log(request.userId
+      ? `[API] ✓ Set userId for exploration session: ${request.userId}`
+      : `[API] ℹ️ No authenticated userId - guest session (no persistence)`);
 
     // Extract optimization settings from request body
     const optimizationSettings = request.body?.optimization;

@@ -59,6 +59,12 @@ services:
       - APP_NAME=BugSafari
     ports:
       - "3000:3000"
+    # Live source mount: the image bakes a build-time copy of the source, so code
+    # changes never reached the container. Mounting the host source over the baked
+    # copy makes tsc-watch (npm run dev) recompile the *current* code on start and
+    # on every edit — no image rebuild needed.
+    volumes:
+      - ./testing-core/src:/app/testing-core/src
     depends_on:
       redis:
         condition: service_healthy
@@ -91,6 +97,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - BUGSAFARI_WORKER_CONCURRENCY=1
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    # Live source mount (same rationale as the api service) so queued-job runs use
+    # current code and stamp sessions with the real userId.
+    volumes:
+      - ./testing-core/src:/app/testing-core/src
     depends_on:
       redis:
         condition: service_healthy

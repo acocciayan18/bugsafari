@@ -52,11 +52,14 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     console.log(`[MongoFindingRepository] 📝 Creating session for: ${input.targetUrl}`);
     console.log(`[MongoFindingRepository] UserId: ${input.userId ?? 'none/unauthenticated'}`);
     
-    // Use provided userId or default to guest user
-    const userIdToUse = input.userId && isValidObjectId(input.userId) 
-      ? new Types.ObjectId(input.userId) 
-      : new Types.ObjectId('000000000000000000000000');  // Default guest user
-    
+    // Ownership is mandatory: every session must belong to a real authenticated
+    // user. Callers (ExplorationEngine) already gate on a valid id; throwing here
+    // is defense-in-depth and is caught upstream to fall back to an in-memory run.
+    if (!input.userId || !isValidObjectId(input.userId)) {
+      throw new Error('createSession requires a valid authenticated userId');
+    }
+    const userIdToUse = new Types.ObjectId(input.userId);
+
     const session = await SessionModel.create({
       userId: userIdToUse,  // CRITICAL: Link session to user
       targetUrl: input.targetUrl,

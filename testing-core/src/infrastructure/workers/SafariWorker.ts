@@ -77,17 +77,15 @@ async (job) => {
       const payload = validatePayload(job);
 const telemetry = new ConsoleTelemetryGateway();
       const browserEngine = new PlaywrightBrowserEngine(findingRepository);
-      // Use requestedBy from job payload as userId, or default to placeholder for worker execution
+      // Use requestedBy from job payload as userId. Missing/invalid => guest (no persist).
       const requestedByUserId = payload.requestedBy;
       const useCase = new StartExplorationUseCase(browserEngine, telemetry, { active: false });
 
       // Set the userId from job payload - ensures saved documents use the real operator ID
-      if (requestedByUserId) {
-        useCase.setUserId(requestedByUserId);
-        console.log(`[SafariWorker] Set userId for job: ${requestedByUserId}`);
-      } else {
-        console.log(`[SafariWorker] No requestedBy in job payload - using default userId`);
-      }
+      useCase.setUserId(requestedByUserId ?? null);
+      console.log(requestedByUserId
+        ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
+        : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
       console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} target=${payload.targetUrl}`);
       await useCase.execute(payload.targetUrl);

@@ -39,10 +39,16 @@ podman run -d --name bugsafari-redis \
   -v bugsafari-redis-data:/data \
   redis:alpine redis-server --appendonly yes
 
-# Start MongoDB
+# Start MongoDB (LINUX)
 podman run -d --name bugsafari-mongodb \
   -p 27017:27017 \
   -v bugsafari-mongodb-data:/data/db \
+  mongo:latest
+
+# Start MongoDB (WINDOWS)
+podman run -d --name bugsafari-mongodb `
+  -p 27017:27017 `
+  -v bugsafari-mongodb-data:/data/db `
   mongo:latest
 
 # Check running containers
