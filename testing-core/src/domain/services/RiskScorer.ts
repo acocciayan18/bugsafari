@@ -1,7 +1,12 @@
 import type { SemanticRole } from '@bugsafari/shared';
 import type { ParsedElement } from '../heuristics/domParser.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
-import { SingleLayerPerceptron, buildFeatureVectorFromElement } from '../../ml/perceptron.js';
+import {
+  SingleLayerPerceptron,
+  buildFeatureVectorFromElement,
+  type RewardSignals,
+} from '../../ml/perceptron.js';
+import type { FeatureVector } from '../../types.js';
 
 /**
  * Unified RiskScorer combining:
@@ -82,6 +87,10 @@ export class RiskScorer {
         text: element.innerText,
         disabled: false,
         boundingBox: element.boundingBox,
+        placeholder: element.placeholder ?? '',
+        ariaLabel: element.ariaLabel ?? '',
+        role: element.role ?? '',
+        name: element.name ?? '',
       });
 
       // Compute ML score using perceptron
@@ -137,21 +146,36 @@ export class RiskScorer {
   }
 
   /**
-   * Boost perceptron from network signal
+   * Update the perceptron from compound learning signals (structural change,
+   * network activity, fault detection, revisit). Robust to elements whose
+   * feature vector was never computed (unranked) — no-op in that case.
    */
-  rewardFromNetworkSignal(element: InteractiveElement): void {
+  applyCompoundReward(element: InteractiveElement, signals: RewardSignals): void {
     if (element.featureVector) {
-      this.perceptron.boostFromNetworkSignal(element.featureVector);
+      this.perceptron.applyReward(element.featureVector, signals);
     }
   }
 
   /**
-   * Penalize perceptron for a revisited (non-novel) state — contrastive target=0 signal
+   * Boost perceptron from network signal (back-compat wrapper → compound reward).
+   */
+  rewardFromNetworkSignal(element: InteractiveElement): void {
+    this.applyCompoundReward(element, { networkActivity: true });
+  }
+
+  /**
+   * Penalize perceptron for a revisited (non-novel) state — contrastive signal.
    */
   penalizeRevisit(element: InteractiveElement): void {
-    if (element.featureVector) {
-      this.perceptron.penalizeRepeatedPath(element.featureVector);
-    }
+    this.applyCompoundReward(element, { revisit: true });
+  }
+
+  /**
+   * Bounded ML confidence (0–1) for an element's feature vector — exposed as a
+   * learning metric for telemetry. Returns 0 when features are unavailable.
+   */
+  getConfidence(vector: FeatureVector | undefined): number {
+    return vector ? this.perceptron.sigmoidScore(vector) : 0;
   }
 
   /**

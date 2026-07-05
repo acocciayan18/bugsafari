@@ -21,6 +21,7 @@ import type {
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ActionExecutor } from './ActionExecutor.js';
 import type { StateRestorer } from './StateRestorer.js';
+import type { StateClusterRegistry } from './StateClusterRegistry.js';
 
 // ─────────────────────────────────────────────────────────────
 // Shared data shapes
@@ -132,6 +133,7 @@ export interface ExplorationLoopDeps {
   scorer: RiskScorer;
   hashManager: DomHasher;
   pathNavigator: StateGraphNavigator;
+  clusterRegistry: StateClusterRegistry;
   gate: ScenarioGate;
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;
@@ -145,6 +147,8 @@ export interface ExplorationLoopDeps {
   checkTimebox(): boolean;
   getTimeboxMs(): number;
   getLastKnownUrl(): string;
+  /** Record the element about to be acted on so async signals (network/fault) can attribute learning rewards to it. */
+  noteActedTarget(target: InteractiveElement): void;
   /** Target origin URL — used to re-seed exploration during adaptive recovery. */
   getTargetOrigin(): string;
   persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void>;

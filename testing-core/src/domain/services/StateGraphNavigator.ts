@@ -190,6 +190,15 @@ export interface StateGraphNavigatorConfig {
    * Math.random is used and behaviour is non-deterministic.
    */
   explorationSeed?: number;
+
+  /**
+   * When true, a node with any UNVISITED edge is never backtracked for boredom —
+   * the low-value control is explored first to maximise coverage before the stack
+   * unwinds. Cuts false "graph exhausted" on complex SPAs. Loop-strike, true
+   * node-exhaustion, and forced backtracks still fire.
+   * Default: false (probe keeps original behaviour; exploration/coverage enable it).
+   */
+  prioritizeUnvisitedOverBoredom: boolean;
 }
 
 const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -212,6 +221,7 @@ const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   explorationEnabled: true,
   explorationTemperature: 8,
   explorationAnnealSteps: 40,
+  prioritizeUnvisitedOverBoredom: false,
 };
 
 /**
@@ -227,6 +237,7 @@ const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphNavigato
     boredomThresholdMin: 3,
     boredomThresholdMax: 30,
     boredomReferenceDensity: 6,
+    prioritizeUnvisitedOverBoredom: true,
   },
   coverage: {
     // Broad, fast, shallow sweep — almost never bored so every immediately
@@ -235,6 +246,7 @@ const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphNavigato
     adaptiveBoredom: false,
     boredomThresholdMin: 2,
     boredomThresholdMax: 8,
+    prioritizeUnvisitedOverBoredom: true,
   },
   probe: {
     // Neutral default — no overrides, mirrors original static behaviour.
@@ -358,14 +370,22 @@ export class StateGraphNavigator {
     // 5a. Boredom: unvisited edges exist but none clear the adaptive threshold.
     const bored = nextEdge !== null && maxScore < this.currentBoredomThreshold;
 
-    if (forcedBacktrack || loopDetected || node.exhausted || bored) {
-      if (bored) {
-        this.recordEvent(
-          'boredom-triggered-backtrack',
-          currentHash,
-          `Boredom threshold triggered (max score ${maxScore.toFixed(2)} < ${this.currentBoredomThreshold.toFixed(2)}). Backtracking to explore new branches.`,
-        );
-      }
+    // Coverage-first: when prioritizing unvisited controls, a below-threshold
+    // unvisited edge is explored rather than abandoned — boredom is downgraded to
+    // an informational event and does NOT force a backtrack. This is the primary
+    // fix for premature "graph exhausted" on control-dense SPAs.
+    const boredForcesBacktrack = bored && !this.config.prioritizeUnvisitedOverBoredom;
+    if (bored) {
+      this.recordEvent(
+        'boredom-triggered-backtrack',
+        currentHash,
+        boredForcesBacktrack
+          ? `Boredom threshold triggered (max score ${maxScore.toFixed(2)} < ${this.currentBoredomThreshold.toFixed(2)}). Backtracking to explore new branches.`
+          : `Boredom threshold hit (max score ${maxScore.toFixed(2)} < ${this.currentBoredomThreshold.toFixed(2)}) but unvisited control remains — exploring it before backtracking.`,
+      );
+    }
+
+    if (forcedBacktrack || loopDetected || node.exhausted || boredForcesBacktrack) {
       return this.handleDeadEnd(node, loopDetected);
     }
 

@@ -54,7 +54,41 @@ export class ExplorationLoop {
     let sabotageStepCounter = 0;
     const SABOTAGE_CADENCE = 10;
 
-    for (let step = 1; step <= maxSteps; step++) {
+    // --- Coverage-driven adaptive budget ---
+    // maxSteps is the INITIAL budget, not a hard cap. When the budget is spent but
+    // clusters still hold discovered-yet-untriggered controls (and the timebox is
+    // not exceeded), the budget is extended instead of falsely declaring the graph
+    // exhausted. HARD_CAP + timebox keep termination deterministic.
+    let budget = maxSteps;
+    let budgetExtensions = 0;
+    const HARD_CAP = maxSteps * 5;
+    const EXTENSION_STEPS = Math.max(10, Math.ceil(maxSteps / 2));
+    // Steps without any cluster gaining coverage before it counts as stagnation.
+    const COVERAGE_STALL_WINDOW = 12;
+
+    for (let step = 1; ; step++) {
+      // Budget boundary: extend while unexplored controls remain, else terminate.
+      if (step > budget) {
+        if (
+          this.deps.clusterRegistry.hasUnexploredControls() &&
+          !this.deps.checkTimebox() &&
+          budget < HARD_CAP
+        ) {
+          budget = Math.min(HARD_CAP, budget + EXTENSION_STEPS);
+          budgetExtensions++;
+          const remaining = this.deps.clusterRegistry.unexploredControlCount();
+          telemetry.emitMilestone(
+            `🔎 ${remaining} unexplored control(s) remain — extending budget to ${budget} steps (extension ${budgetExtensions}).`,
+          );
+          telemetry.emit('ACTION', {
+            actionExecuted: 'budget-extended',
+            message: `Adaptive budget extended to ${budget} steps; ${remaining} unexplored controls remain.`,
+          });
+        } else {
+          break;
+        }
+      }
+
       if (this.deps.isStopRequested()) {
         telemetry.emitMilestone(`Safari session manually stopped by user.`);
         return { completed: false, reason: 'Safari session manually stopped by user.' };
@@ -155,7 +189,18 @@ export class ExplorationLoop {
         const compound = await this.deps.hashManager.hashCompound(page);
         const currentHash = compound.combined;
 
-        // --- Adaptive stagnation scoring ---
+        // --- Clustered state-space observation ---
+        // Fold this state into its structural cluster (keyed by the normalized
+        // structure sub-hash) BEFORE stagnation scoring, so coverage-gain markers
+        // reflect controls discovered on this step.
+        this.deps.clusterRegistry.observe(
+          compound.structure,
+          page.url(),
+          ranked.map((el) => el.selector),
+          step,
+        );
+
+        // --- Adaptive stagnation scoring (coverage-blended) ---
         // Score BEFORE recording this structure so familiarity reflects prior steps.
         const combinedRepeated = currentHash === previousCombined;
         const structureFamiliarity = recentStructures.filter((s) => s === compound.structure).length;
@@ -163,9 +208,16 @@ export class ExplorationLoop {
         if (recentStructures.length > STRUCTURE_WINDOW) recentStructures.shift();
         previousCombined = currentHash;
 
+        // Coverage-stall term: churning without expanding any cluster's coverage is
+        // itself stagnation, independent of hash repetition.
+        const coverageStagnation =
+          this.deps.clusterRegistry.stepsSinceCoverageGain(step) >= COVERAGE_STALL_WINDOW ? 1 : 0;
+
         // Progressive score: an exact repeat weighs heaviest; a merely-familiar shell
-        // (same layout, fresh data) contributes less. A brand-new shell scores 0.
-        const stagnationScore = (combinedRepeated ? 2 : 0) + structureFamiliarity;
+        // (same layout, fresh data) contributes less; a coverage stall adds pressure.
+        // A brand-new shell that expands coverage scores 0.
+        const stagnationScore =
+          (combinedRepeated ? 2 : 0) + structureFamiliarity + coverageStagnation;
 
         telemetry.emit('ACTION', {
           actionExecuted: 'dom-state-hash',
@@ -229,8 +281,23 @@ export class ExplorationLoop {
           // floor, and re-seed if needed. Only terminate after MAX_RECOVERY_ROUNDS
           // consecutive rounds (since the last novel state) yield no new frontier.
           if (recoveryRounds >= MAX_RECOVERY_ROUNDS) {
-            telemetry.emitMilestone('🔚 Graph exhausted after adaptive recovery. Exploration complete.');
-            return { completed: true, reason: 'Full reachable graph exhausted (post-recovery).' };
+            // Coverage guard against false exhaustion: if clusters still hold
+            // untriggered controls (and we're within timebox + hard cap), grant one
+            // more recovery round instead of terminating. Bounded by HARD_CAP.
+            const coverageRemains =
+              this.deps.clusterRegistry.hasUnexploredControls() &&
+              budget < HARD_CAP &&
+              !this.deps.checkTimebox();
+            if (coverageRemains) {
+              budget = Math.min(HARD_CAP, budget + EXTENSION_STEPS);
+              recoveryRounds = MAX_RECOVERY_ROUNDS - 1; // allow another round
+              telemetry.emitMilestone(
+                `🔎 Graph reported exhausted but ${this.deps.clusterRegistry.unexploredControlCount()} control(s) untriggered — extending budget to ${budget} and recovering.`,
+              );
+            } else {
+              telemetry.emitMilestone('🔚 Graph exhausted after adaptive recovery. Exploration complete.');
+              return { completed: true, reason: 'Full reachable graph exhausted (post-recovery).' };
+            }
           }
 
           recoveryRounds++;
@@ -324,6 +391,9 @@ export class ExplorationLoop {
         let traversalOk = false;
         let childHash = previousHashBeforeAction;
         try {
+          // Attribute async signals (network xhr/fetch, detected faults) fired
+          // during/after this action to the acting element for compound rewards.
+          this.deps.noteActedTarget(target);
           await this.deps.actionExecutor.executeWeightedAction(page, target, ranked, revisitedPage);
           const verification = await this.deps.stateRestorer.verifyTraversal(page, previousHashBeforeAction, 3000);
           traversalOk = verification.ok;
@@ -358,6 +428,10 @@ export class ExplorationLoop {
             target.selector,
             childHash,
           );
+
+          // Mark this control triggered on its structural cluster so coverage
+          // metrics and adaptive-budget decisions reflect real exploration.
+          this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
 
           // 🔁 Forward lookahead (reactive): the click landed on a state that
           // is already an ancestor on our breadcrumb path — a genuine backward
@@ -396,8 +470,8 @@ export class ExplorationLoop {
         if (isNovelState) {
           // Genuine progress — refresh the adaptive-recovery budget.
           recoveryRounds = 0;
-          // Novel state discovered - fire Perceptron's Delta Rule to reward the element weights
-          this.deps.scorer.rewardFromNetworkSignal(target);
+          // Novel state discovered — compound reward for a genuine structural change.
+          this.deps.scorer.applyCompoundReward(target, { structuralChange: true });
 
           telemetry.emit('ACTION', {
             actionExecuted: 'novelty-reward-triggered',
@@ -405,8 +479,8 @@ export class ExplorationLoop {
             message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${target.selector}.`,
           });
         } else {
-          // Non-novel state — feed the perceptron a contrastive target=0 example so weights can move down.
-          this.deps.scorer.penalizeRevisit(target);
+          // Non-novel state — contrastive negative so weights can move down.
+          this.deps.scorer.applyCompoundReward(target, { revisit: true });
           const visitCount = this.deps.visitedHashes.size;
           telemetry.emit('ACTION', {
             actionExecuted: 'state-revisited',
@@ -427,10 +501,11 @@ export class ExplorationLoop {
           message: `Curiosity-driven: ${curiosityDriven ? 'EXPLORE' : 'BACKTRACK'} (topScore=${topScore.toFixed(2)}, boredomThreshold=${boredomThreshold})`,
         });
 
+        const mlConfidence = this.deps.scorer.getConfidence(target.featureVector);
         telemetry.emit('HEURISTIC_SCORE', {
           selector: target.selector,
           score: Number(target.riskScore.toFixed(4)),
-          message: `Target scored ${target.riskScore.toFixed(4)} and executed.`,
+          message: `Target scored ${target.riskScore.toFixed(4)} (ML confidence ${(mlConfidence * 100).toFixed(1)}%) and executed.`,
         });
 
         await telemetry.emitLiveFrame(page);
@@ -472,7 +547,18 @@ export class ExplorationLoop {
       }
     }
 
-    telemetry.emitMilestone(`✅ Exploration Complete: 60 steps executed successfully`);
-    return { completed: true, reason: 'Maximum exploration steps reached.' };
+    const cov = this.deps.clusterRegistry.snapshot();
+    telemetry.emitMilestone(
+      `✅ Exploration Complete: ${budget} steps (${budgetExtensions} extension${budgetExtensions === 1 ? '' : 's'}), ` +
+        `${cov.clusters} clusters, coverage ${(cov.coverage * 100).toFixed(0)}% ` +
+        `(${cov.triggered}/${cov.discovered} controls).`,
+    );
+    return {
+      completed: true,
+      reason:
+        cov.unexploredControls === 0
+          ? 'Exploration budget reached — cluster coverage saturated.'
+          : 'Exploration budget reached (hard cap or timebox).',
+    };
   }
 }

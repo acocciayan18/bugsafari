@@ -32,6 +32,7 @@ import { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
 import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
+import { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -62,6 +63,11 @@ export class ExplorationEngine {
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
+  // Clustered state-space coverage layer (keyed by normalized structure hash).
+  private readonly clusterRegistry = new StateClusterRegistry();
+  // Element most recently acted on — lets async signals (network xhr/fetch,
+  // confirmed faults) attribute compound learning rewards to the right element.
+  private lastActedTarget: InteractiveElement | null = null;
   private readonly recentActionTraceIds: string[] = [];
   // State Graph Navigator for directed path finding and loop prevention (Task 2)
   // Initialised in the constructor after mode is derived from selectedScenarios.
@@ -195,6 +201,12 @@ export class ExplorationEngine {
       // Use circular buffer approach - remove oldest entry when cap is reached
       while (this.confirmedBugsMemory.length > MAX_CONFIRMED_BUGS) {
         this.confirmedBugsMemory.shift();
+      }
+
+      // Strongest compound reward: the element acted on just surfaced a real
+      // fault/vulnerability, so its feature signature should gain weight.
+      if (this.lastActedTarget) {
+        this.scorer.applyCompoundReward(this.lastActedTarget, { faultDetected: true });
       }
     }
   }
@@ -352,6 +364,7 @@ export class ExplorationEngine {
     this.targetUrl = targetUrl;
     this.freezeActionTraceRecording = false;
     ActiveScenarioTracker.reset();
+    this.clusterRegistry.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -429,7 +442,7 @@ export class ExplorationEngine {
 
     // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
-    let lastTarget: InteractiveElement | null = null;
+    this.lastActedTarget = null;
 
     let handleFramenavigated: (() => void) | null = null;
 
@@ -440,13 +453,13 @@ export class ExplorationEngine {
     stabilityMonitor.attachExceptionMonitoring(page);
 
     page.on('request', (request: Request) => {
-      if (!lastTarget) {
+      const t = this.lastActedTarget;
+      if (!t) {
         return;
       }
-      const t: InteractiveElement = lastTarget;
       const resourceType = request.resourceType();
       if (resourceType === 'xhr' || resourceType === 'fetch') {
-        this.scorer.rewardFromNetworkSignal(t);
+        this.scorer.applyCompoundReward(t, { networkActivity: true });
         emitter.emit('ACTION', {
           actionExecuted: 'dynamic-weight-update',
           selector: t.selector,
@@ -514,6 +527,7 @@ export class ExplorationEngine {
         scorer: this.scorer,
         hashManager: this.hashManager,
         pathNavigator: this.pathNavigator,
+        clusterRegistry: this.clusterRegistry,
         gate: this.gate,
         visitedUrls: this.visitedUrls,
         visitedHashes: this.visitedHashes,
@@ -526,6 +540,7 @@ export class ExplorationEngine {
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         getTimeboxMs: () => this.timeboxMs,
         getLastKnownUrl: () => lastKnownUrl,
+        noteActedTarget: (t) => { this.lastActedTarget = t; },
         getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },
