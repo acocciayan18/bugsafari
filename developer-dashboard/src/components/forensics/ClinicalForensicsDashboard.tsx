@@ -54,7 +54,7 @@ interface ClinicalForensicsDashboardProps {
 // ═══════════════════════════════════════════════════════════════
 
 export default function ClinicalForensicsDashboard({
-  targetUrl = 'http://localhost:5174/',
+  targetUrl = 'https://bugsafari.elementfx.com/',
   currentUrl,
   frameBuffer = null,
   telemetry = [],
