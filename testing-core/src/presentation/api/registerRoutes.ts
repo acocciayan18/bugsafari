@@ -10,19 +10,31 @@ import { forensicErrorRepository } from '../../infrastructure/database/repositor
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { Types } from 'mongoose';
-import { ALL_TESTING_TYPE_IDS, type TestingTypeId } from '../../../../shared/types.js';
+import {
+  INFILTRATION_PROFILE_CATALOG,
+  resolveInfiltrationProfile,
+  type TestingTypeId,
+  type InfiltrationProfileId,
+  type ExplorationRunConfig,
+} from '../../../../shared/types.js';
 
 /**
- * Validate the client-supplied testing-type selection against the known catalog,
- * dropping any unknown ids. Returns undefined when nothing valid is supplied so
- * the engine falls back to its all-enabled default.
+ * Interpret the client-supplied Unified Infiltration Profile into the concrete
+ * TestingTypeId[] the ScenarioGate consumes. An unknown/absent profile resolves
+ * to the all-enabled default; a CUSTOM profile honors its individual selection.
  */
-function parseSelectedScenarios(body: unknown): TestingTypeId[] | undefined {
-  const raw = (body as { selectedScenarios?: unknown })?.selectedScenarios;
-  if (!Array.isArray(raw)) return undefined;
-  const allowed = new Set<string>(ALL_TESTING_TYPE_IDS);
-  const filtered = raw.filter((value): value is TestingTypeId => typeof value === 'string' && allowed.has(value));
-  return filtered.length > 0 ? filtered : undefined;
+function parseSelectedScenarios(body: unknown): TestingTypeId[] {
+  const raw = (body as { infiltration?: unknown })?.infiltration as Partial<ExplorationRunConfig> | undefined;
+  const knownProfiles = new Set<string>(INFILTRATION_PROFILE_CATALOG.map((profile) => profile.id));
+  const profile = typeof raw?.profile === 'string' && knownProfiles.has(raw.profile)
+    ? (raw.profile as InfiltrationProfileId)
+    : undefined;
+
+  if (!profile) return resolveInfiltrationProfile(undefined);
+  const customScenarios = Array.isArray(raw?.customScenarios)
+    ? (raw!.customScenarios as TestingTypeId[])
+    : undefined;
+  return resolveInfiltrationProfile({ profile, customScenarios });
 }
 
 // ──────────────────────────────────────────────���──────────────────────────────
@@ -191,10 +203,10 @@ export function registerRoutes(
     const optimizationSettings = request.body?.optimization;
     console.log(`[API] Optimization settings:`, optimizationSettings);
 
-    // Extract + validate the operator-selected testing strategies (gates which
-    // stress/fuzz/bypass scenarios run this session). Undefined => all enabled.
+    // Interpret the operator-selected Unified Infiltration Profile into the gated
+    // scenario categories for this session. NetworkSaboteur runs regardless.
     const selectedScenarios = parseSelectedScenarios(request.body);
-    console.log(`[API] Selected scenarios:`, selectedScenarios ?? '(all)');
+    console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
 
     console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
     response.json({ accepted: true, url: targetUrl });

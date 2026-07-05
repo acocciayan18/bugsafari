@@ -91,11 +91,98 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
 /** All testing-type ids — the default selection (everything enabled). */
 export const ALL_TESTING_TYPE_IDS: TestingTypeId[] = TESTING_TYPE_CATALOG.map((option) => option.id);
 
+// ─────────────────────────────────────────────────────────────
+// 🛰️ UNIFIED INFILTRATION PROFILES (operator-facing preset layer)
+// ─────────────────────────────────────────────────────────────
+// A profile is a named preset over the testing-type matrix above. The operator
+// picks ONE profile instead of hand-toggling categories; the backend resolves it
+// back into the same `TestingTypeId[]` the ScenarioGate already consumes, so the
+// execution primitive is unchanged. NetworkSaboteur runs as an always-on
+// background monitor independent of any profile and is not listed here.
+
+/** The four unified execution profiles an operator can launch. */
+export type InfiltrationProfileId =
+  | 'CHAOS_INFILTRATION'
+  | 'DEEP_SEMANTIC_DATA_ATTACK'
+  | 'HIGH_FREQUENCY_CONCURRENCY_STRAIN'
+  | 'CUSTOM_STRATEGY_PROFILE';
+
+export interface InfiltrationProfileOption {
+  /** Stable identifier transmitted in the run payload. */
+  id: InfiltrationProfileId;
+  /** Operator-facing label rendered in the dashboard. */
+  label: string;
+  /** Short description of the profile's focus. */
+  description: string;
+  /** Testing-type categories this profile activates (ignored for custom). */
+  testingTypes: TestingTypeId[];
+  /** When true the profile defers to operator-selected individual scenarios. */
+  custom?: boolean;
+}
+
 /**
- * Optional run-configuration payload appended to the exploration start request.
- * When `selectedScenarios` is omitted or empty the engine treats all categories
- * as enabled (backward compatible).
+ * Canonical catalog of infiltration profiles. `testingTypes` reuses the exact
+ * `TestingTypeId`s of TESTING_TYPE_CATALOG so a profile resolves straight into
+ * the existing gate. NetworkSaboteur is intentionally absent — it is always-on.
+ */
+export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
+  {
+    id: 'CHAOS_INFILTRATION',
+    label: 'Chaos Infiltration',
+    description: 'Full-spectrum assault — every testing scenario enabled simultaneously.',
+    testingTypes: [...ALL_TESTING_TYPE_IDS],
+  },
+  {
+    id: 'DEEP_SEMANTIC_DATA_ATTACK',
+    label: 'Deep Semantic Data Attack',
+    description: 'Data-focused — context-aware fuzzing and constraint/form bypass only.',
+    testingTypes: ['dataFuzzing', 'formBypass'],
+  },
+  {
+    id: 'HIGH_FREQUENCY_CONCURRENCY_STRAIN',
+    label: 'High-Frequency Concurrency Strain',
+    description: 'Concurrency-focused — rapid concurrent clicking and route/history thrashing.',
+    testingTypes: ['concurrency', 'navigation'],
+  },
+  {
+    id: 'CUSTOM_STRATEGY_PROFILE',
+    label: 'Custom Strategy Profile',
+    description: 'Manually select individual testing scenarios to run.',
+    testingTypes: [],
+    custom: true,
+  },
+];
+
+/** Default profile when none is supplied — full-spectrum, matches legacy all-on. */
+export const DEFAULT_INFILTRATION_PROFILE: InfiltrationProfileId = 'CHAOS_INFILTRATION';
+
+/**
+ * Structured run-configuration payload sent with an exploration start request.
+ * The operator picks a `profile`; `customScenarios` is only meaningful for the
+ * CUSTOM_STRATEGY_PROFILE and is ignored otherwise.
  */
 export interface ExplorationRunConfig {
-  selectedScenarios?: TestingTypeId[];
+  profile: InfiltrationProfileId;
+  customScenarios?: TestingTypeId[];
+}
+
+/**
+ * Resolve an infiltration config into the concrete `TestingTypeId[]` the engine
+ * gate consumes. Unknown/undefined config or an empty custom selection falls back
+ * to the all-enabled default (backward compatible with the previous behavior).
+ */
+export function resolveInfiltrationProfile(config?: ExplorationRunConfig): TestingTypeId[] {
+  if (!config) return [...ALL_TESTING_TYPE_IDS];
+  const option = INFILTRATION_PROFILE_CATALOG.find((profile) => profile.id === config.profile);
+  if (!option) return [...ALL_TESTING_TYPE_IDS];
+
+  if (option.custom) {
+    const allowed = new Set<string>(ALL_TESTING_TYPE_IDS);
+    const custom = (config.customScenarios ?? []).filter(
+      (value): value is TestingTypeId => typeof value === 'string' && allowed.has(value),
+    );
+    return custom.length > 0 ? custom : [...ALL_TESTING_TYPE_IDS];
+  }
+
+  return [...option.testingTypes];
 }

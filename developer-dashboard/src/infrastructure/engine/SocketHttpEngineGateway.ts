@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -33,8 +33,8 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
 
   // ── HTTP/REST routines ────────────────────────────────────────
-  public startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> {
-    return this.http.startTest(targetUrl, optimizationSettings, selectedScenarios);
+  public startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> {
+    return this.http.startTest(targetUrl, optimizationSettings, infiltration);
   }
 
   public saveSession(targetUrl: string): Promise<void> {

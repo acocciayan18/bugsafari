@@ -5,10 +5,10 @@
 
 import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from '../common/SessionTimer';
-import TestingTypeSelector from '../common/TestingTypeSelector';
-import { ALL_TESTING_TYPE_IDS } from '../../types';
+import InfiltrationProfileSelector from '../common/InfiltrationProfileSelector';
+import { ALL_TESTING_TYPE_IDS, DEFAULT_INFILTRATION_PROFILE, INFILTRATION_PROFILE_CATALOG } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
-import type { TestingTypeId } from '../../types';
+import type { ExplorationRunConfig, InfiltrationProfileId, TestingTypeId } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 
 // const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -21,7 +21,7 @@ interface CommandCenterProps {
   hasTimeLimitExceeded?: boolean;
   isConnected?: boolean;
   isCleaningUp?: boolean;
-  onStart: (url: string, selectedScenarios?: TestingTypeId[]) => void;
+  onStart: (url: string, infiltration?: ExplorationRunConfig) => void;
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
@@ -59,12 +59,20 @@ export default function CommandCenter({
   children,
 }: CommandCenterProps) {
 const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
-  // Operator-selected testing strategies — default to the full adversarial matrix.
-  const [selectedTypes, setSelectedTypes] = useState<TestingTypeId[]>(ALL_TESTING_TYPE_IDS);
+  // Operator-selected infiltration profile — default to full-spectrum Chaos.
+  const [profile, setProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
+  // Individual scenario selection, only used by the Custom Strategy Profile.
+  const [customScenarios, setCustomScenarios] = useState<TestingTypeId[]>(ALL_TESTING_TYPE_IDS);
+
+  const isCustomProfile = Boolean(
+    INFILTRATION_PROFILE_CATALOG.find((option) => option.id === profile)?.custom,
+  );
+  // A custom profile needs at least one hand-picked scenario; presets are always valid.
+  const profileReady = !isCustomProfile || customScenarios.length > 0;
 
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
   // Block new starts during cleanup to prevent race conditions
-  const canStart = Boolean(localTargetUrl) && selectedTypes.length > 0 && !isTestRunning && !isCleaningUp;
+  const canStart = Boolean(localTargetUrl) && profileReady && !isTestRunning && !isCleaningUp;
 
   // 👈 Compute visibility matrix based on unified status
   const controlVisibility = computeControlVisibility(testStatus);
@@ -72,7 +80,11 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
   const handleStartTest = (e?: FormEvent) => {
     e?.preventDefault();
     if (canStart && onStart) {
-      onStart(localTargetUrl, selectedTypes);
+      // Package the selected configuration into a structured payload.
+      onStart(localTargetUrl, {
+        profile,
+        customScenarios: isCustomProfile ? customScenarios : undefined,
+      });
     }
   };
 
@@ -190,7 +202,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
             <button
               onClick={() => handleStartTest()}
               disabled={!canStart}
-              title={selectedTypes.length === 0 ? 'Select at least one testing type' : undefined}
+              title={!profileReady ? 'Select at least one testing scenario for the custom profile' : undefined}
               className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${!canStart ? 'bg-slate-600 cursor-not-allowed hover:bg-slate-600' : ''}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -202,11 +214,13 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           )}
         </div>
 
-        {/* Testing Type Selector — only while a run can be configured/launched */}
+        {/* Infiltration Profile Selector — only while a run can be configured/launched */}
         {controlVisibility.showStartButton && (
-          <TestingTypeSelector
-            selected={selectedTypes}
-            onChange={setSelectedTypes}
+          <InfiltrationProfileSelector
+            profile={profile}
+            onProfileChange={setProfile}
+            customScenarios={customScenarios}
+            onCustomScenariosChange={setCustomScenarios}
             disabled={isTestRunning}
           />
         )}

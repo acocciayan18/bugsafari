@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -279,7 +279,7 @@ return () => {
     return () => gateway.disconnect();
   }, [gateway]);
 
-const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> => {
+const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> => {
     if (!targetUrl.trim()) return;
 
     // Reflect the timebox actually being sent to the backend for this run,
@@ -307,7 +307,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     runStartedRef.current = true;
 
 try {
-      await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, selectedScenarios);
+      await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
       setIsLaunching(false);
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing

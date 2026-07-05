@@ -23,10 +23,19 @@ export type {
   TestingTypeId,
   TestingTypeOption,
   ExplorationRunConfig,
+  // Unified Infiltration Profiles (operator-facing preset layer)
+  InfiltrationProfileId,
+  InfiltrationProfileOption,
 } from '../../shared/types.js';
 
 // Value re-exports (runtime constants used to render the selector + defaults).
-export { TESTING_TYPE_CATALOG, ALL_TESTING_TYPE_IDS } from '../../shared/types.js';
+export {
+  TESTING_TYPE_CATALOG,
+  ALL_TESTING_TYPE_IDS,
+  INFILTRATION_PROFILE_CATALOG,
+  DEFAULT_INFILTRATION_PROFILE,
+  resolveInfiltrationProfile,
+} from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
 import type { FindingAttribution } from '../../shared/types.js';

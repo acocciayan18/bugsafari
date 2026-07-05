@@ -81,14 +81,11 @@ export class ExplorationLoop {
         }
 
 
-        // 📡 Network Sabotage: deterministic cadence (every Nth eligible step) so
-        // scenario execution is reproducible across runs with the same config.
-        // Gated by the Navigational/Traversal testing type (owns NetworkSaboteur).
-        let sabotageThisStep = false;
-        if (this.deps.gate.isScenarioEnabled('NetworkSaboteur')) {
-          sabotageStepCounter += 1;
-          sabotageThisStep = sabotageStepCounter % SABOTAGE_CADENCE === 0;
-        }
+        // 📡 Network Sabotage: always-on background monitor, independent of the
+        // selected infiltration profile. Fires on a deterministic cadence (every
+        // Nth step) so execution stays reproducible across runs.
+        sabotageStepCounter += 1;
+        const sabotageThisStep = sabotageStepCounter % SABOTAGE_CADENCE === 0;
         if (sabotageThisStep) {
           telemetry.emitMilestone('📡 Chaos Mode: Sabotaging network requests for this step...');
           telemetry.emit('ACTION', {

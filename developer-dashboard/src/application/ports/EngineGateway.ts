@@ -1,4 +1,4 @@
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, TestingTypeId } from '../../types';
+import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -19,7 +19,7 @@ export interface EngineGateway {
   onUrlChanged(handler: (url: string) => void): void;
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;
   removeAllListeners(): void;
-  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void>;
+  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */

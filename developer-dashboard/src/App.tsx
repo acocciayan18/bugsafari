@@ -152,9 +152,9 @@ function AuthAppContent() {
                 isCleaningUp={state.isCleaningUp}
                 sessionTimeMs={state.activeTimeboxMs}
                 onTimeUp={handleTimeLimitExceeded}
-                onStart={(url, selectedScenarios) => {
+                onStart={(url, infiltration) => {
                   setTargetUrl(url); // Capture the launched URL so Save History persists what was actually tested
-                  startTest(url, defaultOptimizationSettings, selectedScenarios);
+                  startTest(url, defaultOptimizationSettings, infiltration);
                 }}
                 onPause={pauseTest}
                 onResume={resumeTest}

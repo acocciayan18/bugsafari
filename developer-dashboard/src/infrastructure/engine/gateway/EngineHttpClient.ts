@@ -1,4 +1,4 @@
-import type { OptimizationSettings, SessionHistoryEntry, TestingTypeId } from '../../../types';
+import type { OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
 
 /**
  * REST/HTTP routines for the engine gateway. Owns the auth token and every
@@ -22,19 +22,19 @@ export class EngineHttpClient {
     return headers;
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
-    console.log(`[Gateway] Selected Scenarios:`, selectedScenarios);
+    console.log(`[Gateway] Infiltration Profile:`, infiltration);
 
     try {
-      const requestBody: { url: string; optimization?: OptimizationSettings; selectedScenarios?: TestingTypeId[] } = { url: targetUrl };
+      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig } = { url: targetUrl };
       if (optimizationSettings) {
         requestBody.optimization = optimizationSettings;
       }
-      if (selectedScenarios && selectedScenarios.length > 0) {
-        requestBody.selectedScenarios = selectedScenarios;
+      if (infiltration) {
+        requestBody.infiltration = infiltration;
       }
 
       const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
