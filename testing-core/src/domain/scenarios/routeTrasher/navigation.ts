@@ -45,10 +45,17 @@ export async function safeNavigation(
   page: Page,
   action: 'goBack' | 'goForward',
   timeout: number = 1200,
+  originUrl?: string,
 ): Promise<boolean> {
   try {
     await page[action]({ waitUntil: 'domcontentloaded', timeout });
     await settleAfterNavigation(page);
+    // Domain boundary: a history hop can walk off the app origin (e.g. into a
+    // pre-navigation entry). If so, restore to origin and treat the hop as a no-op.
+    if (originUrl && !assertWithinOrigin(page.url(), originUrl)) {
+      await safeGoto(page, originUrl, 2000);
+      return false;
+    }
     return true;
   } catch (error) {
     if (!isIgnorableNavError(error)) {
@@ -58,6 +65,67 @@ export async function safeNavigation(
     }
     return false;
   }
+}
+
+/**
+ * Domain-boundary guard: true only when `candidateUrl` shares an origin with
+ * `originUrl`. Defense-in-depth so a mutated path/param can never drive the page
+ * off the application under test. Malformed URLs resolve to `false` (blocked).
+ */
+export function assertWithinOrigin(candidateUrl: string, originUrl: string): boolean {
+  try {
+    return new URL(candidateUrl).origin === new URL(originUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rapid history traversal: burst `depth` back then `depth` forward with only the
+ * short inter-action delay (no full `networkidle` settle) so history entries are
+ * driven faster than the SPA router can commit — provoking history/render races.
+ * Returns how many of the 2×depth hops actually ran.
+ */
+export async function rapidHistoryTraversal(
+  page: Page,
+  depth: number,
+  originUrl?: string,
+): Promise<number> {
+  let hops = 0;
+  for (let i = 0; i < depth; i++) {
+    if (await safeNavigation(page, 'goBack', 600, originUrl)) hops++;
+    await wait(STABILIZE_MS);
+  }
+  for (let i = 0; i < depth; i++) {
+    if (await safeNavigation(page, 'goForward', 600, originUrl)) hops++;
+    await wait(STABILIZE_MS);
+  }
+  return hops;
+}
+
+/**
+ * Interrupted route transition: begin a navigation to `firstUrl` WITHOUT awaiting
+ * its settle, then fire a second navigation to `secondUrl` mid-flight so the
+ * client router must resolve a transition while an async load is still pending —
+ * the core "trash while async pending" stress. Both URLs must be pre-guarded to
+ * the origin by the caller. Returns whether the second (winning) navigation ran.
+ */
+export async function interruptedTransition(
+  page: Page,
+  firstUrl: string,
+  secondUrl: string,
+): Promise<boolean> {
+  // Fire the first navigation but do NOT await its settle; swallow the expected
+  // interruption error so the burst loop keeps running.
+  const pending = page
+    .goto(firstUrl, { waitUntil: 'domcontentloaded', timeout: 1200 })
+    .catch(() => undefined);
+  // Brief deterministic delay so the first request is genuinely in-flight.
+  await wait(STABILIZE_MS);
+  const ran = await safeGoto(page, secondUrl, 1000);
+  // Drain the interrupted first navigation so no unhandled rejection leaks.
+  await pending;
+  return ran;
 }
 
 /**

@@ -28,12 +28,20 @@ export class ExplorationLoop {
     let serverCrashReason: string | null = null;
     let runtimeCrashReason: string | null = null;
 
-    // --- 3-Strike Logic Loop State ---
-    // Tracks consecutive steps where the DOM fingerprint did not change.
-    let previousHash = '';
-    let stagnationCounter = 0;
-    // When > 0, the engine is in "escape mode": picks the lowest-scored target
-    // instead of the highest, and all current-page elements carry a score penalty.
+    // --- Adaptive stagnation scoring (compound-hash aware) ---
+    // Instead of a binary "3 identical hashes → punish" cliff, stagnation is scored
+    // progressively from two signals of the compound fingerprint:
+    //   • combinedRepeated   — the exact state (structure + interactive) recurred.
+    //   • structureFamiliarity — how often this structural SHELL appeared in the recent
+    //                            short-term window (same layout, possibly different data).
+    // The score drives a graduated penalty + escape window; genuine progress (a novel
+    // shell) resets the pressure. Termination stays owned by the navigator's recovery.
+    let previousCombined = '';
+    const recentStructures: string[] = [];
+    const STRUCTURE_WINDOW = 8; // short-term memory span for shell familiarity
+    const STAGNATION_FORCE_BACKTRACK = 3; // score at/above which we force a backtrack
+    // When > 0, the engine is in "escape mode": current-page elements carry a score
+    // penalty whose magnitude scaled with the stagnation score that opened the window.
     let penaltyStepsRemaining = 0;
 
     // --- Adaptive exhaustion recovery state ---
@@ -139,27 +147,32 @@ export class ExplorationLoop {
         // Task 3: Emit granular status for dynamic UI - "Hashing DOM state..."
         telemetry.emitSystemStatus('Hashing DOM state...');
 
-        // --- 3-Strike Logic Loop Detection ---
-        // The hash represents the structural fingerprint of the page AFTER the
-        // previous action. If it stays identical for 3 consecutive steps the
-        // engine is stuck clicking elements that have no effect on app state.
-        const currentHash = await this.deps.hashManager.hash(page);
+        // --- Compound structural fingerprint ---
+        // structure = layout shell, interactive = control surface + state,
+        // combined = canonical node identity. combined is strictly finer-grained
+        // than the old structure-only key, so states that differ only by a toggled
+        // control are no longer conflated.
+        const compound = await this.deps.hashManager.hashCompound(page);
+        const currentHash = compound.combined;
 
-        // --- Visual Regression Detection (SSIM) ---
-        // Visual regression detection disabled - baseline screenshot storage removed
-        // Note: The visualRegressionDetector still exists but is not actively storing baselines
-        // The SSIM comparison is skipped to avoid memory overhead
+        // --- Adaptive stagnation scoring ---
+        // Score BEFORE recording this structure so familiarity reflects prior steps.
+        const combinedRepeated = currentHash === previousCombined;
+        const structureFamiliarity = recentStructures.filter((s) => s === compound.structure).length;
+        recentStructures.push(compound.structure);
+        if (recentStructures.length > STRUCTURE_WINDOW) recentStructures.shift();
+        previousCombined = currentHash;
+
+        // Progressive score: an exact repeat weighs heaviest; a merely-familiar shell
+        // (same layout, fresh data) contributes less. A brand-new shell scores 0.
+        const stagnationScore = (combinedRepeated ? 2 : 0) + structureFamiliarity;
 
         telemetry.emit('ACTION', {
           actionExecuted: 'dom-state-hash',
           stateHash: currentHash,
-          message: `DOM fingerprint captured. stagnation=${stagnationCounter}/3`,
+          message: `DOM fingerprint captured. stagnationScore=${stagnationScore} (shell x${structureFamiliarity}${combinedRepeated ? ', exact-repeat' : ''})`,
         });
 
-        // Track state changes.
-        // Only increment the strike counter when no penalty is already active —
-        // during escape mode the engine is deliberately trying new paths, so we
-        // give it room to manoeuvre before counting fresh strikes.
         const currentUrl = page.url();
         const revisitedPage = this.deps.visitedUrls.has(currentUrl) || this.deps.visitedHashes.has(currentHash);
         this.deps.visitedUrls.add(currentUrl);
@@ -170,34 +183,24 @@ export class ExplorationLoop {
           if (oldest !== undefined) this.deps.visitedHashes.delete(oldest);
         }
 
-        if (currentHash !== previousHash) {
-          // Page state changed — bot successfully moved to a new state.
-          stagnationCounter = 0;
-          previousHash = currentHash;
-        } else if (penaltyStepsRemaining === 0) {
-          stagnationCounter++;
-        }
-
-        // Tick down the penalty window each step.
+        // Tick down any active escape window each step.
         if (penaltyStepsRemaining > 0) {
           penaltyStepsRemaining--;
         }
 
-        // Trigger the full loop penalty on the 3rd consecutive identical hash.
-        if (stagnationCounter >= 3) {
+        // Progressive penalty: light nudge as the shell first recurs, escalating to a
+        // full branch penalty on exact/persistent repeats. intensity ∈ (0,1] scales
+        // both the per-element penalty and the escape-window length.
+        if (stagnationScore >= 2 && penaltyStepsRemaining === 0) {
+          const intensity = Math.min(1, (stagnationScore - 1) / STAGNATION_FORCE_BACKTRACK);
           telemetry.emitMilestone(
-            '🚨 Logic Loop detected. Penalizing current UI branch to force deeper exploration.',
+            `🚨 Stagnation detected (score=${stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
           );
-
-          // Zero-out effective risk scores for every visible element on this
-          // page for the next 5 steps by adding a penalty that exceeds each
-          // element's current riskScore.
           for (const element of ranked) {
-            this.deps.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
+            this.deps.scorer.penalize(element.selector, (Math.abs(element.riskScore) + 1) * intensity);
           }
-
-          penaltyStepsRemaining = 5;
-          stagnationCounter = 0; // reset strike counter; fresh window after escape
+          // Longer escape window the deeper the stagnation, capped so it always recovers.
+          penaltyStepsRemaining = Math.min(6, stagnationScore + 1);
         }
 
         // Convert ranked elements to PathfinderElement format for StateGraphNavigator.
@@ -214,7 +217,7 @@ export class ExplorationLoop {
           currentHash,
           currentUrl,
           pathfinderElements,
-          penaltyStepsRemaining > 0 || stagnationCounter >= 3,
+          penaltyStepsRemaining > 0 || stagnationScore >= STAGNATION_FORCE_BACKTRACK,
         );
 
         // Initialize with default to satisfy TypeScript

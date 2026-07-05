@@ -64,6 +64,176 @@ function isNonFatalError(error: Error): boolean {
 }
 
 /**
+ * Result of a constraint-strip pass over a target and its siblings.
+ */
+export interface ConstraintStripResult {
+  selector: string;
+  affectedCount: number;
+  affectedSelectors: string[];
+}
+
+/**
+ * Comprehensive, SIDE-EFFECT-FREE constraint strip (no telemetry, no recording).
+ *
+ * Single source of truth for "remove all browser-side input restrictions on the
+ * target + its siblings + parent form": HTML5 validation attributes, data- and
+ * aria- validation hooks, property-level maxLength/readOnly locks, contenteditable,
+ * and form novalidate. Both the FormBypasser scenario and the data fuzzer call this so
+ * the strip logic lives in exactly one place. Never throws — returns a null-ish
+ * result if the page can't be evaluated (torn down mid-navigation).
+ *
+ * @param page - Playwright page.
+ * @param selector - Target selector (defaults to the first form-ish element).
+ */
+export async function stripConstraintsSilently(
+  page: Page,
+  selector: string = 'input, textarea, select, button',
+): Promise<ConstraintStripResult> {
+  try {
+    const raw = await page.evaluate(
+      ({ sel, attrs, extendedAttrs, maxLen }) => {
+        const targetEl = document.querySelector(sel);
+
+        // Build candidate set: target + siblings
+        const candidates = new Set<Element>();
+        if (targetEl) {
+          candidates.add(targetEl);
+
+          const parent = targetEl.parentElement;
+          if (parent) {
+            for (const sibling of Array.from(parent.children)) {
+              candidates.add(sibling);
+            }
+          }
+        } else {
+          // Fallback: first matching form-ish element
+          const fallback = document.querySelector('input, textarea, select, button');
+          if (fallback) {
+            candidates.add(fallback);
+            const parent = fallback.parentElement;
+            if (parent) {
+              for (const sibling of Array.from(parent.children)) {
+                candidates.add(sibling);
+              }
+            }
+          }
+        }
+
+        // Track all affected elements for reporting
+        const affectedElements: string[] = [];
+
+        for (const el of candidates) {
+          let modified = false;
+
+          // Strip basic HTML attributes
+          for (const attr of attrs) {
+            if (el.hasAttribute(attr)) {
+              el.removeAttribute(attr);
+              modified = true;
+            }
+          }
+
+          // Strip extended validation attributes (data-*, aria-*)
+          for (const attr of extendedAttrs) {
+            if (el.hasAttribute(attr)) {
+              el.removeAttribute(attr);
+              modified = true;
+            }
+          }
+
+          // Force-enable button-like controls
+          if (el instanceof HTMLButtonElement) {
+            el.disabled = false;
+            el.removeAttribute('disabled');
+            modified = true;
+          } else if (el instanceof HTMLInputElement) {
+            if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') {
+              el.disabled = false;
+              el.removeAttribute('disabled');
+              modified = true;
+            }
+
+            // Remove any maxlength cap for giant payloads
+            el.removeAttribute('maxlength');
+            el.maxLength = maxLen;
+            modified = true;
+          } else if (el instanceof HTMLTextAreaElement) {
+            el.removeAttribute('maxlength');
+            el.maxLength = maxLen;
+            modified = true;
+          }
+
+          // Remove readOnly property-level lock where applicable
+          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+            el.readOnly = false;
+            modified = true;
+          }
+
+          // Handle contenteditable elements
+          if (el.hasAttribute('contenteditable')) {
+            el.removeAttribute('contenteditable');
+            if (el instanceof HTMLElement) {
+              el.contentEditable = 'true';
+            }
+            modified = true;
+          }
+
+          // Handle select elements - remove validation
+          if (el instanceof HTMLSelectElement) {
+            el.removeAttribute('required');
+            modified = true;
+          }
+
+          // Handle form-level constraints
+          const form = el.closest('form');
+          if (form) {
+            form.removeAttribute('novalidate');
+            (form as HTMLFormElement).noValidate = false;
+            modified = true;
+          }
+
+          if (modified) {
+            const elId = el.id || el.tagName.toLowerCase();
+            const elClass = el.className ? `.${String(el.className).trim().replace(/\s+/g, '.').slice(0, 20)}` : '';
+            affectedElements.push(`${elId}${elClass}`);
+          }
+        }
+
+        // Build selector string for the main target
+        const chosen =
+          targetEl && (targetEl as HTMLElement).id
+            ? `#${(targetEl as HTMLElement).id}`
+            : targetEl && (targetEl as HTMLElement).className
+              ? `${targetEl.tagName.toLowerCase()}.${String(
+                  (targetEl as HTMLElement).className
+                ).trim().replace(/\s+/g, '.')}`
+              : targetEl?.tagName?.toLowerCase() ?? sel;
+
+        return JSON.stringify({
+          selector: chosen,
+          affectedCount: affectedElements.length,
+          affectedSelectors: affectedElements.slice(0, 10), // Limit to 10 for reporting
+        });
+      },
+      {
+        sel: selector,
+        attrs: [...STRIPPED_ATTRIBUTES],
+        extendedAttrs: [...EXTENDED_ATTRIBUTES],
+        maxLen: MAX_LENGTH_LIMIT,
+      }
+    );
+    return JSON.parse(raw) as ConstraintStripResult;
+  } catch (error) {
+    if (error instanceof Error && isNonFatalError(error)) {
+      console.log(`[FormBypasser] Non-fatal error during silent strip ignored: ${error.message}`);
+    } else {
+      console.error(`[FormBypasser] Silent constraint strip failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    return { selector, affectedCount: 0, affectedSelectors: [] };
+  }
+}
+
+/**
  * Form Bypasser scenario:
  * - Scans target and siblings
  * - Strips HTML constraints (disabled, readonly, required, maxlength, minlength, pattern)
@@ -85,140 +255,7 @@ export const formBypasser: StressScenario = {
     const selector = target?.selector ?? 'input, textarea, select, button';
 
     try {
-      const affectedSelector = await page.evaluate(
-        ({ sel, attrs, extendedAttrs, maxLen }) => {
-          const targetEl = document.querySelector(sel);
-
-          // Build candidate set: target + siblings
-          const candidates = new Set<Element>();
-          if (targetEl) {
-            candidates.add(targetEl);
-
-            const parent = targetEl.parentElement;
-            if (parent) {
-              for (const sibling of Array.from(parent.children)) {
-                candidates.add(sibling);
-              }
-            }
-          } else {
-            // Fallback: first matching form-ish element
-            const fallback = document.querySelector('input, textarea, select, button');
-            if (fallback) {
-              candidates.add(fallback);
-              const parent = fallback.parentElement;
-              if (parent) {
-                for (const sibling of Array.from(parent.children)) {
-                  candidates.add(sibling);
-                }
-              }
-            }
-          }
-
-          // Track all affected elements for reporting
-          const affectedElements: string[] = [];
-
-          for (const el of candidates) {
-            let modified = false;
-
-            // Strip basic HTML attributes
-            for (const attr of attrs) {
-              if (el.hasAttribute(attr)) {
-                el.removeAttribute(attr);
-                modified = true;
-              }
-            }
-
-            // Strip extended validation attributes (data-*, aria-*)
-            for (const attr of extendedAttrs) {
-              if (el.hasAttribute(attr)) {
-                el.removeAttribute(attr);
-                modified = true;
-              }
-            }
-
-            // Force-enable button-like controls
-            if (el instanceof HTMLButtonElement) {
-              el.disabled = false;
-              el.removeAttribute('disabled');
-              modified = true;
-            } else if (el instanceof HTMLInputElement) {
-              if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') {
-                el.disabled = false;
-                el.removeAttribute('disabled');
-                modified = true;
-              }
-
-              // Remove any maxlength cap for giant payloads
-              el.removeAttribute('maxlength');
-              el.maxLength = maxLen;
-              modified = true;
-            } else if (el instanceof HTMLTextAreaElement) {
-              el.removeAttribute('maxlength');
-              el.maxLength = maxLen;
-              modified = true;
-            }
-
-            // Remove readOnly property-level lock where applicable
-            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-              el.readOnly = false;
-              modified = true;
-            }
-
-            // Handle contenteditable elements
-            if (el.hasAttribute('contenteditable')) {
-              el.removeAttribute('contenteditable');
-              if (el instanceof HTMLElement) {
-                el.contentEditable = 'true';
-              }
-              modified = true;
-            }
-
-            // Handle select elements - remove validation
-            if (el instanceof HTMLSelectElement) {
-              el.removeAttribute('required');
-              modified = true;
-            }
-
-            // Handle form-level constraints
-            const form = el.closest('form');
-            if (form) {
-              form.removeAttribute('novalidate');
-              (form as HTMLFormElement).noValidate = false;
-              modified = true;
-            }
-
-            if (modified) {
-              const elId = el.id || el.tagName.toLowerCase();
-              const elClass = el.className ? `.${String(el.className).trim().replace(/\s+/g, '.').slice(0, 20)}` : '';
-              affectedElements.push(`${elId}${elClass}`);
-            }
-          }
-
-          // Build selector string for the main target
-          const chosen =
-            targetEl && (targetEl as HTMLElement).id
-              ? `#${(targetEl as HTMLElement).id}`
-              : targetEl && (targetEl as HTMLElement).className
-                ? `${targetEl.tagName.toLowerCase()}.${String(
-                    (targetEl as HTMLElement).className
-                  ).trim().replace(/\s+/g, '.')}`
-                : targetEl?.tagName?.toLowerCase() ?? sel;
-
-          return JSON.stringify({
-            selector: chosen,
-            affectedCount: affectedElements.length,
-            affectedSelectors: affectedElements.slice(0, 10), // Limit to 10 for reporting
-          });
-        },
-        {
-          sel: selector,
-          attrs: [...STRIPPED_ATTRIBUTES],
-          extendedAttrs: [...EXTENDED_ATTRIBUTES],
-          maxLen: MAX_LENGTH_LIMIT,
-        }
-      );
-
-const result = JSON.parse(affectedSelector);
+      const result = await stripConstraintsSilently(page, selector);
       console.log(
         `[Telemetry:ACTION] 🔓 FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
       );

@@ -2,16 +2,33 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, RouteTrashMetadata } from '../../fuzzing/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { captureNavStep } from '../../../infrastructure/monitoring/navForensics.js';
+import { DomHasher } from '../../../ml/domHasher.js';
 import { wait } from '../rapidClicker/utils.js';
-import { safeNavigation, safeGoto } from './navigation.js';
-import { mutateQueryParams, QUERY_MUTATIONS } from './queryMutation.js';
+import {
+  safeNavigation,
+  safeGoto,
+  assertWithinOrigin,
+  rapidHistoryTraversal,
+  interruptedTransition,
+} from './navigation.js';
+import { mutateQueryParams, QUERY_MUTATIONS, type QueryMutationOutcome } from './queryMutation.js';
+import { mutateRoutePath, mutateHashRoute, type RouteMutationOutcome } from './pathMutation.js';
 import { RouteTrashMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 import {
   describeRouteTrashStart,
   describeRouteTrashNavigation,
   describeRouteTrashMutation,
+  describeRouteTrashPathMutation,
+  describeRouteTrashHashMutation,
+  describeRouteTrashInterrupted,
+  describeRouteInconsistency,
   describeRouteTrashDrift,
 } from '../../services/forensics/narration.js';
+
+// One shared DOM hasher for the run — its combined fingerprint is what every
+// navigation snapshot measures "did the DOM actually update" against.
+const navHasher = new DomHasher();
 
 export { QUERY_MUTATIONS, type QueryMutationType } from './queryMutation.js';
 
@@ -25,6 +42,8 @@ export interface RouteTrashResult {
   completed: number;
   finalUrl: string;
   returnedToOrigin: boolean;
+  /** Count of steps where the URL changed but the DOM did not update to match. */
+  inconsistencies: number;
 }
 
 /** Default number of back/forward/mutation iterations. */
@@ -93,33 +112,67 @@ export const routeTrasher = {
 
     let attempted = 0;
     let completed = 0;
+    let inconsistencies = 0;
     // Cycle-awareness: whether the bursts net-landed on origin, and where the
     // page rests after restore. This scenario is non-relocating.
     let finalUrl = originPath;
     let returnedToOrigin = true;
 
+    // Wrap a navigation action in a synchronous, immutable forensic snapshot
+    // (pre/post URL + DOM hash + route state + network/console anomalies). Any
+    // URL-changed-without-DOM-update inconsistency is surfaced into the failure
+    // window so regression replay can reproduce it.
+    const runStep = async (navType: string, navFn: () => Promise<void>) => {
+      const snap = await captureNavStep(
+        page,
+        (p) => navHasher.hash(p),
+        { navigationType: navType, fromUrl: page.url() },
+        navFn,
+      );
+      if (snap.urlChangedWithoutDom) {
+        inconsistencies++;
+        ActiveScenarioTracker.record(describeRouteInconsistency(snap.fromUrl, snap.toUrl));
+      }
+      return snap;
+    };
+
     try {
+      // Opening rapid-history churn: drive back/forward faster than the router can
+      // commit, stressing the SPA's history handling before the mutation bursts.
+      attempted++;
+      const churn = await runStep('rapid_history', async () => {
+        await rapidHistoryTraversal(page, 2, originPath);
+      });
+      if (churn.urlChanged || churn.domChanged) completed++;
+      await wait(INTER_ACTION_DELAY_MS);
+
       for (let i = 0; i < repetitions; i++) {
         // 1) History back
         attempted++;
-        if (await safeNavigation(page, 'goBack')) {
+        let ran = false;
+        const backSnap = await runStep('history_back', async () => {
+          ran = await safeNavigation(page, 'goBack', 1200, originPath);
+        });
+        if (ran) {
           completed++;
-          const url = page.url();
-          recorder.record('history_back', url);
+          recorder.record('history_back', backSnap.toUrl);
           ActiveScenarioTracker.record(
-            describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, url),
+            describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, backSnap.toUrl),
           );
         }
         await wait(INTER_ACTION_DELAY_MS);
 
         // 2) History forward
         attempted++;
-        if (await safeNavigation(page, 'goForward')) {
+        ran = false;
+        const fwdSnap = await runStep('history_forward', async () => {
+          ran = await safeNavigation(page, 'goForward', 1200, originPath);
+        });
+        if (ran) {
           completed++;
-          const url = page.url();
-          recorder.record('history_forward', url);
+          recorder.record('history_forward', fwdSnap.toUrl);
           ActiveScenarioTracker.record(
-            describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, url),
+            describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, fwdSnap.toUrl),
           );
         }
         await wait(INTER_ACTION_DELAY_MS);
@@ -127,13 +180,69 @@ export const routeTrasher = {
         // 3) Deterministic query-param mutation (round-robin by iteration)
         attempted++;
         const mutation = QUERY_MUTATIONS[i % QUERY_MUTATIONS.length];
-        const outcome = await mutateQueryParams(page, mutation, i);
-        if (outcome.mutated) {
+        let queryOutcome: QueryMutationOutcome = { mutated: false, resultingUrl: page.url() };
+        await runStep('query_mutation', async () => {
+          queryOutcome = await mutateQueryParams(page, mutation, i);
+        });
+        if (queryOutcome.mutated) {
           completed++;
-          recorder.record('query_mutation', outcome.resultingUrl);
+          recorder.record('query_mutation', queryOutcome.resultingUrl);
           ActiveScenarioTracker.record(
-            describeRouteTrashMutation(i + 1, outcome.param, outcome.mutation, outcome.resultingUrl),
+            describeRouteTrashMutation(i + 1, queryOutcome.param, queryOutcome.mutation, queryOutcome.resultingUrl),
           );
+        }
+        await wait(INTER_ACTION_DELAY_MS);
+
+        // 4) One advanced attack per iteration, rotated deterministically:
+        //    malformed dynamic route param → hash-route mutation → interrupted transition.
+        attempted++;
+        switch (i % 3) {
+          case 0: {
+            let pathOutcome: RouteMutationOutcome = { mutated: false, resultingUrl: page.url() };
+            await runStep('malformed_push', async () => {
+              pathOutcome = await mutateRoutePath(page, originPath, i);
+            });
+            if (pathOutcome.mutated) {
+              completed++;
+              recorder.record('malformed_push', pathOutcome.resultingUrl);
+              ActiveScenarioTracker.record(
+                describeRouteTrashPathMutation(i + 1, pathOutcome.mutation, pathOutcome.resultingUrl),
+              );
+            }
+            break;
+          }
+          case 1: {
+            let hashOutcome: RouteMutationOutcome = { mutated: false, resultingUrl: page.url() };
+            await runStep('hash_mutation', async () => {
+              hashOutcome = await mutateHashRoute(page, i);
+            });
+            if (hashOutcome.mutated) {
+              completed++;
+              recorder.record('hash_mutation', hashOutcome.resultingUrl);
+              ActiveScenarioTracker.record(
+                describeRouteTrashHashMutation(i + 1, hashOutcome.mutation, hashOutcome.resultingUrl),
+              );
+            }
+            break;
+          }
+          default: {
+            // Interrupt a pending transition: fire a same-origin load, then a second
+            // navigation mid-flight. Both candidates are origin-guarded.
+            const firstUrl = `${originPath}${originPath.includes('?') ? '&' : '?'}_rt=${i}`;
+            const secondUrl = originPath;
+            if (assertWithinOrigin(firstUrl, originPath) && assertWithinOrigin(secondUrl, originPath)) {
+              let ranInterrupt = false;
+              const intSnap = await runStep('interrupted_transition', async () => {
+                ranInterrupt = await interruptedTransition(page, firstUrl, secondUrl);
+              });
+              if (ranInterrupt) {
+                completed++;
+                recorder.record('interrupted_transition', intSnap.toUrl);
+                ActiveScenarioTracker.record(describeRouteTrashInterrupted(i + 1, intSnap.toUrl));
+              }
+            }
+            break;
+          }
         }
         await wait(INTER_ACTION_DELAY_MS);
       }
@@ -170,10 +279,11 @@ export const routeTrasher = {
     }
 
     console.log(
-      `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions (returnedToOrigin=${returnedToOrigin})`,
+      `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions ` +
+        `(returnedToOrigin=${returnedToOrigin}, inconsistencies=${inconsistencies})`,
     );
 
-    return { attempted, completed, finalUrl, returnedToOrigin };
+    return { attempted, completed, finalUrl, returnedToOrigin, inconsistencies };
   },
 };
 

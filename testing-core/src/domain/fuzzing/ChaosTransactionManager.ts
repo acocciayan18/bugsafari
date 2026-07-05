@@ -86,7 +86,13 @@ export interface RouteTrashMetadata {
   originPath: string;
   targetPath?: string; // Preserve for backward compatibility
   injectedPath?: string;
-  navigationType?: 'history_back' | 'history_forward' | 'query_mutation' | 'malformed_push';
+  navigationType?:
+    | 'history_back'
+    | 'history_forward'
+    | 'query_mutation'
+    | 'malformed_push'
+    | 'hash_mutation'
+    | 'interrupted_transition';
   /** Total back/forward/mutation iterations the scenario was configured to run. */
   repetitions?: number;
   /** Running history-depth offset relative to the origin (negative = back, positive = forward). */

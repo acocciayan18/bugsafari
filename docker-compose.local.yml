@@ -48,6 +48,9 @@ services:
       - NODE_ENV=development
       # Hosting mode for target-URL routing; DOCKER_LOCAL bridges loopback to the host.
       - RUN_ENVIRONMENT=${RUN_ENVIRONMENT:-DOCKER_LOCAL}
+      # Optional: rewrite loopback targets straight to this host instead of the DNS
+      # alias host.docker.internal. Empty => use host.docker.internal (see extra_hosts).
+      - BUGSAFARI_HOST_BRIDGE=${BUGSAFARI_HOST_BRIDGE:-}
       - PORT=3000
       - BUGSAFARI_PORT=3000
       - BUGSAFARI_API_PORT=3000
@@ -63,8 +66,11 @@ services:
       - "3000:3000"
     # Resolve host.docker.internal to the host gateway so a loopback target URL
     # (localhost/127.0.0.1) rewritten by the engine reaches the operator's host app.
+    # Default `host-gateway` works on Docker Desktop and Podman 4.1+. If it fails to
+    # resolve (older Podman / WSL2 where the gateway is the Podman machine, not the
+    # Windows host), set HOST_GATEWAY_IP to the reachable host IP — see README_LOCAL_DEV.md.
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:${HOST_GATEWAY_IP:-host-gateway}"
     # Live source mount: the image bakes a build-time copy of the source, so code
     # changes never reached the container. Mounting the host source over the baked
     # copy makes tsc-watch (npm run dev) recompile the *current* code on start and
@@ -102,13 +108,17 @@ services:
       - NODE_ENV=development
       # Hosting mode for target-URL routing; DOCKER_LOCAL bridges loopback to the host.
       - RUN_ENVIRONMENT=${RUN_ENVIRONMENT:-DOCKER_LOCAL}
+      # Optional: rewrite loopback targets straight to this host instead of the DNS
+      # alias host.docker.internal. Empty => use host.docker.internal (see extra_hosts).
+      - BUGSAFARI_HOST_BRIDGE=${BUGSAFARI_HOST_BRIDGE:-}
       - REDIS_URL=redis://redis:6379
       - BUGSAFARI_WORKER_CONCURRENCY=1
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     # Same host-gateway mapping as the api service: queued jobs run Playwright here,
     # so the worker must also resolve host.docker.internal to reach a loopback target.
+    # Override with HOST_GATEWAY_IP when `host-gateway` is unavailable (Podman/WSL2).
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:${HOST_GATEWAY_IP:-host-gateway}"
     # Live source mount (same rationale as the api service) so queued-job runs use
     # current code and stamp sessions with the real userId.
     volumes:

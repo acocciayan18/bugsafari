@@ -5,8 +5,7 @@ import { ChaosTransactionManager, type RouteTrashMetadata } from '../fuzzing/ind
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 // Import scenario implementations
-import { dataFuzzer, setChaosManager as setDataFuzzerChaosManager, smartActionChain } from './fuzzing/dataFuzzer.js';
-import type { SmartActionResult } from './fuzzing/dataFuzzer.js';
+import { dataFuzzer, setChaosManager as setDataFuzzerChaosManager } from './fuzzing/dataFuzzer.js';
 import { buttonSpammer, coordinateBombing, InteractionSimulator } from './rapidClicker/index.js';
 import { routeTrasher } from './routeTrasher/index.js';
 import { formBypasser } from './formBypasser.js';
@@ -136,8 +135,7 @@ export function createStressScenarioRegistry(
     },
   };
 
-// Return the scenario registry with wrapped scenarios (smartAttackerScenario removed - non-operational)
-  // Use smartActionChain directly from dataFuzzer module for intelligent fuzzing integration
+  // Return the scenario registry with wrapped scenarios.
   return [
     dataFuzzer,
     buttonSpammerScenario,
@@ -192,8 +190,6 @@ export {
   networkSaboteur,
   routeTrasher,
   dataFuzzer,
-  smartActionChain,
-  type SmartActionResult,
   classifyInputElement,
   type FieldCategory,
   type ClassifiableElement,

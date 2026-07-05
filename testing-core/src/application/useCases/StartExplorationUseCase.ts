@@ -282,6 +282,12 @@ export class StartExplorationUseCase {
 
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         ReproductionPlaybookStore.reset();
+        // Reset the fuzz-step forensic log so snapshots are scoped to this run.
+        const { FuzzForensicLog } = await import('../../infrastructure/monitoring/fuzzForensics.js');
+        FuzzForensicLog.reset();
+        // Reset the navigation forensic log so route-trash snapshots are scoped to this run.
+        const { NavForensicLog } = await import('../../infrastructure/monitoring/navForensics.js');
+        NavForensicLog.reset();
 
         // Phase 3: Get timebox from optimization settings (default: 600000ms = 10 minutes)
         const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;

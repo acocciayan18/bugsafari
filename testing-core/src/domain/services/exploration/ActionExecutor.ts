@@ -3,7 +3,8 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
-import { getStrategyByCategory, categoryToStrategyType } from '../../scenarios/fuzzing/strategies/index.js';
+import { categoryToStrategyType } from '../../scenarios/fuzzing/strategies/index.js';
+import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import {
   resolveElementLabel,
@@ -268,8 +269,9 @@ export class ActionExecutor {
 
     // 1) Identify: classify the field, resolve its targeted strategy payload.
     const category = classifyInputElement(target);
-    const strategyPayload = getStrategyByCategory(category);
-    const payload = strategyPayload.value;
+    // Deterministic, replayable payload (level-0 escalator vector seeded by the
+    // field) — replaces the previous non-deterministic random strategy pick.
+    const payload = synthesizeEscalatedPayload(category, 0, deriveFuzzSeed(target.selector, category)).value;
 
     // Breadcrumb trail (technical) for the forensic crash report.
     this.deps.recordActionTrace(
@@ -451,7 +453,12 @@ export class ActionExecutor {
 
     for (const sibling of siblings) {
       const selector = `[data-bugsafari-sib="${sibling.tmp}"]`;
-      const payload = getStrategyByCategory(classifyInputElement(sibling)).value;
+      const siblingCategory = classifyInputElement(sibling);
+      const payload = synthesizeEscalatedPayload(
+        siblingCategory,
+        0,
+        deriveFuzzSeed(selector, siblingCategory),
+      ).value;
       await this.injectPayload(page, selector, payload);
     }
 
@@ -476,10 +483,9 @@ export class ActionExecutor {
   ): Promise<void> {
     const selector = target.selector;
 
-    // Use strategy pattern - classify the input element and get targeted fuzzing strategy
+    // Classify the input element and synthesize a deterministic, replayable payload.
     const category = classifyInputElement(target);
-    const strategyPayload = getStrategyByCategory(category);
-    const payload = strategyPayload.value;
+    const payload = synthesizeEscalatedPayload(category, 0, deriveFuzzSeed(selector, category)).value;
 
     try {
       await this.injectPayload(page, selector, payload);
