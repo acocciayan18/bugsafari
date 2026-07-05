@@ -27,7 +27,7 @@ export default function SidebarLayout({
   isCollapsed,
   onToggleCollapse,
   children,
-  outerClassName = 'flex h-screen w-screen bg-white dark:bg-slate-900',
+  outerClassName = 'flex h-screen w-screen bg-nova-light dark:bg-nova-dark',
   contentClassName,
 }: SidebarLayoutProps) {
   return (

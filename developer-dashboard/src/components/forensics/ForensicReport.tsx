@@ -51,13 +51,13 @@ function formatDate(value?: string): string {
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
   if (status === 'CRASHED') return { text: 'text-red-700', dot: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200' };
   if (status === 'HALTED') return { text: 'text-amber-700', dot: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
-  return { text: 'text-emerald-700', dot: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-200' };
+  return { text: 'text-green-700', dot: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200' };
 }
 
 function riskTheme(score: number): string {
   if (score >= 70) return 'text-red-600';
   if (score >= 40) return 'text-amber-600';
-  return 'text-emerald-600';
+  return 'text-green-600';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -65,10 +65,10 @@ function riskTheme(score: number): string {
 // is the at-a-glance context every reader needs immediately).
 // ─────────────────────────────────────────────────────────────
 
-function StatBlock({ label, value, valueClassName = 'text-slate-900' }: { label: string; value: ReactNode; valueClassName?: string }) {
+function StatBlock({ label, value, valueClassName = 'text-gray-900' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</div>
       <div className={`mt-0.5 text-sm font-semibold ${valueClassName}`}>{value}</div>
     </div>
   );
@@ -86,8 +86,8 @@ function ExecutiveSummary({ report, sessionId }: { report: ForensicReportRespons
             <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
-          <div className="mt-1 truncate text-sm font-medium text-slate-700" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+          <div className="mt-1 truncate text-sm font-medium text-gray-700" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
             <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
@@ -95,10 +95,10 @@ function ExecutiveSummary({ report, sessionId }: { report: ForensicReportRespons
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-slate-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-gray-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatBlock label="Duration" value={formatDuration(report.duration)} />
         <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
-        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600' : 'text-emerald-600'} />
+        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600' : 'text-green-600'} />
         <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
         <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
       </div>
@@ -116,24 +116,26 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
   if (!aiAnalysis || (!aiAnalysis.rootCause && !aiAnalysis.recommendations?.length)) return null;
 
   return (
-    <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-5">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-700">
-        <span>🧠</span>
+    <section className="rounded-lg border border-blue-100 bg-blue-50 p-5 dark:bg-blue-950/20 dark:border-blue-900">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-700">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
       </div>
       {aiAnalysis.rootCause && (
-        <p className="mt-3 text-sm leading-relaxed text-indigo-950">{aiAnalysis.rootCause}</p>
+        <p className="mt-3 text-sm leading-relaxed text-gray-900 dark:text-gray-100">{aiAnalysis.rootCause}</p>
       )}
       {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {aiAnalysis.recommendations.map((recommendation, idx) => (
-            <li key={idx} className="flex gap-2 text-xs text-indigo-900">
-              <span className="text-indigo-500">→</span>
+            <li key={idx} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
+              <span className="text-blue-500">→</span>
               <span>{recommendation}</span>
             </li>
           ))}
@@ -173,7 +175,7 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
 // ─────────────────────────────────────────────────────────────
 
 const VERDICT_THEME: Record<string, { label: string; className: string }> = {
-  VERIFIED: { label: 'VERIFIED', className: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+  VERIFIED: { label: 'VERIFIED', className: 'bg-green-600 text-white hover:bg-green-700' },
   BUG_PERSISTS: { label: 'BUG PERSISTS', className: 'bg-red-600 text-white hover:bg-red-700' },
   INCONCLUSIVE: { label: 'INCONCLUSIVE', className: 'bg-amber-500 text-white hover:bg-amber-600' },
 };
@@ -191,8 +193,8 @@ function VerifyFixControl({
 }) {
   if (status === 'running') {
     return (
-      <span className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+      <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        <svg className="h-3.5 w-3.5 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
@@ -222,7 +224,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
@@ -289,17 +291,17 @@ function FindingCard({
       {/* Message / Selector / Payload grid */}
       <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Message</div>
-          <div className="mt-0.5 text-sm text-slate-800">{bug.message || 'No details provided'}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Message</div>
+          <div className="mt-0.5 text-sm text-gray-800">{bug.message || 'No details provided'}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-xs text-slate-700" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Selector</div>
+          <div className="mt-0.5 truncate font-mono text-xs text-gray-700" title={bug.selector}>{bug.selector || 'N/A'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-slate-700" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Payload Used</div>
+            <div className="mt-0.5 truncate font-mono text-xs text-gray-700" title={bug.payloadUsed}>{bug.payloadUsed}</div>
           </div>
         )}
       </div>
@@ -309,7 +311,7 @@ function FindingCard({
         {bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
           <ReproductionChecklist steps={bug.reproductionSteps} />
         ) : (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+          <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400">
             No deterministic reproduction steps were recorded for this fault.
           </div>
         )}
@@ -317,7 +319,7 @@ function FindingCard({
 
       {/* Suggested fix */}
       <div className="px-4 pt-3 pb-4">
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
         <SuggestedFixBlock advice={bug.advice} />
       </div>
 
@@ -337,10 +339,10 @@ function FindingCard({
 
 function CleanRunCard() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-6 py-10 text-center">
       <span className="text-2xl">✅</span>
-      <div className="text-sm font-semibold text-emerald-800">No findings were recorded for this session</div>
-      <div className="text-xs text-emerald-700">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-sm font-semibold text-green-800">No findings were recorded for this session</div>
+      <div className="text-xs text-green-700">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
@@ -365,30 +367,30 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
     .join('\n');
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white">
+    <section className="rounded-lg border border-gray-200 bg-white">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-slate-50"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100"
       >
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-xs text-slate-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-xs text-gray-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
       </button>
       {isOpen && (
-        <div className="border-t border-slate-200 px-4 py-4">
+        <div className="border-t border-gray-200 px-4 py-4">
           <div className="mb-3 flex justify-end">
             <CopyButton text={timelineText} label="Action Timeline" />
           </div>
-          <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-slate-600">
+          <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600">
             {steps.map((step) => (
-              <li key={step.stepNumber} className="border-b border-slate-100 py-1 last:border-0">
-                <span className="text-slate-400">#{step.stepNumber}</span>{' '}
-                <span className="font-semibold text-slate-700">{step.actionType}</span>
+              <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0">
+                <span className="text-gray-400">#{step.stepNumber}</span>{' '}
+                <span className="font-semibold text-gray-700">{step.actionType}</span>
                 {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
                 {' on '}
                 <span>{step.selector || 'N/A'}</span>
-                <span className="text-slate-400"> ({formatDate(step.timestamp)})</span>
+                <span className="text-gray-400"> ({formatDate(step.timestamp)})</span>
               </li>
             ))}
           </ol>
@@ -447,8 +449,8 @@ export default function ForensicReport() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-white">
         <div className="text-center">
-          <div className="text-sm font-semibold text-slate-700">Loading forensic report…</div>
-          <div className="mt-2 text-xs text-slate-500">Fetching the latest session details from the backend.</div>
+          <div className="text-sm font-semibold text-gray-700">Loading forensic report…</div>
+          <div className="mt-2 text-xs text-gray-500">Fetching the latest session details from the backend.</div>
         </div>
       </div>
     );
@@ -459,24 +461,24 @@ export default function ForensicReport() {
       <div className="flex h-full w-full items-center justify-center bg-white px-6">
         <div className="max-w-md text-center">
           <div className="text-sm font-semibold text-red-600">Failed to load report</div>
-          <div className="mt-2 text-xs text-slate-500">{error || 'No report data was returned for this session.'}</div>
+          <div className="mt-2 text-xs text-gray-500">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-slate-50">
+    <div className="flex h-full w-full flex-col bg-gray-100">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-slate-900">BUGSAFARI</span>
-          <span className="mx-3 text-slate-400">/</span>
-          <span className="text-sm font-semibold text-slate-600">FORENSIC REPORT</span>
+          <span className="text-sm font-bold tracking-wide text-gray-900">BUGSAFARI</span>
+          <span className="mx-3 text-gray-400">/</span>
+          <span className="text-sm font-semibold text-gray-600">FORENSIC REPORT</span>
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -493,7 +495,7 @@ export default function ForensicReport() {
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 
           <section>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
               Findings {bugs.length > 0 ? `(${bugs.length})` : ''}
             </h2>
             {bugs.length > 0 ? (
@@ -519,9 +521,9 @@ export default function ForensicReport() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white px-6 py-4">
+      <footer className="border-t border-gray-200 bg-white px-6 py-4">
         <div className="text-center">
-          <span className="font-mono text-xs text-slate-400">END OF FORENSIC REPORT</span>
+          <span className="font-mono text-xs text-gray-400">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>

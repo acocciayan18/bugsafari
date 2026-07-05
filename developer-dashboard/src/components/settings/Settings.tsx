@@ -54,11 +54,11 @@ function PasswordInputField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+      <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {label}
       </label>
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 dark:text-slate-500">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 dark:text-gray-500">
           <LockClosedIcon />
         </div>
         <input
@@ -66,10 +66,10 @@ function PasswordInputField({
           type={showPassword ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border bg-slate-50 dark:bg-slate-700 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-600 focus:outline-none transition-colors ${
+          className={`w-full rounded-lg border bg-gray-100 dark:bg-gray-700 px-4 py-3 pl-10 pr-10 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-500 focus:bg-white dark:focus:bg-gray-600 focus:outline-none transition-colors ${
             error
               ? 'border-red-300 focus:border-red-500'
-              : 'border-slate-200 dark:border-slate-600 focus:border-slate-400 dark:focus:border-slate-500'
+              : 'border-gray-200 dark:border-gray-600 focus:border-gray-400 dark:focus:border-gray-500'
           }`}
           placeholder={placeholder || '••••••••'}
           autoComplete={autoComplete}
@@ -77,7 +77,7 @@ function PasswordInputField({
         />
         <button
           type="button"
-          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none"
+          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none"
           onClick={onTogglePassword}
         >
           {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -103,9 +103,9 @@ const ToggleSwitch = memo(function ToggleSwitch({
   return (
     <div className="flex items-center justify-between py-3">
       <div className="flex-1">
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
         {description && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>
         )}
       </div>
       <button
@@ -120,13 +120,13 @@ const ToggleSwitch = memo(function ToggleSwitch({
             onChange(!checked);
           }
         }}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-          checked ? 'bg-slate-800 dark:bg-slate-200' : 'bg-slate-200 dark:bg-slate-600'
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-nova-blue focus:ring-offset-2 dark:focus:ring-offset-nova-dark ${
+          checked ? 'bg-nova-blue' : 'bg-gray-200 dark:bg-gray-600'
         }`}
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white dark:bg-slate-900 shadow ring-0 transition duration-200 ease-in-out ${
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
@@ -165,9 +165,9 @@ function ApplicationSettingsSection() {
     return (
       <div className="space-y-2 max-w-md">
         <div className="animate-pulse space-y-3">
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded"></div>
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded"></div>
         </div>
       </div>
     );
@@ -175,12 +175,12 @@ function ApplicationSettingsSection() {
 
   return (
     <div className="space-y-2 max-w-md">
-      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
         Configure your application preferences. Theme changes apply immediately.
       </p>
 
-      <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Theme</span>
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Theme</span>
       </div>
 
       <ToggleSwitch
@@ -190,8 +190,8 @@ function ApplicationSettingsSection() {
         description="Use dark color scheme"
       />
 
-      <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Features</span>
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Features</span>
       </div>
 
       <ToggleSwitch
@@ -295,7 +295,7 @@ function SecuritySettingsSection() {
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5 max-w-md">
-      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
         Change your account password. Make sure to use a strong, unique password.
       </p>
 
@@ -336,15 +336,15 @@ function SecuritySettingsSection() {
       />
 
       {successMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-          <p className="text-sm text-emerald-600">{successMessage}</p>
+        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-sm text-green-600">{successMessage}</p>
         </div>
       )}
 
       <button
         type="submit"
         disabled={isPasswordChanging}
-        className="w-full rounded-lg bg-slate-800 dark:bg-slate-200 px-4 py-3 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
+        className="w-full rounded-lg bg-nova-blue px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
       >
         {isPasswordChanging ? (
           <span className="flex items-center justify-center gap-2">
@@ -379,18 +379,18 @@ function SectionHeader({ icon, label, isExpanded, onToggle }: {
   return (
     <button
       onClick={onToggle}
-      className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+      className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
     >
       <div className="flex items-center gap-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700">
-          <svg className="h-5 w-5 text-slate-600 dark:text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700">
+          <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
           </svg>
         </div>
-        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{label}</span>
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</span>
       </div>
       <svg
-        className={`h-5 w-5 text-slate-400 dark:text-slate-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+        className={`h-5 w-5 text-gray-400 dark:text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -422,10 +422,10 @@ function SettingsSection({
   };
 
   return (
-    <div className="border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 overflow-hidden">
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-slate-900 overflow-hidden">
       <SectionHeader icon={icon} label={label} isExpanded={isExpanded} onToggle={onToggle} />
       {isExpanded && (
-        <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-6 py-8">
+        <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-6 py-8">
           {contentMap[id] ?? null}
         </div>
       )}
@@ -478,9 +478,9 @@ function AccountSection() {
     return (
       <div className="space-y-4 max-w-md">
         <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-          <div className="h-20 bg-slate-200 dark:bg-slate-700 rounded"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+          <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
         </div>
       </div>
     );
@@ -488,31 +488,31 @@ function AccountSection() {
 
   return (
     <div className="space-y-5 max-w-md">
-      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
         Manage your account information and preferences.
       </p>
 
-      <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-4 space-y-3">
+      <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 space-y-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-600">
             <UserIcon />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
               {profile?.name || user?.email || 'User'}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
           </div>
         </div>
 
-        <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
-          <p className="text-xs text-slate-500 dark:text-slate-400">User ID</p>
-          <p className="text-xs font-mono text-slate-700 dark:text-slate-300 truncate">{user?.id}</p>
+        <div className="pt-2 border-t border-gray-200 dark:border-gray-600">
+          <p className="text-xs text-gray-500 dark:text-gray-400">User ID</p>
+          <p className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">{user?.id}</p>
         </div>
       </div>
 
       <div className="space-y-3">
-        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
           Display Name
         </label>
         <input
@@ -521,7 +521,7 @@ function AccountSection() {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           disabled={!isEditing}
-          className="w-full rounded-lg border bg-slate-50 dark:bg-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-600 focus:outline-none border-slate-200 dark:border-slate-600 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-400"
+          className="w-full rounded-lg border bg-gray-100 dark:bg-gray-700 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-600 focus:outline-none border-gray-200 dark:border-gray-600 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500 dark:disabled:text-gray-400"
           placeholder="Enter your display name"
         />
 
@@ -530,7 +530,7 @@ function AccountSection() {
         )}
 
         {successMessage && (
-          <p className="text-sm text-emerald-600">{successMessage}</p>
+          <p className="text-sm text-green-600">{successMessage}</p>
         )}
 
         <div className="flex gap-3">
@@ -539,7 +539,7 @@ function AccountSection() {
               <button
                 onClick={handleSaveProfile}
                 disabled={isProfileUpdating}
-                className="flex-1 rounded-lg bg-slate-800 dark:bg-slate-200 px-4 py-2 text-sm font-semibold text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300 disabled:opacity-50 transition-colors"
+                className="flex-1 rounded-lg bg-nova-blue px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               >
                 {isProfileUpdating ? (
                   <span className="flex items-center justify-center gap-2">
@@ -553,7 +553,7 @@ function AccountSection() {
                   setIsEditing(false);
                   setDisplayName(profile?.name || '');
                 }}
-                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
@@ -561,7 +561,7 @@ function AccountSection() {
           ) : (
             <button
               onClick={() => setIsEditing(true)}
-              className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
             >
               Edit Profile
             </button>
@@ -569,20 +569,20 @@ function AccountSection() {
         </div>
       </div>
 
-      <div className="pt-4 border-t border-slate-200 dark:border-slate-600">
+      <div className="pt-4 border-t border-gray-200 dark:border-gray-600">
         {showLogoutConfirm ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-700 dark:text-slate-300">Are you sure you want to sign out?</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Are you sure you want to sign out?</p>
             <div className="flex gap-3">
               <button
                 onClick={handleLogout}
-                className="flex-1 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors"
+                className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               >
                 Yes, Sign Out
               </button>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
@@ -623,28 +623,28 @@ export default function Settings() {
 
   return (
     <div className="flex h-full w-full flex-col bg-white dark:bg-slate-900">
-      <header className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-slate-900 dark:text-slate-100">BUGSAFARI</span>
-          <span className="mx-3 text-slate-400 dark:text-slate-500">/</span>
-          <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">SETTINGS</span>
+          <span className="text-sm font-bold tracking-wide text-gray-900 dark:text-gray-100">BUGSAFARI</span>
+          <span className="mx-3 text-gray-400 dark:text-gray-500">/</span>
+          <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">SETTINGS</span>
         </div>
         <div className="flex items-center gap-4">
           {user && (
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
                 <UserIcon />
               </div>
-              <span className="text-xs text-slate-600 dark:text-slate-400 hidden md:inline">{user.email}</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400 hidden md:inline">{user.email}</span>
             </div>
           )}
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800">
-        <div className="border-b border-slate-200 dark:border-slate-700 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">SETTINGS</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800">
+        <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">SETTINGS</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Manage your account preferences and application configuration
           </p>
         </div>
@@ -665,14 +665,14 @@ export default function Settings() {
 
       <footer className="mb-6 px-6">
         <div className="mb-4 flex h-2 gap-1 rounded-full">
-          <div className="h-full flex-1 rounded-full bg-slate-700 dark:bg-slate-300" />
-          <div className="h-full flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
-          <div className="h-full flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
-          <div className="h-full flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
-          <div className="h-full flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
+          <div className="h-full flex-1 rounded-full bg-gray-700 dark:bg-gray-300" />
+          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
+          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
+          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
+          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
         </div>
         <div className="text-center">
-          <span className="font-mono text-xs text-slate-400 dark:text-slate-500">
+          <span className="font-mono text-xs text-gray-400 dark:text-gray-500">
             SETTINGS PANEL - V.8.3.1
           </span>
         </div>

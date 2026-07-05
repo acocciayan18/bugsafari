@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
@@ -60,24 +62,24 @@ export default function ForgotPasswordForm() {
   // Show success message after email is sent
   if (emailSent) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-center">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-950/60 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Check Your Inbox</h2>
-            <p className="text-slate-500 mb-6">
+            <h2 className="text-h4 font-bold text-gray-900 dark:text-gray-100 mb-2">Check Your Inbox</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               If an account exists with that email, a password reset link has been sent.
             </p>
-            <p className="text-sm text-slate-400 mb-6">
+            <p className="text-sm text-gray-500 mb-6">
               In development, check the server console for the reset link.
             </p>
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-slate-600 hover:text-slate-800 transition-colors"
+              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-nova-blue transition-colors duration-200 ease-in-out"
             >
               <ArrowLeftIcon />
               <span className="ml-2">Back to Sign In</span>
@@ -89,51 +91,43 @@ export default function ForgotPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">Forgot Password?</h2>
-          <p className="text-base text-slate-500 text-center mb-6">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+          <h2 className="text-h4 font-bold tracking-tight text-gray-900 dark:text-gray-100 text-center mb-2">Forgot Password?</h2>
+          <p className="text-base text-gray-600 dark:text-gray-400 text-center mb-6">
             Enter your email and we&apos;ll send you a link to reset your password.
           </p>
-          
+
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                  <MailIcon />
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
+            <div className="relative">
+              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none">
+                <MailIcon />
+              </span>
+              <Input
+                id="email"
+                label="Email Address"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="pl-10"
+                placeholder="you@example.com"
+                required
+              />
             </div>
 
             {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full rounded-lg bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
-            >
+            <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading}>
               {isLoading ? 'Sending...' : 'Send Reset Link'}
-            </button>
+            </Button>
           </form>
 
           {/* Back to Login */}
           <div className="mt-6 flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-slate-500 hover:text-slate-700 transition-colors"
+              className="inline-flex items-center text-sm text-gray-500 hover:text-nova-blue transition-colors duration-200 ease-in-out"
             >
               <ArrowLeftIcon />
               <span className="ml-2">Back to Sign In</span>

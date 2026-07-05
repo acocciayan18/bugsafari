@@ -54,7 +54,7 @@ interface ClinicalForensicsDashboardProps {
 // ═══════════════════════════════════════════════════════════════
 
 export default function ClinicalForensicsDashboard({
-  targetUrl = 'https://cafesplatform.elementfx.com/',
+  targetUrl = 'http://localhost:5174/',
   currentUrl,
   frameBuffer = null,
   telemetry = [],
@@ -125,9 +125,9 @@ const formattedTelemetry = useMemo(() => {
       {/* ═══════════════════════════════════════════════════════════════
           LEFT PANEL: Browser Frame (Live Feed)
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="w-[55%] h-full overflow-hidden border-r border-slate-200">
-        <div className="h-full overflow-hidden bg-slate-50 p-4">
-          <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="w-[55%] h-full overflow-hidden border-r border-gray-200">
+        <div className="h-full overflow-hidden bg-gray-100 p-4">
+          <div className="h-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             <LiveFeed
               currentUrl={currentUrl || targetUrl}
               frame={frameBuffer}
@@ -140,18 +140,18 @@ const formattedTelemetry = useMemo(() => {
           </div>
 
           {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
-          <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2">
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-600">Status:</span>
+              <span className="text-xs font-semibold text-gray-600">Status:</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'ACTIVE'
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                ? 'border-green-300 bg-green-50 text-green-700'
                 : testStatus === 'PAUSED'
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
-                  : 'border-slate-300 bg-slate-50 text-slate-600'
+                  : 'border-gray-300 bg-gray-100 text-gray-600'
                 }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'ACTIVE' ? 'bg-emerald-500 animate-pulse'
+                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'ACTIVE' ? 'bg-green-500 animate-pulse'
                   : testStatus === 'PAUSED' ? 'bg-amber-500'
-                    : 'bg-slate-400'
+                    : 'bg-gray-400'
                   }`} />
                 {testStatus}
               </span>
@@ -211,29 +211,29 @@ const formattedTelemetry = useMemo(() => {
       <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
 
         {/* Tab Headers */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 shrink-0 overflow-visible">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 shrink-0 overflow-visible">
           <div className="flex overflow-visible">
             <button
               onClick={() => setActiveTab('telemetry')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               telemetry live-feed
             </button>
             <button
               onClick={() => setActiveTab('errors')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               errors
             </button>
             <button
               onClick={() => setActiveTab('network')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               network
             </button>
 <button
               onClick={() => setActiveTab('console')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               console
             </button>
@@ -247,7 +247,7 @@ const formattedTelemetry = useMemo(() => {
         {/* Terminal Output Container */}
         <div
           ref={logContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-slate-200 border-t-0"
+          className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-gray-200 border-t-0"
           style={{ scrollBehavior: 'smooth' }}
         >
 
@@ -259,15 +259,15 @@ const formattedTelemetry = useMemo(() => {
               {isTestRunning ? (
                 <>
                   {formattedTelemetry.map((logObj, index) => (
-                    <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
+                    <div key={index} className="py-1 border-b border-gray-100/50 last:border-0">
                       <div
                         className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-slate-600'
+                          ? 'text-gray-600'
                           : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                             ? 'text-red-600 font-semibold'
                             : logObj.rawText.includes('[NETWORK]')
                               ? 'text-blue-600'
-                              : 'text-slate-800'
+                              : 'text-gray-800'
                           }`}
                       >
                         {logObj.rawText}
@@ -277,7 +277,7 @@ const formattedTelemetry = useMemo(() => {
                       <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
-                  <div className="flex items-center gap-2 py-2 text-slate-500">
+                  <div className="flex items-center gap-2 py-2 text-gray-500">
                     <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
                     <span className="font-mono text-xs">
                       {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
@@ -285,8 +285,8 @@ const formattedTelemetry = useMemo(() => {
                   </div>
                 </>
               ) : formattedTelemetry.length === 0 ? (
-                <div className="text-slate-600 py-4">
-                  <span className="text-slate-800">█</span> Ready for telemetry...
+                <div className="text-gray-600 py-4">
+                  <span className="text-gray-800">█</span> Ready for telemetry...
                 </div>
               ) : (
                 <>
@@ -294,12 +294,12 @@ const formattedTelemetry = useMemo(() => {
                     <div key={index} className="py-1">
                       <div
                         className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-slate-600'
+                          ? 'text-gray-600'
                           : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                             ? 'text-red-600 font-semibold'
                             : logObj.rawText.includes('[NETWORK]')
                               ? 'text-blue-600'
-                              : 'text-slate-800'
+                              : 'text-gray-800'
                           }`}
                       >
                         {logObj.rawText}
@@ -307,8 +307,8 @@ const formattedTelemetry = useMemo(() => {
 <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                     </div>
                   ))}
-                  <div className="py-2 text-slate-800">
-                    <span className="text-slate-800">█</span> Ready for telemetry...
+                  <div className="py-2 text-gray-800">
+                    <span className="text-gray-800">█</span> Ready for telemetry...
                   </div>
                 </>
               )}

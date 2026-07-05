@@ -24,9 +24,9 @@ export default function NetworkTabPanel({
 
   if (networkEvents.length === 0) {
     return (
-      <div className="text-slate-500 py-4">
-        <div className="text-slate-800 mb-2 font-bold">Network Diagnostics</div>
-        <div className="text-slate-400 italic text-xs leading-relaxed">
+      <div className="text-gray-500 py-4">
+        <div className="text-gray-800 mb-2 font-bold">Network Diagnostics</div>
+        <div className="text-gray-400 italic text-xs leading-relaxed">
           Waiting for network activity...
         </div>
       </div>
@@ -35,7 +35,7 @@ export default function NetworkTabPanel({
 
   return (
     <div className="space-y-3 p-2">
-      <div className="text-slate-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
+      <div className="text-gray-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
       {networkEvents.map((event, idx) => {
         const meta = event.meta;
         const statusCode = meta?.statusCode;
@@ -54,7 +54,7 @@ export default function NetworkTabPanel({
           ? 'border-red-300'
           : isClientError
             ? 'border-amber-300'
-            : 'border-slate-300';
+            : 'border-gray-300';
         const bgColor = isServerError
           ? 'bg-red-50'
           : isClientError
@@ -67,29 +67,29 @@ export default function NetworkTabPanel({
             key={`network-${idx}`}
             className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
           >
-            <div className="px-3 py-2 flex items-center justify-between border-b border-slate-200">
+            <div className="px-3 py-2 flex items-center justify-between border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <span className={`font-mono text-xs font-bold ${textColor}`}>
                   {method} {statusCode || 'ERR'}
                 </span>
                 {duration !== undefined && (
-                  <span className="text-[10px] text-slate-500">
+                  <span className="text-[10px] text-gray-500">
                     {duration}ms
                   </span>
                 )}
               </div>
             </div>
-            <div className="px-3 py-2 text-xs font-mono text-slate-700 break-all">
+            <div className="px-3 py-2 text-xs font-mono text-gray-700 break-all">
               {url}
             </div>
             {(message || aiDiagnostics) && (
-              <div className="px-3 py-2 text-[10px] text-slate-500 border-t border-slate-200">
+              <div className="px-3 py-2 text-[10px] text-gray-500 border-t border-gray-200">
                 {message}
                 <AiDiagnosticCard ai={aiDiagnostics} />
               </div>
             )}
             {reproductionSteps.length > 0 && (
-              <div className="px-3 pb-3 border-t border-slate-200">
+              <div className="px-3 pb-3 border-t border-gray-200">
                 <ReproductionChecklist steps={reproductionSteps} />
               </div>
             )}

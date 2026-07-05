@@ -49,7 +49,7 @@ export default function SlidingAuthForm() {
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
             {/* Background gradient blinds - pointer-events-none ensures it doesn't block clicks */}
             <div className="absolute inset-0 pointer-events-none">
-                <GradientBlinds gradientColors={["#1e293b", "#334155", "#475569", "#64748b"]} />
+                <GradientBlinds gradientColors={["#0F172A", "#1E293B", "#2563EB", "#334155"]} />
             </div>
 
             {/* Main sliding container - Slightly smaller sizing applied here */}
@@ -57,7 +57,7 @@ export default function SlidingAuthForm() {
                 {/* Back button positioned inside the card, above login form */}
                 <button
                     onClick={handleBack}
-                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-white/90 hover:bg-white shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 text-sm font-medium text-gray-700"
+                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-white/90 hover:bg-white shadow-md hover:shadow-lg transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
                     aria-label="Back to homepage"
                 >
                     <svg
@@ -66,7 +66,7 @@ export default function SlidingAuthForm() {
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
-                        strokeWidth={2}
+                        strokeWidth={1.5}
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
@@ -135,7 +135,7 @@ export default function SlidingAuthForm() {
                                     }
                                 </p>
                                 <button
-                                    className="px-8 py-3 bg-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+                                    className="h-12 px-6 bg-white font-bold rounded-md shadow-lg hover:shadow-xl transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                                     onClick={handleToggle}
                                     disabled={isAnimating}
                                     style={{

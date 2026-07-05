@@ -89,14 +89,14 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full h-full bg-[#F8F9FA] p-6 font-mono selection:bg-slate-200">
+    <div className="flex flex-col gap-6 w-full h-full bg-nova-light dark:bg-nova-dark p-6 font-mono selection:bg-gray-200">
 
       {/* ═══════════════════════════════════════════════════════════════════════════════
           ROW 1: GLOBAL HEADER CONTROLS
           ═══════════════════════════════════════════════════════════════════════════════ */}
 <header className="relative flex justify-between items-center w-full border-b border-transparent pb-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">Command Center</span>
+          <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Command Center</span>
         </div>
 
 {/* Right: Control Button Group - Conditional Visibility */}
@@ -116,7 +116,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {controlVisibility.showStopButton && onStop && (
             <button
               onClick={onStop}
-              className="bg-[#E53E3E] hover:bg-red-600 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
+              className="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               title="Stop Test"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -130,7 +130,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {controlVisibility.showPauseButton && onPause && (
             <button
               onClick={onPause}
-              className="bg-[#1A1D29] hover:bg-slate-800 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
+              className="bg-nova-dark hover:bg-gray-800 active:bg-gray-900 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               title="Pause Test"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -145,7 +145,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {controlVisibility.showResumeButton && onResume && (
             <button
               onClick={onResume}
-              className="bg-[#1A1D29] hover:bg-slate-800 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors"
+              className="bg-nova-dark hover:bg-gray-800 active:bg-gray-900 text-white font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
               title="Resume Test"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -159,7 +159,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {onSaveSessionToHistory && canSave && (
             <button
               onClick={onSaveSessionToHistory}
-              className={`font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors shadow-sm ${isTestRunning ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-800'}`}
+              className={`font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase transition-colors duration-200 ease-in-out shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${isTestRunning ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-40' : 'bg-white border border-gray-300 hover:bg-gray-100 text-gray-800'}`}
               disabled={isTestRunning}
               title="Save Session to History"
             >
@@ -180,9 +180,9 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           ═══════════════════════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-1.5 w-full">
         <div className="flex gap-4 w-full">
-          <div className="flex-1 relative flex items-center bg-white rounded-lg shadow-md">
+          <div className="flex-1 relative flex items-center h-12 bg-white rounded-md border border-gray-300 shadow-sm transition-colors duration-200 ease-in-out focus-within:border-nova-blue focus-within:ring-2 focus-within:ring-nova-blue">
             <span className="pl-3 text-gray-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
               </svg>
@@ -192,7 +192,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
               value={localTargetUrl}
               onChange={(e) => !isTestRunning && setLocalTargetUrl(e.target.value)}
               disabled={isTestRunning}
-              className="flex-1 bg-transparent px-2 py-3 text-sm text-slate-700 focus:outline-none placeholder-slate-400"
+              className="flex-1 bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none placeholder-gray-400 disabled:opacity-40"
               placeholder="https://staging.alpha-shop.io"
             />
           </div>
@@ -203,7 +203,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
               onClick={() => handleStartTest()}
               disabled={!canStart}
               title={!profileReady ? 'Select at least one testing scenario for the custom profile' : undefined}
-              className={`bg-black hover:bg-slate-900 text-white font-bold text-xs tracking-widest px-6 py-3 flex items-center gap-3 uppercase transition-colors whitespace-nowrap ${!canStart ? 'bg-slate-600 cursor-not-allowed hover:bg-slate-600' : ''}`}
+              className={`h-12 bg-nova-blue hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs tracking-widest px-6 flex items-center gap-3 uppercase transition-colors duration-200 ease-in-out whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${!canStart ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" />
@@ -233,8 +233,8 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
         {children}
       </main>
 
-<div className="border-t border-slate-200 pt-4 flex justify-between items-center">
-        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+<div className="border-t border-gray-200 pt-4 flex justify-between items-center">
+        <p className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">
           SECURITY PROTOCOL: AES-256 ACTIVE
         </p>
         <div className="flex items-center gap-4">

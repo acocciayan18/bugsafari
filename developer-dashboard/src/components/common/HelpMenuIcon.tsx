@@ -1,7 +1,8 @@
 // HelpMenuIcon.tsx - Help & Support Question Mark Menu
 // Provides quick access to help resources, documentation, and system info
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 import SupportModal from './SupportModal';
 
 // Severity level descriptions
@@ -21,14 +22,14 @@ const severityLevels = [
   {
     level: 'Medium',
     description: 'Moderate impact issue that affects user experience or exposes minor security risks.',
-    color: 'text-yellow-600',
-    bg: 'bg-yellow-50',
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
   },
   {
     level: 'Low',
     description: 'Minor issue with minimal impact on functionality or security posture.',
-    color: 'text-slate-600',
-    bg: 'bg-slate-50',
+    color: 'text-gray-600',
+    bg: 'bg-gray-100',
   },
 ];
 
@@ -59,24 +60,24 @@ interface AccordionSectionProps {
   title: string;
   isOpen: boolean;
   onToggle: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 function AccordionSection({ title, isOpen, onToggle, children }: AccordionSectionProps) {
   return (
-    <div className="border-b border-slate-100 last:border-b-0">
+    <div className="border-b border-gray-100 last:border-b-0">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
         aria-expanded={isOpen}
       >
         <span>{title}</span>
         <svg
-          className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="1.5"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
@@ -92,7 +93,7 @@ function AccordionSection({ title, isOpen, onToggle, children }: AccordionSectio
 
 /**
  * HelpMenuIcon - Question mark icon that opens a dropdown menu
- * 
+ *
  * Features:
  * - Click to open dropdown menu
  * - Open/close animations (fade + scale)
@@ -100,25 +101,22 @@ function AccordionSection({ title, isOpen, onToggle, children }: AccordionSectio
  * - ESC key to close
  * - Keyboard accessible
  * - Expandable accordions for definitions and documentation
- * 
+ *
  * Menu Items:
  * - Definitions (with accordions)
- * - Documentation (with accordions)  
+ * - Documentation (with accordions)
  * - Support
  * - System Status
  * - Keyboard Shortcuts
  */
-// Support mode type
 type SupportMode = 'contact' | 'ticket' | 'feature';
 
 export function HelpMenuIcon() {
   const [isOpen, setIsOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [supportMode, setSupportMode] = useState<SupportMode | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Toggle accordion section
   const toggleSection = (section: string) => {
     setOpenSections(prev => {
       const next = new Set(prev);
@@ -131,52 +129,20 @@ export function HelpMenuIcon() {
     });
   };
 
-  // Check if section is open
   const isSectionOpen = (section: string) => openSections.has(section);
 
-// Close menu helper
   const closeMenu = () => {
     setIsOpen(false);
     setOpenSections(new Set());
     buttonRef.current?.focus();
   };
 
-  // Close support modal helper
+  const menuRef = useDismissableLayer<HTMLDivElement>({ isOpen, onDismiss: closeMenu });
+
   const closeSupportModal = () => {
     setSupportMode(null);
   };
 
-  // Handle click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (isOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        closeMenu();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  // Handle ESC key to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        e.preventDefault();
-        closeMenu();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
-
-  // Handle keyboard for button
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'Enter':
@@ -198,28 +164,27 @@ export function HelpMenuIcon() {
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+        className="flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-200 ease-in-out hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
         aria-label="Help and Support"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
-        <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-1.165 2.578 0a1.724 1.724 0 002.773 1.072c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       </button>
 
-{/* Dropdown menu */}
+      {/* Dropdown menu */}
       {isOpen && (
-        <div 
-          className="absolute right-0 top-full z-[9999] mt-2 w-80 rounded-lg border border-slate-200 bg-white py-2 shadow-xl max-h-[70vh] overflow-y-auto"
+        <div
+          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-gray-200 bg-white py-2 shadow-lg max-h-[70vh] overflow-y-auto dark:bg-nova-dark dark:border-gray-700"
           role="menu"
-          style={{ opacity: 1, visibility: 'visible' }}
         >
           {/* Menu Header */}
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h3 className="text-sm font-semibold text-slate-900">Help & Support</h3>
-            <p className="text-xs text-slate-500">BugSafari v8.2.19</p>
+          <div className="border-b border-gray-100 px-4 py-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Help & Support</h3>
+            <p className="text-xs text-gray-500">BugSafari v8.2.19</p>
           </div>
 
           {/* Definitions - with accordions */}
@@ -230,25 +195,25 @@ export function HelpMenuIcon() {
           >
             <div className="space-y-3 mt-2">
               <div>
-                <p className="text-xs font-medium text-slate-900">What is a Safari?</p>
-                <p className="text-xs text-slate-600 mt-1">
+                <p className="text-xs font-medium text-gray-900">What is a Safari?</p>
+                <p className="text-xs text-gray-600 mt-1">
                   A Safari is an autonomous test execution that explores and analyzes a target web application to discover potential bugs, vulnerabilities, and issues.
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-900">Severity Levels</p>
+                <p className="text-xs font-medium text-gray-900">Severity Levels</p>
                 <div className="mt-2 space-y-2">
                   {severityLevels.map((sev) => (
-                    <div key={sev.level} className={`rounded p-2 ${sev.bg}`}>
+                    <div key={sev.level} className={`rounded-md p-2 ${sev.bg}`}>
                       <p className={`text-xs font-semibold ${sev.color}`}>{sev.level}</p>
-                      <p className="text-xs text-slate-600 mt-0.5">{sev.description}</p>
+                      <p className="text-xs text-gray-600 mt-0.5">{sev.description}</p>
                     </div>
                   ))}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-900">Coverage Metric</p>
-                <p className="text-xs text-slate-600 mt-1">
+                <p className="text-xs font-medium text-gray-900">Coverage Metric</p>
+                <p className="text-xs text-gray-600 mt-1">
                   Coverage percentage represents the proportion of discovered application surfaces explored during testing.
                 </p>
               </div>
@@ -268,16 +233,16 @@ export function HelpMenuIcon() {
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 p-2 rounded hover:bg-slate-50 transition-colors"
+                  className="flex items-start gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors duration-200 ease-in-out"
                 >
-                  <svg className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
                   </svg>
                   <div>
-                    <p className="text-xs font-medium text-slate-900">{link.title}</p>
-                    <p className="text-xs text-slate-500">{link.description}</p>
+                    <p className="text-xs font-medium text-gray-900">{link.title}</p>
+                    <p className="text-xs text-gray-500">{link.description}</p>
                   </div>
-                  <svg className="h-3 w-3 text-slate-400 mt-0.5 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-3 w-3 text-gray-400 mt-0.5 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
                 </a>
@@ -285,13 +250,13 @@ export function HelpMenuIcon() {
             </div>
           </AccordionSection>
 
-{/* Support - Contact Support */}
+          {/* Support - Contact Support */}
           <button
             onClick={() => setSupportMode('contact')}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
             role="menuitem"
           >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             Contact Support
@@ -300,10 +265,10 @@ export function HelpMenuIcon() {
           {/* Support - Open Ticket */}
           <button
             onClick={() => setSupportMode('ticket')}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
             role="menuitem"
           >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
             </svg>
             Open Ticket
@@ -312,10 +277,10 @@ export function HelpMenuIcon() {
           {/* Support - Suggest Feature */}
           <button
             onClick={() => setSupportMode('feature')}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
             role="menuitem"
           >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
             Suggest Feature
@@ -323,10 +288,10 @@ export function HelpMenuIcon() {
 
           {/* System Status */}
           <button
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
             role="menuitem"
           >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
             System Status
@@ -334,18 +299,18 @@ export function HelpMenuIcon() {
 
           {/* Keyboard Shortcuts */}
           <button
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200 ease-in-out"
             role="menuitem"
           >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l10-10a6 6 0 017.743-5.743L15 7z" />
             </svg>
             Keyboard Shortcuts
           </button>
 
-{/* Menu Footer */}
-          <div className="border-t border-slate-100 mt-2 pt-2 px-4">
-            <p className="text-xs text-slate-400">Press ESC to close</p>
+          {/* Menu Footer */}
+          <div className="border-t border-gray-100 mt-2 pt-2 px-4">
+            <p className="text-xs text-gray-400">Press ESC to close</p>
           </div>
         </div>
       )}

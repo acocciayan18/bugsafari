@@ -1,48 +1,44 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { LockClosedIcon, EyeIcon, EyeSlashIcon, WarningIcon } from '../icons';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
 
 const EnvelopeIcon = () => (
-  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+  <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v11.25a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75" />
   </svg>
 );
 
-const LockClosedIcon = () => (
-  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-  </svg>
-);
-
-const EyeIcon = () => (
-  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
-const EyeSlashIcon = () => (
-  <svg className="w-[1.125rem] h-[1.125rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-  </svg>
-);
-
-const WarningIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.9}>
-    <circle cx="12" cy="12" r="8.25" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.7v4.2" />
-    <circle cx="12" cy="15.75" r="0.6" fill="currentColor" stroke="none" />
+const CheckIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
   </svg>
 );
 
 const GoogleIcon = () => (
-  <svg className="w-[1.125rem] h-[1.125rem]" viewBox="0 0 48 48" aria-hidden="true">
+  <svg className="w-[18px] h-[18px]" viewBox="0 0 48 48" aria-hidden="true">
     <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.654 32.657 29.233 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.153 7.958 3.042l5.657-5.657C34.233 6.053 29.366 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
     <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 16.108 19.002 13 24 13c3.059 0 5.842 1.153 7.958 3.042l5.657-5.657C34.233 6.053 29.366 4 24 4c-7.682 0-14.347 4.337-17.694 10.691z" />
     <path fill="#4CAF50" d="M24 44c5.176 0 9.944-1.977 13.545-5.197l-6.26-5.298C29.268 35.091 26.761 36 24 36c-5.211 0-9.617-3.316-11.283-7.946l-6.522 5.024C9.509 39.556 16.227 44 24 44z" />
     <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.05 12.05 0 01-4.018 5.505l.003-.002 6.26 5.298C37.102 39.2 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
   </svg>
 );
+
+interface RequirementRowProps {
+  met: boolean;
+  label: string;
+}
+
+function RequirementRow({ met, label }: RequirementRowProps) {
+  return (
+    <div className={`text-xs font-medium flex items-center gap-2 ${met ? 'text-green-600' : 'text-red-500'}`}>
+      {met ? <CheckIcon /> : <WarningIcon className="w-4 h-4" />}
+      <span>{label}</span>
+    </div>
+  );
+}
 
 export default function SignupForm() {
   const [email, setEmail] = useState('');
@@ -81,71 +77,111 @@ export default function SignupForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#F8FAFC]">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-nova-light dark:bg-nova-dark">
       <div className="w-full max-w-[420px]">
-        <div className="bg-white border border-[#E5E7EB] rounded-[1rem] shadow-[0_8px_24px_rgba(15,23,42,0.08)] px-8 py-8">
-          <h1 className="text-center text-[28px] leading-tight tracking-[-0.7px] font-semibold text-[#191B23] mb-2">Create Account</h1>
-          <p className="text-center text-[15px] font-normal text-[#434655] mb-7">Start hunting bugs with BugSafari today.</p>
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-md p-6">
+          <h1 className="text-center text-h2 font-semibold text-gray-900 dark:text-gray-100 mb-2">Create Account</h1>
+          <p className="text-center text-body-sm text-gray-600 dark:text-gray-400 mb-7">Start hunting bugs with BugSafari today.</p>
 
-          <form onSubmit={handleSubmit}>
-            <div className="mb-5">
-              <label htmlFor="email" className="inline-flex w-[59px] h-[17px] items-center font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Email</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><EnvelopeIcon /></span>
-                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@company.com" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-3 text-[0.875rem] text-[#1F2937] placeholder:text-[#C4B5FD] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="relative">
+              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><EnvelopeIcon /></span>
+              <Input
+                id="email"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="john@company.com"
+                className="pl-10"
+                required
+              />
             </div>
 
-            <div className="mb-5">
-              <label htmlFor="password" className="inline-flex w-[59px] h-[17px] items-center font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Password</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><LockClosedIcon /></span>
-                <input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-10 text-[0.875rem] text-[#1F2937] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-3 flex items-center text-[#9CA3AF]">{showPassword ? <EyeSlashIcon /> : <EyeIcon />}</button>
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label htmlFor="confirmPassword" className="block font-['Inter'] text-[12px] font-medium leading-[16.8px] tracking-[0px] text-[#434655] mb-[0.375rem]">Confirm Password</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center text-[#9CA3AF]"><LockClosedIcon /></span>
-                <input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full h-[2.875rem] rounded-[0.5rem] border border-[#D1D5DB] pl-10 pr-10 text-[0.875rem] text-[#1F2937] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20" required />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-3 flex items-center text-[#9CA3AF]">{showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}</button>
-              </div>
-            </div>
-
-            <div className="rounded-[0.5rem] border border-[#E0E7FF] bg-[#EEF2FF] p-4 mb-0">
-              <p className="text-[12px] font-medium text-[#434655] mb-2">Security requirements:</p>
-              <div className="space-y-[0.375rem]">
-                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>At least 8 characters long</span></div>
-                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>Include 1 special character (@, #, $)</span></div>
-                <div className="text-[12px] font-medium flex items-center gap-2 text-[#EF4444]"><WarningIcon /><span>Include at least one number</span></div>
-              </div>
-            </div>
-
-            {formError && <div className="rounded-[0.5rem] border border-[#EF4444]/40 bg-[#FEF2F2] px-3 py-2 mt-4"><p className="text-sm text-[#B91C1C]">{formError}</p></div>}
-
-            <div className="mt-5">
-              <button type="submit" disabled={isLoading || !email || !password || !confirmPassword || !hasMinLength || !hasSymbol || !hasNumber || password !== confirmPassword} className="w-full h-11 rounded-[0.5rem] bg-[#0052CC] text-white text-[15px] font-medium hover:bg-[#0047B3] disabled:opacity-50">
-                {isLoading ? 'Creating account...' : 'Create Account'}
-              </button>
-
-              <div className="my-4 flex items-center gap-3">
-                <div className="h-px flex-1 bg-[#E5E7EB]" />
-                <span className="text-[0.875rem] text-[#6B7280]">OR</span>
-                <div className="h-px flex-1 bg-[#E5E7EB]" />
-              </div>
-
-              <button type="button" className="w-full h-11 rounded-[0.5rem] border border-[#D1D5DB] bg-white text-[#191B23] text-[15px] font-medium flex items-center justify-center gap-2.5">
-                <GoogleIcon />
-                <span>Sign up with Google</span>
+            <div className="relative">
+              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <Input
+                id="password"
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pl-10 pr-10"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+              >
+                {showPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
               </button>
             </div>
+
+            <div className="relative">
+              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <Input
+                id="confirmPassword"
+                label="Confirm Password"
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pl-10 pr-10"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+              >
+                {showConfirmPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
+              </button>
+            </div>
+
+            <div className="rounded-md border border-blue-100 bg-blue-50 p-4 dark:bg-blue-950/20 dark:border-blue-900">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Security requirements:</p>
+              <div className="space-y-1.5">
+                <RequirementRow met={hasMinLength} label="At least 8 characters long" />
+                <RequirementRow met={hasSymbol} label="Include 1 special character (@, #, $)" />
+                <RequirementRow met={hasNumber} label="Include at least one number" />
+              </div>
+            </div>
+
+            {formError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:bg-red-950/40 dark:border-red-800">
+                <p className="text-sm text-red-700 dark:text-red-400">{formError}</p>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              className="w-full"
+              isLoading={isLoading}
+              disabled={!email || !password || !confirmPassword || !hasMinLength || !hasSymbol || !hasNumber || password !== confirmPassword}
+            >
+              {isLoading ? 'Creating account...' : 'Create Account'}
+            </Button>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-sm text-gray-500">OR</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
+
+            <Button type="button" variant="secondary" size="md" className="w-full !border-gray-300 !text-gray-900 dark:!text-gray-100">
+              <GoogleIcon />
+              <span>Sign up with Google</span>
+            </Button>
           </form>
-
         </div>
-        <div className="mt-5 text-center text-[15px] font-normal text-[#434655]">
-          Already have an account? <Link to="/login" className="text-[#004AC6] hover:text-[#003EA5]">Log in</Link>
+        <div className="mt-5 text-center text-sm text-gray-600 dark:text-gray-400">
+          Already have an account? <Link to="/login" className="text-nova-blue font-medium hover:text-blue-700">Log in</Link>
         </div>
       </div>
     </div>

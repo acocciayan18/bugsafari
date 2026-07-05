@@ -37,7 +37,7 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AuthAppContent() {
-  const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [targetUrl, setTargetUrl] = useState('http://localhost:5174/');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Use centralized auth state from context

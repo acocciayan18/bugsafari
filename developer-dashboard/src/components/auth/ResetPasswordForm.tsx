@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Button } from '../ui/Button';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
@@ -45,27 +46,28 @@ export default function ResetPasswordForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
   // Validate token presence on mount
   if (!token || !emailParam) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-950/60 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mb-2">Invalid Reset Link</h2>
-            <p className="text-slate-500 mb-6">
+            <h2 className="text-h4 font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Reset Link</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               This password reset link is invalid or has expired.
             </p>
             <Link
               to="/forgot-password"
-              className="inline-flex items-center text-sm text-slate-600 hover:text-slate-800 transition-colors"
+              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-nova-blue transition-colors duration-200 ease-in-out"
             >
               <ArrowLeftIcon />
               <span className="ml-2">Request a new reset link</span>
@@ -141,22 +143,22 @@ export default function ResetPasswordForm() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 via-white to-slate-100 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 text-center mb-2">Reset Password</h2>
-          <p className="text-base text-slate-500 text-center mb-6">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+          <h2 className="text-h4 font-bold tracking-tight text-gray-900 dark:text-gray-100 text-center mb-2">Reset Password</h2>
+          <p className="text-base text-gray-600 dark:text-gray-400 text-center mb-6">
             Enter your new password below.
           </p>
-          
+
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
                 New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -164,13 +166,14 @@ export default function ResetPasswordForm() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  className="w-full h-10 rounded-md border border-gray-300 px-4 pl-10 pr-10 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -180,36 +183,44 @@ export default function ResetPasswordForm() {
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
                 Confirm New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
                   <LockClosedIcon />
                 </div>
                 <input
                   id="confirmPassword"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 pl-10 text-sm text-slate-800 placeholder-slate-300 focus:bg-white focus:border-slate-400 focus:outline-none transition-colors"
+                  className="w-full h-10 rounded-md border border-gray-300 px-4 pl-10 pr-10 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
                   placeholder="••••••••"
                   required
                 />
+                <button
+                  type="button"
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
+                </button>
               </div>
             </div>
 
             {/* Error Message */}
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-600">{formError}</p>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md dark:bg-red-950/40 dark:border-red-800">
+                <p className="text-sm text-red-700 dark:text-red-400">{formError}</p>
               </div>
             )}
 
             {/* Password Requirements */}
-            <div className="p-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2 font-medium">Password must contain:</p>
-              <ul className="text-xs text-slate-400 space-y-1">
+            <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md">
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">Password must contain:</p>
+              <ul className="text-xs text-gray-500 space-y-1">
                 <li className={password.length >= 8 ? 'text-green-600' : ''}>
                   {password.length >= 8 ? '✓' : '○'} At least 8 characters
                 </li>
@@ -226,20 +237,16 @@ export default function ResetPasswordForm() {
             </div>
 
             {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full rounded-lg bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
-            >
+            <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading}>
               {isLoading ? 'Resetting...' : 'Reset Password'}
-            </button>
+            </Button>
           </form>
 
           {/* Back to Login */}
           <div className="mt-6 flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-slate-500 hover:text-slate-700 transition-colors"
+              className="inline-flex items-center text-sm text-gray-500 hover:text-nova-blue transition-colors duration-200 ease-in-out"
             >
               <ArrowLeftIcon />
               <span className="ml-2">Back to Sign In</span>

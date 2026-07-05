@@ -47,8 +47,8 @@ export default function TelemetryLogStream({
   // Render empty state
   if (formattedTelemetry.length === 0 && !isTestRunning) {
     return (
-      <div className="text-slate-600 py-4">
-        <span className="text-slate-800">█</span> Ready for telemetry...
+      <div className="text-gray-600 py-4">
+        <span className="text-gray-800">█</span> Ready for telemetry...
       </div>
     );
   }
@@ -57,15 +57,15 @@ export default function TelemetryLogStream({
   return (
     <>
       {formattedTelemetry.map((logObj, index) => (
-        <div key={index} className="py-1 border-b border-slate-100/50 last:border-0">
+        <div key={index} className="py-1 border-b border-gray-100/50 last:border-0">
           <div
             className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
-              ? 'text-slate-600'
+              ? 'text-gray-600'
               : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                 ? 'text-red-600 font-semibold'
                 : logObj.rawText.includes('[NETWORK]')
                   ? 'text-blue-600'
-                  : 'text-slate-800'
+                  : 'text-gray-800'
               }`}
           >
             {logObj.rawText}
@@ -75,7 +75,7 @@ export default function TelemetryLogStream({
           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
         </div>
       ))}
-      <div className="flex items-center gap-2 py-2 text-slate-500">
+      <div className="flex items-center gap-2 py-2 text-gray-500">
         <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
         <span className="font-mono text-xs">
           {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}

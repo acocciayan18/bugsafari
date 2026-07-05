@@ -57,7 +57,7 @@ const ReproductionSection = ({ steps }: { steps: string[] | undefined }) => {
     return <ReproductionChecklist steps={steps} />;
   }
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs italic text-slate-400">
+    <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400">
       No deterministic steps were recorded for this fault.
     </div>
   );
@@ -81,7 +81,7 @@ export default function ErrorTabPanel({
   return (
     <div className="space-y-4 p-2">
       {errorIncidents.length === 0 && errorReports.length === 0 ? (
-        <div className="text-slate-500 italic py-4">No errors captured yet.</div>
+        <div className="text-gray-500 italic py-4">No errors captured yet.</div>
       ) : (
         <>
           {/* INCIDENT CARDS */}
@@ -142,12 +142,12 @@ export default function ErrorTabPanel({
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
                   <SuggestedFixBlock advice={incident.advice} />
                 </div>
 
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
+                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-gray-700">
                     {incident.reason}
                   </div>
 
@@ -224,12 +224,12 @@ export default function ErrorTabPanel({
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Suggested Fix</div>
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
                   <SuggestedFixBlock advice={report.advice} />
                 </div>
 
                 <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-slate-700">
+                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-gray-700">
                     {report.reason}
                   </div>
 

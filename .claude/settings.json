@@ -1,4 +1,8 @@
 {
+  "enabledPlugins": {
+    "caveman@caveman": true,
+    "fullstack-dev-skills@fullstack-dev-skills": true
+  },
   "extraKnownMarketplaces": {
     "caveman": {
       "source": {
@@ -6,8 +10,5 @@
         "repo": "juliusbrussee/caveman"
       }
     }
-  },
-  "enabledPlugins": {
-    "caveman@caveman": true
   }
 }

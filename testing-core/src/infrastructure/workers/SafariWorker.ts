@@ -6,6 +6,7 @@ import { MongoFindingRepository } from '../database/repositories/MongoFindingRep
 import { connectDatabase } from '../database/mongooseClient.js';
 import { PlaywrightBrowserEngine } from '../playwright/PlaywrightBrowserEngine.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
+import { resolveEngineTargetUrl } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
   worker: Worker<SafariTaskPayload>;
@@ -87,9 +88,22 @@ const telemetry = new ConsoleTelemetryGateway();
         ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} target=${payload.targetUrl}`);
-      await useCase.execute(payload.targetUrl);
-      console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${payload.targetUrl}`);
+      // Route the target for the active RUN_ENVIRONMENT before launch: bridge
+      // loopback in DOCKER_LOCAL, or fail the job with a clear message in
+      // CLOUD_HOSTED when the target is a private/unreachable address.
+      const routing = resolveEngineTargetUrl(payload.targetUrl);
+      if (!routing.ok) {
+        console.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
+        throw new Error(routing.message);
+      }
+      const engineUrl = routing.url;
+      if (routing.rewritten) {
+        console.log(`[SafariWorker] ↪ Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
+      }
+
+      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} target=${engineUrl}`);
+      await useCase.execute(engineUrl);
+      console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
     },
     {
       connection: {

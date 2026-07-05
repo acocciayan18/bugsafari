@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import type { ParsedQs } from 'qs';
-import { parseTargetUrl } from '../../serverUtils.js';
+import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
@@ -208,10 +208,25 @@ export function registerRoutes(
     const selectedScenarios = parseSelectedScenarios(request.body);
     console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
 
+    // Route the target for the active RUN_ENVIRONMENT before launch: bridge
+    // loopback in DOCKER_LOCAL, or reject an unreachable private address in
+    // CLOUD_HOSTED with a clear operator message. Reject BEFORE accepting.
+    const routing = resolveEngineTargetUrl(targetUrl);
+    if (!routing.ok) {
+      console.warn(`[API] ❌ Target rejected: ${routing.message}`);
+      response.status(422).json({ error: routing.message });
+      return;
+    }
+    const engineUrl = routing.url;
+    if (routing.rewritten) {
+      console.log(`[API] ↪ Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
+    }
+
     console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
+    // Operator sees their original URL; the engine dials the routed one.
     response.json({ accepted: true, url: targetUrl });
     console.log(`[API] 🚀 Starting safari in background...`);
-    void useCase.execute(targetUrl, optimizationSettings, selectedScenarios);
+    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios);
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)

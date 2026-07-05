@@ -37,14 +37,14 @@ function TestingTypeSelectorImpl({ selected, onChange, disabled = false }: Testi
   return (
     <div className="w-full bg-white rounded-lg shadow-md p-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
           Testing Types
         </span>
         <button
           type="button"
           onClick={toggleAll}
           disabled={disabled}
-          className={`text-[10px] font-semibold uppercase tracking-wider ${disabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800'}`}
+          className={`text-[10px] font-semibold uppercase tracking-wider rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-1 ${disabled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-gray-800'}`}
         >
           {allSelected ? 'Clear All' : 'Select All'}
         </button>
@@ -57,18 +57,18 @@ function TestingTypeSelectorImpl({ selected, onChange, disabled = false }: Testi
             <label
               key={option.id}
               title={option.description}
-              className={`flex items-start gap-2 rounded-md border p-2 transition-colors ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-slate-50'} ${isChecked ? 'border-slate-400 bg-slate-50' : 'border-slate-200'}`}
+              className={`flex items-start gap-2 rounded-md border p-2 transition-colors duration-200 ease-in-out ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-gray-100'} ${isChecked ? 'border-nova-blue bg-blue-50' : 'border-gray-200'}`}
             >
               <input
                 type="checkbox"
                 checked={isChecked}
                 onChange={() => toggle(option.id)}
                 disabled={disabled}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-600 focus:ring-slate-500"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-nova-blue focus:ring-nova-blue"
               />
               <span className="flex flex-col">
-                <span className="text-xs font-medium text-slate-700 leading-tight">{option.label}</span>
-                <span className="text-[10px] text-slate-400 leading-tight mt-0.5">{option.description}</span>
+                <span className="text-xs font-medium text-gray-700 leading-tight">{option.label}</span>
+                <span className="text-[10px] text-gray-400 leading-tight mt-0.5">{option.description}</span>
               </span>
             </label>
           );

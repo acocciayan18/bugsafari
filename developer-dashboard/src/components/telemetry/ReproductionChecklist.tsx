@@ -42,14 +42,14 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
           {steps.map((step, idx) => (
             <li
               key={`${idx}-${step}`}
-              className="rounded border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-mono font-medium leading-relaxed text-slate-900 whitespace-pre-wrap break-words"
+              className="rounded border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-mono font-medium leading-relaxed text-gray-900 whitespace-pre-wrap break-words"
             >
               {step}
             </li>
           ))}
         </ol>
       ) : (
-        <div className="text-xs italic text-slate-500">No reproduction steps available.</div>
+        <div className="text-xs italic text-gray-500">No reproduction steps available.</div>
       )}
     </div>
   );

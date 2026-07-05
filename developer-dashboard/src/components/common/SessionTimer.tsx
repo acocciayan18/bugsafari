@@ -69,7 +69,7 @@ function CompactTimer({
     const progressPercent = (timeRemaining / initialTimeMs) * 100;
 
     const getColor = () => {
-        if (progressPercent > 50) return 'bg-emerald-500';
+        if (progressPercent > 50) return 'bg-green-500';
         if (progressPercent > 20) return 'bg-amber-500';
         return 'bg-red-500';
     };
@@ -78,11 +78,11 @@ function CompactTimer({
 
     return (
         <div className="flex items-center gap-2">
-            <div className="text-sm font-mono font-semibold text-slate-700">
+            <div className="text-sm font-mono font-semibold text-gray-700">
                 {formattedTime}
             </div>
 
-            <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
                     className={`h-full ${getColor()} transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
                     style={{ width: `${progressPercent}%` }}
@@ -111,9 +111,9 @@ function FullTimer({
 
     // Get color scheme based on time remaining
     const getStatusColor = () => {
-        if (progressPercent > 50) return { ring: '#10b981', bg: '#d1fae5', text: '#065f46' };       // emerald
-        if (progressPercent > 20) return { ring: '#f59e0b', bg: '#fef3c7', text: '#92400e' };       // amber
-        return { ring: '#ef4444', bg: '#fee2e2', text: '#991b1b' };                                // red
+        if (progressPercent > 50) return { ring: '#22C55E', bg: '#DCFCE7', text: '#15803D' };       // Spark Green / Success badge
+        if (progressPercent > 20) return { ring: '#F59E0B', bg: '#FEF3C7', text: '#B45309' };       // Warning badge
+        return { ring: '#EF4444', bg: '#FEE2E2', text: '#B91C1C' };                                // Spark Red / Danger badge
     };
 
     const colors = getStatusColor();
@@ -128,12 +128,12 @@ function FullTimer({
     };
 
     return (
-        <div className="flex flex-col items-center gap-3 p-4 bg-white rounded-xl shadow-md border border-slate-200">
+        <div className="flex flex-col items-center gap-3 p-4 bg-white rounded-lg shadow-md border border-gray-200">
             {/* Status Badge */}
             <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${propIsPaused ? 'bg-amber-100 text-amber-700' :
                     timeRemaining <= 0 ? 'bg-red-100 text-red-700' :
-                        propIsRunning ? 'bg-emerald-100 text-emerald-700' :
-                            'bg-slate-100 text-slate-600'
+                        propIsRunning ? 'bg-green-100 text-green-700' :
+                            'bg-gray-200 text-gray-700'
                 }`}>
                 {getStatusText()}
             </div>
@@ -169,17 +169,18 @@ function FullTimer({
                     <span
                         className="text-2xl font-mono font-bold"
                         style={{ color: colors.text }}
+                        aria-live="polite"
                     >
                         {formattedTime}
                     </span>
-                    <span className="text-xs text-slate-400 uppercase tracking-wider">
+                    <span className="text-xs text-gray-400 uppercase tracking-wider">
                         remaining
                     </span>
                 </div>
             </div>
 
             {/* Progress Bar (horizontal) */}
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
                     className={`h-full transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
                     style={{
@@ -190,7 +191,7 @@ function FullTimer({
             </div>
 
             {/* Time Info */}
-            <div className="flex justify-between w-full text-xs text-slate-500">
+            <div className="flex justify-between w-full text-xs text-gray-500">
                 <span>Elapsed: {Math.floor((initialTimeMs - timeRemaining) / 1000)}s</span>
                 <span>Total: {initialTimeMs / 1000}s</span>
             </div>

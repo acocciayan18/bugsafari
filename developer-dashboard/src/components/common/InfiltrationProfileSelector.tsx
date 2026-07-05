@@ -31,7 +31,7 @@ function InfiltrationProfileSelectorImpl({
   return (
     <div className="w-full bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
           Infiltration Profile
         </span>
       </div>
@@ -44,7 +44,7 @@ function InfiltrationProfileSelectorImpl({
             <label
               key={option.id}
               title={option.description}
-              className={`flex items-start gap-2 rounded-md border p-2.5 transition-colors ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-slate-50'} ${isSelected ? 'border-slate-800 bg-slate-50 ring-1 ring-slate-800' : 'border-slate-200'}`}
+              className={`flex items-start gap-2 rounded-md border p-2.5 transition-colors duration-200 ease-in-out ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-gray-100'} ${isSelected ? 'border-nova-blue bg-blue-50 ring-1 ring-nova-blue' : 'border-gray-200'}`}
             >
               <input
                 type="radio"
@@ -52,11 +52,11 @@ function InfiltrationProfileSelectorImpl({
                 checked={isSelected}
                 onChange={() => !disabled && onProfileChange(option.id)}
                 disabled={disabled}
-                className="mt-0.5 h-4 w-4 border-slate-300 text-slate-800 focus:ring-slate-500"
+                className="mt-0.5 h-4 w-4 border-gray-300 text-nova-blue focus:ring-nova-blue"
               />
               <span className="flex flex-col">
-                <span className="text-xs font-semibold text-slate-700 leading-tight">{option.label}</span>
-                <span className="text-[10px] text-slate-400 leading-tight mt-0.5">{option.description}</span>
+                <span className="text-xs font-semibold text-gray-700 leading-tight">{option.label}</span>
+                <span className="text-[10px] text-gray-400 leading-tight mt-0.5">{option.description}</span>
               </span>
             </label>
           );
@@ -65,7 +65,7 @@ function InfiltrationProfileSelectorImpl({
 
       {/* Individual scenario matrix — only for the Custom Strategy Profile. */}
       {isCustom && (
-        <div className="border-t border-slate-100 pt-3">
+        <div className="border-t border-gray-100 pt-3">
           <TestingTypeSelector
             selected={customScenarios}
             onChange={onCustomScenariosChange}

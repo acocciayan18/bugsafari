@@ -2,19 +2,19 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 
 export type ColorPalette = 'retro' | 'pastel';
 
-// Color definitions
+// Color definitions — derived from the NovaSpark palette (src/DESIGN.md)
 const PALETTES = {
     retro: {
-        primary: '#ba5a5a',    // Brick Red
-        secondary: '#f7e49b', // Pale Yellow
-        tertiary: '#a4ce8b',    // Sage Green
-        quaternary: '#86bcbd',   // Muted Blue
+        primary: '#2563EB',    // Nova Blue
+        secondary: '#F97316', // Spark Orange
+        tertiary: '#22C55E',  // Spark Green
+        quaternary: '#60A5FA', // Nova Blue (light tint)
     },
     pastel: {
-        primary: '#9fa1ff',    // Lavender
-        secondary: '#b5baff',   // Periwinkle
-        tertiary: '#aee2ff',   // Light Blue
-        quaternary: '#d9f9df', // Pale Mint
+        primary: '#93C5FD',    // Nova Blue (pastel tint)
+        secondary: '#FDBA74',  // Spark Orange (pastel tint)
+        tertiary: '#86EFAC',   // Spark Green (pastel tint)
+        quaternary: '#BFDBFE', // Nova Blue (lightest tint)
     },
 };
 

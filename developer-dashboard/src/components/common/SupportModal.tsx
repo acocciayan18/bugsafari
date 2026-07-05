@@ -1,7 +1,10 @@
 // SupportModal.tsx - Placeholder Support Modal
 // Collects subject and description for support tickets
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -9,141 +12,80 @@ interface SupportModalProps {
   mode: 'contact' | 'ticket' | 'feature';
 }
 
+const TITLES: Record<SupportModalProps['mode'], string> = {
+  contact: 'Contact Support',
+  ticket: 'Open Ticket',
+  feature: 'Suggest Feature',
+};
+
+const DESCRIPTION_PLACEHOLDERS: Record<SupportModalProps['mode'], string> = {
+  contact: 'How can we help you? Describe your issue or question...',
+  ticket: 'Describe the issue you are experiencing...',
+  feature: 'Describe the feature you would like to see...',
+};
+
 export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const modalRef = useRef<HTMLDivElement>(null);
-
-  // Get title based on mode
-  const getTitle = () => {
-    switch (mode) {
-      case 'contact':
-        return 'Contact Support';
-      case 'ticket':
-        return 'Open Ticket';
-      case 'feature':
-        return 'Suggest Feature';
-      default:
-        return 'Support';
-    }
-  };
-
-  // Get description placeholder based on mode
-  const getDescriptionPlaceholder = () => {
-    switch (mode) {
-      case 'contact':
-        return 'How can we help you? Describe your issue or question...';
-      case 'ticket':
-        return 'Describe the issue you are experiencing...';
-      case 'feature':
-        return 'Describe the feature you would like to see...';
-      default:
-        return 'Describe your request...';
-    }
-  };
-
-  // Handle click outside modal
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen, onClose]);
-
-  // Handle ESC key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in">
-      <div
-        ref={modalRef}
-        className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl animate-fade-in"
-      >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-900">{getTitle()}</h3>
-          <button
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded hover:bg-slate-100 transition-colors"
-            aria-label="Close"
-          >
-            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <Modal isOpen={isOpen} onClose={onClose} titleId="support-modal-title">
+      {/* Modal Header */}
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+        <h3 id="support-modal-title" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {TITLES[mode]}
+        </h3>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-        {/* Modal Body */}
-        <div className="space-y-4 p-4">
-          {/* Subject Input */}
-          <div>
-            <label htmlFor="subject" className="block text-xs font-medium text-slate-700">
-              Subject
-            </label>
-            <input
-              type="text"
-              id="subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Brief summary of your request"
-              className="mt-1 block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
-            />
-          </div>
+      {/* Modal Body */}
+      <div className="space-y-4 p-4">
+        <Input
+          label="Subject"
+          id="support-subject"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Brief summary of your request"
+        />
 
-          {/* Description Input */}
-          <div>
-            <label htmlFor="description" className="block text-xs font-medium text-slate-700">
-              Description
-            </label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={getDescriptionPlaceholder()}
-              rows={4}
-              className="mt-1 block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Modal Footer */}
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3">
-          <button
-            onClick={onClose}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onClose}
-            disabled={!subject.trim() || !description.trim()}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Submit (Placeholder)
-          </button>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="support-description" className="text-sm font-medium text-gray-700 dark:text-gray-200">
+            Description
+          </label>
+          <textarea
+            id="support-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
+            rows={4}
+            className="w-full rounded-md border border-gray-300 px-4 py-3 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue resize-none dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+          />
         </div>
       </div>
-    </div>
+
+      {/* Modal Footer */}
+      <div className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onClose}
+          disabled={!subject.trim() || !description.trim()}
+        >
+          Submit (Placeholder)
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
