@@ -1,0 +1,197 @@
+import { chromium, type Browser } from 'playwright';
+import { Types, isValidObjectId } from 'mongoose';
+import { SessionModel, type ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
+import { classifyFault, type FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
+import type { VerifyFixRequest, VerifyFixResult, RegressionVerdict } from '../../../../../shared/types.js';
+import { FaultCollector } from './FaultCollector.js';
+import { ReplayActionRunner } from './ReplayActionRunner.js';
+import type { LoadedFinding } from './types.js';
+
+// Deterministic settle windows so async faults surface without any randomness.
+const PER_STEP_SETTLE_MS = 400;
+const FINAL_SETTLE_MS = 800;
+const NAV_TIMEOUT_MS = 30_000;
+const LAUNCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Deterministic regression replay. Given a saved finding it launches a FRESH,
+ * isolated Playwright session, replays the finding's recorded action timeline in
+ * order — with NO autonomous exploration (no scorer/navigator/AutonomousExplorationEngine)
+ * — and re-applies the exact knowledge-base validation rules that first reported
+ * the bug. Same finding + same target ⇒ same verdict.
+ */
+export class RegressionPlaybookVerifier {
+  /**
+   * Replay + validate one finding for one authenticated user.
+   * @param request  sessionId + bugId of the finding to re-check.
+   * @param userId   verified user id — the session query is scoped to it (least privilege).
+   */
+  public async verify(request: VerifyFixRequest, userId: string): Promise<VerifyFixResult> {
+    const startedAt = Date.now();
+    const { sessionId, bugId } = request;
+
+    if (!isValidObjectId(sessionId) || !bugId) {
+      return this.inconclusive(sessionId, bugId, 'UNKNOWN', 0, startedAt, 'Invalid sessionId or bugId.');
+    }
+
+    const finding = await this.loadFinding(sessionId, bugId, userId);
+    if (!finding) {
+      return this.inconclusive(sessionId, bugId, 'UNKNOWN', 0, startedAt, 'Finding not found or access denied.');
+    }
+
+    const originalFaultType = this.normalizeFaultType(finding.bug.type);
+    const originalBugClass = this.resolveOriginalBugClass(finding, originalFaultType);
+
+    console.log(
+      `[RegressionVerifier] Replaying ${finding.actionSteps.length} step(s) for bug ${bugId} ` +
+        `(class=${originalBugClass}) on ${finding.targetUrl}`,
+    );
+
+    let browser: Browser | undefined;
+    try {
+      browser = await this.launchBrowser();
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        ignoreHTTPSErrors: true,
+        deviceScaleFactor: 1,
+      });
+      const page = await context.newPage();
+      const collector = new FaultCollector(page);
+      collector.attach();
+      const runner = new ReplayActionRunner(page);
+
+      try {
+        await page.goto(finding.targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+      } catch (navError) {
+        const message = navError instanceof Error ? navError.message : String(navError);
+        return this.inconclusive(sessionId, bugId, originalBugClass, 0, startedAt, `Could not load target: ${message}`);
+      }
+
+      await page.waitForTimeout(PER_STEP_SETTLE_MS);
+
+      let stepsReplayed = 0;
+      for (const step of finding.actionSteps) {
+        const outcome = await runner.replay(step);
+        stepsReplayed += 1;
+        if (outcome.status === 'error') {
+          console.warn(`[RegressionVerifier] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
+        }
+        await page.waitForTimeout(PER_STEP_SETTLE_MS);
+      }
+
+      await page.waitForTimeout(FINAL_SETTLE_MS);
+      const pageContent = await page.content().catch(() => '');
+      collector.detach();
+
+      const matchedSignals = collector.evaluate(originalBugClass, originalFaultType, pageContent);
+      const verdict: RegressionVerdict = matchedSignals.length > 0 ? 'BUG_PERSISTS' : 'VERIFIED';
+      const summary =
+        verdict === 'BUG_PERSISTS'
+          ? `Bug still reproducible: ${originalBugClass} recurred after replaying ${stepsReplayed} recorded step(s).`
+          : `No ${originalBugClass} fault reproduced after replaying ${stepsReplayed} recorded step(s). Fix verified.`;
+
+      console.log(`[RegressionVerifier] Verdict for bug ${bugId}: ${verdict} (${matchedSignals.length} signal(s))`);
+
+      return {
+        ok: true,
+        verdict,
+        sessionId,
+        bugId,
+        bugClass: originalBugClass,
+        stepsReplayed,
+        matchedSignals,
+        summary,
+        durationMs: Date.now() - startedAt,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return this.inconclusive(sessionId, bugId, originalBugClass, 0, startedAt, `Replay error: ${message}`);
+    } finally {
+      if (browser) {
+        await browser.close().catch(() => undefined);
+      }
+    }
+  }
+
+  /** Load the target URL, recorded timeline, and the specific caught bug — scoped to the user. */
+  private async loadFinding(sessionId: string, bugId: string, userId: string): Promise<LoadedFinding | null> {
+    if (!isValidObjectId(userId)) return null;
+
+    const doc = await SessionModel.findOne({
+      _id: new Types.ObjectId(sessionId),
+      userId: new Types.ObjectId(userId),
+    })
+      .select('targetUrl actionSteps forensicTrace')
+      .lean();
+
+    if (!doc) return null;
+
+    const bug = doc.forensicTrace?.caughtBugs?.find((candidate: ICaughtBug) => candidate.bugId === bugId);
+    if (!bug) return null;
+
+    return {
+      targetUrl: doc.targetUrl,
+      actionSteps: doc.actionSteps ?? [],
+      bug,
+    };
+  }
+
+  /** Prefer the persisted knowledge-base class; otherwise derive it deterministically. */
+  private resolveOriginalBugClass(finding: LoadedFinding, faultType: FaultType): string {
+    const persisted = finding.bug.attribution?.bugClass;
+    if (persisted && persisted.length > 0) return persisted;
+
+    return classifyFault({
+      faultType,
+      message: finding.bug.message ?? '',
+      scenario: finding.bug.attribution?.scenario,
+      url: finding.targetUrl,
+    }).bugClass;
+  }
+
+  /** Map a persisted fault type string onto the classifier's coarse FaultType. */
+  private normalizeFaultType(type: string | undefined): FaultType {
+    const upper = (type ?? '').toUpperCase();
+    if (upper.includes('NETWORK') || upper.includes('API') || upper.includes('HTTP') || upper.includes('BOUNDARY')) {
+      return 'NETWORK';
+    }
+    if (upper.includes('FREEZE') || upper.includes('STALL') || upper.includes('UI')) return 'FREEZE';
+    if (upper.includes('CONSOLE')) return 'CONSOLE';
+    return 'EXCEPTION';
+  }
+
+  private async launchBrowser(): Promise<Browser> {
+    return Promise.race([
+      chromium.launch({
+        headless: true,
+        args: ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox', '--disable-setuid-sandbox'],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Browser launch timeout after ${LAUNCH_TIMEOUT_MS}ms`)), LAUNCH_TIMEOUT_MS),
+      ),
+    ]);
+  }
+
+  private inconclusive(
+    sessionId: string,
+    bugId: string,
+    bugClass: string,
+    stepsReplayed: number,
+    startedAt: number,
+    error: string,
+  ): VerifyFixResult {
+    console.warn(`[RegressionVerifier] INCONCLUSIVE for bug ${bugId}: ${error}`);
+    return {
+      ok: false,
+      verdict: 'INCONCLUSIVE',
+      sessionId,
+      bugId,
+      bugClass,
+      stepsReplayed,
+      matchedSignals: [],
+      summary: `Verification inconclusive: ${error}`,
+      durationMs: Date.now() - startedAt,
+      error,
+    };
+  }
+}

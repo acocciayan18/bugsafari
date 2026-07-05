@@ -19,10 +19,11 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
-import type { ForensicActionStep, ForensicCaughtBug, ForensicReportResponse } from '../../types';
+import type { ForensicActionStep, ForensicCaughtBug, ForensicReportResponse, VerifyFixRequest } from '../../types';
 import ReproductionChecklist from '../telemetry/ReproductionChecklist';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { AttributionBadges, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
+import { useRegressionVerifier, type VerifyStatus } from '../../application/useCases/useRegressionVerifier';
 
 function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return 'N/A';
@@ -163,10 +164,98 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   ].filter(Boolean).join('\n');
 }
 
-function FindingCard({ bug, index }: { bug: ForensicCaughtBug; index: number }) {
+// ─────────────────────────────────────────────────────────────
+// Verify Fix — per-finding regression replay control. Idle shows a
+// trigger; running shows a spinner; a completed result renders a
+// color-coded verdict badge (VERIFIED / BUG PERSISTS / INCONCLUSIVE)
+// with the engine's summary as the tooltip. Clicking a settled badge
+// re-runs the replay (e.g. after another code change).
+// ─────────────────────────────────────────────────────────────
+
+const VERDICT_THEME: Record<string, { label: string; className: string }> = {
+  VERIFIED: { label: 'VERIFIED', className: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+  BUG_PERSISTS: { label: 'BUG PERSISTS', className: 'bg-red-600 text-white hover:bg-red-700' },
+  INCONCLUSIVE: { label: 'INCONCLUSIVE', className: 'bg-amber-500 text-white hover:bg-amber-600' },
+};
+
+function VerifyFixControl({
+  status,
+  disabled,
+  disabledReason,
+  onVerify,
+}: {
+  status: VerifyStatus;
+  disabled: boolean;
+  disabledReason?: string;
+  onVerify: () => void;
+}) {
+  if (status === 'running') {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+        Verifying…
+      </span>
+    );
+  }
+
+  if (status !== 'idle') {
+    const theme = VERDICT_THEME[status.verdict] ?? VERDICT_THEME.INCONCLUSIVE;
+    return (
+      <button
+        type="button"
+        onClick={onVerify}
+        disabled={disabled}
+        title={`${status.summary}${disabled && disabledReason ? ` — ${disabledReason}` : ' (click to re-verify)'}`}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${theme.className}`}
+      >
+        {theme.label}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onVerify}
+      disabled={disabled}
+      title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
+      className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
+      </svg>
+      Verify Fix
+    </button>
+  );
+}
+
+function FindingCard({
+  bug,
+  index,
+  sessionId,
+  status,
+  onVerify,
+}: {
+  bug: ForensicCaughtBug;
+  index: number;
+  sessionId?: string;
+  status: VerifyStatus;
+  onVerify: (request: VerifyFixRequest) => void;
+}) {
   const [stackExpanded, setStackExpanded] = useState(false);
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
+
+  // A verifiable finding needs both a persisted session id and a stable bugId.
+  const canVerify = Boolean(sessionId) && Boolean(bug.bugId);
+  const disabledReason = !sessionId
+    ? 'Missing session id for this report'
+    : !bug.bugId
+      ? 'This finding has no stable id to replay'
+      : undefined;
 
   return (
     <div className="overflow-hidden rounded-lg border border-red-200 bg-white shadow-sm">
@@ -181,7 +270,15 @@ function FindingCard({ bug, index }: { bug: ForensicCaughtBug; index: number }) 
             <div className="text-[11px] text-red-700 opacity-75">{formatDate(bug.timestamp)}</div>
           </div>
         </div>
-        <CopyButton text={summaryText} label="Finding" />
+        <div className="flex shrink-0 items-center gap-2">
+          <VerifyFixControl
+            status={status}
+            disabled={!canVerify || status === 'running'}
+            disabledReason={disabledReason}
+            onVerify={() => canVerify && sessionId && onVerify({ sessionId, bugId: bug.bugId })}
+          />
+          <CopyButton text={summaryText} label="Finding" />
+        </div>
       </div>
 
       {/* Attribution */}
@@ -344,6 +441,7 @@ export default function ForensicReport() {
   }, [sessionId]);
 
   const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
+  const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) {
     return (
@@ -401,7 +499,14 @@ export default function ForensicReport() {
             {bugs.length > 0 ? (
               <div className="flex flex-col gap-4">
                 {bugs.map((bug, index) => (
-                  <FindingCard key={bug.bugId || index} bug={bug} index={index} />
+                  <FindingCard
+                    key={bug.bugId || index}
+                    bug={bug}
+                    index={index}
+                    sessionId={sessionId}
+                    status={statuses[bug.bugId] ?? 'idle'}
+                    onVerify={verify}
+                  />
                 ))}
               </div>
             ) : (

@@ -26,6 +26,11 @@ export type {
   // Unified Infiltration Profiles (operator-facing preset layer)
   InfiltrationProfileId,
   InfiltrationProfileOption,
+  // Automated Regression Verification (Verify Fix)
+  RegressionVerdict,
+  VerifyFixRequest,
+  VerifyFixResult,
+  RegressionSignal,
 } from '../../shared/types.js';
 
 // Value re-exports (runtime constants used to render the selector + defaults).
@@ -35,6 +40,7 @@ export {
   INFILTRATION_PROFILE_CATALOG,
   DEFAULT_INFILTRATION_PROFILE,
   resolveInfiltrationProfile,
+  VERIFY_FIX_EVENT,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
