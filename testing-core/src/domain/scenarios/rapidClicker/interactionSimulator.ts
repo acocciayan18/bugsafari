@@ -7,7 +7,7 @@
  */
 
 import type { Page } from 'playwright';
-import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
+import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
 import { wait } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';

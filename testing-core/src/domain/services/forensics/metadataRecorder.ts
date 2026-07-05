@@ -1,4 +1,4 @@
-import type { RouteTrashMetadata, StressClickMetadata } from '../../fuzzing/index.js';
+import type { RouteTrashMetadata, StressClickMetadata } from '../../chaos/index.js';
 
 /**
  * Shared base for scenario metadata recorders.

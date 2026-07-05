@@ -1,9 +1,9 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import type { FuzzMetadata } from '../../fuzzing/index.js';
+import type { FuzzMetadata } from '../../chaos/index.js';
 import type { StressScenario } from '../types.js';
 import { classifyInputElement, FieldCategory } from './elementClassifier.js';
-import { ChaosTransactionManager } from '../../fuzzing/index.js';
+import { ChaosTransactionManager } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../../services/forensics/narration.js';
 import { describeConstraintBypass, describeInputInjection } from '../../services/forensics/narration.js';
@@ -50,7 +50,7 @@ export function getChaosManager(): ChaosTransactionManager<FuzzMetadata> | null 
 
 /**
  * Sets up fuzzGuard to use the ChaosTransactionManager instance.
- * Call this after initializeFuzzTransactionManager() to enable fuzzGuard vulnerability detection.
+ * Call this after the ChaosTransactionManager is injected to enable fuzzGuard vulnerability detection.
  */
 export function setupFuzzGuardAccessor(): void {
   // Import dynamically to avoid circular dependencies

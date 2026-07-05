@@ -10,7 +10,7 @@
  */
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
-import type { ChaosContextType, RouteTrashMetadata } from '../../domain/fuzzing/index.js';
+import type { ChaosContextType, RouteTrashMetadata } from '../../domain/chaos/index.js';
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 
 // Singleton accessor following fuzzGuard pattern

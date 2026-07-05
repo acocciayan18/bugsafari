@@ -14,7 +14,7 @@
 
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
+import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeCoordinateBombing } from '../../services/forensics/narration.js';

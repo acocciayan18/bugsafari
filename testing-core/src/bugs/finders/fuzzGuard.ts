@@ -11,7 +11,7 @@
  */
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
-import type { ChaosContextType, FuzzMetadata } from '../../domain/fuzzing/index.js';
+import type { ChaosContextType, FuzzMetadata } from '../../domain/chaos/index.js';
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 
 // Singleton reference to the active chaos transaction manager

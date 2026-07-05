@@ -11,7 +11,7 @@ import type { DomHasher } from '../../../ml/domHasher.js';
 import type { RiskScorer } from '../RiskScorer.js';
 import type { StateGraphNavigator } from '../StateGraphNavigator.js';
 import type { ScenarioGate } from '../scenarioGate.js';
-import type { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
+import type { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
 import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type {

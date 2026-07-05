@@ -11,7 +11,7 @@
  */
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
-import type { ChaosContextType, StressClickMetadata } from '../../domain/fuzzing/index.js';
+import type { ChaosContextType, StressClickMetadata } from '../../domain/chaos/index.js';
 
 // Singleton reference to the active chaos transaction manager
 // In a full implementation, this would be injected via dependency injection

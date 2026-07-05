@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import type { ChaosTransactionManager, RouteTrashMetadata } from '../../fuzzing/index.js';
+import type { ChaosTransactionManager, RouteTrashMetadata } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { captureNavStep } from '../../../infrastructure/monitoring/navForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';

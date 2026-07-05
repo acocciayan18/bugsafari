@@ -5,7 +5,7 @@
  * Each strategy generates targeted payloads based on field category classification.
  */
 
-import type { FuzzingStrategyType } from '../../../fuzzing/index.js';
+import type { FuzzingStrategyType } from '../../../chaos/index.js';
 
 import {
   type NumericPayload,

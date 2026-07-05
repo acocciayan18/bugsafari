@@ -9,7 +9,7 @@ import { DomHasher } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
-import { ChaosTransactionManager } from '../../fuzzing/ChaosTransactionManager.js';
+import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
 import { setChaosManagerAccessor as setStructuralProbeAccessor } from '../../../bugs/finders/structuralProbe.js';
 import { setChaosManagerAccessor as setConcurrentStressAccessor } from '../../../bugs/finders/concurrentStress.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';

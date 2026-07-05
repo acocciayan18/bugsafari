@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { StressScenario } from './types.js';
-import { ChaosTransactionManager, type RouteTrashMetadata } from '../fuzzing/index.js';
+import { ChaosTransactionManager, type RouteTrashMetadata } from '../chaos/index.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 // Import scenario implementations

@@ -13,7 +13,7 @@ import {
   describeNavigation,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
-import type { FuzzMetadata } from '../../fuzzing/index.js';
+import type { FuzzMetadata } from '../../chaos/index.js';
 import type { ActionExecutorDeps } from './types.js';
 
 /**
@@ -290,7 +290,7 @@ export class ActionExecutor {
     );
 
     // Open the unified forensic event: a deliberate scenario window + a real FUZZ
-    // transaction carrying full metadata (replaces the legacy openFuzzTransaction).
+    // transaction carrying full metadata via startTransaction.
     ActiveScenarioTracker.begin('DataFuzzer', page.url() ?? this.deps.getTargetOrigin());
     const metadata: FuzzMetadata = {
       payload,

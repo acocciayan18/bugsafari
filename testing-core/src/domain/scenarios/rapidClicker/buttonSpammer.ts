@@ -15,7 +15,7 @@
 
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import type { ChaosTransactionManager, StressClickMetadata } from '../../fuzzing/index.js';
+import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
 import { CLICK_COUNT } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';

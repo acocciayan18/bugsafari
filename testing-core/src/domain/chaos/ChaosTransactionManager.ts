@@ -137,20 +137,6 @@ export interface ChaosContext<T = any> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LEGACY TYPES (Backward Compatibility)
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Legacy FuzzContext - Deprecated, use ChaosContext instead
- * @deprecated Use ChaosContext with type: 'FUZZ'
- */
-export interface FuzzContext {
-  targetElementId: string;
-  payloadInjected: string;
-  timestamp: number;
-}
-
-// ─────────────────────────────────────────────────────────────
 // CHAOS TRANSACTION MANAGER CLASS
 // ─────────────────────────────────────────────────────────────
 
@@ -234,23 +220,6 @@ export class ChaosTransactionManager<T = any> {
   }
 
 /**
-   * Open a transaction with default FUZZ type (backward compatibility).
-   * This method supports legacy code that uses the old signature.
-   *
-   * @param elementId - The target element selector or ID
-   * @param payload - The fuzz payload being injected
-   */
-public openFuzzTransaction(elementId: string, payload: string): void {
-    const metadata: FuzzMetadata = {
-      payload: payload,
-      fieldType: 'legacy',
-      category: 'CHAOS_FALLBACK',  // Default category for legacy calls
-      strategy: 'chaos',  // Default strategy for legacy calls
-    };
-    this.openTransaction(elementId, 'FUZZ', metadata);
-  }
-
-/**
    * Close the current chaos transaction, clearing the active context.
    */
   public closeTransaction(): void {
@@ -287,19 +256,6 @@ public openFuzzTransaction(elementId: string, payload: string): void {
     this.closeTransaction();
   }
 
-  /**
-   * Set the current chaos type for an open transaction.
-   *
-   * @param type - The chaos type to set
-   */
-  public setChaosType(type: ChaosContextType): void {
-    if (this.activeChaosContext === null) {
-      console.warn(`[ChaosTransactionManager] Cannot set chaos type: no active transaction.`);
-      return;
-    }
-    this.activeChaosContext.type = type;
-  }
-
 /**
    * Get the current chaos type.
    *
@@ -319,20 +275,3 @@ public openFuzzTransaction(elementId: string, payload: string): void {
     return this.activeChaosContext?.metadata as T | undefined;
   }
 }
-
-// ─────────────────────────────────────────────────────────────
-// BACKWARD COMPATIBILITY ALIAS
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Deprecated alias for backward compatibility.
- * Use ChaosTransactionManager instead.
- * @deprecated Use ChaosTransactionManager
- */
-export const FuzzTransactionManager = ChaosTransactionManager;
-
-/**
- * Type alias for backward compatibility.
- * @deprecated Use ChaosTransactionManager
- */
-export type FuzzTransactionManager = ChaosTransactionManager;
