@@ -12,7 +12,7 @@
 
 // Re-export stress scenarios
 export { buttonSpammer } from './buttonSpammer.js';
-export { coordinateBombing, executeBombing } from './coordinateBombing.js';
+export { coordinateBombing } from './coordinateBombing.js';
 
 // Re-export the zero-wait concurrency primitive + result shape
 export {
@@ -28,15 +28,10 @@ export { InteractionSimulator } from './interactionSimulator.js';
 // Re-export utility functions and constants
 export {
   CLICK_COUNT,
-  CLICK_DELAY_MS,
   BOMB_COUNT,
-  DEFAULT_MAX_TARGETS,
-  DEFAULT_BURST_COUNT,
-  DEFAULT_BURST_DURATION_MS,
   ERROR_MESSAGES,
   isNonFatalNavigationError,
   isObscuredOrDetached,
-  randomInt,
   wait,
 } from './utils.js';
 

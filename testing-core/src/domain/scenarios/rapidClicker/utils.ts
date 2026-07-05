@@ -8,11 +8,7 @@
 // ============================================================================
 
 export const CLICK_COUNT = 15;
-export const CLICK_DELAY_MS = 50;
 export const BOMB_COUNT = 10;
-export const DEFAULT_MAX_TARGETS = 12;
-export const DEFAULT_BURST_COUNT = 50;
-export const DEFAULT_BURST_DURATION_MS = 1000;
 
 // ============================================================================
 // Error Handling Utilities
@@ -47,17 +43,6 @@ export function isObscuredOrDetached(error: unknown): boolean {
     message.includes('element is not visible') ||
     message.includes('obscured')
   );
-}
-
-// ============================================================================
-// Math Utilities
-// ============================================================================
-
-/**
- * Generates a random integer between min and max (inclusive).
- */
-export function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 // ============================================================================

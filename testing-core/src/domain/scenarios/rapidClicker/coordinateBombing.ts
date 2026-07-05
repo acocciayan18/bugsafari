@@ -6,10 +6,13 @@
  * derived from the iteration index (round-robin grid), so the same viewport +
  * count always produces the identical sequence — making any fault reproducible.
  *
- * This stress test is designed to:
- * - Find race conditions in click event handlers
- * - Surface desynchronization in coordinate-dependent logic
- * - Exercise overlay/hit-testing edge cases
+ * Clicks are SEQUENTIAL by necessity: Playwright drives a single virtual mouse
+ * pointer, so concurrent trusted coordinate clicks would corrupt each other. For
+ * true zero-wait concurrency use the selector-based buttonSpammer/concurrentClicker.
+ *
+ * This stress test surfaces:
+ * - Overlay/hit-testing edge cases (clicks landing on hidden/overlay elements)
+ * - Desynchronization in coordinate-dependent logic
  */
 
 import type { Page } from 'playwright';
@@ -18,6 +21,7 @@ import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/i
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeCoordinateBombing } from '../../services/forensics/narration.js';
+import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/forensics/metadataRecorder.js';
 
 /**
  * Deterministic grid coordinate for click `index` over a width×height viewport.
@@ -68,10 +72,17 @@ export const coordinateBombing = {
 
     ActiveScenarioTracker.record(describeCoordinateBombing(BOMB_COUNT, width, height));
 
+    // Record through the shared recorder like the other STRESS_CLICK scenarios,
+    // so the live transaction/telemetry observe one consistent metadata shape.
+    const recorder = new StressClickMetadataRecorder(metadata);
+    const points: string[] = [];
+    const executionOrder: number[] = [];
+    const start = Date.now();
     let completed = 0;
     try {
       for (let i = 0; i < BOMB_COUNT; i++) {
         const { x, y } = gridCoordinate(i, BOMB_COUNT, width, height);
+        points.push(`(${x},${y})`);
 
         try {
           await page.mouse.click(x, y);
@@ -88,22 +99,25 @@ export const coordinateBombing = {
             );
           }
         }
+        // Sequential (single virtual pointer) — settle order equals submission order.
+        executionOrder.push(i);
 
         await wait(50);
       }
     } finally {
-      metadata.completed = completed;
-      metadata.resultingState =
-        completed === BOMB_COUNT ? 'all-completed' : completed === 0 ? 'error' : 'partial';
+      const result: BurstOutcome = {
+        selectors: points,
+        attempted: BOMB_COUNT,
+        completed,
+        durationMs: Date.now() - start,
+        executionOrder,
+        resultingState:
+          completed === BOMB_COUNT ? 'all-completed' : completed === 0 ? 'error' : 'partial',
+      };
+      recorder.record(result);
       manager?.endTransaction();
     }
 
     console.log(`[StressScenario:CoordinateBombing] Completed ${completed}/${BOMB_COUNT} coordinate clicks`);
   },
 };
-
-/**
- * Re-export of coordinateBombing for backwards compatibility
- * @deprecated Use coordinateBombing directly
- */
-export const executeBombing = coordinateBombing;
