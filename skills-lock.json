@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "setup-codemap-cli": {
+      "source": "neolabhq/context-engineering-kit",
+      "sourceType": "github",
+      "skillPath": "plugins/mcp/skills/setup-codemap-cli/SKILL.md",
+      "computedHash": "c3e3866f6dfde70e2199b142537ad8a0c0fe5ed7e379f6cf564cff1da58cff42"
+    },
+    "update-codemaps": {
+      "source": "STRML/cc-codemaps",
+      "sourceType": "github",
+      "skillPath": "skills/update-codemaps/SKILL.md",
+      "computedHash": "2a9548c7adebc2e7097ecca6b02af0df4ef00279d05ce7bfbf90614cc8f41f7f"
+    }
+  }
+}

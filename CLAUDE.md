@@ -66,3 +66,6 @@ The backend execution environment coordinates the automated sensory scanning and
 The Security and Storage Model
 The full-stack data platform handles authenticated operator sessions through a secure, stateless configuration using local token parsing. Individual tracking histories are completely isolated under a multi-tenant query database format, while unauthenticated users are seamlessly routed to a guest configuration that permits active application testing but blocks permanent database saves.
 
+# Tool Usage Guidelines
+- Always use the codemap skill to visualize dependencies before modifying core architecture, components, or writing analysis reports.
+- Do not blindly read individual files to guess the structure; rely on the codemap output first.
