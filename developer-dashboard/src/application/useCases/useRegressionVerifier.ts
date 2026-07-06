@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { VERIFY_FIX_EVENT } from '../../types';
 import type { VerifyFixRequest, VerifyFixResult } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 // Same resolution as App.tsx: env override, else proxy-aware window origin.
 const SOCKET_URL =
@@ -29,14 +30,15 @@ export interface RegressionVerifier {
 }
 
 export function useRegressionVerifier(): RegressionVerifier {
+  const { token } = useAuth();
   const socketRef = useRef<Socket | null>(null);
+  const socketTokenRef = useRef<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, VerifyStatus>>({});
 
   // Lazily open the socket on first use, carrying the JWT in the handshake so the
   // backend can scope the finding lookup to this user.
   const getSocket = useCallback((): Socket => {
     if (socketRef.current) return socketRef.current;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('bugsafari_token') : null;
     const socket = io(SOCKET_URL, {
       transports: ['polling', 'websocket'],
       auth: { token: token ?? undefined },
@@ -44,8 +46,19 @@ export function useRegressionVerifier(): RegressionVerifier {
       reconnectionAttempts: 5,
     });
     socketRef.current = socket;
+    socketTokenRef.current = token;
     return socket;
-  }, []);
+  }, [token]);
+
+  // Re-read the token when auth state changes (login/logout/refresh) instead of
+  // replaying whatever was cached at socket creation: tear down the existing
+  // connection so the next verify() call reopens it with the current token.
+  useEffect(() => {
+    if (socketRef.current && socketTokenRef.current !== token) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+  }, [token]);
 
   useEffect(() => {
     return () => {

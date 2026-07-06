@@ -276,7 +276,10 @@ return () => {
 
     gateway.connect();
     void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
-    return () => gateway.disconnect();
+    return () => {
+      gateway.disconnect();
+      gateway.removeAllListeners();
+    };
   }, [gateway]);
 
 const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> => {

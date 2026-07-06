@@ -141,9 +141,12 @@ export function registerRoutes(
     response.json({ status: "healthy" });
   });
 
-  // Explicit Safari stop endpoint - for cleanup on timeout or emergency stop
-  // No authentication required for emergency cleanup scenarios
-  app.post('/api/safari/stop', async (_request: Request, response: Response): Promise<void> => {
+  // Explicit Safari stop endpoint - for cleanup on timeout or emergency stop.
+  // Uses the same optionalAuth as /api/start-test (guests may still stop a run),
+  // but scopes the stop to the session's own owner: the requester must match
+  // whichever userId (or guest/null) actually started the active run, so an
+  // unrelated authenticated user can't kill someone else's in-progress session.
+  app.post('/api/safari/stop', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] 🔴 POST /api/safari/stop received - explicit cleanup request');
 
     try {
@@ -153,6 +156,14 @@ export function registerRoutes(
       if (!activeEngineInstance) {
         console.log('[API] No active engine to stop - already IDLE');
         response.json({ ok: true, message: 'No active session to stop' });
+        return;
+      }
+
+      const activeUserId = useCase.getUserId();
+      const requesterId = request.userId ?? null;
+      if (activeUserId !== requesterId) {
+        console.warn('[API] ❌ Stop rejected: requester does not own the active session');
+        response.status(403).json({ error: 'You do not have permission to stop this session.' });
         return;
       }
 
@@ -185,7 +196,10 @@ export function registerRoutes(
       return;
     }
 
-    if (useCase.isActive()) {
+    // Atomically claim the "active" slot right here, synchronously, so two
+    // concurrent requests can't both pass this check before either marks the
+    // use case active (see StartExplorationUseCase.tryActivate() for why).
+    if (!useCase.tryActivate()) {
       console.warn(`[API] ❌ Safari already running - rejecting request`);
       response.status(429).json({ error: 'A BugSafari run is already active.' });
       return;
@@ -214,6 +228,9 @@ export function registerRoutes(
     const routing = resolveEngineTargetUrl(targetUrl);
     if (!routing.ok) {
       console.warn(`[API] ❌ Target rejected: ${routing.message}`);
+      // Roll back the slot claimed above — we're bailing out without ever
+      // calling execute(), so nothing else will reset it to false.
+      useCase.releaseActivation();
       response.status(422).json({ error: routing.message });
       return;
     }

@@ -10,6 +10,7 @@ import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 import type { UserProfile, UserSettings, ProfileUpdateData } from '../types';
 import { loadGuestSettings, saveGuestSettings, clearGuestSettings } from '../utils/settingsStorage';
+import { buildAuthHeaders } from '../utils/authHeaders';
 
 // Empty string → Vite proxy routes /api/* to backend (matches AuthContext.tsx behaviour)
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
@@ -27,7 +28,7 @@ interface SettingsResponse {
 }
 
 export function useUserSettings() {
-    const { token, user: authUser } = useAuth();
+    const { token, user: authUser, refreshToken } = useAuth();
 
     // Profile state
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -62,13 +63,21 @@ export function useUserSettings() {
     const prevTokenRef = useRef<string | null | undefined>(undefined); // undefined = first render sentinel
     const hasMigratedRef = useRef(false);
 
-    const getAuthHeaders = useCallback(() => {
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-        return headers;
-    }, [token]);
+    const getAuthHeaders = useCallback(() => buildAuthHeaders(token), [token]);
+
+    // One-shot silent refresh on 401 before callers fall back to their existing
+    // session-expired handling. Retries with whatever token the refresh left in
+    // localStorage - refreshToken() (AuthContext) has already persisted it by
+    // the time this resolves.
+    const authFetch = useCallback(async (url: string, init: RequestInit): Promise<Response> => {
+        const response = await fetch(url, { ...init, headers: getAuthHeaders() });
+        if (response.status !== 401) return response;
+
+        const refreshed = await refreshToken();
+        if (!refreshed) return response;
+
+        return fetch(url, { ...init, headers: buildAuthHeaders(localStorage.getItem('bugsafari_token')) });
+    }, [getAuthHeaders, refreshToken]);
 
     const fetchProfile = useCallback(async () => {
         if (!token) {
@@ -80,9 +89,8 @@ export function useUserSettings() {
         setProfileError('');
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
+            const response = await authFetch(`${API_BASE_URL}/api/users/profile`, {
                 method: 'GET',
-                headers: getAuthHeaders(),
             });
 
             if (!response.ok) {
@@ -113,7 +121,7 @@ export function useUserSettings() {
         } finally {
             setIsProfileLoading(false);
         }
-    }, [token, authUser, getAuthHeaders]);
+    }, [token, authUser, authFetch]);
 
     const fetchSettings = useCallback(async () => {
         if (!token) {
@@ -125,9 +133,8 @@ export function useUserSettings() {
         setSettingsError('');
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/settings`, {
+            const response = await authFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'GET',
-                headers: getAuthHeaders(),
             });
 
             if (!response.ok) {
@@ -156,7 +163,7 @@ export function useUserSettings() {
         } finally {
             setIsSettingsLoading(false);
         }
-    }, [token, getAuthHeaders]);
+    }, [token, authFetch]);
 
     const updateProfile = useCallback(async (updateData: ProfileUpdateData): Promise<boolean> => {
         if (!token) {
@@ -169,9 +176,8 @@ export function useUserSettings() {
         setPasswordSuccess(false);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
+            const response = await authFetch(`${API_BASE_URL}/api/users/profile`, {
                 method: 'PUT',
-                headers: getAuthHeaders(),
                 body: JSON.stringify(updateData),
             });
 
@@ -203,7 +209,7 @@ export function useUserSettings() {
         } finally {
             setIsProfileUpdating(false);
         }
-    }, [token, getAuthHeaders]);
+    }, [token, authFetch]);
 
     const changePassword = useCallback(async (
         currentPassword: string,
@@ -219,9 +225,8 @@ export function useUserSettings() {
         setPasswordSuccess(false);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users/password`, {
+            const response = await authFetch(`${API_BASE_URL}/api/users/password`, {
                 method: 'PUT',
-                headers: getAuthHeaders(),
                 body: JSON.stringify({ currentPassword, newPassword }),
             });
 
@@ -247,7 +252,7 @@ export function useUserSettings() {
         } finally {
             setIsPasswordChanging(false);
         }
-    }, [token, getAuthHeaders]);
+    }, [token, authFetch]);
 
     const updateSettings = useCallback(async (newSettings: Partial<UserSettings>): Promise<boolean> => {
         // Guest mode: persist to localStorage only, no API call needed
@@ -267,9 +272,8 @@ export function useUserSettings() {
         setSettings(optimisticSettings);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/settings`, {
+            const response = await authFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'PUT',
-                headers: getAuthHeaders(),
                 body: JSON.stringify(newSettings),
             });
 
@@ -307,7 +311,7 @@ export function useUserSettings() {
         } finally {
             setIsSettingsLoading(false);
         }
-    }, [token, getAuthHeaders]);
+    }, [token, authFetch]);
 
     const clearPasswordSuccess = useCallback(() => {
         setPasswordSuccess(false);
@@ -350,10 +354,7 @@ export function useUserSettings() {
                     try {
                         await fetch(`${API_BASE_URL}/api/settings`, {
                             method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`,
-                            },
+                            headers: buildAuthHeaders(token),
                             body: JSON.stringify(guestSettings),
                         });
                         console.log('[useUserSettings] Guest settings migrated to backend');

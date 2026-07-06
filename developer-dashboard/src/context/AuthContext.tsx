@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { isTokenExpired } from '../utils/tokenUtils';
+import { refreshAuthToken, onTokenRefreshed } from '../utils/authRefresh';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
 
@@ -346,58 +347,62 @@ const logout = useCallback(() => {
   
 const refreshToken = useCallback(async (): Promise<boolean> => {
     const currentToken = token || localStorage.getItem('bugsafari_token');
-    if (!currentToken) {
-      console.warn('[AuthContext] No token available for refresh');
+    const result = await refreshAuthToken(currentToken);
+    if (!result) {
+      console.warn('[AuthContext] Token refresh failed or no token available');
       return false;
     }
 
-    try {
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}`,
-        },
-      });
+    setToken(result.token);
+    setUser(result.user);
+    console.log('[AuthContext] Token refreshed successfully');
+    return true;
+  }, [token]);
 
-console.log('[AuthContext] Token refresh response status:', response.status);
+  // Sync refreshes triggered by non-hook modules (historyService, EngineHttpClient)
+  // that called refreshAuthToken() directly instead of through this context.
+  useEffect(() => onTokenRefreshed(({ token: newToken, user: newUser }) => {
+    setToken(newToken);
+    setUser(newUser);
+  }), []);
 
-      // Handle 404 - refresh endpoint not found; just return false, caller decides
-      if (response.status === 404) {
-        console.warn('[AuthContext] Token refresh route is unmapped on this backend.');
-        return false;
+  // Cross-tab sync: reflect login/logout that happened in another tab. The
+  // 'storage' event only fires in OTHER tabs, never the one that made the
+  // change - that tab already updated its own state directly.
+  useEffect(() => {
+    function handleStorage(event: StorageEvent): void {
+      if (event.key !== 'bugsafari_token' && event.key !== 'bugsafari_user' && event.key !== 'bugsafari_guest') {
+        return;
       }
 
-      // Handle 403/401 - session credentials invalid or expired; caller decides what to do
-      if (response.status === 403 || response.status === 401) {
-        console.error('[AuthContext] Session credentials are invalid or expired.');
-        return false;
+      const storedToken = localStorage.getItem('bugsafari_token');
+      const storedUser = localStorage.getItem('bugsafari_user');
+
+      if (!storedToken || !storedUser) {
+        setToken(null);
+        setUser(null);
+        setIsGuestMode(localStorage.getItem('bugsafari_guest') === 'true');
+        return;
       }
 
-      const data: AuthResponse | AuthError = await response.json();
-      const authData = data as AuthResponse;
-
-      if (authData.token && authData.user) {
-        // Update with new token
-        setToken(authData.token);
-        setUser(authData.user);
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-        console.log('[AuthContext] Token refreshed successfully');
-        return true;
+      if (isTokenExpired(storedToken)) {
+        setToken(null);
+        setUser(null);
+        return;
       }
 
-      console.warn('[AuthContext] Token refresh returned no valid data');
-      return false;
-    } catch (error) {
-      console.error('[AuthContext] Token refresh error:', error);
-      // Network error - backend may be unreachable
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        console.error('[AuthContext] Network error - backend may be down');
+      try {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+        setIsGuestMode(false);
+      } catch {
+        // Malformed stored user from the other tab - ignore, keep current state.
       }
-      return false;
     }
-  }, [token, logout]);
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Clear email error

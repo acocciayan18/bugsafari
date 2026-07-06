@@ -1,4 +1,6 @@
 import type { OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
+import { buildAuthHeaders } from '../../../utils/authHeaders';
+import { refreshAuthToken } from '../../../utils/authRefresh';
 
 /**
  * REST/HTTP routines for the engine gateway. Owns the auth token and every
@@ -15,11 +17,23 @@ export class EngineHttpClient {
   }
 
   private getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
-    }
-    return headers;
+    return buildAuthHeaders(this.authToken);
+  }
+
+  /**
+   * fetch() with a one-shot silent refresh-and-retry on 401. Updates
+   * this.authToken immediately on success so the next call already carries
+   * it, ahead of the React-driven setAuthToken() sync from AuthContext.
+   */
+  private async fetchWithAuthRetry(url: string, init: RequestInit): Promise<Response> {
+    const response = await fetch(url, init);
+    if (response.status !== 401) return response;
+
+    const refreshed = await refreshAuthToken(this.authToken);
+    if (!refreshed) return response;
+
+    this.authToken = refreshed.token;
+    return fetch(url, { ...init, headers: this.getAuthHeaders() });
   }
 
   public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> {
@@ -37,7 +51,7 @@ export class EngineHttpClient {
         requestBody.infiltration = infiltration;
       }
 
-      const response = await fetch(`${this.apiBaseUrl}/api/start-test`, {
+      const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/start-test`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(requestBody),
@@ -70,7 +84,7 @@ export class EngineHttpClient {
   }
 
   public async saveSession(targetUrl: string): Promise<void> {
-    const response = await fetch('/api/history/save-session', {
+    const response = await this.fetchWithAuthRetry('/api/history/save-session', {
       method: 'POST',
       headers: this.getAuthHeaders(),
       credentials: 'include',
@@ -84,7 +98,7 @@ export class EngineHttpClient {
 
   public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
     try {
-      const response = await fetch(`/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
+      const response = await this.fetchWithAuthRetry(`/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
         headers: this.getAuthHeaders(),
         credentials: 'include',
       });
@@ -106,7 +120,7 @@ export class EngineHttpClient {
   public async stopViaHttp(): Promise<void> {
     console.log('[Gateway] Socket not connected, falling back to HTTP stop...');
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/safari/stop`, {
+      const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/safari/stop`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       });

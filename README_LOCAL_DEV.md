@@ -26,11 +26,11 @@ docker compose version
 All infrastructure commands must be run from the workspace root:
 
 ```powershell
-cd "C:\AYAN PRACTICE CODES\Bugsafari - trash branch Backup\bugsafari"
+cd "<path-to-cloned-repo>\bugsafari"
 ```
 
 ```bash
-cd "/c/AYAN PRACTICE CODES/Bugsafari - trash branch Backup/bugsafari"
+cd "/c/<path-to-cloned-repo>/bugsafari"
 ```
 
 ### Pull Redis and MongoDB Images
@@ -356,14 +356,14 @@ printf "VITE_BUGSAFARI_API_URL=http://localhost:3000\nVITE_BUGSAFARI_SOCKET_URL=
 Windows PowerShell:
 
 ```powershell
-cd "C:\AYAN PRACTICE CODES\Bugsafari - trash branch Backup\bugsafari\developer-dashboard"
+cd "<path-to-cloned-repo>\bugsafari\developer-dashboard"
 npm install
 ```
 
 Git Bash:
 
 ```bash
-cd "/c/AYAN PRACTICE CODES/Bugsafari - trash branch Backup/bugsafari/developer-dashboard"
+cd "/c/<path-to-cloned-repo>/bugsafari/developer-dashboard"
 npm install
 ```
 

@@ -84,6 +84,8 @@ markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
    * Collect bug findings for the most recent session associated with the target URL.
    * Applies proper domain filtering to return only actual bugs (EXCEPTION, RUNTIME_UI_FREEZE, SESSION_SYNC_FAULT, NETWORK with status >= 400).
    * This correctly belongs in the Domain layer per Clean Architecture.
+   * @param userId - Optional userId to scope the session lookup for multi-tenancy,
+   * matching the same ownership filter used by listSessionHistory.
    */
-  collectBugFindings(targetUrl: string): Promise<BugFinding[]>;
+  collectBugFindings(targetUrl: string, userId?: string): Promise<BugFinding[]>;
 }

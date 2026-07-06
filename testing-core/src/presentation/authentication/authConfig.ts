@@ -12,6 +12,10 @@ import jwt from 'jsonwebtoken';
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development' || !isProduction;
 
+// The hardcoded local-dev secret. Named so it can be checked for by exact
+// value below, not just guessed at via substring heuristics.
+const DEV_FALLBACK_SECRET = 'bugsafari-local-development-secret';
+
 // Use type assertion for env var
 let JWT_SECRET = process.env.JWT_SECRET as string | undefined;
 
@@ -27,10 +31,21 @@ if (!JWT_SECRET) {
   // DEVELOPMENT: Use consistent secret that matches docker-compose.local.yml
   // IMPORTANT: This MUST match JWT_SECRET in docker-compose.local.yml, root .env, and testing-core/.env
   // to avoid cross-context token verification (401) failures.
-  JWT_SECRET = 'bugsafari-local-development-secret';
+  JWT_SECRET = DEV_FALLBACK_SECRET;
   console.warn(
     `[authConfig] JWT_SECRET env var not set — using development fallback "${JWT_SECRET}". ` +
     'If tokens minted elsewhere 401 here, the launch context is using a different secret.',
+  );
+}
+
+// PRODUCTION VALIDATION: the dev fallback must never be used in production,
+// even if an operator explicitly sets JWT_SECRET to that exact value (e.g. by
+// copying a dev .env file) — the substring/length checks below wouldn't catch
+// this since the fallback string is 34 chars and doesn't contain "fallback".
+if (isProduction && JWT_SECRET === DEV_FALLBACK_SECRET) {
+  throw new Error(
+    'FATAL: JWT_SECRET is set to the hardcoded development fallback value in production. ' +
+    'Set JWT_SECRET to a unique, secure random string of at least 32 characters.'
   );
 }
 

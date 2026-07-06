@@ -44,7 +44,7 @@ Avoid redundancy unless improves usability.
 
 ## 🌍 1. System Context
 BugSafari is an Autonomous Exploratory Testing Engine for SPAs. 
-- Tech: React 18/Vite, Node.js/Express, Playwright, Socket.IO, MongoDB Atlas, Podman.
+- Tech: React 19/Vite, Node.js/Express, Playwright, Socket.IO, MongoDB Atlas, Podman.
 - Mechanics: It traverses the DOM via Playwright, scores elements using a Single-Layer Perceptron (Delta Rule), prevents loops using Structural DOM Hashing, applies heuristic data fuzzing, and records crashes via a 20-step Circular Action Buffer.
 
 ## 🏗️ 2. Architecture (Monorepo)
@@ -69,3 +69,47 @@ The full-stack data platform handles authenticated operator sessions through a s
 # Tool Usage Guidelines
 - Always use the codemap skill to visualize dependencies before modifying core architecture, components, or writing analysis reports.
 - Do not blindly read individual files to guess the structure; rely on the codemap output first.
+
+## Use Codemap CLI for Codebase Navigation
+
+Codemap CLI is available for intelligent codebase visualization and navigation.
+
+**Required Usage** - You MUST use `codemap --diff` to research changes different from default branch (main), and `git diff` + `git status` to research current working state.
+
+### Quick Start
+
+```bash
+codemap .                    # Project tree
+codemap --only ts,tsx .       # Just TypeScript files
+codemap --exclude .png,node_modules .  # Hide assets
+codemap --depth 2 .          # Limit depth
+codemap --diff                # What changed vs main
+codemap --deps .             # Dependency flow
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--depth, -d <n>` | Limit tree depth (0 = unlimited) |
+| `--only <exts>` | Only show files with these extensions |
+| `--exclude <patterns>` | Exclude files matching patterns |
+| `--diff` | Show files changed vs main branch |
+| `--ref <branch>` | Branch to compare against (with --diff) |
+| `--deps` | Dependency flow mode |
+| `--importers <file>` | Check who imports a file |
+| `--skyline` | City skyline visualization |
+| `--json` | Output JSON |
+
+**Smart pattern matching** - no quotes needed:
+- `.png` - any `.png` file
+- `node_modules` - any `/node_modules/` directory
+- `*Test*` - glob pattern
+
+### Diff Mode
+
+See what you're working on:
+
+```bash
+codemap --diff
+```

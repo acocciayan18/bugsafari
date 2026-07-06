@@ -62,6 +62,33 @@ export class StartExplorationUseCase {
     }
 
     /**
+     * Atomically claim the "active" slot: returns false without side effects if a
+     * run is already active, otherwise marks active and returns true. Must be
+     * called synchronously (no await between the caller's isActive()-equivalent
+     * check and this call) so two concurrent POST /api/start-test requests can't
+     * both observe `active === false` before either sets it — the TOCTOU window
+     * that existed when `state.active = true` was only set deep inside execute()
+     * after several awaited dynamic imports.
+     * Callers that claim the slot but then bail out before invoking execute()
+     * (e.g. request validation fails) MUST call releaseActivation() to roll back.
+     */
+    public tryActivate(): boolean {
+        if (this.state.active) {
+            return false;
+        }
+        this.state.active = true;
+        return true;
+    }
+
+    /**
+     * Roll back a tryActivate() claim when the caller decides not to run
+     * execute() after all (e.g. a validation check fails after claiming the slot).
+     */
+    public releaseActivation(): void {
+        this.state.active = false;
+    }
+
+    /**
      * Set the authenticated userId for the current exploration session.
      * This should be called before execute() when the user is authenticated.
      */
@@ -316,7 +343,10 @@ export class StartExplorationUseCase {
         // the operator explicitly clicks "Save to History".
         this.currentSessionId = null;
 
-        this.state.active = true;
+        // NOTE: state.active is already true here — the caller (registerRoutes.ts)
+        // claimed it synchronously via tryActivate() before calling execute(), to
+        // close the TOCTOU race that existed when this flag was set only at this
+        // point, after the awaited dynamic imports above.
 
         // Register the active engine so sockets can control it
         setActiveEngine(this.browserEngine);

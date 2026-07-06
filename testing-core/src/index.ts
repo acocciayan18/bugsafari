@@ -18,11 +18,22 @@ import { MongoFindingRepository } from './infrastructure/database/repositories/M
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
 const app = express();
+// INTENTIONAL wildcard CORS: BugSafari authenticates purely via a JWT Bearer
+// token read from the Authorization header (see authMiddleware.ts) — there is
+// no cookie-based session, so the browser never auto-attaches ambient
+// credentials to a cross-origin request. A wildcard origin therefore cannot
+// be used for CSRF/session-riding against this API; the worst case is that an
+// arbitrary origin can call the public/guest endpoints, which is the intended
+// behavior for this public demo/testing tool. Do not add `credentials: true`
+// to this config without also switching to an explicit env-driven allow-list.
 app.use(cors());
 app.use(express.json());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
+  // Same rationale as the Express CORS config above: Socket.IO handshakes
+  // carry the JWT in the `auth` payload (see registerSocketHandlers.ts), not
+  // in a cookie, so a wildcard origin here doesn't expose a CSRF-style attack.
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 

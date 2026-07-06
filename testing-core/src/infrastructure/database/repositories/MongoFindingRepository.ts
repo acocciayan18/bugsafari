@@ -410,10 +410,22 @@ public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHis
      * Applies proper domain filtering - only returns actual bugs.
      * Uses centralized BugClassifier - single source of truth.
      */
-  public async collectBugFindings(targetUrl: string): Promise<BugFinding[]> {
+  public async collectBugFindings(targetUrl: string, userId?: string): Promise<BugFinding[]> {
     try {
+      // Multi-tenancy guard, matching listSessionHistory's ownership filter:
+      // scope the lookup to the requesting user's own session so this method
+      // can't leak another user's findings once it's wired up to a route.
+      const filter: Record<string, unknown> = { targetUrl };
+      if (userId) {
+        if (!isValidObjectId(userId)) {
+          console.log("[MongoFindingRepository] Invalid userId, returning empty array");
+          return [];
+        }
+        filter.userId = new Types.ObjectId(userId);
+      }
+
       // Find the most recent session for this target URL
-      const session = await SessionModel.findOne({ targetUrl })
+      const session = await SessionModel.findOne(filter)
         .sort({ startedAt: -1 })
         .lean()
         .exec();

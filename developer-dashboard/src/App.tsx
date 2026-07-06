@@ -41,8 +41,7 @@ function AuthAppContent() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   // Use centralized auth state from context
-  const { user, isAuthenticated, isGuestMode, logout } = useAuth();
-  const token = localStorage.getItem('bugsafari_token'); // Used for gateway connection
+  const { user, token, isAuthenticated, isGuestMode, logout } = useAuth();
 
   // Single global handler: any useUserSettings() instance that gets a 401 fires this event
   useEffect(() => {

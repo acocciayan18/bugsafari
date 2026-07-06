@@ -28,6 +28,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   private activeContext: import('playwright').BrowserContext | null = null;
   private activeBrowser: import('playwright').Browser | null = null;
   private isStopping = false;
+  // Set by stop() while a run() is in flight; tags the in-flight run so its
+  // catch block can tell "expected teardown from stop()" apart from a real bug.
+  private cancelledDuringRun = false;
   private capturedConfirmedBugs: Array<{
     bugId: string;
     type: string;
@@ -75,6 +78,10 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     this.isStopping = true;
 
     try {
+      // Tag any in-flight run() BEFORE tearing anything down, so its catch
+      // block can recognize a resulting error as an expected side-effect of
+      // this stop() rather than inferring it from the error's message.
+      this.cancelledDuringRun = true;
       // Force engine stop first - critical for zombie prevention
       if (this.activeEngine) {
         this.activeEngine.stop();
@@ -93,6 +100,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   }
 
   public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<{ completed: boolean; reason: string }> {
+    // Fresh run: any cancellation tag belongs to a previous run and must not
+    // leak forward and swallow a genuine failure in this one.
+    this.cancelledDuringRun = false;
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
@@ -216,9 +226,13 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
     } catch (err: unknown) {
-      // 🔒 RACE CONDITION FIX: Catch null property access during rapid cancellation
-      if (err instanceof TypeError && err.message.includes('Cannot read properties of null')) {
-        // Gracefully suppress exception - this is expected during rapid cancellation
+      // 🔒 RACE CONDITION FIX: only treat this as an expected, graceful stop
+      // when stop() actually tagged this run as cancelled. Previously this
+      // matched on `err instanceof TypeError && message.includes('Cannot read
+      // properties of null')`, which would just as happily swallow a genuine
+      // null-deref bug unrelated to cancellation — misreporting a real crash
+      // as a clean stop. Gating on the explicit tag removes that ambiguity.
+      if (this.cancelledDuringRun) {
         telemetry.emitTelemetry({
           timestamp: new Date().toISOString(),
           type: 'ACTION',

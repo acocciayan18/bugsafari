@@ -4,6 +4,8 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
+import { buildAuthHeaders } from '../utils/authHeaders';
+import { refreshAuthToken } from '../utils/authRefresh';
 
 /**
  * Get authentication token from localStorage
@@ -13,36 +15,31 @@ function getAuthToken(): string | null {
 }
 
 /**
- * Get auth headers for API requests
- */
-function getAuthHeaders(): Record<string, string> {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  console.log('[historyService] Auth headers:', {
-    hasAuth: !!token,
-    tokenPrefix: token ? token.substring(0, 20) + '...' : null
-  });
-
-  return headers;
-}
-
-/**
  * Get fetch options with credentials for cross-origin requests
  */
 function getFetchOptions(method: string, body?: object): RequestInit {
   return {
     method,
-    headers: getAuthHeaders(),
+    headers: buildAuthHeaders(getAuthToken()),
     credentials: 'include',
     body: body ? JSON.stringify(body) : undefined,
   };
+}
+
+/**
+ * fetch() with a one-shot silent refresh-and-retry on 401. This module has no
+ * React context, so it calls refreshAuthToken() directly rather than going
+ * through AuthContext - refreshAuthToken() still persists the new token and
+ * notifies AuthContext so React state stays in sync.
+ */
+async function fetchWithAuthRetry(url: string, options: RequestInit): Promise<Response> {
+  const response = await fetch(url, options);
+  if (response.status !== 401) return response;
+
+  const refreshed = await refreshAuthToken(getAuthToken());
+  if (!refreshed) return response;
+
+  return fetch(url, { ...options, headers: buildAuthHeaders(refreshed.token) });
 }
 
 /**
@@ -96,7 +93,7 @@ export async function saveSessionToHistory(
   // than re-building the request inline.
   let response: Response;
   try {
-    response = await fetch('/api/history/save-session', getFetchOptions('POST', payload));
+    response = await fetchWithAuthRetry('/api/history/save-session', getFetchOptions('POST', payload));
   } catch (networkError) {
     console.error('[historyService] ❌ Network error saving session:', networkError instanceof Error ? networkError.message : networkError);
     throw networkError;
@@ -153,7 +150,7 @@ export async function fetchSessionHistory(limit = 50): Promise<SessionHistoryEnt
   console.log('[historyService] fetchSessionHistory called with limit:', limit);
 
   try {
-const response = await fetch(
+const response = await fetchWithAuthRetry(
       `/api/history/sessions?limit=${encodeURIComponent(String(limit))}`,
       getFetchOptions('GET')
     );
@@ -190,7 +187,7 @@ export async function fetchForensicReport(sessionId: string): Promise<ForensicRe
     throw new Error('Invalid sessionId: must be a non-empty string');
   }
 
-  const response = await fetch(`/api/forensic/report/${sessionId}`, getFetchOptions('GET'));
+  const response = await fetchWithAuthRetry(`/api/forensic/report/${sessionId}`, getFetchOptions('GET'));
   console.log('[historyService] fetchForensicReport response status:', response.status);
 
   if (!response.ok) {
@@ -238,7 +235,7 @@ export async function deleteRecord(recordId: string): Promise<void> {
     console.log('[historyService] 📤 Sending DELETE request to /api/history/:id...');
 
 // Remove encodeURIComponent - MongoDB ObjectIds don't need encoding and it can cause issues
-    const response = await fetch(`/api/history/${recordId}`, getFetchOptions('DELETE'));
+    const response = await fetchWithAuthRetry(`/api/history/${recordId}`, getFetchOptions('DELETE'));
 
     console.log('[historyService] Response status:', response.status);
     console.log('[historyService] Response ok:', response.ok);
@@ -283,7 +280,7 @@ export async function fetchSafariDocuments(): Promise<unknown[]> {
   console.log('[historyService] fetchSafariDocuments called');
 
   try {
-    const response = await fetch('/api/history', getFetchOptions('GET'));
+    const response = await fetchWithAuthRetry('/api/history', getFetchOptions('GET'));
 
     console.log('[historyService] fetchSafariDocuments response status:', response.status);
 
@@ -324,7 +321,7 @@ export async function exportRecord(recordId: string): Promise<void> {
   try {
     console.log('[historyService] 📤 Fetching record for export from /api/history/export/:id...');
 
-const response = await fetch(`/api/history/export/${encodeURIComponent(recordId)}`, getFetchOptions('GET'));
+const response = await fetchWithAuthRetry(`/api/history/export/${encodeURIComponent(recordId)}`, getFetchOptions('GET'));
 
     console.log('[historyService] Export response status:', response.status);
     console.log('[historyService] Export response ok:', response.ok);

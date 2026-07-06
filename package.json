@@ -14,13 +14,7 @@
     "dev:client": "npm run dev -w developer-dashboard"
   },
   "devDependencies": {
-    "@types/mongoose": "^5.11.96",
     "tsc-watch": "^7.2.0",
     "typescript": "^5.7.0"
-  },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "mongoose": "^9.6.3",
-    "sonner": "^2.0.7"
   }
 }
