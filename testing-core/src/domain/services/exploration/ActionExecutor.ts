@@ -3,7 +3,6 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
-import { categoryToStrategyType } from '../../scenarios/fuzzing/strategies/index.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import {
@@ -13,6 +12,8 @@ import {
   describeNavigation,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
+import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
+import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
 import type { ActionExecutorDeps } from './types.js';
 
@@ -23,6 +24,10 @@ import type { ActionExecutorDeps } from './types.js';
  * each in the appropriate constraint-stripping and transaction lifecycle.
  */
 export class ActionExecutor {
+  // Combined structural+interactive DOM fingerprint used to detect whether a
+  // fuzz injection produced any observable reaction (drives escalation below).
+  private readonly fuzzHasher = new DomHasher();
+
   constructor(private readonly deps: ActionExecutorDeps) {}
 
   public logHighImpact(target: InteractiveElement): void {
@@ -267,11 +272,13 @@ export class ActionExecutor {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
 
-    // 1) Identify: classify the field, resolve its targeted strategy payload.
+    // 1) Identify: classify the field, resolve the escalation level tried so far
+    // for this exact field (0 on first encounter), then synthesize that level's
+    // deterministic, replayable payload.
     const category = classifyInputElement(target);
-    // Deterministic, replayable payload (level-0 escalator vector seeded by the
-    // field) — replaces the previous non-deterministic random strategy pick.
-    const payload = synthesizeEscalatedPayload(category, 0, deriveFuzzSeed(target.selector, category)).value;
+    const level = this.deps.escalationTracker.getLevel(target.selector, category);
+    const synth = synthesizeEscalatedPayload(category, level, deriveFuzzSeed(target.selector, category));
+    const payload = synth.value;
 
     // Breadcrumb trail (technical) for the forensic crash report.
     this.deps.recordActionTrace(
@@ -296,40 +303,68 @@ export class ActionExecutor {
       payload,
       fieldType: target.tagName,
       category,
-      strategy: categoryToStrategyType(category),
+      strategy: synth.strategy,
     };
     this.deps.fuzzManager.startTransaction(target.selector, 'FUZZ', metadata);
 
     try {
-      // 2) Remove client-side validation constraints so large/malformed payloads land.
-      await this.stripConstraints(page);
-      ActiveScenarioTracker.record(describeConstraintBypass(label));
+      // 2)-4) Bypass constraints, inject, fill siblings, and submit — captured as
+      // one forensic step (pre/post DOM hash + API/console anomalies over the
+      // settle window) so the escalation feedback loop below has a real signal.
+      const snapshot = await captureFuzzStep(
+        page,
+        (p) => this.fuzzHasher.hash(p),
+        { selector: target.selector, category, strategy: synth.strategy, escalationLevel: level, payload },
+        async () => {
+          await this.stripConstraints(page);
+          ActiveScenarioTracker.record(describeConstraintBypass(label));
 
-      // 3) Inject the generated payload.
-      await this.injectPayload(page, target.selector, payload);
-      ActiveScenarioTracker.record(describeInputInjection(label, payload));
+          await this.injectPayload(page, target.selector, payload);
+          ActiveScenarioTracker.record(describeInputInjection(label, payload));
 
-      // 4) Commit through realistic interactions: fill empty siblings in the same
-      //    <form>, then explicitly submit so the payload reaches the backend.
-      await this.fillEmptyFormSiblings(page, target.selector);
-      const submissionMethod = await triggerFormSubmission(page, target.selector);
+          await this.fillEmptyFormSiblings(page, target.selector);
+          const submissionMethod = await triggerFormSubmission(page, target.selector);
 
-      if (mode === 'fuzz') {
+          if (mode === 'fuzz') {
+            t.emit('ACTION', {
+              actionExecuted: 'data-fuzzer-injection',
+              selector: target.selector,
+              message: `⚡ Data Fuzzer: Injecting ${category} strategy (escalation L${level}) into ${target.selector} to test data validation limits.`,
+            });
+          }
+          t.emit('ACTION', {
+            actionExecuted: 'form-submission-triggered',
+            selector: target.selector,
+            message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+          });
+        },
+      );
+
+      // 5) Escalation feedback: decide the level the NEXT encounter with this
+      // field should use, from what actually happened this time.
+      //    - A fault (≥400 response or a console/page error) or a vanished field
+      //      resets to L0 so the next encounter starts fresh.
+      //    - No observable reaction at all (DOM hash unchanged) escalates one
+      //      level, so the next encounter tries a deeper mutation layer.
+      //    - Anything in between (e.g. a harmless re-render) holds the level.
+      const fieldStillPresent = await page
+        .$(target.selector)
+        .then((el) => el !== null)
+        .catch(() => false);
+      const faulted =
+        snapshot.apiResponses.some((r) => r.status >= 400) ||
+        snapshot.consoleAnomalies.some((a) => a.type === 'error' || a.type === 'pageerror');
+
+      if (!fieldStillPresent || faulted) {
+        this.deps.escalationTracker.reset(target.selector, category);
+      } else if (snapshot.preStateHash === snapshot.postStateHash) {
+        const nextLevel = this.deps.escalationTracker.escalate(target.selector, category);
         t.emit('ACTION', {
-          actionExecuted: 'data-fuzzer-injection',
+          actionExecuted: 'fuzz-escalation',
           selector: target.selector,
-          message: `⚡ Data Fuzzer: Injecting ${category} strategy into ${target.selector} to test data validation limits.`,
+          message: `📈 No reaction from ${target.selector} at L${level} — escalating to L${nextLevel} for the next encounter.`,
         });
       }
-      t.emit('ACTION', {
-        actionExecuted: 'form-submission-triggered',
-        selector: target.selector,
-        message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
-      });
-
-      // 5) Monitor: hold the transaction window open so network (≥400) and
-      //    exception monitors can correlate backend rejections to this submit.
-      await page.waitForTimeout(600);
     } finally {
       // 6) Close the unified forensic event so it never leaks into the next element.
       this.deps.fuzzManager.closeTransaction();
@@ -454,9 +489,10 @@ export class ActionExecutor {
     for (const sibling of siblings) {
       const selector = `[data-bugsafari-sib="${sibling.tmp}"]`;
       const siblingCategory = classifyInputElement(sibling);
+      const siblingLevel = this.deps.escalationTracker.getLevel(selector, siblingCategory);
       const payload = synthesizeEscalatedPayload(
         siblingCategory,
-        0,
+        siblingLevel,
         deriveFuzzSeed(selector, siblingCategory),
       ).value;
       await this.injectPayload(page, selector, payload);
@@ -483,9 +519,11 @@ export class ActionExecutor {
   ): Promise<void> {
     const selector = target.selector;
 
-    // Classify the input element and synthesize a deterministic, replayable payload.
+    // Classify the input element and synthesize a deterministic, replayable payload
+    // at whatever escalation level this field is currently at.
     const category = classifyInputElement(target);
-    const payload = synthesizeEscalatedPayload(category, 0, deriveFuzzSeed(selector, category)).value;
+    const level = this.deps.escalationTracker.getLevel(selector, category);
+    const payload = synthesizeEscalatedPayload(category, level, deriveFuzzSeed(selector, category)).value;
 
     try {
       await this.injectPayload(page, selector, payload);

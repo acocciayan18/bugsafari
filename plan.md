@@ -46,3 +46,19 @@
 - Each numbered step should be its own commit with its own verification (typecheck + relevant unit test) before moving to the next.
 - Phases 1–2 are safe to automate fully. Phase 3 requires a fresh grep verification pass per item (code may have changed since this review). Phases 5–6 involve judgment calls flagged above — surface those as questions rather than assuming.
 - Existing test coverage is thin (only `circularBuffer.test.ts` and `perceptron.test.ts` were found under `testing-core/src`) — consider adding a regression test alongside each Phase 1–2 fix rather than as a separate pass.
+
+## Phase 7 — Activate adaptive payload escalation ⭐ (headline, ~1.5 days) ✅ DONE
+
+**Problem**: `ActionExecutor.executeInputFuzzing` (`ActionExecutor.ts:274`), `fillEmptyFormSiblings` (`ActionExecutor.ts:457-461`), and `executeSecurityFuzzerPayloads` (`ActionExecutor.ts:488`) all hardcoded `synthesizeEscalatedPayload(category, 0, seed)`. Escalation levels 1–4 (`MAX_ESCALATION_LEVEL`) existed and were exercised only by the separate legacy `dataFuzzer.ts` scenario path — dead in the live `ActionExecutor` traversal path.
+
+**What shipped**:
+25. ✅ Added `EscalationTracker` (`exploration/EscalationTracker.ts`) keyed by `(selector, category)`, remembering the last level tried per field (bounded to 500 entries, run-scoped — `resetAll()` now runs alongside `ActiveScenarioTracker.reset()` / `clusterRegistry.reset()` in `ExplorationEngine.run`). Wired into `ActionExecutorDeps` and consumed by all three former hardcoded call sites.
+26. ✅ `executeInputFuzzing` now reads the tracker's current level to synthesize the payload, then after submit decides the next encounter's level: escalate (capped at `MAX_ESCALATION_LEVEL`) when nothing observable happened; reset to L0 on a fault or a vanished field; otherwise hold steady on an ambiguous reaction (e.g. a harmless re-render).
+27. **Correction confirmed and acted on**: research showed the `BugFinder`/`fuzzGuard.run()` pipeline referenced in the original plan (option a) is never invoked anywhere in the live path — `fuzzGuard`, `structuralProbe`, `concurrentStress`, etc. only have their `setChaosManagerAccessor` wired; their `.run()` orchestrator doesn't exist in the codebase (this is the same dead cluster Phase 3 flags for `socketServer.ts`/`domainGuard`/`runController`/`stackManager`). Reviving it for this feature would fight Phase 3's planned deletions. Instead of (a) or the literal (b) callback, reused the already-proven `captureFuzzStep`/`attachAnomalyListeners` forensic helper (the same one `dataFuzzer.ts`'s legacy escalation loop uses) directly inside `executeInputFuzzing`: it gives pre/post DOM hash, all API responses, and console/page-error anomalies over the settle window in one call, entirely local to `ActionExecutor` — no `ChaosTransactionManager` signature change, no new `ExplorationLoop` wiring. "Fault" for escalation purposes = a ≥400 response or a console/page error observed in that window.
+28. ✅ Escalation happens once per encounter (not a tight inner loop), bounded by the existing per-field level cap.
+
+**Files touched**: `ActionExecutor.ts`, `exploration/types.ts` (added `escalationTracker` to `ActionExecutorDeps`), `exploration/EscalationTracker.ts` (new), `ExplorationEngine.ts` (instantiate + reset + wire into deps).
+
+**Tests**: `EscalationTracker.test.ts` (8 checks: default level, escalate progression capped at L4, reset, cross-category independence, `resetAll`, bounded-map eviction). `npx tsc --noEmit` and `npm run build` both clean; all five existing self-executing test scripts still pass.
+
+**Not yet done**: no live run against a deliberately vulnerable form was performed to visually confirm telemetry shows escalation L1…L4 in the dashboard — recommend doing that as a manual follow-up before considering this fully verified end-to-end.

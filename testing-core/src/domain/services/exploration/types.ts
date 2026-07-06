@@ -22,6 +22,7 @@ import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ActionExecutor } from './ActionExecutor.js';
 import type { StateRestorer } from './StateRestorer.js';
 import type { StateClusterRegistry } from './StateClusterRegistry.js';
+import type { EscalationTracker } from './EscalationTracker.js';
 
 // ─────────────────────────────────────────────────────────────
 // Shared data shapes
@@ -126,6 +127,8 @@ export interface ActionExecutorDeps {
   telemetry: TelemetryEmitter;
   recordActionTrace: RecordActionTrace;
   getTargetOrigin(): string;
+  /** Per-(selector, category) payload-escalation level, run-scoped. */
+  escalationTracker: EscalationTracker;
 }
 
 export interface ExplorationLoopDeps {

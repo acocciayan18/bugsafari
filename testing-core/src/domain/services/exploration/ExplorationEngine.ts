@@ -33,6 +33,7 @@ import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
+import { EscalationTracker } from './EscalationTracker.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ export class ExplorationEngine {
   private readonly visitedHashes = new Set<string>();
   // Clustered state-space coverage layer (keyed by normalized structure hash).
   private readonly clusterRegistry = new StateClusterRegistry();
+  // Per-(selector, category) payload-escalation level for adaptive fuzzing.
+  private readonly escalationTracker = new EscalationTracker();
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
@@ -365,6 +368,7 @@ export class ExplorationEngine {
     this.freezeActionTraceRecording = false;
     ActiveScenarioTracker.reset();
     this.clusterRegistry.reset();
+    this.escalationTracker.resetAll();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -404,6 +408,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
+      escalationTracker: this.escalationTracker,
     });
 
     // Operator visibility: announce which testing strategies are active this run.
