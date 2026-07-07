@@ -158,6 +158,10 @@ export interface ExplorationLoopDeps {
   setFreeze(): void;
   ensureDomReady(page: Page): Promise<void>;
   ensureTargetDomain(page: Page): Promise<void>;
+  /** When true, the launch URL is pinned: navigation-based recovery (backtrack,
+   *  unstable-restore, origin re-seed) is suppressed so it can't compete with the
+   *  boundary-lock restore for control of the page. */
+  strictUrlLock: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────

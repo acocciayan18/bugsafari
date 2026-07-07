@@ -15,6 +15,9 @@ export interface OptimizationSettings {
   'concurrent-spam-event': boolean;
   // Phase 3: Bounded Compute Integration
   'execution-timebox-ms'?: number;  // Time-based limit in milliseconds (default: 600000 = 10 minutes)
+  // Strict Page Boundary Lock: confine exploration to the exact launch URL
+  // (path + query + hash). Any action that drifts the page off it is reverted.
+  strictUrlLock?: boolean;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -22,6 +25,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'state-aware-hashing': true,
   'concurrent-spam-event': true,
   'execution-timebox-ms': 600000,  // 10 minutes default
+  strictUrlLock: false,  // Off by default — opt-in per run
 };
 
 // ─────────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ interface CommandCenterProps {
   hasTimeLimitExceeded?: boolean;
   isConnected?: boolean;
   isCleaningUp?: boolean;
-  onStart: (url: string, infiltration?: ExplorationRunConfig) => void;
+  onStart: (url: string, infiltration?: ExplorationRunConfig, strictUrlLock?: boolean) => void;
   onPause?: () => void;
   onResume?: () => void;
   onStop?: () => void;
@@ -63,6 +63,8 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
   const [profile, setProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   // Individual scenario selection, only used by the Custom Strategy Profile.
   const [customScenarios, setCustomScenarios] = useState<TestingTypeId[]>(ALL_TESTING_TYPE_IDS);
+  // Strict Page Boundary Lock — pin exploration to the exact launch URL.
+  const [strictUrlLock, setStrictUrlLock] = useState(false);
 
   const isCustomProfile = Boolean(
     INFILTRATION_PROFILE_CATALOG.find((option) => option.id === profile)?.custom,
@@ -84,7 +86,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
       onStart(localTargetUrl, {
         profile,
         customScenarios: isCustomProfile ? customScenarios : undefined,
-      });
+      }, strictUrlLock);
     }
   };
 
@@ -223,6 +225,21 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
             onCustomScenariosChange={setCustomScenarios}
             disabled={isTestRunning}
           />
+        )}
+
+        {/* Strict Page Boundary Lock — pin the run to the exact launch URL */}
+        {controlVisibility.showStartButton && (
+          <label className="flex items-center gap-2 mt-1 text-[11px] font-mono uppercase tracking-wider text-gray-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={strictUrlLock}
+              onChange={(e) => setStrictUrlLock(e.target.checked)}
+              disabled={isTestRunning}
+              className="h-3.5 w-3.5 accent-nova-blue cursor-pointer disabled:opacity-40"
+            />
+            <span className="font-bold">Strict Page Boundary Lock</span>
+            <span className="text-gray-400 normal-case tracking-normal">— confine exploration to the exact launch URL</span>
+          </label>
         )}
       </section>
 

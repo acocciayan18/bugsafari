@@ -47,6 +47,12 @@ import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.
  */
 const MAX_CONFIRMED_BUGS = 500;
 
+// Strict URL Lock timing bounds. NAV_SETTLE waits for an in-flight navigation to
+// drain before a boundary check/restore (best-effort, never blocks the loop).
+// NAV_RESTORE caps the reference-URL restore goto so a hung navigation can't stall.
+const NAV_SETTLE_TIMEOUT_MS = 3000;
+const NAV_RESTORE_TIMEOUT_MS = 20000;
+
 /**
  * Manages parent execution orchestration and run setups for an autonomous
  * exploratory testing session. Owns the engine collaborators, run-scoped shared
@@ -84,6 +90,9 @@ export class ExplorationEngine {
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
   private targetUrl = ''; // Full run URL — keyed for per-URL brain persistence/warm-start.
+  // Strict Page Boundary Lock: when true the launch URL is the immutable
+  // reference state and any drift is reverted (resolved in the constructor).
+  private readonly strictUrlLock: boolean;
 
   private isPaused = false;
   private isStopRequested = false;
@@ -153,6 +162,10 @@ export class ExplorationEngine {
     this.timeboxMs = optimizationSettings?.['execution-timebox-ms']
       ?? defaultOptimizationSettings['execution-timebox-ms']
       ?? 600000;
+
+    // Resolve the Strict Page Boundary Lock flag (defaults off / backward-compatible).
+    this.strictUrlLock = optimizationSettings?.strictUrlLock ?? false;
+    console.log(`[ExplorationEngine] Strict URL Lock:`, this.strictUrlLock);
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
@@ -414,6 +427,11 @@ export class ExplorationEngine {
     // Operator visibility: announce which testing strategies are active this run.
     emitter.emitMilestone(`🎛️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
 
+    // Announce the Strict Page Boundary Lock so the operator sees the URL is pinned.
+    if (this.strictUrlLock) {
+      emitter.emitMilestone(`🔒 Strict Page Boundary Lock enabled — exploration confined to ${targetUrl}`);
+    }
+
     // Warm-start the perceptron from the latest brain for this URL BEFORE creating the
     // session, so "most recent session for this URL" is a genuine prior run (not this one).
     await this.warmStartBrain(targetUrl, emitter);
@@ -550,7 +568,8 @@ export class ExplorationEngine {
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
-        ensureTargetDomain: (p) => this.ensureTargetDomain(p),
+        ensureTargetDomain: (p) => this.ensureTargetDomain(p, emitter),
+        strictUrlLock: this.strictUrlLock,
       });
 
       return await loop.execute(page, maxSteps);
@@ -813,10 +832,102 @@ export class ExplorationEngine {
     }
   }
 
-  private async ensureTargetDomain(page: Page): Promise<void> {
-    const current = page.url();
-    if (!current) {
+  /**
+   * Normalize a URL for strict-lock comparison. Path, query, and hash are all
+   * significant (the launch URL is immutable in full); only a trailing-slash
+   * difference on the path is tolerated, since browsers add one to bare origins.
+   */
+  private normalizeLockUrl(raw: string): string {
+    try {
+      const u = new URL(raw);
+      const path = u.pathname.replace(/\/+$/, '') || '/';
+      return `${u.protocol}//${u.host}${path}${u.search}${u.hash}`;
+    } catch {
+      return raw;
+    }
+  }
+
+  /**
+   * Let any in-flight navigation triggered by the previous action drain before
+   * we read the URL or attempt a restore. Bounded on both axes: 'networkidle'
+   * never settles on long-poll/websocket SPAs, so it is capped by its own
+   * timeout AND raced against a hard ceiling, and both are swallowed — this is a
+   * best-effort settle, never a hard gate. Prevents the re-entrant goto (calling
+   * page.goto while a navigation is still pending) that deadlocked the browser.
+   */
+  private async waitForNavigationSettle(page: Page): Promise<void> {
+    await Promise.race([
+      page.waitForLoadState('networkidle', { timeout: NAV_SETTLE_TIMEOUT_MS }).catch(() => undefined),
+      new Promise<void>((resolve) => setTimeout(resolve, NAV_SETTLE_TIMEOUT_MS)),
+    ]);
+  }
+
+  /**
+   * Strict Page Boundary Lock enforcement. Runs once per loop iteration BEFORE
+   * parsing, so it reverts any navigation the previous step's action caused
+   * (hard nav or SPA pushState — the per-step URL compare catches both). A no-op
+   * when the lock is off or the URL is unchanged. Never terminates the session:
+   * a failed restore is logged and exploration continues from wherever it is.
+   *
+   * Safe against pending navigations: it first drains any in-flight transition,
+   * re-reads the URL, and only then restores via a bounded goto. Because the
+   * loop awaits this call and all competing graph-recovery restores are disabled
+   * under the lock, no second navigation can race this one.
+   */
+  private async ensureTargetDomain(page: Page, telemetry: TelemetryEmitter): Promise<void> {
+    if (!this.strictUrlLock) {
       return;
+    }
+
+    // 1. Wait for the browser to stabilize before any boundary check/recovery.
+    await this.waitForNavigationSettle(page);
+
+    // 2. Re-read AFTER settling — a transient redirect may have already resolved.
+    const current = page.url();
+    if (!current || this.normalizeLockUrl(current) === this.normalizeLockUrl(this.targetUrl)) {
+      return;
+    }
+
+    telemetry.emit('ACTION', {
+      actionExecuted: 'strict-url-lock-restore',
+      url: current,
+      message: `🔒 Strict URL Lock: drift to ${current} blocked — restoring ${this.targetUrl}.`,
+    });
+
+    // 3. Restore via a bounded goto with a URL-verified fallback.
+    await this.restoreBoundaryUrl(page, telemetry);
+  }
+
+  /**
+   * Restore the page to the locked reference URL. The goto is bounded by a
+   * timeout; if it rejects (commonly "navigation interrupted" when a competing
+   * transition was mid-flight), we do NOT immediately re-fire another goto —
+   * instead we let the page settle once more and re-check the URL. Only if it is
+   * still off-boundary after that fallback do we report a failed restore. This
+   * timeout/settle/re-verify ladder replaces the naive "goto again on error"
+   * that could stack overlapping navigations.
+   */
+  private async restoreBoundaryUrl(page: Page, telemetry: TelemetryEmitter): Promise<void> {
+    const onBoundary = (): boolean =>
+      this.normalizeLockUrl(page.url()) === this.normalizeLockUrl(this.targetUrl);
+
+    try {
+      await page.goto(this.targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_RESTORE_TIMEOUT_MS });
+      return;
+    } catch (err) {
+      // A rejected goto does not necessarily mean we are off-boundary: an
+      // interrupting navigation may have itself landed on (or been superseded
+      // toward) the reference URL. Settle once, then verify before retrying.
+      await this.waitForNavigationSettle(page);
+      if (onBoundary()) {
+        return;
+      }
+
+      telemetry.emit('ACTION', {
+        actionExecuted: 'strict-url-lock-restore-failed',
+        url: this.targetUrl,
+        message: `🔒 Strict URL Lock: restore to ${this.targetUrl} failed: ${err instanceof Error ? err.message : String(err)}. Continuing from ${page.url()}.`,
+      });
     }
   }
 

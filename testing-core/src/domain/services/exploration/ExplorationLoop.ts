@@ -440,14 +440,28 @@ export class ExplorationLoop {
       // Nothing soft-blocked left to re-queue — re-seed from the origin once
       // to surface states the run may have drifted away from.
       const origin = this.deps.getTargetOrigin();
-      this.deps.telemetry.emitMilestone(`♻️ Re-seeding exploration from origin: ${origin}`);
-      await this.deps.stateRestorer.restoreToState(page, '', origin);
-      await wait(350);
+      if (this.deps.strictUrlLock) {
+        // Under the boundary lock the origin re-seed is a competing navigation:
+        // the boundary-lock restore is the sole page-transition authority, so skip it.
+        this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: skipping origin re-seed (boundary lock owns navigation).');
+      } else {
+        this.deps.telemetry.emitMilestone(`♻️ Re-seeding exploration from origin: ${origin}`);
+        await this.deps.stateRestorer.restoreToState(page, '', origin);
+        await wait(350);
+      }
     }
     return { kind: 'continue' };
   }
 
   private async handleBacktrackDecision(page: Page, decision: BacktrackDecision): Promise<void> {
+    // Under the boundary lock, backtracking through the recovery ladder
+    // (history.back / deep-link goto / reload) would issue a page transition that
+    // races the boundary-lock restore. Skip it — the lock keeps us on the single
+    // permitted URL and the next parse re-reads the live DOM regardless.
+    if (this.deps.strictUrlLock) {
+      this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
+      return;
+    }
     // Restore the parent state via the SPA-friendly recovery ladder
     // (history → deep-link → hard reload) instead of a blind hard goto
     // that would wipe client state and false-trip graph exhaustion.
@@ -579,11 +593,17 @@ export class ExplorationLoop {
         });
       }
     } else {
-      // Unverified — isolate this single branch and restore the parent
-      // locally rather than letting the graph exhaust falsely.
+      // Unverified — isolate this single branch. Normally we restore the parent
+      // locally; under the boundary lock that restore is a competing navigation,
+      // so we only mark the edge unstable and defer any URL correction to the
+      // boundary-lock restore at the next iteration.
       this.deps.pathNavigator.markEdgeUnstable(previousHashBeforeAction, target.selector);
-      this.deps.telemetry.emitMilestone(`🩹 Edge unstable — restoring parent locally (no false exhaustion).`);
-      await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
+      if (this.deps.strictUrlLock) {
+        this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
+      } else {
+        this.deps.telemetry.emitMilestone(`🩹 Edge unstable — restoring parent locally (no false exhaustion).`);
+        await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
+      }
     }
   }
 
