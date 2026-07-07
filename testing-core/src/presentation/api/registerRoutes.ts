@@ -4,6 +4,8 @@ import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
+import { sessionManager } from '../../application/services/SessionManager.js';
+import { randomUUID } from 'node:crypto';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
@@ -150,16 +152,15 @@ export function registerRoutes(
     console.log('[API] 🔴 POST /api/safari/stop received - explicit cleanup request');
 
     try {
-      // Import the active engine from socket handlers
-      const { activeEngineInstance } = await import('../socket/registerSocketHandlers.js');
+      const activeEngine = sessionManager.getActiveEngine();
 
-      if (!activeEngineInstance) {
+      if (!activeEngine) {
         console.log('[API] No active engine to stop - already IDLE');
         response.json({ ok: true, message: 'No active session to stop' });
         return;
       }
 
-      const activeUserId = useCase.getUserId();
+      const activeUserId = sessionManager.getActiveUserId();
       const requesterId = request.userId ?? null;
       if (activeUserId !== requesterId) {
         console.warn('[API] ❌ Stop rejected: requester does not own the active session');
@@ -168,9 +169,7 @@ export function registerRoutes(
       }
 
       console.log('[API] Stopping active engine...');
-      if (typeof activeEngineInstance.stop === 'function') {
-        await activeEngineInstance.stop();
-      }
+      await sessionManager.stopByOperator();
 
       console.log('[API] ✅ Engine stopped successfully via HTTP endpoint');
       response.json({ ok: true, message: 'Safari session stopped' });
@@ -239,11 +238,26 @@ export function registerRoutes(
       console.log(`[API] ↪ Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
     }
 
-    console.log(`[API] ✅ Accepting safari launch for: ${targetUrl}`);
+    // Server-issued run token: returned to the client (stored client-side) so a
+    // returning socket — including a guest after a full refresh — can prove
+    // ownership and re-attach to this exact run.
+    const runId = randomUUID();
+
+    console.log(`[API] ✅ Accepting safari launch for: ${targetUrl} (runId=${runId})`);
     // Operator sees their original URL; the engine dials the routed one.
-    response.json({ accepted: true, url: targetUrl });
+    response.json({ accepted: true, url: targetUrl, runId });
     console.log(`[API] 🚀 Starting safari in background...`);
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios);
+    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId);
+  });
+
+  // Restore-on-load: a returning client asks whether it owns an active run and,
+  // if so, gets the full replay snapshot to rebuild the live dashboard. Uses the
+  // same optionalAuth as start-test — authed users are matched by identity, guests
+  // by the runId they present. Returns { snapshot: null } when nothing is owned.
+  app.get('/api/session/active', optionalAuth, (request: AuthRequest, response: Response): void => {
+    const runId = extractStringParam(request.query.runId);
+    const snapshot = sessionManager.getSnapshotFor(request.userId ?? null, runId);
+    response.json({ snapshot });
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)

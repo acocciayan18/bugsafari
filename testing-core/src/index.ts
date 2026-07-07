@@ -12,6 +12,7 @@ import { registerRoutes } from './presentation/api/registerRoutes.js';
 import { registerAuthRoutes } from './presentation/authentication/authController.js';
 import { registerUserSettingsRoutes } from './presentation/authentication/userSettingsController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
+import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 
@@ -66,6 +67,9 @@ app.get('/api/debug/db', async (req, res) => {
 });
 
 const telemetryGateway = new SocketTelemetryGateway(io);
+// Wire the centralized session/reconnection manager to the live socket server
+// and the shared telemetry gateway (room scoping + reconnect replay buffer).
+sessionManager.initialize(io, telemetryGateway);
 
 // Connect to database and wait for it to complete before registering routes
 // This ensures DB is ready before any auth requests are handled

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -32,6 +32,38 @@ export interface DashboardState {
   sessionHistory: SessionHistoryEntry[];
   isSavingSession: boolean;
   browserConsole: BrowserConsoleMessage[];
+  // Reconnection & recovery surface.
+  isReconnecting: boolean;
+  reconnectAttempt: number;
+  targetOutage: NetworkAlert | null;
+  isRestoring: boolean;
+}
+
+// localStorage key for the server-issued run token — lets a guest survive a full
+// page refresh (authed users are additionally matched by identity server-side).
+const RUN_ID_STORAGE_KEY = 'bugsafari:runId';
+
+// Map the backend run lifecycle onto the dashboard's visibility status.
+function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
+  switch (status) {
+    case 'RUNNING':
+    case 'INTERRUPTED':   // engine still alive inside the grace window
+      return 'ACTIVE';
+    case 'PAUSED':
+      return 'PAUSED';
+    case 'COMPLETED':
+    case 'DISCONNECTED':
+      return 'FINISHED';
+    case 'CRASHED':
+      return 'STOPPED';
+    default:
+      return 'IDLE';
+  }
+}
+
+// A run is still live (config controls stay locked) for these lifecycle states.
+function lifecycleIsLive(status: RunLifecycleStatus): boolean {
+  return status === 'RUNNING' || status === 'PAUSED' || status === 'INTERRUPTED';
 }
 
 const ENGINE_TERMINAL_ACTIONS = new Set([
@@ -96,6 +128,10 @@ const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [liveFrame, setLiveFrame] = useState<string | null>(null);
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [targetOutage, setTargetOutage] = useState<NetworkAlert | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
 const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
   const [elapsedTimeMs, setElapsedTimeMs] = useState<number>(0);
@@ -179,11 +215,90 @@ return () => {
   }, [isInitializing, isTestRunning]);
 
   useEffect(() => {
-    gateway.onConnected((connected) => {
-      setIsConnected(connected);
-      if (!connected) {
+    // Rebuild the live dashboard from a backend snapshot (restore-on-load AND
+    // reconnect replay both funnel through here — the snapshot is authoritative
+    // for the buffered window, so we replace rather than merge).
+    const hydrateFromSnapshot = (snapshot: ActiveSessionSnapshot): void => {
+      const live = lifecycleIsLive(snapshot.status);
+      runStartedRef.current = true;
+
+      setTelemetry(snapshot.telemetry.slice(-500));
+      // Buffers arrive oldest→newest; the UI lists render newest-first.
+      setReports([...snapshot.reports].reverse());
+      setIncidents([...snapshot.incidents].reverse());
+      setCurrentUrl(snapshot.currentUrl || snapshot.targetUrl);
+
+      setSessionTimeMs(snapshot.timeboxMs);
+      setElapsedTimeMs(snapshot.elapsedTimeMs);
+      setRemainingTimeMs(Math.max(0, snapshot.timeboxMs - snapshot.elapsedTimeMs));
+
+      setStatus(lifecycleToStatus(snapshot.status));
+      setIsTestRunning(live);
+      setHasRunCompleted(!live);
+      setIsLaunching(false);
+
+      const frame = snapshot.lastFrame ? `data:image/jpeg;base64,${snapshot.lastFrame}` : null;
+      // Only clear the launch spinner/watchdog once we actually have a frame —
+      // a snapshot taken right at run-start (no frame yet) must not disable the
+      // 30s "no live frame" cleanup that startTest arms.
+      if (frame) {
+        setLiveFrame(frame);
+        setLatestFrame(frame);
+        setIsInitializing(false);
         setIsThinking(false);
       }
+
+      // Synthesize an outage banner if the run is paused on an unreachable target
+      // (a discrete network-alert event may have predated this client).
+      if (live && !snapshot.targetHealthy) {
+        setTargetOutage({
+          kind: 'target-unreachable',
+          targetUrl: snapshot.targetUrl,
+          attempt: 0,
+          message: `Target ${snapshot.targetUrl} is currently unreachable. Execution is paused and will auto-resume on recovery.`,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        setTargetOutage(null);
+      }
+
+      // Keep the run token aligned so a subsequent reconnect re-attaches.
+      gateway.setRunId(snapshot.runId);
+      try {
+        window.localStorage.setItem(RUN_ID_STORAGE_KEY, snapshot.runId);
+      } catch { /* storage unavailable — non-fatal */ }
+    };
+
+    gateway.onConnected((connected) => {
+      setIsConnected(connected);
+      if (connected) {
+        // Socket (re)established — clear the reconnecting overlay.
+        setIsReconnecting(false);
+        setReconnectAttempt(0);
+      } else {
+        setIsThinking(false);
+      }
+    });
+
+    gateway.onReconnecting((attempt) => {
+      setIsReconnecting(true);
+      setReconnectAttempt(attempt);
+    });
+
+    gateway.onSessionSnapshot((snapshot) => {
+      hydrateFromSnapshot(snapshot);
+    });
+
+    gateway.onNetworkAlert((alert) => {
+      setTargetOutage(alert.kind === 'target-unreachable' ? alert : null);
+      setTelemetry((prev) => [
+        ...prev,
+        {
+          timestamp: alert.timestamp,
+          type: alert.kind === 'target-unreachable' ? 'EXCEPTION' : 'ACTION',
+          meta: { actionExecuted: alert.kind, url: alert.targetUrl, message: alert.message },
+        },
+      ]);
     });
     gateway.onTelemetry((event) => {
       setTelemetry((previous) => {
@@ -241,6 +356,14 @@ return () => {
         setIsInitializing(false);
         setStatus('IDLE');
         setLiveFrame(null);
+        // The run is over — drop the outage banner and the persisted run token so
+        // a future refresh doesn't try to re-attach to a finished run.
+        setTargetOutage(null);
+        setIsReconnecting(false);
+        gateway.setRunId(null);
+        try {
+          window.localStorage.removeItem(RUN_ID_STORAGE_KEY);
+        } catch { /* storage unavailable */ }
         // Safety net: the backend always emits IDLE in its finally block, even on a
         // fatal crash that sent no terminal action. If a run had started, mark it
         // completed so Save History is available after every finish.
@@ -274,8 +397,27 @@ return () => {
       });
     });
 
+    // Seed the run token from a prior page-load BEFORE connecting so the socket's
+    // first attach emit carries it (guest cross-refresh recovery).
+    let storedRunId: string | null = null;
+    try {
+      storedRunId = window.localStorage.getItem(RUN_ID_STORAGE_KEY);
+    } catch { /* storage unavailable */ }
+    if (storedRunId) gateway.setRunId(storedRunId);
+
     gateway.connect();
     void gateway.fetchSessionHistory(60).then(setSessionHistory).catch(() => undefined);
+
+    // Restore-on-load: independently of the socket, ask the backend whether this
+    // client owns an active run and rebuild the dashboard if so.
+    setIsRestoring(true);
+    void gateway.fetchActiveSession()
+      .then((snapshot) => {
+        if (snapshot) hydrateFromSnapshot(snapshot);
+      })
+      .catch(() => undefined)
+      .finally(() => setIsRestoring(false));
+
     return () => {
       gateway.disconnect();
       gateway.removeAllListeners();
@@ -307,10 +449,15 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
+    setTargetOutage(null);
     runStartedRef.current = true;
 
 try {
-      await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      const runId = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      // Persist the server-issued run token so a refresh / reconnect re-attaches.
+      try {
+        if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
+      } catch { /* storage unavailable */ }
       setIsLaunching(false);
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing
@@ -435,6 +582,10 @@ return {
       sessionHistory,
       isSavingSession,
       browserConsole,
+      isReconnecting,
+      reconnectAttempt,
+      targetOutage,
+      isRestoring,
     },
     handleTimeLimitExceeded,
     startTest,

@@ -1,4 +1,4 @@
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -18,8 +18,17 @@ export interface EngineGateway {
   onLiveFrame(handler: (base64Jpeg: string) => void): void;
   onUrlChanged(handler: (url: string) => void): void;
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;
+  // Reconnection & recovery.
+  onReconnecting(handler: (attempt: number) => void): void;
+  onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
+  onNetworkAlert(handler: (alert: NetworkAlert) => void): void;
   removeAllListeners(): void;
-  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void>;
+  /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
+  setRunId(runId: string | null): void;
+  /** Ask the backend whether the requester owns an active run; null if none. */
+  fetchActiveSession(): Promise<ActiveSessionSnapshot | null>;
+  /** Launch a run; resolves with the server-issued run token (null if not accepted). */
+  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */

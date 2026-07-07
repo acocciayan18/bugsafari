@@ -2,28 +2,61 @@ import type { Server } from 'socket.io';
 import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
+/** Outbound wire channels the recorder buffers for reconnect replay. */
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report';
+
+/** Sink that captures every outbound payload so a returning client can be replayed. */
+export interface TelemetryRecorder {
+  record(kind: TelemetryRecordKind, payload: unknown): void;
+}
+
 export class SocketTelemetryGateway implements TelemetryGateway {
+  // When set, emits are scoped to this Socket.IO room instead of broadcast to
+  // every connected socket — the run-scoped wire that makes future per-tenant
+  // isolation a config change rather than a rewrite. Null preserves the legacy
+  // broadcast behavior (no active run).
+  private room: string | null = null;
+  private recorder: TelemetryRecorder | null = null;
+
   constructor(private readonly io: Server) { }
 
+  /** Bind/clear the active run's room (set at run start, cleared at run end). */
+  public setRoom(room: string | null): void {
+    this.room = room;
+  }
+
+  /** Bind/clear the ring-buffer recorder for the active run. */
+  public setRecorder(recorder: TelemetryRecorder | null): void {
+    this.recorder = recorder;
+  }
+
+  // Room-scoped emitter when a run owns the wire, otherwise a plain broadcast.
+  private channel(): Pick<Server, 'emit'> {
+    return this.room ? this.io.to(this.room) : this.io;
+  }
+
   public emitTelemetry(event: TelemetryEvent): void {
-    this.io.emit('telemetry', event);
+    this.recorder?.record('telemetry', event);
+    this.channel().emit('telemetry', event);
   }
 
   public emitUrlChanged(url: string): void {
-    this.io.emit('url-changed', url);
+    this.recorder?.record('url-changed', url);
+    this.channel().emit('url-changed', url);
   }
 
-
   public emitTargets(targets: DiscoveredElement[]): void {
-    this.io.emit('discovered-elements', targets);
+    this.channel().emit('discovered-elements', targets);
   }
 
   public emitLiveFrame(base64Jpeg: string): void {
-    this.io.emit('live-frame', base64Jpeg);
+    this.recorder?.record('live-frame', base64Jpeg);
+    this.channel().emit('live-frame', base64Jpeg);
   }
 
   public emitForensicReport(report: ForensicCrashReport): void {
-    this.io.emit('forensic-report', report);
+    this.recorder?.record('forensic-report', report);
+    this.channel().emit('forensic-report', report);
     this.emitIncidentReport({
       timestamp: report.timestamp,
       reason: report.reason,
@@ -45,16 +78,17 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   }
 
   public emitIncidentReport(report: IncidentReport): void {
-    this.io.emit('incident-report', report);
+    this.recorder?.record('incident-report', report);
+    this.channel().emit('incident-report', report);
   }
 
   // Phase 3: Timer state events for frontend countdown sync
   public emitTimerState(state: TimerState): void {
-    this.io.emit('timer-state', state);
+    this.channel().emit('timer-state', state);
   }
 
   public emitTimeRemaining(timeRemainingMs: number): void {
-    this.io.emit('time-remaining', timeRemainingMs);
+    this.channel().emit('time-remaining', timeRemainingMs);
   }
 }
 

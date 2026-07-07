@@ -18,4 +18,8 @@ export enum SessionStatus {
   COMPLETED = 'Completed',
   CRASHED = 'Crashed',
   PAUSED = 'Paused',
+  // Recovery lifecycle: owner dropped but engine kept alive inside the grace
+  // window (INTERRUPTED), or grace expired and the run was torn down (DISCONNECTED).
+  INTERRUPTED = 'Interrupted',
+  DISCONNECTED = 'Disconnected',
 }

@@ -10,3 +10,4 @@ export * from './types/telemetry.js';
 export * from './types/bug.js';
 export * from './types/testingType.js';
 export * from './types/regression.js';
+export * from './types/session.js';

@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, NETWORK_ALERT_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -9,6 +10,9 @@ type IncidentHandler = (report: IncidentReport) => void;
 type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
+type ReconnectingHandler = (attempt: number) => void;
+type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
+type NetworkAlertHandler = (alert: NetworkAlert) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -16,7 +20,8 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecti
  * Socket.IO lifecycle + event binding/dispatch for the engine gateway. Owns the
  * socket, connection state, the bind/unbind blocks, every server→client handler,
  * the on* subscriber registration, and the frontend→backend control emits
- * (pause/resume/stop). The coordinator composes this alongside the HTTP client.
+ * (pause/resume/stop). Also drives reconnect re-attach: on every (re)connect it
+ * presents the owned run token so the backend replays the live session.
  */
 export class SocketConnectionManager {
   private readonly socket: Socket;
@@ -26,6 +31,10 @@ export class SocketConnectionManager {
   private connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private readonly CONNECTION_TIMEOUT_MS = 10000; // 10 second timeout for initial connection
 
+  // Run token of the active run this client owns — presented on every connect so
+  // a refresh / transient drop re-attaches instead of losing the run.
+  private runId: string | null = null;
+
   private connectedHandler: ConnectedHandler | null = null;
   private telemetryHandler: TelemetryHandler | null = null;
   private forensicHandler: ForensicHandler | null = null;
@@ -33,6 +42,9 @@ export class SocketConnectionManager {
   private frameHandler: FrameHandler | null = null;
   private urlChangedHandler: UrlChangedHandler | null = null;
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
+  private reconnectingHandler: ReconnectingHandler | null = null;
+  private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
+  private networkAlertHandler: NetworkAlertHandler | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     // Use hybrid fallback: environment variable first, then window.location.origin for proxy-aware routing
@@ -56,6 +68,24 @@ export class SocketConnectionManager {
   /** Current connection state — read by the coordinator's forceStop to choose socket vs. HTTP. */
   public get connectionState(): ConnectionState {
     return this.connectionStateValue;
+  }
+
+  /** Seed / update the run token used for re-attach on (re)connect. */
+  public setRunId(runId: string | null): void {
+    this.runId = runId;
+  }
+
+  /**
+   * Present the owned run token and (re)join its room. Called on every connect
+   * and explicitly right after a fresh run starts — the socket may already be
+   * connected then, so it wouldn't otherwise pick up the newly-created room.
+   */
+  public reattach(): void {
+    this.socket.emit(SESSION_ATTACH_EVENT, { runId: this.runId ?? undefined }, (ack: SessionAttachAck) => {
+      if (ack?.attached && ack.snapshot) {
+        this.sessionSnapshotHandler?.(ack.snapshot);
+      }
+    });
   }
 
   public connect(): void {
@@ -92,6 +122,11 @@ export class SocketConnectionManager {
     this.socket.on('live-frame', this.handleLiveFrame);
     this.socket.on('url-changed', this.handleUrlChanged);
     this.socket.on('browser-console', this.handleBrowserConsole);
+    this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
+    this.socket.on(NETWORK_ALERT_EVENT, this.handleNetworkAlert);
+
+    // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
+    this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
 
     this.socket.connect();
   }
@@ -112,6 +147,9 @@ export class SocketConnectionManager {
     this.socket.off('live-frame', this.handleLiveFrame);
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
+    this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
+    this.socket.off(NETWORK_ALERT_EVENT, this.handleNetworkAlert);
+    this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.off('connect_error');
     this.socket.off('error');
     this.socket.disconnect();
@@ -154,11 +192,20 @@ export class SocketConnectionManager {
     this.connectionStateValue = 'connected';
     console.log('[Gateway] Connected successfully');
     this.connectedHandler?.(true);
+
+    // Re-attach to the owned run (if any). The backend replays the buffered
+    // session into this socket via the ack — closing any gap opened by the drop.
+    this.reattach();
   };
 
   private readonly handleDisconnect = (): void => {
     this.connectionStateValue = 'disconnected';
     this.connectedHandler?.(false);
+  };
+
+  private readonly handleReconnectAttempt = (attempt: number): void => {
+    this.connectionStateValue = 'reconnecting';
+    this.reconnectingHandler?.(attempt);
   };
 
   private readonly handleTelemetry = (event: TelemetryEvent): void => {
@@ -185,6 +232,14 @@ export class SocketConnectionManager {
     this.browserConsoleHandler?.(message);
   };
 
+  private readonly handleSessionSnapshot = (snapshot: ActiveSessionSnapshot): void => {
+    this.sessionSnapshotHandler?.(snapshot);
+  };
+
+  private readonly handleNetworkAlert = (alert: NetworkAlert): void => {
+    this.networkAlertHandler?.(alert);
+  };
+
   public onConnected(handler: ConnectedHandler): void {
     this.connectedHandler = handler;
   }
@@ -206,6 +261,15 @@ export class SocketConnectionManager {
   public onBrowserConsole(handler: BrowserConsoleHandler): void {
     this.browserConsoleHandler = handler;
   }
+  public onReconnecting(handler: ReconnectingHandler): void {
+    this.reconnectingHandler = handler;
+  }
+  public onSessionSnapshot(handler: SessionSnapshotHandler): void {
+    this.sessionSnapshotHandler = handler;
+  }
+  public onNetworkAlert(handler: NetworkAlertHandler): void {
+    this.networkAlertHandler = handler;
+  }
 
   public removeAllListeners(): void {
     this.connectedHandler = null;
@@ -215,5 +279,8 @@ export class SocketConnectionManager {
     this.frameHandler = null;
     this.urlChangedHandler = null;
     this.browserConsoleHandler = null;
+    this.reconnectingHandler = null;
+    this.sessionSnapshotHandler = null;
+    this.networkAlertHandler = null;
   }
 }

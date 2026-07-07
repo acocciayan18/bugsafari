@@ -21,6 +21,7 @@ import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
+import ConnectionStatusOverlay from './components/common/ConnectionStatusOverlay';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { defaultOptimizationSettings } from '../../shared/types.js';
@@ -127,6 +128,14 @@ function AuthAppContent() {
   // ─────────────────────────────────────────────────────────────
   return (
     <ThemeProvider>
+      {/* Global recovery status: backend disconnect, reconnection, target outage, restore. */}
+      <ConnectionStatusOverlay
+        isConnected={state.isConnected}
+        isReconnecting={state.isReconnecting}
+        reconnectAttempt={state.reconnectAttempt}
+        targetOutage={state.targetOutage}
+        isRestoring={state.isRestoring}
+      />
       <Routes>
         <Route
           path="/dashboard"

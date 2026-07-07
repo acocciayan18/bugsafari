@@ -44,8 +44,11 @@ export class StrictUrlLockGuard {
    * Returns null for non-http(s) URLs (not subject to confinement). Hash is
    * intentionally excluded — a fragment change is an in-page transition, not a
    * navigation away from the app. A lone trailing slash on the path is tolerated.
+   *
+   * Public so drift detection (PageHealthGuard) shares the exact same key logic
+   * as enforcement — detection can never diverge from what the guard blocks.
    */
-  private static confinementKey(raw: string, base?: string): string | null {
+  public static confinementKey(raw: string, base?: string): string | null {
     let u: URL;
     try {
       u = base !== undefined ? new URL(raw, base) : new URL(raw);

@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -13,6 +13,8 @@ import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 export class SocketHttpEngineGateway implements EngineGateway {
   private readonly http: EngineHttpClient;
   private readonly connection: SocketConnectionManager;
+  // Server-issued run token for the active run this client owns.
+  private runId: string | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     this.http = new EngineHttpClient(apiBaseUrl);
@@ -21,6 +23,15 @@ export class SocketHttpEngineGateway implements EngineGateway {
 
   public setAuthToken(token: string | null): void {
     this.http.setAuthToken(token);
+  }
+
+  public setRunId(runId: string | null): void {
+    this.runId = runId;
+    this.connection.setRunId(runId);
+  }
+
+  public fetchActiveSession(): Promise<ActiveSessionSnapshot | null> {
+    return this.http.fetchActiveSession(this.runId);
   }
 
   // ── Socket lifecycle ──────────────────────────────────────────
@@ -33,8 +44,15 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
 
   // ── HTTP/REST routines ────────────────────────────────────────
-  public startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> {
-    return this.http.startTest(targetUrl, optimizationSettings, infiltration);
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null> {
+    const runId = await this.http.startTest(targetUrl, optimizationSettings, infiltration);
+    // Persist the token so the socket re-attaches to THIS run on reconnect.
+    this.setRunId(runId);
+    // The socket is typically already connected here, so join the freshly-created
+    // run room now — otherwise room-scoped telemetry would only reach us via the
+    // reconnect path.
+    if (runId) this.connection.reattach();
+    return runId;
   }
 
   public saveSession(targetUrl: string): Promise<void> {
@@ -95,6 +113,15 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void {
     this.connection.onBrowserConsole(handler);
+  }
+  public onReconnecting(handler: (attempt: number) => void): void {
+    this.connection.onReconnecting(handler);
+  }
+  public onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void {
+    this.connection.onSessionSnapshot(handler);
+  }
+  public onNetworkAlert(handler: (alert: NetworkAlert) => void): void {
+    this.connection.onNetworkAlert(handler);
   }
 
   public removeAllListeners(): void {

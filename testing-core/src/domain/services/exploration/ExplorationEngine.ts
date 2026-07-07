@@ -32,6 +32,7 @@ import { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
 import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
@@ -462,15 +463,19 @@ export class ExplorationEngine {
     await this.persistBrainSnapshot('start');
     this.lastActedTarget = null;
 
-    let handleFramenavigated: (() => void) | null = null;
+    // Page-scoped wiring is applied through one routine so the deepest recovery
+    // rung (page recreation) rebuilds a fresh page identically to launch — no
+    // listener/telemetry drift between the initial page and a recreated one.
+    const handleFramenavigated = (): void => {
+      const url = page.url();
+      if (!url) return;
+      lastKnownUrl = url;
+      // Phase 3: Track page count when navigating
+      this.runtimeMetrics.pageCount++;
+      emitter.gateway.emitUrlChanged(url);
+    };
 
-    // 🏁 Safari Initialized (milestone)
-    emitter.emitMilestone('🏁 Safari Initialized');
-
-    stabilityMonitor.attachDialogAutoDismiss(page);
-    stabilityMonitor.attachExceptionMonitoring(page);
-
-    page.on('request', (request: Request) => {
+    const handleRequest = (request: Request): void => {
       const t = this.lastActedTarget;
       if (!t) {
         return;
@@ -484,23 +489,73 @@ export class ExplorationEngine {
           message: `Boosted feature weights after ${resourceType.toUpperCase()} network signal.`,
         });
       }
-    });
-
-    stabilityMonitor.attachNetworkMonitoring(page);
-
-    handleFramenavigated = (): void => {
-      const url = page.url();
-      if (!url) return;
-      lastKnownUrl = url;
-      // Phase 3: Track page count when navigating
-      this.runtimeMetrics.pageCount++;
-      emitter.gateway.emitUrlChanged(url);
     };
 
-    page.on('framenavigated', handleFramenavigated);
+    const attachPageListeners = (p: Page): void => {
+      stabilityMonitor.attachDialogAutoDismiss(p);
+      stabilityMonitor.attachExceptionMonitoring(p);
+      p.on('request', handleRequest);
+      stabilityMonitor.attachNetworkMonitoring(p);
+      p.on('framenavigated', handleFramenavigated);
+    };
+
+    // 🏁 Safari Initialized (milestone)
+    emitter.emitMilestone('🏁 Safari Initialized');
+
+    attachPageListeners(page);
 
     // 🚀 Start the independent 33 ms frame loop the instant the page object exists.
     emitter.startFrameCaptureLoop(page);
+
+    // Deepest recovery rung: replace a dead/blank page with a fresh, fully re-wired
+    // one navigated back to the target (strict guard reinstalled if enabled).
+    const recreatePage = async (): Promise<Page | null> => {
+      try {
+        const context = page.context();
+        emitter.stopFrameCaptureLoop();
+        if (this.cleanupStabilityMonitor) {
+          this.cleanupStabilityMonitor();
+          this.cleanupStabilityMonitor = null;
+        }
+        if (!page.isClosed()) {
+          try { await page.close(); } catch { /* already gone */ }
+        }
+        const fresh = await context.newPage();
+        page = fresh;
+        this.activePage = fresh;
+        if (this.strictUrlLock) {
+          await new StrictUrlLockGuard(targetUrl, emitter).install(fresh);
+        }
+        attachPageListeners(fresh);
+        emitter.startFrameCaptureLoop(fresh);
+        await fresh.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        handleFramenavigated();
+        await this.ensureDomReady(fresh, emitter);
+        this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
+          fresh,
+          (bug) => this.registerConfirmedBug(bug),
+        );
+        return fresh;
+      } catch (err) {
+        console.error('[ExplorationEngine] Page recreation failed:', err instanceof Error ? err.message : String(err));
+        return null;
+      }
+    };
+
+    // Universal invalid-context recovery + strict-lock drift restore, applied
+    // once per exploration iteration by the loop via ensurePageHealth().
+    const pageHealthGuard = new PageHealthGuard({
+      telemetry: emitter,
+      getTargetUrl: () => this.targetUrl,
+      getTargetOrigin: () => this.targetOrigin,
+      strictUrlLock: this.strictUrlLock,
+      recreatePage,
+      recordRecovery: (url, strategy) =>
+        this.recordActionTrace(
+          { timestamp: new Date().toISOString(), selector: url, action: `recover-${strategy}` },
+          { actionType: 'NAVIGATE', humanIdentifier: `recovery via ${strategy}`, url },
+        ),
+    });
 
     try {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
@@ -573,7 +628,7 @@ export class ExplorationEngine {
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
-        ensureTargetDomain: (p) => this.ensureTargetDomain(p, emitter),
+        ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
       });
 
@@ -622,9 +677,7 @@ export class ExplorationEngine {
         });
       }
 
-      if (handleFramenavigated) {
-        page.off('framenavigated', handleFramenavigated);
-      }
+      page.off('framenavigated', handleFramenavigated);
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }
@@ -837,64 +890,10 @@ export class ExplorationEngine {
     }
   }
 
-  /**
-   * Normalize a URL for strict-lock comparison. Path, query, and hash are all
-   * significant (the launch URL is immutable in full); only a trailing-slash
-   * difference on the path is tolerated, since browsers add one to bare origins.
-   */
-  /**
-   * http(s) confinement key (origin + path + query; hash excluded as an in-page
-   * fragment), or null for non-http(s) / unparseable URLs — which are browser-
-   * internal transitions (about:blank, data:, …) NOT subject to confinement.
-   * Mirrors {@link StrictUrlLockGuard}'s key so detection matches enforcement.
-   */
-  private lockConfinementKey(raw: string): string | null {
-    let u: URL;
-    try {
-      u = new URL(raw);
-    } catch {
-      return null;
-    }
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-      return null;
-    }
-    const path = u.pathname.replace(/\/+$/, '') || '/';
-    return `${u.protocol}//${u.host}${path}${u.search}`;
-  }
-
-  /**
-   * Strict Page Boundary Lock — detection-only safety net. Proactive prevention
-   * now lives in {@link StrictUrlLockGuard} (route interceptor + client sandbox),
-   * so the main frame can no longer leave the locked URL in the first place. This
-   * per-iteration check therefore does NOT navigate: it merely records any
-   * unexpected residual drift for forensics. Removing the old reactive goto is
-   * exactly what eliminates the navigation race, state-restoration conflict, and
-   * main-thread lockup — a competing goto is never issued from here again.
-   */
-  private async ensureTargetDomain(page: Page, telemetry: TelemetryEmitter): Promise<void> {
-    if (!this.strictUrlLock) {
-      return;
-    }
-
-    const current = page.url();
-    const currentKey = this.lockConfinementKey(current);
-    const lockKey = this.lockConfinementKey(this.targetUrl);
-
-    // Only genuine http(s) app drift counts. A blank/data/internal page
-    // (currentKey === null) or a fragment-only change is a browser-managed
-    // transition, never a boundary violation — stay silent to avoid noise.
-    if (currentKey === null || lockKey === null || currentKey === lockKey) {
-      return;
-    }
-
-    // Should be unreachable while the guard is armed; log without navigating so
-    // no page transition competes with the browser's own event loop.
-    telemetry.emit('ACTION', {
-      actionExecuted: 'strict-url-lock-drift',
-      url: current,
-      message: `🔒 Strict URL Lock: residual drift to ${current} observed post-guard (not navigating).`,
-    });
-  }
+  // Strict-lock drift detection + recovery now lives in PageHealthGuard (which
+  // shares StrictUrlLockGuard.confinementKey, so detection can never diverge from
+  // enforcement), replacing the former detection-only ensureTargetDomain and its
+  // duplicated confinement-key helper.
 
   private async ensureDomReady(page: Page, telemetry: TelemetryEmitter): Promise<void> {
     try {

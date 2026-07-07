@@ -105,6 +105,17 @@ export class ExplorationLoop {
       if (pauseGate.kind === 'return') return pauseGate.result;
 
       try {
+        // Universal page-health gate: recover from invalid contexts (about:blank,
+        // closed page, failed navigation) and strict-lock drift BEFORE parsing, so
+        // exploration can never get trapped on a dead page. May hand back a
+        // recreated page; `unrecoverable` ends the run cleanly.
+        const health = await this.deps.ensurePageHealth(page);
+        if (health.status === 'unrecoverable') {
+          telemetry.emitMilestone('🛑 Unrecoverable invalid browser state — ending exploration.');
+          return { completed: false, reason: 'Unrecoverable invalid browser state (about:blank / closed page).' };
+        }
+        page = health.page;
+
         if (runtimeCrashReason) {
           return { completed: false, reason: runtimeCrashReason };
         }
@@ -255,7 +266,9 @@ export class ExplorationLoop {
     // 🧠 Prioritization (milestone comes right after parse/scoring)
     this.deps.telemetry.emitMilestone('👁️ Vision Active');
 
-    await this.deps.ensureTargetDomain(page);
+    // Page-context validity + strict-lock confinement are enforced by the
+    // per-iteration ensurePageHealth() gate in execute(); here we only wait for
+    // interactive content to appear.
     await this.deps.ensureDomReady(page);
 
     const elements = await this.deps.parser.parse(page);

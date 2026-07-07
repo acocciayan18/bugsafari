@@ -23,6 +23,7 @@ import type { ActionExecutor } from './ActionExecutor.js';
 import type { StateRestorer } from './StateRestorer.js';
 import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
+import type { PageHealthResult } from './PageHealthGuard.js';
 
 // ─────────────────────────────────────────────────────────────
 // Shared data shapes
@@ -157,7 +158,11 @@ export interface ExplorationLoopDeps {
   persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void>;
   setFreeze(): void;
   ensureDomReady(page: Page): Promise<void>;
-  ensureTargetDomain(page: Page): Promise<void>;
+  /** Universal per-iteration page-health gate: detects invalid contexts
+   *  (about:blank / closed / failed nav) and recovers before parsing, restores
+   *  strict-lock drift, and may return a recreated page. `unrecoverable` tells
+   *  the loop to terminate gracefully. */
+  ensurePageHealth(page: Page): Promise<PageHealthResult>;
   /** When true, the launch URL is pinned: navigation-based recovery (backtrack,
    *  unstable-restore, origin re-seed) is suppressed so it can't compete with the
    *  boundary-lock restore for control of the page. */

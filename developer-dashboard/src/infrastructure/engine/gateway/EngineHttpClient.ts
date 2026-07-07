@@ -1,4 +1,4 @@
-import type { OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
+import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
 
@@ -36,7 +36,7 @@ export class EngineHttpClient {
     return fetch(url, { ...init, headers: this.getAuthHeaders() });
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
@@ -66,7 +66,11 @@ export class EngineHttpClient {
         throw new Error(`Server returned ${response.status} - ${errorText}`);
       }
 
-      console.log(`[Gateway] ✅ Safari launch accepted`);
+      // Capture the server-issued run token so a later refresh / reconnect can
+      // prove ownership and re-attach to this exact run.
+      const data = (await response.json().catch(() => ({}))) as { runId?: string };
+      console.log(`[Gateway] ✅ Safari launch accepted (runId=${data.runId ?? 'n/a'})`);
+      return typeof data.runId === 'string' ? data.runId : null;
     } catch (error) {
       if (error instanceof TypeError) {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {
@@ -110,6 +114,25 @@ export class EngineHttpClient {
     } catch (error) {
       console.log("[Gateway] Backend is hot-reloading. Suppressing transient ERR_EMPTY_RESPONSE.");
       return [];
+    }
+  }
+
+  /**
+   * Restore-on-load probe: ask the backend whether the requester owns an active
+   * run. Returns the replay snapshot, or null when nothing is owned / reachable.
+   */
+  public async fetchActiveSession(runId?: string | null): Promise<ActiveSessionSnapshot | null> {
+    try {
+      const query = runId ? `?runId=${encodeURIComponent(runId)}` : '';
+      const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/session/active${query}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as { snapshot?: ActiveSessionSnapshot | null };
+      return data.snapshot ?? null;
+    } catch {
+      // Backend unreachable / hot-reloading — treat as "no active session".
+      return null;
     }
   }
 

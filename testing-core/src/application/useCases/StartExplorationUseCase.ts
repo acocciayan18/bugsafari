@@ -3,8 +3,9 @@ import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
-import { setActiveEngine } from '../../presentation/socket/registerSocketHandlers.js';
+import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution } from '../../../../shared/types.js';
+import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
@@ -301,7 +302,7 @@ export class StartExplorationUseCase {
         }
     }
 
-    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[]): Promise<void> {
+    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
@@ -348,8 +349,17 @@ export class StartExplorationUseCase {
         // close the TOCTOU race that existed when this flag was set only at this
         // point, after the awaited dynamic imports above.
 
-        // Register the active engine so sockets can control it
-        setActiveEngine(this.browserEngine);
+        // Register the run with the centralized SessionManager: it owns the
+        // engine control surface, reconnect replay buffer, grace window, room
+        // wiring, and target-health monitor for this run.
+        const resolvedRunId = runId ?? randomUUID();
+        sessionManager.beginRun({
+            runId: resolvedRunId,
+            userId: this.currentUserId,
+            targetUrl,
+            timeboxMs: TIMEBOX_MS,
+            engine: this.browserEngine,
+        });
 
         this.telemetry.emitTelemetry({
             timestamp: new Date().toISOString(),
@@ -461,7 +471,10 @@ try {
 
             this.state.active = false;
             this.currentSessionId = null;
-            setActiveEngine(null);
+            // Tear down the run in the SessionManager (stops health monitor, clears
+            // grace timer, releases the room + replay buffer). No-op if a grace
+            // expiry already ended it. CRASHED preserves the fatal-error lifecycle.
+            sessionManager.endRun(executionStatus === 'CRASHED' ? 'CRASHED' : 'COMPLETED');
 
             console.log('[StartExplorationUseCase] Session terminated, status set to IDLE');
         }

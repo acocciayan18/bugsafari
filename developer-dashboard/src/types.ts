@@ -31,6 +31,13 @@ export type {
   VerifyFixRequest,
   VerifyFixResult,
   RegressionSignal,
+  // Session recovery & reconnection
+  ActiveSessionSnapshot,
+  NetworkAlert,
+  SessionAttachRequest,
+  SessionAttachAck,
+  RunLifecycleStatus,
+  SessionOwnerType,
 } from '../../shared/types.js';
 
 // Value re-exports (runtime constants used to render the selector + defaults).
@@ -41,6 +48,9 @@ export {
   DEFAULT_INFILTRATION_PROFILE,
   resolveInfiltrationProfile,
   VERIFY_FIX_EVENT,
+  SESSION_ATTACH_EVENT,
+  SESSION_SNAPSHOT_EVENT,
+  NETWORK_ALERT_EVENT,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
