@@ -14,6 +14,7 @@ import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityM
 import { inferSemanticRole, wait } from './types.js';
 import type { ExplorationLoopDeps } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
+import { PageHealthGuard } from './PageHealthGuard.js';
 
 // Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
@@ -138,7 +139,7 @@ export class ExplorationLoop {
         let target: InteractiveElement = ranked[0];
 
         if (decision.kind === 'exhausted') {
-          const exhaustedGate = await this.handleExhaustedDecision(page, ctx, fingerprint.currentUrl);
+          const exhaustedGate = await this.handleExhaustedDecision(page, ctx, fingerprint.currentUrl, step);
           if (exhaustedGate.kind === 'return') return exhaustedGate.result;
           continue;
         }
@@ -162,18 +163,25 @@ export class ExplorationLoop {
         if (targetResolution.kind === 'return') return targetResolution.result;
         target = targetResolution.target;
 
-        // 🔮 Forward lookahead (proactive): if this edge is an anchor/router-
-        // link whose resolved URL is a breadcrumb ancestor, clicking it would
-        // drop straight back into a loop. Mark it cyclic (score 0 + blocked),
-        // emit telemetry, and skip to the next-best pathway WITHOUT clicking.
-        const isCyclic = await this.checkForwardLookaheadCycle(page, fingerprint.currentHash, target);
-        if (isCyclic) continue;
+        // 🔮 Forward lookahead (proactive): skip WITHOUT clicking any edge that
+        // can't advance exploration — one resolving to a breadcrumb ancestor
+        // (would loop) or one that opens a new tab / dead-end scheme (can't change
+        // the app-under-test's main page). Marks it cyclic + accounts it as
+        // triggered so it never re-queues or drives the re-seed loop.
+        const skip = await this.checkForwardLookaheadCycle(
+          page,
+          fingerprint.currentHash,
+          fingerprint.compound.structure,
+          target,
+          step,
+        );
+        if (skip) continue;
 
         // Execute the action, then VERIFY the traversal before confirming it.
         // The edge stays 'traversing' in the navigator until we observe a new
         // stable DOM state; an unverified/failed click is isolated as unstable
         // and the parent is restored locally (never collapses the graph).
-        const { traversalOk, childHash } = await this.executeAndVerifyAction(
+        const { traversalOk, childHash, landedInvalid } = await this.executeAndVerifyAction(
           page,
           step,
           target,
@@ -192,6 +200,7 @@ export class ExplorationLoop {
           traversalOk,
           childHash,
           step,
+          landedInvalid,
         );
 
         // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
@@ -411,17 +420,23 @@ export class ExplorationLoop {
     );
   }
 
-  private async handleExhaustedDecision(page: Page, ctx: RunContext, currentUrl: string): Promise<StepGate> {
+  private async handleExhaustedDecision(page: Page, ctx: RunContext, currentUrl: string, step: number): Promise<StepGate> {
     // Adaptive recovery before accepting termination: re-evaluate soft-blocked
     // edges (unstable/branch/sweep — never true cycles), reset the boredom
     // floor, and re-seed if needed. Only terminate after MAX_RECOVERY_ROUNDS
     // consecutive rounds (since the last novel state) yield no new frontier.
     if (ctx.recoveryRounds >= ctx.maxRecoveryRounds) {
-      // Coverage guard against false exhaustion: if clusters still hold
-      // untriggered controls (and we're within timebox + hard cap), grant one
-      // more recovery round instead of terminating. Bounded by HARD_CAP.
+      // Coverage guard against false exhaustion: grant one more recovery round
+      // only when clusters still hold untriggered controls AND coverage is still
+      // being gained (a new control discovered/triggered within the stall window).
+      // Without the stall check, unreachable untriggered controls (external links,
+      // blocked/invalid-context edges) would re-seed to the identical DOM up to
+      // HARD_CAP with zero progress. Bounded by timebox + HARD_CAP.
       const coverageRemains =
-        this.deps.clusterRegistry.hasUnexploredControls() && ctx.budget < ctx.hardCap && !this.deps.checkTimebox();
+        this.deps.clusterRegistry.hasUnexploredControls() &&
+        this.deps.clusterRegistry.stepsSinceCoverageGain(step) < ctx.coverageStallWindow &&
+        ctx.budget < ctx.hardCap &&
+        !this.deps.checkTimebox();
       if (coverageRemains) {
         ctx.budget = Math.min(ctx.hardCap, ctx.budget + ctx.extensionSteps);
         ctx.recoveryRounds = ctx.maxRecoveryRounds - 1; // allow another round
@@ -501,22 +516,63 @@ export class ExplorationLoop {
   private async checkForwardLookaheadCycle(
     page: Page,
     currentHash: string,
+    structureHash: string,
     target: InteractiveElement,
+    step: number,
   ): Promise<boolean> {
-    const lookaheadHref = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
-    if (lookaheadHref && this.deps.pathNavigator.ancestorUrls().includes(lookaheadHref)) {
+    const probe = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
+
+    // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
+    if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       this.deps.telemetry.emitMilestone(
-        `🔁 Cyclic-loop avoided: ${target.selector} → ${lookaheadHref} is a breadcrumb ancestor. Choosing another pathway.`,
+        `🔁 Cyclic-loop avoided: ${target.selector} → ${probe.href} is a breadcrumb ancestor. Choosing another pathway.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'cyclic-loop-detected',
         selector: target.selector,
-        message: `Forward lookahead skipped ${target.selector}: resolves to ancestor ${lookaheadHref}.`,
+        message: `Forward lookahead skipped ${target.selector}: resolves to ancestor ${probe.href}.`,
       });
       return true;
     }
+
+    // Off-site / new-tab / dead-end control: leaves the app under test (an
+    // off-origin href), opens a separate tab (target="_blank"), or is a
+    // non-navigational scheme (mailto/tel/javascript). Following it wastes the
+    // whole budget wandering external sites (github/x.com credit links, etc.) —
+    // the main app's state never advances. Permanently block it AND account it as
+    // triggered so it neither re-queues nor inflates the untriggered count that
+    // drives endless re-seeding, keeping exploration on the target origin.
+    const offSite = probe.href !== null && this.leavesTargetOrigin(probe.href);
+    if (offSite || probe.newTab || probe.deadEnd) {
+      this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
+      this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
+      const reason = offSite
+        ? 'leaves the site under test'
+        : probe.newTab
+          ? 'opens a new tab'
+          : 'non-navigational link';
+      this.deps.telemetry.emitMilestone(
+        `🚫 Skipping ${target.selector} (${reason}) — keeping exploration on the app under test.`,
+      );
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'off-site-control-skipped',
+        selector: target.selector,
+        message: `Forward lookahead skipped ${target.selector}: ${reason}${probe.href ? ` (${probe.href})` : ''}.`,
+      });
+      return true;
+    }
+
     return false;
+  }
+
+  /** True when `href` resolves to a different origin than the app under test. */
+  private leavesTargetOrigin(href: string): boolean {
+    try {
+      return new URL(href).origin !== new URL(this.deps.getTargetOrigin()).origin;
+    } catch {
+      return false; // Unparseable → let the normal click path handle it.
+    }
   }
 
   private async executeAndVerifyAction(
@@ -527,7 +583,7 @@ export class ExplorationLoop {
     revisitedPage: boolean,
     currentHash: string,
     exploreScore: number,
-  ): Promise<{ traversalOk: boolean; childHash: string }> {
+  ): Promise<{ traversalOk: boolean; childHash: string; landedInvalid: boolean }> {
     // Emit exploration milestone
     this.deps.telemetry.emitMilestone(`🎯 Exploring edge: ${target.selector} (score: ${exploreScore.toFixed(3)})`);
     this.deps.telemetry.emitSystemStatus(`Clicking element ${target.selector}...`);
@@ -555,6 +611,20 @@ export class ExplorationLoop {
       );
     }
 
+    // A click that drove the main page into an invalid context (about:blank /
+    // chrome-error / closed) is NOT a real state transition — verifyTraversal
+    // otherwise sees the blank fingerprint as a novel state and rewards it,
+    // training the engine to seek the blank page. Demote it to a failed,
+    // non-novel traversal so the caller isolates and permanently blocks the edge.
+    const landedInvalid = !page.isClosed() && PageHealthGuard.isInvalidContext(page);
+    if (landedInvalid) {
+      traversalOk = false;
+      childHash = currentHash;
+      this.deps.telemetry.emitMilestone(
+        `⛔ ${target.selector} navigated to an invalid context (${page.url()}) — blocking edge.`,
+      );
+    }
+
     // Phase 3: Track interaction count
     this.deps.runtimeMetrics.interactionCount++;
 
@@ -566,7 +636,7 @@ export class ExplorationLoop {
 
     await this.deps.persistBrainSnapshot('runtime', step);
 
-    return { traversalOk, childHash };
+    return { traversalOk, childHash, landedInvalid };
   }
 
   private async applyTraversalOutcome(
@@ -578,6 +648,7 @@ export class ExplorationLoop {
     traversalOk: boolean,
     childHash: string,
     step: number,
+    landedInvalid = false,
   ): Promise<void> {
     if (traversalOk) {
       // Verified transition — record the REAL child hash (fixes the prior
@@ -606,11 +677,21 @@ export class ExplorationLoop {
         });
       }
     } else {
-      // Unverified — isolate this single branch. Normally we restore the parent
-      // locally; under the boundary lock that restore is a competing navigation,
-      // so we only mark the edge unstable and defer any URL correction to the
-      // boundary-lock restore at the next iteration.
-      this.deps.pathNavigator.markEdgeUnstable(previousHashBeforeAction, target.selector);
+      // Unverified — isolate this single branch. An edge that drove the page into
+      // an invalid context (about:blank) is permanently blocked (cyclic) so it's
+      // never re-selected; ordinary unstable edges are only isolated so they may
+      // be retried later. Normally we restore the parent locally; under the
+      // boundary lock that restore is a competing navigation, so we only mark the
+      // edge and defer any URL correction to the boundary-lock restore next step.
+      if (landedInvalid) {
+        this.deps.pathNavigator.markEdgeCyclic(previousHashBeforeAction, target.selector);
+        // Account for this control in the coverage layer too — it WAS actuated,
+        // it just leads nowhere. Otherwise it stays "discovered but untriggered"
+        // forever and drives the exhaustion guard to re-seed to the hard cap.
+        this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
+      } else {
+        this.deps.pathNavigator.markEdgeUnstable(previousHashBeforeAction, target.selector);
+      }
       if (this.deps.strictUrlLock) {
         this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
       } else {

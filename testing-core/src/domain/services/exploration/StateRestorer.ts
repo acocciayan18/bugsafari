@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import { wait } from './types.js';
 import type { StateRestorerDeps } from './types.js';
+import { PageHealthGuard } from './PageHealthGuard.js';
 
 /**
  * SPA-friendly navigation, traversal verification, and state-recovery logic.
@@ -15,19 +16,31 @@ export class StateRestorer {
    * Cheap static lookahead probe. For a candidate selector, resolve its
    * navigation target WITHOUT clicking: anchors → resolved absolute `href`;
    * router-links → `data-route`/`data-href`/`to` resolved against the origin.
-   * Returns the absolute URL the element would navigate to, or null if it has
-   * no statically-knowable destination (plain buttons / JS handlers). Never
-   * throws — a probe failure simply yields null so the engine clicks normally.
+   * Returns the absolute URL the element would navigate to (`href`), plus:
+   *   - `newTab`  — the anchor opens a separate tab (`target="_blank"`), so a
+   *     click can never change the app under test's main page.
+   *   - `deadEnd` — the resolved href is a non-navigational scheme
+   *     (`mailto:`/`tel:`/`javascript:`), which likewise yields no exploration.
+   * `href` is null for plain buttons / JS handlers with no static destination.
+   * Never throws — a probe failure yields a neutral result so the engine clicks
+   * normally.
    */
-  public async probeStaticTarget(page: Page, selector: string): Promise<string | null> {
+  public async probeStaticTarget(
+    page: Page,
+    selector: string,
+  ): Promise<{ href: string | null; newTab: boolean; deadEnd: boolean }> {
     try {
       return await page.evaluate((sel: string) => {
+        const neutral = { href: null as string | null, newTab: false, deadEnd: false };
         const el = document.querySelector(sel) as HTMLElement | null;
-        if (!el) return null;
+        if (!el) return neutral;
         const anchor = el.closest('a') as HTMLAnchorElement | null;
         if (anchor && anchor.href) {
           // anchor.href is already resolved to an absolute URL by the browser.
-          return anchor.href;
+          const newTab = anchor.target === '_blank';
+          const scheme = anchor.protocol; // e.g. 'https:', 'mailto:', 'tel:', 'javascript:'
+          const deadEnd = scheme !== 'http:' && scheme !== 'https:';
+          return { href: anchor.href, newTab, deadEnd };
         }
         const route =
           el.getAttribute('data-route') ??
@@ -35,15 +48,15 @@ export class StateRestorer {
           el.getAttribute('to');
         if (route) {
           try {
-            return new URL(route, document.baseURI).href;
+            return { href: new URL(route, document.baseURI).href, newTab: false, deadEnd: false };
           } catch {
-            return null;
+            return neutral;
           }
         }
-        return null;
+        return neutral;
       }, selector);
     } catch {
-      return null;
+      return { href: null, newTab: false, deadEnd: false };
     }
   }
 
@@ -128,32 +141,49 @@ export class StateRestorer {
     targetHash: string,
     targetUrl: string,
   ): Promise<boolean> {
+    // Sanitize the deep-link target: page.goto('about:blank') SUCCEEDS silently,
+    // so a missing / non-http(s) / off-origin target would "restore" straight to
+    // a blank page. Fall back to the app origin for any such target.
+    const safeTargetUrl = this.isRestorableUrl(targetUrl)
+      ? targetUrl
+      : this.deps.getTargetOrigin();
+
     // Strategy A — history navigation (preserves in-memory client state).
     // Uses waitUntil:'commit' (the most permissive load state) and verifies by
     // hash rather than by goBack's return value: a same-document SPA history
     // entry (pushState) resolves null and never fires domcontentloaded, yet is
     // still a successful back — only the restored DOM fingerprint proves it.
-    try {
-      await page.goBack({ waitUntil: 'commit', timeout: 5000 });
-      if (await this.verifyReachedHash(page, targetHash, 3000)) {
-        console.log('[StateRestorer] restore strategy A (history) succeeded');
-        this.deps.telemetry.emitSystemStatus('Restored via history navigation.');
-        this.recordRestoreTrace(targetUrl, 'history-back');
-        return true;
+    // Skipped entirely for an origin re-seed (empty targetHash): there is no
+    // history state to verify against, and goBack would walk into the pre-origin
+    // about:blank entry — a visible blank frame — before Strategy B recovers.
+    if (targetHash) {
+      try {
+        await page.goBack({ waitUntil: 'commit', timeout: 5000 });
+        // goBack can walk into the pre-origin about:blank entry (or off-origin). Don't
+        // poll a dead/blank context for 3s — bail to the deep-link rung immediately so
+        // no blank frame is ever streamed.
+        const landedInvalid =
+          PageHealthGuard.isInvalidContext(page) || this.landedOffOrigin(page);
+        if (!landedInvalid && (await this.verifyReachedHash(page, targetHash, 3000))) {
+          console.log('[StateRestorer] restore strategy A (history) succeeded');
+          this.deps.telemetry.emitSystemStatus('Restored via history navigation.');
+          this.recordRestoreTrace(targetUrl, 'history-back');
+          return true;
+        }
+      } catch (err) {
+        console.warn(
+          '[StateRestorer] restore strategy A (history) failed:',
+          err instanceof Error ? err.message : String(err),
+        );
       }
-    } catch (err) {
-      console.warn(
-        '[StateRestorer] restore strategy A (history) failed:',
-        err instanceof Error ? err.message : String(err),
-      );
     }
 
     // Strategy B — deep-link route jump to the cached parent URL.
     try {
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.goto(safeTargetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       console.log('[StateRestorer] restore strategy B (deep-link) succeeded');
       this.deps.telemetry.emitSystemStatus('Restored via deep-link jump.');
-      this.recordRestoreTrace(targetUrl, 'deep-link');
+      this.recordRestoreTrace(safeTargetUrl, 'deep-link');
       return true;
     } catch (err) {
       console.warn(
@@ -175,6 +205,34 @@ export class StateRestorer {
         '[StateRestorer] restore strategy C (root reload) failed:',
         err instanceof Error ? err.message : String(err),
       );
+      return false;
+    }
+  }
+
+  /**
+   * True when the current page URL is on a different origin than the app under
+   * test (or is unparseable). Mirrors routeTrasher's assertWithinOrigin so a
+   * history hop that walks off the application is never accepted as a restore.
+   */
+  private landedOffOrigin(page: Page): boolean {
+    try {
+      return new URL(page.url()).origin !== new URL(this.deps.getTargetOrigin()).origin;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * True when `url` is a real, same-origin http(s) page we can safely goto for a
+   * restore. Rejects empty / about:blank / non-http(s) / off-origin targets so we
+   * never deep-link "restore" onto a blank page.
+   */
+  private isRestorableUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      return parsed.origin === new URL(this.deps.getTargetOrigin()).origin;
+    } catch {
       return false;
     }
   }

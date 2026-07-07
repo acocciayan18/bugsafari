@@ -74,9 +74,12 @@ services:
     # Live source mount: the image bakes a build-time copy of the source, so code
     # changes never reached the container. Mounting the host source over the baked
     # copy makes tsc-watch (npm run dev) recompile the *current* code on start and
-    # on every edit — no image rebuild needed.
+    # on every edit — no image rebuild needed. `shared/` is mounted for the same
+    # reason: its .ts contracts are compiled into dist/ by testing-core's tsc-watch,
+    # so shared changes hot-recompile too instead of going stale against the image.
     volumes:
       - ./testing-core/src:/app/testing-core/src
+      - ./shared:/app/shared
     depends_on:
       redis:
         condition: service_healthy
@@ -120,9 +123,11 @@ services:
     extra_hosts:
       - "host.docker.internal:${HOST_GATEWAY_IP:-host-gateway}"
     # Live source mount (same rationale as the api service) so queued-job runs use
-    # current code and stamp sessions with the real userId.
+    # current code and stamp sessions with the real userId. `shared/` is mounted too
+    # so shared contract changes hot-recompile instead of going stale against the image.
     volumes:
       - ./testing-core/src:/app/testing-core/src
+      - ./shared:/app/shared
     depends_on:
       redis:
         condition: service_healthy
