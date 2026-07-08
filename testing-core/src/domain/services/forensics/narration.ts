@@ -177,6 +177,26 @@ export function describeRouteTrashDrift(landed: string, originPath: string): str
   return `Route bursts drifted to ${landed}; restoring to origin ${originPath}.`;
 }
 
+/** RouteTrasher: a mutation provoked one or more backend 5xx failures (MEDIUM). */
+export function describeRouteTrashServerError(navType: string, count: number, url: string): string {
+  return `[MEDIUM] ${navType} triggered ${count} backend server error(s) (HTTP 5xx) at ${url} — likely unvalidated route/parameter input.`;
+}
+
+/** RouteTrasher: expected defensive 4xx responses, handled gracefully (INFORMATIONAL). */
+export function describeRouteTrashDefensive(navType: string, count: number, url: string): string {
+  return `[INFO] ${navType} met ${count} defensive response(s) (HTTP 4xx) at ${url} — request rejected gracefully, no finding.`;
+}
+
+/** RouteTrasher: an unhandled client-side exception fired during a mutation (CRITICAL). */
+export function describeRouteTrashClientCrash(navType: string, count: number, url: string): string {
+  return `[CRITICAL] ${navType} caused ${count} unhandled client-side exception(s) at ${url} — reproducible finding captured.`;
+}
+
+/** RouteTrasher: a mutation left the app on a white/blank screen (CRITICAL). */
+export function describeRouteTrashWhiteScreen(navType: string, url: string): string {
+  return `[CRITICAL] ${navType} left the application white-screened at ${url} — render/routing failure.`;
+}
+
 /** NetworkSaboteur step. */
 export function describeNetworkSabotage(mode: string): string {
   return `Sabotage the next API/XHR request (${mode} mode) to test error resilience`;

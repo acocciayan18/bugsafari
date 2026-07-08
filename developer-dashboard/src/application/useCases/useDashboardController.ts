@@ -81,21 +81,6 @@ const ENGINE_RESUME_ACTIONS = new Set([
   'engine-resumed',
 ]);
 
-/**
- * Decode JWT token payload to check expiration
- * Used to determine if token is genuinely expired before triggering refresh
- */
-function decodeTokenExpiration(token: string): { exp: number } | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const gateway = useMemo(() => gatewayFactory(), [gatewayFactory]);
   const { token, refreshToken } = useAuth();

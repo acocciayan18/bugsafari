@@ -16,6 +16,11 @@ import { mutateQueryParams, QUERY_MUTATIONS, type QueryMutationOutcome } from '.
 import { mutateRoutePath, mutateHashRoute, type RouteMutationOutcome } from './pathMutation.js';
 import { RouteTrashMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 import {
+  classifyNavStep,
+  isWhiteScreenFailure,
+  type RenderProbe,
+} from './routeTrashClassifier.js';
+import {
   describeRouteTrashStart,
   describeRouteTrashNavigation,
   describeRouteTrashMutation,
@@ -24,6 +29,10 @@ import {
   describeRouteTrashInterrupted,
   describeRouteInconsistency,
   describeRouteTrashDrift,
+  describeRouteTrashServerError,
+  describeRouteTrashDefensive,
+  describeRouteTrashClientCrash,
+  describeRouteTrashWhiteScreen,
 } from '../../services/forensics/narration.js';
 
 // One shared DOM hasher for the run — its combined fingerprint is what every
@@ -44,6 +53,12 @@ export interface RouteTrashResult {
   returnedToOrigin: boolean;
   /** Count of steps where the URL changed but the DOM did not update to match. */
   inconsistencies: number;
+  /** Backend 5xx / soft-fail failures provoked by mutations (MEDIUM severity). */
+  serverErrors: number;
+  /** Expected defensive 4xx responses met, handled gracefully (INFORMATIONAL). */
+  defensiveResponses: number;
+  /** Unhandled client-side exceptions + white-screen render failures (CRITICAL). */
+  clientCrashes: number;
 }
 
 /** Default number of back/forward/mutation iterations. */
@@ -113,6 +128,10 @@ export const routeTrasher = {
     let attempted = 0;
     let completed = 0;
     let inconsistencies = 0;
+    // Centralized three-tier classification tallies (see routeTrashClassifier).
+    let serverErrors = 0;
+    let defensiveResponses = 0;
+    let clientCrashes = 0;
     // Cycle-awareness: whether the bursts net-landed on origin, and where the
     // page rests after restore. This scenario is non-relocating.
     let finalUrl = originPath;
@@ -121,7 +140,10 @@ export const routeTrasher = {
     // Wrap a navigation action in a synchronous, immutable forensic snapshot
     // (pre/post URL + DOM hash + route state + network/console anomalies). Any
     // URL-changed-without-DOM-update inconsistency is surfaced into the failure
-    // window so regression replay can reproduce it.
+    // window so regression replay can reproduce it. Each step's observed effects
+    // are run through the centralized classifier and narrated at their tier —
+    // findings themselves are owned by the globally-attached StabilityMonitor, so
+    // this only records severity-labelled evidence into the scenario window.
     const runStep = async (navType: string, navFn: () => Promise<void>) => {
       const snap = await captureNavStep(
         page,
@@ -133,7 +155,47 @@ export const routeTrasher = {
         inconsistencies++;
         ActiveScenarioTracker.record(describeRouteInconsistency(snap.fromUrl, snap.toUrl));
       }
+
+      const verdict = classifyNavStep(snap);
+      serverErrors += verdict.serverErrors;
+      defensiveResponses += verdict.defensiveResponses;
+      clientCrashes += verdict.clientCrashes;
+      if (verdict.clientCrashes > 0) {
+        ActiveScenarioTracker.record(describeRouteTrashClientCrash(navType, verdict.clientCrashes, snap.toUrl));
+      }
+      if (verdict.serverErrors > 0) {
+        ActiveScenarioTracker.record(describeRouteTrashServerError(navType, verdict.serverErrors, snap.toUrl));
+      }
+      if (verdict.defensiveResponses > 0) {
+        ActiveScenarioTracker.record(describeRouteTrashDefensive(navType, verdict.defensiveResponses, snap.toUrl));
+      }
       return snap;
+    };
+
+    // Probe the rendered page for a white-screen (blank/render failure) after a
+    // mutation. Never throws — a teardown race yields no probe (treated as no
+    // failure) so the scenario keeps running.
+    const probeWhiteScreen = async (navType: string): Promise<void> => {
+      let probe: RenderProbe;
+      try {
+        probe = await page.evaluate((): RenderProbe => {
+          const body = document.body;
+          if (!body) {
+            return { visibleTextLength: 0, visibleElementCount: 0, hasBody: false };
+          }
+          return {
+            visibleTextLength: (body.innerText || '').trim().length,
+            visibleElementCount: body.querySelectorAll('*').length,
+            hasBody: true,
+          };
+        });
+      } catch {
+        return;
+      }
+      if (isWhiteScreenFailure(probe)) {
+        clientCrashes++;
+        ActiveScenarioTracker.record(describeRouteTrashWhiteScreen(navType, page.url()));
+      }
     };
 
     try {
@@ -244,6 +306,10 @@ export const routeTrasher = {
             break;
           }
         }
+
+        // After the malformed-route / hash / interrupted attack, check whether the
+        // app was driven into a white/blank screen (CRITICAL render failure).
+        await probeWhiteScreen('route-mutation');
         await wait(INTER_ACTION_DELAY_MS);
       }
     } finally {
@@ -280,10 +346,20 @@ export const routeTrasher = {
 
     console.log(
       `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions ` +
-        `(returnedToOrigin=${returnedToOrigin}, inconsistencies=${inconsistencies})`,
+        `(returnedToOrigin=${returnedToOrigin}, inconsistencies=${inconsistencies}, ` +
+        `serverErrors=${serverErrors}, defensiveResponses=${defensiveResponses}, clientCrashes=${clientCrashes})`,
     );
 
-    return { attempted, completed, finalUrl, returnedToOrigin, inconsistencies };
+    return {
+      attempted,
+      completed,
+      finalUrl,
+      returnedToOrigin,
+      inconsistencies,
+      serverErrors,
+      defensiveResponses,
+      clientCrashes,
+    };
   },
 };
 

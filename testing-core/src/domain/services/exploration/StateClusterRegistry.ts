@@ -88,6 +88,20 @@ export class StateClusterRegistry {
     }
   }
 
+  /**
+   * True when `selector` has been triggered on ANY structural cluster this run.
+   * Keyed structurally, so it survives the per-payload `combined`-hash churn that
+   * makes each fuzz look like a fresh graph node — the loop uses this to stop
+   * re-boosting an already-fuzzed attack vector and advance to other controls.
+   */
+  public isSelectorTriggeredAnywhere(selector: string): boolean {
+    if (!selector) return false;
+    for (const cluster of this.clusters.values()) {
+      if (cluster.triggered.has(selector)) return true;
+    }
+    return false;
+  }
+
   /** True when any cluster still has a discovered control that was never triggered. */
   public hasUnexploredControls(): boolean {
     for (const cluster of this.clusters.values()) {

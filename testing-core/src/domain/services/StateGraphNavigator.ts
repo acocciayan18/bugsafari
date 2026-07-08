@@ -155,7 +155,28 @@ export class StateGraphNavigator {
       );
     }
 
-    if (forcedBacktrack || loopDetected || node.exhausted || boredForcesBacktrack) {
+    // A forced/stagnation backtrack (engine penalty window or high stagnation
+    // score) must not abandon a layout that still has unvisited controls — that is
+    // the state-space oscillation where the engine pops to a parent and re-descends
+    // to re-run the same sequence. In coverage-first modes, defer the forced
+    // backtrack and explore the next unvisited edge instead. True loop-strikes
+    // (3 identical consecutive hashes) and genuine node exhaustion still unwind.
+    const deferForcedBacktrack =
+      forcedBacktrack &&
+      this.config.prioritizeUnvisitedOverBoredom &&
+      nextEdge !== null &&
+      !loopDetected &&
+      !node.exhausted;
+
+    if (deferForcedBacktrack) {
+      this.eventLog.recordEvent(
+        'boredom-triggered-backtrack',
+        currentHash,
+        `Forced backtrack deferred — unvisited control "${nextEdge!.selector}" remains on this layout; exploring it before unwinding.`,
+      );
+    }
+
+    if ((forcedBacktrack && !deferForcedBacktrack) || loopDetected || node.exhausted || boredForcesBacktrack) {
       return this.handleDeadEnd(node, loopDetected);
     }
 

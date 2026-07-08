@@ -12,6 +12,7 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import { describeRecovery } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, wait } from './types.js';
+import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
 import type { ExplorationLoopDeps } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
@@ -296,7 +297,36 @@ export class ExplorationLoop {
       return { kind: 'continue' };
     }
 
-    const ranked = this.deps.scorer.score(elements);
+    let ranked = this.deps.scorer.score(elements);
+
+    // Deep Semantic Data Attack prioritization: when the data-fuzzing gate is
+    // active, fuzzable attack vectors must be selected BEFORE any navigation
+    // control, otherwise high-keyword buttons (login=82, checkout, pay…) win the
+    // best-first pick and the engine clicks submit on an empty form — inputs are
+    // never fuzzed. A fixed additive boost can't beat an arbitrary keyword sum, so
+    // we lift every UNTRIGGERED attack vector to a deterministic margin ABOVE the
+    // highest other score this step. Coverage-first: once a field has been fuzzed
+    // (triggered on its structural cluster) it loses the boost and falls back to
+    // its natural score, so the next untriggered input → submit button →
+    // register/recovery link wins instead of the engine re-fuzzing the same field
+    // forever (each payload mutates the input value → a fresh graph node → the boost
+    // would otherwise re-lift it). Gated — the scorer/perceptron stay
+    // profile-agnostic; only data-attack runs shift.
+    if (this.deps.gate.isEnabled('dataFuzzing')) {
+      const isFreshAttackVector = (element: InteractiveElement): boolean =>
+        attackTargetBoost(element) > 0 &&
+        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector);
+      const otherScores = ranked.filter((el) => !isFreshAttackVector(el)).map((el) => el.riskScore);
+      const maxOther = otherScores.length > 0 ? Math.max(...otherScores) : 0;
+      ranked = ranked
+        .map((element) =>
+          isFreshAttackVector(element)
+            ? { ...element, riskScore: maxOther + ATTACK_TARGET_SCORE_BOOST }
+            : element,
+        )
+        .sort((left, right) => right.riskScore - left.riskScore);
+    }
+
     this.deps.telemetry.gateway.emitTargets(
       ranked.slice(0, 12).map((element) => ({
         tagName: element.tagName,
@@ -691,6 +721,10 @@ export class ExplorationLoop {
         this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
       } else {
         this.deps.pathNavigator.markEdgeUnstable(previousHashBeforeAction, target.selector);
+        // No-op action — the click produced no new state (same DOM signature).
+        // Persistently deprioritise this exact control across all future rankings
+        // so the engine advances to other controls instead of re-attempting it.
+        this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       }
       if (this.deps.strictUrlLock) {
         this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
@@ -725,13 +759,18 @@ export class ExplorationLoop {
         message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${target.selector}.`,
       });
     } else {
-      // Non-novel state — contrastive negative so weights can move down.
+      // Unproductive action — it returned to an already-seen state. Beyond the
+      // perceptron contrastive nudge, apply a significant, persistent per-selector
+      // penalty (subtracted from this control's score on EVERY future ranking,
+      // across all nodes) so the exact action that reproduced a seen signature is
+      // hard-deprioritised and the same sequence cannot re-execute.
       this.deps.scorer.applyCompoundReward(target, { revisit: true });
+      this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       const visitCount = this.deps.visitedHashes.size;
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'state-revisited',
         selector: target.selector,
-        message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty for ${target.selector}.`,
+        message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty + priority penalty for ${target.selector}.`,
       });
     }
 

@@ -155,4 +155,76 @@ check('scenario 2 final snapshot matches the pinned pre-split values', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Scenario 3: coverage-first forced-backtrack DEFERRAL vs probe backtrack.
+// Same graph + same externally-forced backtrack signal, two configs:
+//   • coverage-first (prioritizeUnvisitedOverBoredom=true) DEFERS the forced
+//     backtrack and explores the remaining unvisited edge on the current node —
+//     this is the anti-oscillation fix (exhaust the layout before unwinding).
+//   • probe (flag off) still honours the forced backtrack and unwinds to the
+//     parent's remaining edge — the pre-fix behaviour, pinned to prove the gating.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Build R -a1-> C, leaving C with an unvisited edge c2 and R with an unvisited r2.
+function buildTwoLevelStack(config: Record<string, unknown>): StateGraphNavigator {
+  const n = new StateGraphNavigator(config);
+  const rEls = [
+    { selector: 'r1', score: 50 },
+    { selector: 'r2', score: 30 },
+  ];
+  const cEls = [
+    { selector: 'c1', score: 40 },
+    { selector: 'c2', score: 20 },
+  ];
+  const d1 = n.registerStateAndDecide('R', 'http://x/r', rEls);
+  if (d1.kind === 'explore-edge') n.confirmEdgeTraversal('R', d1.selector, 'C');
+  const d2 = n.registerStateAndDecide('C', 'http://x/c', cEls);
+  if (d2.kind === 'explore-edge') n.confirmEdgeTraversal('C', d2.selector, 'D');
+  return n;
+}
+
+const covNav = buildTwoLevelStack({
+  mode: 'probe',
+  explorationSeed: 12345,
+  explorationEnabled: false,
+  adaptiveBoredom: false,
+  boredomThreshold: 1,
+  prioritizeUnvisitedOverBoredom: true,
+});
+const covDecision = covNav.registerStateAndDecide(
+  'C',
+  'http://x/c',
+  [
+    { selector: 'c1', score: 40 },
+    { selector: 'c2', score: 20 },
+  ],
+  true, // forcedBacktrack
+);
+check('coverage-first: forced backtrack is DEFERRED — explores the remaining unvisited edge (c2)', () => {
+  assert.equal(covDecision.kind, 'explore-edge');
+  assert.equal((covDecision as { selector: string }).selector, 'c2');
+});
+
+const probeNav = buildTwoLevelStack({
+  mode: 'probe',
+  explorationSeed: 12345,
+  explorationEnabled: false,
+  adaptiveBoredom: false,
+  boredomThreshold: 1,
+  // prioritizeUnvisitedOverBoredom defaults to false (probe) — no deferral.
+});
+const probeDecision = probeNav.registerStateAndDecide(
+  'C',
+  'http://x/c',
+  [
+    { selector: 'c1', score: 40 },
+    { selector: 'c2', score: 20 },
+  ],
+  true, // forcedBacktrack
+);
+check('probe (flag off): forced backtrack is HONOURED — unwinds to the parent\'s remaining edge (R)', () => {
+  assert.equal(probeDecision.kind, 'backtrack');
+  assert.equal((probeDecision as { targetHash: string }).targetHash, 'R');
+});
+
 console.log(`\nStateGraphNavigator characterization: ${passed} checks passed.`);

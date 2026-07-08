@@ -11,6 +11,10 @@ export const QUERY_MUTATIONS = [
   'undefined',
   'nan',
   'extreme_int',
+  'oversized_int',
+  'infinity',
+  'object_object',
+  'boolean',
   'empty_string',
   'drop_param',
 ] as const;
@@ -68,6 +72,21 @@ export async function mutateQueryParams(
       params.set(targetParam, extremeValue);
       break;
     }
+    case 'oversized_int':
+      // 40-digit integer: overflows 2^53 and any fixed-width backend column,
+      // surfacing naive parseInt / DB overflow handling.
+      params.set(targetParam, '9'.repeat(40));
+      break;
+    case 'infinity':
+      params.set(targetParam, 'Infinity');
+      break;
+    case 'object_object':
+      // The classic invalid runtime value: an object coerced to string.
+      params.set(targetParam, '[object Object]');
+      break;
+    case 'boolean':
+      params.set(targetParam, 'true');
+      break;
     case 'empty_string':
       params.set(targetParam, '');
       break;

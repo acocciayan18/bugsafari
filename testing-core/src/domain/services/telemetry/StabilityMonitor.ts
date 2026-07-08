@@ -6,7 +6,8 @@ import {
   ForensicErrorType,
   ForensicErrorSeverity,
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
-import { classifyFault, type FaultType } from '../../../bugs/knowledgeBase/index.js';
+import { classifyFault, matchesCategory, type FaultType } from '../../../bugs/knowledgeBase/index.js';
+import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 
@@ -345,97 +346,123 @@ export class StabilityMonitor {
   public attachNetworkMonitoring(page: Page): void {
     const t = this.deps.telemetry;
 
-    // Task 1 Fix: Add response handler for NETWORK telemetry
+    // Centralized three-tier network classification (see routeTrashClassifier —
+    // the single source of truth shared with the RouteTrasher scenario):
+    //   • Expected resource noise (favicon/image/font/bundle failures) → ignored.
+    //   • Defensive 4xx (400/401/403/404/…) handled gracefully → INFORMATIONAL
+    //     telemetry only; NO finding, NO forensic persistence, NOT counted as an
+    //     API failure (so it never inflates metrics or triggers recovery).
+    //   • 5xx or a soft-fail body masked behind a 2xx → MEDIUM+ backend failure
+    //     finding with full forensic detail.
     page.on('response', async (response: Response) => {
       const status = response.status();
       const url = response.url();
       const method = response.request().method();
       const resourceType = response.request().resourceType();
 
-      // Skip frontend assets to prevent false positives
-      if (url.includes('vite') ||
-        url.includes('node_modules') ||
-        url.endsWith('.js') ||
-        url.endsWith('.css') ||
-        resourceType === 'script' ||
-        resourceType === 'stylesheet') {
+      // Filter expected browser/network noise (missing static assets, etc.) so a
+      // normal 404 favicon/image can never create a false-positive finding.
+      if (isExpectedResourceNoise(url, resourceType, status)) {
         return;
       }
 
-      // Emit NETWORK for failures (>=400 per TESTING_TYPES.md) or soft-fail body
-      let shouldEmit = status >= 400;
+      // Soft-fail detection: a <400 response whose body flags an error is a
+      // masked backend failure. Only the body of an otherwise-successful response
+      // is read (a 4xx/5xx is classified by status alone, as before).
+      let softFailBody = false;
       let bodyContent = '';
-
-      if (!shouldEmit) {
+      if (status < 400) {
         try {
           bodyContent = await response.text().catch(() => '');
           const bodyLower = bodyContent.toLowerCase();
           const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
           const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
-          shouldEmit = hasErrorFlag || hasStatusFail;
+          // Also match server-error signatures (stack traces, "internal server
+          // error", SQL/exception text) leaking into a 2xx body — folded in from
+          // the former background monitor so that coverage isn't lost by dedup.
+          softFailBody = hasErrorFlag || hasStatusFail || matchesCategory('SERVER_ERROR', bodyContent);
         } catch {
           // Ignore body parse errors
         }
       }
 
-      if (shouldEmit) {
-        // Phase 3: Track failed requests count
-        this.deps.onApiFailure();
+      // A clean success with no soft-fail body is not a fault — nothing to emit.
+      if (status < 400 && !softFailBody) {
+        return;
+      }
 
-        // One immutable snapshot, frozen at the moment this response failed, bound
-        // identically to the live telemetry and the saved confirmed bug. Reading
-        // the global rolling buffer twice (once per consumer) risks the live card
-        // and the stored record diverging if an action lands between the reads.
-        const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-        // Classify against the knowledge base — the response body is scanned for
-        // NoSQL/server-error signatures and the 5xx status escalates severity.
-        const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
-          'NETWORK',
-          `HTTP ${status} ${method} ${url}`,
-          { statusCode: status, url, content: bodyContent },
-        );
+      const verdict = classifyHttpStatus(status, { softFailBody });
 
+      // INFORMATIONAL: expected defensive response handled gracefully. Surface it
+      // on the Network tab as telemetry only — no finding, no persistence, no
+      // confirmed bug, and it is NOT counted as an API failure.
+      if (!verdict.createFinding) {
         t.emit('NETWORK', {
           statusCode: status,
           url,
           method,
-          message: `Network ${status} ${method} ${url}`,
-          reproductionSteps: reproductionPlaybook,
-          attribution,
+          message: `🛡️ Defensive response (informational): HTTP ${status} ${method} ${url} — ${verdict.reason}`,
         });
-
-        // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
-        this.deps.persistForensicError({
-          type: ForensicErrorType.API_FAILURE,
-          severity,
-          message: `API Failure: HTTP ${status} ${method} ${url}`,
-          stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
-          url: this.deps.getLastKnownUrl() || page.url(),
-          endpoint: url,
-          method,
-          statusCode: status,
-          responseText: bodyContent.slice(0, 500),
-          bugClass: attribution.bugClass,
-          scenario: attribution.scenario,
-          cwe: attribution.cwe,
-        });
-
-        // Register HTTP error bug to memory — one distinct instance PER failing
-        // response (unique sequenced id), enriched with the stack/body, the
-        // replication checklist, and a copyable suggested fix for the drawer.
-        this.deps.registerConfirmedBug({
-          bugId: `http-${status}-${Date.now()}-${nextBugSeq()}`,
-          type: 'NETWORK',
-          message: `HTTP ${status} Error: ${method} ${url}`,
-          selector: '',
-          payloadUsed: method,
-          advice: remediation,
-          stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
-          reproductionSteps: reproductionPlaybook,
-          attribution,
-          timestamp: new Date(),
-        });
+        return;
       }
+
+      // MEDIUM+: genuine backend failure (5xx or masked soft-fail). Full finding.
+      // Phase 3: Track failed requests count.
+      this.deps.onApiFailure();
+
+      // One immutable snapshot, frozen at the moment this response failed, bound
+      // identically to the live telemetry and the saved confirmed bug. Reading
+      // the global rolling buffer twice (once per consumer) risks the live card
+      // and the stored record diverging if an action lands between the reads.
+      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // Classify against the knowledge base — the response body is scanned for
+      // NoSQL/server-error signatures and the 5xx status escalates severity.
+      const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
+        'NETWORK',
+        `HTTP ${status} ${method} ${url}`,
+        { statusCode: status, url, content: bodyContent },
+      );
+
+      t.emit('NETWORK', {
+        statusCode: status,
+        url,
+        method,
+        message: `Network ${status} ${method} ${url}`,
+        reproductionSteps: reproductionPlaybook,
+        attribution,
+      });
+
+      // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
+      this.deps.persistForensicError({
+        type: ForensicErrorType.API_FAILURE,
+        severity,
+        message: `API Failure: HTTP ${status} ${method} ${url}`,
+        stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+        url: this.deps.getLastKnownUrl() || page.url(),
+        endpoint: url,
+        method,
+        statusCode: status,
+        responseText: bodyContent.slice(0, 500),
+        bugClass: attribution.bugClass,
+        scenario: attribution.scenario,
+        cwe: attribution.cwe,
+      });
+
+      // Register HTTP error bug to memory — one distinct instance PER failing
+      // response (unique sequenced id), enriched with the stack/body, the
+      // replication checklist, and a copyable suggested fix for the drawer.
+      this.deps.registerConfirmedBug({
+        bugId: `http-${status}-${Date.now()}-${nextBugSeq()}`,
+        type: 'NETWORK',
+        message: `HTTP ${status} Error: ${method} ${url}`,
+        selector: '',
+        payloadUsed: method,
+        advice: remediation,
+        stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+        reproductionSteps: reproductionPlaybook,
+        attribution,
+        timestamp: new Date(),
+      });
     });
 
     // Catch network request failures (timeouts, connection errors, aborts)

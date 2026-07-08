@@ -12,6 +12,12 @@ export const PATH_MUTATIONS = [
   'NaN',
   '-1',
   '9999999999999',
+  '99999999999999999999999999999999', // oversized: exceeds 2^53, breaks naive int parsers
+  'Infinity',
+  '[object Object]', // invalid runtime value — a stringified object that leaked into a route
+  '{}',
+  '[]',
+  'true',
   '%00',
   '..%2f..%2f',
   '<script>',

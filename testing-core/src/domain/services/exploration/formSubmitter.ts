@@ -15,7 +15,11 @@ export type SubmissionMethod = 'enter' | 'submit-button' | 'form-dispatch' | 'no
  * Semantic textual hints for submit-like controls that lack an explicit
  * `type="submit"` (common in SPA login/checkout forms wired via onClick).
  */
-const SUBMIT_TEXT_TOKENS = ['login', 'log in', 'sign in', 'signin', 'submit', 'apply', 'continue', 'next', 'send'];
+const SUBMIT_TEXT_TOKENS = [
+  'login', 'log in', 'sign in', 'signin', 'submit', 'apply', 'continue', 'next', 'send',
+  // Confirmation / continuation / modal controls that advance a multi-step flow.
+  'confirm', 'accept', 'proceed', 'save', 'finish',
+];
 
 /**
  * Lightweight page signature used to detect whether a submission attempt

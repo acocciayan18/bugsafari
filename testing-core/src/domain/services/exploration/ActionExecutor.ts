@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
+import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -12,6 +13,7 @@ import {
   describeNavigation,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
+import { classifyInteractionScope } from './interactionScope.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
@@ -50,10 +52,19 @@ export class ActionExecutor {
     // Highlight the element the navigator chose to traverse.
     await this.deps.highlighter.flashHighlight(page, target.selector);
 
-    // INPUT FIELDS are payload targets, not navigation controls: apply only the
-    // gated input-mutation strategy (Data Fuzzing is exclusive when enabled). The
-    // type+submit it performs IS the input's interaction.
-    if (target.tagName === 'input' || target.tagName === 'textarea' || target.tagName === 'select') {
+    // Route the element to its coordinated interaction scope. This is the single
+    // decision point that keeps ATTACK VECTORS (fuzzable text fields) and the
+    // NAVIGATION/SUPPORTING controls (toggles, dropdowns, buttons) that progress a
+    // form working together — previously every input/textarea/select was force-fed
+    // to the text-fuzz path, so checkboxes were never checked, dropdowns never got
+    // a valid option, and submit-inputs were relabelled instead of clicked, leaving
+    // forms unable to complete (repeated states → rollback loops).
+    const scope = classifyInteractionScope(target);
+
+    // ATTACK VECTORS — fuzzable text fields. Payload injection (which strips
+    // constraints, injects a context-aware payload, and commits via submission) IS
+    // the interaction. Gated: Data Fuzzing is exclusive when enabled.
+    if (scope === 'attack-vector') {
       if (this.deps.gate.isEnabled('dataFuzzing')) {
         await this.executeInputFuzzing(page, target, 'fuzz');
       } else if (this.deps.gate.isEnabled('exploratory')) {
@@ -63,7 +74,31 @@ export class ActionExecutor {
       return;
     }
 
-    // NON-INPUT NAVIGATION CONTROL.
+    // SUPPORTING FORM CONTROLS — toggles and dropdowns are navigation substrate
+    // that PROGRESS forms/workflows. Actuated unconditionally (like a click),
+    // independent of payload gating, so a data-attack campaign can reach submit
+    // instead of stalling on an unchecked box or unselected dropdown.
+    if (scope === 'toggle') {
+      await this.actuateToggle(page, target);
+      return;
+    }
+    if (scope === 'dropdown') {
+      await this.actuateDropdown(page, target);
+      return;
+    }
+
+    // INERT controls (file/hidden inputs) cannot be safely driven — clicking a
+    // file input opens a blocking native chooser. Skip without interaction.
+    if (scope === 'inert') {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'inert-control-skipped',
+        selector: target.selector,
+        message: `Skipped non-actuable control ${target.selector} (${target.type || target.tagName}).`,
+      });
+      return;
+    }
+
+    // CLICKABLE NAVIGATION CONTROL.
     // 1) Navigation substrate — ALWAYS traverse the navigator-chosen edge so the
     //    state graph keeps expanding regardless of which payload scenarios are
     //    active. Restricting Data Fuzzing (or any scenario) restricts payload
@@ -118,6 +153,147 @@ export class ActionExecutor {
   }
 
   /**
+   * Actuate a checkbox/radio as a form-progression control. Forces the control
+   * into the CHECKED state (accept-terms, opt-in, radio selection) so a data
+   * attack can satisfy required gates and reach submission. Prefers Playwright's
+   * trusted `check()` (idempotent, actionability-aware) and falls back to a direct
+   * state set + framework event dispatch when the control is obscured/detached.
+   */
+  private async actuateToggle(page: Page, target: InteractiveElement): Promise<void> {
+    const label = resolveElementLabel(target);
+
+    // Strip client constraints (disabled/readonly) so the toggle can be driven.
+    await page
+      .evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLInputElement | null;
+        if (!el) return;
+        el.removeAttribute('disabled');
+        el.disabled = false;
+        el.removeAttribute('readonly');
+        el.readOnly = false;
+      }, target.selector)
+      .catch(() => undefined);
+
+    let checked = false;
+    try {
+      await page.check(target.selector, { timeout: 2000 });
+      checked = true;
+    } catch {
+      // Obscured / detached / non-standard control — force the state directly and
+      // fire the events SPA frameworks bind to.
+      checked = await page
+        .evaluate((sel) => {
+          const el = document.querySelector(sel) as HTMLInputElement | null;
+          if (!el) return false;
+          if (!el.checked) {
+            el.checked = true;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          return el.checked;
+        }, target.selector)
+        .catch(() => false);
+    }
+
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'toggle-control',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'CLICK',
+        humanIdentifier: label,
+      },
+    );
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'form-control-actuated',
+      selector: target.selector,
+      message: checked
+        ? `☑️ Enabled toggle "${label}" to progress the form/workflow.`
+        : `Toggle "${label}" could not be actuated (obscured or detached).`,
+    });
+  }
+
+  /**
+   * Actuate a <select> dropdown as a form-progression control. Deterministically
+   * picks the last enabled option distinct from the current selection, exercising
+   * a real value instead of the usual placeholder-first option. Prefers
+   * Playwright's `selectOption()` (fires input/change) and falls back to a direct
+   * value set + event dispatch.
+   */
+  private async actuateDropdown(page: Page, target: InteractiveElement): Promise<void> {
+    const label = resolveElementLabel(target);
+
+    await page
+      .evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLSelectElement | null;
+        if (el) {
+          el.removeAttribute('disabled');
+          el.disabled = false;
+        }
+      }, target.selector)
+      .catch(() => undefined);
+
+    // Resolve a deterministic, meaningful option value inside the page context.
+    const value = await page
+      .$eval(target.selector, (node) => {
+        const select = node as HTMLSelectElement;
+        const options = Array.from(select.options).filter((option) => !option.disabled);
+        if (options.length === 0) return null;
+        const last = options[options.length - 1];
+        const pick = last.value === select.value && options.length > 1 ? options[options.length - 2] : last;
+        return pick.value;
+      })
+      .catch(() => null);
+
+    let selected = false;
+    if (value !== null) {
+      try {
+        await page.selectOption(target.selector, { value }, { timeout: 2000 });
+        selected = true;
+      } catch {
+        selected = await page
+          .evaluate(
+            ({ sel, chosen }: { sel: string; chosen: string }) => {
+              const el = document.querySelector(sel) as HTMLSelectElement | null;
+              if (!el) return false;
+              el.value = chosen;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return el.value === chosen;
+            },
+            { sel: target.selector, chosen: value },
+          )
+          .catch(() => false);
+      }
+    }
+
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'select-option',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'CLICK',
+        humanIdentifier: label,
+      },
+    );
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'form-control-actuated',
+      selector: target.selector,
+      message: selected
+        ? `🔽 Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
+        : `Dropdown "${label}" had no selectable option.`,
+    });
+  }
+
+  /**
    * Run an operator-gated stress scenario as the payload layer on the current
    * state. The navigation click has already happened; this executes
    * scenario-specific actions inside an ActiveScenarioTracker window so any fault
@@ -158,7 +334,8 @@ export class ActionExecutor {
       // For security scenarios on text inputs, strip constraints first.
       if (scenario.name === 'FormBypasser') {
         try {
-          await this.stripConstraints(page);
+          // Target-scoped strip: the acting field + its siblings + its parent form.
+          await stripConstraintsSilently(page, target.selector);
           t.emit('ACTION', {
             actionExecuted: 'security-constraints-stripped',
             selector: target.selector,
@@ -316,7 +493,10 @@ export class ActionExecutor {
         (p) => this.fuzzHasher.hash(p),
         { selector: target.selector, category, strategy: synth.strategy, escalationLevel: level, payload },
         async () => {
-          await this.stripConstraints(page);
+          // Target-scoped strip so THIS field's pattern/minlength/required and its
+          // form's novalidate are removed before injection + submit (was stripping
+          // only the first form element, leaving the real target's gates intact).
+          await stripConstraintsSilently(page, target.selector);
           ActiveScenarioTracker.record(describeConstraintBypass(label));
 
           await this.injectPayload(page, target.selector, payload);
@@ -396,42 +576,6 @@ export class ActionExecutor {
     }
   }
 
-  private async stripConstraints(page: Page): Promise<void> {
-    // Use formBypasser for comprehensive constraint stripping
-    // This leverages the full power of formBypasser for all input types
-    try {
-      await formBypasser.execute(page, undefined);
-    } catch (error) {
-      // Fallback to inline implementation if formBypasser fails
-      console.warn('[ActionExecutor] formBypasser failed, using fallback stripConstraints');
-      await page.evaluate(() => {
-        try {
-          const fields = Array.from(document.querySelectorAll('input, textarea, select'));
-          for (const field of fields) {
-            field.removeAttribute('required');
-            field.removeAttribute('disabled');
-            field.removeAttribute('readonly');
-
-            const input = field as HTMLInputElement;
-            input.disabled = false;
-            input.readOnly = false;
-            input.required = false;
-
-            const nextMaxLength = -1;
-            if (nextMaxLength < 0) {
-              input.removeAttribute('maxLength');
-              continue;
-            }
-
-            input.maxLength = nextMaxLength;
-          }
-        } catch (err) {
-          console.warn('[BugSafari] stripConstraints evaluate failed', err);
-        }
-      });
-    }
-  }
-
   private async injectPayload(page: Page, selector: string, payload: string): Promise<void> {
     await page
       .evaluate(
@@ -451,9 +595,15 @@ export class ActionExecutor {
   /**
    * Populate every EMPTY sibling input within the anchor's parent `<form>` before
    * submission, so multi-field flows (e.g. username + password) are exercised in
-   * full rather than submitted half-filled. Each empty field is tagged with a
+   * full rather than submitted half-filled. Each empty TEXT field is tagged with a
    * temporary attribute for a stable selector, classified + injected via the same
    * strategy pipeline used for the anchor, then the temp attribute is cleaned up.
+   *
+   * In the same pass it also satisfies REQUIRED non-text controls — checking
+   * required checkboxes, selecting a required radio group, and choosing a real
+   * option for required-but-empty dropdowns — so a fuzzed form can actually clear
+   * its client gates and submit, instead of being trapped one control short of the
+   * backend and re-rendering the identical state.
    */
   private async fillEmptyFormSiblings(page: Page, anchorSelector: string): Promise<void> {
     const siblings = await page
@@ -482,6 +632,43 @@ export class ActionExecutor {
             tagName: node.tagName.toLowerCase(),
           });
         });
+
+        // Satisfy required non-text controls so the form can pass validation.
+        // Events dispatched inline (no nested helper) so this body survives
+        // serialization into the page context under any bundler/transform.
+        form.querySelectorAll('input[required], select[required]').forEach((el) => {
+          const node = el as HTMLInputElement;
+          if (node === anchor) return;
+          const type = (node.type ?? '').toLowerCase();
+          const tag = node.tagName.toLowerCase();
+          if (type === 'checkbox') {
+            if (!node.checked) {
+              node.checked = true;
+              node.dispatchEvent(new Event('input', { bubbles: true }));
+              node.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } else if (type === 'radio') {
+            const group = Array.from(form.querySelectorAll('input[type="radio"]')).filter(
+              (radio) => (radio as HTMLInputElement).name === node.name,
+            );
+            if (!group.some((radio) => (radio as HTMLInputElement).checked)) {
+              node.checked = true;
+              node.dispatchEvent(new Event('input', { bubbles: true }));
+              node.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } else if (tag === 'select') {
+            const select = node as unknown as HTMLSelectElement;
+            if (!select.value) {
+              const options = Array.from(select.options).filter((option) => !option.disabled && option.value);
+              if (options.length > 0) {
+                select.value = options[options.length - 1].value;
+                select.dispatchEvent(new Event('input', { bubbles: true }));
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
+          }
+        });
+
         return out;
       }, anchorSelector)
       .catch(() => [] as Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }>);
