@@ -4,6 +4,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
+import { installDomainGuard } from '../../application/services/domainGuard.js';
 
 /**
  * Browser and system information captured at launch
@@ -156,6 +157,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       ignoreHTTPSErrors: true,
       deviceScaleFactor: 1,
     });
+
+    // Origin guard: block navigation to any origin other than the target so the
+    // engine only ever renders the tested site (its sub-pages), never a third party.
+    await installDomainGuard(this.activeContext, targetUrl, telemetry);
+
     this.activePage = await this.activeContext.newPage();
 
     // Capture browser info and system details for telemetry

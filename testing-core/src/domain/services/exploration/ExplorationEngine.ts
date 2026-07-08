@@ -530,7 +530,7 @@ export class ExplorationEngine {
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
-        ensureTargetDomain: (p) => this.ensureTargetDomain(p),
+        ensureTargetDomain: (p) => this.ensureTargetDomain(p, emitter),
       });
 
       return await loop.execute(page, maxSteps);
@@ -793,11 +793,28 @@ export class ExplorationEngine {
     }
   }
 
-  private async ensureTargetDomain(page: Page): Promise<void> {
+  // Per-step safety net: if the page drifted onto a different origin (e.g. a JS
+  // redirect that slipped past the network guard), bounce back to the target origin.
+  private async ensureTargetDomain(page: Page, telemetry: TelemetryEmitter): Promise<void> {
     const current = page.url();
-    if (!current) {
+    if (!current || current.startsWith('about:') || current.startsWith('data:') || current.startsWith('blob:')) {
       return;
     }
+    let currentOrigin: string;
+    try {
+      currentOrigin = new URL(current).origin;
+    } catch {
+      return;
+    }
+    if (currentOrigin === this.targetOrigin) {
+      return;
+    }
+    telemetry.emit('ACTION', {
+      actionExecuted: 'restore-target-domain',
+      url: current,
+      message: `Off-target origin ${currentOrigin} detected — restoring to ${this.targetOrigin}`,
+    });
+    await page.goto(this.targetOrigin, { waitUntil: 'domcontentloaded', timeout: 15000 });
   }
 
   private async ensureDomReady(page: Page, telemetry: TelemetryEmitter): Promise<void> {

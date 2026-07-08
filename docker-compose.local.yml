@@ -71,6 +71,9 @@ services:
     # on every edit — no image rebuild needed.
     volumes:
       - ./testing-core/src:/app/testing-core/src
+      # Keep shared contracts in sync with the live testing-core mount so tsc-watch
+      # compiles against current types (stale baked shared breaks the compile → no server).
+      - ./shared:/app/shared
     depends_on:
       redis:
         condition: service_healthy
@@ -78,7 +81,7 @@ services:
       - bugsafari-local
     command: >
       sh -c "npm run dev --workspace testing-core"
-      
+
 
   worker:
     container_name: bugsafari-worker
@@ -113,6 +116,9 @@ services:
     # current code and stamp sessions with the real userId.
     volumes:
       - ./testing-core/src:/app/testing-core/src
+      # Same shared mount as api: worker also runs tsc-watch and must compile against
+      # the current shared contracts, not the stale copy baked into the image.
+      - ./shared:/app/shared
     depends_on:
       redis:
         condition: service_healthy

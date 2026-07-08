@@ -1,19 +1,21 @@
-import type { BrowserContext, Page, Route } from 'playwright';
-import { TelemetryHub } from '../../infrastructure/monitoring/socketServer.js';
+import type { BrowserContext } from 'playwright';
+import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
+// Network-level origin guard: aborts any top-level/iframe navigation to an origin
+// other than the target so the engine never renders a third-party site.
 export async function installDomainGuard(
   context: BrowserContext,
   targetUrl: string,
-  hub: TelemetryHub,
+  telemetry: TelemetryGateway,
 ): Promise<void> {
   const targetOrigin = new URL(targetUrl).origin;
 
   await context.route('**/*', async (route) => {
-const request = route.request();
+    const request = route.request();
     const requestUrl = request.url();
 
     if (request.isNavigationRequest() && isExternalHttpNavigation(requestUrl, targetOrigin)) {
-      hub.emitTelemetry({
+      telemetry.emitTelemetry({
         timestamp: new Date().toISOString(),
         type: 'ACTION',
         meta: {
@@ -29,29 +31,6 @@ const request = route.request();
 
     await route.continue();
   });
-}
-
-export async function restoreDomainIfNeeded(page: Page, targetUrl: string, hub: TelemetryHub): Promise<boolean> {
-  const target = new URL(targetUrl);
-  const currentUrl = page.url();
-
-  if (!isExternalHttpNavigation(currentUrl, target.origin)) {
-    return false;
-  }
-
-  hub.emitTelemetry({
-    timestamp: new Date().toISOString(),
-    type: 'ACTION',
-    meta: {
-      actionExecuted: 'restore-target-domain',
-      url: currentUrl,
-      blockedUrl: currentUrl,
-      message: `Restoring browser to ${target.origin}`,
-    },
-  });
-
-  await page.goto(target.origin, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  return true;
 }
 
 function isExternalHttpNavigation(rawUrl: string, targetOrigin: string): boolean {
