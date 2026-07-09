@@ -14,4 +14,5 @@ export {
   type StressClickMetadata,
   type RouteTrashMetadata,
   type VulnScoutMetadata,
+  type AsyncRaceMetadata,
 } from './ChaosTransactionManager.js';

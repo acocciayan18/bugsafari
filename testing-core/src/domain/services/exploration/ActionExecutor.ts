@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
-import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer } from '../../scenarios/index.js';
+import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer, asyncStateRacer } from '../../scenarios/index.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
@@ -390,6 +390,21 @@ export class ActionExecutor {
   }
 
   /**
+   * Build the AsyncStateRacer adapter bound to this run's shared
+   * ChaosTransactionManager. Routing through here opens a real ASYNC_RACE
+   * transaction during the interruption race, so its lifecycle deltas and the
+   * failure snapshot are attributed to the scenario.
+   */
+  private buildAsyncStateRacerScenario(): StressScenario {
+    return {
+      name: asyncStateRacer.name,
+      execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
+        await asyncStateRacer.execute(page, target, this.deps.fuzzManager);
+      },
+    };
+  }
+
+  /**
    * Heuristically rank the stress scenarios that suit this element, then return
    * the first whose owning testing-type the operator left enabled. Returns null
    * when every applicable scenario has been deactivated for this run.
@@ -417,6 +432,10 @@ export class ActionExecutor {
       if (revisitedPage) candidates.push(this.buildRouteTrasherScenario());
       if (buttonLike) candidates.push(formBypasser);
       if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
+      // Async lifecycle / interruption race — a control that fires async work is the
+      // natural target. Ordered after the existing button scenarios so it never
+      // starves them; the dedicated asyncRace profile isolates it for guaranteed runs.
+      if (buttonLike) candidates.push(this.buildAsyncStateRacerScenario());
       candidates.push(stressScenarioMap.CoordinateBombing);
     }
 

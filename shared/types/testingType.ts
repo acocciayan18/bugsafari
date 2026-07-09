@@ -41,7 +41,8 @@ export type TestingTypeId =
   | 'formBypass'
   | 'dataFuzzing'
   | 'concurrency'
-  | 'navigation';
+  | 'navigation'
+  | 'asyncRace';
 
 export interface TestingTypeOption {
   /** Stable identifier transmitted in the run payload. */
@@ -90,6 +91,12 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
     description: 'History trashing, URL mutation, and network sabotage (RouteTrasher, NetworkSaboteur).',
     scenarios: ['RouteTrasher', 'NetworkSaboteur'],
   },
+  {
+    id: 'asyncRace',
+    label: 'Async Lifecycle & Race Probing',
+    description: 'Interrupts in-flight async work to surface teardown races, swallowed promise rejections, and state desync (AsyncStateRacer).',
+    scenarios: ['AsyncStateRacer'],
+  },
 ];
 
 /** All testing-type ids — the default selection (everything enabled). */
@@ -104,11 +111,12 @@ export const ALL_TESTING_TYPE_IDS: TestingTypeId[] = TESTING_TYPE_CATALOG.map((o
 // execution primitive is unchanged. NetworkSaboteur runs as an always-on
 // background monitor independent of any profile and is not listed here.
 
-/** The four unified execution profiles an operator can launch. */
+/** The unified execution profiles an operator can launch. */
 export type InfiltrationProfileId =
   | 'CHAOS_INFILTRATION'
   | 'DEEP_SEMANTIC_DATA_ATTACK'
   | 'HIGH_FREQUENCY_CONCURRENCY_STRAIN'
+  | 'ASYNC_LIFECYCLE_ASSAULT'
   | 'CUSTOM_STRATEGY_PROFILE';
 
 export interface InfiltrationProfileOption {
@@ -147,6 +155,12 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
     label: 'High-Frequency Concurrency Strain',
     description: 'Concurrency-focused — rapid concurrent clicking and route/history thrashing.',
     testingTypes: ['concurrency', 'navigation'],
+  },
+  {
+    id: 'ASYNC_LIFECYCLE_ASSAULT',
+    label: 'Async Lifecycle Assault',
+    description: 'Async-focused — interrupts in-flight requests/transitions to expose race conditions, teardown crashes, swallowed rejections, and state desync.',
+    testingTypes: ['asyncRace'],
   },
   {
     id: 'CUSTOM_STRATEGY_PROFILE',

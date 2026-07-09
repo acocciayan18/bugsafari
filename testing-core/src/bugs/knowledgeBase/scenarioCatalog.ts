@@ -53,6 +53,17 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     signalCategories: ['CLIENT_CRASH'],
     description: 'Fires deterministic grid clicks to hit overlays/hidden hit-test edges.',
   },
+  AsyncStateRacer: {
+    testingType: 'asyncRace',
+    expectedBugs: [
+      'SPA_STATE_RACE_CONDITION',
+      'CASCADING_STATE_FAILURE',
+      'RUNTIME_STABILITY_EXCEPTION',
+      'BOUNDARY_STRESS_FAILURE',
+    ],
+    signalCategories: ['CLIENT_CRASH', 'SERVER_ERROR'],
+    description: 'Interrupts in-flight async operations to surface teardown races, swallowed rejections, and state desync.',
+  },
   RouteTrasher: {
     testingType: 'navigation',
     expectedBugs: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],

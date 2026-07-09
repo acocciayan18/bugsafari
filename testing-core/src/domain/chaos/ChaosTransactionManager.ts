@@ -13,8 +13,10 @@
  * STRESS_CLICK: Rapid concurrent clicks
  * ROUTE_TRASH: Invalid route navigation testing
  * VULN_SCOUT: Security vulnerability injection (SQL, XSS, etc.)
+ * ASYNC_RACE: Interrupts in-flight async operations to surface teardown races,
+ *             swallowed promise rejections, and lifecycle state inconsistencies.
  */
-export type ChaosContextType = 'FUZZ' | 'NETWORK' | 'STRESS_CLICK' | 'ROUTE_TRASH' | 'VULN_SCOUT';
+export type ChaosContextType = 'FUZZ' | 'NETWORK' | 'STRESS_CLICK' | 'ROUTE_TRASH' | 'VULN_SCOUT' | 'ASYNC_RACE';
 
 /**
  * FuzzingStrategyType - Strategy used for fuzzing
@@ -116,14 +118,42 @@ export interface VulnScoutMetadata {
 }
 
 /**
+ * AsyncRaceMetadata - Async lifecycle / interruption-race parameters.
+ *
+ * Records exactly how the in-flight async operation was interrupted and the
+ * lifecycle deltas observed across the race, so telemetry, the live transaction,
+ * and stored findings stay reproducible. The lifecycle-delta fields are diagnostic
+ * only — they never create a finding on their own (real faults flow through the
+ * always-on console/network/pageerror monitors); they contextualize one.
+ */
+export interface AsyncRaceMetadata {
+  targetSelector: string;
+  /** How many interrupt cycles the race fired. */
+  cycles: number;
+  /** Delay (ms) between the async trigger and the interrupt — the in-flight window. */
+  interruptDelayMs: number;
+  /** How the in-flight operation was interrupted. */
+  interruptMode: 'escape+concurrent-retrigger';
+  /** Count of window 'unhandledrejection' events the app failed to handle during the race. */
+  unhandledRejections: number;
+  /** JS heap growth (bytes) across the race when performance.memory is exposed (0 otherwise). */
+  heapGrowthBytes: number;
+  /** Net DOM-node growth across the race (a coarse detached-node / churn signal). */
+  nodeGrowth: number;
+  /** Where the target ended up once the race settled. */
+  resultingState: 'settled' | 'detached' | 'error';
+}
+
+/**
  * ChaosMetadata - Union type for all chaos metadata
  */
-export type ChaosMetadata = 
+export type ChaosMetadata =
   | FuzzMetadata
   | NetworkMetadata
   | StressClickMetadata
   | RouteTrashMetadata
-  | VulnScoutMetadata;
+  | VulnScoutMetadata
+  | AsyncRaceMetadata;
 
 /**
  * ChaosContext<T> - Internal transaction memory state with generic metadata

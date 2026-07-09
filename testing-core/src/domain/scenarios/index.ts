@@ -10,6 +10,7 @@ import { buttonSpammer, coordinateBombing, InteractionSimulator } from './rapidC
 import { routeTrasher } from './routeTrasher/index.js';
 import { formBypasser } from './formBypasser.js';
 import { networkSaboteur } from './networkSaboteur.js';
+import { asyncStateRacer } from './asyncStateRacer.js';
 
 // Import element classifier and strategies
 import {
@@ -115,6 +116,19 @@ export function createStressScenarioRegistry(
     },
   };
 
+  // Wrap the async interruption-race scenario so it opens a real ASYNC_RACE
+  // transaction on the shared manager for fault attribution + reproduction.
+  const asyncStateRacerScenario: StressScenario = {
+    name: asyncStateRacer.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      try {
+        await asyncStateRacer.execute(page, target, chaosManager);
+      } catch (error) {
+        console.error(`[StressScenario:AsyncStateRacer] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    },
+  };
+
 // Create wrapped networkSaboteur scenario that passes telemetry
   // Create clean operational closure wrapper that passes required telemetry dependencies
   // alongside page session and global gateway context
@@ -143,6 +157,7 @@ export function createStressScenarioRegistry(
     routeTrasherScenario,
     formBypasser,
     networkSaboteurScenario,
+    asyncStateRacerScenario,
   ];
 }
 
@@ -172,6 +187,14 @@ export const stressScenarioMap: Record<string, StressScenario> = {
   },
   CoordinateBombing: coordinateBombing,
   ButtonSpammer: buttonSpammer,
+  AsyncStateRacer: {
+    name: asyncStateRacer.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      // No transaction manager in the static map path; the live engine path uses
+      // the ActionExecutor adapter which injects the real ChaosTransactionManager.
+      await asyncStateRacer.execute(page, target, null);
+    },
+  },
   FormBypasser: formBypasser,
   NetworkSaboteur: {
     name: networkSaboteur.name,
@@ -189,6 +212,7 @@ export {
   formBypasser,
   networkSaboteur,
   routeTrasher,
+  asyncStateRacer,
   dataFuzzer,
   classifyInputElement,
   type FieldCategory,
