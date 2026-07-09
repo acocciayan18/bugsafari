@@ -19,11 +19,24 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
-import type { ForensicActionStep, ForensicCaughtBug, ForensicReportResponse, VerifyFixRequest } from '../../types';
+import type {
+  ForensicActionStep,
+  ForensicCaughtBug,
+  ForensicReportResponse,
+  VerifyFixRequest,
+  VerifyFixResult,
+  RegressionVerdict,
+  RegressionSignal,
+} from '../../types';
 import ReproductionChecklist from '../telemetry/ReproductionChecklist';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { AttributionBadges, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
-import { useRegressionVerifier, type VerifyStatus } from '../../application/useCases/useRegressionVerifier';
+import { Modal } from '../ui/Modal';
+import {
+  useRegressionVerifier,
+  IDLE_VERIFY_STATUS,
+  type VerifyStatus,
+} from '../../application/useCases/useRegressionVerifier';
 
 function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return 'N/A';
@@ -167,53 +180,148 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Verify Fix — per-finding regression replay control. Idle shows a
-// trigger; running shows a spinner; a completed result renders a
-// color-coded verdict badge (VERIFIED / BUG PERSISTS / INCONCLUSIVE)
-// with the engine's summary as the tooltip. Clicking a settled badge
-// re-runs the replay (e.g. after another code change).
+// Verify Fix — per-finding regression replay control + result modal.
+// The control renders the whole lifecycle: an idle trigger → a live
+// progress pill (replaying N/total → validating) → a settled verdict
+// badge (RESOLVED / STILL ACTIVE / INCONCLUSIVE) that reopens a
+// dedicated result modal. The finding card itself also re-themes to
+// the settled verdict so a reader sees at a glance whether the defect
+// is fixed. Phase data is streamed from the engine over the socket.
 // ─────────────────────────────────────────────────────────────
 
-const VERDICT_THEME: Record<string, { label: string; className: string }> = {
-  VERIFIED: { label: 'VERIFIED', className: 'bg-green-600 text-white hover:bg-green-700' },
-  BUG_PERSISTS: { label: 'BUG PERSISTS', className: 'bg-red-600 text-white hover:bg-red-700' },
-  INCONCLUSIVE: { label: 'INCONCLUSIVE', className: 'bg-amber-500 text-white hover:bg-amber-600' },
+type VerdictIcon = (className: string) => ReactNode;
+
+const checkIcon: VerdictIcon = (c) => (
+  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+  </svg>
+);
+const alertIcon: VerdictIcon = (c) => (
+  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L14.7 3.86a2 2 0 00-3.4 0z" />
+  </svg>
+);
+const questionIcon: VerdictIcon = (c) => (
+  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.2 9a3.8 3.8 0 017.4 1.3c0 2.5-3.8 3.2-3.8 3.2M12 17h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+interface VerdictMeta {
+  label: string;
+  badge: string;
+  chip: string;
+  dot: string;
+  cardBorder: string;
+  cardHeaderBg: string;
+  cardTitle: string;
+  cardSub: string;
+  numberBg: string;
+  modalBar: string;
+  icon: VerdictIcon;
+}
+
+const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
+  RESOLVED: {
+    label: 'Resolved',
+    badge: 'bg-green-600 text-white hover:bg-green-700',
+    chip: 'bg-green-100 text-green-800 border border-green-200',
+    dot: 'bg-green-500',
+    cardBorder: 'border-green-200',
+    cardHeaderBg: 'bg-green-50 border-green-200',
+    cardTitle: 'text-green-900',
+    cardSub: 'text-green-700',
+    numberBg: 'bg-green-600',
+    modalBar: 'bg-green-600',
+    icon: checkIcon,
+  },
+  STILL_ACTIVE: {
+    label: 'Still Active',
+    badge: 'bg-red-600 text-white hover:bg-red-700',
+    chip: 'bg-red-100 text-red-800 border border-red-200',
+    dot: 'bg-red-500',
+    cardBorder: 'border-red-300',
+    cardHeaderBg: 'bg-red-50 border-red-300',
+    cardTitle: 'text-red-900',
+    cardSub: 'text-red-700',
+    numberBg: 'bg-red-600',
+    modalBar: 'bg-red-600',
+    icon: alertIcon,
+  },
+  INCONCLUSIVE: {
+    label: 'Inconclusive',
+    badge: 'bg-amber-500 text-white hover:bg-amber-600',
+    chip: 'bg-amber-100 text-amber-800 border border-amber-200',
+    dot: 'bg-amber-500',
+    cardBorder: 'border-amber-200',
+    cardHeaderBg: 'bg-amber-50 border-amber-200',
+    cardTitle: 'text-amber-900',
+    cardSub: 'text-amber-700',
+    numberBg: 'bg-amber-500',
+    modalBar: 'bg-amber-500',
+    icon: questionIcon,
+  },
 };
+
+// Base (unverified) finding theme — the existing red "confirmed bug" look.
+const BASE_CARD = {
+  cardBorder: 'border-red-200',
+  cardHeaderBg: 'bg-red-50 border-red-200',
+  cardTitle: 'text-red-900',
+  cardSub: 'text-red-700',
+  numberBg: 'bg-red-600',
+};
+
+function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
+  return VERDICT_META[verdict] ?? VERDICT_META.INCONCLUSIVE;
+}
+
+/** Human phase label for the running pill (real per-step counts when known). */
+function phaseLabel(status: Extract<VerifyStatus, { state: 'running' }>): string {
+  if (status.phase === 'validating') return 'Validating…';
+  if (status.totalSteps > 0) return `Replaying ${status.stepsReplayed}/${status.totalSteps}…`;
+  return 'Replaying…';
+}
 
 function VerifyFixControl({
   status,
   disabled,
   disabledReason,
   onVerify,
+  onOpenResult,
 }: {
   status: VerifyStatus;
   disabled: boolean;
   disabledReason?: string;
   onVerify: () => void;
+  onOpenResult: () => void;
 }) {
-  if (status === 'running') {
+  if (status.state === 'running') {
     return (
-      <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+      <span
+        className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+        aria-live="polite"
+      >
         <svg className="h-3.5 w-3.5 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
-        Verifying…
+        {phaseLabel(status)}
       </span>
     );
   }
 
-  if (status !== 'idle') {
-    const theme = VERDICT_THEME[status.verdict] ?? VERDICT_THEME.INCONCLUSIVE;
+  if (status.state === 'done') {
+    const meta = verdictMetaOf(status.result.verdict);
     return (
       <button
         type="button"
-        onClick={onVerify}
-        disabled={disabled}
-        title={`${status.summary}${disabled && disabledReason ? ` — ${disabledReason}` : ' (click to re-verify)'}`}
-        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${theme.className}`}
+        onClick={onOpenResult}
+        title="View verification result"
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${meta.badge}`}
       >
-        {theme.label}
+        {meta.icon('h-3.5 w-3.5')}
+        {meta.label}
       </button>
     );
   }
@@ -234,6 +342,123 @@ function VerifyFixControl({
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Verification Result Modal — the dedicated outcome surface. Shows
+// the verdict, the engine's summary, run metadata, and (for a
+// STILL_ACTIVE verdict) the exact console/network signals that
+// reproduced the original fault.
+// ─────────────────────────────────────────────────────────────
+
+function ResultStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-bold text-gray-900" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
+  return (
+    <li className="rounded-md border border-red-200 bg-red-50 p-3">
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+          {signal.faultType}
+        </span>
+        {typeof signal.statusCode === 'number' && (
+          <span className="font-mono text-[11px] font-semibold text-red-700">HTTP {signal.statusCode}</span>
+        )}
+      </div>
+      <div className="mt-1 break-words text-xs text-gray-800">{signal.message}</div>
+      {signal.url && (
+        <div className="mt-1 truncate font-mono text-[10px] text-gray-500" title={signal.url}>{signal.url}</div>
+      )}
+    </li>
+  );
+}
+
+function VerificationResultModal({
+  result,
+  onReverify,
+  onClose,
+}: {
+  result: VerifyFixResult;
+  onReverify: () => void;
+  onClose: () => void;
+}) {
+  const meta = verdictMetaOf(result.verdict);
+  const titleId = `verify-result-${result.bugId}`;
+
+  return (
+    <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-lg">
+      {/* Accent header keyed to the verdict tone */}
+      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-white ${meta.modalBar}`}>
+        {meta.icon('h-6 w-6 shrink-0')}
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
+          <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
+        </div>
+      </div>
+
+      <div className="max-h-[70vh] overflow-y-auto bg-white px-5 py-4">
+        <p className="text-sm leading-relaxed text-gray-800">{result.summary}</p>
+
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
+          <ResultStat label="Steps Replayed" value={String(result.stepsReplayed)} />
+          <ResultStat label="Duration" value={formatDuration(result.durationMs)} />
+        </div>
+
+        {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              Reproduced Signals ({result.matchedSignals.length})
+            </div>
+            <ul className="space-y-2">
+              {result.matchedSignals.map((signal, idx) => (
+                <ReproducedSignal key={idx} signal={signal} />
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {result.verdict === 'RESOLVED' && (
+          <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+            The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
+          </div>
+        )}
+
+        {result.verdict === 'INCONCLUSIVE' && (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
+          </div>
+        )}
+      </div>
+
+      {/* Footer actions */}
+      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-gray-200 bg-white px-5 py-3">
+        <button
+          type="button"
+          onClick={onReverify}
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
+          </svg>
+          Re-verify
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700"
+        >
+          Close
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function FindingCard({
   bug,
   index,
@@ -248,6 +473,7 @@ function FindingCard({
   onVerify: (request: VerifyFixRequest) => void;
 }) {
   const [stackExpanded, setStackExpanded] = useState(false);
+  const [showResult, setShowResult] = useState(false);
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
 
@@ -259,25 +485,49 @@ function FindingCard({
       ? 'This finding has no stable id to replay'
       : undefined;
 
+  // Settled verdict drives both the card theme and the header status chip.
+  const settled = status.state === 'done' ? status.result : null;
+  const verdictMeta = settled ? verdictMetaOf(settled.verdict) : null;
+  const theme = verdictMeta ?? BASE_CARD;
+
+  const triggerVerify = (): void => {
+    if (canVerify && sessionId) onVerify({ sessionId, bugId: bug.bugId });
+  };
+
+  // Surface the outcome immediately: pop the result modal whenever a fresh
+  // terminal result arrives (initial verify or any re-verify → a new object).
+  useEffect(() => {
+    if (settled) setShowResult(true);
+  }, [settled]);
+
   return (
-    <div className="overflow-hidden rounded-lg border border-red-200 bg-white shadow-sm">
+    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-white shadow-sm`}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-3">
+      <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-white`}>
             {index + 1}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-red-900">{bugClass}</div>
-            <div className="text-[11px] text-red-700 opacity-75">{formatDate(bug.timestamp)}</div>
+            <div className="flex items-center gap-2">
+              <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{bugClass}</span>
+              {verdictMeta && (
+                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
+                  {verdictMeta.label}
+                </span>
+              )}
+            </div>
+            <div className={`text-[11px] opacity-75 ${theme.cardSub}`}>{formatDate(bug.timestamp)}</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <VerifyFixControl
             status={status}
-            disabled={!canVerify || status === 'running'}
+            disabled={!canVerify || status.state === 'running'}
             disabledReason={disabledReason}
-            onVerify={() => canVerify && sessionId && onVerify({ sessionId, bugId: bug.bugId })}
+            onVerify={triggerVerify}
+            onOpenResult={() => setShowResult(true)}
           />
           <CopyButton text={summaryText} label="Finding" />
         </div>
@@ -331,6 +581,18 @@ function FindingCard({
           isExpanded={stackExpanded}
           onToggle={() => setStackExpanded((prev) => !prev)}
           className="max-h-96"
+        />
+      )}
+
+      {/* Dedicated verification outcome surface (auto-opens on completion) */}
+      {settled && showResult && (
+        <VerificationResultModal
+          result={settled}
+          onReverify={() => {
+            setShowResult(false);
+            triggerVerify();
+          }}
+          onClose={() => setShowResult(false)}
         />
       )}
     </div>
@@ -506,7 +768,7 @@ export default function ForensicReport() {
                     bug={bug}
                     index={index}
                     sessionId={sessionId}
-                    status={statuses[bug.bugId] ?? 'idle'}
+                    status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
                     onVerify={verify}
                   />
                 ))}

@@ -30,6 +30,8 @@ export type {
   RegressionVerdict,
   VerifyFixRequest,
   VerifyFixResult,
+  VerifyFixProgress,
+  VerifyFixPhase,
   RegressionSignal,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
@@ -48,6 +50,7 @@ export {
   DEFAULT_INFILTRATION_PROFILE,
   resolveInfiltrationProfile,
   VERIFY_FIX_EVENT,
+  VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
   NETWORK_ALERT_EVENT,

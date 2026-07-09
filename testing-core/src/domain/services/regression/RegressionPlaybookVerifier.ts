@@ -2,7 +2,12 @@ import { chromium, type Browser } from 'playwright';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel, type ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import { classifyFault, type FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
-import type { VerifyFixRequest, VerifyFixResult, RegressionVerdict } from '../../../../../shared/types.js';
+import type {
+  VerifyFixRequest,
+  VerifyFixResult,
+  RegressionVerdict,
+  VerifyFixProgress,
+} from '../../../../../shared/types.js';
 import { FaultCollector } from './FaultCollector.js';
 import { ReplayActionRunner } from './ReplayActionRunner.js';
 import type { LoadedFinding } from './types.js';
@@ -23,12 +28,25 @@ const LAUNCH_TIMEOUT_MS = 30_000;
 export class RegressionPlaybookVerifier {
   /**
    * Replay + validate one finding for one authenticated user.
-   * @param request  sessionId + bugId of the finding to re-check.
-   * @param userId   verified user id — the session query is scoped to it (least privilege).
+   * @param request     sessionId + bugId of the finding to re-check.
+   * @param userId      verified user id — the session query is scoped to it (least privilege).
+   * @param onProgress  optional sink for streamed replay phases (replaying → validating).
    */
-  public async verify(request: VerifyFixRequest, userId: string): Promise<VerifyFixResult> {
+  public async verify(
+    request: VerifyFixRequest,
+    userId: string,
+    onProgress?: (progress: VerifyFixProgress) => void,
+  ): Promise<VerifyFixResult> {
     const startedAt = Date.now();
     const { sessionId, bugId } = request;
+    // Never let a progress-sink failure abort the replay — telemetry is best-effort.
+    const emit = (phase: VerifyFixProgress['phase'], stepsReplayed: number, totalSteps: number): void => {
+      try {
+        onProgress?.({ sessionId, bugId, phase, stepsReplayed, totalSteps });
+      } catch {
+        /* progress delivery is non-critical */
+      }
+    };
 
     if (!isValidObjectId(sessionId) || !bugId) {
       return this.inconclusive(sessionId, bugId, 'UNKNOWN', 0, startedAt, 'Invalid sessionId or bugId.');
@@ -69,26 +87,31 @@ export class RegressionPlaybookVerifier {
 
       await page.waitForTimeout(PER_STEP_SETTLE_MS);
 
+      const totalSteps = finding.actionSteps.length;
       let stepsReplayed = 0;
+      emit('replaying', stepsReplayed, totalSteps);
       for (const step of finding.actionSteps) {
         const outcome = await runner.replay(step);
         stepsReplayed += 1;
         if (outcome.status === 'error') {
           console.warn(`[RegressionVerifier] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
         }
+        emit('replaying', stepsReplayed, totalSteps);
         await page.waitForTimeout(PER_STEP_SETTLE_MS);
       }
 
+      // Replay finished; hold for async faults to surface, then classify.
+      emit('validating', totalSteps, totalSteps);
       await page.waitForTimeout(FINAL_SETTLE_MS);
       const pageContent = await page.content().catch(() => '');
       collector.detach();
 
       const matchedSignals = collector.evaluate(originalBugClass, originalFaultType, pageContent);
-      const verdict: RegressionVerdict = matchedSignals.length > 0 ? 'BUG_PERSISTS' : 'VERIFIED';
+      const verdict: RegressionVerdict = matchedSignals.length > 0 ? 'STILL_ACTIVE' : 'RESOLVED';
       const summary =
-        verdict === 'BUG_PERSISTS'
-          ? `Bug still reproducible: ${originalBugClass} recurred after replaying ${stepsReplayed} recorded step(s).`
-          : `No ${originalBugClass} fault reproduced after replaying ${stepsReplayed} recorded step(s). Fix verified.`;
+        verdict === 'STILL_ACTIVE'
+          ? `Bug still active: ${originalBugClass} reproduced after replaying ${stepsReplayed} recorded step(s).`
+          : `No ${originalBugClass} fault reproduced after replaying ${stepsReplayed} recorded step(s). Defect resolved.`;
 
       console.log(`[RegressionVerifier] Verdict for bug ${bugId}: ${verdict} (${matchedSignals.length} signal(s))`);
 

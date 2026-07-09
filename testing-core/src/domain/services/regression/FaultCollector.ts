@@ -14,7 +14,7 @@ const MAX_CONTENT_SCAN = 200_000;
  * every runtime fault (JS exception, console error, failed response/request). At
  * the end, `evaluate` re-runs the SAME deterministic knowledge-base classifier
  * used by live detection and returns only the faults whose resolved bug class
- * matches the ORIGINAL finding — so a VERIFIED/BUG_PERSISTS verdict is grounded
+ * matches the ORIGINAL finding — so a RESOLVED/STILL_ACTIVE verdict is grounded
  * in identical rules to how the bug was first reported.
  */
 export class FaultCollector {

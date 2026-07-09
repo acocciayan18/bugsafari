@@ -1,11 +1,13 @@
 import type { Server, Socket } from 'socket.io';
 import {
   VERIFY_FIX_EVENT,
+  VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   type SessionAttachRequest,
   type SessionAttachAck,
   type VerifyFixRequest,
   type VerifyFixResult,
+  type VerifyFixProgress,
 } from '../../../../shared/types.js';
 import { verifyTokenSync } from '../authentication/authConfig.js';
 import { RegressionPlaybookVerifier } from '../../domain/services/regression/RegressionPlaybookVerifier.js';
@@ -75,8 +77,9 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     // Automated Regression Verification: replay a saved finding's recorded timeline
-    // and report VERIFIED / BUG_PERSISTS. Uses an ack callback so the result is
-    // delivered to the requesting socket only (no broadcast cross-talk).
+    // and report RESOLVED / STILL_ACTIVE. Uses an ack callback so the result is
+    // delivered to the requesting socket only (no broadcast cross-talk); live
+    // replay phases are streamed back over VERIFY_FIX_PROGRESS_EVENT meanwhile.
     socket.on(VERIFY_FIX_EVENT, async (payload: unknown, ack?: (result: VerifyFixResult) => void) => {
       const respond = typeof ack === 'function' ? ack : (): void => undefined;
       const request = (payload ?? {}) as Partial<VerifyFixRequest>;
@@ -107,6 +110,7 @@ export function registerSocketHandlers(io: Server): void {
         const result = await regressionVerifier.verify(
           { sessionId: request.sessionId, bugId: request.bugId },
           userId,
+          (progress: VerifyFixProgress) => socket.emit(VERIFY_FIX_PROGRESS_EVENT, progress),
         );
         respond(result);
       } catch (error) {
