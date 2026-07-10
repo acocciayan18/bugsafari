@@ -8,7 +8,8 @@
     "start": "node dist/testing-core/src/index.js",
     "dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\"",
     "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

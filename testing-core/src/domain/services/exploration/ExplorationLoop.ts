@@ -11,10 +11,11 @@ import { networkSaboteur } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeRecovery } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
-import { inferSemanticRole, wait } from './types.js';
+import { inferSemanticRole, settle } from './types.js';
 import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
 import type { ExplorationLoopDeps } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
+import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
 import { DEFENSIVE_CLIENT_STATUSES } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
@@ -192,7 +193,7 @@ export class ExplorationLoop {
         // The edge stays 'traversing' in the navigator until we observe a new
         // stable DOM state; an unverified/failed click is isolated as unstable
         // and the parent is restored locally (never collapses the graph).
-        const { traversalOk, childHash, landedInvalid } = await this.executeAndVerifyAction(
+        const { traversalOk, childHash, childStructure, landedInvalid } = await this.executeAndVerifyAction(
           page,
           step,
           target,
@@ -215,10 +216,10 @@ export class ExplorationLoop {
         );
 
         // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
-        this.applyNoveltyRewardAndTelemetry(target, traversalOk, childHash, decision.score, ctx);
+        this.applyNoveltyRewardAndTelemetry(target, traversalOk, childStructure, landedInvalid, decision.score, ctx);
 
         await telemetry.emitLiveFrame(page);
-        await wait(350);
+        await settle(page);
       } catch (err: unknown) {
         return await this.handleIterationError(err, page, runtimeCrashReason, serverCrashReason);
       }
@@ -306,6 +307,10 @@ export class ExplorationLoop {
       await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       return { kind: 'continue' };
     }
+
+    // Fade accumulated penalties one step before ranking so transient stagnation/
+    // no-op nudges recover over time instead of permanently suppressing controls.
+    this.deps.scorer.decayPenalties();
 
     let ranked = this.deps.scorer.score(elements);
 
@@ -409,6 +414,9 @@ export class ExplorationLoop {
     const revisitedPage = this.deps.visitedUrls.has(currentUrl) || this.deps.visitedHashes.has(currentHash);
     this.deps.visitedUrls.add(currentUrl);
     this.deps.visitedHashes.add(currentHash);
+    // Record the structural shell so the structure-gated novelty reward can tell a
+    // genuinely new region from the same page reloaded (distinct shells stay few).
+    this.deps.visitedStructures.add(compound.structure);
     if (this.deps.visitedHashes.size > MAX_VISITED_HASHES) {
       // Bound memory: evict the oldest observed hash (insertion-ordered Set).
       const oldest = this.deps.visitedHashes.values().next().value;
@@ -572,7 +580,7 @@ export class ExplorationLoop {
       } else {
         this.deps.telemetry.emitMilestone(`♻️ Re-seeding exploration from origin: ${origin}`);
         await this.deps.stateRestorer.restoreToState(page, '', origin);
-        await wait(350);
+        await settle(page);
       }
     }
     return { kind: 'continue' };
@@ -593,7 +601,7 @@ export class ExplorationLoop {
     this.deps.telemetry.emitMilestone(`↩️ Backtracking to ${decision.targetUrl}`);
     this.deps.telemetry.emitSystemStatus(`Backtracking to ${decision.targetHash.substring(0, 8)}...`);
     await this.deps.stateRestorer.restoreToState(page, decision.targetHash, decision.targetUrl);
-    await wait(350);
+    await settle(page);
   }
 
   private resolveExploreEdgeTarget(
@@ -720,7 +728,7 @@ export class ExplorationLoop {
     revisitedPage: boolean,
     currentHash: string,
     exploreScore: number,
-  ): Promise<{ traversalOk: boolean; childHash: string; landedInvalid: boolean }> {
+  ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean }> {
     // Emit exploration milestone
     this.deps.telemetry.emitMilestone(`🎯 Exploring edge: ${target.selector} (score: ${exploreScore.toFixed(3)})`);
     this.deps.telemetry.emitSystemStatus(`Clicking element ${target.selector}...`);
@@ -748,6 +756,7 @@ export class ExplorationLoop {
 
     let traversalOk = false;
     let childHash = currentHash;
+    let childStructure = '';
     try {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
@@ -767,6 +776,7 @@ export class ExplorationLoop {
       const verification = await this.deps.stateRestorer.verifyTraversal(page, currentHash, 3000);
       traversalOk = verification.ok;
       childHash = verification.childHash;
+      childStructure = verification.childStructure;
     } catch (actionErr) {
       // Operator-initiated stop must still propagate to the graceful handler.
       if (isBrowserClosedError(actionErr)) throw actionErr;
@@ -803,7 +813,7 @@ export class ExplorationLoop {
 
     await this.deps.persistBrainSnapshot('runtime', step);
 
-    return { traversalOk, childHash, landedInvalid };
+    return { traversalOk, childHash, childStructure, landedInvalid };
   }
 
   private async applyTraversalOutcome(
@@ -875,14 +885,21 @@ export class ExplorationLoop {
   private applyNoveltyRewardAndTelemetry(
     target: InteractiveElement,
     traversalOk: boolean,
-    childHash: string,
+    childStructure: string,
+    landedInvalid: boolean,
     decisionScore: number,
     ctx: RunContext,
   ): void {
-    // If the resulting state has low visitation count (novel), reward the weights.
-    // Uses the verified post-action childHash so the reward reflects the
-    // state the click actually produced, not the pre-action fingerprint.
-    const isNovelState = traversalOk && this.deps.visitedHashes.has(childHash) === false;
+    // Reward only a verified traversal that reached a structurally NEW shell.
+    // Gating on the structure sub-hash (not the volatile combined hash) prevents
+    // the false-novelty loop where re-clicking a control that merely reloads the
+    // same ad-heavy/crashing page reads as an endless stream of novel states.
+    const isNovelState = isNovelStructuralState({
+      traversalOk,
+      landedInvalid,
+      childStructure,
+      visitedStructures: this.deps.visitedStructures,
+    });
 
     if (isNovelState) {
       // Genuine progress — refresh the adaptive-recovery budget.

@@ -37,6 +37,7 @@ import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
+import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -49,6 +50,13 @@ import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.
  * Task 3A: Patch Memory Leaks
  */
 const MAX_CONFIRMED_BUGS = 500;
+
+// Causal attribution bounds for async network-signal rewards: a click's own
+// xhr/fetch fires within a beat and only a few times, so signals outside this
+// window/cap are background SPA chatter (socket.io polling, lazy assets) that must
+// not train the model on the acting element.
+const NETWORK_ATTRIBUTION_WINDOW_MS = 2000;
+const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 
 /**
  * Manages parent execution orchestration and run setups for an autonomous
@@ -71,6 +79,9 @@ export class ExplorationEngine {
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
+  // Structure sub-hashes seen this run — novelty reward is gated on a NEW shell,
+  // not the volatile combined hash, so ad/crash churn can't fake novel states.
+  private readonly visitedStructures = new Set<string>();
   // Clustered state-space coverage layer (keyed by normalized structure hash).
   private readonly clusterRegistry = new StateClusterRegistry();
   // Per-(selector, category) payload-escalation level for adaptive fuzzing.
@@ -81,6 +92,9 @@ export class ExplorationEngine {
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
+  // Timestamp + counter bounding causal network-signal attribution to the current action.
+  private lastActedAtMs = 0;
+  private networkRewardsThisAction = 0;
   private readonly recentActionTraceIds: string[] = [];
   // State Graph Navigator for directed path finding and loop prevention (Task 2)
   // Initialised in the constructor after mode is derived from selectedScenarios.
@@ -497,14 +511,28 @@ export class ExplorationEngine {
         return;
       }
       const resourceType = request.resourceType();
-      if (resourceType === 'xhr' || resourceType === 'fetch') {
-        this.scorer.applyCompoundReward(t, { networkActivity: true });
-        emitter.emit('ACTION', {
-          actionExecuted: 'dynamic-weight-update',
-          selector: t.selector,
-          message: `Boosted feature weights after ${resourceType.toUpperCase()} network signal.`,
-        });
+      if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
+      // Only reward network activity plausibly caused by this action: within a short
+      // causal window and under a per-action cap. Background SPA chatter (socket.io
+      // polling, lazy assets) outside these bounds would otherwise flood the acting
+      // element with reward noise (observed on OWASP Juice Shop).
+      if (
+        !shouldAttributeNetworkSignal({
+          msSinceAction: Date.now() - this.lastActedAtMs,
+          rewardsThisAction: this.networkRewardsThisAction,
+          windowMs: NETWORK_ATTRIBUTION_WINDOW_MS,
+          maxPerAction: MAX_NETWORK_REWARDS_PER_ACTION,
+        })
+      ) {
+        return;
       }
+      this.networkRewardsThisAction += 1;
+      this.scorer.applyCompoundReward(t, { networkActivity: true });
+      emitter.emit('ACTION', {
+        actionExecuted: 'dynamic-weight-update',
+        selector: t.selector,
+        message: `Boosted feature weights after ${resourceType.toUpperCase()} network signal.`,
+      });
     };
 
     // Capture the status of top-level document navigations only (not subresources
@@ -646,6 +674,7 @@ export class ExplorationEngine {
         gate: this.gate,
         visitedUrls: this.visitedUrls,
         visitedHashes: this.visitedHashes,
+        visitedStructures: this.visitedStructures,
         actionExecutor,
         stateRestorer,
         telemetry: emitter,
@@ -659,7 +688,7 @@ export class ExplorationEngine {
         // 404 from a previous page can never be attributed to a fresh render.
         getMainFrameStatus: (routePath) =>
           lastMainFrameStatus && lastMainFrameStatus.path === routePath ? lastMainFrameStatus.status : null,
-        noteActedTarget: (t) => { this.lastActedTarget = t; },
+        noteActedTarget: (t) => { this.lastActedTarget = t; this.lastActedAtMs = Date.now(); this.networkRewardsThisAction = 0; },
         getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => { this.freezeActionTraceRecording = true; },

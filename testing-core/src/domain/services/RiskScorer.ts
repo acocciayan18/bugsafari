@@ -76,6 +76,16 @@ export class RiskScorer {
   private readonly heuristicWeight = 0.6;
   private readonly mlWeight = 0.4;
 
+  // Penalty lifecycle (audit A1): penalties were once only incremented, never
+  // decayed, so a single stagnation event (which penalizes every ranked element)
+  // drove the whole frontier permanently negative and forced premature "graph
+  // exhausted". Penalties are now transient — bounded per-call + in aggregate,
+  // and decayed once per ranking pass so a nudge fades over ~10–20 steps.
+  private static readonly PENALTY_DECAY = 0.9;
+  private static readonly PENALTY_EPSILON = 0.5;
+  private static readonly PENALTY_CALL_CAP = 60;
+  private static readonly PENALTY_ACCUMULATION_CAP = 200;
+
   /**
    * Score elements for InteractiveElement[] (used by AutonomousExplorationEngine)
    */
@@ -140,11 +150,30 @@ export class RiskScorer {
   }
 
   /**
-   * Penalize element selector (used for escape mode)
+   * Penalize an element selector (escape mode / no-op / route-exhaustion). Both
+   * the per-call magnitude and the accumulated total are capped so one event can
+   * deprioritize a control without driving its score permanently negative.
    */
   penalize(selector: string, magnitude = 1): void {
+    const capped = Math.min(Math.abs(magnitude), RiskScorer.PENALTY_CALL_CAP);
     const current = this.penalties.get(selector) ?? 0;
-    this.penalties.set(selector, current + magnitude);
+    this.penalties.set(selector, Math.min(current + capped, RiskScorer.PENALTY_ACCUMULATION_CAP));
+  }
+
+  /**
+   * Decay all accumulated penalties one step (multiplicative), dropping any that
+   * fade below epsilon. Called once per ranking pass by the exploration loop so a
+   * penalty is a transient nudge, not permanent score suppression.
+   */
+  decayPenalties(): void {
+    for (const [selector, value] of this.penalties) {
+      const next = value * RiskScorer.PENALTY_DECAY;
+      if (next < RiskScorer.PENALTY_EPSILON) {
+        this.penalties.delete(selector);
+      } else {
+        this.penalties.set(selector, next);
+      }
+    }
   }
 
   /**

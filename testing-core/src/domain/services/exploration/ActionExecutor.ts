@@ -14,6 +14,8 @@ import {
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
 import { classifyInteractionScope } from './interactionScope.js';
+import { decideEscalation } from './escalationDecision.js';
+import { shouldRouteTrash } from './routeTrashGating.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
@@ -441,10 +443,18 @@ export class ActionExecutor {
     if (isTextInput) {
       candidates.push(formBypasser);
     } else {
-      // RouteTrasher only on revisits AND while URL mutations are still permitted
-      // for this state — past its per-state limit it is dropped so the engine stops
-      // oscillating between identical error routes.
-      if (revisitedPage && allowRouteMutation) candidates.push(this.buildRouteTrasherScenario());
+      // RouteTrasher only on revisits, while URL mutations are still permitted for
+      // this state (past its per-state limit it is dropped so the engine stops
+      // oscillating between identical error routes), AND only on controls that
+      // actually own a route — a menu toggle/plain button owns none, so trashing
+      // the current URL after it just re-bootstraps the SPA and burns the clock.
+      if (
+        revisitedPage &&
+        allowRouteMutation &&
+        shouldRouteTrash({ tagName: target.tagName, role: target.role ?? '', source })
+      ) {
+        candidates.push(this.buildRouteTrasherScenario());
+      }
       if (buttonLike) candidates.push(formBypasser);
       if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
       // Async lifecycle / interruption race — a control that fires async work is the
@@ -555,12 +565,14 @@ export class ActionExecutor {
       );
 
       // 5) Escalation feedback: decide the level the NEXT encounter with this
-      // field should use, from what actually happened this time.
+      // field should use, from what actually happened this time (audit A2/A3).
       //    - A fault (≥400 response or a console/page error) or a vanished field
       //      resets to L0 so the next encounter starts fresh.
-      //    - No observable reaction at all (DOM hash unchanged) escalates one
-      //      level, so the next encounter tries a deeper mutation layer.
-      //    - Anything in between (e.g. a harmless re-render) holds the level.
+      //    - Genuine input RESISTANCE (payload not retained / client validation
+      //      error) escalates one level to try a deeper mutation layer.
+      //    - An accepted-and-processed payload holds the level. The pre/post DOM
+      //      hash is value-blind, so an accepted payload that didn't navigate used
+      //      to hash-match and falsely escalate to L4 — resistance replaces it.
       const fieldStillPresent = await page
         .$(target.selector)
         .then((el) => el !== null)
@@ -568,21 +580,60 @@ export class ActionExecutor {
       const faulted =
         snapshot.apiResponses.some((r) => r.status >= 400) ||
         snapshot.consoleAnomalies.some((a) => a.type === 'error' || a.type === 'pageerror');
+      const resistance = fieldStillPresent
+        ? await this.detectInputResistance(page, target.selector, payload)
+        : { resisted: false, reason: 'field vanished' };
 
-      if (!fieldStillPresent || faulted) {
+      const outcome = decideEscalation({ fieldStillPresent, faulted, resisted: resistance.resisted });
+      if (outcome === 'reset') {
         this.deps.escalationTracker.reset(target.selector, category);
-      } else if (snapshot.preStateHash === snapshot.postStateHash) {
+      } else if (outcome === 'escalate') {
         const nextLevel = this.deps.escalationTracker.escalate(target.selector, category);
         t.emit('ACTION', {
           actionExecuted: 'fuzz-escalation',
           selector: target.selector,
-          message: `📈 No reaction from ${target.selector} at L${level} — escalating to L${nextLevel} for the next encounter.`,
+          message: `📈 ${target.selector} resisted L${level} (${resistance.reason}) — escalating to L${nextLevel} for the next encounter.`,
         });
       }
+      // outcome === 'hold': payload accepted/processed without a fault — keep level.
     } finally {
       // 6) Close the unified forensic event so it never leaks into the next element.
       this.deps.fuzzManager.closeTransaction();
       ActiveScenarioTracker.end();
+    }
+  }
+
+  /**
+   * Probe whether the app RESISTED the injected payload. Reads the field back
+   * after inject+submit: resistance = the field no longer holds the payload
+   * (cleared/reverted by the app's validation) OR a client-side validation error
+   * surfaced. A retained, valid value means the payload was accepted — not
+   * resistance. Never throws: an unreadable/detached field reports no resistance
+   * (the caller's fieldStillPresent/reset path already handles a vanished field).
+   */
+  private async detectInputResistance(
+    page: Page,
+    selector: string,
+    payload: string,
+  ): Promise<{ resisted: boolean; reason: string }> {
+    try {
+      return await page.$eval(
+        selector,
+        (node, injected) => {
+          const field = node as HTMLInputElement | HTMLTextAreaElement;
+          const value = typeof field.value === 'string' ? field.value : '';
+          const retained = injected.length > 0 && value.indexOf(injected) !== -1;
+          const invalid =
+            (typeof field.validationMessage === 'string' && field.validationMessage.length > 0) ||
+            field.getAttribute('aria-invalid') === 'true';
+          if (invalid) return { resisted: true, reason: 'client validation error' };
+          if (!retained) return { resisted: true, reason: 'payload not retained' };
+          return { resisted: false, reason: 'payload accepted' };
+        },
+        payload,
+      );
+    } catch {
+      return { resisted: false, reason: 'unreadable' };
     }
   }
 

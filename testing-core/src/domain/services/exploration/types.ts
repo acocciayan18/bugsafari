@@ -145,6 +145,8 @@ export interface ExplorationLoopDeps {
   gate: ScenarioGate;
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;
+  /** Structure sub-hashes seen this run — drives the structure-gated novelty reward. */
+  visitedStructures: Set<string>;
   actionExecutor: ActionExecutor;
   stateRestorer: StateRestorer;
   telemetry: TelemetryEmitter;
@@ -190,6 +192,48 @@ export interface ExplorationLoopDeps {
 
 export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Adaptive post-action settle (audit D2): wait for the DOM to go quiet — no
+ * mutations for `quietMs` — instead of a fixed delay, bounded by [floorMs, capMs].
+ * A static page resolves at the floor; a churny (ad-heavy) page is capped. Falls
+ * back to a short fixed wait if the page navigates/closes mid-evaluate.
+ */
+export async function settle(page: Page, floorMs = 100, capMs = 600, quietMs = 150): Promise<void> {
+  try {
+    await page.evaluate(
+      ([floor, cap, quiet]: [number, number, number]) =>
+        new Promise<void>((resolve) => {
+          const start = Date.now();
+          let quietTimer: ReturnType<typeof setTimeout>;
+          let done = false;
+          const finish = (): void => {
+            if (done) return;
+            done = true;
+            try { observer.disconnect(); } catch { /* detached */ }
+            clearTimeout(quietTimer);
+            resolve();
+          };
+          const arm = (delay: number): void => {
+            clearTimeout(quietTimer);
+            quietTimer = setTimeout(finish, delay);
+          };
+          const observer = new MutationObserver(() => {
+            if (Date.now() - start >= cap) return finish();
+            arm(quiet);
+          });
+          try {
+            observer.observe(document, { subtree: true, childList: true, attributes: true });
+          } catch { /* detached document — floor/cap timers still resolve */ }
+          arm(Math.max(floor, quiet)); // minimum floor before the first resolve
+          setTimeout(finish, cap); // hard ceiling on churny pages
+        }),
+      [floorMs, capMs, quietMs] as [number, number, number],
+    );
+  } catch {
+    await wait(floorMs);
+  }
 }
 
 export function inferSemanticRole(

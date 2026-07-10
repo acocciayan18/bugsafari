@@ -134,6 +134,19 @@ export class DomHasher {
           var INTERACTIVE = 'a,button,input,select,textarea,summary,details,dialog,' +
             '[role=button],[role=link],[role=menuitem],[role=tab],[role=checkbox],[role=switch],[contenteditable=true]';
 
+          // Ad / analytics / embedded-media subtrees churn on every page load
+          // (randomized ad slots, injected iframes, third-party widgets). Left in,
+          // they fragment the fingerprint so a reload of the SAME page looks like
+          // an endless stream of new states — the false-novelty loop. Excluded from
+          // BOTH signatures so identical pages hash identically across reloads.
+          var VOLATILE = 'script,style,noscript,template,svg,iframe,ins,' +
+            '.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],[id^="aswift"],' +
+            '[data-ad-client],[data-ad-slot],[data-google-query-id],' +
+            '[aria-label="Advertisement"],[aria-label="Advertisements"]';
+          function isVolatile(el) {
+            try { return el.matches(VOLATILE); } catch (e) { return false; }
+          }
+
           // A class token is "dynamic" if it carries a digit (animation/state-with-
           // number) or looks like a generated/hashed class (css-modules, styled).
           function isDynamicClass(token) {
@@ -160,6 +173,7 @@ export class DomHasher {
           var budget = ${cap};
           function serialize(el) {
             if (budget <= 0) return '';
+            if (isVolatile(el)) return ''; // drop ad/media/analytics subtree entirely
             budget--;
             var tag = el.tagName.toLowerCase();
             var emit = STRUCTURAL.has(tag);
@@ -213,6 +227,7 @@ export class DomHasher {
             var iCap = ${cap};
             for (var j = 0; j < nodes.length && j < iCap; j++) {
               var el = nodes[j];
+              if (el.closest(VOLATILE)) continue; // skip controls inside ad/media subtrees
               var role = (el.getAttribute('role') || '').toLowerCase();
               var itype = (el.getAttribute('type') || '').toLowerCase();
               tokens.push(el.tagName.toLowerCase() + '|' + itype + '|' + role + '|' + stateFlags(el) + '|' + label(el));

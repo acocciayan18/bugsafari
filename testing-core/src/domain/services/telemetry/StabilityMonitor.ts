@@ -112,6 +112,18 @@ export function isNetworkAbortedError(errorText: string | undefined | null): boo
          lower.includes('canceled');
 }
 
+/**
+ * Checks if a stress scenario is currently executing. Stress scenarios
+ * (RouteTrasher, CoordinateBombing, etc.) naturally cause many network aborts
+ * as part of their rapid-fire testing, so we suppress spam telemetry during runs.
+ */
+export function isStressScenarioActive(): boolean {
+  const scenario = ActiveScenarioTracker.getActiveScenarioName();
+  if (!scenario) return false;
+  const stressScenarios = ['RouteTrasher', 'CoordinateBombing', 'ButtonSpammer', 'AsyncStateRacer'];
+  return stressScenarios.some((s) => scenario.includes(s));
+}
+
 // ─────────────────────────────────────────────────────────────
 // StabilityMonitor — attaches fault-catching page listeners
 // ─────────────────────────────────────────────────────────────
@@ -480,13 +492,17 @@ export class StabilityMonitor {
       const isAborted = isNetworkAbortedError(reason);
 
       if (isAborted) {
-        // Demote to informational ACTION - user session was cancelled, not a real error
-        t.emit('ACTION', {
-          actionExecuted: 'network-aborted',
-          url,
-          method,
-          message: `ℹ️ Active network connection closed due to user session abort. ${method} ${url}`,
-        });
+        // During stress scenarios (RouteTrasher, CoordinateBombing, etc.), network aborts
+        // are expected and abundant — suppress telemetry spam to keep the feed readable.
+        // Only emit ACTION telemetry for aborts during normal exploration.
+        if (!isStressScenarioActive()) {
+          t.emit('ACTION', {
+            actionExecuted: 'network-aborted',
+            url,
+            method,
+            message: `ℹ️ Active network connection closed due to user session abort. ${method} ${url}`,
+          });
+        }
         // Skip persistent logging for aborts - these are expected cancellation events
         return;
       }

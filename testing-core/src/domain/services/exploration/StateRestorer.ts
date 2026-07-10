@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import { wait } from './types.js';
+import { shouldExitNoOp } from './pacing.js';
 import type { StateRestorerDeps } from './types.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 
@@ -72,38 +73,85 @@ export class StateRestorer {
   public async verifyTraversal(
     page: Page,
     parentHash: string,
-    timeoutMs = 3000,
-  ): Promise<{ ok: boolean; childHash: string }> {
-    const pollIntervalMs = 300;
-    const deadline = Date.now() + timeoutMs;
+    hardCapMs = 3000,
+  ): Promise<{ ok: boolean; childHash: string; childStructure: string }> {
+    const pollIntervalMs = 200;
+    const minObserveMs = 600; // never declare no-op before a real transition could begin
+    const quietMs = 350; // network-quiet duration required to call an unchanged DOM a no-op
+    const noOpCeilingMs = 1800; // hard no-op cap for pages that never go network-quiet (ads/long-poll)
+    const deadline = Date.now() + hardCapMs;
+    const start = Date.now();
     let lastDivergent = parentHash;
+    // Structure sub-hash of the accepted child — surfaced so the caller can gate
+    // the novelty reward on a NEW shell rather than the volatile combined hash.
+    let lastDivergentStructure = '';
 
-    while (Date.now() < deadline) {
-      if (page.isClosed()) break;
-      let hash = parentHash;
-      try {
-        hash = await this.deps.hashManager.hash(page);
-      } catch {
-        // Transient hashing failure (mid-navigation) — retry until the deadline.
-        await wait(pollIntervalMs);
-        continue;
-      }
+    // Adaptive pacing (D2/D3): track network activity so a no-op click bails as
+    // soon as the page is idle instead of polling the whole budget, while a slow
+    // backend-driven transition still holds the window open until the hard cap.
+    let inFlight = 0;
+    let lastActivityTs = Date.now();
+    const onRequest = (): void => { inFlight += 1; lastActivityTs = Date.now(); };
+    const onSettled = (): void => { inFlight = Math.max(0, inFlight - 1); lastActivityTs = Date.now(); };
+    const onResponse = (): void => { lastActivityTs = Date.now(); };
+    page.on('request', onRequest);
+    page.on('requestfinished', onSettled);
+    page.on('requestfailed', onSettled);
+    page.on('response', onResponse);
 
-      if (hash !== parentHash) {
-        // Stable transition: the same new hash seen twice in a row — accept now.
-        if (hash === lastDivergent) {
-          return { ok: true, childHash: hash };
+    try {
+      while (Date.now() < deadline) {
+        if (page.isClosed()) break;
+        let hash = parentHash;
+        let structure = '';
+        try {
+          // Compound (combined + structure) in one pass; combined still drives
+          // identity, structure feeds structure-gated novelty upstream.
+          const compound = await this.deps.hashManager.hashCompound(page);
+          hash = compound.combined;
+          structure = compound.structure;
+        } catch {
+          // Transient hashing failure (mid-navigation) — retry until the deadline.
+          await wait(pollIntervalMs);
+          continue;
         }
-        lastDivergent = hash;
+
+        if (hash !== parentHash) {
+          // Stable transition: the same new hash seen twice in a row — accept now.
+          if (hash === lastDivergent) {
+            return { ok: true, childHash: hash, childStructure: structure };
+          }
+          lastDivergent = hash;
+          lastDivergentStructure = structure;
+        } else if (
+          lastDivergent === parentHash &&
+          shouldExitNoOp({
+            elapsedMs: Date.now() - start,
+            minObserveMs,
+            inFlightRequests: inFlight,
+            msSinceLastActivity: Date.now() - lastActivityTs,
+            quietMs,
+            noOpCeilingMs,
+          })
+        ) {
+          // Unchanged DOM + idle network past the observation floor → no-op. Stop
+          // early rather than burning the full budget re-hashing a static page.
+          break;
+        }
+        await wait(pollIntervalMs);
       }
-      await wait(pollIntervalMs);
+    } finally {
+      page.off('request', onRequest);
+      page.off('requestfinished', onSettled);
+      page.off('requestfailed', onSettled);
+      page.off('response', onResponse);
     }
 
     // Accept a late/single divergence rather than discarding a real transition;
     // only an unchanged hash counts as a failed (no-op) traversal.
     return lastDivergent !== parentHash
-      ? { ok: true, childHash: lastDivergent }
-      : { ok: false, childHash: parentHash };
+      ? { ok: true, childHash: lastDivergent, childStructure: lastDivergentStructure }
+      : { ok: false, childHash: parentHash, childStructure: '' };
   }
 
   /** Poll until the DOM fingerprint equals `expectedHash` or the window lapses. */
