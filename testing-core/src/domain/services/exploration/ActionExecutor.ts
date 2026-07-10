@@ -48,7 +48,8 @@ export class ActionExecutor {
     target: InteractiveElement,
     ranked: InteractiveElement[],
     revisitedPage: boolean,
-  ): Promise<void> {
+    allowRouteMutation = true,
+  ): Promise<{ ranRouteMutation: boolean }> {
     // Highlight the element the navigator chose to traverse.
     await this.deps.highlighter.flashHighlight(page, target.selector);
 
@@ -71,7 +72,7 @@ export class ActionExecutor {
         await this.executeInputFuzzing(page, target, 'exploratory');
       }
       // No input strategy enabled → leave the field untouched.
-      return;
+      return { ranRouteMutation: false };
     }
 
     // SUPPORTING FORM CONTROLS — toggles and dropdowns are navigation substrate
@@ -80,11 +81,11 @@ export class ActionExecutor {
     // instead of stalling on an unchecked box or unselected dropdown.
     if (scope === 'toggle') {
       await this.actuateToggle(page, target);
-      return;
+      return { ranRouteMutation: false };
     }
     if (scope === 'dropdown') {
       await this.actuateDropdown(page, target);
-      return;
+      return { ranRouteMutation: false };
     }
 
     // INERT controls (file/hidden inputs) cannot be safely driven — clicking a
@@ -95,7 +96,7 @@ export class ActionExecutor {
         selector: target.selector,
         message: `Skipped non-actuable control ${target.selector} (${target.type || target.tagName}).`,
       });
-      return;
+      return { ranRouteMutation: false };
     }
 
     // CLICKABLE NAVIGATION CONTROL.
@@ -108,9 +109,14 @@ export class ActionExecutor {
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
     //    this element (if any) AFTER navigation, so scenario-specific actions
     //    execute on the freshly discovered state rather than replacing traversal.
-    const scenario = this.pickStressScenario(target, revisitedPage);
+    //    RouteTrasher is offered only while the engine still permits URL mutations
+    //    on this state (allowRouteMutation); once its per-state limit is reached it
+    //    is disabled here so it cannot re-trash an already-exhausted route.
+    let ranRouteMutation = false;
+    const scenario = this.pickStressScenario(target, revisitedPage, allowRouteMutation);
     if (scenario) {
       await this.runStressScenario(page, target, scenario);
+      ranRouteMutation = scenario.name === routeTrasher.name;
     }
 
     // 3) Overlapping concurrency stress across sibling elements — gated separately.
@@ -126,6 +132,8 @@ export class ActionExecutor {
         ActiveScenarioTracker.end();
       }
     }
+
+    return { ranRouteMutation };
   }
 
   /**
@@ -409,7 +417,11 @@ export class ActionExecutor {
    * the first whose owning testing-type the operator left enabled. Returns null
    * when every applicable scenario has been deactivated for this run.
    */
-  private pickStressScenario(target: InteractiveElement, revisitedPage: boolean): StressScenario | null {
+  private pickStressScenario(
+    target: InteractiveElement,
+    revisitedPage: boolean,
+    allowRouteMutation: boolean,
+  ): StressScenario | null {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
     const buttonLike =
@@ -429,7 +441,10 @@ export class ActionExecutor {
     if (isTextInput) {
       candidates.push(formBypasser);
     } else {
-      if (revisitedPage) candidates.push(this.buildRouteTrasherScenario());
+      // RouteTrasher only on revisits AND while URL mutations are still permitted
+      // for this state — past its per-state limit it is dropped so the engine stops
+      // oscillating between identical error routes.
+      if (revisitedPage && allowRouteMutation) candidates.push(this.buildRouteTrasherScenario());
       if (buttonLike) candidates.push(formBypasser);
       if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
       // Async lifecycle / interruption race — a control that fires async work is the

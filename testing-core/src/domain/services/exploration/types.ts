@@ -3,6 +3,7 @@ import type {
   ActionBreadcrumb,
   ActionRecord,
   ActionType,
+  DecisionRationale,
   FindingAttribution,
 } from '../../../../../shared/types.ts';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
@@ -23,6 +24,7 @@ import type { ActionExecutor } from './ActionExecutor.js';
 import type { StateRestorer } from './StateRestorer.js';
 import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
+import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -138,6 +140,8 @@ export interface ExplorationLoopDeps {
   hashManager: DomHasher;
   pathNavigator: StateGraphNavigator;
   clusterRegistry: StateClusterRegistry;
+  /** Consecutive defensive/error-route detector (URL-aware error-state handling). */
+  routeExhaustion: RouteExhaustionTracker;
   gate: ScenarioGate;
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;
@@ -151,6 +155,9 @@ export interface ExplorationLoopDeps {
   checkTimebox(): boolean;
   getTimeboxMs(): number;
   getLastKnownUrl(): string;
+  /** Latest observed main-frame document HTTP status for `routePath`, or null when
+   *  the current route was rendered client-side (no top-level navigation response). */
+  getMainFrameStatus(routePath: string): number | null;
   /** Record the element about to be acted on so async signals (network/fault) can attribute learning rewards to it. */
   noteActedTarget(target: InteractiveElement): void;
   /** Target origin URL — used to re-seed exploration during adaptive recovery. */
@@ -167,6 +174,14 @@ export interface ExplorationLoopDeps {
    *  unstable-restore, origin re-seed) is suppressed so it can't compete with the
    *  boundary-lock restore for control of the page. */
   strictUrlLock: boolean;
+  /** Build the glass-box rationale for the chosen target vs its runner-up.
+   *  Returns null when the target was never scored. Pure — the loop emits it. */
+  explainDecision(input: {
+    target: InteractiveElement;
+    runnerUp: InteractiveElement | null;
+    semanticRole: string;
+    step: number;
+  }): DecisionRationale | null;
 }
 
 // ─────────────────────────────────────────────────────────────

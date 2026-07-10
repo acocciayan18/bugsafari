@@ -2,17 +2,46 @@ import crypto from 'node:crypto';
 import type { Page } from 'playwright';
 
 /**
- * Configuration for the structural hasher. Only the traversal budget is tunable;
- * all normalization rules are intrinsic to the fingerprint and not caller-facing.
+ * Configuration for the structural hasher. Only the traversal budget and the
+ * URL-awareness switch are tunable; all normalization rules are intrinsic to the
+ * fingerprint and not caller-facing.
  */
 export interface DomHasherConfig {
   /** Max elements walked per pass — bounds cost on very large / infinite-scroll DOMs. */
   maxElements: number;
+
+  /**
+   * When true the `combined` node-identity key folds in the normalized route path
+   * (see {@link normalizeRoutePath}) so structurally identical pages served at
+   * different routes — e.g. a shared 404 template at `/null` and `/-1` — become
+   * DISTINCT states instead of colliding and false-tripping cyclic-loop detection.
+   * `structure`/`interactive` stay pure DOM sub-hashes regardless. Default: false
+   * (DOM-only, backward-compatible for scenario hashers that diff before/after a
+   * deliberate navigation and must NOT treat a URL change as a state change).
+   */
+  urlAware: boolean;
 }
 
 const DEFAULT_CONFIG: DomHasherConfig = {
   maxElements: 5000,
+  urlAware: false,
 };
+
+/**
+ * Normalize a URL into its route-identity path: `pathname + hash`, with the query
+ * string deliberately dropped. The hash fragment is retained because SPA
+ * hash-routers (`/#/users/-1`) carry the actual route there, while query params
+ * are volatile (session tokens, pagination, cache-busters) and must not fragment
+ * state identity. Unparseable input yields an empty string.
+ */
+export function normalizeRoutePath(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.pathname || '/') + (u.hash || '');
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Compound state fingerprint. Three orthogonal signatures let callers reason
@@ -29,6 +58,13 @@ const DEFAULT_CONFIG: DomHasherConfig = {
 export interface CompoundStateHash {
   structure: string;
   interactive: string;
+  /**
+   * Normalized route path (`pathname + hash`, query dropped) captured at hash
+   * time. Folded into `combined` only when the hasher is `urlAware`; always
+   * surfaced so callers can key route-level logic (e.g. error-route detection)
+   * on the same normalization the identity uses.
+   */
+  routePath: string;
   combined: string;
 }
 
@@ -73,6 +109,15 @@ export class DomHasher {
     }
 
     const cap = this.config.maxElements ?? DEFAULT_CONFIG.maxElements;
+
+    // Snapshot the route BEFORE the DOM pass so identity + error-route detection
+    // share one normalization. Never throws (closed page → empty path).
+    let routePath = '';
+    try {
+      routePath = normalizeRoutePath(page.url());
+    } catch {
+      routePath = '';
+    }
 
     let signatures: { structure: string; interactive: string };
     try {
@@ -183,15 +228,19 @@ export class DomHasher {
       // "state unchanged", which is the correct conservative behavior mid-navigation.
       console.error('DomHasher.hashCompound() error:', error instanceof Error ? error.message : error);
       const sentinel = sha256('dom-hash-error');
-      return { structure: sentinel, interactive: sentinel, combined: sha256(sentinel + ':' + sentinel) };
+      return { structure: sentinel, interactive: sentinel, routePath: '', combined: sha256(sentinel + ':' + sentinel) };
     }
 
     const structure = sha256(signatures.structure);
     const interactive = sha256(signatures.interactive);
     // Combine the sub-hashes (not the raw strings) so the combined key is cheap,
-    // fixed-width, and stable regardless of the underlying signature sizes.
-    const combined = sha256(structure + ':' + interactive);
-    return { structure, interactive, combined };
+    // fixed-width, and stable regardless of the underlying signature sizes. When
+    // url-aware, the normalized route path is folded in so identical templates at
+    // distinct routes resolve to distinct node identities.
+    const combined = this.config.urlAware
+      ? sha256(structure + ':' + interactive + ':' + routePath)
+      : sha256(structure + ':' + interactive);
+    return { structure, interactive, routePath, combined };
   }
 
   /**

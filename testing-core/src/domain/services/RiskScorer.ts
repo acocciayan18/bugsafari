@@ -1,11 +1,13 @@
-import type { SemanticRole } from '@bugsafari/shared';
+import type { DecisionRationale, SemanticRole } from '@bugsafari/shared';
 import type { ParsedElement } from '../heuristics/domParser.js';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import {
   SingleLayerPerceptron,
   buildFeatureVectorFromElement,
+  DEFAULT_WEIGHTS,
   type RewardSignals,
 } from '../../ml/perceptron.js';
+import { buildDecisionRationale } from './explainability/DecisionExplainer.js';
 import type { FeatureVector } from '../../types.js';
 
 /**
@@ -176,6 +178,45 @@ export class RiskScorer {
    */
   getConfidence(vector: FeatureVector | undefined): number {
     return vector ? this.perceptron.sigmoidScore(vector) : 0;
+  }
+
+  /**
+   * Glass-box explainability for a single autonomous decision. Recomputes the
+   * exact heuristic/ML components + linear per-feature attribution for the chosen
+   * element (and the runner-up counterfactual) from the SAME perceptron the engine
+   * ranked on. Returns null when the target was never scored (no feature vector).
+   */
+  explainDecision(params: {
+    target: InteractiveElement;
+    runnerUp?: InteractiveElement | null;
+    semanticRole: string;
+    step: number;
+    sessionId?: string | null;
+    runId?: string;
+  }): DecisionRationale | null {
+    const { target, runnerUp } = params;
+    if (!target.featureVector) return null;
+
+    const explanation = this.perceptron.explain(target.featureVector);
+    const runnerUpExplanation = runnerUp?.featureVector
+      ? this.perceptron.explain(runnerUp.featureVector)
+      : null;
+
+    return buildDecisionRationale({
+      target,
+      runnerUp: runnerUp ?? null,
+      explanation,
+      runnerUpExplanation,
+      heuristicScore: this.computeHeuristicFromFeatures(target),
+      mlScore: explanation.confidence * 100,
+      heuristicWeight: this.heuristicWeight,
+      mlWeight: this.mlWeight,
+      priors: DEFAULT_WEIGHTS,
+      semanticRole: params.semanticRole,
+      step: params.step,
+      sessionId: params.sessionId ?? null,
+      runId: params.runId,
+    });
   }
 
   /**

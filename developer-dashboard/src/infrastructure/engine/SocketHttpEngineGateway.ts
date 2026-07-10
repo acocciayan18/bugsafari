@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -122,6 +122,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onNetworkAlert(handler: (alert: NetworkAlert) => void): void {
     this.connection.onNetworkAlert(handler);
+  }
+  public onDecisionRationale(handler: (rationale: DecisionRationale) => void): void {
+    this.connection.onDecisionRationale(handler);
   }
 
   public removeAllListeners(): void {

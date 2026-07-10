@@ -178,6 +178,7 @@ function AuthAppContent() {
                     telemetry={state.telemetry}
                     browserConsole={state.browserConsole}
                     errors={{ incidents: state.incidents, reports: state.reports }}
+                    rationales={state.rationales}
                     isConnected={state.isConnected}
                     isTestRunning={state.isTestRunning}
                     testStatus={state.status}

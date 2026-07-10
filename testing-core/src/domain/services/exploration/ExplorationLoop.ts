@@ -16,9 +16,17 @@ import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope
 import type { ExplorationLoopDeps } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
+import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
+import { DEFENSIVE_CLIENT_STATUSES } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 
 // Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
+
+// RouteTrasher per-state URL-mutation cap: after this many invocations on one
+// state node the scenario is disabled for that node, its route-mutation branch is
+// penalized, and exploration is redirected to the top unvisited control. Prevents
+// oscillation between structurally identical error routes.
+const ROUTE_MUTATION_LIMIT = 3;
 
 type LoopResult = { completed: boolean; reason: string };
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
@@ -48,6 +56,8 @@ interface StepFingerprint {
   currentUrl: string;
   revisitedPage: boolean;
   stagnationScore: number;
+  /** Consecutive defensive/error-route verdict for this step. */
+  routeVerdict: RouteExhaustionVerdict;
 }
 
 /**
@@ -405,6 +415,21 @@ export class ExplorationLoop {
       if (oldest !== undefined) this.deps.visitedHashes.delete(oldest);
     }
 
+    // Expected defensive response (HTTP 400/401/403/404/…) for THIS route. A
+    // correctly-behaving backend rejecting a bad request is informational — it must
+    // not inflate stagnation or trigger a backtrack/recovery. Surfaced as telemetry
+    // only; downstream the stagnation score is zeroed so it drives no penalty.
+    const mainFrameStatus = this.deps.getMainFrameStatus(compound.routePath);
+    const isDefensiveResponse = mainFrameStatus !== null && DEFENSIVE_CLIENT_STATUSES.has(mainFrameStatus);
+    if (isDefensiveResponse) {
+      this.deps.telemetry.emit('NETWORK', {
+        statusCode: mainFrameStatus,
+        url: currentUrl,
+        method: 'GET',
+        message: `🛡️ Defensive response (informational): HTTP ${mainFrameStatus} at ${compound.routePath || '/'} — expected rejection, not counted toward stagnation.`,
+      });
+    }
+
     // Tick down any active escape window each step.
     if (ctx.penaltyStepsRemaining > 0) {
       ctx.penaltyStepsRemaining--;
@@ -412,8 +437,9 @@ export class ExplorationLoop {
 
     // Progressive penalty: light nudge as the shell first recurs, escalating to a
     // full branch penalty on exact/persistent repeats. intensity ∈ (0,1] scales
-    // both the per-element penalty and the escape-window length.
-    if (stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
+    // both the per-element penalty and the escape-window length. Skipped entirely
+    // for expected defensive responses so they never inflate stagnation.
+    if (!isDefensiveResponse && stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
       const intensity = computePenaltyIntensity(stagnation.stagnationScore, ctx.stagnationForceBacktrack);
       this.deps.telemetry.emitMilestone(
         `🚨 Stagnation detected (score=${stagnation.stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
@@ -425,7 +451,28 @@ export class ExplorationLoop {
       ctx.penaltyStepsRemaining = computePenaltyWindow(stagnation.stagnationScore);
     }
 
-    return { compound, currentHash, currentUrl, revisitedPage, stagnationScore: stagnation.stagnationScore };
+    // --- Consecutive defensive/error-route detection (URL-aware) ---
+    // structure is the DOM-only shell; routePath is the normalized route (shared
+    // with the identity fold); httpStatus is the observed main-frame document
+    // status for this exact route (null for pure client-side renders). A run of
+    // these signals means the branch is touring identical error templates.
+    const routeVerdict = this.deps.routeExhaustion.observe({
+      structureHash: compound.structure,
+      routePath: compound.routePath,
+      httpStatus: mainFrameStatus,
+    });
+    if (routeVerdict.isErrorState) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'error-route-observed',
+        stateHash: currentHash,
+        message: `Defensive/error route observed (${routeVerdict.reason}); consecutive=${routeVerdict.consecutiveErrorStates}.`,
+      });
+    }
+
+    // Zero the reported stagnation for expected defensive responses so they never
+    // force a backtrack or drive graph recovery (Requirement: informational only).
+    const reportedStagnation = isDefensiveResponse ? 0 : stagnation.stagnationScore;
+    return { compound, currentHash, currentUrl, revisitedPage, stagnationScore: reportedStagnation, routeVerdict };
   }
 
   private decidePathfinderAction(
@@ -442,11 +489,31 @@ export class ExplorationLoop {
       boundingBox: el.boundingBox,
     }));
 
+    // Route exhausted: repeated defensive/error responses on this branch. Penalize
+    // it in the exploration SCORING model (persistently deprioritise the controls
+    // that keep landing on identical error templates, everywhere) and announce the
+    // redirect; the navigator then blocks the frontier + entry edge and unwinds to
+    // the nearest ancestor with unexplored controls instead of oscillating.
+    if (fingerprint.routeVerdict.exhausted) {
+      for (const element of ranked) {
+        this.deps.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
+      }
+      this.deps.telemetry.emitMilestone(
+        `🚧 Route exhausted: ${fingerprint.routeVerdict.consecutiveErrorStates} consecutive defensive/error responses (${fingerprint.routeVerdict.reason}). Penalizing this branch and prioritizing unexplored elements.`,
+      );
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'route-exhausted',
+        stateHash: fingerprint.currentHash,
+        message: `Route branch penalized after repeated defensive responses (${fingerprint.routeVerdict.reason}). Redirecting to alternative navigation paths.`,
+      });
+    }
+
     return this.deps.pathNavigator.registerStateAndDecide(
       fingerprint.currentHash,
       fingerprint.currentUrl,
       pathfinderElements,
       ctx.penaltyStepsRemaining > 0 || fingerprint.stagnationScore >= ctx.stagnationForceBacktrack,
+      fingerprint.routeVerdict.exhausted,
     );
   }
 
@@ -605,6 +672,46 @@ export class ExplorationLoop {
     }
   }
 
+  /**
+   * Account one RouteTrasher invocation against the current state's URL-mutation
+   * budget. On reaching ROUTE_MUTATION_LIMIT it penalizes the route-mutation
+   * branch in the scoring model — ONLY the already-explored churn controls, so the
+   * unvisited frontier is left intact — and announces that the highest-scoring
+   * UNVISITED control is prioritized next, maximizing coverage before any
+   * rollback/reseed. The navigator's penalizeRouteBranch() guarantees this fires
+   * exactly once per state.
+   */
+  private handleRouteMutationBudget(currentHash: string, ranked: InteractiveElement[]): void {
+    const count = this.deps.pathNavigator.registerRouteMutation(currentHash);
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'route-mutation-registered',
+      stateHash: currentHash,
+      message: `RouteTrasher mutation ${count}/${ROUTE_MUTATION_LIMIT} on this state.`,
+    });
+    if (count < ROUTE_MUTATION_LIMIT) return;
+    if (!this.deps.pathNavigator.penalizeRouteBranch(currentHash)) return;
+
+    // Penalize only the churn (already-explored controls); unvisited edges keep
+    // their full score so best-first still prioritizes them.
+    const explored = new Set(this.deps.pathNavigator.exploredEdgeSelectors(currentHash));
+    for (const element of ranked) {
+      if (explored.has(element.selector)) {
+        this.deps.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
+      }
+    }
+
+    const best = this.deps.pathNavigator.bestUnvisitedSelector(currentHash);
+    this.deps.telemetry.emitMilestone(
+      `🧭 RouteTrasher limit (${ROUTE_MUTATION_LIMIT}) reached on this state — URL mutations disabled, route branch penalized; prioritizing ${best ? `unvisited control "${best}"` : 'remaining unvisited controls'} before any rollback.`,
+    );
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'route-mutation-limit-reached',
+      selector: best ?? '',
+      stateHash: currentHash,
+      message: `RouteTrasher disabled for this state after ${count} mutations; prioritizing highest-scoring unvisited element to maximize coverage.`,
+    });
+  }
+
   private async executeAndVerifyAction(
     page: Page,
     step: number,
@@ -620,13 +727,43 @@ export class ExplorationLoop {
 
     this.deps.actionExecutor.logHighImpact(target);
 
+    // 🔬 Decision Lens: publish the glass-box rationale for THIS pick (exact
+    // per-feature attribution + runner-up counterfactual). Fully isolated — a
+    // rationale failure must never derail the action about to execute.
+    try {
+      const runnerUp = ranked.find((el) => el.selector !== target.selector) ?? null;
+      const rationale = this.deps.explainDecision({
+        target,
+        runnerUp,
+        semanticRole: inferSemanticRole(target),
+        step,
+      });
+      if (rationale) this.deps.telemetry.emitDecisionRationale(rationale);
+    } catch (explainErr) {
+      console.warn(
+        '[ExplorationLoop] Decision rationale build failed:',
+        explainErr instanceof Error ? explainErr.message : String(explainErr),
+      );
+    }
+
     let traversalOk = false;
     let childHash = currentHash;
     try {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
       this.deps.noteActedTarget(target);
-      await this.deps.actionExecutor.executeWeightedAction(page, target, ranked, revisitedPage);
+      // RouteTrasher is permitted only while this state is under its per-state
+      // URL-mutation budget; once run, account it against the budget and, on the
+      // limit, penalize the branch + prioritize the top unvisited control.
+      const allowRouteMutation = this.deps.pathNavigator.canRouteMutate(currentHash, ROUTE_MUTATION_LIMIT);
+      const { ranRouteMutation } = await this.deps.actionExecutor.executeWeightedAction(
+        page,
+        target,
+        ranked,
+        revisitedPage,
+        allowRouteMutation,
+      );
+      if (ranRouteMutation) this.handleRouteMutationBudget(currentHash, ranked);
       const verification = await this.deps.stateRestorer.verifyTraversal(page, currentHash, 3000);
       traversalOk = verification.ok;
       childHash = verification.childHash;

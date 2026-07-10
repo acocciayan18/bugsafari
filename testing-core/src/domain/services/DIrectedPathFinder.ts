@@ -239,6 +239,7 @@ export type PathfinderEventKind =
   | 'backtrack-initiated'
   | 'node-exhausted'
   | 'graph-exhausted'
+  | 'route-exhausted'
   | 'loop-penalty-applied'
   | 'boredom-triggered-backtrack'
   | 'boredom-check-passed'

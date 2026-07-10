@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -27,6 +27,7 @@ export interface DashboardState {
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
+  rationales: DecisionRationale[];
   latestFrame: string | null;
   currentUrl: string;
   sessionHistory: SessionHistoryEntry[];
@@ -104,6 +105,7 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [rationales, setRationales] = useState<DecisionRationale[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
@@ -211,6 +213,8 @@ return () => {
       // Buffers arrive oldest→newest; the UI lists render newest-first.
       setReports([...snapshot.reports].reverse());
       setIncidents([...snapshot.incidents].reverse());
+      // Rationales keep oldest→newest (the Decision Lens follows the latest).
+      setRationales((snapshot.rationales ?? []).slice(-50));
       setCurrentUrl(snapshot.currentUrl || snapshot.targetUrl);
 
       setSessionTimeMs(snapshot.timeboxMs);
@@ -367,6 +371,14 @@ return () => {
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
+    // Decision Lens: append newest-last, bounded to 50 so the panel's recent-strip
+    // stays cheap and the array churn can't trigger runaway re-renders.
+    gateway.onDecisionRationale((rationale) =>
+      setRationales((prev) => {
+        const next = [...prev, rationale];
+        return next.length > 50 ? next.slice(next.length - 50) : next;
+      }),
+    );
     gateway.onUrlChanged((url) => setCurrentUrl(url));
     gateway.onLiveFrame((frame) => {
       setIsThinking(false);
@@ -428,6 +440,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setTelemetry([]);
     setReports([]);
     setIncidents([]);
+    setRationales([]);
     setCurrentUrl(targetUrl);
     setRemainingTimeMs(resolvedTimeboxMs);
     setElapsedTimeMs(0);
@@ -562,6 +575,7 @@ return {
       telemetry,
       reports,
       incidents,
+      rationales,
       latestFrame,
       currentUrl,
       sessionHistory,

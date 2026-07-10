@@ -7,15 +7,15 @@
 // Receives all telemetry data via props from App.tsx
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage } from '../../types';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage, DecisionRationale } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import ForensicHelpIcon from '../../designs/icons/ForensicHelpIcon';
 import SessionTimer from '../common/SessionTimer';
-import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
+import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, DecisionLensPanel } from '../telemetry';
 
 // Tab state type for the bottom terminal
-type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
+type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'decision-lens';
 
 // ═══════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS: Clipboard, Formatting, Text Processing
@@ -35,6 +35,7 @@ interface ClinicalForensicsDashboardProps {
     incidents: IncidentReport[];
     reports: ForensicCrashReport[];
   };
+  rationales?: DecisionRationale[]; // Glass-box ML decision rationales (Decision Lens)
   isConnected: boolean;
   isTestRunning: boolean;
   testStatus?: TestSessionStatus;
@@ -60,6 +61,7 @@ export default function ClinicalForensicsDashboard({
   telemetry = [],
   browserConsole = [],
   errors = { incidents: [], reports: [] },
+  rationales = [],
   isConnected = false,
   isTestRunning = false,
   testStatus = 'IDLE',
@@ -237,6 +239,12 @@ const formattedTelemetry = useMemo(() => {
             >
               console
             </button>
+            <button
+              onClick={() => setActiveTab('decision-lens')}
+              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'decision-lens' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              decision lens
+            </button>
           </div>
           {/* Forensic Help Icon - Right side of header */}
           <div className="pr-2">
@@ -334,6 +342,13 @@ const formattedTelemetry = useMemo(() => {
               ════════════════════════════════════════ */}
           {activeTab === 'console' && (
             <ConsoleTabPanel browserConsole={browserConsole} />
+          )}
+
+          {/* ════════════════════════════════════════
+              TAB: DECISION LENS (Glass-box ML explainability)
+              ════════════════════════════════════════ */}
+          {activeTab === 'decision-lens' && (
+            <DecisionLensPanel rationales={rationales} />
           )}
 
 

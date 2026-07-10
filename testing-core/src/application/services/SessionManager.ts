@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { Types, isValidObjectId } from 'mongoose';
 import type {
   ActiveSessionSnapshot,
+  DecisionRationale,
   ForensicCrashReport,
   IncidentReport,
   NetworkAlert,
@@ -39,6 +40,7 @@ const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_I
 const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TIMEOUT_MS, 5_000);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
+const RATIONALE_BUFFER_CAP = 60;
 
 function readPositiveInt(raw: string | undefined, fallback: number): number {
   const n = raw ? Number(raw) : NaN;
@@ -66,6 +68,7 @@ interface ActiveRun {
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
+  rationales: DecisionRationale[];
   lastFrame: string | null;
 }
 
@@ -139,6 +142,7 @@ export class SessionManager implements TelemetryRecorder {
       telemetry: [],
       reports: [],
       incidents: [],
+      rationales: [],
       lastFrame: null,
     };
 
@@ -195,6 +199,9 @@ export class SessionManager implements TelemetryRecorder {
         break;
       case 'incident-report':
         pushCapped(run.incidents, payload as IncidentReport, REPORT_BUFFER_CAP);
+        break;
+      case 'decision-rationale':
+        pushCapped(run.rationales, payload as DecisionRationale, RATIONALE_BUFFER_CAP);
         break;
     }
   }
@@ -276,6 +283,7 @@ export class SessionManager implements TelemetryRecorder {
       telemetry: [...run.telemetry],
       reports: [...run.reports],
       incidents: [...run.incidents],
+      rationales: [...run.rationales],
       lastFrame: run.lastFrame,
     };
   }

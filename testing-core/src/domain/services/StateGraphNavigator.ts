@@ -73,6 +73,14 @@ export class StateGraphNavigator {
   // tie-breaker fallback) and the adaptive boredom threshold.
   private readonly edgeSelector: EdgeSelectorEngine;
 
+  // Per-state RouteTrasher mutation budget. Caps how many times the URL-mutation
+  // scenario may run on one state node so it cannot oscillate between identical
+  // error routes. Kept independent of GraphStore node eviction so the cap holds
+  // even if the node is evicted and re-registered.
+  private readonly routeMutationCounts = new Map<StateHash, number>();
+  // States whose route-mutation branch has already been penalized (once each).
+  private readonly routeBranchPenalized = new Set<StateHash>();
+
   private readonly config: StateGraphNavigatorConfig;
 
   constructor(config: Partial<StateGraphNavigatorConfig> = {}) {
@@ -104,12 +112,19 @@ export class StateGraphNavigator {
    * @param forcedBacktrack  Pass true when the engine's own stagnation
    *                     counter has independently fired — causes immediate
    *                     backtrack regardless of edge availability.
+   * @param routeExhausted  Pass true when the engine has observed repeated
+   *                     defensive/error responses (HTTP ≥400 or an identical
+   *                     error template re-rendered across consecutive distinct
+   *                     routes). Blocks this branch's frontier + its entry edge
+   *                     and redirects to a productive ancestor instead of
+   *                     oscillating between structurally identical error pages.
    */
   public registerStateAndDecide(
     currentHash: StateHash,
     currentUrl: string,
     elements: PathfinderElement[],
     forcedBacktrack = false,
+    routeExhausted = false,
   ): PathfinderDecision {
     // 1. Update consecutive-repeat counter
     this.traversalStack.updateRepeatCounter(currentHash);
@@ -127,6 +142,13 @@ export class StateGraphNavigator {
 
     // 4. Update the traversal stack so it reflects the current position
     this.traversalStack.sync(currentHash, currentUrl);
+
+    // 4a. Route exhaustion overrides normal selection. Runs AFTER syncEdges (so
+    // the freshly re-added frontier is the one we block) and BEFORE the boredom /
+    // best-first scan, so a defensive branch never re-emits an explore-edge.
+    if (routeExhausted) {
+      return this.handleRouteExhaustion(node);
+    }
 
     // 5. Single Best-First scan: the highest-scored unvisited edge AND its score
     // in one linear pass (no sort), reused for both the boredom check and the
@@ -299,6 +321,76 @@ export class StateGraphNavigator {
     this.graphStore.blockCurrentBranch(frame.nodeHash);
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Per-state RouteTrasher mutation budget
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Whether RouteTrasher may still mutate URLs on this state node — true while the
+   * node's recorded mutation count is below `limit`. At/above the limit the engine
+   * disables the scenario for that state and prevents further URL mutations.
+   */
+  public canRouteMutate(hash: StateHash, limit = 3): boolean {
+    return (this.routeMutationCounts.get(hash) ?? 0) < limit;
+  }
+
+  /** Record one RouteTrasher invocation on this state; returns the new count. */
+  public registerRouteMutation(hash: StateHash): number {
+    const next = (this.routeMutationCounts.get(hash) ?? 0) + 1;
+    this.routeMutationCounts.set(hash, next);
+    return next;
+  }
+
+  /** Current recorded RouteTrasher mutation count for this state (0 if none). */
+  public routeMutationCount(hash: StateHash): number {
+    return this.routeMutationCounts.get(hash) ?? 0;
+  }
+
+  /**
+   * Highest-scoring UNVISITED edge selector on this node (read-only — no cache,
+   * counter, or diversity side effects), or null when none remain. Surfaced so the
+   * engine can name the control it is prioritizing when RouteTrasher is disabled.
+   */
+  public bestUnvisitedSelector(hash: StateHash): EdgeSelector | null {
+    const node = this.graphStore.get(hash);
+    if (!node) return null;
+    let best: GraphEdge | null = null;
+    for (const edge of node.edges.values()) {
+      if (edge.status !== 'unvisited') continue;
+      if (!best || edge.score > best.score) best = edge;
+    }
+    return best?.selector ?? null;
+  }
+
+  /** Selectors of edges already explored/blocked on this node — the churn branch. */
+  public exploredEdgeSelectors(hash: StateHash): EdgeSelector[] {
+    const node = this.graphStore.get(hash);
+    if (!node) return [];
+    const out: EdgeSelector[] = [];
+    for (const edge of node.edges.values()) {
+      if (edge.status === 'explored' || edge.status === 'blocked') out.push(edge.selector);
+    }
+    return out;
+  }
+
+  /**
+   * Penalize this state's route-mutation branch exactly once, when RouteTrasher's
+   * per-state limit is reached. Records the event and returns true only the FIRST
+   * time, so the caller applies the scoring-model penalty once. Deliberately does
+   * NOT block the node's unvisited edges — best-first still prioritizes the top
+   * interactive control so coverage is maximized before any rollback/reseed.
+   */
+  public penalizeRouteBranch(hash: StateHash): boolean {
+    if (this.routeBranchPenalized.has(hash)) return false;
+    this.routeBranchPenalized.add(hash);
+    this.eventLog.recordEvent(
+      'route-exhausted',
+      hash,
+      `RouteTrasher per-state limit reached — URL mutations disabled and route-mutation branch penalized; prioritizing the highest-scoring unvisited control before any rollback.`,
+    );
+    return true;
+  }
+
   /**
    * Return the current DFS traversal path as an ordered array of hashes,
    * oldest → newest.
@@ -358,6 +450,41 @@ export class StateGraphNavigator {
   // ───────────────────────────────────────────────────────────────────────────
   // Dead-end / backtracking logic
   // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Terminal handling for a route the engine has flagged as exhausted after
+   * repeated defensive/error responses. Rather than backtracking and immediately
+   * re-descending the same edge (the oscillation this replaces), it:
+   *   1. Blocks the entire frontier of the defensive node (branch penalty).
+   *   2. Marks the edge that led INTO this route cyclic on the parent, so it is
+   *      never re-selected — the branch is closed at its entry point.
+   *   3. Delegates to the standard dead-end walk, which unwinds to the nearest
+   *      ancestor that still has unvisited controls (registration links, other
+   *      pending interactive elements) so meaningful exploration continues.
+   */
+  private handleRouteExhaustion(node: GraphNode): PathfinderDecision {
+    // 1. Its frontier leads nowhere useful — block every remaining edge.
+    this.graphStore.blockCurrentBranch(node.hash);
+
+    // 2. Close the branch at its entry: the edge we arrived through is cyclic.
+    const frame = this.traversalStack.currentFrame();
+    const parent = this.traversalStack.parentFrame();
+    if (frame?.arrivedViaEdge && parent) {
+      this.graphStore.markEdgeCyclic(parent.nodeHash, frame.arrivedViaEdge);
+    }
+
+    this.eventLog.recordEvent(
+      'route-exhausted',
+      node.hash,
+      `Route exhausted (repeated defensive/error responses). Frontier + entry edge blocked; redirecting to the nearest ancestor with unexplored controls.`,
+    );
+
+    // Reset the repeat counter so the ancestor we return to gets a clean slate.
+    this.traversalStack.resetRepeatCounter();
+
+    // 3. Unwind to the nearest ancestor with an unvisited edge (or exhausted).
+    return this.handleDeadEnd(node, false);
+  }
 
   private handleDeadEnd(node: GraphNode, loopDetected: boolean): PathfinderDecision {
     if (loopDetected) {

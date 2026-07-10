@@ -1,11 +1,11 @@
-import type { Page, Request } from 'playwright';
+import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
-import { DomHasher } from '../../../ml/domHasher.js';
+import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
@@ -36,6 +36,7 @@ import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
+import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -58,7 +59,11 @@ const MAX_CONFIRMED_BUGS = 500;
  */
 export class ExplorationEngine {
   private readonly parser = new RecursiveDomParser();
-  private readonly hashManager = new DomHasher();
+  // URL-aware node identity: structurally identical pages at distinct routes
+  // (e.g. a shared 404 template at /null vs /-1) resolve to DISTINCT graph nodes
+  // so they never false-trip cyclic-loop detection. The same instance is shared
+  // with StateRestorer so post-click verification stays identity-consistent.
+  private readonly hashManager = new DomHasher({ urlAware: true });
   private readonly visualRegressionDetector = new VisualRegressionDetector();
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new RiskScorer();
@@ -70,6 +75,9 @@ export class ExplorationEngine {
   private readonly clusterRegistry = new StateClusterRegistry();
   // Per-(selector, category) payload-escalation level for adaptive fuzzing.
   private readonly escalationTracker = new EscalationTracker();
+  // Consecutive defensive/error-route detector — drives URL-aware error-state
+  // handling (penalize + redirect instead of oscillating on 404 templates).
+  private readonly routeExhaustion = new RouteExhaustionTracker();
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
@@ -378,11 +386,19 @@ export class ExplorationEngine {
     ActiveScenarioTracker.reset();
     this.clusterRegistry.reset();
     this.escalationTracker.resetAll();
+    this.routeExhaustion.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
     // Last navigated URL — shared via closure with the stability monitor and loop.
     let lastKnownUrl = '';
+
+    // Latest MAIN-FRAME document response status, keyed by its normalized route
+    // path. Lets the loop's error-route detector see a real HTTP ≥400 hard
+    // navigation; null for pure client-side SPA renders (no top-level response).
+    // Reassigned on page recreation via the shared `page` binding, exactly like
+    // lastKnownUrl, so it survives the deepest recovery rung.
+    let lastMainFrameStatus: { path: string; status: number } | null = null;
 
     // Build the telemetry emitter around the persistent gateway.
     const emitter = new TelemetryEmitter(telemetry, {
@@ -491,10 +507,25 @@ export class ExplorationEngine {
       }
     };
 
+    // Capture the status of top-level document navigations only (not subresources
+    // or in-page fetches) so the loop can flag an HTTP ≥400 route without reading
+    // response bodies. Guarded — a teardown race must never break navigation.
+    const handleResponse = (response: Response): void => {
+      try {
+        const request = response.request();
+        if (request.resourceType() !== 'document' || !request.isNavigationRequest()) return;
+        if (response.frame() !== page.mainFrame()) return;
+        lastMainFrameStatus = { path: normalizeRoutePath(response.url()), status: response.status() };
+      } catch {
+        /* response already gone — ignore */
+      }
+    };
+
     const attachPageListeners = (p: Page): void => {
       stabilityMonitor.attachDialogAutoDismiss(p);
       stabilityMonitor.attachExceptionMonitoring(p);
       p.on('request', handleRequest);
+      p.on('response', handleResponse);
       stabilityMonitor.attachNetworkMonitoring(p);
       p.on('framenavigated', handleFramenavigated);
     };
@@ -611,6 +642,7 @@ export class ExplorationEngine {
         hashManager: this.hashManager,
         pathNavigator: this.pathNavigator,
         clusterRegistry: this.clusterRegistry,
+        routeExhaustion: this.routeExhaustion,
         gate: this.gate,
         visitedUrls: this.visitedUrls,
         visitedHashes: this.visitedHashes,
@@ -623,6 +655,10 @@ export class ExplorationEngine {
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         getTimeboxMs: () => this.timeboxMs,
         getLastKnownUrl: () => lastKnownUrl,
+        // Only surface the status when it matches the current route, so a stale
+        // 404 from a previous page can never be attributed to a fresh render.
+        getMainFrameStatus: (routePath) =>
+          lastMainFrameStatus && lastMainFrameStatus.path === routePath ? lastMainFrameStatus.status : null,
         noteActedTarget: (t) => { this.lastActedTarget = t; },
         getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
@@ -630,6 +666,10 @@ export class ExplorationEngine {
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
+        // Glass-box Decision Lens: build the exact per-feature rationale for the
+        // chosen target vs its runner-up, stamped with this run's session id.
+        explainDecision: (input) =>
+          this.scorer.explainDecision({ ...input, sessionId: this.sessionId }),
       });
 
       return await loop.execute(page, maxSteps);
@@ -678,6 +718,7 @@ export class ExplorationEngine {
       }
 
       page.off('framenavigated', handleFramenavigated);
+      page.off('response', handleResponse);
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }
@@ -701,6 +742,9 @@ export class ExplorationEngine {
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
       emitBrowserConsole: telemetry.emitBrowserConsole
         ? (message) => telemetry.emitBrowserConsole!(message)
+        : undefined,
+      emitDecisionRationale: telemetry.emitDecisionRationale
+        ? (rationale) => telemetry.emitDecisionRationale!(rationale)
         : undefined,
     };
   }
