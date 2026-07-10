@@ -16,6 +16,7 @@ import { triggerFormSubmission } from './formSubmitter.js';
 import { classifyInteractionScope } from './interactionScope.js';
 import { decideEscalation } from './escalationDecision.js';
 import { shouldRouteTrash } from './routeTrashGating.js';
+import { shouldAsyncRace } from './asyncStateRacerGating.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
@@ -460,7 +461,12 @@ export class ActionExecutor {
       // Async lifecycle / interruption race — a control that fires async work is the
       // natural target. Ordered after the existing button scenarios so it never
       // starves them; the dedicated asyncRace profile isolates it for guaranteed runs.
-      if (buttonLike) candidates.push(this.buildAsyncStateRacerScenario());
+      if (
+        buttonLike &&
+        shouldAsyncRace({ tagName: target.tagName, type: target.type ?? '', role: target.role ?? '', source })
+      ) {
+        candidates.push(this.buildAsyncStateRacerScenario());
+      }
       candidates.push(stressScenarioMap.CoordinateBombing);
     }
 
