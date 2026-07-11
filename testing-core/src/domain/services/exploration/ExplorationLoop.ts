@@ -26,6 +26,18 @@ const MAX_VISITED_HASHES = 5000;
 // before declaring a page a Structural Dead-End on the next consecutive empty check.
 const EMPTY_RETRY_LIMIT = 2;
 
+// Session-wide coverage bias: fixed margin subtracted from any control already
+// triggered ANYWHERE this run, so untested controls win best-first across page
+// reloads. Large enough to sink below any untriggered element's natural score;
+// applied as a demotion (not removal) so a tested control is still selectable as
+// a last resort once the whole frontier is spent.
+const TRIGGERED_SELECTOR_DEMOTION = 1000;
+
+// Frontier-exhaustion reveal: max viewport scrolls when the visible frontier is
+// spent, bounding an infinite-scroll feed. Each step reparses to detect new
+// off-screen/lazy controls before the page is declared fully explored.
+const MAX_FRONTIER_SCROLLS = 6;
+
 // RouteTrasher per-state URL-mutation cap is operator-configurable via
 // OptimizationSettings['route-mutation-budget'] (default 1, 0 disables) and
 // reaches the loop as deps.routeMutationBudget. After that many invocations on
@@ -375,6 +387,43 @@ export class ExplorationLoop {
     }
   }
 
+  /**
+   * Adaptive content discovery for a spent frontier: scroll the page one viewport
+   * at a time, reparsing after each step, until a control not triggered anywhere
+   * this run appears (returns the enlarged parse) or the bottom is reached with
+   * nothing new (returns null). Bounded by MAX_FRONTIER_SCROLLS so an
+   * infinite-scroll feed can't run forever. Non-fatal — a detached/closed page is
+   * caught by the per-iteration health gate on the next step.
+   */
+  private async scrollToRevealNewControls(
+    page: Page,
+    seen: InteractiveElement[],
+  ): Promise<InteractiveElement[] | null> {
+    const seenSelectors = new Set(seen.map((el) => el.selector));
+    try {
+      for (let i = 0; i < MAX_FRONTIER_SCROLLS; i++) {
+        // Advance one viewport; atBottom when the position no longer moved or the
+        // scroll reached the document end.
+        const atBottom = await page.evaluate(() => {
+          const before = window.scrollY;
+          window.scrollBy(0, window.innerHeight);
+          return window.scrollY === before || window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+        });
+        await settle(page);
+        const reparsed = await this.deps.parser.parse(page);
+        const hasNewUntriggered = reparsed.some(
+          (el) => !seenSelectors.has(el.selector) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector),
+        );
+        if (hasNewUntriggered) return reparsed;
+        for (const el of reparsed) seenSelectors.add(el.selector);
+        if (atBottom) break;
+      }
+    } catch {
+      // Detached/closed/navigated page — handled by ensurePageHealth next step.
+    }
+    return null;
+  }
+
   private async parseDomAndScore(
     page: Page,
     ctx: RunContext,
@@ -387,7 +436,7 @@ export class ExplorationLoop {
     // interactive content to appear.
     await this.deps.ensureDomReady(page);
 
-    const elements = await this.deps.parser.parse(page);
+    let elements = await this.deps.parser.parse(page);
 
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'dom-elements-parsed',
@@ -422,11 +471,44 @@ export class ExplorationLoop {
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 
+    // Frontier-exhaustion reveal: when every on-screen control has already been
+    // triggered somewhere this run, the visible frontier is spent. Before leaving
+    // the page, adaptively scroll — reparsing after each step — to surface lazy /
+    // off-screen controls. New untriggered controls replace the parse and get
+    // scored/interacted this step; reaching the bottom with nothing new means the
+    // page is fully explored and the normal flow backtracks to an unexplored branch.
+    if (elements.every((el) => this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector))) {
+      const revealed = await this.scrollToRevealNewControls(page, elements);
+      if (revealed) {
+        this.deps.telemetry.emitMilestone('🔻 Frontier spent — adaptive scroll revealed new off-screen controls.');
+        elements = revealed;
+      } else {
+        this.deps.telemetry.emitMilestone(
+          '🔚 Page fully explored (frontier spent, nothing new on scroll) — backtracking to nearest unexplored branch.',
+        );
+      }
+    }
+
     // Fade accumulated penalties one step before ranking so transient stagnation/
     // no-op nudges recover over time instead of permanently suppressing controls.
     this.deps.scorer.decayPenalties();
 
     let ranked = this.deps.scorer.score(elements);
+
+    // Session-wide coverage bias: demote every control already triggered ANYWHERE
+    // this run by a large fixed margin so untested controls win best-first across
+    // page reloads. Non-decaying (recomputed from the registry each pass) — unlike
+    // scorer penalties, which fade — so a tested element stays deprioritized instead
+    // of recovering its rank and being re-selected. Demoted, not removed: still
+    // selectable once the frontier is fully spent, and the pathfinder still explores
+    // any unvisited edge from this node regardless of the demoted score.
+    ranked = ranked
+      .map((element) =>
+        this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector)
+          ? { ...element, riskScore: element.riskScore - TRIGGERED_SELECTOR_DEMOTION }
+          : element,
+      )
+      .sort((left, right) => right.riskScore - left.riskScore);
 
     // Deep Semantic Data Attack prioritization: when the data-fuzzing gate is
     // active, fuzzable attack vectors must be selected BEFORE any navigation
