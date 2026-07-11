@@ -26,6 +26,7 @@ import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
 import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import type { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
+import type { RouteTrashThrottle } from './RouteTrashThrottle.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -184,6 +185,10 @@ export interface ExplorationLoopDeps {
   /** Session-wide transition-repeat budget: max non-productive re-navigations of one
    *  control on its structural shell before it's blocked as a loop source (0 disables). */
   transitionRepeatBudget: number;
+  /** Session-scoped RouteTrasher throttle (max executions + cooldown) that keeps the
+   *  high-impact URL/history attack from dominating a mixed run. Disabled (always
+   *  allows) for route-focused profiles. */
+  routeTrashThrottle: RouteTrashThrottle;
   /** Build the glass-box rationale for the chosen target vs its runner-up.
    *  Returns null when the target was never scored. Pure — the loop emits it. */
   explainDecision(input: {

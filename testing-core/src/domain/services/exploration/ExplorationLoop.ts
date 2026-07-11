@@ -913,9 +913,13 @@ export class ExplorationLoop {
       // during/after this action to the acting element for compound rewards.
       this.deps.noteActedTarget(target);
       // RouteTrasher is permitted only while this state is under its per-state
-      // URL-mutation budget; once run, account it against the budget and, on the
-      // limit, penalize the branch + prioritize the top unvisited control.
-      const allowRouteMutation = this.deps.pathNavigator.canRouteMutate(currentHash, this.deps.routeMutationBudget);
+      // URL-mutation budget AND the session-wide throttle still allows it (max
+      // executions + cooldown) so the high-impact URL/history attack can't
+      // dominate a mixed run — a route-focused profile disables the throttle.
+      // Once run, account it against both the per-state budget and the throttle.
+      const allowRouteMutation =
+        this.deps.pathNavigator.canRouteMutate(currentHash, this.deps.routeMutationBudget) &&
+        this.deps.routeTrashThrottle.canRun();
       const { ranRouteMutation } = await this.deps.actionExecutor.executeWeightedAction(
         page,
         target,
@@ -923,7 +927,20 @@ export class ExplorationLoop {
         revisitedPage,
         allowRouteMutation,
       );
-      if (ranRouteMutation) this.handleRouteMutationBudget(currentHash, ranked);
+      if (ranRouteMutation) {
+        this.handleRouteMutationBudget(currentHash, ranked);
+        // Announce exactly once, when this run exhausts the session budget, so the
+        // operator sees the rebalance toward form/interaction/component scenarios.
+        if (this.deps.routeTrashThrottle.record()) {
+          this.deps.telemetry.emitMilestone(
+            '🧭 RouteTrasher session budget reached — throttling URL manipulation; prioritizing form fuzzing, interaction, and component exploration.',
+          );
+          this.deps.telemetry.emit('ACTION', {
+            actionExecuted: 'route-trash-session-throttled',
+            message: 'RouteTrasher session budget exhausted; other scenarios prioritized for the rest of the run.',
+          });
+        }
+      }
       const verification = await this.deps.stateRestorer.verifyTraversal(page, currentHash, 3000);
       traversalOk = verification.ok;
       childHash = verification.childHash;

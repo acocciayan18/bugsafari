@@ -91,6 +91,7 @@ export class GraphStore {
       visitCount: 1,
       exhausted: false,
       backtracksFromHere: 0,
+      backtracksTo: 0,
       status: 'discovered',
     };
 

@@ -26,6 +26,15 @@ export interface OptimizationSettings {
   // its structural shell back to an already-seen view before it is blocked
   // session-wide as a navigation-loop source. 0 disables the cap (default: 3).
   'transition-repeat-budget'?: number;
+  // Adaptive RouteTrasher throttle (mixed/exploratory runs only — a route-focused
+  // profile, i.e. navigation as the sole active category, bypasses both limits so
+  // route manipulation runs unrestricted). Caps how much the high-impact
+  // URL/history attack may dominate a shared run so form/interaction/component
+  // exploration still get budget.
+  // Max RouteTrasher runs per SESSION before it is throttled off. 0 = unlimited.
+  'route-trash-session-budget'?: number;
+  // Min wall-clock ms between two RouteTrasher runs (cooldown). 0 = no cooldown.
+  'route-trash-cooldown-ms'?: number;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -36,6 +45,8 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   strictUrlLock: false,  // Off by default — opt-in per run
   'route-mutation-budget': 1,  // Once, then permanently deprioritize
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
+  'route-trash-session-budget': 6,  // Mixed runs: at most 6 RouteTrasher runs, then yield
+  'route-trash-cooldown-ms': 20000,  // Mixed runs: ≥20s between RouteTrasher runs
 };
 
 // ─────────────────────────────────────────────────────────────

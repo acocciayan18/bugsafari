@@ -147,6 +147,16 @@ export interface StateGraphNavigatorConfig {
   explorationSeed?: number;
 
   /**
+   * How many times exploration may BACKTRACK (restore) TO the same node as an
+   * ancestor before that node is treated as a stagnation trap: its remaining
+   * frontier is blocked, it is marked exhausted, and it is skipped in all future
+   * backtracking. Prevents the infinite-restoration loop where a node with
+   * volatile selectors keeps re-synthesizing unvisited edges on every re-entry.
+   * Default: 3
+   */
+  maxBacktracksToNode: number;
+
+  /**
    * When true, a node with any UNVISITED edge is never backtracked for boredom —
    * the low-value control is explored first to maximise coverage before the stack
    * unwinds. Cuts false "graph exhausted" on complex SPAs. Loop-strike, true
@@ -176,6 +186,7 @@ export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   explorationEnabled: true,
   explorationTemperature: 8,
   explorationAnnealSteps: 40,
+  maxBacktracksToNode: 3,
   prioritizeUnvisitedOverBoredom: false,
 };
 

@@ -107,6 +107,15 @@ export interface GraphNode {
    */
   backtracksFromHere: number;
 
+  /**
+   * How many times exploration has BACKTRACKED (restored) TO this node as an
+   * ancestor during the dead-end walk. Distinct from `visitCount` (which also
+   * counts forward re-entries). Once it exceeds the navigator's return cap the
+   * node is a stagnation trap — its frontier is blocked and it is excluded from
+   * future backtracking, so the engine stops repeatedly restoring to it.
+   */
+  backtracksTo: number;
+
   /** Session-wide coverage lifecycle. Completed/Skipped are never re-tested. */
   status: NodeLifecycle;
 }

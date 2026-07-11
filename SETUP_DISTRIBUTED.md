@@ -142,3 +142,4 @@ podman machine start
 podman system prune --all --volumes --force
 
 podman compose -f docker-compose.local.yml up --build -d
+

@@ -580,6 +580,23 @@ export class StateGraphNavigator {
 
       const unvisitedEdge = this.edgeSelector.pickBestUnvisitedEdge(parentNode);
       if (unvisitedEdge) {
+        // Return cap: count this restoration TO the ancestor. Past the cap the
+        // node is a stagnation trap (e.g. volatile selectors re-synthesizing
+        // unvisited edges on every re-entry) — block its frontier, mark it
+        // exhausted, and keep walking up to the next unexplored branch instead of
+        // restoring to it again.
+        parentNode.backtracksTo += 1;
+        if (parentNode.backtracksTo > this.config.maxBacktracksToNode) {
+          this.eventLog.recordEvent(
+            'loop-penalty-applied',
+            parentFrame.nodeHash,
+            `Return cap reached (${parentNode.backtracksTo} restorations to ${shortHash(parentFrame.nodeHash)}). Stagnation trap — frontier blocked, excluded from future backtracking.`,
+          );
+          this.graphStore.blockCurrentBranch(parentFrame.nodeHash);
+          this.traversalStack.pop();
+          continue;
+        }
+
         this.eventLog.recordEvent(
           'backtrack-initiated',
           parentFrame.nodeHash,
