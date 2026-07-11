@@ -1,13 +1,18 @@
 // Periodic reachability probe for the system-under-test. Runs OUT of the
-// exploration loop (SessionManager owns it) and drives the engine's existing
-// pause()/resume() so a target outage safely freezes execution — without
-// consuming the timebox — and auto-resumes once the target is reachable again.
+// exploration loop (SessionManager owns it) using the shared isolated Node HTTP
+// client — never the browser thread. Its sole job is to confirm a genuine target
+// outage and escalate it to a Critical Server Crash that terminates the run;
+// transient blips are absorbed by resetting the counter on the next reachable probe.
+
+import { isServerReachable } from '../../infrastructure/monitoring/serverReachability.js';
 
 export interface TargetHealthCallbacks {
-  /** Target confirmed unreachable after `attempt` consecutive failures (>= threshold). */
-  onUnreachable(attempt: number, nextRetryMs: number): void;
-  /** Target recovered from a confirmed outage after `failures` misses. Fired once per outage. */
-  onRecovered(failures: number): void;
+  /**
+   * Target still unreachable after `failures` consecutive verification probes
+   * (>= crashThreshold): a genuine server crash, not a transient blip. Fired
+   * exactly once, after which probing stops — the caller terminates the run.
+   */
+  onCrash(failures: number): void;
 }
 
 export class TargetHealthMonitor {
@@ -15,18 +20,17 @@ export class TargetHealthMonitor {
   private probing = false;
   private stopped = false;
   private consecutiveFailures = 0;
-  // Distinguishes a transient miss (below threshold, keep exploring) from a
-  // confirmed outage that actually paused the engine.
-  private outageReported = false;
+  // Latches once the crash escalation has fired so it can never double-fire.
+  private crashReported = false;
 
   constructor(
     private readonly targetUrl: string,
     private readonly intervalMs: number,
     private readonly timeoutMs: number,
     private readonly callbacks: TargetHealthCallbacks,
-    // Consecutive failed probes required before declaring the target down. A
-    // single blip / slow response past the timeout is transient, not an outage.
-    private readonly failureThreshold: number = 2,
+    // Consecutive failed probes required to escalate a suspected outage into a
+    // confirmed server crash that terminates the run.
+    private readonly crashThreshold: number = 3,
   ) {}
 
   /** Begin probing after one interval's grace so launch navigation isn't misread. */
@@ -43,10 +47,6 @@ export class TargetHealthMonitor {
     }
   }
 
-  public isHealthy(): boolean {
-    return !this.outageReported;
-  }
-
   private async tick(): Promise<void> {
     // Skip overlapping probes if a slow request outlives the interval.
     if (this.probing || this.stopped) return;
@@ -55,45 +55,28 @@ export class TargetHealthMonitor {
       const reachable = await this.check();
       if (this.stopped) return;
 
-      if (!reachable) {
-        this.consecutiveFailures += 1;
-        // Only pause once failures cross the threshold — a lone transient miss
-        // is ignored so exploration isn't frozen by an isolated blip. Keeps
-        // firing every tick after that so the dashboard shows retry progress.
-        if (this.consecutiveFailures >= this.failureThreshold) {
-          this.outageReported = true;
-          this.callbacks.onUnreachable(this.consecutiveFailures, this.intervalMs);
-        }
-      } else if (this.outageReported) {
-        const failures = this.consecutiveFailures;
-        this.outageReported = false;
+      if (reachable) {
+        // A single reachable probe clears any accumulated transient failures.
         this.consecutiveFailures = 0;
-        this.callbacks.onRecovered(failures);
-      } else {
-        // Recovered before crossing the threshold — transient, no pause happened.
-        this.consecutiveFailures = 0;
+        return;
+      }
+
+      this.consecutiveFailures += 1;
+      // Escalate to a confirmed crash once verification has failed enough times;
+      // stop probing and let the caller terminate. Latched so it fires once.
+      if (this.consecutiveFailures >= this.crashThreshold && !this.crashReported) {
+        this.crashReported = true;
+        this.stop();
+        this.callbacks.onCrash(this.consecutiveFailures);
       }
     } finally {
       this.probing = false;
     }
   }
 
-  // A network-level failure (throw/timeout) means unreachable; any HTTP status
-  // < 500 — including 4xx — means the server answered, so the target is up.
-  private async check(): Promise<boolean> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await fetch(this.targetUrl, {
-        method: 'GET',
-        signal: controller.signal,
-        redirect: 'follow',
-      });
-      return response.status < 500;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timeout);
-    }
+  // Isolated Node HTTP probe — see serverReachability.isServerReachable. Kept as
+  // a thin method so the tick logic stays readable and testable.
+  private check(): Promise<boolean> {
+    return isServerReachable(this.targetUrl, this.timeoutMs);
   }
 }

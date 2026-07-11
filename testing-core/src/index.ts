@@ -67,9 +67,9 @@ app.get('/api/debug/db', async (req, res) => {
 });
 
 const telemetryGateway = new SocketTelemetryGateway(io);
-// Wire the centralized session/reconnection manager to the live socket server
-// and the shared telemetry gateway (room scoping + reconnect replay buffer).
-sessionManager.initialize(io, telemetryGateway);
+// Wire the centralized session/reconnection manager to the shared telemetry
+// gateway (room scoping + reconnect replay buffer).
+sessionManager.initialize(telemetryGateway);
 
 // Connect to database and wait for it to complete before registering routes
 // This ensures DB is ready before any auth requests are handled

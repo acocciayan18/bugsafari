@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, NetworkAlert, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -36,7 +36,6 @@ export interface DashboardState {
   // Reconnection & recovery surface.
   isReconnecting: boolean;
   reconnectAttempt: number;
-  targetOutage: NetworkAlert | null;
   isRestoring: boolean;
 }
 
@@ -56,6 +55,7 @@ function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
     case 'DISCONNECTED':
       return 'FINISHED';
     case 'CRASHED':
+    case 'CRASH_COMPLETED':   // target server crash confirmed by the health probe
       return 'STOPPED';
     default:
       return 'IDLE';
@@ -117,7 +117,6 @@ const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [browserConsole, setBrowserConsole] = useState<BrowserConsoleMessage[]>([]);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
-  const [targetOutage, setTargetOutage] = useState<NetworkAlert | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
 
 const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
@@ -237,20 +236,6 @@ return () => {
         setIsThinking(false);
       }
 
-      // Synthesize an outage banner if the run is paused on an unreachable target
-      // (a discrete network-alert event may have predated this client).
-      if (live && !snapshot.targetHealthy) {
-        setTargetOutage({
-          kind: 'target-unreachable',
-          targetUrl: snapshot.targetUrl,
-          attempt: 0,
-          message: `Target ${snapshot.targetUrl} is currently unreachable. Execution is paused and will auto-resume on recovery.`,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        setTargetOutage(null);
-      }
-
       // Keep the run token aligned so a subsequent reconnect re-attaches.
       gateway.setRunId(snapshot.runId);
       try {
@@ -278,17 +263,6 @@ return () => {
       hydrateFromSnapshot(snapshot);
     });
 
-    gateway.onNetworkAlert((alert) => {
-      setTargetOutage(alert.kind === 'target-unreachable' ? alert : null);
-      setTelemetry((prev) => [
-        ...prev,
-        {
-          timestamp: alert.timestamp,
-          type: alert.kind === 'target-unreachable' ? 'EXCEPTION' : 'ACTION',
-          meta: { actionExecuted: alert.kind, url: alert.targetUrl, message: alert.message },
-        },
-      ]);
-    });
     gateway.onTelemetry((event) => {
       setTelemetry((previous) => {
         const next = [...previous, event];
@@ -345,9 +319,8 @@ return () => {
         setIsInitializing(false);
         setStatus('IDLE');
         setLiveFrame(null);
-        // The run is over — drop the outage banner and the persisted run token so
-        // a future refresh doesn't try to re-attach to a finished run.
-        setTargetOutage(null);
+        // The run is over — drop the persisted run token so a future refresh
+        // doesn't try to re-attach to a finished run.
         setIsReconnecting(false);
         gateway.setRunId(null);
         try {
@@ -440,7 +413,6 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
-    setTargetOutage(null);
     runStartedRef.current = true;
 
 try {
@@ -576,7 +548,6 @@ return {
       browserConsole,
       isReconnecting,
       reconnectAttempt,
-      targetOutage,
       isRestoring,
     },
     handleTimeLimitExceeded,

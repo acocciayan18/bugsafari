@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, NetworkAlert, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, NETWORK_ALERT_EVENT, DECISION_RATIONALE_EVENT } from '../../../types';
+import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, DECISION_RATIONALE_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -12,7 +12,6 @@ type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 type ReconnectingHandler = (attempt: number) => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
-type NetworkAlertHandler = (alert: NetworkAlert) => void;
 type DecisionRationaleHandler = (rationale: DecisionRationale) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -45,7 +44,6 @@ export class SocketConnectionManager {
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
   private reconnectingHandler: ReconnectingHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
-  private networkAlertHandler: NetworkAlertHandler | null = null;
   private decisionRationaleHandler: DecisionRationaleHandler | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
@@ -125,7 +123,6 @@ export class SocketConnectionManager {
     this.socket.on('url-changed', this.handleUrlChanged);
     this.socket.on('browser-console', this.handleBrowserConsole);
     this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
-    this.socket.on(NETWORK_ALERT_EVENT, this.handleNetworkAlert);
     this.socket.on(DECISION_RATIONALE_EVENT, this.handleDecisionRationale);
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
@@ -151,7 +148,6 @@ export class SocketConnectionManager {
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
-    this.socket.off(NETWORK_ALERT_EVENT, this.handleNetworkAlert);
     this.socket.off(DECISION_RATIONALE_EVENT, this.handleDecisionRationale);
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.off('connect_error');
@@ -240,10 +236,6 @@ export class SocketConnectionManager {
     this.sessionSnapshotHandler?.(snapshot);
   };
 
-  private readonly handleNetworkAlert = (alert: NetworkAlert): void => {
-    this.networkAlertHandler?.(alert);
-  };
-
   private readonly handleDecisionRationale = (rationale: DecisionRationale): void => {
     this.decisionRationaleHandler?.(rationale);
   };
@@ -275,9 +267,6 @@ export class SocketConnectionManager {
   public onSessionSnapshot(handler: SessionSnapshotHandler): void {
     this.sessionSnapshotHandler = handler;
   }
-  public onNetworkAlert(handler: NetworkAlertHandler): void {
-    this.networkAlertHandler = handler;
-  }
   public onDecisionRationale(handler: DecisionRationaleHandler): void {
     this.decisionRationaleHandler = handler;
   }
@@ -292,7 +281,6 @@ export class SocketConnectionManager {
     this.browserConsoleHandler = null;
     this.reconnectingHandler = null;
     this.sessionSnapshotHandler = null;
-    this.networkAlertHandler = null;
     this.decisionRationaleHandler = null;
   }
 }

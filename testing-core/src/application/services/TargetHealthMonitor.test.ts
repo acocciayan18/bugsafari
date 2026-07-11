@@ -1,7 +1,8 @@
-// Deterministic self-check for the reachability state machine: a transient miss
-// below the threshold must NOT pause; only a sustained outage does; recovery
-// fires once and only after a real outage. No unit-test runner is configured, so
-// run with `npx tsx src/application/services/TargetHealthMonitor.test.ts`.
+// Deterministic self-check for the crash-escalation state machine: transient
+// misses are absorbed (counter resets on any reachable probe); only a sustained
+// outage of `crashThreshold` consecutive failures escalates, exactly once. No
+// unit-test runner is configured, so run with
+// `npx tsx src/application/services/TargetHealthMonitor.test.ts`.
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
@@ -34,36 +35,30 @@ async function pump(m: TargetHealthMonitor, times: number): Promise<void> {
   }
 }
 
-console.log('TargetHealthMonitor — transient vs genuine outage');
+console.log('TargetHealthMonitor — crash escalation only (no pause notification)');
 
 async function run(): Promise<void> {
-  await check('single transient miss does NOT pause (threshold 2)', async () => {
-    const probes = withProbes([false, true, true]);
-    let unreachable = 0, recovered = 0;
+  await check('intermittent misses never crash (counter resets on recovery)', async () => {
+    const probes = withProbes([false, true, false, true, false, true]);
+    let crashed = 0;
     const m = new TargetHealthMonitor('http://t', 10, 5, {
-      onUnreachable: () => { unreachable += 1; },
-      onRecovered: () => { recovered += 1; },
-    }, 2);
-    await pump(m, 3); // fail, then two successes
+      onCrash: () => { crashed += 1; },
+    }, 3);
+    await pump(m, 6);
     probes.restore();
-    assert.equal(unreachable, 0, 'lone blip must not report an outage');
-    assert.equal(recovered, 0, 'no recovery without a prior outage');
-    assert.equal(m.isHealthy(), true);
+    assert.equal(crashed, 0, 'a reachable probe between failures must reset the streak');
   });
 
-  await check('sustained failures pause after threshold, recover once', async () => {
-    const probes = withProbes([false, false, false, true]);
-    let unreachable = 0, recovered = 0, lastFailures = 0;
+  await check('sustained outage escalates to crash after 3 probes, once', async () => {
+    const probes = withProbes([false, false, false, false, false]);
+    let crashed = 0, crashFailures = 0;
     const m = new TargetHealthMonitor('http://t', 10, 5, {
-      onUnreachable: () => { unreachable += 1; },
-      onRecovered: (f) => { recovered += 1; lastFailures = f; },
-    }, 2);
-    await pump(m, 4); // 3 fails (pause at 2nd, keep firing), then success
+      onCrash: (f) => { crashed += 1; crashFailures = f; },
+    }, 3);
+    await pump(m, 5); // extra pumps prove probing stopped after the crash
     probes.restore();
-    assert.equal(unreachable, 2, 'fires each tick once threshold crossed');
-    assert.equal(recovered, 1, 'recovery fires exactly once');
-    assert.equal(lastFailures, 3, 'reports total consecutive misses');
-    assert.equal(m.isHealthy(), true);
+    assert.equal(crashed, 1, 'crash fires exactly once');
+    assert.equal(crashFailures, 3, 'crash reported at the crash threshold');
   });
 }
 

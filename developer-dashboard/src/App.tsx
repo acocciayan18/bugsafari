@@ -128,12 +128,11 @@ function AuthAppContent() {
   // ─────────────────────────────────────────────────────────────
   return (
     <ThemeProvider>
-      {/* Global recovery status: backend disconnect, reconnection, target outage, restore. */}
+      {/* Global recovery status: backend disconnect, reconnection, restore. */}
       <ConnectionStatusOverlay
         isConnected={state.isConnected}
         isReconnecting={state.isReconnecting}
         reconnectAttempt={state.reconnectAttempt}
-        targetOutage={state.targetOutage}
         isRestoring={state.isRestoring}
       />
       <Routes>

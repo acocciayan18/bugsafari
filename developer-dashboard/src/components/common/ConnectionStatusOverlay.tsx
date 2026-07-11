@@ -1,29 +1,26 @@
 import type { ReactNode } from 'react';
-import type { NetworkAlert } from '../../types';
 
 interface ConnectionStatusOverlayProps {
   isConnected: boolean;
   isReconnecting: boolean;
   reconnectAttempt: number;
-  targetOutage: NetworkAlert | null;
   isRestoring: boolean;
 }
 
-// Global, non-modal status banners for the three failure modes that recovery
-// must make visible: backend disconnect, reconnection-in-progress, and a target
-// application outage. Stacked top-center; pointer-events limited to the banners
-// so the dashboard underneath stays interactive.
+// Global, non-modal status banners for the connection failure modes that recovery
+// must make visible: backend disconnect, reconnection-in-progress, and session
+// restore. Stacked top-center; pointer-events limited to the banners so the
+// dashboard underneath stays interactive.
 export default function ConnectionStatusOverlay({
   isConnected,
   isReconnecting,
   reconnectAttempt,
-  targetOutage,
   isRestoring,
 }: ConnectionStatusOverlayProps) {
   // Backend link is down and not actively retrying (initial loss).
   const backendDown = !isConnected && !isReconnecting;
 
-  if (!backendDown && !isReconnecting && !targetOutage && !isRestoring) {
+  if (!backendDown && !isReconnecting && !isRestoring) {
     return null;
   }
 
@@ -40,16 +37,6 @@ export default function ConnectionStatusOverlay({
         <Banner tone="warning">
           <Spinner />
           <span>Reconnecting to BugSafari{reconnectAttempt > 0 ? ` — attempt ${reconnectAttempt}` : '…'}</span>
-        </Banner>
-      )}
-
-      {targetOutage && (
-        <Banner tone="warning">
-          <Dot className="bg-amber-200" />
-          <span>
-            Target application unreachable{targetOutage.attempt > 0 ? ` (attempt ${targetOutage.attempt})` : ''}. Execution
-            paused — auto-resuming when it recovers.
-          </span>
         </Banner>
       )}
 

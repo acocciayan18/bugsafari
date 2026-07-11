@@ -1,21 +1,21 @@
-import type { Server, Socket } from 'socket.io';
+import type { Socket } from 'socket.io';
 import { Types, isValidObjectId } from 'mongoose';
 import type {
   ActiveSessionSnapshot,
   DecisionRationale,
   ForensicCrashReport,
   IncidentReport,
-  NetworkAlert,
   RunLifecycleStatus,
   SessionAttachAck,
   SessionOwnerType,
   TelemetryEvent,
 } from '../../../../shared/types.js';
-import { NETWORK_ALERT_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../../shared/types.js';
+import { SESSION_SNAPSHOT_EVENT } from '../../../../shared/types.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
 import { TargetHealthMonitor } from './TargetHealthMonitor.js';
+import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
 /** Minimal control surface the manager needs from the live browser engine. */
 export interface EngineControl {
@@ -38,8 +38,16 @@ export interface BeginRunParams {
 const GRACE_MS = readPositiveInt(process.env.BUGSAFARI_SESSION_GRACE_MS, 60_000);
 const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_INTERVAL_MS, 15_000);
 const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TIMEOUT_MS, 5_000);
-// Consecutive failed probes before pausing — filters transient blips from real outages.
-const HEALTH_FAILURE_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_FAILURE_THRESHOLD, 2);
+// Consecutive failed probes before declaring a Critical Server Crash and terminating.
+const HEALTH_CRASH_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_CRASH_THRESHOLD, 3);
+// The health probe runs in the Node process, whose in-container network view can
+// differ from the Playwright browser's (loopback targets are bridged to
+// host.docker.internal for the BROWSER; Podman serves host.containers.internal;
+// DNS/binding differ). A Node probe that can't reach a target the browser CAN
+// would falsely crash the run, so the kill-switch is OFF by default — genuine
+// server failures are still caught browser-side (5xx / requestfailed / pageerror).
+// Enable only where the engine process and the browser share the target's network.
+const HEALTH_MONITOR_ENABLED = process.env.BUGSAFARI_TARGET_HEALTH_MONITOR?.trim().toLowerCase() === 'on';
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const RATIONALE_BUFFER_CAP = 60;
@@ -62,8 +70,7 @@ interface ActiveRun {
   room: string;
   ownerSocketIds: Set<string>;
   manualPaused: boolean;   // paused by the operator
-  autoPaused: boolean;     // paused by the health monitor during a target outage
-  targetHealthy: boolean;
+  crashTerminated: boolean; // target server crash confirmed; run being torn down
   health: TargetHealthMonitor;
   graceTimer: ReturnType<typeof setTimeout> | null;
   // Replay ring buffers (bounded).
@@ -82,13 +89,11 @@ interface ActiveRun {
  * A singleton — one run at a time, matching the 429-busy admission model.
  */
 export class SessionManager implements TelemetryRecorder {
-  private io: Server | null = null;
   private gateway: SocketTelemetryGateway | null = null;
   private run: ActiveRun | null = null;
 
-  /** Wire the manager to the live Socket.IO server + shared telemetry gateway. */
-  public initialize(io: Server, gateway: SocketTelemetryGateway): void {
-    this.io = io;
+  /** Wire the manager to the shared telemetry gateway (room-scoped emitter). */
+  public initialize(gateway: SocketTelemetryGateway): void {
     this.gateway = gateway;
   }
 
@@ -120,9 +125,8 @@ export class SessionManager implements TelemetryRecorder {
 
     const room = `run:${params.runId}`;
     const health = new TargetHealthMonitor(params.targetUrl, HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, {
-      onUnreachable: (attempt, nextRetryMs) => this.onTargetUnreachable(attempt, nextRetryMs),
-      onRecovered: (failures) => this.onTargetRecovered(failures),
-    }, HEALTH_FAILURE_THRESHOLD);
+      onCrash: (failures) => void this.onTargetCrash(failures),
+    }, HEALTH_CRASH_THRESHOLD);
 
     this.run = {
       runId: params.runId,
@@ -137,8 +141,7 @@ export class SessionManager implements TelemetryRecorder {
       room,
       ownerSocketIds: new Set<string>(),
       manualPaused: false,
-      autoPaused: false,
-      targetHealthy: true,
+      crashTerminated: false,
       health,
       graceTimer: null,
       telemetry: [],
@@ -151,18 +154,24 @@ export class SessionManager implements TelemetryRecorder {
     // Scope the wire to this run's room and start buffering for replay.
     this.gateway?.setRoom(room);
     this.gateway?.setRecorder(this);
-    health.start();
-    console.log(`[SessionManager] Run ${params.runId} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms)`);
+    // Only arm the out-of-browser reachability kill-switch when explicitly enabled
+    // (see HEALTH_MONITOR_ENABLED) — otherwise a container network mismatch could
+    // crash a perfectly healthy run.
+    if (HEALTH_MONITOR_ENABLED) health.start();
+    console.log(`[SessionManager] Run ${params.runId} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
   }
 
   /** Called from the run's finally block when the engine loop returns/throws. */
   public endRun(finalStatus: RunLifecycleStatus = 'COMPLETED'): void {
     if (!this.run) return;
     const { runId } = this.run;
-    this.run.status = finalStatus;
-    void this.persistStatus(finalStatus);
+    // A confirmed server crash is terminal — the normal run-completion path must
+    // not downgrade it back to COMPLETED when the stopped engine unwinds.
+    const status: RunLifecycleStatus = this.run.crashTerminated ? 'CRASH_COMPLETED' : finalStatus;
+    this.run.status = status;
+    void this.persistStatus(status);
     this.teardownRun();
-    console.log(`[SessionManager] Run ${runId} ended (${finalStatus})`);
+    console.log(`[SessionManager] Run ${runId} ended (${status})`);
   }
 
   private teardownRun(): void {
@@ -212,7 +221,7 @@ export class SessionManager implements TelemetryRecorder {
   // reattaching client sees the true state even after an operator pause.
   private observeStatusFrom(event: TelemetryEvent): void {
     const run = this.run;
-    if (!run || event.type !== 'ACTION') return;
+    if (!run || run.crashTerminated || event.type !== 'ACTION') return; // crash is terminal
     const action = event.meta.actionExecuted;
     if (action === 'engine-paused') run.status = 'PAUSED';
     else if (action === 'engine-resumed') run.status = 'RUNNING';
@@ -281,7 +290,6 @@ export class SessionManager implements TelemetryRecorder {
       startedAt: new Date(run.startedAt).toISOString(),
       elapsedTimeMs: elapsed,
       timeboxMs: run.timeboxMs,
-      targetHealthy: run.targetHealthy,
       telemetry: [...run.telemetry],
       reports: [...run.reports],
       incidents: [...run.incidents],
@@ -335,12 +343,6 @@ export class SessionManager implements TelemetryRecorder {
     if (!run || typeof run.engine.resume !== 'function') return;
     if (!run.manualPaused) return; // already resumed — idempotent no-op against duplicate events
     run.manualPaused = false;
-    // Don't fight an active outage: if the target is still down, stay paused —
-    // the health monitor will resume once it recovers.
-    if (run.autoPaused) {
-      this.emitMilestone('⏸️ Resume deferred — target still unreachable; will auto-resume on recovery.');
-      return;
-    }
     run.engine.resume();
     this.emitEngineAction('engine-resumed', 'Safari session resumed by user.');
   }
@@ -352,63 +354,60 @@ export class SessionManager implements TelemetryRecorder {
     // endRun() is invoked by the run's own finally block; status settles there.
   }
 
-  // ── Target health handlers ──────────────────────────────────────────────────
+  // ── Target health handler (crash escalation only) ───────────────────────────
 
-  private onTargetUnreachable(attempt: number, nextRetryMs: number): void {
+  /**
+   * Target confirmed dead after `failures` consecutive verification probes — a
+   * Critical Server Crash, not a transient navigation blip. Capture the last
+   * actions into a forensic report, mark the run CRASH_COMPLETED, then gracefully
+   * stop the engine (whose unwind releases every resource via endRun/teardownRun).
+   */
+  private async onTargetCrash(failures: number): Promise<void> {
     const run = this.run;
-    if (!run) return;
-    run.targetHealthy = false;
+    if (!run || run.crashTerminated) return; // idempotent — fire once per run
+    run.crashTerminated = true;
 
-    // Pause the engine on the first failure so the timebox doesn't burn during
-    // an outage. Idempotent: only act on the transition into auto-paused.
-    if (!run.autoPaused) {
-      run.autoPaused = true;
-      run.engine.pause?.();
-    }
+    const timestamp = new Date().toISOString();
+    const reason = `Critical Server Crash: target ${run.targetUrl} unreachable after ${failures} verification probes.`;
 
-    const alert: NetworkAlert = {
-      kind: 'target-unreachable',
-      targetUrl: run.targetUrl,
-      attempt,
-      nextRetryMs,
-      message: `Target ${run.targetUrl} unreachable (attempt ${attempt}). Execution paused; retrying every ${Math.round(nextRetryMs / 1000)}s.`,
-      timestamp: new Date().toISOString(),
+    // Snapshot the rolling 20-action buffer as breadcrumbs + narrative playbook so
+    // the operator can reproduce whatever action preceded the outage.
+    const lastActions = ReproductionPlaybookStore.snapshot();
+    const crashReport: ForensicCrashReport = {
+      timestamp,
+      reason,
+      url: run.currentUrl || run.targetUrl,
+      breadcrumbs: lastActions.map((a) => ({
+        timestamp: a.timestamp,
+        selector: a.selector,
+        action: a.type,
+        payload: a.payload,
+      })),
+      reproductionPlaybook: ReproductionPlaybookStore.getNarrativeSteps(),
+      advice: 'Backend/main document stopped responding. Check server logs, process health, and container status for a crash or OOM at the timestamp above.',
     };
-    this.emitNetworkAlert(alert);
-    // Also surface in the log stream for operators watching the terminal.
-    this.emitEngineAction('target-unreachable', alert.message);
-  }
 
-  private onTargetRecovered(failures: number): void {
-    const run = this.run;
-    if (!run) return;
-    run.targetHealthy = true;
+    // Persist status first so a mid-teardown reconnect already sees the crash.
+    run.status = 'CRASH_COMPLETED';
+    void this.persistStatus('CRASH_COMPLETED');
 
-    const wasAutoPaused = run.autoPaused;
-    run.autoPaused = false;
+    // Broadcast + buffer the forensic report and a terminal milestone for the dashboard.
+    this.gateway?.emitForensicReport(crashReport);
+    this.emitMilestone(`🛑 ${reason} Saving forensic report and terminating session.`);
 
-    const alert: NetworkAlert = {
-      kind: 'target-recovered',
-      targetUrl: run.targetUrl,
-      attempt: failures,
-      message: `Target ${run.targetUrl} reachable again after ${failures} failed probe(s).`,
-      timestamp: new Date().toISOString(),
-    };
-    this.emitNetworkAlert(alert);
-    this.emitEngineAction('target-recovered', alert.message);
-
-    // Auto-resume only if WE paused it and the operator hasn't since paused it.
-    if (wasAutoPaused && !run.manualPaused) {
-      run.engine.resume?.();
-      this.emitEngineAction('engine-resumed', 'Target recovered — resuming exploration.');
+    // Graceful termination: stop() unwinds the engine's run() whose finally calls
+    // endRun() → teardownRun(), releasing the health monitor, grace timer, room,
+    // and replay buffer. crashTerminated pins the terminal status through that path.
+    try {
+      await Promise.resolve(run.engine.stop?.());
+    } catch (err) {
+      console.error('[SessionManager] Crash-termination stop failed:', err);
+      // Engine unresponsive — force teardown so resources are still released.
+      this.endRun('CRASH_COMPLETED');
     }
   }
 
   // ── Emit helpers (all room-scoped via the gateway/io) ───────────────────────
-
-  private emitNetworkAlert(alert: NetworkAlert): void {
-    this.roomEmit(NETWORK_ALERT_EVENT, alert);
-  }
 
   private emitEngineAction(actionExecuted: string, message: string): void {
     // Route through the gateway so it's buffered for replay AND room-scoped.
@@ -425,12 +424,6 @@ export class SessionManager implements TelemetryRecorder {
       type: 'ACTION',
       meta: { actionExecuted: 'system-milestone', message },
     });
-  }
-
-  private roomEmit(event: string, payload: unknown): void {
-    const run = this.run;
-    if (!this.io || !run) return;
-    this.io.to(run.room).emit(event, payload);
   }
 
   /** Push the current snapshot to a specific socket (used on server-driven replay). */
@@ -470,6 +463,9 @@ const LIFECYCLE_TO_DB_STATUS: Partial<Record<RunLifecycleStatus, SessionStatus>>
   PAUSED: SessionStatus.PAUSED,
   INTERRUPTED: SessionStatus.INTERRUPTED,
   DISCONNECTED: SessionStatus.DISCONNECTED,
+  // Server-crash termination is detected out-of-band (the paused engine never
+  // reaches its own completeSession), so the manager persists the terminal state.
+  CRASH_COMPLETED: SessionStatus.CRASHED,
 };
 
 function pushCapped<T>(buffer: T[], item: T, cap: number): void {

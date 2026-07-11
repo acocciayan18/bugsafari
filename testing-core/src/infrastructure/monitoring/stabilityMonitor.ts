@@ -3,11 +3,21 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { FindingAttribution } from '../../../../shared/types.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
+import { isServerReachable } from './serverReachability.js';
 
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
+// Isolated server probe budget when a heartbeat times out — independent of the
+// (possibly frozen) browser thread, so it can't be starved by the lockup.
+const HEALTH_PROBE_TIMEOUT_MS = 5_000;
+// After confirming the server is up, let the browser thread settle then re-probe
+// its responsiveness a bounded number of times before declaring a real UI freeze.
+const RECOVERY_SETTLE_MS = 500;
+const STABILITY_RETRIES = 3;
 
 type Cleanup = () => void;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Classify a background-monitor fault against the knowledge base and attribute it
@@ -64,11 +74,14 @@ export type BugRegistrationCallback = (bug: {
  *
  * @param page - Playwright page to monitor
  * @param telemetry - Telemetry gateway for emitting events
+ * @param targetUrl - Target URL probed by the ISOLATED Node health client on a
+ *   heartbeat timeout, to tell a local browser freeze apart from a server outage
  * @param onBugRegistered - Optional callback to register confirmed bugs to memory
  */
 export function setupStabilityMonitoring(
   page: Page,
   telemetry: TelemetryGateway,
+  targetUrl: string,
   onBugRegistered?: BugRegistrationCallback
 ): Cleanup {
   let disposed = false;
@@ -76,32 +89,40 @@ export function setupStabilityMonitoring(
   let heartbeatInFlight = false;
   let lastHeartbeatAlertAt = 0;
 
-  const emitMainThreadLockup = (): void => {
+  // Emit a confirmed freeze/crash finding. `kind` decides the classification: a
+  // sustained local browser freeze (server proven up) vs a genuine server crash
+  // (isolated probe proven down) — the two are never conflated.
+  const emitFreezeFinding = (kind: 'ui-freeze' | 'server-crash'): void => {
     const timestamp = new Date().toISOString();
     const url = page.url();
-    const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
     const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-    const { advice, attribution } = classify('FREEZE', 'System Lock-up Detected: Main Thread unresponsive', { url });
+
+    const isCrash = kind === 'server-crash';
+    const faultType: FaultType = isCrash ? 'NETWORK' : 'FREEZE';
+    const reason = isCrash
+      ? `Critical Server Crash: target ${targetUrl} unreachable while the browser thread was blocked.`
+      : "System Lock-up Detected: The browser's Main Thread is unresponsive.";
+    const banner = isCrash
+      ? `🔴 Critical Server Crash: ${targetUrl} is unreachable (confirmed by isolated health check).`
+      : "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
+    const stackTrace = isCrash
+      ? `Isolated Node health probe to ${targetUrl} failed after ${HEALTH_PROBE_TIMEOUT_MS}ms.`
+      : 'Heartbeat evaluate call exceeded 5000ms timeout.';
+    const { advice, attribution } = classify(faultType, reason, { url });
 
     telemetry.emitTelemetry({
       timestamp,
       type: 'EXCEPTION',
       meta: {
-        message:
-          "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.",
-        exceptionDetails: {
-          message: 'Main Thread heartbeat timeout',
-          stackTrace,
-        },
+        message: banner,
+        exceptionDetails: { message: reason, stackTrace },
         reproductionSteps: reproductionPlaybook,
         attribution,
       },
     });
-
-    // Emit as incident report for error tab display
     telemetry.emitIncidentReport({
       timestamp,
-      reason: 'Main Thread Lock-up Detected',
+      reason: isCrash ? 'Critical Server Crash' : 'Main Thread Lock-up Detected',
       url,
       stackTrace,
       steps: [],
@@ -109,11 +130,9 @@ export function setupStabilityMonitoring(
       advice,
       attribution,
     });
-
-    // Emit as forensic report
     telemetry.emitForensicReport({
       timestamp,
-      reason: "System Lock-up Detected: The browser's Main Thread is unresponsive.",
+      reason,
       url,
       stackTrace,
       breadcrumbs: [],
@@ -122,12 +141,11 @@ export function setupStabilityMonitoring(
       attribution,
     });
 
-    // NEW: Register bug to memory if callback provided
     if (onBugRegistered) {
       onBugRegistered({
-        bugId: `main-thread-lockup-${Date.now()}`,
-        type: 'RUNTIME_UI_FREEZE',
-        message: '🧊 System Lock-up Detected: Main Thread unresponsive',
+        bugId: `${isCrash ? 'server-crash' : 'main-thread-lockup'}-${Date.now()}`,
+        type: isCrash ? 'NETWORK' : 'RUNTIME_UI_FREEZE',
+        message: banner,
         selector: '',
         payloadUsed: '',
         advice,
@@ -135,6 +153,16 @@ export function setupStabilityMonitoring(
         attribution,
       });
     }
+  };
+
+  // Informational-only: a browser freeze was seen but the server is fine, so we
+  // are attempting recovery. No finding, no forensic record — just operator signal.
+  const emitInfo = (message: string): void => {
+    telemetry.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: { actionExecuted: 'browser-freeze-recovery', url: page.url(), message },
+    });
   };
 
   const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
@@ -146,6 +174,56 @@ export function setupStabilityMonitoring(
     ]);
   };
 
+  // Probe the main thread once; true if it answered within the timeout.
+  const threadResponsive = async (): Promise<boolean> => {
+    if (disposed || page.isClosed()) return false;
+    try {
+      await withTimeout(page.evaluate(() => true), HEARTBEAT_TIMEOUT_MS);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Give the browser a brief window to recover, re-validating page stability a
+  // bounded number of times. Returns true once the main thread is responsive again.
+  const validatePageStability = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < STABILITY_RETRIES; attempt += 1) {
+      if (disposed || page.isClosed()) return false;
+      await sleep(RECOVERY_SETTLE_MS);
+      if (await threadResponsive()) return true;
+    }
+    return false;
+  };
+
+  // Heartbeat timeout handler. A blocked browser thread is NOT proof of a server
+  // outage, so before classifying anything we consult the ISOLATED Node health
+  // client (immune to the browser lockup):
+  //   • server up   → local browser freeze: recover briefly, re-validate stability,
+  //                    resume on recovery; only a sustained freeze emits a UI finding.
+  //   • server down → confirmed Critical Server Crash.
+  const handleHeartbeatTimeout = async (): Promise<void> => {
+    const serverUp = await isServerReachable(targetUrl, HEALTH_PROBE_TIMEOUT_MS);
+    if (disposed) return;
+
+    if (!serverUp) {
+      emitFreezeFinding('server-crash');
+      return;
+    }
+
+    // Server reachable → the freeze is local to the browser. Reset error state and
+    // let it recover before deciding anything.
+    emitInfo('⏳ Browser thread stalled but server is reachable — attempting local recovery...');
+    const recovered = await validatePageStability();
+    if (disposed) return;
+
+    if (recovered) {
+      emitInfo('✅ Browser thread recovered — resuming exploration (no server crash).');
+    } else {
+      emitFreezeFinding('ui-freeze');
+    }
+  };
+
   const runHeartbeat = async (): Promise<void> => {
     if (disposed || heartbeatInFlight || page.isClosed()) {
       return;
@@ -153,13 +231,12 @@ export function setupStabilityMonitoring(
 
     heartbeatInFlight = true;
     try {
-      await withTimeout(page.evaluate(() => true), HEARTBEAT_TIMEOUT_MS);
-    } catch {
+      if (await threadResponsive()) return;
+      // Rate-limit escalation so one sustained freeze doesn't spam the pipeline.
       const now = Date.now();
-      if (now - lastHeartbeatAlertAt >= HEARTBEAT_TIMEOUT_MS) {
-        emitMainThreadLockup();
-        lastHeartbeatAlertAt = now;
-      }
+      if (now - lastHeartbeatAlertAt < HEARTBEAT_TIMEOUT_MS) return;
+      lastHeartbeatAlertAt = now;
+      await handleHeartbeatTimeout();
     } finally {
       heartbeatInFlight = false;
     }

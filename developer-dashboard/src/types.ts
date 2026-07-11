@@ -35,7 +35,6 @@ export type {
   RegressionSignal,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
-  NetworkAlert,
   SessionAttachRequest,
   SessionAttachAck,
   RunLifecycleStatus,
@@ -57,7 +56,6 @@ export {
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
-  NETWORK_ALERT_EVENT,
   DECISION_RATIONALE_EVENT,
 } from '../../shared/types.js';
 

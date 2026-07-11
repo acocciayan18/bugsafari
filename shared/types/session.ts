@@ -16,7 +16,8 @@ export type RunLifecycleStatus =
   | 'INTERRUPTED'   // owner dropped; engine alive inside grace window
   | 'DISCONNECTED'  // grace expired; engine being torn down
   | 'COMPLETED'     // finished normally
-  | 'CRASHED';      // finished via fatal engine error
+  | 'CRASHED'       // finished via fatal engine error
+  | 'CRASH_COMPLETED'; // target server crash confirmed by health probe; run terminated
 
 /** Whether the active run belongs to an authenticated operator or a guest. */
 export type SessionOwnerType = 'authenticated' | 'guest';
@@ -24,17 +25,6 @@ export type SessionOwnerType = 'authenticated' | 'guest';
 // ── Socket event names (shared so client/server can never drift) ──────────────
 export const SESSION_ATTACH_EVENT = 'session-attach' as const;
 export const SESSION_SNAPSHOT_EVENT = 'session-snapshot' as const;
-export const NETWORK_ALERT_EVENT = 'network-alert' as const;
-
-/** Structured target-connectivity alert emitted while the engine probes the SUT. */
-export interface NetworkAlert {
-  kind: 'target-unreachable' | 'target-recovered';
-  targetUrl: string;
-  attempt: number;
-  nextRetryMs?: number;
-  message: string;
-  timestamp: string;
-}
 
 /** Everything a returning client needs to rebuild the live dashboard verbatim. */
 export interface ActiveSessionSnapshot {
@@ -46,7 +36,6 @@ export interface ActiveSessionSnapshot {
   startedAt: string;
   elapsedTimeMs: number;
   timeboxMs: number;
-  targetHealthy: boolean;
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
