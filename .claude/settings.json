@@ -1,16 +1,4 @@
 {
-  "enabledPlugins": {
-    "caveman@caveman": true,
-    "fullstack-dev-skills@fullstack-dev-skills": true
-  },
-  "extraKnownMarketplaces": {
-    "caveman": {
-      "source": {
-        "source": "github",
-        "repo": "juliusbrussee/caveman"
-      }
-    }
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -74,5 +62,18 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "caveman@caveman": true,
+    "fullstack-dev-skills@fullstack-dev-skills": true,
+    "ponytail@ponytail": true
+  },
+  "extraKnownMarketplaces": {
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "juliusbrussee/caveman"
+      }
+    }
   }
 }

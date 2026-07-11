@@ -87,24 +87,4 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     this.recorder?.record('decision-rationale', rationale);
     this.channel().emit(DECISION_RATIONALE_EVENT, rationale);
   }
-
-  // Phase 3: Timer state events for frontend countdown sync
-  public emitTimerState(state: TimerState): void {
-    this.channel().emit('timer-state', state);
-  }
-
-  public emitTimeRemaining(timeRemainingMs: number): void {
-    this.channel().emit('time-remaining', timeRemainingMs);
-  }
-}
-
-/**
- * Phase 3: Timer state interface for frontend sync
- */
-export interface TimerState {
-  isRunning: boolean;
-  isPaused: boolean;
-  timeRemainingMs: number;
-  totalTimeboxMs: number;
-  status: 'idle' | 'running' | 'paused' | 'completed' | 'timeout';
 }

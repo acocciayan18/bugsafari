@@ -111,6 +111,8 @@ export class ExplorationEngine {
   // Strict Page Boundary Lock: when true the launch URL is the immutable
   // reference state and any drift is reverted (resolved in the constructor).
   private readonly strictUrlLock: boolean;
+  // RouteTrasher URL-mutation budget per state (resolved in the constructor).
+  private readonly routeMutationBudget: number;
 
   private isPaused = false;
   private isStopRequested = false;
@@ -185,6 +187,12 @@ export class ExplorationEngine {
     this.strictUrlLock = optimizationSettings?.strictUrlLock ?? false;
     console.log(`[ExplorationEngine] Strict URL Lock:`, this.strictUrlLock);
 
+    // Resolve the RouteTrasher URL-mutation budget per state (default 1; 0 disables).
+    this.routeMutationBudget = optimizationSettings?.['route-mutation-budget']
+      ?? defaultOptimizationSettings['route-mutation-budget']
+      ?? 1;
+    console.log(`[ExplorationEngine] RouteTrasher budget:`, this.routeMutationBudget);
+
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
     console.log(`[ExplorationEngine] Active testing types:`, this.gate.activeCategories());
@@ -246,6 +254,7 @@ export class ExplorationEngine {
   }
 
   public pause() {
+    if (this.isPaused) return; // already paused — idempotent no-op against duplicate calls
     // Record the snapshot of elapsed time when pausing
     this.pauseSnapshotTimeMs = this.elapsedActiveTimeMs;
     this.isPaused = true;
@@ -253,6 +262,7 @@ export class ExplorationEngine {
   }
 
   public resume() {
+    if (!this.isPaused) return; // already running — idempotent no-op against duplicate calls
     // Calculate the new dynamic deadline based on accumulated time
     const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
     this.dynamicDeadline = Date.now() + remainingTimeMs;
@@ -695,6 +705,7 @@ export class ExplorationEngine {
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
+        routeMutationBudget: this.routeMutationBudget,
         // Glass-box Decision Lens: build the exact per-feature rationale for the
         // chosen target vs its runner-up, stamped with this run's session id.
         explainDecision: (input) =>

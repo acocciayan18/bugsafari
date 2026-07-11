@@ -91,6 +91,7 @@ export class GraphStore {
       visitCount: 1,
       exhausted: false,
       backtracksFromHere: 0,
+      status: 'discovered',
     };
 
     this.nodes.set(hash, node);
@@ -121,6 +122,7 @@ export class GraphStore {
     }
     this.invalidateEdgeIndex(node.hash);
     node.exhausted = true;
+    node.status = 'skipped';
   }
 
   private checkNodeExhaustion(node: GraphNode): void {
@@ -130,6 +132,9 @@ export class GraphStore {
     );
     if (!anyOpen) {
       node.exhausted = true;
+      // Natural completion — every edge explored/blocked. Skipped is reserved
+      // for forced closures (blockNodePermanently / blockCurrentBranch).
+      node.status = 'completed';
     }
   }
 
@@ -313,6 +318,7 @@ export class GraphStore {
     this.invalidateEdgeIndex(nodeHash);
 
     node.exhausted = true;
+    node.status = 'skipped';
     this.eventLog.recordEvent(
       'edge-blocked',
       nodeHash,

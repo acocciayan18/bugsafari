@@ -23,11 +23,12 @@ import { DEFENSIVE_CLIENT_STATUSES } from '../../scenarios/routeTrasher/routeTra
 // Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
 
-// RouteTrasher per-state URL-mutation cap: after this many invocations on one
-// state node the scenario is disabled for that node, its route-mutation branch is
-// penalized, and exploration is redirected to the top unvisited control. Prevents
-// oscillation between structurally identical error routes.
-const ROUTE_MUTATION_LIMIT = 3;
+// RouteTrasher per-state URL-mutation cap is operator-configurable via
+// OptimizationSettings['route-mutation-budget'] (default 1, 0 disables) and
+// reaches the loop as deps.routeMutationBudget. After that many invocations on
+// one state the scenario is disabled for that node, its route-mutation branch is
+// penalized, and exploration is redirected to the top unvisited control —
+// preventing oscillation between structurally identical error routes.
 
 type LoopResult = { completed: boolean; reason: string };
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
@@ -682,7 +683,7 @@ export class ExplorationLoop {
 
   /**
    * Account one RouteTrasher invocation against the current state's URL-mutation
-   * budget. On reaching ROUTE_MUTATION_LIMIT it penalizes the route-mutation
+   * budget. On reaching the configured budget it penalizes the route-mutation
    * branch in the scoring model — ONLY the already-explored churn controls, so the
    * unvisited frontier is left intact — and announces that the highest-scoring
    * UNVISITED control is prioritized next, maximizing coverage before any
@@ -690,13 +691,14 @@ export class ExplorationLoop {
    * exactly once per state.
    */
   private handleRouteMutationBudget(currentHash: string, ranked: InteractiveElement[]): void {
+    const limit = this.deps.routeMutationBudget;
     const count = this.deps.pathNavigator.registerRouteMutation(currentHash);
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'route-mutation-registered',
       stateHash: currentHash,
-      message: `RouteTrasher mutation ${count}/${ROUTE_MUTATION_LIMIT} on this state.`,
+      message: `RouteTrasher mutation ${count}/${limit} on this state.`,
     });
-    if (count < ROUTE_MUTATION_LIMIT) return;
+    if (count < limit) return;
     if (!this.deps.pathNavigator.penalizeRouteBranch(currentHash)) return;
 
     // Penalize only the churn (already-explored controls); unvisited edges keep
@@ -710,7 +712,7 @@ export class ExplorationLoop {
 
     const best = this.deps.pathNavigator.bestUnvisitedSelector(currentHash);
     this.deps.telemetry.emitMilestone(
-      `🧭 RouteTrasher limit (${ROUTE_MUTATION_LIMIT}) reached on this state — URL mutations disabled, route branch penalized; prioritizing ${best ? `unvisited control "${best}"` : 'remaining unvisited controls'} before any rollback.`,
+      `🧭 RouteTrasher limit (${limit}) reached on this state — URL mutations disabled, route branch penalized; prioritizing ${best ? `unvisited control "${best}"` : 'remaining unvisited controls'} before any rollback.`,
     );
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'route-mutation-limit-reached',
@@ -764,7 +766,7 @@ export class ExplorationLoop {
       // RouteTrasher is permitted only while this state is under its per-state
       // URL-mutation budget; once run, account it against the budget and, on the
       // limit, penalize the branch + prioritize the top unvisited control.
-      const allowRouteMutation = this.deps.pathNavigator.canRouteMutate(currentHash, ROUTE_MUTATION_LIMIT);
+      const allowRouteMutation = this.deps.pathNavigator.canRouteMutate(currentHash, this.deps.routeMutationBudget);
       const { ranRouteMutation } = await this.deps.actionExecutor.executeWeightedAction(
         page,
         target,

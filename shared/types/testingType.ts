@@ -18,6 +18,10 @@ export interface OptimizationSettings {
   // Strict Page Boundary Lock: confine exploration to the exact launch URL
   // (path + query + hash). Any action that drifts the page off it is reverted.
   strictUrlLock?: boolean;
+  // RouteTrasher (URL-mutation) budget per unique page/state. Max times the
+  // scenario may run on one state before it is permanently deprioritized.
+  // 0 disables RouteTrasher entirely (default: 1 — once, then deprioritize).
+  'route-mutation-budget'?: number;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -26,6 +30,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'concurrent-spam-event': true,
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
+  'route-mutation-budget': 1,  // Once, then permanently deprioritize
 };
 
 // ─────────────────────────────────────────────────────────────

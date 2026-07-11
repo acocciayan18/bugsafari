@@ -4,6 +4,13 @@ import type { EventLog } from './EventLog.js';
 import type { GraphStore } from './GraphStore.js';
 import { inferActionType, computeSelectorComplexity } from './utils.js';
 
+// Mild coverage-first bias: on a page's FIRST visit, navigation controls
+// (anchors) are de-prioritized so in-place controls (inputs/toggles/buttons)
+// are actuated before we follow a link away — analyze the page more fully before
+// departure. Kept mild so raw scoring still dominates.
+// ponytail: fixed 0.85 nudge; promote to a config knob if tuning proves needed.
+const FIRST_VISIT_NAV_DEPRIORITIZE = 0.85;
+
 /**
  * Best-first edge selection (diversity-penalized argmax + softmax exploration
  * + tie-breaker fallback) and the adaptive boredom threshold. Reads/writes the
@@ -26,6 +33,9 @@ export class EdgeSelector {
   private readonly recentDensities: number[] = [];
   // The effective boredom threshold for the most recent decision (adaptive).
   private currentBoredomThreshold: number;
+  // True while the node under selection is on its first visit — drives the
+  // coverage-first navigation de-prioritization. Refreshed per scanUnvisited.
+  private currentNodeIsFirstVisit = false;
 
   constructor(
     private readonly config: StateGraphNavigatorConfig,
@@ -77,9 +87,14 @@ export class EdgeSelector {
    * cache is still written so a second read within the same scan step is fast.
    */
   scanUnvisited(node: GraphNode): { best: GraphEdge | null; maxScore: number } {
-    // Only use the cache when no diversity tracking is active (early in the run
-    // before any traversals are confirmed) — avoids stale penalty-free results.
-    if (this.recentEdgeTypes.length === 0) {
+    // First-visit coverage bias participates in effective scoring; refresh it
+    // per scan so it reflects the node currently under selection.
+    this.currentNodeIsFirstVisit = node.visitCount <= 1;
+
+    // Only use the cache when no diversity tracking is active AND this is not a
+    // first-visit node — both make effective scores depend on transient state
+    // that the cache does not capture, so bypass it to avoid stale results.
+    if (this.recentEdgeTypes.length === 0 && !this.currentNodeIsFirstVisit) {
       const cached = this.graphStore.getCachedSelector(node.hash);
       if (cached) {
         if (cached.bestSelector === null) {
@@ -209,14 +224,24 @@ export class EdgeSelector {
    * Penalty multiplier: max(0.3, 1 − matchCount × diversityPenaltyPerStep).
    */
   private effectiveScore(edge: GraphEdge): number {
-    if (!edge.elementType || this.recentEdgeTypes.length === 0) return edge.score;
-    const tag = edge.elementType.toUpperCase();
-    const matches = this.recentEdgeTypes.filter(
-      (s) => s.elementType.toUpperCase() === tag,
-    ).length;
-    if (matches === 0) return edge.score;
-    const mult = Math.max(0.3, 1 - matches * this.config.diversityPenaltyPerStep);
-    return edge.score * mult;
+    let score = edge.score;
+    // Diversity recency penalty: repeated element categories are de-prioritized.
+    if (edge.elementType && this.recentEdgeTypes.length > 0) {
+      const tag = edge.elementType.toUpperCase();
+      const matches = this.recentEdgeTypes.filter((s) => s.elementType.toUpperCase() === tag).length;
+      if (matches > 0) score *= Math.max(0.3, 1 - matches * this.config.diversityPenaltyPerStep);
+    }
+    // First-visit coverage bias: mildly de-prioritize navigation controls so the
+    // page is exercised in place before we follow a link away from it.
+    if (this.currentNodeIsFirstVisit && this.isNavigationEdge(edge)) {
+      score *= FIRST_VISIT_NAV_DEPRIORITIZE;
+    }
+    return score;
+  }
+
+  /** True when this edge is a navigation control (anchor) — following it leaves the page. */
+  private isNavigationEdge(edge: GraphEdge): boolean {
+    return (edge.elementType ?? '').toLowerCase() === 'a';
   }
 
   /**
@@ -232,6 +257,14 @@ export class EdgeSelector {
     );
 
     return candidates.slice().sort((a, b) => {
+      // Tier 0 (first visit only): in-place controls before navigation controls,
+      // so the page is analyzed fully before we follow a link away from it.
+      if (this.currentNodeIsFirstVisit) {
+        const aNav = this.isNavigationEdge(a);
+        const bNav = this.isNavigationEdge(b);
+        if (aNav !== bNav) return aNav ? 1 : -1;
+      }
+
       // Tier 1: fresh element type beats recently seen type
       const aFresh = !recentSet.has((a.elementType ?? '').toUpperCase());
       const bFresh = !recentSet.has((b.elementType ?? '').toUpperCase());

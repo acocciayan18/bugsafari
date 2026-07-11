@@ -322,6 +322,7 @@ export class SessionManager implements TelemetryRecorder {
   public pauseByOperator(): void {
     const run = this.run;
     if (!run || typeof run.engine.pause !== 'function') return;
+    if (run.manualPaused) return; // already paused — idempotent no-op against duplicate events
     run.manualPaused = true;
     run.engine.pause();
     this.emitEngineAction('engine-paused', 'Safari session paused by user.');
@@ -330,6 +331,7 @@ export class SessionManager implements TelemetryRecorder {
   public resumeByOperator(): void {
     const run = this.run;
     if (!run || typeof run.engine.resume !== 'function') return;
+    if (!run.manualPaused) return; // already resumed — idempotent no-op against duplicate events
     run.manualPaused = false;
     // Don't fight an active outage: if the target is still down, stay paused —
     // the health monitor will resume once it recovers.

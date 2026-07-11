@@ -176,6 +176,8 @@ export interface ExplorationLoopDeps {
    *  unstable-restore, origin re-seed) is suppressed so it can't compete with the
    *  boundary-lock restore for control of the page. */
   strictUrlLock: boolean;
+  /** RouteTrasher URL-mutation budget per state node (0 disables the scenario). */
+  routeMutationBudget: number;
   /** Build the glass-box rationale for the chosen target vs its runner-up.
    *  Returns null when the target was never scored. Pure — the loop emits it. */
   explainDecision(input: {

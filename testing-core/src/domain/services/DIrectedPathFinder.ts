@@ -60,6 +60,19 @@ export type EdgeSelector = string;
  * Immutable identity fields are set at creation; mutable fields are
  * updated as exploration progresses.
  */
+/**
+ * Session-wide lifecycle of a page/state node. Drives coverage-first scheduling:
+ * a node walks Discovered → Analyzing → Testing → Completed, or is Skipped when a
+ * branch is blocked (loop/route-exhaustion/sweep). Completed & Skipped are
+ * terminal for the session — such nodes are never re-tested on revisit.
+ */
+export type NodeLifecycle =
+  | 'discovered'  // first seen; edges not yet analyzed
+  | 'analyzing'   // edges synced/scored, choosing next control
+  | 'testing'     // an edge is being exercised
+  | 'completed'   // every edge explored/blocked — fully covered
+  | 'skipped';    // branch permanently closed (loop / defensive route / sweep)
+
 export interface GraphNode {
   /** Unique identifier — SHA-256 fingerprint of the normalised DOM */
   readonly hash: StateHash;
@@ -93,6 +106,9 @@ export interface GraphNode {
    * this node. Used to apply escalating branch-blocking penalties.
    */
   backtracksFromHere: number;
+
+  /** Session-wide coverage lifecycle. Completed/Skipped are never re-tested. */
+  status: NodeLifecycle;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

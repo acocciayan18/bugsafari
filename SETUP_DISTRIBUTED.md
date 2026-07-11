@@ -127,3 +127,18 @@ podman stop bugsafari-api && podman start bugsafari-api
 
 # Or recreate containers
 podman rm -f bugsafari-api && podman play kube bugsafari-kube.yaml
+
+
+## to fully restart backend
+
+podman compose -f docker-compose.local.yml down --volumes
+
+podman machine stop
+
+wsl --shutdown
+
+podman machine start
+
+podman system prune --all --volumes --force
+
+podman compose -f docker-compose.local.yml up --build -d

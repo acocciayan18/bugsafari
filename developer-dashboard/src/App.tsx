@@ -159,6 +159,7 @@ function AuthAppContent() {
                 isConnected={state.isConnected}
                 isCleaningUp={state.isCleaningUp}
                 sessionTimeMs={state.activeTimeboxMs}
+                remainingTimeMs={state.remainingTimeMs}
                 onTimeUp={handleTimeLimitExceeded}
                 onStart={(url, infiltration, strictUrlLock) => {
                   setTargetUrl(url); // Capture the launched URL so Save History persists what was actually tested
@@ -187,6 +188,7 @@ function AuthAppContent() {
                     isInitializing={state.isInitializing}
                     liveFrame={state.liveFrame}
                     sessionTimeMs={state.activeTimeboxMs}
+                    remainingTimeMs={state.remainingTimeMs}
                   />
                 </div>
               </CommandCenter>

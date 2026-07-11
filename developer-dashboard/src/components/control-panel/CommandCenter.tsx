@@ -27,6 +27,7 @@ interface CommandCenterProps {
   onStop?: () => void;
   onSaveSessionToHistory?: () => void;
   sessionTimeMs?: number;
+  remainingTimeMs?: number;
   onTimeUp?: () => void;
   children?: ReactNode;
 }
@@ -55,6 +56,7 @@ export default function CommandCenter({
   onStop,
   onSaveSessionToHistory,
   sessionTimeMs = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000,
+  remainingTimeMs,
   onTimeUp,
   children,
 }: CommandCenterProps) {
@@ -107,7 +109,8 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           {(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
             <SessionTimer
               initialTimeMs={sessionTimeMs}
-              isRunning={testStatus === 'ACTIVE'}
+              remainingTimeMs={remainingTimeMs}
+              isRunning={isTestRunning}
               isPaused={testStatus === 'PAUSED'}
               onTimeUp={onTimeUp}
               variant="compact"

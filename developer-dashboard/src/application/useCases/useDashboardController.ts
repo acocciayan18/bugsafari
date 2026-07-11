@@ -360,13 +360,6 @@ return () => {
           setHasRunCompleted(true);
         }
       }
-
-      if (event.type === 'ACTION' && event.meta.actionExecuted === 'time-remaining') {
-        const remaining = event.meta.remainingTimeMs ?? 0;
-        const elapsed = event.meta.elapsedTimeMs ?? 0;
-        setRemainingTimeMs(remaining);
-        setElapsedTimeMs(elapsed);
-      }
     });
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));

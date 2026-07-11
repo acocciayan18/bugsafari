@@ -131,6 +131,9 @@ export class StateGraphNavigator {
 
     // 2. Register or update the graph node for this hash
     const node = this.graphStore.ensureNode(currentHash, currentUrl);
+    // Lifecycle: first meaningful visit moves Discovered → Analyzing. Terminal
+    // states (completed/skipped) are left untouched — handled by the fast-path below.
+    if (node.status === 'discovered') node.status = 'analyzing';
 
     // 3. Sync edges: add any newly discovered elements, update scores
     this.graphStore.syncEdges(node, elements, this.config.unstablePenaltyFactor);
@@ -142,6 +145,21 @@ export class StateGraphNavigator {
 
     // 4. Update the traversal stack so it reflects the current position
     this.traversalStack.sync(currentHash, currentUrl);
+
+    // 4.0 Completed/Skipped fast-path: a terminal state revisited this session is
+    // never re-tested. Because scenarios only fire on an 'explore-edge' decision,
+    // returning a dead-end (backtrack toward unexplored frontier) here guarantees
+    // no scenario re-execution and kills oscillation back into finished pages.
+    // Safe because the combined hash encodes the control surface — genuinely new
+    // controls would produce a different hash (a different, non-terminal node).
+    if (node.status === 'completed' || node.status === 'skipped') {
+      this.eventLog.recordEvent(
+        'node-exhausted',
+        currentHash,
+        `Revisited ${node.status} state ${shortHash(currentHash)} — skipping re-test, unwinding to unexplored frontier.`,
+      );
+      return this.handleDeadEnd(node, false);
+    }
 
     // 4a. Route exhaustion overrides normal selection. Runs AFTER syncEdges (so
     // the freshly re-added frontier is the one we block) and BEFORE the boredom /
@@ -204,12 +222,14 @@ export class StateGraphNavigator {
 
     if (!nextEdge) {
       node.exhausted = true;
+      node.status = 'completed';
       this.eventLog.recordEvent('node-exhausted', currentHash, `All edges on ${shortHash(currentHash)} exhausted.`);
       return this.handleDeadEnd(node, false);
     }
 
     // Mark it traversing so concurrent calls cannot double-select it and so the
     // node is not considered exhausted while we await post-click verification.
+    node.status = 'testing';
     nextEdge.status = 'traversing';
     nextEdge.attempts += 1;
     nextEdge.lastAttemptAt = Date.now();
@@ -503,6 +523,7 @@ export class StateGraphNavigator {
       }
       this.graphStore.invalidateEdgeIndex(node.hash);
       node.exhausted = true;
+      node.status = 'skipped';
       // Reset so the parent node gets a clean counter
       this.traversalStack.resetRepeatCounter();
     }
@@ -552,6 +573,7 @@ export class StateGraphNavigator {
 
       // Parent is also exhausted — keep walking up
       parentNode.exhausted = true;
+      parentNode.status = 'completed';
       this.traversalStack.pop();
     }
 
@@ -599,6 +621,10 @@ export class StateGraphNavigator {
       if (reopenedHere && node.exhausted) {
         node.exhausted = false;
         node.backtracksFromHere = 0;
+        // Recovery resurrects soft-blocked frontier — the node is no longer
+        // terminal, so lift its lifecycle status out of completed/skipped or the
+        // revisit fast-path would immediately re-close the re-queued edges.
+        node.status = 'analyzing';
         nodesReopened += 1;
       }
       if (reopenedHere) {
