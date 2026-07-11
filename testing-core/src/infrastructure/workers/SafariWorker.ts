@@ -1,46 +1,17 @@
 import { Worker, type Job } from 'bullmq';
-import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
-import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import { Server } from 'socket.io';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { MongoFindingRepository } from '../database/repositories/MongoFindingRepository.js';
 import { connectDatabase } from '../database/mongooseClient.js';
 import { PlaywrightBrowserEngine } from '../playwright/PlaywrightBrowserEngine.js';
+import { SocketTelemetryGateway } from '../socket/SocketTelemetryGateway.js';
+import { sessionManager } from '../../application/services/SessionManager.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
 import { resolveEngineTargetUrl } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
   worker: Worker<SafariTaskPayload>;
   close(): Promise<void>;
-}
-
-class ConsoleTelemetryGateway implements TelemetryGateway {
-  public emitTelemetry(event: TelemetryEvent): void {
-    console.log('[SafariWorker] telemetry', JSON.stringify(event));
-  }
-
-  public emitTargets(targets: DiscoveredElement[]): void {
-    console.log(`[SafariWorker] discovered-targets count=${targets.length}`);
-  }
-
-  public emitLiveFrame(base64Jpeg: string): void {
-    console.log(`[SafariWorker] live-frame bytes=${Buffer.byteLength(base64Jpeg, 'base64')}`);
-  }
-
-  public emitLiveFrameBinary(frameBuffer: Buffer): void {
-    console.log(`[SafariWorker] live-frame-binary bytes=${frameBuffer.byteLength}`);
-  }
-
-  public emitForensicReport(report: ForensicCrashReport): void {
-    console.log('[SafariWorker] forensic-report', JSON.stringify(report));
-  }
-
-  public emitIncidentReport(report: IncidentReport): void {
-    console.log('[SafariWorker] incident-report', JSON.stringify(report));
-  }
-
-  public emitUrlChanged(url: string): void {
-    console.log(`[SafariWorker] url-changed ${url}`);
-  }
 }
 
 function readWorkerConcurrency(): number {
@@ -72,11 +43,30 @@ export async function createSafariWorker(
 ): Promise<SafariWorkerRuntime> {
   const dbReady = await connectDatabase();
   const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
+
+  // Real telemetry wiring, mirrored from index.ts: a Socket.IO Server + the shared
+  // SocketTelemetryGateway, registered with the SessionManager so a worker run
+  // drives the exact same room-scoped/recorded event path as the synchronous API.
+  //
+  // KNOWN GAP (cross-process reachability): this io Server is process-local. The
+  // dashboard connects to the API process's Socket.IO server on port 3000, NOT to
+  // this one, and Socket.IO does no cross-process fan-out without a broker. The
+  // correct fix is the @socket.io/redis-adapter on BOTH the API's io and this io
+  // (Redis is already running) — but that's a new dependency, disallowed here, so
+  // it is deliberately NOT added. Consequence: worker-run events are emitted and
+  // buffered correctly but do NOT yet reach the browser. Faking a bridge was
+  // explicitly avoided; this is wired as far as is correct without new infra.
+  const io = new Server({ cors: { origin: '*', methods: ['GET', 'POST'] } });
+  const telemetry = new SocketTelemetryGateway(io);
+  sessionManager.initialize(telemetry);
+
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
+    // ponytail: SessionManager is a process-wide singleton (one active run), so this
+    // handler is only correct at BUGSAFARI_WORKER_CONCURRENCY=1; >1 would let two
+    // jobs clobber the shared run/room. Per-run manager instances if concurrency matters.
 async (job) => {
       const payload = validatePayload(job);
-const telemetry = new ConsoleTelemetryGateway();
       const browserEngine = new PlaywrightBrowserEngine(findingRepository);
       // Use requestedBy from job payload as userId. Missing/invalid => guest (no persist).
       const requestedByUserId = payload.requestedBy;
@@ -142,6 +132,7 @@ const telemetry = new ConsoleTelemetryGateway();
     worker,
     async close(): Promise<void> {
       await worker.close();
+      io.close();
     },
   };
 }

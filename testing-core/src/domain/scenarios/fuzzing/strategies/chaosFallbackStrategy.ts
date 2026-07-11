@@ -12,6 +12,8 @@
  * - D. Binary Encodings & Control Characters
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface ChaosPayload {
   type: 'ZERO_WIDTH' | 'ZALGA' | 'MULTIBYTE' | 'CONTROL' | 'RANDOM' | 'BOUNDARY' | 'QUERY' | 'SCRIPT' | 'TYPE_MISMATCH';
   value: string;
@@ -159,13 +161,13 @@ const RANDOM_STRINGS = [
  * @returns A ChaosPayload with randomized value
  */
 export function generateChaosPayload(): ChaosPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: ChaosPayload;
 
   // New chaos categories (A, B, C, D) - 60% probability
   if (rand < 0.15) {
     // Category A: Zero-width corruptors
-    const value = ZERO_WIDTH_CORRUPTORS[Math.floor(Math.random() * ZERO_WIDTH_CORRUPTORS.length)];
+    const value = ZERO_WIDTH_CORRUPTORS[Math.floor(scenarioRandom() * ZERO_WIDTH_CORRUPTORS.length)];
     payload = { 
       type: 'ZERO_WIDTH', 
       value, 
@@ -174,7 +176,7 @@ export function generateChaosPayload(): ChaosPayload {
     };
   } else if (rand < 0.30) {
     // Category B: Zalga text strings
-    const value = ZALGA_TEXT_STRINGS[Math.floor(Math.random() * ZALGA_TEXT_STRINGS.length)];
+    const value = ZALGA_TEXT_STRINGS[Math.floor(scenarioRandom() * ZALGA_TEXT_STRINGS.length)];
     payload = { 
       type: 'ZALGA', 
       value, 
@@ -183,7 +185,7 @@ export function generateChaosPayload(): ChaosPayload {
     };
   } else if (rand < 0.45) {
     // Category C: Multi-byte strings
-    const value = MULTIBYTE_STRINGS[Math.floor(Math.random() * MULTIBYTE_STRINGS.length)];
+    const value = MULTIBYTE_STRINGS[Math.floor(scenarioRandom() * MULTIBYTE_STRINGS.length)];
     payload = { 
       type: 'MULTIBYTE', 
       value, 
@@ -192,7 +194,7 @@ export function generateChaosPayload(): ChaosPayload {
     };
   } else if (rand < 0.60) {
     // Category D: Control characters
-    const value = CONTROL_CHARACTERS[Math.floor(Math.random() * CONTROL_CHARACTERS.length)];
+    const value = CONTROL_CHARACTERS[Math.floor(scenarioRandom() * CONTROL_CHARACTERS.length)];
     payload = { 
       type: 'CONTROL', 
       value, 
@@ -201,23 +203,23 @@ export function generateChaosPayload(): ChaosPayload {
     };
   } else if (rand < 0.70) {
     // Legacy: Random generic string
-    const value = RANDOM_STRINGS[Math.floor(Math.random() * RANDOM_STRINGS.length)];
+    const value = RANDOM_STRINGS[Math.floor(scenarioRandom() * RANDOM_STRINGS.length)];
     payload = { type: 'RANDOM', value, description: 'Randomized chaos string', category: 'LEGACY' };
   } else if (rand < 0.78) {
     // Legacy: Boundary tokens
-    const value = BOUNDARY_TOKENS[Math.floor(Math.random() * BOUNDARY_TOKENS.length)];
+    const value = BOUNDARY_TOKENS[Math.floor(scenarioRandom() * BOUNDARY_TOKENS.length)];
     payload = { type: 'BOUNDARY', value, description: 'Boundary token', category: 'LEGACY' };
   } else if (rand < 0.86) {
     // Legacy: Query tokens
-    const value = QUERY_TOKENS[Math.floor(Math.random() * QUERY_TOKENS.length)];
+    const value = QUERY_TOKENS[Math.floor(scenarioRandom() * QUERY_TOKENS.length)];
     payload = { type: 'QUERY', value, description: 'Query injection token', category: 'LEGACY' };
   } else if (rand < 0.94) {
     // Legacy: Script tokens
-    const value = SCRIPT_TOKENS[Math.floor(Math.random() * SCRIPT_TOKENS.length)];
+    const value = SCRIPT_TOKENS[Math.floor(scenarioRandom() * SCRIPT_TOKENS.length)];
     payload = { type: 'SCRIPT', value, description: 'Script token', category: 'LEGACY' };
   } else {
     // Legacy: Type mismatch tokens
-    const value = TYPE_MISMATCH_TOKENS[Math.floor(Math.random() * TYPE_MISMATCH_TOKENS.length)];
+    const value = TYPE_MISMATCH_TOKENS[Math.floor(scenarioRandom() * TYPE_MISMATCH_TOKENS.length)];
     payload = { type: 'TYPE_MISMATCH', value, description: 'Type mismatch token', category: 'LEGACY' };
   }
 

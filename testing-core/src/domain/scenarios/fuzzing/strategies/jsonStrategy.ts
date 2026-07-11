@@ -5,6 +5,8 @@
  * Tests for: JSON syntax errors, prototype pollution, deep object injection, type confusion.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface JsonPayload {
   type: 'SYNTAX_ERROR' | 'PROTOTYPE_POLLUTION' | 'DEEP_OBJECT' | 'TYPE_CONFUSION' | 'RECURSION' | 'ARRAY_OVERFLOW' | 'NULL_INJECTION' | 'UNICODE_ESCAPE';
   value: string;
@@ -129,32 +131,32 @@ const UNICODE_ESCAPE_VECTORS: string[] = [
  * @returns A JsonPayload with attack vector
  */
 export function generateJsonPayload(): JsonPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: JsonPayload;
 
   if (rand < 0.12) {
-    const value = SYNTAX_ERROR_VECTORS[Math.floor(Math.random() * SYNTAX_ERROR_VECTORS.length)];
+    const value = SYNTAX_ERROR_VECTORS[Math.floor(scenarioRandom() * SYNTAX_ERROR_VECTORS.length)];
     payload = { type: 'SYNTAX_ERROR', value, description: 'JSON syntax error' };
   } else if (rand < 0.25) {
-    const value = PROTOTYPE_POLLUTION_VECTORS[Math.floor(Math.random() * PROTOTYPE_POLLUTION_VECTORS.length)];
+    const value = PROTOTYPE_POLLUTION_VECTORS[Math.floor(scenarioRandom() * PROTOTYPE_POLLUTION_VECTORS.length)];
     payload = { type: 'PROTOTYPE_POLLUTION', value, description: 'Prototype pollution' };
   } else if (rand < 0.38) {
-    const value = DEEP_OBJECT_VECTORS[Math.floor(Math.random() * DEEP_OBJECT_VECTORS.length)];
+    const value = DEEP_OBJECT_VECTORS[Math.floor(scenarioRandom() * DEEP_OBJECT_VECTORS.length)];
     payload = { type: 'DEEP_OBJECT', value, description: 'Deep object injection' };
   } else if (rand < 0.50) {
-    const value = TYPE_CONFUSION_VECTORS[Math.floor(Math.random() * TYPE_CONFUSION_VECTORS.length)];
+    const value = TYPE_CONFUSION_VECTORS[Math.floor(scenarioRandom() * TYPE_CONFUSION_VECTORS.length)];
     payload = { type: 'TYPE_CONFUSION', value, description: 'Type confusion' };
   } else if (rand < 0.62) {
-    const value = RECURSION_VECTORS[Math.floor(Math.random() * RECURSION_VECTORS.length)];
+    const value = RECURSION_VECTORS[Math.floor(scenarioRandom() * RECURSION_VECTORS.length)];
     payload = { type: 'RECURSION', value, description: 'Deep recursion' };
   } else if (rand < 0.74) {
-    const value = ARRAY_OVERFLOW_VECTORS[Math.floor(Math.random() * ARRAY_OVERFLOW_VECTORS.length)];
+    const value = ARRAY_OVERFLOW_VECTORS[Math.floor(scenarioRandom() * ARRAY_OVERFLOW_VECTORS.length)];
     payload = { type: 'ARRAY_OVERFLOW', value, description: 'Array overflow' };
   } else if (rand < 0.86) {
-    const value = NULL_INJECTION_VECTORS[Math.floor(Math.random() * NULL_INJECTION_VECTORS.length)];
+    const value = NULL_INJECTION_VECTORS[Math.floor(scenarioRandom() * NULL_INJECTION_VECTORS.length)];
     payload = { type: 'NULL_INJECTION', value, description: 'Null injection' };
   } else {
-    const value = UNICODE_ESCAPE_VECTORS[Math.floor(Math.random() * UNICODE_ESCAPE_VECTORS.length)];
+    const value = UNICODE_ESCAPE_VECTORS[Math.floor(scenarioRandom() * UNICODE_ESCAPE_VECTORS.length)];
     payload = { type: 'UNICODE_ESCAPE', value, description: 'Unicode escape sequence' };
   }
 

@@ -5,6 +5,8 @@
  * Tests for: SQL injection, MongoDB operator injection, authentication bypass.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface SqlNoSqlPayload {
   type: 'SQL_CLASSIC' | 'SQL_UNION' | 'SQL_BOOLEAN' | 'NOSQL_OPERATOR' | 'NOSQL_AUTH_BYPASS';
   vector: string;
@@ -109,23 +111,23 @@ const NOSQL_AUTH_BYPASS_VECTORS = [
  * @returns A SqlNoSqlPayload with injection vector
  */
 export function generateSqlNoSqlPayload(): SqlNoSqlPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: SqlNoSqlPayload;
 
   if (rand < 0.2) {
-    const vector = SQL_CLASSIC_VECTORS[Math.floor(Math.random() * SQL_CLASSIC_VECTORS.length)];
+    const vector = SQL_CLASSIC_VECTORS[Math.floor(scenarioRandom() * SQL_CLASSIC_VECTORS.length)];
     payload = { type: 'SQL_CLASSIC', vector, description: 'Classic SQL injection' };
   } else if (rand < 0.4) {
-    const vector = SQL_UNION_VECTORS[Math.floor(Math.random() * SQL_UNION_VECTORS.length)];
+    const vector = SQL_UNION_VECTORS[Math.floor(scenarioRandom() * SQL_UNION_VECTORS.length)];
     payload = { type: 'SQL_UNION', vector, description: 'SQL UNION injection' };
   } else if (rand < 0.55) {
-    const vector = SQL_BOOLEAN_VECTORS[Math.floor(Math.random() * SQL_BOOLEAN_VECTORS.length)];
+    const vector = SQL_BOOLEAN_VECTORS[Math.floor(scenarioRandom() * SQL_BOOLEAN_VECTORS.length)];
     payload = { type: 'SQL_BOOLEAN', vector, description: 'Boolean-based SQL injection' };
   } else if (rand < 0.75) {
-    const vector = NOSQL_OPERATOR_VECTORS[Math.floor(Math.random() * NOSQL_OPERATOR_VECTORS.length)];
+    const vector = NOSQL_OPERATOR_VECTORS[Math.floor(scenarioRandom() * NOSQL_OPERATOR_VECTORS.length)];
     payload = { type: 'NOSQL_OPERATOR', vector, description: 'NoSQL operator injection' };
   } else {
-    const vector = NOSQL_AUTH_BYPASS_VECTORS[Math.floor(Math.random() * NOSQL_AUTH_BYPASS_VECTORS.length)];
+    const vector = NOSQL_AUTH_BYPASS_VECTORS[Math.floor(scenarioRandom() * NOSQL_AUTH_BYPASS_VECTORS.length)];
     payload = { type: 'NOSQL_AUTH_BYPASS', vector, description: 'NoSQL auth bypass' };
   }
 

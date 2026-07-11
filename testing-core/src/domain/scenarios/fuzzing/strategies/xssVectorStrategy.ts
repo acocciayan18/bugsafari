@@ -5,6 +5,8 @@
  * Tests for: reflected XSS, stored XSS, DOM-based XSS, event handlers.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface XssPayload {
   type: 'SCRIPT' | 'EVENT_HANDLER' | 'SVG' | 'DATA_URI' | 'FORM_ACTION';
   vector: string;
@@ -87,23 +89,23 @@ const FORM_ACTION_VECTORS = [
  * @returns An XssPayload with attack vector
  */
 export function generateXssPayload(): XssPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: XssPayload;
 
   if (rand < 0.25) {
-    const vector = SCRIPT_VECTORS[Math.floor(Math.random() * SCRIPT_VECTORS.length)];
+    const vector = SCRIPT_VECTORS[Math.floor(scenarioRandom() * SCRIPT_VECTORS.length)];
     payload = { type: 'SCRIPT', vector, description: 'Script tag injection' };
   } else if (rand < 0.5) {
-    const vector = EVENT_HANDLER_VECTORS[Math.floor(Math.random() * EVENT_HANDLER_VECTORS.length)];
+    const vector = EVENT_HANDLER_VECTORS[Math.floor(scenarioRandom() * EVENT_HANDLER_VECTORS.length)];
     payload = { type: 'EVENT_HANDLER', vector, description: 'Event handler injection' };
   } else if (rand < 0.7) {
-    const vector = SVG_VECTORS[Math.floor(Math.random() * SVG_VECTORS.length)];
+    const vector = SVG_VECTORS[Math.floor(scenarioRandom() * SVG_VECTORS.length)];
     payload = { type: 'SVG', vector, description: 'SVG-based injection' };
   } else if (rand < 0.85) {
-    const vector = DATA_URI_VECTORS[Math.floor(Math.random() * DATA_URI_VECTORS.length)];
+    const vector = DATA_URI_VECTORS[Math.floor(scenarioRandom() * DATA_URI_VECTORS.length)];
     payload = { type: 'DATA_URI', vector, description: 'Data URI injection' };
   } else {
-    const vector = FORM_ACTION_VECTORS[Math.floor(Math.random() * FORM_ACTION_VECTORS.length)];
+    const vector = FORM_ACTION_VECTORS[Math.floor(scenarioRandom() * FORM_ACTION_VECTORS.length)];
     payload = { type: 'FORM_ACTION', vector, description: 'Form action / JS protocol' };
   }
 

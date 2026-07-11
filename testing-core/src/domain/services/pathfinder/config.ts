@@ -164,6 +164,20 @@ export interface StateGraphNavigatorConfig {
    * Default: false (probe keeps original behaviour; exploration/coverage enable it).
    */
   prioritizeUnvisitedOverBoredom: boolean;
+
+  /**
+   * Global best-first frontier. When true, once the breadcrumb stack unwinds with
+   * no ancestor left to explore, the navigator does NOT immediately report the
+   * graph exhausted: it scans EVERY live node for the globally highest-scoring
+   * unvisited edge (respecting the per-node return cap) and jumps there via
+   * deep-link restore. This reaches high-value controls stranded on branches that
+   * were already popped off the DFS path — the "score globally but navigate
+   * locally" gap where an expensive checkout/pay control waits while cheap nearer
+   * branches drain. Within-stack backtracking is unchanged (nearest-ancestor DFS,
+   * which is already score-ordered at descent). Default: false (probe keeps the
+   * original terminate-on-empty-stack behaviour; exploration/coverage enable it).
+   */
+  globalFrontierBacktrack: boolean;
 }
 
 export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -188,6 +202,7 @@ export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   explorationAnnealSteps: 40,
   maxBacktracksToNode: 3,
   prioritizeUnvisitedOverBoredom: false,
+  globalFrontierBacktrack: false,
 };
 
 /**
@@ -204,6 +219,8 @@ export const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphN
     boredomThresholdMax: 30,
     boredomReferenceDensity: 6,
     prioritizeUnvisitedOverBoredom: true,
+    // Reach high-value controls stranded on already-popped branches before quitting.
+    globalFrontierBacktrack: true,
   },
   coverage: {
     // Broad, fast, shallow sweep — almost never bored so every immediately
@@ -213,6 +230,8 @@ export const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphN
     boredomThresholdMin: 2,
     boredomThresholdMax: 8,
     prioritizeUnvisitedOverBoredom: true,
+    // Maximise coverage: sweep the global frontier before declaring exhaustion.
+    globalFrontierBacktrack: true,
   },
   probe: {
     // Neutral default — no overrides, mirrors original static behaviour.

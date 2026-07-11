@@ -65,6 +65,19 @@ export class ForensicAnalysisRepository {
   }
 
   /**
+   * Tenant-scoped: most recent analysis whose run belongs to the caller's own sessions.
+   * runIds are the caller's SafariSession _ids — never trust an unfiltered latest.
+   */
+  async findLatestForRuns(runIds: (string | Types.ObjectId)[]): Promise<IForensicAnalysis | null> {
+    if (runIds.length === 0) return null;
+    return ForensicAnalysisModel.findOne({
+      forensicRunId: { $in: runIds.map((id) => new Types.ObjectId(id)) },
+    })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /**
    * Find analyses by risk level
    */
   async findByRiskLevel(

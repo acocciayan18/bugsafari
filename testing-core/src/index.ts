@@ -15,6 +15,7 @@ import { registerSocketHandlers } from './presentation/socket/registerSocketHand
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
+import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -84,9 +85,16 @@ const browserEngine = new PlaywrightBrowserEngine(findingRepository);
 // /api/start-test route; no default id is baked in (guests persist nothing).
 // Pass findingRepository to use case for domain-level bug filtering.
 const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false }, findingRepository);
+// Opt-in producer: only when BUGSAFARI_USE_QUEUE=1 do we build the queue (which
+// opens a Redis connection) and route /api/start-test through the worker fleet.
+// Unset => taskQueue stays undefined and the synchronous path is byte-identical.
+const taskQueue = process.env.BUGSAFARI_USE_QUEUE === '1' ? new TaskQueue() : undefined;
+if (taskQueue) {
+  console.log('[BugSafari] ⚑ BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
+}
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
-registerRoutes(app, useCase, port, findingRepository);
+registerRoutes(app, useCase, port, findingRepository, taskQueue);
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
 });
@@ -105,6 +113,7 @@ const shutdown = async (signal: string): Promise<void> => {
   try {
     await disconnectDatabase();
     console.log('[BugSafari] Database disconnected');
+    await taskQueue?.close();
   } catch (err) {
     console.error('[BugSafari] Error during shutdown:', err);
   }

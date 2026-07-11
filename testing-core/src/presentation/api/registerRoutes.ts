@@ -2,6 +2,7 @@ import type { Express, Request, Response } from 'express';
 import type { ParsedQs } from 'qs';
 import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
+import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
@@ -137,6 +138,10 @@ export function registerRoutes(
   useCase: StartExplorationUseCase,
   port: number,
   findingRepo?: FindingRepository,
+  // Opt-in distributed path: when a queue is supplied (index.ts builds it only
+  // if BUGSAFARI_USE_QUEUE=1), /api/start-test enqueues the run for the Safari
+  // worker fleet instead of executing it in-process. Undefined => sync default.
+  taskQueue?: TaskQueue,
 ): void {
 // Health check - public
   app.get('/api/health', (_request: Request, response: Response) => {
@@ -192,6 +197,28 @@ export function registerRoutes(
     if (!targetUrl) {
       console.warn(`[API] ❌ Invalid URL in request`);
       response.status(400).json({ error: 'A valid url is required.' });
+      return;
+    }
+
+    // Opt-in distributed path: hand the run to the Safari worker fleet instead of
+    // running it in this process. Deliberately BEFORE tryActivate — the queue path
+    // owns no in-process engine slot; admission is the worker's concern, so this
+    // must not touch the synchronous use case's active flag. Target routing is left
+    // to the worker (resolveEngineTargetUrl runs there against the browser's own
+    // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
+    if (taskQueue) {
+      try {
+        const enqueued = await taskQueue.addSafariTask({
+          targetUrl,
+          requestedBy: request.userId ?? undefined,
+        });
+        console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} for ${targetUrl} (queue=${enqueued.queueName})`);
+        response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, queued: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[API] ❌ Failed to enqueue safari job:', message);
+        response.status(502).json({ error: `Failed to enqueue run on the worker fleet: ${message}` });
+      }
       return;
     }
 
@@ -533,20 +560,27 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
   });
 
   // 🧠 Phase 5: Forensic Analysis API - Get analysis for a test run
-  app.get('/api/forensic/analysis', async (request: Request, response: Response): Promise<void> => {
+  // requireAuth + tenant scoping: forensic analyses expose rootCause/riskScore/recommendations,
+  // so a run's analysis is readable only by the user who owns that run's session.
+  app.get('/api/forensic/analysis', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/forensic/analysis called with query:', request.query);
 
     try {
-      const sessionId = request.query.sessionId as string | undefined;
+      const userId = request.userId;
+      if (!userId) {
+        response.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+      const sessionId = typeof request.query.sessionId === 'string' ? request.query.sessionId : undefined;
 
       if (!sessionId) {
-        // Return latest analysis if no session ID provided
-        const latestAnalyses = await forensicAnalysisRepository.findLatest(1);
-        if (latestAnalyses.length === 0) {
+        // No session id → latest analysis among THIS user's own sessions only.
+        const ownSessions = await SessionModel.find({ userId: new Types.ObjectId(userId) }).select('_id').lean();
+        const latest = await forensicAnalysisRepository.findLatestForRuns(ownSessions.map((s) => s._id));
+        if (!latest) {
           response.json({ analysis: null, message: 'No analysis available yet. Run a test first.' });
           return;
         }
-        const latest = latestAnalyses[0];
         response.json({
           analysis: {
             id: latest._id?.toString(),
@@ -563,6 +597,20 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
             createdAt: latest.createdAt?.toISOString(),
           },
         });
+        return;
+      }
+
+      // Explicit session id → confirm the caller owns that session before returning its analysis.
+      if (!Types.ObjectId.isValid(sessionId)) {
+        response.status(400).json({ error: 'Invalid session ID format.' });
+        return;
+      }
+      const owned = await SessionModel.exists({
+        _id: new Types.ObjectId(sessionId),
+        userId: new Types.ObjectId(userId),
+      });
+      if (!owned) {
+        response.status(404).json({ analysis: null, error: 'Session not found or access denied.' });
         return;
       }
 
@@ -596,14 +644,33 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
   });
 
   // 🧠 Phase 5: Trigger forensic analysis generation
-  app.post('/api/forensic/analyze', async (request: Request, response: Response): Promise<void> => {
+  // requireAuth + ownership: analyzeRun() is compute-heavy and reads a run's session/errors,
+  // so only the session owner may trigger it (prevents anonymous DoS + foreign-session reads).
+  app.post('/api/forensic/analyze', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/forensic/analyze called');
 
     try {
-      const sessionId = request.body?.sessionId as string | undefined;
+      const userId = request.userId;
+      if (!userId) {
+        response.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+      const sessionId = typeof request.body?.sessionId === 'string' ? request.body.sessionId : undefined;
 
       if (!sessionId) {
         response.status(400).json({ error: 'sessionId is required in request body.' });
+        return;
+      }
+      if (!Types.ObjectId.isValid(sessionId)) {
+        response.status(400).json({ error: 'Invalid session ID format.' });
+        return;
+      }
+      const owned = await SessionModel.exists({
+        _id: new Types.ObjectId(sessionId),
+        userId: new Types.ObjectId(userId),
+      });
+      if (!owned) {
+        response.status(404).json({ error: 'Session not found or access denied.' });
         return;
       }
 

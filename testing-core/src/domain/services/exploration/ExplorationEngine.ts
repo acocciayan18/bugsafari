@@ -7,6 +7,7 @@ import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
+import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
@@ -24,6 +25,7 @@ import { forensicTelemetryRepository } from '../../../infrastructure/database/re
 import { Types, isValidObjectId } from 'mongoose';
 
 import { StateGraphNavigator } from '../StateGraphNavigator.js';
+import { seedScenarioRandom } from '../../scenarios/seededRandom.js';
 import { ScenarioGate } from '../scenarioGate.js';
 import type { PathfinderMode } from '../DIrectedPathFinder.js';
 
@@ -75,6 +77,8 @@ export class ExplorationEngine {
   // with StateRestorer so post-click verification stays identity-consistent.
   private readonly hashManager = new DomHasher({ urlAware: true });
   private readonly visualRegressionDetector = new VisualRegressionDetector();
+  // Static WCAG auditor — scans each novel structural shell once, read-only.
+  private readonly accessibilityAuditor = new AccessibilityAuditor();
   private readonly simulator = new InteractionSimulator();
   private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
@@ -240,9 +244,15 @@ export class ExplorationEngine {
     });
     console.log(`[ExplorationEngine] RouteTrasher throttle:`, { routeFocused, enabled: !routeFocused });
 
+    // Reproducibility seed (optional). One seed drives BOTH the edge-selection
+    // softmax and fuzz payload/vector choice, so a seeded run replays identically.
+    const explorationSeed = optimizationSettings?.['exploration-seed'];
+    seedScenarioRandom(explorationSeed);
+    console.log(`[ExplorationEngine] Exploration seed:`, explorationSeed ?? '(unseeded — non-deterministic)');
+
     // Derive and wire the scenario-aware pathfinder mode.
     const pathfinderMode = ExplorationEngine.derivePathfinderMode(selectedScenarios);
-    this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode });
+    this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode, explorationSeed });
     console.log(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
 
     // Initialize ChaosTransactionManager (transaction lifecycle only — bug
@@ -760,6 +770,8 @@ export class ExplorationEngine {
         // chosen target vs its runner-up, stamped with this run's session id.
         explainDecision: (input) =>
           this.scorer.explainDecision({ ...input, sessionId: this.sessionId }),
+        accessibilityAuditor: this.accessibilityAuditor,
+        registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       });
 
       return await loop.execute(page, maxSteps);

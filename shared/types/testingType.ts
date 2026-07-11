@@ -46,6 +46,10 @@ export interface OptimizationSettings {
   // Repeat actuations (re-triggering an already-triggered control) on one shell
   // before it saturates — bounds input-fuzz / interactive churn on a spent page.
   'page-saturation-interactions'?: number;
+  // Reproducibility seed. When set, edge-selection softmax AND fuzz payload/vector
+  // choice become deterministic (same seed + target → same action sequence) for
+  // thesis-panel replays. Omitted (default) → Math.random, non-reproducible.
+  'exploration-seed'?: number;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {

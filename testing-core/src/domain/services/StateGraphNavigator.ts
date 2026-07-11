@@ -617,12 +617,65 @@ export class StateGraphNavigator {
       this.traversalStack.pop();
     }
 
+    // Stack is empty — the DFS breadcrumb has no ancestor left to explore. Before
+    // declaring the graph exhausted, consult the GLOBAL frontier: a high-value
+    // unvisited edge may survive on a branch already popped off the breadcrumb.
+    if (this.config.globalFrontierBacktrack) {
+      const frontier = this.pickGlobalFrontierTarget(node.hash);
+      if (frontier) {
+        frontier.node.backtracksTo += 1;
+        // Honour the same per-node return cap the stack walk uses, so a volatile
+        // node that keeps re-minting unvisited edges can't trap the global jump.
+        if (frontier.node.backtracksTo <= this.config.maxBacktracksToNode) {
+          this.eventLog.recordEvent(
+            'backtrack-initiated',
+            frontier.node.hash,
+            `Global frontier jump to ${shortHash(frontier.node.hash)} — highest-scoring unexplored edge ` +
+              `"${frontier.edge.selector}" (score=${frontier.edge.score.toFixed(3)}) survives off the breadcrumb path.`,
+          );
+          return {
+            kind: 'backtrack',
+            targetHash: frontier.node.hash,
+            targetUrl: frontier.node.url,
+            pathTrace: this.buildPathTrace(`Global frontier jump to ${shortHash(frontier.node.hash)}`),
+          };
+        }
+        // Over the cap — block its stale frontier so the next scan skips it and we
+        // don't re-select the same trap on the following step.
+        this.graphStore.blockCurrentBranch(frontier.node.hash);
+      }
+    }
+
     // Stack is empty — entire reachable graph exhausted
     this.eventLog.recordEvent('graph-exhausted', node.hash, 'Full reachable graph exhausted.');
     return {
       kind: 'exhausted',
       pathTrace: this.buildPathTrace('Graph fully exhausted'),
     };
+  }
+
+  /**
+   * Global best-first frontier scan: the live node whose best unvisited edge has
+   * the highest score, excluding the just-abandoned node and any node already at
+   * its return cap. Reuses EdgeSelector.pickBestUnvisitedEdge so the same
+   * diversity/first-visit shaping that governs in-node selection also governs the
+   * cross-branch jump. O(nodes) — bounded by config.maxNodes (default 500).
+   */
+  private pickGlobalFrontierTarget(excludeHash: StateHash): { node: GraphNode; edge: GraphEdge } | null {
+    let best: { node: GraphNode; edge: GraphEdge } | null = null;
+    for (const candidate of this.graphStore.values()) {
+      if (candidate.hash === excludeHash) continue;
+      // Skip force-closed nodes (branch/return-cap/route blocks) and those already
+      // at the return cap — their frontier is intentionally off-limits.
+      if (candidate.status === 'skipped') continue;
+      if (candidate.backtracksTo >= this.config.maxBacktracksToNode) continue;
+      const edge = this.edgeSelector.pickBestUnvisitedEdge(candidate);
+      if (!edge) continue;
+      if (best === null || edge.score > best.edge.score) {
+        best = { node: candidate, edge };
+      }
+    }
+    return best;
   }
 
   /**

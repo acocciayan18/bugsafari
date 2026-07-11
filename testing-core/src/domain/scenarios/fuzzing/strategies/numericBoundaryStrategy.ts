@@ -5,6 +5,8 @@
  * Tests for: integer overflows, negative values, NaN, precision errors.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface NumericPayload {
   type: 'OVERFLOW' | 'NEGATIVE' | 'NAN' | 'PRECISION' | 'ZERO';
   value: string;
@@ -66,23 +68,23 @@ const ZERO_VALUES = [
  * @returns A NumericPayload with edge-case value
  */
 export function generateNumericBoundaryPayload(): NumericPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: NumericPayload;
 
   if (rand < 0.2) {
-    const value = OVERFLOW_VALUES[Math.floor(Math.random() * OVERFLOW_VALUES.length)];
+    const value = OVERFLOW_VALUES[Math.floor(scenarioRandom() * OVERFLOW_VALUES.length)];
     payload = { type: 'OVERFLOW', value, description: 'Integer overflow' };
   } else if (rand < 0.4) {
-    const value = NEGATIVE_VALUES[Math.floor(Math.random() * NEGATIVE_VALUES.length)];
+    const value = NEGATIVE_VALUES[Math.floor(scenarioRandom() * NEGATIVE_VALUES.length)];
     payload = { type: 'NEGATIVE', value, description: 'Negative boundary' };
   } else if (rand < 0.6) {
-    const value = NAN_VALUES[Math.floor(Math.random() * NAN_VALUES.length)];
+    const value = NAN_VALUES[Math.floor(scenarioRandom() * NAN_VALUES.length)];
     payload = { type: 'NAN', value, description: 'Not-a-Number' };
   } else if (rand < 0.8) {
-    const value = PRECISION_VALUES[Math.floor(Math.random() * PRECISION_VALUES.length)];
+    const value = PRECISION_VALUES[Math.floor(scenarioRandom() * PRECISION_VALUES.length)];
     payload = { type: 'PRECISION', value, description: 'Precision boundary' };
   } else {
-    const value = ZERO_VALUES[Math.floor(Math.random() * ZERO_VALUES.length)];
+    const value = ZERO_VALUES[Math.floor(scenarioRandom() * ZERO_VALUES.length)];
     payload = { type: 'ZERO', value, description: 'Zero boundary' };
   }
 

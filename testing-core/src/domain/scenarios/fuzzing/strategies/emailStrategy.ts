@@ -5,6 +5,8 @@
  * Tests for: email validation bypass, format manipulation, DNS fuzzing.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface EmailPayload {
   type: 'MISSING_AT' | 'MULTIPLE_AT' | 'INVALID_DOMAIN' | 'DNS_FUZZ' | 'DOT_ABUSE' | 'CASE_MANGLED' | 'PLUS_ADDRESSING' | 'NULL_BYTES';
   value: string;
@@ -131,32 +133,32 @@ const NULL_BYTE_VECTORS: string[] = [
  * @returns An EmailPayload with attack vector
  */
 export function generateEmailPayload(): EmailPayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: EmailPayload;
 
   if (rand < 0.12) {
-    const value = MISSING_AT_VECTORS[Math.floor(Math.random() * MISSING_AT_VECTORS.length)];
+    const value = MISSING_AT_VECTORS[Math.floor(scenarioRandom() * MISSING_AT_VECTORS.length)];
     payload = { type: 'MISSING_AT', value, description: 'Missing @ symbol' };
   } else if (rand < 0.24) {
-    const value = MULTIPLE_AT_VECTORS[Math.floor(Math.random() * MULTIPLE_AT_VECTORS.length)];
+    const value = MULTIPLE_AT_VECTORS[Math.floor(scenarioRandom() * MULTIPLE_AT_VECTORS.length)];
     payload = { type: 'MULTIPLE_AT', value, description: 'Multiple @ symbols' };
   } else if (rand < 0.36) {
-    const value = INVALID_DOMAIN_VECTORS[Math.floor(Math.random() * INVALID_DOMAIN_VECTORS.length)];
+    const value = INVALID_DOMAIN_VECTORS[Math.floor(scenarioRandom() * INVALID_DOMAIN_VECTORS.length)];
     payload = { type: 'INVALID_DOMAIN', value, description: 'Invalid domain format' };
   } else if (rand < 0.50) {
-    const value = DNS_FUZZ_VECTORS[Math.floor(Math.random() * DNS_FUZZ_VECTORS.length)];
+    const value = DNS_FUZZ_VECTORS[Math.floor(scenarioRandom() * DNS_FUZZ_VECTORS.length)];
     payload = { type: 'DNS_FUZZ', value, description: 'DNS/internal host fuzzing' };
   } else if (rand < 0.62) {
-    const value = DOT_ABUSE_VECTORS[Math.floor(Math.random() * DOT_ABUSE_VECTORS.length)];
+    const value = DOT_ABUSE_VECTORS[Math.floor(scenarioRandom() * DOT_ABUSE_VECTORS.length)];
     payload = { type: 'DOT_ABUSE', value, description: 'Dot abuse/positioning' };
   } else if (rand < 0.74) {
-    const value = CASE_MANGLED_VECTORS[Math.floor(Math.random() * CASE_MANGLED_VECTORS.length)];
+    const value = CASE_MANGLED_VECTORS[Math.floor(scenarioRandom() * CASE_MANGLED_VECTORS.length)];
     payload = { type: 'CASE_MANGLED', value, description: 'Case mangling' };
   } else if (rand < 0.86) {
-    const value = PLUS_ADDRESSING_VECTORS[Math.floor(Math.random() * PLUS_ADDRESSING_VECTORS.length)];
+    const value = PLUS_ADDRESSING_VECTORS[Math.floor(scenarioRandom() * PLUS_ADDRESSING_VECTORS.length)];
     payload = { type: 'PLUS_ADDRESSING', value, description: 'Plus addressing' };
   } else {
-    const value = NULL_BYTE_VECTORS[Math.floor(Math.random() * NULL_BYTE_VECTORS.length)];
+    const value = NULL_BYTE_VECTORS[Math.floor(scenarioRandom() * NULL_BYTE_VECTORS.length)];
     payload = { type: 'NULL_BYTES', value, description: 'Null byte injection' };
   }
 

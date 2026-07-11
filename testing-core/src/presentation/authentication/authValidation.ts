@@ -58,11 +58,8 @@ export function sanitizeString(value: unknown, fieldName: string): string | null
     return null;
   }
 
-  // Check for potential NoSQL injection patterns
-  if (value.includes('$') && value.match(/\$\w+/)) {
-    console.error(`[Auth] Potential NoSQL injection in ${fieldName}:`, value);
-    return null;
-  }
-
+  // NoSQL injection is prevented by the typeof-string guard above: a string literal
+  // can never be interpreted as a Mongo operator object ({"$gt":""}). No `$`-substring
+  // check here — it only false-rejected legitimate passwords like "Str0ng$pass".
   return value;
 }

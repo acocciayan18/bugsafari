@@ -228,6 +228,10 @@ export class ExplorationLoop {
         }
         const fingerprint = fpResult.fingerprint;
 
+        // ♿ Static WCAG audit of this state (runs once per novel structural shell;
+        // fully isolated — an audit failure must never derail exploration).
+        await this.auditAccessibility(page, fingerprint.compound.structure, step);
+
         const decision = this.decidePathfinderAction(ctx, ranked, fingerprint);
 
         // Initialize with default to satisfy TypeScript
@@ -712,6 +716,47 @@ export class ExplorationLoop {
       kind: 'ok',
       fingerprint: { compound, currentHash, currentUrl, revisitedPage, stagnationScore: stagnation.stagnationScore },
     };
+  }
+
+  /**
+   * Run the static WCAG auditor against the current DOM and surface any NEW
+   * violations as findings (live 'BUG' telemetry + the confirmed-bug ledger, so
+   * they persist to saved history alongside runtime faults). The auditor dedupes
+   * by (rule, selector) and audits each structural shell once, so this is cheap on
+   * revisits. Isolated: a scan failure is logged and swallowed.
+   */
+  private async auditAccessibility(page: Page, structureHash: string, step: number): Promise<void> {
+    try {
+      const violations = await this.deps.accessibilityAuditor.audit(page, structureHash);
+      for (const v of violations) {
+        const severity = v.impact === 'critical' ? 'CRITICAL' : v.impact === 'minor' ? 'INFO' : 'WARNING';
+        this.deps.telemetry.emit('BUG', {
+          actionExecuted: 'accessibility-violation',
+          selector: v.selector,
+          severity,
+          message: `♿ WCAG ${v.wcag} (${v.rule}): ${v.message}`,
+        });
+        this.deps.registerConfirmedBug({
+          bugId: `a11y-${v.rule}-${step}-${v.selector || 'page'}`,
+          type: 'ACCESSIBILITY',
+          message: `WCAG ${v.wcag} — ${v.rule}: ${v.message}`,
+          selector: v.selector,
+          payloadUsed: '',
+          advice: v.message,
+          timestamp: new Date(),
+        });
+      }
+      if (violations.length > 0) {
+        this.deps.telemetry.emitMilestone(
+          `♿ Accessibility: ${violations.length} new WCAG issue(s) on this view (${this.deps.accessibilityAuditor.totalFound()} total this run).`,
+        );
+      }
+    } catch (a11yErr) {
+      console.warn(
+        '[ExplorationLoop] Accessibility audit failed:',
+        a11yErr instanceof Error ? a11yErr.message : String(a11yErr),
+      );
+    }
   }
 
   private decidePathfinderAction(

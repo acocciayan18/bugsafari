@@ -15,6 +15,7 @@ import type { ScenarioGate } from '../scenarioGate.js';
 import type { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
 import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
+import type { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import type {
   ForensicErrorType,
   ForensicErrorSeverity,
@@ -197,6 +198,10 @@ export interface ExplorationLoopDeps {
     semanticRole: string;
     step: number;
   }): DecisionRationale | null;
+  /** Static WCAG auditor run once per novel structural shell (read-only DOM scan). */
+  accessibilityAuditor: AccessibilityAuditor;
+  /** Sink for confirmed findings (shared with StabilityMonitor) — a11y violations land here too. */
+  registerConfirmedBug(bug: ConfirmedBug): void;
 }
 
 // ─────────────────────────────────────────────────────────────

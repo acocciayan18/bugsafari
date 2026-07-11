@@ -5,6 +5,8 @@
  * Tests for: format manipulation, timestamp injection, timezone issues, invalid dates.
  */
 
+import { scenarioRandom } from '../../seededRandom.js';
+
 export interface DatePayload {
   type: 'ISO_MANIPULATION' | 'UNIX_TIMESTAMP' | 'INVALID_DATE' | 'TIMEZONE_FUZZ' | 'FRACTIONAL_DATE' | 'NEGATIVE_DATE' | 'OVERFLOW_DATE' | 'EMPTY_DATE';
   value: string;
@@ -181,32 +183,32 @@ const EMPTY_DATE_VECTORS: string[] = [
  * @returns A DatePayload with attack vector
  */
 export function generateDatePayload(): DatePayload {
-  const rand = Math.random();
+  const rand = scenarioRandom();
   let payload: DatePayload;
 
   if (rand < 0.12) {
-    const value = ISO_MANIPULATION_VECTORS[Math.floor(Math.random() * ISO_MANIPULATION_VECTORS.length)];
+    const value = ISO_MANIPULATION_VECTORS[Math.floor(scenarioRandom() * ISO_MANIPULATION_VECTORS.length)];
     payload = { type: 'ISO_MANIPULATION', value, description: 'ISO 8601 manipulation' };
   } else if (rand < 0.25) {
-    const value = UNIX_TIMESTAMP_VECTORS[Math.floor(Math.random() * UNIX_TIMESTAMP_VECTORS.length)];
+    const value = UNIX_TIMESTAMP_VECTORS[Math.floor(scenarioRandom() * UNIX_TIMESTAMP_VECTORS.length)];
     payload = { type: 'UNIX_TIMESTAMP', value, description: 'Unix timestamp injection' };
   } else if (rand < 0.38) {
-    const value = INVALID_DATE_VECTORS[Math.floor(Math.random() * INVALID_DATE_VECTORS.length)];
+    const value = INVALID_DATE_VECTORS[Math.floor(scenarioRandom() * INVALID_DATE_VECTORS.length)];
     payload = { type: 'INVALID_DATE', value, description: 'Invalid date string' };
   } else if (rand < 0.50) {
-    const value = TIMEZONE_FUZZ_VECTORS[Math.floor(Math.random() * TIMEZONE_FUZZ_VECTORS.length)];
+    const value = TIMEZONE_FUZZ_VECTORS[Math.floor(scenarioRandom() * TIMEZONE_FUZZ_VECTORS.length)];
     payload = { type: 'TIMEZONE_FUZZ', value, description: 'Timezone manipulation' };
   } else if (rand < 0.62) {
-    const value = FRACTIONAL_DATE_VECTORS[Math.floor(Math.random() * FRACTIONAL_DATE_VECTORS.length)];
+    const value = FRACTIONAL_DATE_VECTORS[Math.floor(scenarioRandom() * FRACTIONAL_DATE_VECTORS.length)];
     payload = { type: 'FRACTIONAL_DATE', value, description: 'Fractional date' };
   } else if (rand < 0.74) {
-    const value = NEGATIVE_DATE_VECTORS[Math.floor(Math.random() * NEGATIVE_DATE_VECTORS.length)];
+    const value = NEGATIVE_DATE_VECTORS[Math.floor(scenarioRandom() * NEGATIVE_DATE_VECTORS.length)];
     payload = { type: 'NEGATIVE_DATE', value, description: 'Negative date' };
   } else if (rand < 0.86) {
-    const value = OVERFLOW_DATE_VECTORS[Math.floor(Math.random() * OVERFLOW_DATE_VECTORS.length)];
+    const value = OVERFLOW_DATE_VECTORS[Math.floor(scenarioRandom() * OVERFLOW_DATE_VECTORS.length)];
     payload = { type: 'OVERFLOW_DATE', value, description: 'Date overflow' };
   } else {
-    const value = EMPTY_DATE_VECTORS[Math.floor(Math.random() * EMPTY_DATE_VECTORS.length)];
+    const value = EMPTY_DATE_VECTORS[Math.floor(scenarioRandom() * EMPTY_DATE_VECTORS.length)];
     payload = { type: 'EMPTY_DATE', value, description: 'Empty/null date' };
   }
 

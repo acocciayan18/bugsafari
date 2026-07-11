@@ -83,11 +83,12 @@ export async function handleSignup(
         token,
       });
     } catch (dbError: any) {
+      // Log internals server-side only; never leak DB/error detail to the client.
       console.error('❌ [BACKEND SIGNUP CRASH]:', dbError.message, dbError.stack);
-      response.status(500).json({ error: 'Registration database fault', details: dbError.message });
+      response.status(500).json({ error: 'Registration database fault' });
     }
   } catch (err: any) {
     console.error('❌ [BACKEND SIGNUP CRASH]:', err.message, err.stack);
-    response.status(500).json({ error: 'Registration failed', details: err.message });
+    response.status(500).json({ error: 'Registration failed' });
   }
 }
