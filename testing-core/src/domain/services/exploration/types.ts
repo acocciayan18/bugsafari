@@ -135,6 +135,8 @@ export interface ActionExecutorDeps {
   getTargetOrigin(): string;
   /** Per-(selector, category) payload-escalation level, run-scoped. */
   escalationTracker: EscalationTracker;
+  /** Sink for confirmed findings — used to register oracle-confirmed fuzz leaks. */
+  registerConfirmedBug(bug: ConfirmedBug): void;
 }
 
 export interface ExplorationLoopDeps {

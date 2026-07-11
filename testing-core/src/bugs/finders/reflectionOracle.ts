@@ -17,21 +17,49 @@ export type ReflectionVerdict =
 
 /** Page-global bag of nonces whose injected payload actually executed. */
 const ORACLE_FLAG = '__bgsf_xss_fired';
+/** Page-global boolean: an injected XSS vector fired a script sink (alert/confirm/prompt). */
+const EXEC_WITNESS = '__bgsf_xss_any';
 
 /**
- * Install the browser-side execution oracle. Any injected payload that carries a
- * `window.__bgsf_xss('<nonce>')` call (see {@link buildXssProbe}) records positive
- * proof of execution here. Must be added before the page navigates/loads.
+ * Install the browser-side execution oracle. Proves an injected payload actually
+ * executed via two witnesses: (a) an explicit `window.__bgsf_xss('<nonce>')` call
+ * ({@link buildXssProbe}), and (b) the common `alert/confirm/prompt` sinks that
+ * off-the-shelf XSS vectors call — overridden to set a flag instead of blocking.
+ * Must be added before the page navigates/loads. The flag is reset per injection
+ * via {@link resetExecutionWitness} so a hit is always correlated to the last payload.
  */
 export async function installReflectionOracle(page: Page): Promise<void> {
   await page.addInitScript(`
     (function () {
       window.${ORACLE_FLAG} = window.${ORACLE_FLAG} || {};
+      window.${EXEC_WITNESS} = false;
       window.__bgsf_xss = function (nonce) {
-        try { window.${ORACLE_FLAG}[String(nonce)] = true; } catch (e) { /* noop */ }
+        try { window.${ORACLE_FLAG}[String(nonce)] = true; window.${EXEC_WITNESS} = true; } catch (e) { /* noop */ }
       };
+      // Off-the-shelf XSS vectors fire these; overriding to a flag both proves
+      // execution and stops them blocking the headless run (dialogs are dismissed
+      // anyway). Native behavior is otherwise irrelevant to an autonomous tester.
+      function witness() { try { window.${EXEC_WITNESS} = true; } catch (e) { /* noop */ } }
+      window.alert = witness; window.confirm = function(){ witness(); return true; };
+      window.prompt = function(){ witness(); return ''; };
     })();
   `);
+}
+
+/** Reset the per-injection execution witness. Call immediately BEFORE injecting a payload. */
+export async function resetExecutionWitness(page: Page): Promise<void> {
+  try {
+    await page.evaluate((flag) => {
+      (window as unknown as Record<string, boolean>)[flag] = false;
+    }, EXEC_WITNESS);
+  } catch {
+    /* page may be mid-navigation */
+  }
+}
+
+/** Payload contains executable markup — required for a raw-reflection CONFIRMED verdict. */
+function hasDangerousMarkup(payload: string): boolean {
+  return /<\s*(script|img|svg|iframe|object|embed|body|input|details|a)\b|on\w+\s*=|javascript:/i.test(payload);
 }
 
 /** Unique per-injection marker so reflection is correlated to THIS payload, not ambient markup. */
@@ -69,8 +97,9 @@ export function classifyReflection(params: {
   const { rawHtml, payload, executed } = params;
   if (executed) return 'CONFIRMED'; // strongest proof: the payload ran
   if (!payload) return 'ABSENT';
-  // Reflected raw/unescaped → the dangerous markup is live in the DOM.
-  if (rawHtml.includes(payload)) return 'CONFIRMED';
+  // Reflected raw/unescaped AND actually dangerous → the markup is live in the DOM.
+  // The markup guard prevents a harmless plain-text reflection reading as a leak.
+  if (hasDangerousMarkup(payload) && rawHtml.includes(payload)) return 'CONFIRMED';
   // Present only as HTML entities → the sink escaped it correctly.
   const encoded = htmlEncode(payload);
   if (encoded !== payload && rawHtml.includes(encoded)) return 'SANITIZED';
@@ -95,18 +124,18 @@ export async function confirmPayloadReflection(
   }
 
   let executed = false;
-  if (nonce) {
-    try {
-      executed = await page.evaluate(
-        ([flag, n]) => {
-          const bag = (window as unknown as Record<string, Record<string, boolean>>)[flag];
-          return Boolean(bag && bag[n]);
-        },
-        [ORACLE_FLAG, nonce] as [string, string],
-      );
-    } catch {
-      /* evaluate can fail on a closing page */
-    }
+  try {
+    executed = await page.evaluate(
+      ([firedFlag, witnessFlag, n]) => {
+        const win = window as unknown as Record<string, unknown>;
+        const bag = win[firedFlag] as Record<string, boolean> | undefined;
+        const nonceFired = Boolean(n && bag && bag[n]);
+        return nonceFired || win[witnessFlag] === true;
+      },
+      [ORACLE_FLAG, EXEC_WITNESS, nonce ?? ''] as [string, string, string],
+    );
+  } catch {
+    /* evaluate can fail on a closing page */
   }
 
   return classifyReflection({ rawHtml, payload, executed });

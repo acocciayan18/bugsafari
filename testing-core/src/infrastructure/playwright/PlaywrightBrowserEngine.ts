@@ -4,6 +4,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
+import { installReflectionOracle } from '../../bugs/finders/reflectionOracle.js';
 
 /**
  * Browser and system information captured at launch
@@ -167,6 +168,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       deviceScaleFactor: 1,
     });
     this.activePage = await this.activeContext.newPage();
+
+    // Install the reflection-oracle execution hook before any navigation so an
+    // injected XSS payload that fires an event handler can positively prove
+    // execution (the raw-reflection check works regardless of this).
+    await installReflectionOracle(this.activePage);
 
     // Capture browser info and system details for telemetry
     const platformInfo = await this.activePage.evaluate(() => {

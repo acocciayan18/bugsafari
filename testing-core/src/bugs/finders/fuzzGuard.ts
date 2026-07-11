@@ -200,13 +200,13 @@ export const fuzzGuard: BugFinder = {
    */
   async run(ctx: BugContext): Promise<BugFinding[]> {
     const findings: BugFinding[] = [];
-    
+
     // Verify we have an active FUZZ transaction
     if (!hasActiveFuzzTransaction()) {
       console.log('[FuzzGuard] No active FUZZ transaction - skipping vulnerability detection');
       return findings;
     }
-    
+
     // Get the metadata from the transaction
     const metadata = getActiveFuzzMetadata();
     if (!metadata) {

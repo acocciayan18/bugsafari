@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "node scripts/run-tests.mjs",
-    "bench": "tsx scripts/accuracy-bench.ts"
+    "bench": "tsx scripts/accuracy-bench.ts",
+    "bench:e2e": "tsx scripts/e2e-bench.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

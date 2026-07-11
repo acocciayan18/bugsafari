@@ -40,6 +40,13 @@ check('ambient <iframe>/<script> without the injected payload ⇒ NOT flagged', 
   assert.equal(classifyReflection({ rawHtml, payload, executed: false }), 'ABSENT');
 });
 
+check('plain-text payload reflected (no markup) ⇒ NOT a leak', () => {
+  // Harmless text echoed back is not XSS — the dangerous-markup guard prevents a
+  // raw-reflection false positive.
+  const payload = 'hello world 12345';
+  assert.equal(classifyReflection({ rawHtml: `<div>${payload}</div>`, payload, executed: false }), 'ABSENT');
+});
+
 check('probe embeds the nonce and makeNonce is unique-ish', () => {
   const n = makeNonce(7);
   assert.ok(buildXssProbe(n).includes(n), 'probe must carry its nonce');

@@ -513,6 +513,7 @@ export class ExplorationEngine {
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
       escalationTracker: this.escalationTracker,
+      registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
     });
 
     // Operator visibility: announce which testing strategies are active this run.
