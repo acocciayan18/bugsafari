@@ -46,6 +46,7 @@ const KEYWORD_WEIGHTS = new Map<string, number>([
   ['checkout', 74],
   ['pay', 78],
   ['register', 58],
+  ['email', 50],
   ['delete', 86],
   ['remove', 70],
   ['destroy', 92],
@@ -131,7 +132,11 @@ export class RiskScorer {
    */
   private computeHeuristicFromFeatures(element: InteractiveElement): number {
     let score = 8;
-    const text = `${element.id} ${element.className} ${element.innerText} ${element.type}`.toLowerCase();
+    // Scan the SAME label surface the perceptron feature vector reads (placeholder /
+    // aria-label / name / role), not just id+class+text — otherwise an icon button
+    // whose only signal is aria-label="Delete" or an input whose keyword lives in
+    // its placeholder is under-scored heuristically while the ML model sees it.
+    const text = `${element.id} ${element.className} ${element.innerText} ${element.type} ${element.placeholder ?? ''} ${element.ariaLabel ?? ''} ${element.name ?? ''} ${element.role ?? ''}`.toLowerCase();
     
     // Tag weights
     score += TAG_WEIGHTS.get(element.tagName.toLowerCase()) ?? 4;
@@ -199,6 +204,14 @@ export class RiskScorer {
    */
   penalizeRevisit(element: InteractiveElement): void {
     this.applyCompoundReward(element, { revisit: true });
+  }
+
+  /**
+   * Penalize perceptron for a no-op action — a control that produced no structural
+   * change at all. Milder than a revisit: the control is dead, not looping.
+   */
+  penalizeNoOp(element: InteractiveElement): void {
+    this.applyCompoundReward(element, { noOp: true });
   }
 
   /**

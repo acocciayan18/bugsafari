@@ -35,7 +35,23 @@ export interface FaultInput {
   scenario?: string;
   /** Chronological step index at fault time (playbook length). */
   stepIndex?: number;
+  /**
+   * Set by the reflection oracle (Fix A) when an injected payload was positively
+   * corroborated (executed / reflected unescaped). Lets the classifier promote a
+   * security verdict on hard evidence rather than scenario expectation. Consumed
+   * in Fix B; additive/ignored until then.
+   */
+  confirmed?: boolean;
 }
+
+/**
+ * How strongly the resolved bugClass is supported by evidence:
+ *   CONFIRMED — an oracle positively corroborated it (injected payload executed/reflected).
+ *   SIGNAL    — a runtime signal category matched the fault text/URL.
+ *   INFERRED  — no signal/confirmation; resolved from scenario/fault-type default only.
+ * Consumers should down-rank INFERRED findings and never treat them as proven.
+ */
+export type FaultConfidence = 'CONFIRMED' | 'SIGNAL' | 'INFERRED';
 
 export interface FaultClassification {
   bugClass: BugClass;
@@ -46,7 +62,22 @@ export interface FaultClassification {
   scenario: string;
   testingType: TestingTypeId;
   stepIndex?: number;
+  /** Evidence strength behind {@link bugClass}; see {@link FaultConfidence}. */
+  confidence: FaultConfidence;
 }
+
+/**
+ * Injection/leak bug classes. A caught fault may only be labelled one of these
+ * when a matched signal OR a confirmation oracle supports it — NEVER from scenario
+ * expectation alone (that inflated false positives whenever a security scenario
+ * was active). Kept in sync with the accuracy corpus's SECURITY_CLASSES.
+ */
+const SECURITY_BUGCLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
+  'NOSQL_INJECTION',
+  'FUZZ_VULNERABILITY_LEAK',
+  'SECURITY_VULNERABILITY_LEAK',
+  'INPUT_SANITIZATION_FAILURE',
+]);
 
 /**
  * Which text source each signal category is tested against. QUERY_MUTATION tokens
@@ -116,31 +147,41 @@ function matchedCategories(input: FaultInput): SignalCategory[] {
 }
 
 /**
- * Resolve the bug class from matched signals, biased toward what the active
- * scenario is expected to produce. Falls back to the scenario's primary expected
- * bug, then to the raw fault-type default — so a caught fault is ALWAYS classified.
+ * Resolve the bug class + evidence confidence from matched signals, biased toward
+ * what the active scenario is expected to produce — but with a hard rule: a
+ * security/injection verdict requires a matched signal or an oracle confirmation,
+ * never scenario expectation alone. A caught fault is ALWAYS classified.
  */
 function resolveBugClass(
   input: FaultInput,
   categories: SignalCategory[],
   expectedBugs: BugClass[],
-): BugClass {
+): { bugClass: BugClass; confidence: FaultConfidence } {
   const expected = new Set(expectedBugs);
+  // A matched signal (or an oracle confirmation) is hard evidence; CONFIRMED wins.
+  const signalConfidence: FaultConfidence = input.confirmed ? 'CONFIRMED' : 'SIGNAL';
 
   // 1. A matched signal whose candidate the scenario expects — strongest evidence.
   for (const category of categories) {
     for (const candidate of SIGNAL_TO_BUGCLASS[category]) {
-      if (expected.has(candidate)) return candidate;
+      if (expected.has(candidate)) return { bugClass: candidate, confidence: signalConfidence };
     }
   }
   // 2. Any matched signal's primary candidate (signal present, scenario-agnostic).
   if (categories.length > 0) {
-    return SIGNAL_TO_BUGCLASS[categories[0]][0];
+    return { bugClass: SIGNAL_TO_BUGCLASS[categories[0]][0], confidence: signalConfidence };
   }
-  // 3. No signal matched: the scenario's primary expected bug, if any.
-  if (expectedBugs.length > 0) return expectedBugs[0];
-  // 4. Last resort: the raw fault-type default.
-  return FAULT_TYPE_DEFAULT[input.faultType];
+  // 3. No signal matched, but the oracle confirmed the injection — a security
+  //    verdict from the scenario's primary expected bug is justified on evidence.
+  if (input.confirmed && expectedBugs.length > 0) {
+    return { bugClass: expectedBugs[0], confidence: 'CONFIRMED' };
+  }
+  // 4. No signal, no confirmation: NEVER promote a security/injection class from
+  //    scenario expectation alone. Prefer the scenario's first non-security
+  //    expected bug; else the raw fault-type default. Confidence is INFERRED.
+  const nonSecurityExpected = expectedBugs.find((bug) => !SECURITY_BUGCLASSES.has(bug));
+  if (nonSecurityExpected) return { bugClass: nonSecurityExpected, confidence: 'INFERRED' };
+  return { bugClass: FAULT_TYPE_DEFAULT[input.faultType], confidence: 'INFERRED' };
 }
 
 /**
@@ -153,7 +194,7 @@ export function classifyFault(input: FaultInput): FaultClassification {
   const scenarioDef = SCENARIO_CATALOG[scenarioKey];
 
   const categories = matchedCategories(input);
-  const bugClass = resolveBugClass(input, categories, scenarioDef.expectedBugs);
+  const { bugClass, confidence } = resolveBugClass(input, categories, scenarioDef.expectedBugs);
   const definition = BUG_CATALOG[bugClass];
 
   // Severity: catalog default, escalated to at least HIGH on a 5xx response.
@@ -173,5 +214,6 @@ export function classifyFault(input: FaultInput): FaultClassification {
     scenario: attribution.scenario,
     testingType: attribution.testingType,
     stepIndex: input.stepIndex,
+    confidence,
   };
 }

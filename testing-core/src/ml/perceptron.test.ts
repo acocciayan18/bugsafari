@@ -52,8 +52,21 @@ check('compound target is monotonic: fault > network > structural > revisit', ()
   const net = delta({ networkActivity: true });
   const struct = delta({ structuralChange: true });
   const revisit = delta({ revisit: true });
+  const noOp = delta({ noOp: true });
   assert.ok(fault > net && net > struct && struct > 0, `positive ordering: fault=${fault} net=${net} struct=${struct}`);
   assert.ok(revisit < 0, `revisit should push down: ${revisit}`);
+  // A no-op is a negative signal, but a milder one than a revisit-to-seen-state.
+  assert.ok(noOp < 0, `noOp should push down: ${noOp}`);
+  assert.ok(noOp > revisit, `noOp must be milder than revisit: noOp=${noOp} revisit=${revisit}`);
+});
+
+check('kwEmail credential prior fires on an email field and is finite', () => {
+  const v = buildFeatureVectorFromElement({
+    tagName: 'input', id: '', className: '', type: 'email', text: '', disabled: false,
+    placeholder: 'Email address',
+  });
+  assert.equal(v.kwEmail, 1);
+  assert.ok(Number.isFinite(v.kwEmail), 'kwEmail must be finite');
 });
 
 check('momentum: consistent rewards accelerate; a lone opposite penalty does not flip a high-velocity weight', () => {

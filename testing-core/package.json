@@ -9,7 +9,8 @@
     "dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\"",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "bench": "tsx scripts/accuracy-bench.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",
