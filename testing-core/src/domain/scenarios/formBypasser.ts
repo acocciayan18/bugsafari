@@ -153,6 +153,23 @@ export async function stripConstraintsSilently(
               modified = true;
             }
 
+            // Input-type override: coerce restrictive types to plain text so the
+            // browser stops rejecting out-of-format payloads (a number field will
+            // now accept XSS/SQL strings, a date field arbitrary text, etc.).
+            // Skip non-textual control types where coercion is meaningless/harmful.
+            const OVERRIDE_TYPES = [
+              'number', 'email', 'url', 'tel', 'date', 'datetime-local',
+              'month', 'week', 'time', 'color', 'range', 'password',
+            ];
+            if (OVERRIDE_TYPES.includes(el.type)) {
+              try {
+                el.type = 'text';
+                modified = true;
+              } catch {
+                // Some engines lock `type` once the element is live — non-fatal.
+              }
+            }
+
             // Remove any maxlength cap for giant payloads
             el.removeAttribute('maxlength');
             el.maxLength = maxLen;

@@ -210,6 +210,12 @@ export function describeActionRecord(record: ActionRecord): string {
     case 'SUBMIT':
       return describeConstraintBypass(label);
 
+    case 'NETWORK':
+      // `fallbackLabel` carries the sabotage mode; `payload` carries the target URL.
+      return record.payload
+        ? `${describeNetworkSabotage(label)} — target ${record.payload}`
+        : describeNetworkSabotage(label);
+
     case 'HOVER':
       return rawLabel
         ? `Hover interaction triggered on element: "${rawLabel}"`

@@ -31,7 +31,7 @@ export interface FindingAttribution {
   stepIndex?: number;
 }
 
-export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT';
+export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK';
 
 export interface ActionRecord {
   timestamp: string;

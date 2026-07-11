@@ -129,6 +129,7 @@ export class StartExplorationUseCase {
             case 'NAVIGATION': return 'navigation';
             case 'NAVIGATE':   return 'navigation';
             case 'SUBMIT':     return 'bypass';
+            case 'NETWORK':    return 'bypass';
             case 'HOVER':      return 'click';
             default: {
                 const _exhaustive: never = type;

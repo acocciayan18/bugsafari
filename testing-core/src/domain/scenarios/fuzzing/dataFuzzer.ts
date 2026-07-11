@@ -7,8 +7,9 @@ import { ChaosTransactionManager } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../../services/forensics/narration.js';
 import { describeConstraintBypass, describeInputInjection } from '../../services/forensics/narration.js';
-import { triggerFormSubmission } from '../../services/exploration/formSubmitter.js';
+import { triggerFormSubmission, concurrentDoubleSubmit } from '../../services/exploration/formSubmitter.js';
 import { stripConstraintsSilently } from '../formBypasser.js';
+import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import {
   synthesizeEscalatedPayload,
   deriveFuzzSeed,
@@ -306,8 +307,25 @@ export const dataFuzzer: StressScenario = {
             console.warn(`[StressScenario:DataFuzzer] Injection reported failure for '${selector}' at L${level}`);
           }
           ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload));
+          // Structured reproduction buffer: record the fuzz injection as a TYPE
+          // step so the idle-fallback playbook mirrors the live scenario window.
+          ActionRecorder.recordStep({
+            actionType: 'TYPE',
+            humanIdentifier: fuzzLabel,
+            value: payload,
+            selector,
+            url: page.url(),
+          });
           const submissionMethod = await triggerFormSubmission(page, selector);
           console.log(`[StressScenario:DataFuzzer] Submit via "${submissionMethod}" (L${level})`);
+          // Race probe on auth fields: a zero-wait double-submit exposes
+          // double-login/double-register and in-flight-lock gaps. L0 only.
+          if (category === 'DATABASE_AUTH' && level === 0) {
+            const fired = await concurrentDoubleSubmit(page, selector);
+            if (fired > 1) {
+              console.log(`[StressScenario:DataFuzzer] Race probe fired ${fired}× concurrent submits on '${selector}'`);
+            }
+          }
         },
       );
 
@@ -368,15 +386,25 @@ async function injectPayload(
         { sel: selector, val: payload }
       );
     } else if (tagName === 'select') {
-      const optionValues = await page.$$eval(
-        `${selector} option`,
-        (options) => options.map((opt) => (opt as HTMLOptionElement).value).filter(Boolean)
+      // Inject the fuzz payload as an out-of-set option value to test server-side
+      // validation of <select> input. Playwright's selectOption rejects unknown
+      // values, so append a rogue <option> and select it via the DOM directly.
+      return await page.evaluate(
+        ({ sel, val }: { sel: string; val: string }) => {
+          const el = document.querySelector(sel);
+          if (!(el instanceof HTMLSelectElement)) return false;
+          const rogue = document.createElement('option');
+          rogue.value = val;
+          rogue.text = val.slice(0, 100);
+          rogue.selected = true;
+          el.appendChild(rogue);
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        },
+        { sel: selector, val: payload }
       );
-      if (optionValues.length > 0) {
-        await page.selectOption(selector, optionValues[0]);
-      } else {
-        await page.fill(selector, payload);
-      }
     } else {
       await page.fill(selector, payload);
     }

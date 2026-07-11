@@ -116,3 +116,46 @@ export async function triggerFormSubmission(page: Page, elementSelector: string)
 
   return (await captureSignature(page)) !== before ? 'form-dispatch' : 'none';
 }
+
+/**
+ * Race-condition probe: fire the form's submit control N times with zero delay
+ * inside a single synchronous browser tick, so all clicks land before any async
+ * handler (debounce guard, disable-on-submit, in-flight lock) can react. Surfaces
+ * double-submit races — duplicate orders, double auth, idempotency gaps.
+ *
+ * Non-throwing: returns how many synchronous clicks actually dispatched.
+ */
+export async function concurrentDoubleSubmit(
+  page: Page,
+  elementSelector: string,
+  times = 2,
+): Promise<number> {
+  return page
+    .evaluate(
+      ({ sel, tokens, n }) => {
+        const node = document.querySelector(sel);
+        const form: ParentNode = node?.closest('form') ?? document;
+        const explicit = form.querySelector(
+          'button[type="submit"], input[type="submit"], [type="submit"]',
+        ) as HTMLElement | null;
+        const candidates = Array.from(
+          form.querySelectorAll('button, [role="button"], input[type="button"]'),
+        ) as HTMLElement[];
+        const semantic = candidates.find((el) => {
+          const label = (el.textContent ?? (el as HTMLInputElement).value ?? '').toLowerCase();
+          return tokens.some((tk) => label.includes(tk));
+        });
+        const pick = explicit ?? semantic;
+        if (!pick) return 0;
+        // Zero-wait synchronous burst: no await between clicks.
+        let fired = 0;
+        for (let i = 0; i < n; i++) {
+          pick.click();
+          fired++;
+        }
+        return fired;
+      },
+      { sel: elementSelector, tokens: SUBMIT_TEXT_TOKENS, n: times },
+    )
+    .catch(() => 0);
+}
