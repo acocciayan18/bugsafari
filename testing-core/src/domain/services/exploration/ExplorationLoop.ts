@@ -74,6 +74,9 @@ interface RunContext {
   // URL at the start of the previous iteration — lets the loop reveal lazy content
   // only when we genuinely RETURN to a seen URL, not while parked on one.
   lastStepUrl: string;
+  // Structural shells already announced as Fully Explored — bounds the saturation
+  // skip milestone to once per page instead of once per redundant landing.
+  saturatedLogged: Set<string>;
 }
 
 /** Per-step DOM/graph fingerprint computed once per iteration for a VALID state. */
@@ -135,6 +138,7 @@ export class ExplorationLoop {
       emptyCheckCount: 0,
       deadEndUrls: new Set<string>(),
       lastStepUrl: '',
+      saturatedLogged: new Set<string>(),
     };
 
     for (let step = 1; ; step++) {
@@ -190,6 +194,17 @@ export class ExplorationLoop {
           await this.revealLazyContent(page);
         }
         ctx.lastStepUrl = stepUrl;
+
+        // Page-saturation short-circuit: if this landing's structural shell is
+        // already Fully Explored, skip all parse/score/interaction work, log once,
+        // and unwind to the nearest unexplored branch. Suppressed under the strict
+        // URL lock — there is nowhere to advance to, and skipping interactions
+        // would starve the only path (DOM mutation) to any new locked-page state.
+        if (!this.deps.strictUrlLock) {
+          const saturationGate = await this.checkPageSaturation(page, ctx, step);
+          if (saturationGate.kind === 'return') return saturationGate.result;
+          if (saturationGate.kind === 'continue') continue;
+        }
 
         const parseResult = await this.parseDomAndScore(page, ctx);
         if (parseResult.kind === 'continue') continue;
@@ -422,6 +437,41 @@ export class ExplorationLoop {
       // Detached/closed/navigated page — handled by ensurePageHealth next step.
     }
     return null;
+  }
+
+  /**
+   * Session-wide page-saturation gate, evaluated BEFORE the expensive parse/score
+   * pass. Keys off the normalized structural shell (compound.structure) — the same
+   * identity the coverage registry uses — so a page recognized as Fully Explored is
+   * skipped even when input-fuzz / interactive churn keeps minting a fresh combined
+   * hash (which the navigator's combined-hash fast-path would miss and re-test).
+   * On a saturated shell it logs once, marks the node skipped, and unwinds to the
+   * nearest unexplored branch via the shared dead-end path. `proceed` falls through
+   * to normal exploration (the cheap extra hash on live pages is negligible beside
+   * the parse/reveal/score work it guards).
+   */
+  private async checkPageSaturation(page: Page, ctx: RunContext, step: number): Promise<StepGate> {
+    const { structure, combined } = await this.deps.hashManager.hashCompound(page);
+    if (!this.deps.clusterRegistry.isSaturated(structure)) return { kind: 'proceed' };
+
+    const url = page.url();
+    if (!ctx.saturatedLogged.has(structure)) {
+      ctx.saturatedLogged.add(structure);
+      this.deps.telemetry.emitMilestone(
+        `🧭 Page fully explored (${url}) — skipping re-parse/re-test; advancing to the nearest unexplored branch.`,
+      );
+    }
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'page-saturated-skip',
+      url,
+      stateHash: combined,
+      message: `Structural shell already saturated — page skipped and pruned from the frontier; unwinding to unexplored branch.`,
+    });
+
+    // Reuse the shared dead-end unwind: mark this node skipped in the graph and
+    // backtrack toward the nearest unexplored frontier (or recover/end if exhausted).
+    const decision = this.deps.pathNavigator.markStructuralDeadEnd(combined, url);
+    return this.finishDeadEnd(page, ctx, decision, step);
   }
 
   private async parseDomAndScore(
@@ -1302,9 +1352,10 @@ export class ExplorationLoop {
 
   private buildTerminalSummary(ctx: RunContext): LoopResult {
     const cov = this.deps.clusterRegistry.snapshot();
+    const saturated = this.deps.clusterRegistry.saturatedClusterCount();
     this.deps.telemetry.emitMilestone(
       `✅ Exploration Complete: ${ctx.budget} steps (${ctx.budgetExtensions} extension${ctx.budgetExtensions === 1 ? '' : 's'}), ` +
-        `${cov.clusters} clusters, coverage ${(cov.coverage * 100).toFixed(0)}% ` +
+        `${cov.clusters} clusters (${saturated} fully explored), coverage ${(cov.coverage * 100).toFixed(0)}% ` +
         `(${cov.triggered}/${cov.discovered} controls).`,
     );
     return {

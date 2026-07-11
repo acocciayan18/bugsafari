@@ -35,6 +35,17 @@ export interface OptimizationSettings {
   'route-trash-session-budget'?: number;
   // Min wall-clock ms between two RouteTrasher runs (cooldown). 0 = no cooldown.
   'route-trash-cooldown-ms'?: number;
+  // Page-saturation caps (keyed by the normalized structural shell). A page is
+  // marked Fully Explored — skipped before any re-parse/re-test and pruned from
+  // the exploration frontier — once all its controls are triggered OR either cap
+  // below is hit. Both count only REDUNDANT activity (a visit/actuation that
+  // gained no new coverage); any coverage gain resets them, so a control-dense
+  // page is never skipped early. 0 disables that cap.
+  // Consecutive gain-less revisits to one structural shell before it saturates.
+  'page-saturation-visits'?: number;
+  // Repeat actuations (re-triggering an already-triggered control) on one shell
+  // before it saturates — bounds input-fuzz / interactive churn on a spent page.
+  'page-saturation-interactions'?: number;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -47,6 +58,8 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
   'route-trash-session-budget': 6,  // Mixed runs: at most 6 RouteTrasher runs, then yield
   'route-trash-cooldown-ms': 20000,  // Mixed runs: ≥20s between RouteTrasher runs
+  'page-saturation-visits': 3,  // 3 gain-less revisits to a shell → fully explored
+  'page-saturation-interactions': 8,  // 8 repeat actuations on a shell → fully explored
 };
 
 // ─────────────────────────────────────────────────────────────

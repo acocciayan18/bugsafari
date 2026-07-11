@@ -85,7 +85,8 @@ export class ExplorationEngine {
   // not the volatile combined hash, so ad/crash churn can't fake novel states.
   private readonly visitedStructures = new Set<string>();
   // Clustered state-space coverage layer (keyed by normalized structure hash).
-  private readonly clusterRegistry = new StateClusterRegistry();
+  // Saturation thresholds resolved from optimizationSettings in the constructor.
+  private readonly clusterRegistry: StateClusterRegistry;
   // Per-(selector, category) payload-escalation level for adaptive fuzzing.
   private readonly escalationTracker = new EscalationTracker();
   // Consecutive defensive/error-route detector — drives URL-aware error-state
@@ -209,6 +210,14 @@ export class ExplorationEngine {
       ?? defaultOptimizationSettings['transition-repeat-budget']
       ?? 3;
     console.log(`[ExplorationEngine] Transition-repeat budget:`, this.transitionRepeatBudget);
+
+    // Resolve page-saturation caps (per structural shell; 0 disables each cap).
+    const maxVisits = optimizationSettings?.['page-saturation-visits']
+      ?? defaultOptimizationSettings['page-saturation-visits'] ?? 3;
+    const maxInteractions = optimizationSettings?.['page-saturation-interactions']
+      ?? defaultOptimizationSettings['page-saturation-interactions'] ?? 8;
+    this.clusterRegistry = new StateClusterRegistry({ maxVisits, maxInteractions });
+    console.log(`[ExplorationEngine] Page-saturation caps:`, { maxVisits, maxInteractions });
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);

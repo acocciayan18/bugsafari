@@ -29,6 +29,12 @@ export interface ClusterMetrics {
   readonly firstSeenStep: number;
   /** Step index of the last time a new control was discovered OR triggered. */
   lastCoverageGainStep: number;
+  /** Consecutive landings on this shell that added NO new coverage — the page
+   *  saturation visit signal. Reset to 0 on any discover/trigger gain. */
+  visitsSinceGain: number;
+  /** Re-actuations of an already-triggered control on this shell — the page
+   *  saturation interaction signal (bounds input-fuzz / interactive churn). */
+  redundantActuations: number;
 }
 
 /** Immutable coverage summary for telemetry / run metrics. */
@@ -46,12 +52,54 @@ export interface ClusterCoverageSnapshot {
 const MAX_CLUSTERS = 2000;
 const MAX_SELECTORS_PER_CLUSTER = 2000;
 
+/** Page-saturation thresholds (0 disables that cap; coverage-complete always saturates). */
+export interface PageSaturationConfig {
+  /** Consecutive gain-less revisits to a shell before it is Fully Explored. */
+  maxVisits: number;
+  /** Repeat actuations on a shell before it is Fully Explored. */
+  maxInteractions: number;
+}
+
+const DEFAULT_SATURATION: PageSaturationConfig = { maxVisits: 3, maxInteractions: 8 };
+
 export class StateClusterRegistry {
   private readonly clusters = new Map<string, ClusterMetrics>();
+  private readonly saturation: PageSaturationConfig;
+
+  constructor(saturation: Partial<PageSaturationConfig> = {}) {
+    this.saturation = { ...DEFAULT_SATURATION, ...saturation };
+  }
 
   /** Clear all clusters at the start of a new Safari run. */
   public reset(): void {
     this.clusters.clear();
+  }
+
+  /**
+   * True when the structural shell is Fully Explored — never re-parsed, re-tested,
+   * or counted toward the unexplored frontier again this session. Saturates when
+   * every discovered control has been triggered, OR after `maxVisits` gain-less
+   * revisits, OR after `maxInteractions` repeat actuations. The caps count only
+   * REDUNDANT activity (reset on any coverage gain), so a page still yielding new
+   * controls is never prematurely skipped.
+   */
+  public isSaturated(structureHash: string): boolean {
+    if (!structureHash) return false;
+    const cluster = this.clusters.get(structureHash);
+    if (!cluster) return false;
+    if (cluster.discovered.size > 0 && cluster.triggered.size >= cluster.discovered.size) return true;
+    if (this.saturation.maxVisits > 0 && cluster.visitsSinceGain >= this.saturation.maxVisits) return true;
+    if (this.saturation.maxInteractions > 0 && cluster.redundantActuations >= this.saturation.maxInteractions) {
+      return true;
+    }
+    return false;
+  }
+
+  /** Count of shells marked Fully Explored — telemetry / final summary. */
+  public saturatedClusterCount(): number {
+    let total = 0;
+    for (const hash of this.clusters.keys()) if (this.isSaturated(hash)) total += 1;
+    return total;
   }
 
   /**
@@ -72,7 +120,14 @@ export class StateClusterRegistry {
       cluster.discovered.add(selector);
       gained = true;
     }
-    if (gained) cluster.lastCoverageGainStep = step;
+    // A landing that surfaced no new control is a redundant revisit; one that did
+    // resets the saturation visit counter so a still-growing page never saturates.
+    if (gained) {
+      cluster.lastCoverageGainStep = step;
+      cluster.visitsSinceGain = 0;
+    } else {
+      cluster.visitsSinceGain += 1;
+    }
   }
 
   /** Mark a control as triggered on its cluster; first trigger counts as coverage gain. */
@@ -85,6 +140,11 @@ export class StateClusterRegistry {
     if (!cluster.triggered.has(selector)) {
       cluster.triggered.add(selector);
       cluster.lastCoverageGainStep = step;
+      cluster.visitsSinceGain = 0; // real coverage gain — this shell is still productive
+    } else {
+      // Re-actuating an already-triggered control (input-fuzz / interactive churn):
+      // no new coverage, so it counts toward the interaction saturation cap.
+      cluster.redundantActuations += 1;
     }
   }
 
@@ -102,18 +162,23 @@ export class StateClusterRegistry {
     return false;
   }
 
-  /** True when any cluster still has a discovered control that was never triggered. */
+  /** True when any NON-saturated cluster still has a discovered-but-untriggered
+   *  control. Saturated shells are pruned from the frontier so their leftover
+   *  (unreachable/churn) controls can't drive endless budget extensions or re-seeds. */
   public hasUnexploredControls(): boolean {
     for (const cluster of this.clusters.values()) {
-      if (cluster.triggered.size < cluster.discovered.size) return true;
+      if (cluster.triggered.size < cluster.discovered.size && !this.isSaturated(cluster.structureHash)) {
+        return true;
+      }
     }
     return false;
   }
 
-  /** Total discovered-but-not-triggered controls across all clusters. */
+  /** Total discovered-but-not-triggered controls across all NON-saturated clusters. */
   public unexploredControlCount(): number {
     let total = 0;
     for (const cluster of this.clusters.values()) {
+      if (this.isSaturated(cluster.structureHash)) continue;
       total += cluster.discovered.size - cluster.triggered.size;
     }
     return total;
@@ -180,6 +245,8 @@ export class StateClusterRegistry {
       triggered: new Set<string>(),
       firstSeenStep: step,
       lastCoverageGainStep: step,
+      visitsSinceGain: 0,
+      redundantActuations: 0,
     };
     this.clusters.set(structureHash, cluster);
     return cluster;
