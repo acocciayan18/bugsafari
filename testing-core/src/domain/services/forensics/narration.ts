@@ -121,7 +121,7 @@ export function describeCoordinateBombing(count: number, width: number, height: 
 
 /** RouteTrasher opening step. */
 export function describeRouteTrashStart(repetitions: number, originPath: string): string {
-  return `Trash navigation from ${originPath} (${repetitions}×): rapid history traversal, query/hash/malformed-route mutation, and interrupted transitions`;
+  return `Trash navigation from ${originPath} (${repetitions}×): rapid history traversal and native back/forward validation`;
 }
 
 /** RouteTrasher history back/forward step. `iteration` is 1-based. */
@@ -132,39 +132,6 @@ export function describeRouteTrashNavigation(
   url: string,
 ): string {
   return `Iteration ${iteration}: history ${direction} (index ${index}) → ${url}`;
-}
-
-/** RouteTrasher query-mutation step. `iteration` is 1-based. */
-export function describeRouteTrashMutation(
-  iteration: number,
-  param: string | undefined,
-  mutation: string | undefined,
-  url: string,
-): string {
-  return `Iteration ${iteration}: mutate query '${param}' via ${mutation} → ${url}`;
-}
-
-/** RouteTrasher malformed dynamic-route-param step. `iteration` is 1-based. */
-export function describeRouteTrashPathMutation(
-  iteration: number,
-  mutation: string | undefined,
-  url: string,
-): string {
-  return `Iteration ${iteration}: inject malformed route segment '${mutation}' → ${url}`;
-}
-
-/** RouteTrasher hash-route mutation step. `iteration` is 1-based. */
-export function describeRouteTrashHashMutation(
-  iteration: number,
-  mutation: string | undefined,
-  url: string,
-): string {
-  return `Iteration ${iteration}: mutate hash route to '${mutation}' → ${url}`;
-}
-
-/** RouteTrasher interrupted-transition step. `iteration` is 1-based. */
-export function describeRouteTrashInterrupted(iteration: number, url: string): string {
-  return `Iteration ${iteration}: interrupt a pending route transition mid-flight → ${url}`;
 }
 
 /** RouteTrasher inconsistency: the URL changed but the DOM did not update to match. */

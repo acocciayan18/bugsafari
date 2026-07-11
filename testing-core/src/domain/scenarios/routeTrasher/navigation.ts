@@ -104,31 +104,6 @@ export async function rapidHistoryTraversal(
 }
 
 /**
- * Interrupted route transition: begin a navigation to `firstUrl` WITHOUT awaiting
- * its settle, then fire a second navigation to `secondUrl` mid-flight so the
- * client router must resolve a transition while an async load is still pending —
- * the core "trash while async pending" stress. Both URLs must be pre-guarded to
- * the origin by the caller. Returns whether the second (winning) navigation ran.
- */
-export async function interruptedTransition(
-  page: Page,
-  firstUrl: string,
-  secondUrl: string,
-): Promise<boolean> {
-  // Fire the first navigation but do NOT await its settle; swallow the expected
-  // interruption error so the burst loop keeps running.
-  const pending = page
-    .goto(firstUrl, { waitUntil: 'domcontentloaded', timeout: 1200 })
-    .catch(() => undefined);
-  // Brief deterministic delay so the first request is genuinely in-flight.
-  await wait(STABILIZE_MS);
-  const ran = await safeGoto(page, secondUrl, 1000);
-  // Drain the interrupted first navigation so no unhandled rejection leaks.
-  await pending;
-  return ran;
-}
-
-/**
  * Navigate to an absolute URL and settle for SPA render. Returns whether the
  * navigation ran; benign navigation races resolve to `false` rather than throw.
  */

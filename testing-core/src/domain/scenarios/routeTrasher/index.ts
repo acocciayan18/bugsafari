@@ -8,12 +8,8 @@ import { wait } from '../rapidClicker/utils.js';
 import {
   safeNavigation,
   safeGoto,
-  assertWithinOrigin,
   rapidHistoryTraversal,
-  interruptedTransition,
 } from './navigation.js';
-import { mutateQueryParams, QUERY_MUTATIONS, type QueryMutationOutcome } from './queryMutation.js';
-import { mutateRoutePath, mutateHashRoute, type RouteMutationOutcome } from './pathMutation.js';
 import { RouteTrashMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 import {
   classifyNavStep,
@@ -23,10 +19,6 @@ import {
 import {
   describeRouteTrashStart,
   describeRouteTrashNavigation,
-  describeRouteTrashMutation,
-  describeRouteTrashPathMutation,
-  describeRouteTrashHashMutation,
-  describeRouteTrashInterrupted,
   describeRouteInconsistency,
   describeRouteTrashDrift,
   describeRouteTrashServerError,
@@ -38,8 +30,6 @@ import {
 // One shared DOM hasher for the run — its combined fingerprint is what every
 // navigation snapshot measures "did the DOM actually update" against.
 const navHasher = new DomHasher();
-
-export { QUERY_MUTATIONS, type QueryMutationType } from './queryMutation.js';
 
 /**
  * The summary returned to the engine after a route-trash run. Cycle-aware:
@@ -74,9 +64,11 @@ export interface RouteTrashOptions {
 /**
  * Route Trasher stress scenario.
  *
- * Per iteration it drives `goBack`, `goForward`, then a deterministic query-param
- * mutation, settling for SPA render between each so the client router is never
- * driven mid-render. Every deliberate step is recorded into the active scenario
+ * Per iteration it drives native `goBack` then `goForward`, settling for SPA
+ * render between each so the client router is never driven mid-render. It never
+ * synthesizes routes — only real browser history entries are exercised, so SPA
+ * routing and history behavior are validated without fabricated URLs. Every
+ * deliberate step is recorded into the active scenario
  * window (for the immutable failure snapshot) and into the shared
  * `RouteTrashMetadata` (repetitions, history index, visited routes, resulting
  * state) so live telemetry and stored findings stay consistent and reproducible.
@@ -172,9 +164,9 @@ export const routeTrasher = {
       return snap;
     };
 
-    // Probe the rendered page for a white-screen (blank/render failure) after a
-    // mutation. Never throws — a teardown race yields no probe (treated as no
-    // failure) so the scenario keeps running.
+    // Probe the rendered page for a white-screen (blank/render failure) after
+    // history navigation. Never throws — a teardown race yields no probe (treated
+    // as no failure) so the scenario keeps running.
     const probeWhiteScreen = async (navType: string): Promise<void> => {
       let probe: RenderProbe;
       try {
@@ -200,7 +192,7 @@ export const routeTrasher = {
 
     try {
       // Opening rapid-history churn: drive back/forward faster than the router can
-      // commit, stressing the SPA's history handling before the mutation bursts.
+      // commit, stressing the SPA's history handling before the per-iteration pairs.
       attempted++;
       const churn = await runStep('rapid_history', async () => {
         await rapidHistoryTraversal(page, 2, originPath);
@@ -239,77 +231,9 @@ export const routeTrasher = {
         }
         await wait(INTER_ACTION_DELAY_MS);
 
-        // 3) Deterministic query-param mutation (round-robin by iteration)
-        attempted++;
-        const mutation = QUERY_MUTATIONS[i % QUERY_MUTATIONS.length];
-        let queryOutcome: QueryMutationOutcome = { mutated: false, resultingUrl: page.url() };
-        await runStep('query_mutation', async () => {
-          queryOutcome = await mutateQueryParams(page, mutation, i);
-        });
-        if (queryOutcome.mutated) {
-          completed++;
-          recorder.record('query_mutation', queryOutcome.resultingUrl);
-          ActiveScenarioTracker.record(
-            describeRouteTrashMutation(i + 1, queryOutcome.param, queryOutcome.mutation, queryOutcome.resultingUrl),
-          );
-        }
-        await wait(INTER_ACTION_DELAY_MS);
-
-        // 4) One advanced attack per iteration, rotated deterministically:
-        //    malformed dynamic route param → hash-route mutation → interrupted transition.
-        attempted++;
-        switch (i % 3) {
-          case 0: {
-            let pathOutcome: RouteMutationOutcome = { mutated: false, resultingUrl: page.url() };
-            await runStep('malformed_push', async () => {
-              pathOutcome = await mutateRoutePath(page, originPath, i);
-            });
-            if (pathOutcome.mutated) {
-              completed++;
-              recorder.record('malformed_push', pathOutcome.resultingUrl);
-              ActiveScenarioTracker.record(
-                describeRouteTrashPathMutation(i + 1, pathOutcome.mutation, pathOutcome.resultingUrl),
-              );
-            }
-            break;
-          }
-          case 1: {
-            let hashOutcome: RouteMutationOutcome = { mutated: false, resultingUrl: page.url() };
-            await runStep('hash_mutation', async () => {
-              hashOutcome = await mutateHashRoute(page, i);
-            });
-            if (hashOutcome.mutated) {
-              completed++;
-              recorder.record('hash_mutation', hashOutcome.resultingUrl);
-              ActiveScenarioTracker.record(
-                describeRouteTrashHashMutation(i + 1, hashOutcome.mutation, hashOutcome.resultingUrl),
-              );
-            }
-            break;
-          }
-          default: {
-            // Interrupt a pending transition: fire a same-origin load, then a second
-            // navigation mid-flight. Both candidates are origin-guarded.
-            const firstUrl = `${originPath}${originPath.includes('?') ? '&' : '?'}_rt=${i}`;
-            const secondUrl = originPath;
-            if (assertWithinOrigin(firstUrl, originPath) && assertWithinOrigin(secondUrl, originPath)) {
-              let ranInterrupt = false;
-              const intSnap = await runStep('interrupted_transition', async () => {
-                ranInterrupt = await interruptedTransition(page, firstUrl, secondUrl);
-              });
-              if (ranInterrupt) {
-                completed++;
-                recorder.record('interrupted_transition', intSnap.toUrl);
-                ActiveScenarioTracker.record(describeRouteTrashInterrupted(i + 1, intSnap.toUrl));
-              }
-            }
-            break;
-          }
-        }
-
-        // After the malformed-route / hash / interrupted attack, check whether the
-        // app was driven into a white/blank screen (CRITICAL render failure).
-        await probeWhiteScreen('route-mutation');
+        // After the native back/forward pair, check whether the history hops drove
+        // the app into a white/blank screen (CRITICAL render failure).
+        await probeWhiteScreen('history_navigation');
         await wait(INTER_ACTION_DELAY_MS);
       }
     } finally {

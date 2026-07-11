@@ -18,7 +18,6 @@ import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from
 import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
-import { DEFENSIVE_CLIENT_STATUSES } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 
 // Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
@@ -65,16 +64,28 @@ interface RunContext {
   lastStepUrl: string;
 }
 
-/** Per-step DOM/graph fingerprint computed once per iteration. */
+/** Per-step DOM/graph fingerprint computed once per iteration for a VALID state. */
 interface StepFingerprint {
   compound: CompoundStateHash;
   currentHash: string;
   currentUrl: string;
   revisitedPage: boolean;
   stagnationScore: number;
-  /** Consecutive defensive/error-route verdict for this step. */
-  routeVerdict: RouteExhaustionVerdict;
 }
+
+/**
+ * Outcome of per-step fingerprinting: either a traversable state to register, or
+ * a non-traversable error state (HTTP 4xx/5xx or a detected error template) that
+ * must be excluded from the graph and handled as a structural dead end.
+ */
+type FingerprintResult =
+  | { kind: 'ok'; fingerprint: StepFingerprint }
+  | {
+      kind: 'error';
+      compound: CompoundStateHash;
+      mainFrameStatus: number | null;
+      routeVerdict: RouteExhaustionVerdict;
+    };
 
 /**
  * Handles the incremental step-by-step exploration logic: per-step parse →
@@ -179,7 +190,16 @@ export class ExplorationLoop {
         }
         const { ranked } = parseResult;
 
-        const fingerprint = await this.computeFingerprintAndStagnation(page, step, ctx, ranked);
+        const fpResult = await this.computeFingerprintAndStagnation(page, step, ctx, ranked);
+        if (fpResult.kind === 'error') {
+          // HTTP 4xx/5xx or a detected error template — never a traversable state.
+          // Exclude it from the graph/backtracking history and recover to the
+          // nearest valid unexplored state.
+          const errorGate = await this.handleErrorState(page, ctx, fpResult, step);
+          if (errorGate.kind === 'return') return errorGate.result;
+          continue;
+        }
+        const fingerprint = fpResult.fingerprint;
 
         const decision = this.decidePathfinderAction(ctx, ranked, fingerprint);
 
@@ -461,7 +481,7 @@ export class ExplorationLoop {
     step: number,
     ctx: RunContext,
     ranked: InteractiveElement[],
-  ): Promise<StepFingerprint> {
+  ): Promise<FingerprintResult> {
     // Task 3: Emit granular status for dynamic UI - "Hashing DOM state..."
     this.deps.telemetry.emitSystemStatus('Hashing DOM state...');
 
@@ -472,14 +492,34 @@ export class ExplorationLoop {
     // control are no longer conflated.
     const compound = await this.deps.hashManager.hashCompound(page);
     const currentHash = compound.combined;
+    const currentUrl = page.url();
 
-    // --- Clustered state-space observation ---
+    // --- Error-state detection (URL-aware), evaluated FIRST ---
+    // structure is the DOM-only shell; routePath is the normalized route; httpStatus
+    // is the observed main-frame document status (null for pure client renders). A
+    // status ≥400 or an identical error template re-rendered at a new route means
+    // this page is a non-traversable error state.
+    const mainFrameStatus = this.deps.getMainFrameStatus(compound.routePath);
+    const routeVerdict = this.deps.routeExhaustion.observe({
+      structureHash: compound.structure,
+      routePath: compound.routePath,
+      httpStatus: mainFrameStatus,
+    });
+
+    // Error states must NEVER enter the exploration graph, coverage clusters, the
+    // visited-state sets, or the backtracking history. Return before any of that
+    // folding so the caller can treat the page as a structural dead end.
+    if (routeVerdict.isErrorState) {
+      return { kind: 'error', compound, mainFrameStatus, routeVerdict };
+    }
+
+    // --- Clustered state-space observation (valid states only) ---
     // Fold this state into its structural cluster (keyed by the normalized
     // structure sub-hash) BEFORE stagnation scoring, so coverage-gain markers
     // reflect controls discovered on this step.
     this.deps.clusterRegistry.observe(
       compound.structure,
-      page.url(),
+      currentUrl,
       ranked.map((el) => el.selector),
       step,
     );
@@ -504,7 +544,6 @@ export class ExplorationLoop {
       message: `DOM fingerprint captured. stagnationScore=${stagnation.stagnationScore} (shell x${stagnation.structureFamiliarity}${stagnation.combinedRepeated ? ', exact-repeat' : ''})`,
     });
 
-    const currentUrl = page.url();
     const revisitedPage = this.deps.visitedUrls.has(currentUrl) || this.deps.visitedHashes.has(currentHash);
     this.deps.visitedUrls.add(currentUrl);
     this.deps.visitedHashes.add(currentHash);
@@ -517,21 +556,6 @@ export class ExplorationLoop {
       if (oldest !== undefined) this.deps.visitedHashes.delete(oldest);
     }
 
-    // Expected defensive response (HTTP 400/401/403/404/…) for THIS route. A
-    // correctly-behaving backend rejecting a bad request is informational — it must
-    // not inflate stagnation or trigger a backtrack/recovery. Surfaced as telemetry
-    // only; downstream the stagnation score is zeroed so it drives no penalty.
-    const mainFrameStatus = this.deps.getMainFrameStatus(compound.routePath);
-    const isDefensiveResponse = mainFrameStatus !== null && DEFENSIVE_CLIENT_STATUSES.has(mainFrameStatus);
-    if (isDefensiveResponse) {
-      this.deps.telemetry.emit('NETWORK', {
-        statusCode: mainFrameStatus,
-        url: currentUrl,
-        method: 'GET',
-        message: `🛡️ Defensive response (informational): HTTP ${mainFrameStatus} at ${compound.routePath || '/'} — expected rejection, not counted toward stagnation.`,
-      });
-    }
-
     // Tick down any active escape window each step.
     if (ctx.penaltyStepsRemaining > 0) {
       ctx.penaltyStepsRemaining--;
@@ -539,9 +563,8 @@ export class ExplorationLoop {
 
     // Progressive penalty: light nudge as the shell first recurs, escalating to a
     // full branch penalty on exact/persistent repeats. intensity ∈ (0,1] scales
-    // both the per-element penalty and the escape-window length. Skipped entirely
-    // for expected defensive responses so they never inflate stagnation.
-    if (!isDefensiveResponse && stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
+    // both the per-element penalty and the escape-window length.
+    if (stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
       const intensity = computePenaltyIntensity(stagnation.stagnationScore, ctx.stagnationForceBacktrack);
       this.deps.telemetry.emitMilestone(
         `🚨 Stagnation detected (score=${stagnation.stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
@@ -553,28 +576,10 @@ export class ExplorationLoop {
       ctx.penaltyStepsRemaining = computePenaltyWindow(stagnation.stagnationScore);
     }
 
-    // --- Consecutive defensive/error-route detection (URL-aware) ---
-    // structure is the DOM-only shell; routePath is the normalized route (shared
-    // with the identity fold); httpStatus is the observed main-frame document
-    // status for this exact route (null for pure client-side renders). A run of
-    // these signals means the branch is touring identical error templates.
-    const routeVerdict = this.deps.routeExhaustion.observe({
-      structureHash: compound.structure,
-      routePath: compound.routePath,
-      httpStatus: mainFrameStatus,
-    });
-    if (routeVerdict.isErrorState) {
-      this.deps.telemetry.emit('ACTION', {
-        actionExecuted: 'error-route-observed',
-        stateHash: currentHash,
-        message: `Defensive/error route observed (${routeVerdict.reason}); consecutive=${routeVerdict.consecutiveErrorStates}.`,
-      });
-    }
-
-    // Zero the reported stagnation for expected defensive responses so they never
-    // force a backtrack or drive graph recovery (Requirement: informational only).
-    const reportedStagnation = isDefensiveResponse ? 0 : stagnation.stagnationScore;
-    return { compound, currentHash, currentUrl, revisitedPage, stagnationScore: reportedStagnation, routeVerdict };
+    return {
+      kind: 'ok',
+      fingerprint: { compound, currentHash, currentUrl, revisitedPage, stagnationScore: stagnation.stagnationScore },
+    };
   }
 
   private decidePathfinderAction(
@@ -591,31 +596,13 @@ export class ExplorationLoop {
       boundingBox: el.boundingBox,
     }));
 
-    // Route exhausted: repeated defensive/error responses on this branch. Penalize
-    // it in the exploration SCORING model (persistently deprioritise the controls
-    // that keep landing on identical error templates, everywhere) and announce the
-    // redirect; the navigator then blocks the frontier + entry edge and unwinds to
-    // the nearest ancestor with unexplored controls instead of oscillating.
-    if (fingerprint.routeVerdict.exhausted) {
-      for (const element of ranked) {
-        this.deps.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
-      }
-      this.deps.telemetry.emitMilestone(
-        `🚧 Route exhausted: ${fingerprint.routeVerdict.consecutiveErrorStates} consecutive defensive/error responses (${fingerprint.routeVerdict.reason}). Penalizing this branch and prioritizing unexplored elements.`,
-      );
-      this.deps.telemetry.emit('ACTION', {
-        actionExecuted: 'route-exhausted',
-        stateHash: fingerprint.currentHash,
-        message: `Route branch penalized after repeated defensive responses (${fingerprint.routeVerdict.reason}). Redirecting to alternative navigation paths.`,
-      });
-    }
-
+    // Only valid, traversable states reach here — error states are excluded
+    // upstream (handleErrorState) before ever being registered as a graph node.
     return this.deps.pathNavigator.registerStateAndDecide(
       fingerprint.currentHash,
       fingerprint.currentUrl,
       pathfinderElements,
       ctx.penaltyStepsRemaining > 0 || fingerprint.stagnationScore >= ctx.stagnationForceBacktrack,
-      fingerprint.routeVerdict.exhausted,
     );
   }
 
@@ -705,8 +692,70 @@ export class ExplorationLoop {
       }.`,
     });
 
+    return this.finishDeadEnd(page, ctx, decision, step);
+  }
+
+  /**
+   * A page whose main-frame returned HTTP 4xx/5xx, or whose DOM is a re-rendered
+   * error template (route-collapse). It is NOT a traversable application state:
+   * it is kept out of the exploration graph, coverage clusters, visited-state
+   * sets, and the backtracking history. Logged for telemetry, marked a structural
+   * dead end in the navigator (its hash can never become a valid, backtrackable
+   * node), then the run recovers to the nearest valid unexplored ancestor.
+   */
+  private async handleErrorState(
+    page: Page,
+    ctx: RunContext,
+    result: Extract<FingerprintResult, { kind: 'error' }>,
+    step: number,
+  ): Promise<StepGate> {
+    const url = page.url();
+    ctx.deadEndUrls.add(url);
+    ctx.emptyCheckUrl = '';
+    ctx.emptyCheckCount = 0;
+
+    const { compound, mainFrameStatus, routeVerdict } = result;
+    if (mainFrameStatus !== null) {
+      this.deps.telemetry.emit('NETWORK', {
+        statusCode: mainFrameStatus,
+        url,
+        method: 'GET',
+        message: `⛔ Error state excluded (HTTP ${mainFrameStatus}) at ${url} — not registered as a graph state.`,
+      });
+    }
+    this.deps.telemetry.emitMilestone(
+      `⛔ Error/invalid page excluded from graph (${routeVerdict.reason}) — treating as a dead end and recovering to the nearest unexplored state.`,
+    );
+
+    // Mark the error hash a structural dead end: registered only as an inert,
+    // edge-less skipped tombstone (never a traversable node) and immediately
+    // unwound off the breadcrumb stack, so it can never be backtracked into.
+    const decision = this.deps.pathNavigator.markStructuralDeadEnd(compound.combined, url);
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'error-state-excluded',
+      url,
+      stateHash: compound.combined,
+      message: `Error state (${routeVerdict.reason}) excluded from graph and backtracking history; ${
+        decision.kind === 'backtrack' ? 'recovering to nearest unexplored state' : 'graph exhausted'
+      }.`,
+    });
+
+    return this.finishDeadEnd(page, ctx, decision, step);
+  }
+
+  /**
+   * Shared unwind for any state removed from the graph as a dead end (structural
+   * or error): drive the navigator's decision — backtrack to the nearest valid
+   * unexplored ancestor, or run adaptive recovery when the graph is exhausted.
+   */
+  private async finishDeadEnd(
+    page: Page,
+    ctx: RunContext,
+    decision: PathfinderDecision,
+    step: number,
+  ): Promise<StepGate> {
     if (decision.kind === 'exhausted') {
-      return this.handleExhaustedDecision(page, ctx, url, step);
+      return this.handleExhaustedDecision(page, ctx, page.url(), step);
     }
     if (decision.kind === 'backtrack') {
       await this.handleBacktrackDecision(page, decision);
