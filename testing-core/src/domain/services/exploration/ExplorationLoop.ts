@@ -706,6 +706,9 @@ export class ExplorationLoop {
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
     if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
+      // Actuated-and-resolved: a cyclic control leads nowhere new — count it covered
+      // so it stops inflating hasUnexploredControls() and driving endless re-seeds.
+      this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
       this.deps.telemetry.emitMilestone(
         `🔁 Cyclic-loop avoided: ${target.selector} → ${probe.href} is a breadcrumb ancestor. Choosing another pathway.`,
       );
@@ -949,6 +952,10 @@ export class ExplorationLoop {
         // Persistently deprioritise this exact control across all future rankings
         // so the engine advances to other controls instead of re-attempting it.
         this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
+        // Actuated-and-resolved: unstable/no-op controls yield no new state — count
+        // them covered so they stop inflating hasUnexploredControls() and driving
+        // endless recovery re-seeds back through the origin pages.
+        this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
       }
       if (this.deps.strictUrlLock) {
         this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
