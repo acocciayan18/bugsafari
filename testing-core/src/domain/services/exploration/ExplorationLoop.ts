@@ -23,6 +23,10 @@ import { DEFENSIVE_CLIENT_STATUSES } from '../../scenarios/routeTrasher/routeTra
 // Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
 
+// Empty-DOM tolerance: allow this many retries (waiting for delayed SPA render)
+// before declaring a page a Structural Dead-End on the next consecutive empty check.
+const EMPTY_RETRY_LIMIT = 2;
+
 // RouteTrasher per-state URL-mutation cap is operator-configurable via
 // OptimizationSettings['route-mutation-budget'] (default 1, 0 disables) and
 // reaches the loop as deps.routeMutationBudget. After that many invocations on
@@ -49,6 +53,13 @@ interface RunContext {
   sabotageStepCounter: number;
   budget: number;
   budgetExtensions: number;
+  // Empty-DOM retry state (per-page): the URL currently under empty-check and its
+  // consecutive empty-snapshot count. Reset when a non-empty page or a new URL is seen.
+  emptyCheckUrl: string;
+  emptyCheckCount: number;
+  // URLs already classified as Structural Dead-Ends this run — revisits skip the
+  // retry wait and backtrack immediately (prevents re-stalling on a known empty page).
+  deadEndUrls: Set<string>;
 }
 
 /** Per-step DOM/graph fingerprint computed once per iteration. */
@@ -94,6 +105,9 @@ export class ExplorationLoop {
       sabotageStepCounter: 0,
       budget: maxSteps,
       budgetExtensions: 0,
+      emptyCheckUrl: '',
+      emptyCheckCount: 0,
+      deadEndUrls: new Set<string>(),
     };
 
     for (let step = 1; ; step++) {
@@ -140,8 +154,15 @@ export class ExplorationLoop {
 
         await this.maybeSabotageNetwork(page, ctx);
 
-        const parseResult = await this.parseDomAndScore(page);
+        const parseResult = await this.parseDomAndScore(page, ctx);
         if (parseResult.kind === 'continue') continue;
+        if (parseResult.kind === 'deadend') {
+          // No interactive elements after the retry budget — Structural Dead-End.
+          // Mark the page skipped and backtrack to the nearest unexplored branch.
+          const deadEndGate = await this.handleStructuralDeadEnd(page, ctx, step);
+          if (deadEndGate.kind === 'return') return deadEndGate.result;
+          continue;
+        }
         const { ranked } = parseResult;
 
         const fingerprint = await this.computeFingerprintAndStagnation(page, step, ctx, ranked);
@@ -284,7 +305,8 @@ export class ExplorationLoop {
 
   private async parseDomAndScore(
     page: Page,
-  ): Promise<{ kind: 'continue' } | { kind: 'proceed'; ranked: InteractiveElement[] }> {
+    ctx: RunContext,
+  ): Promise<{ kind: 'continue' } | { kind: 'deadend' } | { kind: 'proceed'; ranked: InteractiveElement[] }> {
     // 🧠 Prioritization (milestone comes right after parse/scoring)
     this.deps.telemetry.emitMilestone('👁️ Vision Active');
 
@@ -301,13 +323,32 @@ export class ExplorationLoop {
     });
 
     if (elements.length === 0) {
-      // SPA may still be routing — don't hard-exit on an empty snapshot.
-      // Wait 1 s and retry on the next iteration; the loop terminates
-      // naturally at maxSteps if the DOM never populates.
-      this.deps.telemetry.emitMilestone('⏳ No interactive elements this step — waiting for DOM to settle...');
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      return { kind: 'continue' };
+      const url = page.url();
+      // Known dead-end this session — skip the retry wait, backtrack immediately.
+      if (ctx.deadEndUrls.has(url)) return { kind: 'deadend' };
+      // Reset the per-page counter when the empty page differs from the last one.
+      if (ctx.emptyCheckUrl !== url) {
+        ctx.emptyCheckUrl = url;
+        ctx.emptyCheckCount = 0;
+      }
+      ctx.emptyCheckCount += 1;
+      // Up to EMPTY_RETRY_LIMIT retries for delayed SPA rendering — wait and retry.
+      if (ctx.emptyCheckCount <= EMPTY_RETRY_LIMIT) {
+        this.deps.telemetry.emitMilestone(
+          `⏳ No interactive elements (check ${ctx.emptyCheckCount}/${EMPTY_RETRY_LIMIT + 1}) — waiting for delayed render...`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+        return { kind: 'continue' };
+      }
+      // Still empty on the third consecutive check — classify as Structural Dead-End.
+      this.deps.telemetry.emitMilestone(
+        `🕳️ Structural Dead-End: no interactive elements after ${ctx.emptyCheckCount} checks — skipping page and backtracking.`,
+      );
+      return { kind: 'deadend' };
     }
+    // Interactive content present — clear any pending empty-check retry state.
+    ctx.emptyCheckUrl = '';
+    ctx.emptyCheckCount = 0;
 
     // Fade accumulated penalties one step before ranking so transient stagnation/
     // no-op nudges recover over time instead of permanently suppressing controls.
@@ -583,6 +624,40 @@ export class ExplorationLoop {
         await this.deps.stateRestorer.restoreToState(page, '', origin);
         await settle(page);
       }
+    }
+    return { kind: 'continue' };
+  }
+
+  /**
+   * A page confirmed to have no interactive elements after the delayed-render
+   * retries. Records it as a session dead-end, marks the graph node skipped, and
+   * bypasses normal action selection to backtrack to the nearest unexplored branch
+   * (via history/deep-link restoration) — or ends the run if the graph is exhausted.
+   */
+  private async handleStructuralDeadEnd(page: Page, ctx: RunContext, step: number): Promise<StepGate> {
+    const url = page.url();
+    ctx.deadEndUrls.add(url);
+    ctx.emptyCheckUrl = '';
+    ctx.emptyCheckCount = 0;
+
+    // Fingerprint the empty state so the navigator marks THIS node skipped.
+    const compound = await this.deps.hashManager.hashCompound(page);
+    const decision = this.deps.pathNavigator.markStructuralDeadEnd(compound.combined, url);
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'structural-dead-end',
+      url,
+      stateHash: compound.combined,
+      message: `Structural dead-end at ${url} — page skipped; ${
+        decision.kind === 'backtrack' ? 'backtracking to unexplored branch' : 'graph exhausted'
+      }.`,
+    });
+
+    if (decision.kind === 'exhausted') {
+      return this.handleExhaustedDecision(page, ctx, url, step);
+    }
+    if (decision.kind === 'backtrack') {
+      await this.handleBacktrackDecision(page, decision);
     }
     return { kind: 'continue' };
   }

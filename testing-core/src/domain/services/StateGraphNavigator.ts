@@ -506,6 +506,29 @@ export class StateGraphNavigator {
     return this.handleDeadEnd(node, false);
   }
 
+  /**
+   * Terminal handling for a Structural Dead-End: a state with NO interactive
+   * elements, confirmed after the engine's delayed-render retries. Marks the node
+   * `skipped` so it is never re-tested this session, then delegates to the standard
+   * dead-end walk, which unwinds to the nearest ancestor that still has unexplored
+   * controls (backtrack) or reports graph exhaustion. Bypasses normal edge
+   * selection entirely — an empty node has no frontier to scan.
+   */
+  public markStructuralDeadEnd(hash: StateHash, url: string): PathfinderDecision {
+    const node = this.graphStore.ensureNode(hash, url);
+    this.traversalStack.sync(hash, url);
+    node.exhausted = true;
+    node.status = 'skipped';
+    this.graphStore.invalidateEdgeIndex(hash);
+    this.traversalStack.resetRepeatCounter();
+    this.eventLog.recordEvent(
+      'node-exhausted',
+      hash,
+      `Structural dead-end: no interactive elements on ${shortHash(hash)}. Node skipped; backtracking to unexplored frontier.`,
+    );
+    return this.handleDeadEnd(node, false);
+  }
+
   private handleDeadEnd(node: GraphNode, loopDetected: boolean): PathfinderDecision {
     if (loopDetected) {
       this.eventLog.recordEvent(

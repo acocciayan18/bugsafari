@@ -38,6 +38,8 @@ export interface BeginRunParams {
 const GRACE_MS = readPositiveInt(process.env.BUGSAFARI_SESSION_GRACE_MS, 60_000);
 const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_INTERVAL_MS, 15_000);
 const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TIMEOUT_MS, 5_000);
+// Consecutive failed probes before pausing — filters transient blips from real outages.
+const HEALTH_FAILURE_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_FAILURE_THRESHOLD, 2);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const RATIONALE_BUFFER_CAP = 60;
@@ -120,7 +122,7 @@ export class SessionManager implements TelemetryRecorder {
     const health = new TargetHealthMonitor(params.targetUrl, HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, {
       onUnreachable: (attempt, nextRetryMs) => this.onTargetUnreachable(attempt, nextRetryMs),
       onRecovered: (failures) => this.onTargetRecovered(failures),
-    });
+    }, HEALTH_FAILURE_THRESHOLD);
 
     this.run = {
       runId: params.runId,

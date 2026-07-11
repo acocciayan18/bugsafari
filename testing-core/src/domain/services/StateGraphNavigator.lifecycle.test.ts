@@ -63,4 +63,23 @@ check('a fresh state with unvisited edges still explores (fast-path only fires w
   assert.equal(d2.kind, 'explore-edge');
 });
 
+check('markStructuralDeadEnd skips the node, backtracks to an unexplored parent, and never re-tests it', () => {
+  const nav = new StateGraphNavigator({ explorationEnabled: false });
+  // Parent with an extra unvisited control, then descend into a child.
+  const first = nav.registerStateAndDecide('root', 'http://x/root', [
+    { selector: '#go', score: 80 },
+    { selector: '#other', score: 70 },
+  ]);
+  assert.equal(first.kind, 'explore-edge');
+  nav.confirmEdgeTraversal('root', '#go', 'empty');
+  // The child renders no interactive elements → Structural Dead-End.
+  const dead = nav.markStructuralDeadEnd('empty', 'http://x/empty');
+  // It must unwind to the parent's remaining unvisited control, not re-test the empty page.
+  assert.equal(dead.kind, 'backtrack');
+  assert.equal((dead as { targetHash: string }).targetHash, 'root');
+  // Re-arriving at the empty page is never re-tested (terminal fast-path, no explore-edge).
+  const revisit = nav.registerStateAndDecide('empty', 'http://x/empty', []);
+  assert.notEqual(revisit.kind, 'explore-edge');
+});
+
 console.log(`\nStateGraphNavigator lifecycle: ${passed} checks passed.`);
