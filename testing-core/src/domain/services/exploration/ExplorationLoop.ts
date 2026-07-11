@@ -60,6 +60,9 @@ interface RunContext {
   // URLs already classified as Structural Dead-Ends this run — revisits skip the
   // retry wait and backtrack immediately (prevents re-stalling on a known empty page).
   deadEndUrls: Set<string>;
+  // URL at the start of the previous iteration — lets the loop reveal lazy content
+  // only when we genuinely RETURN to a seen URL, not while parked on one.
+  lastStepUrl: string;
 }
 
 /** Per-step DOM/graph fingerprint computed once per iteration. */
@@ -108,6 +111,7 @@ export class ExplorationLoop {
       emptyCheckUrl: '',
       emptyCheckCount: 0,
       deadEndUrls: new Set<string>(),
+      lastStepUrl: '',
     };
 
     for (let step = 1; ; step++) {
@@ -153,6 +157,16 @@ export class ExplorationLoop {
         }
 
         await this.maybeSabotageNetwork(page, ctx);
+
+        // On genuinely RETURNING to a seen URL (not while parked on one), surface
+        // lazy-loaded / infinite-scroll / IntersectionObserver content BEFORE
+        // parsing so newly rendered controls are discovered instead of leaving the
+        // page with a hidden frontier.
+        const stepUrl = page.url();
+        if (stepUrl !== ctx.lastStepUrl && this.deps.visitedUrls.has(stepUrl)) {
+          await this.revealLazyContent(page);
+        }
+        ctx.lastStepUrl = stepUrl;
 
         const parseResult = await this.parseDomAndScore(page, ctx);
         if (parseResult.kind === 'continue') continue;
@@ -238,7 +252,15 @@ export class ExplorationLoop {
         );
 
         // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
-        this.applyNoveltyRewardAndTelemetry(target, traversalOk, childStructure, landedInvalid, decision.score, ctx);
+        this.applyNoveltyRewardAndTelemetry(
+          target,
+          traversalOk,
+          childStructure,
+          landedInvalid,
+          decision.score,
+          ctx,
+          fingerprint.compound.structure,
+        );
 
         await telemetry.emitLiveFrame(page);
         await settle(page);
@@ -300,6 +322,36 @@ export class ExplorationLoop {
       });
       // Execute the network sabotage - note: this remains active for subsequent interactions
       await networkSaboteur.execute(page);
+    }
+  }
+
+  /**
+   * Revisit-time content discovery: scroll the page to trigger lazy-loaded /
+   * infinite-scroll / IntersectionObserver content so controls that render only
+   * after scrolling are parsed before we leave a revisited view. Bounded by
+   * MAX_REVEAL_SCROLLS so an infinite-scroll feed can't run forever, and stops
+   * early once the page stops growing. Non-fatal — a detached/closed page is
+   * caught by the per-iteration health gate on the next step.
+   */
+  private async revealLazyContent(page: Page): Promise<void> {
+    const MAX_REVEAL_SCROLLS = 4;
+    try {
+      let lastHeight = 0;
+      for (let i = 0; i < MAX_REVEAL_SCROLLS; i++) {
+        const height = await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+          return document.body.scrollHeight;
+        });
+        await settle(page);
+        if (height === lastHeight) break; // page stopped growing — nothing new to reveal
+        lastHeight = height;
+      }
+      // Restore the viewport so parsing/coordinate capture starts from the top.
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await settle(page);
+      this.deps.telemetry.emitMilestone('🔄 Revisit: scrolled to reveal lazy-loaded content before re-parsing.');
+    } catch {
+      // Detached/closed/navigated page — handled by ensurePageHealth next step.
     }
   }
 
@@ -701,6 +753,25 @@ export class ExplorationLoop {
     target: InteractiveElement,
     step: number,
   ): Promise<boolean> {
+    // Session-wide transition-repeat cap: this exact control has already driven
+    // its structural shell back to already-seen views `budget` times — a
+    // navigation-loop source the combined-hash edge model can't see (each variant
+    // reads as a fresh unvisited edge). Block it session-wide and account it
+    // covered so the engine advances to unexplored routes instead of re-following it.
+    if (this.deps.edgeRepeat.isExhausted(structureHash, target.selector, this.deps.transitionRepeatBudget)) {
+      this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
+      this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
+      this.deps.telemetry.emitMilestone(
+        `🔁 Transition budget reached: ${target.selector} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,
+      );
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'transition-budget-exhausted',
+        selector: target.selector,
+        message: `Edge ${target.selector} exceeded the transition-repeat budget on this structural shell; blocked session-wide.`,
+      });
+      return true;
+    }
+
     const probe = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
@@ -973,6 +1044,7 @@ export class ExplorationLoop {
     landedInvalid: boolean,
     decisionScore: number,
     ctx: RunContext,
+    fromStructure: string,
   ): void {
     // Reward only a verified traversal that reached a structurally NEW shell.
     // Gating on the structure sub-hash (not the volatile combined hash) prevents
@@ -988,6 +1060,9 @@ export class ExplorationLoop {
     if (isNovelState) {
       // Genuine progress — refresh the adaptive-recovery budget.
       ctx.recoveryRounds = 0;
+      // Productive transition — clear this control's accumulated loop repeats so a
+      // sometimes-useful control (e.g. pagination) is never permanently blocked.
+      this.deps.edgeRepeat.recordProductive(fromStructure, target.selector);
       // Novel state discovered — compound reward for a genuine structural change.
       this.deps.scorer.applyCompoundReward(target, { structuralChange: true });
 
@@ -1002,6 +1077,12 @@ export class ExplorationLoop {
       // penalty (subtracted from this control's score on EVERY future ranking,
       // across all nodes) so the exact action that reproduced a seen signature is
       // hard-deprioritised and the same sequence cannot re-execute.
+      // Count it toward the session-wide transition-repeat budget ONLY when it was
+      // a real navigation back to a seen structure — failed/invalid traversals are
+      // isolated elsewhere and must not inflate the loop cap.
+      if (traversalOk && !landedInvalid) {
+        this.deps.edgeRepeat.recordRepeat(fromStructure, target.selector);
+      }
       this.deps.scorer.applyCompoundReward(target, { revisit: true });
       this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       const visitCount = this.deps.visitedHashes.size;

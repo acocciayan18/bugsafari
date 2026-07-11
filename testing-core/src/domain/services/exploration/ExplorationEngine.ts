@@ -37,6 +37,7 @@ import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
+import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
@@ -89,6 +90,10 @@ export class ExplorationEngine {
   // Consecutive defensive/error-route detector — drives URL-aware error-state
   // handling (penalize + redirect instead of oscillating on 404 templates).
   private readonly routeExhaustion = new RouteExhaustionTracker();
+  // Session-wide structural-transition repeat counter — caps how many times one
+  // control may re-navigate its shell back to a seen view before it is blocked as
+  // an SPA navigation-loop source.
+  private readonly edgeRepeat = new EdgeRepeatTracker();
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
@@ -113,6 +118,8 @@ export class ExplorationEngine {
   private readonly strictUrlLock: boolean;
   // RouteTrasher URL-mutation budget per state (resolved in the constructor).
   private readonly routeMutationBudget: number;
+  // Session-wide transition-repeat budget (resolved in the constructor).
+  private readonly transitionRepeatBudget: number;
 
   private isPaused = false;
   private isStopRequested = false;
@@ -192,6 +199,12 @@ export class ExplorationEngine {
       ?? defaultOptimizationSettings['route-mutation-budget']
       ?? 1;
     console.log(`[ExplorationEngine] RouteTrasher budget:`, this.routeMutationBudget);
+
+    // Resolve the session-wide transition-repeat budget (default 3; 0 disables).
+    this.transitionRepeatBudget = optimizationSettings?.['transition-repeat-budget']
+      ?? defaultOptimizationSettings['transition-repeat-budget']
+      ?? 3;
+    console.log(`[ExplorationEngine] Transition-repeat budget:`, this.transitionRepeatBudget);
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
@@ -411,6 +424,7 @@ export class ExplorationEngine {
     this.clusterRegistry.reset();
     this.escalationTracker.resetAll();
     this.routeExhaustion.reset();
+    this.edgeRepeat.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -683,6 +697,7 @@ export class ExplorationEngine {
         pathNavigator: this.pathNavigator,
         clusterRegistry: this.clusterRegistry,
         routeExhaustion: this.routeExhaustion,
+        edgeRepeat: this.edgeRepeat,
         gate: this.gate,
         visitedUrls: this.visitedUrls,
         visitedHashes: this.visitedHashes,
@@ -708,6 +723,7 @@ export class ExplorationEngine {
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
         routeMutationBudget: this.routeMutationBudget,
+        transitionRepeatBudget: this.transitionRepeatBudget,
         // Glass-box Decision Lens: build the exact per-feature rationale for the
         // chosen target vs its runner-up, stamped with this run's session id.
         explainDecision: (input) =>

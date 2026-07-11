@@ -22,6 +22,10 @@ export interface OptimizationSettings {
   // scenario may run on one state before it is permanently deprioritized.
   // 0 disables RouteTrasher entirely (default: 1 — once, then deprioritize).
   'route-mutation-budget'?: number;
+  // Session-wide transition-repeat budget: max times one control may re-navigate
+  // its structural shell back to an already-seen view before it is blocked
+  // session-wide as a navigation-loop source. 0 disables the cap (default: 3).
+  'transition-repeat-budget'?: number;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -31,6 +35,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
   'route-mutation-budget': 1,  // Once, then permanently deprioritize
+  'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
 };
 
 // ─────────────────────────────────────────────────────────────

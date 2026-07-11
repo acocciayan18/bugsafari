@@ -25,6 +25,7 @@ import type { StateRestorer } from './StateRestorer.js';
 import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
 import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
+import type { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -142,6 +143,8 @@ export interface ExplorationLoopDeps {
   clusterRegistry: StateClusterRegistry;
   /** Consecutive defensive/error-route detector (URL-aware error-state handling). */
   routeExhaustion: RouteExhaustionTracker;
+  /** Session-wide structural-transition repeat counter (SPA navigation-loop cap). */
+  edgeRepeat: EdgeRepeatTracker;
   gate: ScenarioGate;
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;
@@ -178,6 +181,9 @@ export interface ExplorationLoopDeps {
   strictUrlLock: boolean;
   /** RouteTrasher URL-mutation budget per state node (0 disables the scenario). */
   routeMutationBudget: number;
+  /** Session-wide transition-repeat budget: max non-productive re-navigations of one
+   *  control on its structural shell before it's blocked as a loop source (0 disables). */
+  transitionRepeatBudget: number;
   /** Build the glass-box rationale for the chosen target vs its runner-up.
    *  Returns null when the target was never scored. Pure — the loop emits it. */
   explainDecision(input: {
