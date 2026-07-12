@@ -101,6 +101,30 @@ check('Client crash message during ButtonSpammer → RUNTIME_STABILITY_EXCEPTION
   assert.equal(c.testingType, 'concurrency');
 });
 
+check('No-signal fault under DataFuzzer must NOT be a security verdict (bias fix)', () => {
+  // A real caught fault with no injection signal + no oracle confirmation must fall
+  // back to the fault-type default, never the scenario's expected security bug.
+  const c = classifyFault({
+    faultType: 'CONSOLE',
+    message: 'ResizeObserver loop limit exceeded',
+    scenario: 'DataFuzzer',
+  });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+  assert.equal(c.confidence, 'INFERRED');
+});
+
+check('Oracle-confirmed injection under DataFuzzer → CONFIRMED security verdict', () => {
+  const c = classifyFault({
+    faultType: 'CONSOLE',
+    message: 'reflected payload executed',
+    content: '<script>window.__bgsf_xss("BGSF1_a")</script>',
+    scenario: 'DataFuzzer',
+    confirmed: true,
+  });
+  assert.equal(c.bugClass, 'FUZZ_VULNERABILITY_LEAK');
+  assert.equal(c.confidence, 'CONFIRMED');
+});
+
 check('Determinism — same input yields identical classification', () => {
   const input = { faultType: 'NETWORK' as const, message: 'HTTP 503', statusCode: 503, scenario: 'NetworkSaboteur' };
   assert.deepEqual(classifyFault(input), classifyFault(input));

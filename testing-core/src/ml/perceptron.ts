@@ -29,6 +29,13 @@ export interface RewardSignals {
   faultDetected?: boolean;
   /** The action led back to an already-seen state (contrastive negative). */
   revisit?: boolean;
+  /**
+   * The action produced NO structural change at all — a dead/no-op control.
+   * Milder contrastive negative than {@link revisit}: the control isn't looping
+   * back to a seen state, it simply does nothing, so it should be gently
+   * deprioritised without the full revisit penalty.
+   */
+  noOp?: boolean;
 }
 
 /** One feature's exact linear term in the perceptron logit (weight × value). */
@@ -61,6 +68,7 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
   kwDelete: 1.9,
   kwRegister: 1.5,
   kwPassword: 1.4,
+  kwEmail: 1.3,
   kwSearch: 0.9,
   // Richer contextual priors (element attributes / role / labels).
   hasPlaceholder: 0.15,
@@ -173,6 +181,7 @@ export class SingleLayerPerceptron {
     if (signals.networkActivity) target += 0.3;
     if (signals.structuralChange) target += 0.2;
     if (signals.revisit) target -= 0.4;
+    if (signals.noOp) target -= 0.25;
     target = clamp01(target);
 
     // Stronger deviation from neutral → larger (still bounded) step.
@@ -252,6 +261,7 @@ export function buildFeatureVectorFromElement(input: {
     kwDelete: includesKeyword(normalizedText, ['delete', 'remove', 'destroy']) ? 1 : 0,
     kwRegister: includesKeyword(normalizedText, ['register', 'signup', 'sign up']) ? 1 : 0,
     kwPassword: includesKeyword(normalizedText, ['password', 'pin']) ? 1 : 0,
+    kwEmail: includesKeyword(normalizedText, ['email', 'e-mail']) ? 1 : 0,
     kwSearch: includesKeyword(normalizedText, ['search', 'find', 'query', 'filter']) ? 1 : 0,
     // Normalized layout features (0 when geometry is unknown).
     areaNorm: box ? clamp01((box.width * box.height) / LAYOUT_AREA_REF) : 0,

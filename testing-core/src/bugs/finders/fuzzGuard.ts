@@ -13,6 +13,7 @@
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, FuzzMetadata } from '../../domain/chaos/index.js';
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
+import { confirmPayloadReflection } from './reflectionOracle.js';
 
 // Singleton reference to the active chaos transaction manager
 // In a full implementation, this would be injected via dependency injection
@@ -32,10 +33,10 @@ export function setChaosManagerAccessor(
 }
 
 // Runtime-signal signatures are sourced from the centralized knowledge base
-// (knowledgeBase/signalPatterns.ts) so XSS / NoSQL / crash detection stays
-// consistent with the classifier. Server-side crash detection combines the
-// server-error and client-crash catalogs (the original CRASH_SIGNATURES mixed both).
-const XSS_SIGNATURE_PATTERNS = SIGNAL_PATTERNS.XSS_REFLECTION;
+// (knowledgeBase/signalPatterns.ts) so NoSQL / crash detection stays consistent
+// with the classifier. XSS is no longer a page-content pattern scan — it is
+// payload-correlated via the reflection oracle (see detectXssSignatures). Server-
+// side crash detection combines the server-error and client-crash catalogs.
 const NOSQL_ERROR_PATTERNS = SIGNAL_PATTERNS.NOSQL_ERROR;
 const CRASH_SIGNATURES = [...SIGNAL_PATTERNS.SERVER_ERROR, ...SIGNAL_PATTERNS.CLIENT_CRASH];
 
@@ -65,44 +66,28 @@ function getActiveFuzzMetadata(): FuzzMetadata | undefined {
 }
 
 /**
- * Analyzes the DOM for reflected XSS signatures
+ * Confirms reflected XSS by correlating the page against the ACTUAL injected
+ * payload — not by tag presence. Returns a single evidence string only when the
+ * injected payload executed or was reflected unescaped; a payload the app escaped
+ * (SANITIZED) or never reflected (ABSENT) yields nothing, killing the old
+ * "page contains an <iframe>/<script> ⇒ XSS" false positive.
+ *
  * @param page Playwright page context
- * @returns Array of detected XSS signatures
+ * @param payload The exact fuzz payload injected this transaction (from FuzzMetadata)
+ * @returns Array with one confirmation string, or empty when not corroborated
  */
-async function detectXssSignatures(page: BugContext['page']): Promise<string[]> {
-  const signatures: string[] = [];
-  
+async function detectXssSignatures(page: BugContext['page'], payload: string | undefined): Promise<string[]> {
+  if (!payload) return [];
   try {
-    // Check page content for XSS patterns
-    const content = await page.content();
-    
-    for (const pattern of XSS_SIGNATURE_PATTERNS) {
-      if (pattern.test(content)) {
-        signatures.push(pattern.source);
-      }
+    const verdict = await confirmPayloadReflection(page, payload);
+    if (verdict === 'CONFIRMED') {
+      return [`injected payload reflected unescaped/executed (verdict=${verdict})`];
     }
-    
-    // Check for eval usage in page scripts
-    const hasEval = await page.evaluate(() => {
-      // Check if any script contains eval
-      const scripts = document.querySelectorAll('script');
-      for (const script of scripts) {
-        if (script.textContent?.includes('eval(')) {
-          return true;
-        }
-      }
-      return false;
-    });
-    if (hasEval) {
-      signatures.push('/eval\\s*\\(/');
-    }
-    
+    // SANITIZED / ABSENT ⇒ the app handled the payload correctly; no finding.
   } catch {
-    // Page might not be available or navigation issues
-    console.log('[FuzzGuard] Could not analyze DOM for XSS signatures');
+    console.log('[FuzzGuard] Could not correlate injected payload for XSS confirmation');
   }
-  
-  return signatures;
+  return [];
 }
 
 /**
@@ -215,13 +200,13 @@ export const fuzzGuard: BugFinder = {
    */
   async run(ctx: BugContext): Promise<BugFinding[]> {
     const findings: BugFinding[] = [];
-    
+
     // Verify we have an active FUZZ transaction
     if (!hasActiveFuzzTransaction()) {
       console.log('[FuzzGuard] No active FUZZ transaction - skipping vulnerability detection');
       return findings;
     }
-    
+
     // Get the metadata from the transaction
     const metadata = getActiveFuzzMetadata();
     if (!metadata) {
@@ -233,8 +218,9 @@ export const fuzzGuard: BugFinder = {
     
     const page = ctx.page;
     
-    // Detect vulnerabilities in multiple channels
-    const xssSignatures = await detectXssSignatures(page);
+    // Detect vulnerabilities in multiple channels. XSS is correlated to the exact
+    // injected payload (not tag presence) so a sanitized/echoed page is not flagged.
+    const xssSignatures = await detectXssSignatures(page, metadata.payload);
     const noSqlErrors = await detectNoSqlErrors(page);
     const crashSignatures = await detectCrashSignatures(page);
     

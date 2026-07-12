@@ -20,6 +20,10 @@ import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensic
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
 import type { ActionExecutorDeps } from './types.js';
+import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
+import type { BugContext, BugFinding } from '../../../bugs/types.js';
+import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
+import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
 
 /**
  * Per-target action and fuzzing dispatch. Resolves the operator-gated stress
@@ -529,6 +533,10 @@ export class ActionExecutor {
     this.deps.fuzzManager.startTransaction(target.selector, 'FUZZ', metadata);
 
     try {
+      // Reset the per-injection execution witness so a confirmed leak below is
+      // attributed to THIS payload, not a prior injection on another field.
+      await resetExecutionWitness(page);
+
       // 2)-4) Bypass constraints, inject, fill siblings, and submit — captured as
       // one forensic step (pre/post DOM hash + API/console anomalies over the
       // settle window) so the escalation feedback loop below has a real signal.
@@ -563,6 +571,26 @@ export class ActionExecutor {
           });
         },
       );
+
+      // 4b) Payload-correlated leak confirmation while the FUZZ transaction is still
+      // open: fuzzGuard reports a finding ONLY when the injected payload actually
+      // reflected unescaped or executed (reflection oracle) — never on tag presence.
+      try {
+        const ctx = {
+          page,
+          targetUrl: page.url(),
+          step: level,
+          stateHash: '',
+          crashHalted: false,
+          element: undefined,
+        } as unknown as BugContext;
+        const leaks = await fuzzGuard.run(ctx);
+        for (const leak of leaks) {
+          this.registerFuzzFinding(leak, payload, target.selector);
+        }
+      } catch (error) {
+        console.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
+      }
 
       // 5) Escalation feedback: decide the level the NEXT encounter with this
       // field should use, from what actually happened this time (audit A2/A3).
@@ -813,5 +841,41 @@ export class ActionExecutor {
       `[SecurityFuzzerPayloads] Enhanced security testing complete on ${selector}: ` +
       `strategy=${category}, payloadLength=${payload.length}`,
     );
+  }
+
+  /**
+   * Map an oracle-confirmed fuzz finding into a classified ConfirmedBug and register
+   * it. `confirmed: true` lets the classifier promote the security verdict on hard
+   * evidence (see FaultClassifier), and the payload content resolves the exact class.
+   */
+  private registerFuzzFinding(finding: BugFinding, payload: string, selector: string): void {
+    const classification = classifyFault({
+      faultType: 'CONSOLE',
+      message: finding.title,
+      content: payload,
+      scenario: 'DataFuzzer',
+      confirmed: true,
+    });
+    this.deps.registerConfirmedBug({
+      bugId: `fuzz-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'FUZZ',
+      message: finding.evidence?.message ?? finding.title,
+      selector,
+      payloadUsed: payload,
+      advice: classification.advice,
+      timestamp: new Date(),
+      attribution: {
+        bugClass: classification.bugClass,
+        cwe: classification.cwe,
+        scenario: classification.scenario,
+        testingType: classification.testingType,
+        stepIndex: classification.stepIndex,
+      },
+    });
+    this.deps.telemetry.emit('EXCEPTION', {
+      actionExecuted: 'fuzz-leak-confirmed',
+      selector,
+      message: `🔓 Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
+    });
   }
 }

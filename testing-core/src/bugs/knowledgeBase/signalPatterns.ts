@@ -55,10 +55,12 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /chunk.*not found/i,
     /maximum call stack/i,
   ],
-  // SPA component/module resolution failures (content).
+  // SPA component/module resolution failures (content). NOTE: "is not a function"
+  // is deliberately NOT here — it is a runtime crash signature (see CLIENT_CRASH),
+  // not a module-resolution one, and its presence here mislabelled plain client
+  // crashes as navigation/component failures.
   COMPONENT_FAIL: [
     /cannot read propert(y|ies) .* of undefined/i,
-    /is not a function/i,
     /failed to resolve/i,
     /module not found/i,
     /chunk.*not found/i,

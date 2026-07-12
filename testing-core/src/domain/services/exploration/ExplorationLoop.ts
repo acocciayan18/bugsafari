@@ -1326,7 +1326,14 @@ export class ExplorationLoop {
       if (traversalOk && !landedInvalid) {
         this.deps.edgeRepeat.recordRepeat(fromStructure, target.selector);
       }
-      this.deps.scorer.applyCompoundReward(target, { revisit: true });
+      // Distinguish a dead/no-op control (structure literally unchanged) from a
+      // genuine revisit to a different already-seen state: the former is a milder
+      // contrastive signal so a truly inert control isn't over-penalised like a loop.
+      if (childStructure === fromStructure) {
+        this.deps.scorer.penalizeNoOp(target);
+      } else {
+        this.deps.scorer.applyCompoundReward(target, { revisit: true });
+      }
       this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       const visitCount = this.deps.visitedHashes.size;
       this.deps.telemetry.emit('ACTION', {
