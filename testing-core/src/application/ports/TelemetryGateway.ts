@@ -1,4 +1,4 @@
-import type { DecisionRationale, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -21,8 +21,5 @@ export interface TelemetryGateway {
 
   /** Emit browser console message from target page */
   emitBrowserConsole?(message: BrowserConsoleMessage): void;
-
-  /** Emit a glass-box decision rationale for the Decision Lens (optional sink). */
-  emitDecisionRationale?(rationale: DecisionRationale): void;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -25,9 +25,9 @@ export interface DashboardState {
   elapsedTimeMs: number;
   activeTimeboxMs: number;
   telemetry: TelemetryEvent[];
+  networkEvents: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
-  rationales: DecisionRationale[];
   latestFrame: string | null;
   currentUrl: string;
   sessionHistory: SessionHistoryEntry[];
@@ -103,9 +103,10 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   // History after ANY finish — including a fatal crash that sends no terminal action.
   const runStartedRef = useRef(false);
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
+  // NETWORK events are kept out of the main logic log and streamed to the Network tab only.
+  const [networkEvents, setNetworkEvents] = useState<TelemetryEvent[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-  const [rationales, setRationales] = useState<DecisionRationale[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
@@ -208,12 +209,11 @@ return () => {
       const live = lifecycleIsLive(snapshot.status);
       runStartedRef.current = true;
 
-      setTelemetry(snapshot.telemetry.slice(-500));
+      setTelemetry(snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-500));
+      setNetworkEvents(snapshot.telemetry.filter((e) => e.type === 'NETWORK').slice(-200));
       // Buffers arrive oldest→newest; the UI lists render newest-first.
       setReports([...snapshot.reports].reverse());
       setIncidents([...snapshot.incidents].reverse());
-      // Rationales keep oldest→newest (the Decision Lens follows the latest).
-      setRationales((snapshot.rationales ?? []).slice(-50));
       setCurrentUrl(snapshot.currentUrl || snapshot.targetUrl);
 
       setSessionTimeMs(snapshot.timeboxMs);
@@ -264,6 +264,15 @@ return () => {
     });
 
     gateway.onTelemetry((event) => {
+      // Network telemetry is routed to its own stream — never into the terminal log.
+      if (event.type === 'NETWORK') {
+        setNetworkEvents((previous) => {
+          const next = [...previous, event];
+          return next.length > 200 ? next.slice(next.length - 200) : next;
+        });
+        return;
+      }
+
       setTelemetry((previous) => {
         const next = [...previous, event];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -337,14 +346,6 @@ return () => {
 
     gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
     gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
-    // Decision Lens: append newest-last, bounded to 50 so the panel's recent-strip
-    // stays cheap and the array churn can't trigger runaway re-renders.
-    gateway.onDecisionRationale((rationale) =>
-      setRationales((prev) => {
-        const next = [...prev, rationale];
-        return next.length > 50 ? next.slice(next.length - 50) : next;
-      }),
-    );
     gateway.onUrlChanged((url) => setCurrentUrl(url));
     gateway.onLiveFrame((frame) => {
       setIsThinking(false);
@@ -404,9 +405,9 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setIsInitializing(true);
     setLiveFrame(null);
     setTelemetry([]);
+    setNetworkEvents([]);
     setReports([]);
     setIncidents([]);
-    setRationales([]);
     setCurrentUrl(targetUrl);
     setRemainingTimeMs(resolvedTimeboxMs);
     setElapsedTimeMs(0);
@@ -538,9 +539,9 @@ return {
       elapsedTimeMs,
       activeTimeboxMs: sessionTimeMs,
       telemetry,
+      networkEvents,
       reports,
       incidents,
-      rationales,
       latestFrame,
       currentUrl,
       sessionHistory,

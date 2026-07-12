@@ -7,7 +7,7 @@ import AiDiagnosticCard from './AiDiagnosticCard';
 // ─────────────────────────────────────────────────────────────
 
 interface NetworkTabPanelProps {
-  telemetry: TelemetryEvent[] | string[];
+  events: TelemetryEvent[];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -15,12 +15,9 @@ interface NetworkTabPanelProps {
 // ─────────────────────────────────────────────────────────────
 
 export default function NetworkTabPanel({
-  telemetry = []
+  events = []
 }: NetworkTabPanelProps) {
-  // Filter to only NETWORK type events
-  const networkEvents = (Array.isArray(telemetry) ? telemetry : [])
-    .filter((evt): evt is TelemetryEvent => typeof evt !== 'string' && evt?.type === 'NETWORK')
-    .slice(-50);
+  const networkEvents = (Array.isArray(events) ? events : []).slice(-50);
 
   if (networkEvents.length === 0) {
     return (

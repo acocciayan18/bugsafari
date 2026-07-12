@@ -176,9 +176,9 @@ function AuthAppContent() {
                     currentUrl={state.currentUrl}
                     frameBuffer={state.latestFrame}
                     telemetry={state.telemetry}
+                    networkEvents={state.networkEvents}
                     browserConsole={state.browserConsole}
                     errors={{ incidents: state.incidents, reports: state.reports }}
-                    rationales={state.rationales}
                     isConnected={state.isConnected}
                     isTestRunning={state.isTestRunning}
                     testStatus={state.status}

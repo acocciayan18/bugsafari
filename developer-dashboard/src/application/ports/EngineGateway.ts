@@ -1,4 +1,4 @@
-import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -21,8 +21,6 @@ export interface EngineGateway {
   // Reconnection & recovery.
   onReconnecting(handler: (attempt: number) => void): void;
   onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
-  /** Glass-box decision rationale stream for the Decision Lens. */
-  onDecisionRationale(handler: (rationale: DecisionRationale) => void): void;
   removeAllListeners(): void;
   /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
   setRunId(runId: string | null): void;

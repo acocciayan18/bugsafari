@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import type { DecisionRationale, TelemetryEvent } from '../../../../../shared/types.ts';
+import type { TelemetryEvent } from '../../../../../shared/types.ts';
 import type { TelemetryEmitterFlags } from '../exploration/types.js';
 import { isBrowserClosedError } from './StabilityMonitor.js';
 
@@ -38,11 +38,6 @@ export class TelemetryEmitter {
   /** Convenience: build and emit a telemetry event in one call. */
   public emit(type: TelemetryEvent['type'], meta: TelemetryEvent['meta']): void {
     this.gateway.emitTelemetry(this.event(type, meta));
-  }
-
-  /** Emit a glass-box decision rationale (no-op if the gateway has no sink). */
-  public emitDecisionRationale(rationale: DecisionRationale): void {
-    this.gateway.emitDecisionRationale?.(rationale);
   }
 
   public emitMilestone(message: string): void {

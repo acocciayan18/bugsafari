@@ -6,4 +6,3 @@ export { default as ErrorTabPanel } from './ErrorTabPanel';
 export { default as NetworkTabPanel } from './NetworkTabPanel';
 export { default as ConsoleTabPanel } from './ConsoleTabPanel';
 export { default as AiDiagnosticCard } from './AiDiagnosticCard';
-export { default as DecisionLensPanel } from './DecisionLensPanel';

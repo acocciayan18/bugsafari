@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { ActiveSessionSnapshot, DecisionRationale, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, DECISION_RATIONALE_EVENT } from '../../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -12,7 +12,6 @@ type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 type ReconnectingHandler = (attempt: number) => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
-type DecisionRationaleHandler = (rationale: DecisionRationale) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -44,7 +43,6 @@ export class SocketConnectionManager {
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
   private reconnectingHandler: ReconnectingHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
-  private decisionRationaleHandler: DecisionRationaleHandler | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     // Use hybrid fallback: environment variable first, then window.location.origin for proxy-aware routing
@@ -123,7 +121,6 @@ export class SocketConnectionManager {
     this.socket.on('url-changed', this.handleUrlChanged);
     this.socket.on('browser-console', this.handleBrowserConsole);
     this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
-    this.socket.on(DECISION_RATIONALE_EVENT, this.handleDecisionRationale);
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
     this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
@@ -148,7 +145,6 @@ export class SocketConnectionManager {
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
-    this.socket.off(DECISION_RATIONALE_EVENT, this.handleDecisionRationale);
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.off('connect_error');
     this.socket.off('error');
@@ -236,10 +232,6 @@ export class SocketConnectionManager {
     this.sessionSnapshotHandler?.(snapshot);
   };
 
-  private readonly handleDecisionRationale = (rationale: DecisionRationale): void => {
-    this.decisionRationaleHandler?.(rationale);
-  };
-
   public onConnected(handler: ConnectedHandler): void {
     this.connectedHandler = handler;
   }
@@ -267,10 +259,6 @@ export class SocketConnectionManager {
   public onSessionSnapshot(handler: SessionSnapshotHandler): void {
     this.sessionSnapshotHandler = handler;
   }
-  public onDecisionRationale(handler: DecisionRationaleHandler): void {
-    this.decisionRationaleHandler = handler;
-  }
-
   public removeAllListeners(): void {
     this.connectedHandler = null;
     this.telemetryHandler = null;
@@ -281,6 +269,5 @@ export class SocketConnectionManager {
     this.browserConsoleHandler = null;
     this.reconnectingHandler = null;
     this.sessionSnapshotHandler = null;
-    this.decisionRationaleHandler = null;
   }
 }

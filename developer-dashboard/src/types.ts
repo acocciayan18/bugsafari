@@ -39,10 +39,6 @@ export type {
   SessionAttachAck,
   RunLifecycleStatus,
   SessionOwnerType,
-  // Glass-box ML explainability (Decision Lens)
-  DecisionRationale,
-  FeatureContribution,
-  DecisionCounterfactual,
 } from '../../shared/types.js';
 
 // Value re-exports (runtime constants used to render the selector + defaults).
@@ -56,7 +52,6 @@ export {
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
-  DECISION_RATIONALE_EVENT,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).

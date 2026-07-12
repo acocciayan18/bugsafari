@@ -3,7 +3,6 @@ import type {
   ActionBreadcrumb,
   ActionRecord,
   ActionType,
-  DecisionRationale,
   FindingAttribution,
 } from '../../../../../shared/types.ts';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
@@ -211,14 +210,6 @@ export interface ExplorationLoopDeps {
   /** Session-wide transition-repeat budget: max non-productive re-navigations of one
    *  control on its structural shell before it's blocked as a loop source (0 disables). */
   transitionRepeatBudget: number;
-  /** Build the glass-box rationale for the chosen target vs its runner-up.
-   *  Returns null when the target was never scored. Pure — the loop emits it. */
-  explainDecision(input: {
-    target: InteractiveElement;
-    runnerUp: InteractiveElement | null;
-    semanticRole: string;
-    step: number;
-  }): DecisionRationale | null;
   /** Static WCAG auditor run once per novel structural shell (read-only DOM scan). */
   accessibilityAuditor: AccessibilityAuditor;
   /** Sink for confirmed findings (shared with StabilityMonitor) — a11y violations land here too. */

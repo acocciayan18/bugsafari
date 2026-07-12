@@ -11,5 +11,4 @@ export * from './types/bug.js';
 export * from './types/testingType.js';
 export * from './types/regression.js';
 export * from './types/session.js';
-export * from './types/explainability.js';
 export * from './types/verification.js';

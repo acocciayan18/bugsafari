@@ -1,10 +1,9 @@
 import type { Server } from 'socket.io';
-import type { DecisionRationale, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
-import { DECISION_RATIONALE_EVENT } from '../../../../shared/types.js';
+import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'decision-rationale';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -81,10 +80,5 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitIncidentReport(report: IncidentReport): void {
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
-  }
-
-  public emitDecisionRationale(rationale: DecisionRationale): void {
-    this.recorder?.record('decision-rationale', rationale);
-    this.channel().emit(DECISION_RATIONALE_EVENT, rationale);
   }
 }

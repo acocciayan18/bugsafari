@@ -45,22 +45,6 @@ export interface RewardSignals {
   noOp?: boolean;
 }
 
-/** One feature's exact linear term in the perceptron logit (weight × value). */
-export interface PerceptronTerm {
-  feature: string;
-  value: number;
-  weight: number;
-  contribution: number;
-}
-
-/** Exact linear decomposition of a perceptron decision (see {@link SingleLayerPerceptron.explain}). */
-export interface PerceptronExplanation {
-  bias: number;
-  rawLogit: number;
-  confidence: number;
-  terms: PerceptronTerm[];
-}
-
 export const DEFAULT_WEIGHTS: Record<string, number> = {
   hasId: 0.25,
   hasClass: 0.2,
@@ -127,26 +111,6 @@ export class SingleLayerPerceptron {
   public sigmoidScore(vector: FeatureVector): number {
     const raw = this.score(vector);
     return 1 / (1 + Math.exp(-raw));
-  }
-
-  /**
-   * Glass-box attribution: decompose the linear pre-activation into its exact
-   * per-feature terms. For a single-layer perceptron the logit is
-   * z = bias + Σ wᵢxᵢ, so featureᵢ's contribution is precisely weightᵢ × valueᵢ —
-   * an exact decomposition, not a SHAP/LIME approximation. Non-finite features
-   * are skipped identically to score()/applyDeltaRule so the sum always matches.
-   */
-  public explain(vector: FeatureVector): PerceptronExplanation {
-    let rawLogit = this.bias;
-    const terms: PerceptronTerm[] = [];
-    for (const [featureName, featureValue] of Object.entries(vector)) {
-      if (!Number.isFinite(featureValue)) continue;
-      const weight = this.weights.get(featureName) ?? 0;
-      const contribution = weight * featureValue;
-      rawLogit += contribution;
-      terms.push({ feature: featureName, value: featureValue, weight, contribution });
-    }
-    return { bias: this.bias, rawLogit, confidence: 1 / (1 + Math.exp(-rawLogit)), terms };
   }
 
   /**

@@ -7,17 +7,27 @@
 // Receives all telemetry data via props from App.tsx
 
 import { useMemo, useState } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage, DecisionRationale } from '../../types';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import ForensicHelpIcon from '../../designs/icons/ForensicHelpIcon';
 import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
-import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, DecisionLensPanel } from '../telemetry';
+import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
 
 // Tab state type for the bottom terminal
-type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console' | 'decision-lens';
+type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
+
+// Count badge on a tab header — hidden entirely when the stream is empty.
+function TabCount({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-700">
+      {count > 999 ? '999+' : count}
+    </span>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS: Clipboard, Formatting, Text Processing
@@ -32,12 +42,12 @@ interface ClinicalForensicsDashboardProps {
   currentUrl?: string; // FIX: Dynamic URL from backend (updates in real-time as browser navigates)
   frameBuffer: string | null;
   telemetry: TelemetryEvent[] | string[];
+  networkEvents: TelemetryEvent[]; // Dedicated NETWORK stream — never rendered in the terminal log
   browserConsole: BrowserConsoleMessage[]; // Browser console output from target browser
   errors: {
     incidents: IncidentReport[];
     reports: ForensicCrashReport[];
   };
-  rationales?: DecisionRationale[]; // Glass-box ML decision rationales (Decision Lens)
   isConnected: boolean;
   isTestRunning: boolean;
   testStatus?: TestSessionStatus;
@@ -62,9 +72,9 @@ export default function ClinicalForensicsDashboard({
   currentUrl,
   frameBuffer = null,
   telemetry = [],
+  networkEvents = [],
   browserConsole = [],
   errors = { incidents: [], reports: [] },
-  rationales = [],
   isConnected = false,
   isTestRunning = false,
   testStatus = 'IDLE',
@@ -94,26 +104,31 @@ const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
    */
 const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
-      ? telemetry.map((event) => {
-        if (typeof event === 'string') {
-          return { rawText: event, aiDiagnostics: null };
-        }
-        // Timestamp display removed for simplified console matching - keeping raw timestamp for database sorting only
-        const type = event.type ?? 'EVENT';
-        const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+      ? telemetry
+        // Network events belong to the Network tab only — keep the logic log clean.
+        .filter((event) => (typeof event === 'string' ? !event.includes('[NETWORK]') : event?.type !== 'NETWORK'))
+        .map((event) => {
+          if (typeof event === 'string') {
+            return { rawText: event, aiDiagnostics: null };
+          }
+          // Timestamp display removed for simplified console matching - keeping raw timestamp for database sorting only
+          const type = event.type ?? 'EVENT';
+          const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
 
-        return {
-          rawText: `[${type}] ${message}`,
-          aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
-        };
-      })
+          return {
+            rawText: `[${type}] ${message}`,
+            aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+          };
+        })
       : [];
     return events.slice(-100);
   }, [telemetry]);
 
+  const errorCount = errors.incidents.length + errors.reports.length;
+
   // Combined growth signal across all streamed tabs sharing the terminal container;
   // sticky-lock only re-pins when the user was already at the bottom.
-  const terminalContentSignal = formattedTelemetry.length + errors.incidents.length + errors.reports.length + browserConsole.length;
+  const terminalContentSignal = formattedTelemetry.length + errorCount + networkEvents.length + browserConsole.length;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   // ─────────────────────────────────────────────────────────────
@@ -226,24 +241,21 @@ const formattedTelemetry = useMemo(() => {
               className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               errors
+              <TabCount count={errorCount} />
             </button>
             <button
               onClick={() => setActiveTab('network')}
               className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               network
+              <TabCount count={networkEvents.length} />
             </button>
 <button
               onClick={() => setActiveTab('console')}
               className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               console
-            </button>
-            <button
-              onClick={() => setActiveTab('decision-lens')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'decision-lens' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              decision lens
+              <TabCount count={browserConsole.length} />
             </button>
           </div>
           {/* Forensic Help Icon - Right side of header */}
@@ -274,9 +286,7 @@ const formattedTelemetry = useMemo(() => {
                           ? 'text-gray-600'
                           : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                             ? 'text-red-600 font-semibold'
-                            : logObj.rawText.includes('[NETWORK]')
-                              ? 'text-blue-600'
-                              : 'text-gray-800'
+                            : 'text-gray-800'
                           }`}
                       >
                         {logObj.rawText}
@@ -306,9 +316,7 @@ const formattedTelemetry = useMemo(() => {
                           ? 'text-gray-600'
                           : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
                             ? 'text-red-600 font-semibold'
-                            : logObj.rawText.includes('[NETWORK]')
-                              ? 'text-blue-600'
-                              : 'text-gray-800'
+                            : 'text-gray-800'
                           }`}
                       >
                         {logObj.rawText}
@@ -335,7 +343,7 @@ const formattedTelemetry = useMemo(() => {
               TAB: NETWORK
               ════════════════════════════════════════ */}
           {activeTab === 'network' && (
-            <NetworkTabPanel telemetry={telemetry} />
+            <NetworkTabPanel events={networkEvents} />
           )}
 
 {/* ════════════════════════════════════════
@@ -345,16 +353,9 @@ const formattedTelemetry = useMemo(() => {
             <ConsoleTabPanel browserConsole={browserConsole} />
           )}
 
-          {/* ════════════════════════════════════════
-              TAB: DECISION LENS (Glass-box ML explainability)
-              ════════════════════════════════════════ */}
-          {activeTab === 'decision-lens' && (
-            <DecisionLensPanel rationales={rationales} />
-          )}
-
 
         </div>
-        <JumpToBottomButton visible={!atBottom && activeTab !== 'decision-lens'} onClick={scrollToBottom} />
+        <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
         </div>
       </div>
     </section>

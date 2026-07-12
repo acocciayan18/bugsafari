@@ -1163,25 +1163,6 @@ export class ExplorationLoop {
 
     this.deps.actionExecutor.logHighImpact(target);
 
-    // 🔬 Decision Lens: publish the glass-box rationale for THIS pick (exact
-    // per-feature attribution + runner-up counterfactual). Fully isolated — a
-    // rationale failure must never derail the action about to execute.
-    try {
-      const runnerUp = ranked.find((el) => el.selector !== target.selector) ?? null;
-      const rationale = this.deps.explainDecision({
-        target,
-        runnerUp,
-        semanticRole: inferSemanticRole(target),
-        step,
-      });
-      if (rationale) this.deps.telemetry.emitDecisionRationale(rationale);
-    } catch (explainErr) {
-      console.warn(
-        '[ExplorationLoop] Decision rationale build failed:',
-        explainErr instanceof Error ? explainErr.message : String(explainErr),
-      );
-    }
-
     let traversalOk = false;
     let childHash = currentHash;
     let childStructure = '';

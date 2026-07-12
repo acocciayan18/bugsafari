@@ -1,8 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
-import type { DecisionRationale, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
-import { DECISION_RATIONALE_EVENT } from '../../../../shared/types.js';
+import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
 
 interface BrowserConsoleMessage {
   timestamp: string;
@@ -57,10 +56,6 @@ export class TelemetryHub {
 
   emitIncidentReport(report: IncidentReport): void {
     this.io.emit('incident-report', report);
-  }
-
-  emitDecisionRationale(rationale: DecisionRationale): void {
-    this.io.emit(DECISION_RATIONALE_EVENT, rationale);
   }
 
 emitUrlChanged(url: string): void {

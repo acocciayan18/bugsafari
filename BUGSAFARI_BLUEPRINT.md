@@ -30,7 +30,7 @@ BugSafari addresses this gap with scriptless, autonomous exploration that:
 - captures runtime, stability, visual-frame, accessibility, and forensic context,
 - classifies faults deterministically through a centralized bug/scenario/signal knowledge base,
 - persists users, sessions, action traces, brain/config snapshots, findings, and forensic analyses,
-- streams live telemetry plus decision-explainability and replay-oriented evidence back to a dashboard,
+- streams live telemetry plus replay-oriented evidence back to a dashboard,
 - deterministically replays a saved finding's exact action timeline to verify whether a fix actually resolved it.
 
 ### 1.3 Target Audience & Focus
@@ -52,7 +52,7 @@ The backend package (`testing-core/`) hosts autonomous exploration execution and
 Key architectural slices:
 
 - **Application layer**: use-case orchestration (`StartExplorationUseCase`), session/reconnection lifecycle (`SessionManager`, `TargetHealthMonitor`), and ports (`BrowserEngine`, `TelemetryGateway`).
-- **Domain layer**: interaction modeling, DOM/visual/accessibility heuristics, chaos-transaction attribution, risk scoring, state-graph navigation and pathfinding, scenarios, decomposed exploration services, regression replay, and decision explainability.
+- **Domain layer**: interaction modeling, DOM/visual/accessibility heuristics, chaos-transaction attribution, risk scoring, state-graph navigation and pathfinding, scenarios, decomposed exploration services, and regression replay.
 - **Bug arsenal**: scenario adapters, a centralized bug/scenario/signal knowledge base, and pattern-specific finders.
 - **Infrastructure layer**: Playwright browser integration, monitoring, binary frames, sockets, queue/worker support, and Mongo persistence (including forensic-specific models/repositories).
 - **Presentation layer**: HTTP routes, a split auth controller surface, and socket interfaces for external control/streaming/verification.
@@ -64,13 +64,13 @@ The dashboard package (`developer-dashboard/`) is a React client that:
 - presents a public landing page (`designs/`) before authentication or guest entry,
 - authenticates users or gates protected UI through auth components/hooks/context,
 - starts exploration sessions via a command-center control surface and gateway abstractions,
-- receives real-time telemetry, binary visual frame streams, and decision-rationale events,
-- visualizes live execution status, findings, forensic trails, decision-lens explainability, and history,
+- receives real-time telemetry and binary visual frame streams,
+- visualizes live execution status, findings, forensic trails, and history,
 - exposes saved evaluations/forensic report views for post-run review, including a per-finding Verify Fix regression-replay control.
 
 ### 2.3 Shared Contract Layer
 
-The shared package (`shared/`) provides common typed contracts used across packages for telemetry, session, bug, testing-type, regression, and explainability artifacts. `shared/types.ts` is a barrel re-export over the domain-split files under `shared/types/`.
+The shared package (`shared/`) provides common typed contracts used across packages for telemetry, session, bug, testing-type, and regression artifacts. `shared/types.ts` is a barrel re-export over the domain-split files under `shared/types/`.
 
 ---
 
@@ -88,7 +88,7 @@ BugSafari's autonomy is driven by five major functional pillars.
 2. Normalize candidates into `InteractiveElement` structures.
 3. Score candidates and observed signals through the perceptron-based `RiskScorer`.
 4. Prioritize semantically sensitive controls such as submit, login, form, route, destructive, and state-changing paths, with an explicit attack-target score boost for scoped-in controls.
-5. Update behavior after observed outcomes such as network impact, route changes, instability, repeated states, and findings; every scored decision is streamed to the dashboard's Decision Lens panel via `DecisionExplainer`.
+5. Update behavior after observed outcomes such as network impact, route changes, instability, repeated states, and findings.
 
 ### 3.2 Pillar 2: Autonomous Navigation & State Awareness
 
@@ -133,7 +133,7 @@ BugSafari's autonomy is driven by five major functional pillars.
 
 1. Capture runtime exceptions, console/network faults, stability freezes, memory-leak trends, visual regressions, and accessibility violations via the primary `telemetry/StabilityMonitor` and the secondary heartbeat `infrastructure/monitoring/stabilityMonitor`.
 2. Buffer recent action history in the bounded `CircularBuffer` (20-step action buffer) and record narrated reproduction steps (`domain/services/forensics/narration.ts`).
-3. Emit event streams in real time through `TelemetryEmitter`/socket telemetry, including decision-rationale events for the Decision Lens.
+3. Emit event streams in real time through `TelemetryEmitter`/socket telemetry.
 4. Persist sessions, findings, action traces, users, forensic errors/telemetry/analysis, and brain/config snapshots through Mongo-backed models and repositories.
 5. On demand, deterministically replay a saved finding's exact recorded action timeline via `RegressionPlaybookVerifier`/`ReplayActionRunner`/`FaultCollector` — with no autonomous exploration — to verify whether a reported bug is fixed, still active, or inconclusive.
 
@@ -157,7 +157,7 @@ BugSafari's autonomy is driven by five major functional pillars.
 
 **Rule:** operational visibility must be continuous during runs.
 
-**Directive:** actions, findings, frames, scoring/state changes, network events, decision rationale, and exception-relevant events should be emitted as structured telemetry.
+**Directive:** actions, findings, frames, scoring/state changes, network events, and exception-relevant events should be emitted as structured telemetry.
 
 ### 4.4 Reproducibility Support
 
@@ -197,7 +197,7 @@ shared/                Shared contracts, schemas, and types
 
 Implementation is organized to support layered evolution:
 
-- Backend: `application`, `domain` (`chaos`, `entities`, `heuristics`, `repositories`, `scenarios`, `services` with `exploration`/`pathfinder`/`regression`/`forensics`/`telemetry`/`explainability` sub-slices), `bugs` (`finders`, `knowledgeBase`), `infrastructure`, `presentation` (`api`, `authentication`, `socket`), `ml`, `lib`.
+- Backend: `application`, `domain` (`chaos`, `entities`, `heuristics`, `repositories`, `scenarios`, `services` with `exploration`/`pathfinder`/`regression`/`forensics`/`telemetry` sub-slices), `bugs` (`finders`, `knowledgeBase`), `infrastructure`, `presentation` (`api`, `authentication`, `socket`), `ml`, `lib`.
 - Frontend: `application`, `components` (`auth`, `common`, `forensics`, `history`, `layout`, `settings`, `telemetry`, `ui`, `control-panel`, `icons`), `context`, `designs` (landing/marketing layer), `hooks`, `infrastructure`, `services`, `utils`.
 - Shared: common cross-boundary contracts, domain-split under `types/`.
 
@@ -228,7 +228,7 @@ Reference telemetry envelope shape:
 ```json
 {
   "timestamp": "2026-07-12T00:00:00.000Z",
-  "type": "ACTION | NETWORK | EXCEPTION | FINDING | FRAME | SESSION | HEURISTIC_SCORE | DECISION_RATIONALE",
+  "type": "ACTION | NETWORK | EXCEPTION | FINDING | FRAME | SESSION | HEURISTIC_SCORE",
   "meta": {
     "sessionId": "string",
     "selector": "string",
@@ -259,7 +259,6 @@ Important implementation anchors in the current tree:
 - Intelligence (exploration engine): `domain/services/AutonomousExplorationEngine.ts` (facade) → `domain/services/exploration/ExplorationEngine.ts`, `ExplorationLoop.ts`, `ActionExecutor.ts`, `StateRestorer.ts`, `PageHealthGuard.ts`, `StrictUrlLockGuard.ts`
 - Scoring & navigation: `domain/services/RiskScorer.ts`, `domain/services/StateGraphNavigator.ts`, `domain/services/DIrectedPathFinder.ts`, `domain/services/pathfinder/*` (GraphStore, EdgeSelector, TraversalStack, EventLog, config, utils)
 - Loop-prevention & coverage: `domain/services/exploration/StateClusterRegistry.ts`, `EdgeRepeatTracker.ts`, `RouteExhaustionTracker.ts`, `RouteTrashThrottle.ts`, `noveltyScoring.ts`, `stagnationScoring.ts`, `escalationDecision.ts` + `EscalationTracker.ts`
-- Explainability: `domain/services/explainability/DecisionExplainer.ts`, `components/telemetry/DecisionLensPanel.tsx`
 - Chaos/attribution: `domain/chaos/ChaosTransactionManager.ts`
 - Scenarios: `domain/scenarios/fuzzing/dataFuzzer.ts` + `elementClassifier.ts` + `payloadEscalator.ts` + `strategies/*`, `domain/scenarios/formBypasser.ts`, `networkSaboteur.ts`, `asyncStateRacer.ts`, `domain/scenarios/rapidClicker/*` (buttonSpammer, coordinateBombing, concurrentBurst, interactionSimulator), `domain/scenarios/routeTrasher/*`
 - Bug detection: `bugs/scenarioAdapters.ts`, `bugs/knowledgeBase/*` (bugCatalog, scenarioCatalog, signalPatterns, FaultClassifier), `bugs/finders/*` (concurrentStress, fuzzGuard, noSqlInjection, reflectionOracle, runtimeStability, spaRaceConditions, structuralNavigation, structuralProbe)

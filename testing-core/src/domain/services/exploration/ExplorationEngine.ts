@@ -749,10 +749,6 @@ export class ExplorationEngine {
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
         transitionRepeatBudget: this.transitionRepeatBudget,
-        // Glass-box Decision Lens: build the exact per-feature rationale for the
-        // chosen target vs its runner-up, stamped with this run's session id.
-        explainDecision: (input) =>
-          this.scorer.explainDecision({ ...input, sessionId: this.sessionId }),
         accessibilityAuditor: this.accessibilityAuditor,
         registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       });
@@ -827,9 +823,6 @@ export class ExplorationEngine {
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
       emitBrowserConsole: telemetry.emitBrowserConsole
         ? (message) => telemetry.emitBrowserConsole!(message)
-        : undefined,
-      emitDecisionRationale: telemetry.emitDecisionRationale
-        ? (rationale) => telemetry.emitDecisionRationale!(rationale)
         : undefined,
     };
   }
