@@ -945,11 +945,43 @@ export class ExplorationLoop {
       this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
       return;
     }
-    // Restore the parent state via the SPA-friendly recovery ladder
-    // (history → deep-link → hard reload) instead of a blind hard goto
-    // that would wipe client state and false-trip graph exhaustion.
+
+    // Forensic log of the global frontier selection: priority breakdown + plan,
+    // so every jump is attributable and reproducible from telemetry alone.
+    if (decision.frontier) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'frontier-selected',
+        selector: decision.frontier.selector,
+        score: Number(decision.frontier.priority.toFixed(3)),
+        stateHash: decision.targetHash,
+        message:
+          `🧭 Frontier target ${decision.targetHash.substring(0, 8)} — priority ${decision.frontier.priority.toFixed(2)} ` +
+          `(risk ${decision.frontier.edgeScore.toFixed(2)} + novelty ${decision.frontier.noveltyBonus.toFixed(2)}); ` +
+          `${decision.path?.length ? `${decision.path.length}-step BFS path` : 'no explored route — restore ladder'}.`,
+      });
+    }
+
     this.deps.telemetry.emitMilestone(`↩️ Backtracking to ${decision.targetUrl}`);
     this.deps.telemetry.emitSystemStatus(`Backtracking to ${decision.targetHash.substring(0, 8)}...`);
+
+    // Preferred: replay the BFS-planned action sequence — deterministic,
+    // SPA-state-preserving navigation to the frontier target.
+    if (decision.path?.length) {
+      if (await this.deps.stateRestorer.replayPath(page, decision.path)) {
+        await settle(page);
+        return;
+      }
+      // Replan: the graph route went stale (element detached / app state
+      // changed) — log it and fall back to the restore ladder.
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'path-replanned',
+        stateHash: decision.targetHash,
+        message: `♻️ BFS path replay to ${decision.targetHash.substring(0, 8)} failed en route — replanning via restore ladder.`,
+      });
+    }
+
+    // Fallback: SPA-friendly recovery ladder (history → deep-link → hard reload)
+    // instead of a blind hard goto that would wipe client state.
     await this.deps.stateRestorer.restoreToState(page, decision.targetHash, decision.targetUrl);
     await settle(page);
   }

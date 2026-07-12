@@ -98,6 +98,21 @@ export class TraversalStack {
     return this.stack.pop();
   }
 
+  /**
+   * Align the breadcrumb to a global-frontier jump target: if `hash` is on the
+   * stack, unwind to it (it becomes the top); otherwise clear the stack so a
+   * cross-branch jump never leaves stale ancestors that would false-trip
+   * cyclic-loop detection. The next sync() re-roots the path at the target.
+   */
+  alignTo(hash: StateHash): void {
+    const index = this.stack.findIndex((f) => f.nodeHash === hash);
+    if (index === -1) {
+      this.stack.length = 0;
+      return;
+    }
+    this.stack.splice(index + 1);
+  }
+
   get length(): number {
     return this.stack.length;
   }

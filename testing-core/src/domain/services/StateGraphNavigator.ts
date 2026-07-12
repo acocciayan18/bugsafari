@@ -24,7 +24,8 @@
  * What this class does NOT do
  * ────────────────────────────
  * - It does not perform browser navigation itself. The engine reads the
- *   BacktrackDecision and drives `page.goto()`.
+ *   BacktrackDecision and replays the attached BFS path (or falls back to the
+ *   history/deep-link restore ladder).
  * - It does not score elements. Scoring remains entirely with RiskScorer /
  *   SingleLayerPerceptron. The pathfinder only consumes already-computed scores.
  * - It does not replace stagnation counters inside the engine — it complements
@@ -50,6 +51,7 @@ import { EventLog } from './pathfinder/EventLog.js';
 import { TraversalStack } from './pathfinder/TraversalStack.js';
 import { GraphStore } from './pathfinder/GraphStore.js';
 import { EdgeSelector as EdgeSelectorEngine } from './pathfinder/EdgeSelector.js';
+import { shortestPath } from './pathfinder/PathPlanner.js';
 
 export type { StateGraphNavigatorConfig } from './pathfinder/config.js';
 
@@ -487,7 +489,14 @@ export class StateGraphNavigator {
       this.graphStore.blockNodePermanently(node);
     }
 
-    // Find the nearest ancestor that still has explorable edges
+    // Global scored frontier: resolve the dead end by jumping to the
+    // highest-priority (risk score + state novelty) unvisited edge anywhere in
+    // the graph, with a BFS-planned action path when a known route exists.
+    if (this.config.globalFrontierBacktrack) {
+      return this.selectGlobalFrontier(node);
+    }
+
+    // Legacy DFS: find the nearest ancestor that still has explorable edges
     while (this.traversalStack.length > 0) {
       const parentFrame = this.traversalStack.currentFrame();
       if (!parentFrame) break;
@@ -539,37 +548,12 @@ export class StateGraphNavigator {
       this.traversalStack.pop();
     }
 
-    // Stack is empty — the DFS breadcrumb has no ancestor left to explore. Before
-    // declaring the graph exhausted, consult the GLOBAL frontier: a high-value
-    // unvisited edge may survive on a branch already popped off the breadcrumb.
-    if (this.config.globalFrontierBacktrack) {
-      const frontier = this.pickGlobalFrontierTarget(node.hash);
-      if (frontier) {
-        frontier.node.backtracksTo += 1;
-        // Honour the same per-node return cap the stack walk uses, so a volatile
-        // node that keeps re-minting unvisited edges can't trap the global jump.
-        if (frontier.node.backtracksTo <= this.config.maxBacktracksToNode) {
-          this.eventLog.recordEvent(
-            'backtrack-initiated',
-            frontier.node.hash,
-            `Global frontier jump to ${shortHash(frontier.node.hash)} — highest-scoring unexplored edge ` +
-              `"${frontier.edge.selector}" (score=${frontier.edge.score.toFixed(3)}) survives off the breadcrumb path.`,
-          );
-          return {
-            kind: 'backtrack',
-            targetHash: frontier.node.hash,
-            targetUrl: frontier.node.url,
-            pathTrace: this.buildPathTrace(`Global frontier jump to ${shortHash(frontier.node.hash)}`),
-          };
-        }
-        // Over the cap — block its stale frontier so the next scan skips it and we
-        // don't re-select the same trap on the following step.
-        this.graphStore.blockCurrentBranch(frontier.node.hash);
-      }
-    }
-
     // Stack is empty — entire reachable graph exhausted
-    this.eventLog.recordEvent('graph-exhausted', node.hash, 'Full reachable graph exhausted.');
+    return this.exhaustedDecision(node.hash);
+  }
+
+  private exhaustedDecision(hash: StateHash): PathfinderDecision {
+    this.eventLog.recordEvent('graph-exhausted', hash, 'Full reachable graph exhausted.');
     return {
       kind: 'exhausted',
       pathTrace: this.buildPathTrace('Graph fully exhausted'),
@@ -577,25 +561,96 @@ export class StateGraphNavigator {
   }
 
   /**
-   * Global best-first frontier scan: the live node whose best unvisited edge has
-   * the highest score, excluding the just-abandoned node and any node already at
-   * its return cap. Reuses EdgeSelector.pickBestUnvisitedEdge so the same
-   * diversity/first-visit shaping that governs in-node selection also governs the
-   * cross-branch jump. O(nodes) — bounded by config.maxNodes (default 500).
+   * Global scored frontier resolution for a dead end. Picks the live node whose
+   * best unvisited edge maximises `score + noveltyBonus`, honours the per-node
+   * return cap (over-cap targets have their frontier blocked and the scan
+   * repeats), computes the BFS shortest action path from the abandoned node,
+   * aligns the breadcrumb stack to the target, and logs the selection with its
+   * full priority breakdown for forensic reproducibility.
    */
-  private pickGlobalFrontierTarget(excludeHash: StateHash): { node: GraphNode; edge: GraphEdge } | null {
-    let best: { node: GraphNode; edge: GraphEdge } | null = null;
+  private selectGlobalFrontier(abandoned: GraphNode): PathfinderDecision {
+    for (;;) {
+      const frontier = this.pickGlobalFrontierTarget(abandoned.hash);
+      if (!frontier) return this.exhaustedDecision(abandoned.hash);
+
+      // Per-node return cap: a volatile node that keeps re-minting unvisited
+      // edges can't trap the jump — block its stale frontier and rescan.
+      frontier.node.backtracksTo += 1;
+      if (frontier.node.backtracksTo > this.config.maxBacktracksToNode) {
+        this.eventLog.recordEvent(
+          'loop-penalty-applied',
+          frontier.node.hash,
+          `Return cap reached (${frontier.node.backtracksTo} restorations to ${shortHash(frontier.node.hash)}). Stagnation trap — frontier blocked, excluded from future backtracking.`,
+        );
+        this.graphStore.blockCurrentBranch(frontier.node.hash);
+        continue;
+      }
+
+      const path = shortestPath(this.graphStore, abandoned.hash, frontier.node.hash);
+      this.traversalStack.alignTo(frontier.node.hash);
+
+      this.eventLog.recordEvent(
+        'frontier-selected',
+        frontier.node.hash,
+        `Frontier target ${shortHash(frontier.node.hash)} via edge "${frontier.edge.selector}" — ` +
+          `priority=${frontier.priority.toFixed(3)} (score=${frontier.edge.score.toFixed(3)} + novelty=${frontier.noveltyBonus.toFixed(3)}); ` +
+          `${path ? `${path.length}-step BFS path planned` : 'no explored route — restore ladder'}.`,
+      );
+
+      return {
+        kind: 'backtrack',
+        targetHash: frontier.node.hash,
+        targetUrl: frontier.node.url,
+        path: path ?? undefined,
+        frontier: {
+          selector: frontier.edge.selector,
+          edgeScore: frontier.edge.score,
+          noveltyBonus: frontier.noveltyBonus,
+          priority: frontier.priority,
+        },
+        pathTrace: this.buildPathTrace(`Frontier jump to ${shortHash(frontier.node.hash)}`),
+      };
+    }
+  }
+
+  /**
+   * Global scored frontier scan: the live node whose best unvisited edge has the
+   * highest priority = score + noveltyBonus, where the novelty bonus decays with
+   * the node's visitCount so barely-explored regions win ties against well-worn
+   * ones. Excludes the just-abandoned node and any node at its return cap.
+   * Uses a pure argmax peek (no softmax sampling, no selection counters, no
+   * event-log writes) so a scan over N nodes never perturbs the in-node
+   * exploration schedule or floods the forensic ring buffer.
+   * O(nodes) per dead end — bounded by config.maxNodes (default 500), and
+   * deterministic (Map insertion order; first-seen wins ties).
+   */
+  private pickGlobalFrontierTarget(
+    excludeHash: StateHash,
+  ): { node: GraphNode; edge: GraphEdge; priority: number; noveltyBonus: number } | null {
+    let best: { node: GraphNode; edge: GraphEdge; priority: number; noveltyBonus: number } | null = null;
     for (const candidate of this.graphStore.values()) {
       if (candidate.hash === excludeHash) continue;
-      // Skip force-closed nodes (branch/return-cap/route blocks) and those already
-      // at the return cap — their frontier is intentionally off-limits.
+      // Skip force-closed nodes (branch/return-cap/route blocks). Nodes AT the
+      // return cap stay candidates: selectGlobalFrontier's increment-then-check
+      // closes their frontier on the next win, mirroring the legacy walk.
       if (candidate.status === 'skipped') continue;
-      if (candidate.backtracksTo >= this.config.maxBacktracksToNode) continue;
-      const edge = this.edgeSelector.pickBestUnvisitedEdge(candidate);
+      const edge = this.peekBestUnvisitedEdge(candidate);
       if (!edge) continue;
-      if (best === null || edge.score > best.edge.score) {
-        best = { node: candidate, edge };
+      const noveltyBonus = this.config.frontierNoveltyWeight / (1 + candidate.visitCount);
+      const priority = edge.score + noveltyBonus;
+      if (best === null || priority > best.priority) {
+        best = { node: candidate, edge, priority, noveltyBonus };
       }
+    }
+    return best;
+  }
+
+  /** Side-effect-free raw argmax over a node's unvisited edges (first-seen wins ties). */
+  private peekBestUnvisitedEdge(node: GraphNode): GraphEdge | null {
+    let best: GraphEdge | null = null;
+    for (const edge of node.edges.values()) {
+      if (edge.status !== 'unvisited') continue;
+      if (best === null || edge.score > best.score) best = edge;
     }
     return best;
   }
@@ -636,6 +691,10 @@ export class StateGraphNavigator {
       if (reopenedHere && node.exhausted) {
         node.exhausted = false;
         node.backtracksFromHere = 0;
+        // Reset the return cap too: a reopened node must be reachable by the
+        // frontier scan, or the increment-then-block check would cascade-close
+        // every recovered node in one dead end and false-trip graph exhaustion.
+        node.backtracksTo = 0;
         // Recovery resurrects soft-blocked frontier — the node is no longer
         // terminal, so lift its lifecycle status out of completed/skipped or the
         // revisit fast-path would immediately re-close the re-queued edges.

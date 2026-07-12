@@ -166,18 +166,25 @@ export interface StateGraphNavigatorConfig {
   prioritizeUnvisitedOverBoredom: boolean;
 
   /**
-   * Global best-first frontier. When true, once the breadcrumb stack unwinds with
-   * no ancestor left to explore, the navigator does NOT immediately report the
-   * graph exhausted: it scans EVERY live node for the globally highest-scoring
-   * unvisited edge (respecting the per-node return cap) and jumps there via
-   * deep-link restore. This reaches high-value controls stranded on branches that
-   * were already popped off the DFS path — the "score globally but navigate
-   * locally" gap where an expensive checkout/pay control waits while cheap nearer
-   * branches drain. Within-stack backtracking is unchanged (nearest-ancestor DFS,
-   * which is already score-ordered at descent). Default: false (probe keeps the
-   * original terminate-on-empty-stack behaviour; exploration/coverage enable it).
+   * Global scored frontier. When true, EVERY dead end is resolved by scanning
+   * all live nodes for the highest-priority unvisited edge
+   * (priority = edge score + state-novelty bonus) instead of the legacy
+   * nearest-ancestor stack walk. A BFS shortest path over explored edges is
+   * attached to the decision so the engine can replay the exact action
+   * sequence rather than blindly restoring by URL. When false the original
+   * DFS nearest-ancestor backtracking (terminate on empty stack) is used.
+   * Default: true.
    */
   globalFrontierBacktrack: boolean;
+
+  /**
+   * Weight of the state-novelty bonus in global frontier priority:
+   * bonus = frontierNoveltyWeight / (1 + node.visitCount). A once-visited node
+   * gets half the weight; heavily revisited nodes decay toward 0, steering the
+   * frontier toward barely-explored regions. Default: 10 (comparable to one
+   * boredom-threshold unit on the risk-score scale).
+   */
+  frontierNoveltyWeight: number;
 }
 
 export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
@@ -202,7 +209,8 @@ export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   explorationAnnealSteps: 40,
   maxBacktracksToNode: 3,
   prioritizeUnvisitedOverBoredom: false,
-  globalFrontierBacktrack: false,
+  globalFrontierBacktrack: true,
+  frontierNoveltyWeight: 10,
 };
 
 /**
@@ -234,6 +242,7 @@ export const PATHFINDER_MODE_PRESETS: Record<PathfinderMode, Partial<StateGraphN
     globalFrontierBacktrack: true,
   },
   probe: {
-    // Neutral default — no overrides, mirrors original static behaviour.
+    // Neutral default — no overrides; inherits DEFAULT_CONFIG (including the
+    // global scored frontier, which is now on by default).
   },
 };

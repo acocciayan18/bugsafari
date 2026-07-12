@@ -235,12 +235,38 @@ export interface ExploreEdgeDecision {
   readonly pathTrace: string;
 }
 
-/** No unvisited edges remain on the current node — step backward one frame */
+/** One hop in a BFS-planned navigation route: click `selector` on `fromHash` to reach `toHash`. */
+export interface NavigationStep {
+  readonly selector: EdgeSelector;
+  readonly fromHash: StateHash;
+  readonly toHash: StateHash;
+}
+
+/** Why the frontier target was chosen — surfaced for forensic telemetry. */
+export interface FrontierSelection {
+  /** The unvisited edge waiting on the target node. */
+  readonly selector: EdgeSelector;
+  readonly edgeScore: number;
+  /** State-novelty bonus (decays with the target node's visitCount). */
+  readonly noveltyBonus: number;
+  /** edgeScore + noveltyBonus — the value the global scan maximised. */
+  readonly priority: number;
+}
+
+/** No unvisited edges remain on the current node — navigate to the frontier target */
 export interface BacktrackDecision {
   readonly kind: 'backtrack';
-  /** The parent node we are returning to */
+  /** The node we are returning to */
   readonly targetHash: StateHash;
   readonly targetUrl: string;
+  /**
+   * BFS shortest action sequence from the abandoned node to the target over
+   * explored edges. Undefined when no known route exists — the engine falls
+   * back to the history/deep-link restore ladder.
+   */
+  readonly path?: NavigationStep[];
+  /** Present when the target was chosen by the global scored frontier scan. */
+  readonly frontier?: FrontierSelection;
   /** Full path string for telemetry */
   readonly pathTrace: string;
 }
@@ -271,7 +297,8 @@ export type PathfinderEventKind =
   | 'diversity-penalty-applied'
   | 'tiebreaker-sort-applied'
   | 'exploration-sample'
-  | 'recovery-attempt';
+  | 'recovery-attempt'
+  | 'frontier-selected';
 
 export interface PathfinderEvent {
   readonly kind: PathfinderEventKind;

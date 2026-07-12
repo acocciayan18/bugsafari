@@ -3,6 +3,7 @@ import { wait } from './types.js';
 import { shouldExitNoOp } from './pacing.js';
 import type { StateRestorerDeps } from './types.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
+import type { NavigationStep } from '../DIrectedPathFinder.js';
 
 /**
  * SPA-friendly navigation, traversal verification, and state-recovery logic.
@@ -172,6 +173,46 @@ export class StateRestorer {
       await wait(pollIntervalMs);
     }
     return false;
+  }
+
+  /**
+   * Replay a BFS-planned action path hop by hop: click each selector, then
+   * verify the DOM fingerprint reached that hop's expected child hash. Every
+   * verified hop is recorded in the reproduction playbook, so a replayed route
+   * is fully reproducible. Returns false on the first failed click or hash
+   * mismatch — the caller replans via the restore ladder. Never throws.
+   */
+  public async replayPath(page: Page, steps: NavigationStep[]): Promise<boolean> {
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      // Trace BEFORE clicking (matches ActionExecutor): if the replayed click
+      // crashes the app, the causal action must already be in the breadcrumbs.
+      this.deps.recordActionTrace(
+        { timestamp: new Date().toISOString(), selector: step.selector, action: 'restore-path-replay' },
+        {
+          actionType: 'CLICK',
+          humanIdentifier: `path replay ${i + 1}/${steps.length}`,
+          url: page.url(),
+        },
+      );
+      try {
+        await page.click(step.selector, { timeout: 3000 });
+      } catch (err) {
+        console.warn(
+          `[StateRestorer] path replay hop ${i + 1}/${steps.length} click failed (${step.selector}):`,
+          err instanceof Error ? err.message : String(err),
+        );
+        return false;
+      }
+      if (!(await this.verifyReachedHash(page, step.toHash, 3000))) {
+        console.warn(
+          `[StateRestorer] path replay hop ${i + 1}/${steps.length} landed off-route (expected ${step.toHash.substring(0, 8)}).`,
+        );
+        return false;
+      }
+    }
+    this.deps.telemetry.emitSystemStatus('Restored via shortest-path replay.');
+    return true;
   }
 
   /**
