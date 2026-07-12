@@ -33,6 +33,15 @@ const EMPTY_RETRY_LIMIT = 2;
 // a last resort once the whole frontier is spent.
 const TRIGGERED_SELECTOR_DEMOTION = 1000;
 
+// UI-layer awareness margins. Interior controls of an open overlay are lifted a
+// fixed margin above every background control so the layer is exhausted first;
+// its close/dismiss control is sunk (but not removed) so it's picked only once the
+// interior is spent; untriggered layer-opening controls get a modest nudge so
+// hidden modals/menus/accordions get discovered instead of skipped for flat links.
+const LAYER_INTERIOR_SCORE_BOOST = 30;
+const LAYER_DISMISS_DEMOTION = 500;
+const LAYER_TRIGGER_SCORE_BOOST = 15;
+
 // Frontier-exhaustion reveal: max viewport scrolls when the visible frontier is
 // spent, bounding an infinite-scroll feed. Each step reparses to detect new
 // off-screen/lazy controls before the page is declared fully explored.
@@ -592,6 +601,33 @@ export class ExplorationLoop {
             ? { ...element, riskScore: maxOther + ATTACK_TARGET_SCORE_BOOST }
             : element,
         )
+        .sort((left, right) => right.riskScore - left.riskScore);
+    }
+
+    // UI-layer awareness: when an overlay/modal/dropdown is open, exhaust its
+    // interior controls before the background page and postpone its close/dismiss
+    // control; otherwise nudge untriggered layer-opening controls so hidden layers
+    // get discovered. Coverage-driven: once interior controls are triggered they
+    // lose the boost, so the dismiss/background naturally wins and the layer closes.
+    const layerActive = ranked.some((el) => el.inActiveLayer);
+    {
+      const isFreshLayerControl = (el: InteractiveElement): boolean =>
+        !!el.inActiveLayer &&
+        !el.isDismiss &&
+        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector);
+      const baseline = ranked.filter((el) => !isFreshLayerControl(el)).map((el) => el.riskScore);
+      const maxOther = baseline.length > 0 ? Math.max(...baseline) : 0;
+      ranked = ranked
+        .map((el) => {
+          if (layerActive) {
+            if (isFreshLayerControl(el)) return { ...el, riskScore: maxOther + LAYER_INTERIOR_SCORE_BOOST };
+            if (el.isDismiss) return { ...el, riskScore: el.riskScore - LAYER_DISMISS_DEMOTION };
+            return el;
+          }
+          const untriggeredTrigger =
+            !!el.opensLayer && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector);
+          return untriggeredTrigger ? { ...el, riskScore: el.riskScore + LAYER_TRIGGER_SCORE_BOOST } : el;
+        })
         .sort((left, right) => right.riskScore - left.riskScore);
     }
 

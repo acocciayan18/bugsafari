@@ -17,6 +17,9 @@ export interface ParsedElement {
   isDisabled: boolean;
   boundingBox: BoundingBox;
   featureSignature: string;
+  opensLayer: boolean;
+  inActiveLayer: boolean;
+  isDismiss: boolean;
 }
 
 /**
@@ -44,6 +47,9 @@ export class RecursiveDomParser {
       ariaLabel: element.ariaLabel,
       // Explicit spatial coordinates captured after layout stabilization
       boundingBox: element.boundingBox,
+      opensLayer: element.opensLayer,
+      inActiveLayer: element.inActiveLayer,
+      isDismiss: element.isDismiss,
     }));
   }
 }
@@ -371,6 +377,33 @@ const isDisabled = (element) => {
         return !hasInteractiveChild; 
       });
 
+      // Active-layer detection: collect visible overlay containers currently on
+      // screen. Strong ARIA/dialog roots are trusted outright; class-hook roots
+      // (modal/popup/drawer…) must be stacked (fixed/absolute + z-index) so static
+      // in-flow sidebars/navs aren't mistaken for a transient overlay.
+      const LAYER_TRIGGER_RE = /(menu|sidebar|popup|pop-up|modal|dropdown|drop-down|accordion|drawer|popover|offcanvas|hamburger|collaps|expand|disclosure|show[\\s-]?more|see[\\s-]?more|view[\\s-]?more)/i;
+      const DISMISS_RE = /(^|[^a-z])(close|dismiss|cancel)([^a-z]|$)/i;
+      const isVisibleBox = (el) => {
+        const r = getSafeBoundingRect(el);
+        return !!r && r.width > 0 && r.height > 0 && isElementClickable(el);
+      };
+      const isStackedOverlay = (el) => {
+        const s = window.getComputedStyle(el);
+        const z = parseInt(s.zIndex, 10);
+        return (s.position === 'fixed' || s.position === 'absolute') && !isNaN(z) && z >= 1;
+      };
+      const layerRoots = [];
+      const seenRoots = new Set();
+      const addRoot = (el, requireStack) => {
+        if (!el || seenRoots.has(el)) return;
+        seenRoots.add(el);
+        if (!isVisibleBox(el)) return;
+        if (requireStack && !isStackedOverlay(el)) return;
+        layerRoots.push(el);
+      };
+      document.querySelectorAll('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[aria-modal="true"],dialog[open]').forEach((el) => addRoot(el, false));
+      document.querySelectorAll('[class*="modal"],[class*="popup"],[class*="drawer"],[class*="popover"],[class*="offcanvas"],[class*="dropdown"],[class*="lightbox"]').forEach((el) => addRoot(el, true));
+
       // First pass: collect elements with their extracted text (no slicing)
       const elementData = specificElements.flatMap((wrapped) => {
         const element = wrapped.element;
@@ -389,6 +422,23 @@ const isDisabled = (element) => {
         const placeholder = element.getAttribute('placeholder') || '';
         const ariaLabel = element.getAttribute('aria-label') || '';
 
+        const haspopup = element.getAttribute('aria-haspopup');
+        const opensLayer =
+          (haspopup !== null && haspopup !== 'false') ||
+          element.hasAttribute('aria-expanded') ||
+          element.hasAttribute('aria-controls') ||
+          element.hasAttribute('data-toggle') ||
+          element.hasAttribute('data-bs-toggle') ||
+          element.hasAttribute('data-target') ||
+          element.hasAttribute('data-bs-target') ||
+          LAYER_TRIGGER_RE.test([id, className, name, ariaLabel, fullText, role].join(' '));
+        const inActiveLayer = layerRoots.some((root) => root === element || root.contains(element));
+        const isDismiss =
+          element.hasAttribute('data-dismiss') ||
+          element.hasAttribute('data-bs-dismiss') ||
+          DISMISS_RE.test([className, id, ariaLabel, name].join(' ')) ||
+          /^\\s*(×|✕|✖|╳|x|close|cancel|dismiss)\\s*$/i.test(fullText);
+
         return [{
           element,
           tagName,
@@ -401,6 +451,9 @@ const isDisabled = (element) => {
           href,
           placeholder,
           ariaLabel,
+          opensLayer,
+          inActiveLayer,
+          isDismiss,
           isDisabled: isDisabled(element),
           boundingBox: {
             x: rect.x,
@@ -444,7 +497,10 @@ const isDisabled = (element) => {
           ariaLabel: data.ariaLabel,
           isDisabled: data.isDisabled,
           boundingBox: data.boundingBox,
-          featureSignature
+          featureSignature,
+          opensLayer: data.opensLayer,
+          inActiveLayer: data.inActiveLayer,
+          isDismiss: data.isDismiss
         };
       });
     })();

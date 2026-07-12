@@ -19,4 +19,10 @@ export interface InteractiveElement {
   ariaLabel?: string;
   // Explicit spatial coordinates captured after layout stabilization
   boundingBox?: BoundingBox;
+  // Opens a transient UI layer (modal, dropdown, sidebar, accordion, popup)
+  opensLayer?: boolean;
+  // Lives inside a currently-open overlay/dialog/menu
+  inActiveLayer?: boolean;
+  // Close/dismiss control (postponed until the layer is otherwise explored)
+  isDismiss?: boolean;
 }
