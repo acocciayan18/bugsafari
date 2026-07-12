@@ -645,14 +645,31 @@ export class StateGraphNavigator {
     return best;
   }
 
-  /** Side-effect-free raw argmax over a node's unvisited edges (first-seen wins ties). */
+  /**
+   * Side-effect-free raw argmax over a node's unvisited edges (first-seen wins
+   * ties). Applies the same Look-Ahead Edge Suppression as the in-node scan, so
+   * the global frontier never targets a nav edge into a saturated destination.
+   */
   private peekBestUnvisitedEdge(node: GraphNode): GraphEdge | null {
     let best: GraphEdge | null = null;
     for (const edge of node.edges.values()) {
       if (edge.status !== 'unvisited') continue;
+      if ((edge.elementType ?? '').toLowerCase() === 'a' && this.graphStore.destinationSaturatedFor(edge.selector)) {
+        continue;
+      }
       if (best === null || edge.score > best.score) best = edge;
     }
     return best;
+  }
+
+  /** True when the given state is fully saturated (exhausted / completed / skipped). */
+  public isStateSaturated(hash: StateHash): boolean {
+    return this.graphStore.isStateSaturated(hash);
+  }
+
+  /** Look-ahead: `selector` is a nav control whose known destination is saturated. */
+  public isNavDestinationSaturated(selector: EdgeSelector): boolean {
+    return this.graphStore.destinationSaturatedFor(selector);
   }
 
   /**

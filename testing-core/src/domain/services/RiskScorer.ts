@@ -69,9 +69,19 @@ export interface ScoredElement extends ParsedElement {
 
 // ============ MAIN CLASS ============
 
+// Look-Ahead Edge Suppression: fixed floor subtracted from any control whose
+// navigation destination is already fully saturated, so it sinks below every
+// eligible control and is never selected. Large enough to beat any keyword sum
+// yet finite (no NaN/Infinity in downstream telemetry .toFixed()).
+const SATURATED_DESTINATION_FLOOR = 1_000_000;
+
 export class RiskScorer {
   private readonly perceptron = new SingleLayerPerceptron();
   private readonly penalties = new Map<string, number>();
+  // Selectors whose look-ahead navigation destination is a saturated state.
+  // Refreshed by the loop each ranking pass from the navigator's graph memory;
+  // scored to the floor so they are ineligible without mutating graph edges.
+  private suppressedSelectors: ReadonlySet<string> = new Set();
 
   // Weight combination ratio (0.6 heuristics, 0.4 ML)
   private readonly heuristicWeight = 0.6;
@@ -116,11 +126,14 @@ export class RiskScorer {
       const combinedScore = heuristicScore * this.heuristicWeight + mlScore * this.mlWeight;
       
       const penalty = this.penalties.get(element.selector) ?? 0;
-      
+      // Look-ahead suppression: a control navigating to an already-saturated
+      // destination is floored so it is never picked over an eligible control.
+      const suppression = this.suppressedSelectors.has(element.selector) ? SATURATED_DESTINATION_FLOOR : 0;
+
       return {
         ...element,
         featureVector,
-        riskScore: combinedScore - penalty,
+        riskScore: combinedScore - penalty - suppression,
       };
     });
 
@@ -152,6 +165,24 @@ export class RiskScorer {
     }
     
     return score;
+  }
+
+  /**
+   * Set the look-ahead suppression set — selectors whose navigation destination
+   * is a fully saturated state. The loop refreshes this from the navigator's
+   * per-selector destination memory before each ranking pass.
+   */
+  setSuppressedSelectors(selectors: ReadonlySet<string>): void {
+    this.suppressedSelectors = selectors;
+  }
+
+  /**
+   * Strong contrastive perceptron update for a transition that landed on a
+   * saturated destination — trains the model to steer away from controls that
+   * lead into already-exhausted regions.
+   */
+  penalizeSaturatedTransition(element: InteractiveElement): void {
+    this.applyCompoundReward(element, { saturatedDestination: true });
   }
 
   /**

@@ -30,6 +30,13 @@ export interface RewardSignals {
   /** The action led back to an already-seen state (contrastive negative). */
   revisit?: boolean;
   /**
+   * The action traversed to a FULLY SATURATED destination state (every control
+   * covered / page exhausted). Strongest contrastive negative: the transition
+   * wasted a click on a dead region, so its feature signature must lose weight
+   * hard so the model stops steering toward saturated pages.
+   */
+  saturatedDestination?: boolean;
+  /**
    * The action produced NO structural change at all — a dead/no-op control.
    * Milder contrastive negative than {@link revisit}: the control isn't looping
    * back to a seen state, it simply does nothing, so it should be gently
@@ -180,6 +187,7 @@ export class SingleLayerPerceptron {
     if (signals.faultDetected) target += 0.5;
     if (signals.networkActivity) target += 0.3;
     if (signals.structuralChange) target += 0.2;
+    if (signals.saturatedDestination) target -= 0.5;
     if (signals.revisit) target -= 0.4;
     if (signals.noOp) target -= 0.25;
     target = clamp01(target);

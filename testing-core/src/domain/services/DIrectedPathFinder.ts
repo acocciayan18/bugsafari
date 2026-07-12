@@ -285,6 +285,7 @@ export type PathfinderEventKind =
   | 'node-registered'
   | 'edge-explored'
   | 'edge-blocked'
+  | 'edge-suppressed'
   | 'edge-unstable'
   | 'cyclic-loop'
   | 'backtrack-initiated'

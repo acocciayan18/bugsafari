@@ -31,6 +31,9 @@ export class EdgeSelector {
   // Rolling window of recent per-node interactive-element densities, feeding the
   // adaptive boredom threshold. Capped at config.boredomDensityWindow.
   private readonly recentDensities: number[] = [];
+  // Suppression events already logged (`${nodeHash}::${selector}`) so a
+  // per-pass look-ahead skip is recorded once, not on every re-scan.
+  private readonly suppressionLogged = new Set<string>();
   // The effective boredom threshold for the most recent decision (adaptive).
   private currentBoredomThreshold: number;
   // True while the node under selection is on its first visit — drives the
@@ -101,17 +104,24 @@ export class EdgeSelector {
           return { best: null, maxScore: 0 };
         }
         const cachedEdge = node.edges.get(cached.bestSelector);
-        if (cachedEdge && cachedEdge.status === 'unvisited') {
+        if (cachedEdge && cachedEdge.status === 'unvisited' && !this.isSuppressed(cachedEdge)) {
           return { best: cachedEdge, maxScore: cachedEdge.score };
         }
         // Stale (edge mutated without invalidation) — fall through to rebuild.
       }
     }
 
-    // Collect all unvisited candidates in one pass.
+    // Collect all unvisited candidates in one pass, applying the Look-Ahead Edge
+    // Suppression Filter: a nav edge whose destination is already saturated is
+    // skipped (logged once) so a repeated click into a dead region never fires.
     const candidates: GraphEdge[] = [];
     for (const edge of node.edges.values()) {
-      if (edge.status === 'unvisited') candidates.push(edge);
+      if (edge.status !== 'unvisited') continue;
+      if (this.isSuppressed(edge)) {
+        this.logSuppression(node.hash, edge);
+        continue;
+      }
+      candidates.push(edge);
     }
 
     if (candidates.length === 0) {
@@ -242,6 +252,27 @@ export class EdgeSelector {
   /** True when this edge is a navigation control (anchor) — following it leaves the page. */
   private isNavigationEdge(edge: GraphEdge): boolean {
     return (edge.elementType ?? '').toLowerCase() === 'a';
+  }
+
+  /**
+   * Look-Ahead Edge Suppression predicate: a navigation edge whose last-known
+   * destination state is already fully saturated. Anchor-only (stable target),
+   * so buttons/inputs are never suppressed and coverage cannot regress.
+   */
+  private isSuppressed(edge: GraphEdge): boolean {
+    return this.isNavigationEdge(edge) && this.graphStore.destinationSaturatedFor(edge.selector);
+  }
+
+  /** Record a suppression to the event log once per (node, edge). */
+  private logSuppression(nodeHash: StateHash, edge: GraphEdge): void {
+    const key = `${nodeHash}::${edge.selector}`;
+    if (this.suppressionLogged.has(key)) return;
+    this.suppressionLogged.add(key);
+    this.eventLog.recordEvent(
+      'edge-suppressed',
+      nodeHash,
+      `Edge "${edge.selector}" skipped — its destination is already fully explored (saturated). Look-ahead suppression avoids a wasted revisit.`,
+    );
   }
 
   /**

@@ -13,6 +13,11 @@ export class GraphStore {
   private readonly nodes = new Map<StateHash, GraphNode>();
   // Hashes of every node we have ever seen (survives node eviction).
   private readonly seenHashes = new Set<StateHash>();
+  // Look-ahead destination memory: last-known child hash reached by traversing a
+  // NAVIGATION selector (anchor), keyed by selector so the same navbar link on a
+  // different node inherits it. Anchor-only because a link's target is stable
+  // across pages, whereas a generic 'Submit' goes different places per form.
+  private readonly selectorDestinations = new Map<EdgeSelector, StateHash>();
   // Per-node argmax cache for Best-First selection. Presence = "clean"; any
   // edge add/score/status change deletes the entry (invalidateEdgeIndex).
   private readonly edgeIndexCache = new Map<StateHash, { bestSelector: string | null }>();
@@ -32,6 +37,23 @@ export class GraphStore {
 
   has(hash: StateHash): boolean {
     return this.nodes.has(hash);
+  }
+
+  /** True when the node for `hash` exists and is fully saturated (exhausted / completed / skipped). */
+  isStateSaturated(hash: StateHash): boolean {
+    const node = this.nodes.get(hash);
+    if (!node) return false; // unknown/evicted → cannot prove saturated
+    return node.exhausted || node.status === 'completed' || node.status === 'skipped';
+  }
+
+  /**
+   * Look-ahead test: `selector` is a navigation control whose last-known
+   * destination state is already saturated. Drives edge suppression so a repeated
+   * nav click into a dead region is skipped before it is ever actuated.
+   */
+  destinationSaturatedFor(selector: EdgeSelector): boolean {
+    const dest = this.selectorDestinations.get(selector);
+    return dest !== undefined && this.isStateSaturated(dest);
   }
 
   values(): IterableIterator<GraphNode> {
@@ -196,6 +218,10 @@ export class GraphStore {
 
     edge.status = 'explored';
     edge.childHash = childHash;
+    // Record the navigation destination for cross-node look-ahead suppression.
+    if ((edge.elementType ?? '').toLowerCase() === 'a') {
+      this.selectorDestinations.set(selector, childHash);
+    }
     this.invalidateEdgeIndex(fromHash);
 
     // Ensure the child node is recorded in the graph even if elements

@@ -540,6 +540,16 @@ export class ExplorationLoop {
     // no-op nudges recover over time instead of permanently suppressing controls.
     this.deps.scorer.decayPenalties();
 
+    // Look-Ahead Edge Suppression: floor any control whose navigation destination
+    // is already saturated (fully explored) so ranking never surfaces a wasted
+    // revisit. The navigator gates selection too — this keeps the ranked/target
+    // list honest for the dashboard and global-frontier scoring.
+    const suppressed = new Set<string>();
+    for (const el of elements) {
+      if (this.deps.pathNavigator.isNavDestinationSaturated(el.selector)) suppressed.add(el.selector);
+    }
+    this.deps.scorer.setSuppressedSelectors(suppressed);
+
     let ranked = this.deps.scorer.score(elements);
 
     // Session-wide coverage bias: demote every control already triggered ANYWHERE
@@ -1188,6 +1198,20 @@ export class ExplorationLoop {
       // Mark this control triggered on its structural cluster so coverage
       // metrics and adaptive-budget decisions reflect real exploration.
       this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
+
+      // Look-Ahead follow-up: the click landed on an already-saturated destination
+      // — a wasted transition. Fire the strong contrastive perceptron update so the
+      // model steers away; the destination is now recorded so future repeats of
+      // this nav selector are suppressed pre-click.
+      if (this.deps.pathNavigator.isStateSaturated(childHash)) {
+        this.deps.scorer.penalizeSaturatedTransition(target);
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'saturated-destination-penalized',
+          selector: target.selector,
+          stateHash: childHash,
+          message: `Transition ${target.selector} landed on saturated state ${childHash.substring(0, 8)} — strong negative weight update; edge suppressed for future repeats.`,
+        });
+      }
 
       // 🔁 Forward lookahead (reactive): the click landed on a state that
       // is already an ancestor on our breadcrumb path — a genuine backward
