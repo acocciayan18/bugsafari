@@ -335,7 +335,6 @@ export class ActionExecutor {
       selector: target.selector,
       message: escalationMessage,
     });
-    t.emitMilestone(escalationMessage);
 
     this.deps.recordActionTrace(
       {

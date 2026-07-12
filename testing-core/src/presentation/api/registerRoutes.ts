@@ -244,7 +244,8 @@ export function registerRoutes(
     console.log(`[API] Optimization settings:`, optimizationSettings);
 
     // Interpret the operator-selected Unified Infiltration Profile into the gated
-    // scenario categories for this session. NetworkSaboteur runs regardless.
+    // scenario categories for this session. NetworkSaboteur is gated by the
+    // 'navigation' testing type like every other scenario.
     const selectedScenarios = parseSelectedScenarios(request.body);
     console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
 

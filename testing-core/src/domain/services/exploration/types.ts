@@ -45,6 +45,7 @@ export interface RuntimeMetrics {
 /** Why a run ended — separates expected termination from genuine engine failures. */
 export type RunTerminationOutcome =
   | 'completed'          // exploration budget/graph exhausted normally
+  | 'boundary-saturated'  // configured scope (URL lock / partial profile) fully explored — NOT the whole app graph
   | 'user-stopped'        // operator hit stop, or the browser/context closed as a result
   | 'timebox'             // configured time limit reached
   | 'graceful-shutdown'   // controlled bail-out (e.g. unrecoverable page state) — not a thrown exception

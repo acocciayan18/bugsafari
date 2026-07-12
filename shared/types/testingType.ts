@@ -142,8 +142,8 @@ export const ALL_TESTING_TYPE_IDS: TestingTypeId[] = TESTING_TYPE_CATALOG.map((o
 // A profile is a named preset over the testing-type matrix above. The operator
 // picks ONE profile instead of hand-toggling categories; the backend resolves it
 // back into the same `TestingTypeId[]` the ScenarioGate already consumes, so the
-// execution primitive is unchanged. NetworkSaboteur runs as an always-on
-// background monitor independent of any profile and is not listed here.
+// execution primitive is unchanged. NetworkSaboteur is gated by the 'navigation'
+// testing type — it runs only under profiles that select navigation.
 
 /** The unified execution profiles an operator can launch. */
 export type InfiltrationProfileId =
@@ -170,7 +170,7 @@ export interface InfiltrationProfileOption {
 /**
  * Canonical catalog of infiltration profiles. `testingTypes` reuses the exact
  * `TestingTypeId`s of TESTING_TYPE_CATALOG so a profile resolves straight into
- * the existing gate. NetworkSaboteur is intentionally absent — it is always-on.
+ * the existing gate. NetworkSaboteur rides the 'navigation' testing type.
  */
 export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {

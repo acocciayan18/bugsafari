@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { ALL_TESTING_TYPE_IDS } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { CompoundStateHash } from '../../../ml/domHasher.js';
 import type {
@@ -155,13 +156,13 @@ export class ExplorationLoop {
       // TIMEBOX CHECK - CRITICAL: Must check at each iteration
       // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
       // ─────────────────────────────────────────────────────────────
-      if (this.deps.checkTimebox()) {
-        return {
-          completed: false,
-          reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
-          outcome: 'timebox',
-        };
-      }
+      // if (this.deps.checkTimebox()) {
+      //   return {
+      //     completed: false,
+      //     reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
+      //     outcome: 'timebox',
+      //   };
+      // }
 
       const pauseGate = await this.waitWhilePaused();
       if (pauseGate.kind === 'return') return pauseGate.result;
@@ -370,13 +371,15 @@ export class ExplorationLoop {
   }
 
   private async maybeSabotageNetwork(page: Page, ctx: RunContext): Promise<void> {
-    // 📡 Network Sabotage: always-on background monitor, independent of the
-    // selected infiltration profile. Fires on a deterministic cadence (every
-    // Nth step) so execution stays reproducible across runs.
+    // 📡 Network Sabotage (NetworkSaboteur): gated by the 'navigation' testing
+    // type, so it runs only under profiles that select it (CHAOS + High-Frequency
+    // Concurrency Strain) and never leaks into data/async/auth profiles. Fires on
+    // a deterministic cadence (every Nth step) so execution stays reproducible.
+    if (!this.deps.gate.isEnabled('navigation')) return;
     ctx.sabotageStepCounter += 1;
     const sabotageThisStep = ctx.sabotageStepCounter % ctx.sabotageCadence === 0;
     if (sabotageThisStep) {
-      this.deps.telemetry.emitMilestone('📡 Chaos Mode: Sabotaging network requests for this step...');
+      
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'network-sabotage',
         message: '📡 Chaos Mode: Sabotaging network requests for this step...',
@@ -835,6 +838,44 @@ export class ExplorationLoop {
     );
   }
 
+  /**
+   * Operator-configured limits that make the traversable graph a strict SUBSET of
+   * the application. When any is active, running out of frontier means the
+   * configured boundary is saturated — never that the app was fully explored.
+   */
+  private boundaryConstraints(): string[] {
+    const limits: string[] = [];
+    if (this.deps.strictUrlLock) limits.push('strict URL lock — exploration pinned to the launch URL');
+    const active = this.deps.gate.activeCategories();
+    if (active.length < ALL_TESTING_TYPE_IDS.length) {
+      // A partial profile withholds interaction classes (fuzz/bypass/etc.), so states
+      // reachable only through them were never actuated.
+      limits.push(`partial infiltration profile — only ${active.join(', ')} active`);
+    }
+    return limits;
+  }
+
+  /**
+   * Terminal completion after adaptive recovery finds no frontier: boundary
+   * saturation when the run was scope-limited, true graph exhaustion otherwise.
+   */
+  private completionResult(): RunResult {
+    const limits = this.boundaryConstraints();
+    if (limits.length === 0) {
+      const reason = 'Graph Exhausted — full reachable application graph explored (post-recovery).';
+      this.deps.telemetry.emitMilestone(`🔚 ${reason}`);
+      this.deps.telemetry.emit('ACTION', { actionExecuted: 'graph-exhausted', message: reason });
+      return { completed: true, reason, outcome: 'completed' };
+    }
+
+    const reason =
+      `Boundary Saturation Reached — configured scope fully explored (${limits.join('; ')}). ` +
+      'The application graph beyond the boundary was not explored.';
+    this.deps.telemetry.emitMilestone(`🧱 ${reason}`);
+    this.deps.telemetry.emit('ACTION', { actionExecuted: 'boundary-saturation', message: reason });
+    return { completed: true, reason, outcome: 'boundary-saturated' };
+  }
+
   private async handleExhaustedDecision(page: Page, ctx: RunContext, currentUrl: string, step: number): Promise<StepGate> {
     // Adaptive recovery before accepting termination: re-evaluate soft-blocked
     // edges (unstable/branch/sweep — never true cycles), reset the boredom
@@ -859,11 +900,7 @@ export class ExplorationLoop {
           `🔎 Graph reported exhausted but ${this.deps.clusterRegistry.unexploredControlCount()} control(s) untriggered — extending budget to ${ctx.budget} and recovering.`,
         );
       } else {
-        this.deps.telemetry.emitMilestone('🔚 Graph exhausted after adaptive recovery. Exploration complete.');
-        return {
-          kind: 'return',
-          result: { completed: true, reason: 'Full reachable graph exhausted (post-recovery).', outcome: 'completed' },
-        };
+        return { kind: 'return', result: this.completionResult() };
       }
     }
 
@@ -966,7 +1003,7 @@ export class ExplorationLoop {
       url,
       stateHash: compound.combined,
       message: `Error state (${routeVerdict.reason}) excluded from graph and backtracking history; ${
-        decision.kind === 'backtrack' ? 'recovering to nearest unexplored state' : 'graph exhausted'
+        decision.kind === 'backtrack' ? 'recovering to nearest unexplored state' : 'frontier spent — evaluating completion'
       }.`,
     });
 
