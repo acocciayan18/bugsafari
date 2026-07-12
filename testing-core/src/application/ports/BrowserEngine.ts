@@ -1,12 +1,13 @@
 import type { TelemetryGateway } from './TelemetryGateway.js';
 import type { OptimizationSettings, defaultOptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
+import type { RunResult } from '../../domain/services/exploration/types.js';
 
 export interface BrowserEngineConfig {
   maxActions?: number;
 }
 
 export interface BrowserEngine {
-  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<{ completed: boolean; reason: string }>;
+  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<RunResult>;
   pause?(): void;
   resume?(): void;
   stop?(): Promise<void> | void;

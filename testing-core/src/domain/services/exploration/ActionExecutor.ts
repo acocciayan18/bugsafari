@@ -9,6 +9,7 @@ import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzz
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import {
   resolveElementLabel,
+  humanizeElement,
   describeConstraintBypass,
   describeInputInjection,
   describeNavigation,
@@ -44,7 +45,7 @@ export class ActionExecutor {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'high-impact-action-detected',
         selector: target.selector,
-        message: `High impact action detected: ${target.innerText || target.selector}`,
+        message: `High impact action detected: ${humanizeElement(target)}`,
       });
     }
   }
@@ -99,7 +100,7 @@ export class ActionExecutor {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'inert-control-skipped',
         selector: target.selector,
-        message: `Skipped non-actuable control ${target.selector} (${target.type || target.tagName}).`,
+        message: `Skipped non-actuable control ${humanizeElement(target)}.`,
       });
       return;
     }
@@ -311,7 +312,7 @@ export class ActionExecutor {
     scenario: StressScenario,
   ): Promise<void> {
     const t = this.deps.telemetry;
-    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${target.selector}`;
+    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${humanizeElement(target)}`;
     t.emit('ACTION', {
       actionExecuted: 'stress-scenario-escalation',
       selector: target.selector,
@@ -345,7 +346,7 @@ export class ActionExecutor {
           t.emit('ACTION', {
             actionExecuted: 'security-constraints-stripped',
             selector: target.selector,
-            message: `🔓 Stripped HTML5 constraints from ${target.selector} before security injection.`,
+            message: `🔓 Stripped HTML5 constraints from ${humanizeElement(target)} before security injection.`,
           });
         } catch (error) {
           console.warn('[ActionExecutor] Constraint stripping failed before security scenario:', error);
@@ -552,13 +553,13 @@ export class ActionExecutor {
             t.emit('ACTION', {
               actionExecuted: 'data-fuzzer-injection',
               selector: target.selector,
-              message: `⚡ Data Fuzzer: Injecting ${category} strategy (escalation L${level}) into ${target.selector} to test data validation limits.`,
+              message: `⚡ Data Fuzzer: Injecting ${category} strategy (escalation L${level}) into ${humanizeElement(target)} to test data validation limits.`,
             });
           }
           t.emit('ACTION', {
             actionExecuted: 'form-submission-triggered',
             selector: target.selector,
-            message: `📨 Submitted form via "${submissionMethod}" to validate ${target.selector} against the backend.`,
+            message: `📨 Submitted form via "${submissionMethod}" to validate ${humanizeElement(target)} against the backend.`,
           });
         },
       );
@@ -611,7 +612,7 @@ export class ActionExecutor {
         t.emit('ACTION', {
           actionExecuted: 'fuzz-escalation',
           selector: target.selector,
-          message: `📈 ${target.selector} resisted L${level} (${resistance.reason}) — escalating to L${nextLevel} for the next encounter.`,
+          message: `📈 ${humanizeElement(target)} resisted L${level} (${resistance.reason}) — escalating to L${nextLevel} for the next encounter.`,
         });
       }
       // outcome === 'hold': payload accepted/processed without a fault — keep level.
@@ -821,7 +822,7 @@ export class ActionExecutor {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'security-fuzzer-injection',
         selector,
-        message: `🔐 Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${selector}`,
+        message: `🔐 Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${humanizeElement(target)}`,
       });
     } catch (error) {
       console.warn('[ActionExecutor] Security fuzzer injection failed:', error);

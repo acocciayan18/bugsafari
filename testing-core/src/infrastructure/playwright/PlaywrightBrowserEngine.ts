@@ -4,6 +4,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
+import type { RunResult } from '../../domain/services/exploration/types.js';
 import { installReflectionOracle } from '../../bugs/finders/reflectionOracle.js';
 
 /**
@@ -100,7 +101,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<{ completed: boolean; reason: string }> {
+  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<RunResult> {
     // Fresh run: any cancellation tag belongs to a previous run and must not
     // leak forward and swallow a genuine failure in this one.
     this.cancelledDuringRun = false;
@@ -213,7 +214,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     });
     console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
 
-    let result: { completed: boolean; reason: string };
+    let result: RunResult;
     try {
       // 🔒 RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
       if (!this.activeEngine) {
@@ -226,7 +227,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
             message: '🏁 Session initialization terminated safely by request',
           },
         });
-        return { completed: false, reason: 'Session terminated by user' };
+        return { completed: false, reason: 'Session terminated by user', outcome: 'user-stopped' };
       }
       
       // Pass browserInfo to the engine for telemetry collection
@@ -247,7 +248,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
             message: '🏁 Session initialization terminated safely by request',
           },
         });
-        return { completed: false, reason: 'Session terminated by user' };
+        return { completed: false, reason: 'Session terminated by user', outcome: 'user-stopped' };
       }
       // Re-throw unexpected errors
       throw err;

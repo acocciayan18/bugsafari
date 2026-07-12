@@ -80,6 +80,40 @@ export function resolveElementLabel(element: ElementLabelSource): string {
   return genericElementLabel(element.tagName, element.type);
 }
 
+// Capitalized element kind for operator-facing descriptions (Button/Input/Link).
+function elementKind(tagName?: string, type?: string): string {
+  const tag = (tagName ?? '').toLowerCase();
+  const elementType = (type ?? '').toLowerCase();
+  if (tag === 'button' || elementType === 'button' || elementType === 'submit') return 'Button';
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return 'Input';
+  if (tag === 'a') return 'Link';
+  if (tag) return tag.charAt(0).toUpperCase() + tag.slice(1);
+  return 'Element';
+}
+
+// Label for humanizeElement: text/aria/placeholder/name only (id shown separately).
+function resolveDescriptiveLabel(element: ElementLabelSource): string {
+  const source =
+    collapse(element.innerText) ||
+    collapse(element.ariaLabel) ||
+    collapse(element.placeholder) ||
+    collapse(element.name);
+  return source ? truncate(source, MAX_LABEL_LENGTH) : '';
+}
+
+/**
+ * Render a readable element description for telemetry, the action buffer, terminal
+ * output, and WebSocket logs — e.g. `Button: "Register" (id: #register-btn)` or
+ * `Input: "Email"`. Never used for Playwright interactions, which need raw selectors.
+ */
+export function humanizeElement(element: ElementLabelSource): string {
+  const kind = elementKind(element.tagName, element.type);
+  const label = resolveDescriptiveLabel(element);
+  const id = collapse(element.id);
+  const idPart = id ? ` (id: #${id})` : '';
+  return label ? `${kind}: "${label}"${idPart}` : `${kind}${idPart}`;
+}
+
 const defaultLabelForType = (type: ActionType): string =>
   type === 'TYPE' || type === 'INPUT' || type === 'SUBMIT' ? 'input field' : 'element';
 

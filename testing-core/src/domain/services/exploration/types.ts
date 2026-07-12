@@ -42,6 +42,21 @@ export interface RuntimeMetrics {
   failureCount: number;
 }
 
+/** Why a run ended — separates expected termination from genuine engine failures. */
+export type RunTerminationOutcome =
+  | 'completed'          // exploration budget/graph exhausted normally
+  | 'user-stopped'        // operator hit stop, or the browser/context closed as a result
+  | 'timebox'             // configured time limit reached
+  | 'graceful-shutdown'   // controlled bail-out (e.g. unrecoverable page state) — not a thrown exception
+  | 'exception';          // genuine unhandled engine/Playwright/infrastructure failure
+
+/** Terminal result of a run — `outcome` is the single source of truth for exception classification. */
+export interface RunResult {
+  completed: boolean;
+  reason: string;
+  outcome: RunTerminationOutcome;
+}
+
 /** A confirmed bug stored in the engine's in-memory ledger and surfaced to the use case. */
 export interface ConfirmedBug {
   bugId: string;

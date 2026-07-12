@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { BrowserConsoleMessage } from '../../types';
 import { CopyButton, ExpandableCodeBlock } from '../common/ForensicCardKit';
+import JumpToBottomButton from '../common/JumpToBottomButton';
+import { useStickyScroll } from '../../hooks/useStickyScroll';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -18,6 +20,7 @@ export default function ConsoleTabPanel({
   browserConsole = []
 }: ConsoleTabPanelProps) {
   const [expandedActionTrail, setExpandedActionTrail] = useState<Record<string, boolean>>({});
+  const { containerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(browserConsole.length);
 
   return (
     <div className="space-y-3 p-2">
@@ -32,7 +35,8 @@ export default function ConsoleTabPanel({
           <span className="text-[10px] text-gray-500">Last 50 logs</span>
         </div>
 
-        <div className="max-h-96 overflow-y-auto custom-scrollbar bg-white dark:bg-nova-dark">
+        <div className="relative">
+        <div ref={containerRef} className="max-h-96 overflow-y-auto custom-scrollbar bg-white dark:bg-nova-dark">
           {browserConsole.length === 0 ? (
             <div className="text-gray-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
           ) : (
@@ -61,6 +65,8 @@ export default function ConsoleTabPanel({
               />
             </div>
           )}
+        </div>
+        <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
         </div>
       </div>
     </div>

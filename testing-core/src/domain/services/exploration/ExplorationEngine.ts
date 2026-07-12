@@ -41,7 +41,7 @@ import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
-import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
+import type { ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCHES (Addressing Critical Vulnerabilities)
@@ -417,7 +417,7 @@ export class ExplorationEngine {
     return 'CLICK';
   }
 
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<{ completed: boolean; reason: string }> {
+  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<RunResult> {
     // Initialize runtime metrics tracking
     this.runtimeMetrics = {
       startTime: Date.now(),

@@ -385,7 +385,7 @@ try {
             this.lastCompletedSessionId = this.browserEngine.getLastSessionId?.() ?? null;
 
 // Check if the engine detected timebox exceeded (via its internal timing interval)
-            if (!result.completed && result.reason.includes('timebox')) {
+            if (result.outcome === 'timebox') {
                 executionStatus = 'TIMEOUT';
                 console.log(`[StartExplorationUseCase] ⚠️ Timebox of ${TIMEBOX_MS}ms exceeded (active time) - engine self-terminated`);
 
@@ -409,16 +409,22 @@ try {
                 });
             }
 
-            executionStatus = result.completed ? 'COMPLETED' : 'HALTED';
+            executionStatus = result.outcome === 'exception'
+                ? 'CRASHED'
+                : result.outcome === 'timebox'
+                    ? 'TIMEOUT'
+                    : result.completed ? 'COMPLETED' : 'HALTED';
 
             // Collect metrics from the reproduction playbook store (actions executed)
             const actionRecords = ReproductionPlaybookStore.snapshot();
             metrics.totalActions = actionRecords.length;
             // Note: Bug count would be collected from the finding repository in a full implementation
 
+            // Only a genuine engine/Playwright/infrastructure exception is EXCEPTION-typed —
+            // user stops, timebox, and graceful shutdowns are normal completions (ACTION).
             this.telemetry.emitTelemetry({
                 timestamp: new Date().toISOString(),
-                type: result.completed ? 'ACTION' : 'EXCEPTION',
+                type: result.outcome === 'exception' ? 'EXCEPTION' : 'ACTION',
                 meta: {
                     actionExecuted: 'engine-stopped',
                     url: targetUrl,

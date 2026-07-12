@@ -9,11 +9,11 @@ import type {
 } from '../DIrectedPathFinder.js';
 import { networkSaboteur } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
-import { describeRecovery } from '../forensics/narration.js';
+import { describeRecovery, humanizeElement } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, settle } from './types.js';
 import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
-import type { ExplorationLoopDeps } from './types.js';
+import type { ExplorationLoopDeps, RunResult } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
@@ -47,7 +47,7 @@ const LAYER_TRIGGER_SCORE_BOOST = 15;
 // off-screen/lazy controls before the page is declared fully explored.
 const MAX_FRONTIER_SCROLLS = 6;
 
-type LoopResult = { completed: boolean; reason: string };
+type LoopResult = RunResult;
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
 
 /** Per-run tunables (fixed at loop start) plus the counters they evolve across iterations. */
@@ -148,7 +148,7 @@ export class ExplorationLoop {
 
       if (this.deps.isStopRequested()) {
         telemetry.emitMilestone(`Safari session manually stopped by user.`);
-        return { completed: false, reason: 'Safari session manually stopped by user.' };
+        return { completed: false, reason: 'Safari session manually stopped by user.', outcome: 'user-stopped' };
       }
 
       // ─────────────────────────────────────────────────────────────
@@ -159,6 +159,7 @@ export class ExplorationLoop {
         return {
           completed: false,
           reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
+          outcome: 'timebox',
         };
       }
 
@@ -173,16 +174,20 @@ export class ExplorationLoop {
         const health = await this.deps.ensurePageHealth(page);
         if (health.status === 'unrecoverable') {
           telemetry.emitMilestone('🛑 Unrecoverable invalid browser state — ending exploration.');
-          return { completed: false, reason: 'Unrecoverable invalid browser state (about:blank / closed page).' };
+          return {
+            completed: false,
+            reason: 'Unrecoverable invalid browser state (about:blank / closed page).',
+            outcome: 'graceful-shutdown',
+          };
         }
         page = health.page;
 
         if (runtimeCrashReason) {
-          return { completed: false, reason: runtimeCrashReason };
+          return { completed: false, reason: runtimeCrashReason, outcome: 'exception' };
         }
 
         if (serverCrashReason) {
-          return { completed: false, reason: serverCrashReason };
+          return { completed: false, reason: serverCrashReason, outcome: 'exception' };
         }
 
         await this.maybeSabotageNetwork(page, ctx);
@@ -354,7 +359,10 @@ export class ExplorationLoop {
     while (this.deps.isPaused()) {
       if (this.deps.isStopRequested()) {
         this.deps.telemetry.emitMilestone(`Safari session manually stopped by user.`);
-        return { kind: 'return', result: { completed: false, reason: 'Safari session manually stopped by user.' } };
+        return {
+          kind: 'return',
+          result: { completed: false, reason: 'Safari session manually stopped by user.', outcome: 'user-stopped' },
+        };
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -850,7 +858,10 @@ export class ExplorationLoop {
         );
       } else {
         this.deps.telemetry.emitMilestone('🔚 Graph exhausted after adaptive recovery. Exploration complete.');
-        return { kind: 'return', result: { completed: true, reason: 'Full reachable graph exhausted (post-recovery).' } };
+        return {
+          kind: 'return',
+          result: { completed: true, reason: 'Full reachable graph exhausted (post-recovery).', outcome: 'completed' },
+        };
       }
     }
 
@@ -1040,7 +1051,7 @@ export class ExplorationLoop {
     const target = foundTarget ?? ranked[0];
 
     if (!target) {
-      return { kind: 'return', result: { completed: true, reason: 'No ranked target found.' } };
+      return { kind: 'return', result: { completed: true, reason: 'No ranked target found.', outcome: 'completed' } };
     }
 
     return { kind: 'proceed', target };
@@ -1061,13 +1072,14 @@ export class ExplorationLoop {
     if (this.deps.edgeRepeat.isExhausted(structureHash, target.selector, this.deps.transitionRepeatBudget)) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
+      const human = humanizeElement(target);
       this.deps.telemetry.emitMilestone(
-        `🔁 Transition budget reached: ${target.selector} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,
+        `🔁 Transition budget reached: ${human} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'transition-budget-exhausted',
         selector: target.selector,
-        message: `Edge ${target.selector} exceeded the transition-repeat budget on this structural shell; blocked session-wide.`,
+        message: `${human} exceeded the transition-repeat budget on this structural shell; blocked session-wide.`,
       });
       return true;
     }
@@ -1081,12 +1093,12 @@ export class ExplorationLoop {
       // so it stops inflating hasUnexploredControls() and driving endless re-seeds.
       this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
       this.deps.telemetry.emitMilestone(
-        `🔁 Cyclic-loop avoided: ${target.selector} → ${probe.href} is a breadcrumb ancestor. Choosing another pathway.`,
+        `🔁 Cyclic-loop avoided: ${humanizeElement(target)} leads back to a breadcrumb ancestor (${probe.href}). Choosing another pathway.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'cyclic-loop-detected',
         selector: target.selector,
-        message: `Forward lookahead skipped ${target.selector}: resolves to ancestor ${probe.href}.`,
+        message: `Forward lookahead skipped ${humanizeElement(target)}: resolves to ancestor ${probe.href}.`,
       });
       return true;
     }
@@ -1108,12 +1120,12 @@ export class ExplorationLoop {
           ? 'opens a new tab'
           : 'non-navigational link';
       this.deps.telemetry.emitMilestone(
-        `🚫 Skipping ${target.selector} (${reason}) — keeping exploration on the app under test.`,
+        `🚫 Skipping ${humanizeElement(target)} (${reason}) — keeping exploration on the app under test.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'off-site-control-skipped',
         selector: target.selector,
-        message: `Forward lookahead skipped ${target.selector}: ${reason}${probe.href ? ` (${probe.href})` : ''}.`,
+        message: `Forward lookahead skipped ${humanizeElement(target)}: ${reason}${probe.href ? ` (${probe.href})` : ''}.`,
       });
       return true;
     }
@@ -1140,8 +1152,9 @@ export class ExplorationLoop {
     exploreScore: number,
   ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean }> {
     // Emit exploration milestone
-    this.deps.telemetry.emitMilestone(`🎯 Exploring edge: ${target.selector} (score: ${exploreScore.toFixed(3)})`);
-    this.deps.telemetry.emitSystemStatus(`Clicking element ${target.selector}...`);
+    const humanTarget = humanizeElement(target);
+    this.deps.telemetry.emitMilestone(`🎯 Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
+    this.deps.telemetry.emitSystemStatus(`Clicking ${humanTarget}...`);
 
     this.deps.actionExecutor.logHighImpact(target);
 
@@ -1197,7 +1210,7 @@ export class ExplorationLoop {
       traversalOk = false;
       childHash = currentHash;
       this.deps.telemetry.emitMilestone(
-        `⛔ ${target.selector} navigated to an invalid context (${page.url()}) — blocking edge.`,
+        `⛔ ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
       );
     }
 
@@ -1207,7 +1220,7 @@ export class ExplorationLoop {
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'action-executed',
       selector: target.selector,
-      message: `Step ${step}: Action executed on ${target.selector}`,
+      message: `Step ${step}: Action executed on ${humanTarget}`,
     });
 
     await this.deps.persistBrainSnapshot('runtime', step);
@@ -1245,7 +1258,7 @@ export class ExplorationLoop {
           actionExecuted: 'saturated-destination-penalized',
           selector: target.selector,
           stateHash: childHash,
-          message: `Transition ${target.selector} landed on saturated state ${childHash.substring(0, 8)} — strong negative weight update; edge suppressed for future repeats.`,
+          message: `Transition via ${humanizeElement(target)} landed on saturated state ${childHash.substring(0, 8)} — strong negative weight update; edge suppressed for future repeats.`,
         });
       }
 
@@ -1257,13 +1270,13 @@ export class ExplorationLoop {
       if (this.deps.pathNavigator.isAncestorHash(childHash)) {
         this.deps.pathNavigator.markEdgeCyclic(previousHashBeforeAction, target.selector);
         this.deps.telemetry.emitMilestone(
-          `🔁 Cyclic-loop detected: ${target.selector} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
+          `🔁 Cyclic-loop detected: ${humanizeElement(target)} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
         );
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'cyclic-loop-detected',
           selector: target.selector,
           stateHash: childHash,
-          message: `Reactive lookahead: ${target.selector} looped back to ancestor ${childHash.substring(0, 8)}.`,
+          message: `Reactive lookahead: ${humanizeElement(target)} looped back to ancestor ${childHash.substring(0, 8)}.`,
         });
       }
     } else {
@@ -1331,7 +1344,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'novelty-reward-triggered',
         selector: target.selector,
-        message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${target.selector}.`,
+        message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${humanizeElement(target)}.`,
       });
     } else {
       // Unproductive action — it returned to an already-seen state. Beyond the
@@ -1358,7 +1371,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'state-revisited',
         selector: target.selector,
-        message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty + priority penalty for ${target.selector}.`,
+        message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty + priority penalty for ${humanizeElement(target)}.`,
       });
     }
 
@@ -1391,7 +1404,7 @@ export class ExplorationLoop {
     // manually stops the test. Treat it as graceful shutdown, not fatal exception.
     if (isBrowserClosedError(err)) {
       this.deps.telemetry.emitMilestone('ℹ️ Session gracefully stopped by operator');
-      return { completed: false, reason: 'Session gracefully stopped by operator' };
+      return { completed: false, reason: 'Session gracefully stopped by operator', outcome: 'user-stopped' };
     }
 
     // Phase 3: Track failure count on exception
@@ -1418,6 +1431,7 @@ export class ExplorationLoop {
     return {
       completed: false,
       reason: runtimeCrashReason ?? serverCrashReason ?? `Engine exception: ${sanitized.message}`,
+      outcome: 'exception',
     };
   }
 
@@ -1435,6 +1449,7 @@ export class ExplorationLoop {
         cov.unexploredControls === 0
           ? 'Exploration budget reached — cluster coverage saturated.'
           : 'Exploration budget reached (hard cap or timebox).',
+      outcome: 'completed',
     };
   }
 }

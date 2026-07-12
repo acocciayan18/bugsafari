@@ -6,12 +6,14 @@
 // No auth, no sidebar, no control panel - just forensic views
 // Receives all telemetry data via props from App.tsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage, DecisionRationale } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import ForensicHelpIcon from '../../designs/icons/ForensicHelpIcon';
 import SessionTimer from '../common/SessionTimer';
+import JumpToBottomButton from '../common/JumpToBottomButton';
+import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, DecisionLensPanel } from '../telemetry';
 
 // Tab state type for the bottom terminal
@@ -82,7 +84,6 @@ export default function ClinicalForensicsDashboard({
   // ─────────────────────────────────────────────────────────────
 
 const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
-  const logContainerRef = useRef<HTMLDivElement>(null);
 
   // ─────────────────────────────────────────────────────────────
   // EFFECTS & MEMOIZATION
@@ -110,14 +111,10 @@ const formattedTelemetry = useMemo(() => {
     return events.slice(-100);
   }, [telemetry]);
 
-  /**
-   * Auto-scroll terminal to bottom when new logs arrive
-   */
-  useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [formattedTelemetry]);
+  // Combined growth signal across all streamed tabs sharing the terminal container;
+  // sticky-lock only re-pins when the user was already at the bottom.
+  const terminalContentSignal = formattedTelemetry.length + errors.incidents.length + errors.reports.length + browserConsole.length;
+  const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   // ─────────────────────────────────────────────────────────────
   // RENDER: Forensic View (55% of screen)
@@ -256,9 +253,10 @@ const formattedTelemetry = useMemo(() => {
         </div>
 
         {/* Terminal Output Container */}
+        <div className="relative flex-1 overflow-hidden">
         <div
           ref={logContainerRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-gray-200 border-t-0"
+          className="h-full overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-gray-200 border-t-0"
           style={{ scrollBehavior: 'smooth' }}
         >
 
@@ -355,6 +353,8 @@ const formattedTelemetry = useMemo(() => {
           )}
 
 
+        </div>
+        <JumpToBottomButton visible={!atBottom && activeTab !== 'decision-lens'} onClick={scrollToBottom} />
         </div>
       </div>
     </section>
