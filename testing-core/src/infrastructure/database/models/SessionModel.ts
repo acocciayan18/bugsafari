@@ -35,13 +35,18 @@ export interface ICaughtBug {
   stackTrace?: string;
   /** Per-finding human-actionable replication checklist (sequentially numbered upstream). */
   reproductionSteps?: string[];
-  /** Deterministic classification + scenario/step attribution (knowledge base). */
+  /** Deterministic classification + scenario/step attribution (knowledge base) plus verification verdict. */
   attribution?: {
     bugClass: string;
     cwe?: string;
     scenario?: string;
     testingType?: string;
     stepIndex?: number;
+    origin?: string;
+    confidence?: string;
+    verificationStatus?: string;
+    confidenceScore?: number;
+    corroborated?: boolean;
   };
 }
 
@@ -224,7 +229,8 @@ const sessionSchema = new Schema(
           // exact parity with the live Error Tab.
           stackTrace: { type: String, default: '' },
           reproductionSteps: { type: [String], default: [] },
-          // Deterministic knowledge-base classification + scenario/step attribution.
+          // Deterministic knowledge-base classification + scenario/step attribution,
+          // plus the verification verdict (provenance, confidence, status, score).
           attribution: {
             type: {
               bugClass: { type: String, default: '' },
@@ -232,6 +238,11 @@ const sessionSchema = new Schema(
               scenario: { type: String, default: '' },
               testingType: { type: String, default: '' },
               stepIndex: { type: Number, default: null },
+              origin: { type: String, default: null },
+              confidence: { type: String, default: null },
+              verificationStatus: { type: String, default: null },
+              confidenceScore: { type: Number, default: null },
+              corroborated: { type: Boolean, default: null },
             },
             required: false,
             default: null,

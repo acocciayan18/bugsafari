@@ -10,6 +10,7 @@ import { classifyFault, matchesCategory, type FaultType } from '../../../bugs/kn
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
+import { VerificationPipeline, type VerificationCandidate } from '../verification/index.js';
 
 /** Maps the knowledge-base severity scale to the persisted forensic-error scale. */
 const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', ForensicErrorSeverity> = {
@@ -136,20 +137,42 @@ export function isStressScenarioActive(): boolean {
  * confirmed-bug ledger via the injected dependencies.
  */
 export class StabilityMonitor {
+  // One verification pipeline per run: gates every caught fault on provenance +
+  // evidence before it can become a reported finding, and tracks recurrence /
+  // cross-channel correlation for the consistency check.
+  private readonly verifier = new VerificationPipeline();
+
   constructor(private readonly deps: StabilityMonitorDeps) {}
 
+  /** Origin (protocol+host) of the page under test, derived from the last known URL. */
+  private targetOrigin(): string | undefined {
+    try {
+      return new URL(this.deps.getLastKnownUrl()).origin;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
-   * Deterministically classify a caught fault against the knowledge base and
-   * attribute it to the scenario + step active at fault time. Returns the copyable
-   * remediation, the persisted severity, and the structured attribution — bound
-   * identically to the live reports and the saved confirmed bug so the dashboard's
-   * classification and Suggested Fix always match history.
+   * Verify a caught fault before it is reported. Classifies it against the
+   * knowledge base, then runs it through the verification pipeline (provenance →
+   * correlation → evidence scoring). Returns `report: false` for faults whose root
+   * cause is NOT the target application (BugSafari, Playwright, the browser,
+   * network/environment) — those are surfaced as informational telemetry only.
+   * When reportable, the returned attribution carries the full verification verdict
+   * (origin, confidence, verificationStatus, confidenceScore, corroborated) bound
+   * identically to the live reports and the saved confirmed bug.
    */
-  private classifyAndAttribute(
+  private verifyFault(
     faultType: FaultType,
     message: string,
-    opts?: { statusCode?: number; url?: string; content?: string },
-  ): { advice: string; severity: ForensicErrorSeverity; attribution: FindingAttribution } {
+    opts?: {
+      statusCode?: number;
+      url?: string;
+      content?: string;
+      evidence?: VerificationCandidate['evidence'];
+    },
+  ): { report: boolean; advice: string; severity: ForensicErrorSeverity; attribution: FindingAttribution; reason: string } {
     const classification = classifyFault({
       faultType,
       message,
@@ -159,17 +182,36 @@ export class StabilityMonitor {
       scenario: ActiveScenarioTracker.getActiveScenarioName(),
       stepIndex: ActiveScenarioTracker.getCurrentStepIndex(),
     });
+
+    const outcome = this.verifier.evaluate({
+      faultType,
+      message,
+      confidence: classification.confidence,
+      statusCode: opts?.statusCode,
+      url: opts?.url,
+      content: opts?.content,
+      targetOrigin: this.targetOrigin(),
+      evidence: opts?.evidence,
+    });
+
     const attribution: FindingAttribution = {
       bugClass: classification.bugClass,
       cwe: classification.cwe,
       scenario: classification.scenario,
       testingType: classification.testingType,
       stepIndex: classification.stepIndex,
+      origin: outcome.origin,
+      confidence: outcome.confidence,
+      verificationStatus: outcome.status,
+      confidenceScore: outcome.score,
+      corroborated: outcome.corroborated,
     };
     return {
+      report: outcome.report,
       advice: classification.advice,
       severity: SEVERITY_TO_FORENSIC[classification.severity],
       attribution,
+      reason: outcome.reason,
     };
   }
 
@@ -200,14 +242,22 @@ export class StabilityMonitor {
       // Freeze the rolling buffer and flush the active scenario's deliberate steps
       // (falling back to the rolling action log) at the exact moment of the crash.
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-      // Deterministic classification + scenario/step attribution + remediation,
-      // bound identically to the live reports and the saved confirmed bug so the
-      // dashboard's bug class and Suggested Fix always match history.
-      const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
-        'EXCEPTION',
-        message,
-        { url, content: stackTrace },
-      );
+      // Verify the fault: classify + provenance-gate + score. A fault whose root
+      // cause is not the target app (harness/driver/browser/env) is demoted to
+      // informational telemetry and never registered as a bug.
+      const verdict = this.verifyFault('EXCEPTION', message, {
+        url,
+        content: stackTrace,
+        evidence: { hasMessage: true, hasStackTrace: Boolean(error?.stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
+      });
+      const { advice: remediation, severity, attribution } = verdict;
+      if (!verdict.report) {
+        t.emit('ACTION', {
+          actionExecuted: 'unverified-exception',
+          message: `ℹ️ Unverified JS exception suppressed (${attribution.origin}): ${verdict.reason}`,
+        });
+        return;
+      }
       this.deps.setFreeze();
 
       t.emit('EXCEPTION', {
@@ -288,12 +338,20 @@ export class StabilityMonitor {
       // Freeze the rolling buffer and flush the active scenario's deliberate steps
       // (falling back to the rolling action log) at the exact moment of the crash.
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-      // Deterministic classification + attribution + remediation (see pageerror).
-      const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
-        'CONSOLE',
-        text,
-        { url, content: text },
-      );
+      // Verify before reporting (see pageerror): provenance-gate + score.
+      const verdict = this.verifyFault('CONSOLE', text, {
+        url,
+        content: text,
+        evidence: { hasMessage: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
+      });
+      const { advice: remediation, severity, attribution } = verdict;
+      if (!verdict.report) {
+        t.emit('ACTION', {
+          actionExecuted: 'unverified-console-error',
+          message: `ℹ️ Unverified console error suppressed (${attribution.origin}): ${verdict.reason}`,
+        });
+        return;
+      }
       this.deps.setFreeze();
 
       t.emit('EXCEPTION', {
@@ -418,22 +476,34 @@ export class StabilityMonitor {
         return;
       }
 
-      // MEDIUM+: genuine backend failure (5xx or masked soft-fail). Full finding.
-      // Phase 3: Track failed requests count.
-      this.deps.onApiFailure();
-
+      // MEDIUM+: genuine backend failure (5xx or masked soft-fail). Candidate finding.
       // One immutable snapshot, frozen at the moment this response failed, bound
       // identically to the live telemetry and the saved confirmed bug. Reading
       // the global rolling buffer twice (once per consumer) risks the live card
       // and the stored record diverging if an action lands between the reads.
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-      // Classify against the knowledge base — the response body is scanned for
-      // NoSQL/server-error signatures and the 5xx status escalates severity.
-      const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
-        'NETWORK',
-        `HTTP ${status} ${method} ${url}`,
-        { statusCode: status, url, content: bodyContent },
-      );
+      // Verify before reporting: the response body is scanned for NoSQL/server-error
+      // signatures, the 5xx escalates severity, and provenance rejects third-party /
+      // environment failures so only genuine target-app backend faults are reported.
+      const verification = this.verifyFault('NETWORK', `HTTP ${status} ${method} ${url}`, {
+        statusCode: status,
+        url,
+        content: bodyContent,
+        evidence: { hasMessage: true, hasStatusCode: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
+      });
+      const { advice: remediation, severity, attribution } = verification;
+      if (!verification.report) {
+        t.emit('NETWORK', {
+          statusCode: status,
+          url,
+          method,
+          message: `ℹ️ Unverified backend response suppressed (${attribution.origin}): ${verdict.reason}`,
+        });
+        return;
+      }
+
+      // Phase 3: Track failed requests count (only genuine target-app failures).
+      this.deps.onApiFailure();
 
       t.emit('NETWORK', {
         statusCode: status,
@@ -509,13 +579,26 @@ export class StabilityMonitor {
 
       // Process as EXCEPTION for real network failures
       const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
-      // Deterministic classification + attribution + remediation (see pageerror).
+      // Verify before reporting: DNS/TLS/connection failures and third-party hosts
+      // are environment artifacts, not target-app defects, and are gated out here.
       const failureDetail = `${method} ${url} - ${reason}`;
-      const { advice: remediation, severity, attribution } = this.classifyAndAttribute(
-        'NETWORK',
-        `Network Request Failed: ${reason}`,
-        { url, content: failureDetail },
-      );
+      const verdict = this.verifyFault('NETWORK', `Network Request Failed: ${reason}`, {
+        url,
+        content: failureDetail,
+        evidence: { hasMessage: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
+      });
+      const { advice: remediation, severity, attribution } = verdict;
+      if (!verdict.report) {
+        if (!isStressScenarioActive()) {
+          t.emit('ACTION', {
+            actionExecuted: 'unverified-network-failure',
+            url,
+            method,
+            message: `ℹ️ Unverified network failure suppressed (${attribution.origin}): ${verdict.reason}`,
+          });
+        }
+        return;
+      }
 
       t.emit('EXCEPTION', {
         url,

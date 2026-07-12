@@ -4,6 +4,8 @@
 // Crash/incident reports plus the action breadcrumb/record shapes that
 // compose the reproduction playbook.
 
+import type { FaultConfidence, FaultOrigin, VerificationStatus } from './verification.js';
+
 export interface ActionBreadcrumb {
   timestamp: string;
   selector: string;
@@ -29,6 +31,19 @@ export interface FindingAttribution {
   testingType?: string;
   /** Chronological step index in the reproduction timeline at fault time. */
   stepIndex?: number;
+  // ── Verification verdict (finding-verification pipeline) ──
+  // Optional on the wire so older records/clients remain valid. Populated once the
+  // fault has passed provenance + evidence scoring; absent ⇒ legacy/unverified.
+  /** Where the root cause was attributed. Only 'TARGET_APP' is a genuine defect. */
+  origin?: FaultOrigin;
+  /** Evidence strength behind {@link bugClass}. */
+  confidence?: FaultConfidence;
+  /** Terminal verification state — CONFIRMED / NEEDS_VERIFICATION / INCONCLUSIVE. */
+  verificationStatus?: VerificationStatus;
+  /** Normalized 0–1 confidence score that produced {@link verificationStatus}. */
+  confidenceScore?: number;
+  /** True when a repeat occurrence or a second channel corroborated the fault. */
+  corroborated?: boolean;
 }
 
 export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK';
