@@ -20,6 +20,8 @@ Treat this prompt as a design objective rather than a fixed specification, and i
 
 Generate concise, short solutions for new modules or code.
 
+never generate a multi-line comments
+
 Watch for over-engineering, oversized files needing refactor.
 
 Watch for weird syntax/style mismatching rest of codebase.

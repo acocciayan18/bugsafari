@@ -71,6 +71,59 @@ check('coverage stall adds exactly 1 regardless of hash/structure repetition', (
   assert.equal(result.stagnationScore, 1);
 });
 
+check('coverage stall at the threshold (no extra depth) still adds exactly 1 (backward compatible)', () => {
+  const result = computeStagnation({
+    currentHash: 'hash-A',
+    previousCombined: 'hash-Z',
+    recentStructures: [],
+    structure: 'shell-1',
+    structureWindow: 8,
+    coverageStagnant: true,
+    coverageStallSteps: 0, // exactly at the window — same as omitting it
+  });
+  assert.equal(result.stagnationScore, 1);
+});
+
+check('a sustained coverage stall escalates the term by one point per 3 extra steps', () => {
+  const base = {
+    currentHash: 'hash-A',
+    previousCombined: 'hash-Z',
+    recentStructures: [] as string[],
+    structure: 'shell-1',
+    structureWindow: 8,
+    coverageStagnant: true,
+  };
+  assert.equal(computeStagnation({ ...base, coverageStallSteps: 2 }).stagnationScore, 1); // <3 → no extra
+  assert.equal(computeStagnation({ ...base, coverageStallSteps: 3 }).stagnationScore, 2); // +1
+  assert.equal(computeStagnation({ ...base, coverageStallSteps: 6 }).stagnationScore, 3); // +2
+});
+
+check('the escalated coverage term is bounded by the cap so the escape window always recovers', () => {
+  const result = computeStagnation({
+    currentHash: 'hash-A',
+    previousCombined: 'hash-Z',
+    recentStructures: [],
+    structure: 'shell-1',
+    structureWindow: 8,
+    coverageStagnant: true,
+    coverageStallSteps: 999, // deep stall — extra points capped at COVERAGE_STALL_CAP (3)
+  });
+  assert.equal(result.stagnationScore, 1 + 3); // baseline 1 + capped 3
+});
+
+check('coverageStallSteps is ignored when coverage is NOT stalled', () => {
+  const result = computeStagnation({
+    currentHash: 'hash-A',
+    previousCombined: 'hash-Z',
+    recentStructures: [],
+    structure: 'shell-1',
+    structureWindow: 8,
+    coverageStagnant: false,
+    coverageStallSteps: 100,
+  });
+  assert.equal(result.stagnationScore, 0);
+});
+
 check('all three signals combine additively', () => {
   const result = computeStagnation({
     currentHash: 'hash-A',

@@ -15,8 +15,10 @@
  * VULN_SCOUT: Security vulnerability injection (SQL, XSS, etc.)
  * ASYNC_RACE: Interrupts in-flight async operations to surface teardown races,
  *             swallowed promise rejections, and lifecycle state inconsistencies.
+ * STORAGE_TAMPER: Forges client-trusted auth state (localStorage/sessionStorage/
+ *             JWT claims/cookies) to expose broken client-side access control.
  */
-export type ChaosContextType = 'FUZZ' | 'NETWORK' | 'STRESS_CLICK' | 'ROUTE_TRASH' | 'VULN_SCOUT' | 'ASYNC_RACE';
+export type ChaosContextType = 'FUZZ' | 'NETWORK' | 'STRESS_CLICK' | 'ROUTE_TRASH' | 'VULN_SCOUT' | 'ASYNC_RACE' | 'STORAGE_TAMPER';
 
 /**
  * FuzzingStrategyType - Strategy used for fuzzing
@@ -145,6 +147,30 @@ export interface AsyncRaceMetadata {
 }
 
 /**
+ * StorageTamperMetadata - Client auth-state tampering parameters.
+ *
+ * Records exactly which client-trusted state was forged and whether privileged
+ * UI unlocked as a result, so telemetry, the live transaction, and stored findings
+ * stay reproducible and attributable. `privilegedSurfaceGained` is the oracle: it
+ * is the only field that turns the provocation into a finding.
+ */
+export interface StorageTamperMetadata {
+  targetSelector: string;
+  /** Storage/cookie keys whose values were escalated (role/admin/auth flags). */
+  tamperedKeys: string[];
+  /** Whether a JWT-shaped token was re-forged with escalated claims (alg=none). */
+  jwtForged: boolean;
+  /** Count of privileged-surface markers present BEFORE tampering (baseline). */
+  privilegedMarkersBefore: number;
+  /** Count of privileged-surface markers present AFTER tampering + re-render. */
+  privilegedMarkersAfter: number;
+  /** Oracle verdict: privileged UI appeared that was absent before the tamper. */
+  privilegedSurfaceGained: boolean;
+  /** Where the client state ended up once the scenario restored the baseline. */
+  resultingState: 'restored' | 'restore-failed' | 'error';
+}
+
+/**
  * ChaosMetadata - Union type for all chaos metadata
  */
 export type ChaosMetadata =
@@ -153,7 +179,8 @@ export type ChaosMetadata =
   | StressClickMetadata
   | RouteTrashMetadata
   | VulnScoutMetadata
-  | AsyncRaceMetadata;
+  | AsyncRaceMetadata
+  | StorageTamperMetadata;
 
 /**
  * ChaosContext<T> - Internal transaction memory state with generic metadata

@@ -64,7 +64,8 @@ export type TestingTypeId =
   | 'dataFuzzing'
   | 'concurrency'
   | 'navigation'
-  | 'asyncRace';
+  | 'asyncRace'
+  | 'authState';
 
 export interface TestingTypeOption {
   /** Stable identifier transmitted in the run payload. */
@@ -119,6 +120,12 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
     description: 'Interrupts in-flight async work to surface teardown races, swallowed promise rejections, and state desync (AsyncStateRacer).',
     scenarios: ['AsyncStateRacer'],
   },
+  {
+    id: 'authState',
+    label: 'Auth-State & Storage Tampering',
+    description: 'Escalates client-trusted auth state (localStorage/sessionStorage/JWT claims) and checks whether privileged UI unlocks purely from tampered client state (StorageTamper).',
+    scenarios: ['StorageTamper'],
+  },
 ];
 
 /** All testing-type ids — the default selection (everything enabled). */
@@ -139,6 +146,7 @@ export type InfiltrationProfileId =
   | 'DEEP_SEMANTIC_DATA_ATTACK'
   | 'HIGH_FREQUENCY_CONCURRENCY_STRAIN'
   | 'ASYNC_LIFECYCLE_ASSAULT'
+  | 'AUTH_STATE_SUBVERSION'
   | 'CUSTOM_STRATEGY_PROFILE';
 
 export interface InfiltrationProfileOption {
@@ -183,6 +191,12 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
     label: 'Async Lifecycle Assault',
     description: 'Async-focused — interrupts in-flight requests/transitions to expose race conditions, teardown crashes, swallowed rejections, and state desync.',
     testingTypes: ['asyncRace'],
+  },
+  {
+    id: 'AUTH_STATE_SUBVERSION',
+    label: 'Auth-State Subversion',
+    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/sessionStorage/JWT) and checks whether privileged UI unlocks without server authorization.',
+    testingTypes: ['authState'],
   },
   // CUSTOM_STRATEGY_PROFILE retired — BugSafari runs only automated profiles.
   // Union member + resolve custom-branch kept for backward-compat payloads.

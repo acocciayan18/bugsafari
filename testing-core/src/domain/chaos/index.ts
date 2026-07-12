@@ -15,4 +15,5 @@ export {
   type RouteTrashMetadata,
   type VulnScoutMetadata,
   type AsyncRaceMetadata,
+  type StorageTamperMetadata,
 } from './ChaosTransactionManager.js';

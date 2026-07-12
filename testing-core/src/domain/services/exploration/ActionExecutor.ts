@@ -1,7 +1,8 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
-import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer } from '../../scenarios/index.js';
+import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper } from '../../scenarios/index.js';
+import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
@@ -394,6 +395,24 @@ export class ActionExecutor {
   }
 
   /**
+   * Build the StorageTamper adapter bound to this run's shared
+   * ChaosTransactionManager and the confirmed-finding sink. Routing through here
+   * opens a real STORAGE_TAMPER transaction and lets the scenario's privileged-
+   * surface oracle self-assert a CLIENT_TRUST_BOUNDARY_VIOLATION finding.
+   */
+  private buildStorageTamperScenario(): StressScenario {
+    return {
+      name: storageTamper.name,
+      execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
+        await storageTamper.execute(page, target, {
+          chaosManager: this.deps.fuzzManager,
+          registerFinding: (finding) => this.registerStorageFinding(finding),
+        });
+      },
+    };
+  }
+
+  /**
    * Heuristically rank the stress scenarios that suit this element, then return
    * the first whose owning testing-type the operator left enabled. Returns null
    * when every applicable scenario has been deactivated for this run.
@@ -430,6 +449,15 @@ export class ActionExecutor {
       if (buttonLike) candidates.push(this.buildAsyncStateRacerScenario());
       candidates.push(stressScenarioMap.CoordinateBombing);
     }
+
+    // Auth-state / storage tampering — page-level broken-access-control probe. On an
+    // auth-relevant control (login/logout/account/admin/session) it leads so the
+    // client-trust check runs even under full-spectrum CHAOS; elsewhere it trails as a
+    // catch-all so the dedicated authState profile still exercises every control.
+    const authRelevant = /(log[\s_-]?in|log[\s_-]?out|sign[\s_-]?in|sign[\s_-]?out|sign[\s_-]?up|account|profile|\bauth|admin|session|dashboard|member|\brole)/i.test(source);
+    const storageTamperScenario = this.buildStorageTamperScenario();
+    if (authRelevant) candidates.unshift(storageTamperScenario);
+    else candidates.push(storageTamperScenario);
 
     // Return the first candidate whose testing-type is enabled this session.
     for (const candidate of candidates) {
@@ -839,6 +867,43 @@ export class ActionExecutor {
       actionExecuted: 'fuzz-leak-confirmed',
       selector,
       message: `🔓 Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
+    });
+  }
+
+  /**
+   * Map a StorageTamper oracle hit into a classified ConfirmedBug and register it.
+   * `confirmed: true` promotes the CLIENT_TRUST_BOUNDARY_VIOLATION verdict on the
+   * scenario's own privileged-surface evidence (see FaultClassifier), never from
+   * scenario expectation alone — mirroring the fuzz-leak path.
+   */
+  private registerStorageFinding(finding: StorageTamperFinding): void {
+    const classification = classifyFault({
+      faultType: 'CONSOLE',
+      message: finding.message,
+      content: finding.evidence,
+      scenario: 'StorageTamper',
+      confirmed: true,
+    });
+    this.deps.registerConfirmedBug({
+      bugId: `storage-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'STORAGE_TAMPER',
+      message: finding.evidence,
+      selector: finding.selector,
+      payloadUsed: 'role=admin; isAdmin=true; JWT{alg:none,role:admin}',
+      advice: classification.advice,
+      timestamp: new Date(),
+      attribution: {
+        bugClass: classification.bugClass,
+        cwe: classification.cwe,
+        scenario: classification.scenario,
+        testingType: classification.testingType,
+        stepIndex: classification.stepIndex,
+      },
+    });
+    this.deps.telemetry.emit('EXCEPTION', {
+      actionExecuted: 'storage-tamper-confirmed',
+      selector: finding.selector,
+      message: `🔓 Confirmed client-trust violation (${classification.bugClass}) — privileged UI unlocked from forged client storage`,
     });
   }
 }

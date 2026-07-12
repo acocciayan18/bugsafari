@@ -76,6 +76,14 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     signalCategories: ['SERVER_ERROR', 'DEAD_END'],
     description: 'Delays or aborts an API call to test network-fault resilience.',
   },
+  StorageTamper: {
+    testingType: 'authState',
+    expectedBugs: ['CLIENT_TRUST_BOUNDARY_VIOLATION'],
+    // No runtime signal category: this fault is self-asserted by the scenario's
+    // own privileged-surface oracle (confirmed=true), not matched from page text.
+    signalCategories: [],
+    description: 'Forges client-trusted auth state (storage/JWT) and detects privileged UI unlocked without server authorization.',
+  },
   [EXPLORATORY_SCENARIO]: {
     testingType: 'exploratory',
     expectedBugs: ['RUNTIME_STABILITY_EXCEPTION', 'STRUCTURAL_NAVIGATION_LOGIC', 'BOUNDARY_STRESS_FAILURE'],

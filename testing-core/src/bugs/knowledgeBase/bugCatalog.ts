@@ -160,4 +160,16 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a test mutating the URL and asserting a stable, resolvable route',
     ),
   },
+  CLIENT_TRUST_BOUNDARY_VIOLATION: {
+    title: 'Client-trusted auth state (broken access control)',
+    description: 'The client granted privileged UI/routes purely from tampered client state (localStorage/sessionStorage/JWT claims) without server-side authorization.',
+    defaultSeverity: 'CRITICAL',
+    cwe: 'CWE-602',
+    remediation: remediation(
+      'Suggested remediation — client-side access control',
+      '1. Never derive authorization from client storage; treat localStorage/JWT claims as untrusted input',
+      '2. Enforce every privileged view/route/action server-side and verify JWT signatures (reject alg=none)',
+      '3. Add a test that forges role=admin in client storage and asserts the server still denies access',
+    ),
+  },
 };

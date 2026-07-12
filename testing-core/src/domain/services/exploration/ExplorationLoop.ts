@@ -655,7 +655,8 @@ export class ExplorationLoop {
 
     // --- Adaptive stagnation scoring (coverage-blended) ---
     // Score BEFORE recording this structure so familiarity reflects prior steps.
-    const coverageStagnant = this.deps.clusterRegistry.stepsSinceCoverageGain(step) >= ctx.coverageStallWindow;
+    const stepsSinceCoverageGain = this.deps.clusterRegistry.stepsSinceCoverageGain(step);
+    const coverageStagnant = stepsSinceCoverageGain >= ctx.coverageStallWindow;
     const stagnation = computeStagnation({
       currentHash,
       previousCombined: ctx.previousCombined,
@@ -663,6 +664,8 @@ export class ExplorationLoop {
       structure: compound.structure,
       structureWindow: ctx.structureWindow,
       coverageStagnant,
+      // Depth past the stall window escalates the escape response on sustained stalls.
+      coverageStallSteps: stepsSinceCoverageGain - ctx.coverageStallWindow,
     });
     ctx.recentStructures = stagnation.nextRecentStructures;
     ctx.previousCombined = stagnation.nextPreviousCombined;

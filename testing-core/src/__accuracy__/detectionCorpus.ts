@@ -31,6 +31,7 @@ export const SECURITY_CLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
   'FUZZ_VULNERABILITY_LEAK',
   'SECURITY_VULNERABILITY_LEAK',
   'INPUT_SANITIZATION_FAILURE',
+  'CLIENT_TRUST_BOUNDARY_VIOLATION',
 ]);
 
 export const DETECTION_CORPUS: readonly DetectionCase[] = [

@@ -11,6 +11,7 @@ import { routeTrasher } from './routeTrasher/index.js';
 import { formBypasser } from './formBypasser.js';
 import { networkSaboteur } from './networkSaboteur.js';
 import { asyncStateRacer } from './asyncStateRacer.js';
+import { storageTamper } from './storageTamper.js';
 
 // Import element classifier and strategies
 import {
@@ -137,6 +138,20 @@ export function createStressScenarioRegistry(
     },
   };
 
+  // Wrap the storage-tamper scenario so it opens a real STORAGE_TAMPER transaction
+  // on the shared manager for fault attribution. The registry path injects only the
+  // manager; the live ActionExecutor path additionally injects the finding sink.
+  const storageTamperScenario: StressScenario = {
+    name: storageTamper.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      try {
+        await storageTamper.execute(page, target, { chaosManager: chaosManager as any });
+      } catch (error) {
+        console.error(`[StressScenario:StorageTamper] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    },
+  };
+
   // Return the scenario registry with wrapped scenarios.
   return [
     dataFuzzer,
@@ -145,6 +160,7 @@ export function createStressScenarioRegistry(
     formBypasser,
     networkSaboteurScenario,
     asyncStateRacerScenario,
+    storageTamperScenario,
   ];
 }
 
@@ -181,6 +197,14 @@ export const stressScenarioMap: Record<string, StressScenario> = {
       return (networkSaboteur as any).execute(page, target, null);
     },
   },
+  StorageTamper: {
+    name: storageTamper.name,
+    async execute(page: Page, target?: InteractiveElement): Promise<void> {
+      // Static-map path: no chaos manager / finding sink; the live ActionExecutor
+      // adapter injects both for real attribution + oracle-confirmed findings.
+      await storageTamper.execute(page, target, null as any);
+    },
+  },
 };
 
 // Re-export all items for backward compatibility
@@ -192,6 +216,7 @@ export {
   networkSaboteur,
   routeTrasher,
   asyncStateRacer,
+  storageTamper,
   dataFuzzer,
   classifyInputElement,
   type FieldCategory,
