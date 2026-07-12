@@ -1,33 +1,23 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // InfiltrationProfileSelector.tsx - Unified Infiltration Profile picker
-// Replaces the raw scenario checklist with four named execution profiles. When
-// the Custom Strategy Profile is chosen, the individual scenario matrix is
-// revealed beneath so the operator can hand-pick strategies.
+// Presents the named automated execution profiles as a single-choice radio group.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { memo } from 'react';
 import { INFILTRATION_PROFILE_CATALOG } from '../../types';
-import type { InfiltrationProfileId, TestingTypeId } from '../../types';
-import TestingTypeSelector from './TestingTypeSelector';
+import type { InfiltrationProfileId } from '../../types';
 
 interface InfiltrationProfileSelectorProps {
   profile: InfiltrationProfileId;
   onProfileChange: (next: InfiltrationProfileId) => void;
-  customScenarios: TestingTypeId[];
-  onCustomScenariosChange: (next: TestingTypeId[]) => void;
   disabled?: boolean;
 }
 
 function InfiltrationProfileSelectorImpl({
   profile,
   onProfileChange,
-  customScenarios,
-  onCustomScenariosChange,
   disabled = false,
 }: InfiltrationProfileSelectorProps) {
-  const activeProfile = INFILTRATION_PROFILE_CATALOG.find((option) => option.id === profile);
-  const isCustom = Boolean(activeProfile?.custom);
-
   return (
     <div className="w-full bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -62,17 +52,6 @@ function InfiltrationProfileSelectorImpl({
           );
         })}
       </div>
-
-      {/* Individual scenario matrix — only for the Custom Strategy Profile. */}
-      {isCustom && (
-        <div className="border-t border-gray-100 pt-3">
-          <TestingTypeSelector
-            selected={customScenarios}
-            onChange={onCustomScenariosChange}
-            disabled={disabled}
-          />
-        </div>
-      )}
     </div>
   );
 }

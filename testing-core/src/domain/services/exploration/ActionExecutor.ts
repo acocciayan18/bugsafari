@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
-import { stressScenarioMap, formBypasser, routeTrasher, buttonSpammer, asyncStateRacer } from '../../scenarios/index.js';
+import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer } from '../../scenarios/index.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
@@ -15,7 +15,6 @@ import {
 import { triggerFormSubmission } from './formSubmitter.js';
 import { classifyInteractionScope } from './interactionScope.js';
 import { decideEscalation } from './escalationDecision.js';
-import { shouldRouteTrash } from './routeTrashGating.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
@@ -54,8 +53,7 @@ export class ActionExecutor {
     target: InteractiveElement,
     ranked: InteractiveElement[],
     revisitedPage: boolean,
-    allowRouteMutation = true,
-  ): Promise<{ ranRouteMutation: boolean }> {
+  ): Promise<void> {
     // Highlight the element the navigator chose to traverse.
     await this.deps.highlighter.flashHighlight(page, target.selector);
 
@@ -78,7 +76,7 @@ export class ActionExecutor {
         await this.executeInputFuzzing(page, target, 'exploratory');
       }
       // No input strategy enabled → leave the field untouched.
-      return { ranRouteMutation: false };
+      return;
     }
 
     // SUPPORTING FORM CONTROLS — toggles and dropdowns are navigation substrate
@@ -87,11 +85,11 @@ export class ActionExecutor {
     // instead of stalling on an unchecked box or unselected dropdown.
     if (scope === 'toggle') {
       await this.actuateToggle(page, target);
-      return { ranRouteMutation: false };
+      return;
     }
     if (scope === 'dropdown') {
       await this.actuateDropdown(page, target);
-      return { ranRouteMutation: false };
+      return;
     }
 
     // INERT controls (file/hidden inputs) cannot be safely driven — clicking a
@@ -102,7 +100,7 @@ export class ActionExecutor {
         selector: target.selector,
         message: `Skipped non-actuable control ${target.selector} (${target.type || target.tagName}).`,
       });
-      return { ranRouteMutation: false };
+      return;
     }
 
     // CLICKABLE NAVIGATION CONTROL.
@@ -115,14 +113,9 @@ export class ActionExecutor {
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
     //    this element (if any) AFTER navigation, so scenario-specific actions
     //    execute on the freshly discovered state rather than replacing traversal.
-    //    RouteTrasher is offered only while the engine still permits URL mutations
-    //    on this state (allowRouteMutation); once its per-state limit is reached it
-    //    is disabled here so it cannot re-trash an already-exhausted route.
-    let ranRouteMutation = false;
-    const scenario = this.pickStressScenario(target, revisitedPage, allowRouteMutation);
+    const scenario = this.pickStressScenario(target, revisitedPage);
     if (scenario) {
       await this.runStressScenario(page, target, scenario);
-      ranRouteMutation = scenario.name === routeTrasher.name;
     }
 
     // 3) Overlapping concurrency stress across sibling elements — gated separately.
@@ -138,8 +131,6 @@ export class ActionExecutor {
         ActiveScenarioTracker.end();
       }
     }
-
-    return { ranRouteMutation };
   }
 
   /**
@@ -372,22 +363,6 @@ export class ActionExecutor {
   }
 
   /**
-   * Build the RouteTrasher adapter bound to this run's shared
-   * ChaosTransactionManager. Routing through here (instead of the null-injecting
-   * static stressScenarioMap entry) is what opens a real ROUTE_TRASH transaction
-   * during thrashing, so deterministic metadata and the failure snapshot are
-   * attributed correctly.
-   */
-  private buildRouteTrasherScenario(): StressScenario {
-    return {
-      name: routeTrasher.name,
-      execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
-        await routeTrasher.execute(page, target, this.deps.fuzzManager);
-      },
-    };
-  }
-
-  /**
    * Build the ButtonSpammer adapter bound to this run's shared
    * ChaosTransactionManager. Routing through here (instead of the null-injecting
    * static stressScenarioMap entry) is what opens a real STRESS_CLICK transaction
@@ -426,7 +401,6 @@ export class ActionExecutor {
   private pickStressScenario(
     target: InteractiveElement,
     revisitedPage: boolean,
-    allowRouteMutation: boolean,
   ): StressScenario | null {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
@@ -441,24 +415,13 @@ export class ActionExecutor {
     const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';
 
     // Build an ordered candidate list by element heuristics. Order preserves the
-    // previous prioritization (constraint stripping for inputs/buttons, route
-    // trashing on revisits, coordinate bombing as the catch-all).
+    // previous prioritization (constraint stripping for inputs/buttons, coordinate
+    // bombing as the catch-all). RouteTrasher is intentionally excluded — the
+    // route-mutation attack is disabled engine-wide.
     const candidates: StressScenario[] = [];
     if (isTextInput) {
       candidates.push(formBypasser);
     } else {
-      // RouteTrasher only on revisits, while URL mutations are still permitted for
-      // this state (past its per-state limit it is dropped so the engine stops
-      // oscillating between identical error routes), AND only on controls that
-      // actually own a route — a menu toggle/plain button owns none, so trashing
-      // the current URL after it just re-bootstraps the SPA and burns the clock.
-      if (
-        revisitedPage &&
-        allowRouteMutation &&
-        shouldRouteTrash({ tagName: target.tagName, role: target.role ?? '', source })
-      ) {
-        candidates.push(this.buildRouteTrasherScenario());
-      }
       if (buttonLike) candidates.push(formBypasser);
       if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
       // Async lifecycle / interruption race — a control that fires async work is the

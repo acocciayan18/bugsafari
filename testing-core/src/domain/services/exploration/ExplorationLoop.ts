@@ -38,13 +38,6 @@ const TRIGGERED_SELECTOR_DEMOTION = 1000;
 // off-screen/lazy controls before the page is declared fully explored.
 const MAX_FRONTIER_SCROLLS = 6;
 
-// RouteTrasher per-state URL-mutation cap is operator-configurable via
-// OptimizationSettings['route-mutation-budget'] (default 1, 0 disables) and
-// reaches the loop as deps.routeMutationBudget. After that many invocations on
-// one state the scenario is disabled for that node, its route-mutation branch is
-// penalized, and exploration is redirected to the top unvisited control —
-// preventing oscillation between structurally identical error routes.
-
 type LoopResult = { completed: boolean; reason: string };
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
 
@@ -1056,47 +1049,6 @@ export class ExplorationLoop {
     }
   }
 
-  /**
-   * Account one RouteTrasher invocation against the current state's URL-mutation
-   * budget. On reaching the configured budget it penalizes the route-mutation
-   * branch in the scoring model — ONLY the already-explored churn controls, so the
-   * unvisited frontier is left intact — and announces that the highest-scoring
-   * UNVISITED control is prioritized next, maximizing coverage before any
-   * rollback/reseed. The navigator's penalizeRouteBranch() guarantees this fires
-   * exactly once per state.
-   */
-  private handleRouteMutationBudget(currentHash: string, ranked: InteractiveElement[]): void {
-    const limit = this.deps.routeMutationBudget;
-    const count = this.deps.pathNavigator.registerRouteMutation(currentHash);
-    this.deps.telemetry.emit('ACTION', {
-      actionExecuted: 'route-mutation-registered',
-      stateHash: currentHash,
-      message: `RouteTrasher mutation ${count}/${limit} on this state.`,
-    });
-    if (count < limit) return;
-    if (!this.deps.pathNavigator.penalizeRouteBranch(currentHash)) return;
-
-    // Penalize only the churn (already-explored controls); unvisited edges keep
-    // their full score so best-first still prioritizes them.
-    const explored = new Set(this.deps.pathNavigator.exploredEdgeSelectors(currentHash));
-    for (const element of ranked) {
-      if (explored.has(element.selector)) {
-        this.deps.scorer.penalize(element.selector, Math.abs(element.riskScore) + 1);
-      }
-    }
-
-    const best = this.deps.pathNavigator.bestUnvisitedSelector(currentHash);
-    this.deps.telemetry.emitMilestone(
-      `🧭 RouteTrasher limit (${limit}) reached on this state — URL mutations disabled, route branch penalized; prioritizing ${best ? `unvisited control "${best}"` : 'remaining unvisited controls'} before any rollback.`,
-    );
-    this.deps.telemetry.emit('ACTION', {
-      actionExecuted: 'route-mutation-limit-reached',
-      selector: best ?? '',
-      stateHash: currentHash,
-      message: `RouteTrasher disabled for this state after ${count} mutations; prioritizing highest-scoring unvisited element to maximize coverage.`,
-    });
-  }
-
   private async executeAndVerifyAction(
     page: Page,
     step: number,
@@ -1138,35 +1090,7 @@ export class ExplorationLoop {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
       this.deps.noteActedTarget(target);
-      // RouteTrasher is permitted only while this state is under its per-state
-      // URL-mutation budget AND the session-wide throttle still allows it (max
-      // executions + cooldown) so the high-impact URL/history attack can't
-      // dominate a mixed run — a route-focused profile disables the throttle.
-      // Once run, account it against both the per-state budget and the throttle.
-      const allowRouteMutation =
-        this.deps.pathNavigator.canRouteMutate(currentHash, this.deps.routeMutationBudget) &&
-        this.deps.routeTrashThrottle.canRun();
-      const { ranRouteMutation } = await this.deps.actionExecutor.executeWeightedAction(
-        page,
-        target,
-        ranked,
-        revisitedPage,
-        allowRouteMutation,
-      );
-      if (ranRouteMutation) {
-        this.handleRouteMutationBudget(currentHash, ranked);
-        // Announce exactly once, when this run exhausts the session budget, so the
-        // operator sees the rebalance toward form/interaction/component scenarios.
-        if (this.deps.routeTrashThrottle.record()) {
-          this.deps.telemetry.emitMilestone(
-            '🧭 RouteTrasher session budget reached — throttling URL manipulation; prioritizing form fuzzing, interaction, and component exploration.',
-          );
-          this.deps.telemetry.emit('ACTION', {
-            actionExecuted: 'route-trash-session-throttled',
-            message: 'RouteTrasher session budget exhausted; other scenarios prioritized for the rest of the run.',
-          });
-        }
-      }
+      await this.deps.actionExecutor.executeWeightedAction(page, target, ranked, revisitedPage);
       const verification = await this.deps.stateRestorer.verifyTraversal(page, currentHash, 3000);
       traversalOk = verification.ok;
       childHash = verification.childHash;

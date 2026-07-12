@@ -40,7 +40,6 @@ import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
-import { RouteTrashThrottle } from './RouteTrashThrottle.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import type { ConfirmedBug, ForensicErrorParams, RuntimeMetrics } from './types.js';
 
@@ -122,13 +121,8 @@ export class ExplorationEngine {
   // Strict Page Boundary Lock: when true the launch URL is the immutable
   // reference state and any drift is reverted (resolved in the constructor).
   private readonly strictUrlLock: boolean;
-  // RouteTrasher URL-mutation budget per state (resolved in the constructor).
-  private readonly routeMutationBudget: number;
   // Session-wide transition-repeat budget (resolved in the constructor).
   private readonly transitionRepeatBudget: number;
-  // Session-scoped RouteTrasher throttle (max executions + cooldown), disabled for
-  // route-focused profiles. Config resolved in the constructor; counters reset per run.
-  private readonly routeTrashThrottle: RouteTrashThrottle;
 
   private isPaused = false;
   private isStopRequested = false;
@@ -203,12 +197,6 @@ export class ExplorationEngine {
     this.strictUrlLock = optimizationSettings?.strictUrlLock ?? false;
     console.log(`[ExplorationEngine] Strict URL Lock:`, this.strictUrlLock);
 
-    // Resolve the RouteTrasher URL-mutation budget per state (default 1; 0 disables).
-    this.routeMutationBudget = optimizationSettings?.['route-mutation-budget']
-      ?? defaultOptimizationSettings['route-mutation-budget']
-      ?? 1;
-    console.log(`[ExplorationEngine] RouteTrasher budget:`, this.routeMutationBudget);
-
     // Resolve the session-wide transition-repeat budget (default 3; 0 disables).
     this.transitionRepeatBudget = optimizationSettings?.['transition-repeat-budget']
       ?? defaultOptimizationSettings['transition-repeat-budget']
@@ -226,23 +214,6 @@ export class ExplorationEngine {
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
     console.log(`[ExplorationEngine] Active testing types:`, this.gate.activeCategories());
-
-    // Route-focused profile = navigation is the SOLE active category. Such runs
-    // want unrestricted URL manipulation, so the RouteTrasher throttle is disabled;
-    // every mixed run (CHAOS, concurrency+navigation, etc.) throttles it so it
-    // can't dominate. Session budget + cooldown are operator-tunable.
-    const activeCategories = this.gate.activeCategories();
-    const routeFocused = activeCategories.length === 1 && this.gate.isEnabled('navigation');
-    this.routeTrashThrottle = new RouteTrashThrottle({
-      sessionBudget:
-        optimizationSettings?.['route-trash-session-budget']
-        ?? defaultOptimizationSettings['route-trash-session-budget'] ?? 6,
-      cooldownMs:
-        optimizationSettings?.['route-trash-cooldown-ms']
-        ?? defaultOptimizationSettings['route-trash-cooldown-ms'] ?? 20000,
-      enabled: !routeFocused,
-    });
-    console.log(`[ExplorationEngine] RouteTrasher throttle:`, { routeFocused, enabled: !routeFocused });
 
     // Reproducibility seed (optional). One seed drives BOTH the edge-selection
     // softmax and fuzz payload/vector choice, so a seeded run replays identically.
@@ -465,7 +436,6 @@ export class ExplorationEngine {
     this.escalationTracker.resetAll();
     this.routeExhaustion.reset();
     this.edgeRepeat.reset();
-    this.routeTrashThrottle.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -762,9 +732,7 @@ export class ExplorationEngine {
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
-        routeMutationBudget: this.routeMutationBudget,
         transitionRepeatBudget: this.transitionRepeatBudget,
-        routeTrashThrottle: this.routeTrashThrottle,
         // Glass-box Decision Lens: build the exact per-feature rationale for the
         // chosen target vs its runner-up, stamped with this run's session id.
         explainDecision: (input) =>

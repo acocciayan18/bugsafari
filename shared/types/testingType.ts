@@ -18,23 +18,10 @@ export interface OptimizationSettings {
   // Strict Page Boundary Lock: confine exploration to the exact launch URL
   // (path + query + hash). Any action that drifts the page off it is reverted.
   strictUrlLock?: boolean;
-  // RouteTrasher (URL-mutation) budget per unique page/state. Max times the
-  // scenario may run on one state before it is permanently deprioritized.
-  // 0 disables RouteTrasher entirely (default: 1 — once, then deprioritize).
-  'route-mutation-budget'?: number;
   // Session-wide transition-repeat budget: max times one control may re-navigate
   // its structural shell back to an already-seen view before it is blocked
   // session-wide as a navigation-loop source. 0 disables the cap (default: 3).
   'transition-repeat-budget'?: number;
-  // Adaptive RouteTrasher throttle (mixed/exploratory runs only — a route-focused
-  // profile, i.e. navigation as the sole active category, bypasses both limits so
-  // route manipulation runs unrestricted). Caps how much the high-impact
-  // URL/history attack may dominate a shared run so form/interaction/component
-  // exploration still get budget.
-  // Max RouteTrasher runs per SESSION before it is throttled off. 0 = unlimited.
-  'route-trash-session-budget'?: number;
-  // Min wall-clock ms between two RouteTrasher runs (cooldown). 0 = no cooldown.
-  'route-trash-cooldown-ms'?: number;
   // Page-saturation caps (keyed by the normalized structural shell). A page is
   // marked Fully Explored — skipped before any re-parse/re-test and pruned from
   // the exploration frontier — once all its controls are triggered OR either cap
@@ -58,10 +45,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'concurrent-spam-event': true,
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
-  'route-mutation-budget': 1,  // Once, then permanently deprioritize
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
-  'route-trash-session-budget': 6,  // Mixed runs: at most 6 RouteTrasher runs, then yield
-  'route-trash-cooldown-ms': 20000,  // Mixed runs: ≥20s between RouteTrasher runs
   'page-saturation-visits': 3,  // 3 gain-less revisits to a shell → fully explored
   'page-saturation-interactions': 8,  // 8 repeat actuations on a shell → fully explored
 };
@@ -126,8 +110,8 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
   {
     id: 'navigation',
     label: 'Navigational Path Infiltration & Traversal',
-    description: 'History trashing, URL mutation, and network sabotage (RouteTrasher, NetworkSaboteur).',
-    scenarios: ['RouteTrasher', 'NetworkSaboteur'],
+    description: 'Network sabotage during navigational traversal (NetworkSaboteur).',
+    scenarios: ['NetworkSaboteur'],
   },
   {
     id: 'asyncRace',
@@ -191,7 +175,7 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {
     id: 'HIGH_FREQUENCY_CONCURRENCY_STRAIN',
     label: 'High-Frequency Concurrency Strain',
-    description: 'Concurrency-focused — rapid concurrent clicking and route/history thrashing.',
+    description: 'Concurrency-focused — rapid concurrent clicking paired with network sabotage.',
     testingTypes: ['concurrency', 'navigation'],
   },
   {
@@ -200,13 +184,8 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
     description: 'Async-focused — interrupts in-flight requests/transitions to expose race conditions, teardown crashes, swallowed rejections, and state desync.',
     testingTypes: ['asyncRace'],
   },
-  {
-    id: 'CUSTOM_STRATEGY_PROFILE',
-    label: 'Custom Strategy Profile',
-    description: 'Manually select individual testing scenarios to run.',
-    testingTypes: [],
-    custom: true,
-  },
+  // CUSTOM_STRATEGY_PROFILE retired — BugSafari runs only automated profiles.
+  // Union member + resolve custom-branch kept for backward-compat payloads.
 ];
 
 /** Default profile when none is supplied — full-spectrum, matches legacy all-on. */

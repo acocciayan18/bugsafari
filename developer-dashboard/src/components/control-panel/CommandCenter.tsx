@@ -6,9 +6,9 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import SessionTimer from '../common/SessionTimer';
 import InfiltrationProfileSelector from '../common/InfiltrationProfileSelector';
-import { ALL_TESTING_TYPE_IDS, DEFAULT_INFILTRATION_PROFILE, INFILTRATION_PROFILE_CATALOG } from '../../types';
+import { DEFAULT_INFILTRATION_PROFILE } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
-import type { ExplorationRunConfig, InfiltrationProfileId, TestingTypeId } from '../../types';
+import type { ExplorationRunConfig, InfiltrationProfileId } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 
 // const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
@@ -63,20 +63,12 @@ export default function CommandCenter({
 const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
   // Operator-selected infiltration profile — default to full-spectrum Chaos.
   const [profile, setProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
-  // Individual scenario selection, only used by the Custom Strategy Profile.
-  const [customScenarios, setCustomScenarios] = useState<TestingTypeId[]>(ALL_TESTING_TYPE_IDS);
   // Strict Page Boundary Lock — pin exploration to the exact launch URL.
   const [strictUrlLock, setStrictUrlLock] = useState(false);
 
-  const isCustomProfile = Boolean(
-    INFILTRATION_PROFILE_CATALOG.find((option) => option.id === profile)?.custom,
-  );
-  // A custom profile needs at least one hand-picked scenario; presets are always valid.
-  const profileReady = !isCustomProfile || customScenarios.length > 0;
-
   const canSave = hasRunCompleted || hasTimeLimitExceeded;
   // Block new starts during cleanup to prevent race conditions
-  const canStart = Boolean(localTargetUrl) && profileReady && !isTestRunning && !isCleaningUp;
+  const canStart = Boolean(localTargetUrl) && !isTestRunning && !isCleaningUp;
 
   // 👈 Compute visibility matrix based on unified status
   const controlVisibility = computeControlVisibility(testStatus);
@@ -85,10 +77,7 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
     e?.preventDefault();
     if (canStart && onStart) {
       // Package the selected configuration into a structured payload.
-      onStart(localTargetUrl, {
-        profile,
-        customScenarios: isCustomProfile ? customScenarios : undefined,
-      }, strictUrlLock);
+      onStart(localTargetUrl, { profile }, strictUrlLock);
     }
   };
 
@@ -207,7 +196,6 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
             <button
               onClick={() => handleStartTest()}
               disabled={!canStart}
-              title={!profileReady ? 'Select at least one testing scenario for the custom profile' : undefined}
               className={`h-12 bg-nova-blue hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs tracking-widest px-6 flex items-center gap-3 uppercase transition-colors duration-200 ease-in-out whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${!canStart ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -224,8 +212,6 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
           <InfiltrationProfileSelector
             profile={profile}
             onProfileChange={setProfile}
-            customScenarios={customScenarios}
-            onCustomScenariosChange={setCustomScenarios}
             disabled={isTestRunning}
           />
         )}

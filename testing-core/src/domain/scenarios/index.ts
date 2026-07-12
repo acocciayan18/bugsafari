@@ -77,20 +77,8 @@ export function createStressScenarioRegistry(
 // Inject the chaos manager into all scenarios that support it
   setDataFuzzerChaosManager(chaosManager as any);
 
-  // Create wrapped routeTrasher scenario that injects chaosManager downstream
-  // Wraps call to inject chaosManager, captures/awaits process cleanly, returns void
-  const routeTrasherScenario: StressScenario = {
-    name: routeTrasher.name,
-    async execute(page: Page, target?: InteractiveElement): Promise<void> {
-      // Adapt routeTrasher's richer signature (page, target?, chaosManager?) to the
-      // StressScenario contract, injecting the shared chaosManager downstream.
-      try {
-        await routeTrasher.execute(page, target, chaosManager);
-      } catch (error) {
-        console.error(`[StressScenario:RouteTrasher] Execution error: ${error instanceof Error ? error.message : 'Unknown'}`);
-      }
-    },
-  };
+  // RouteTrasher intentionally omitted — the route-mutation attack is disabled
+  // engine-wide. Its module + classifier remain for backward-compat forensics.
 
   // Wrap the concurrent-stress scenarios so they open a real STRESS_CLICK
   // transaction on the shared manager (precise signature, no `as any`).
@@ -154,7 +142,6 @@ export function createStressScenarioRegistry(
     dataFuzzer,
     buttonSpammerScenario,
     coordinateBombingScenario,
-    routeTrasherScenario,
     formBypasser,
     networkSaboteurScenario,
     asyncStateRacerScenario,
@@ -174,17 +161,9 @@ export function createDefaultStressScenarioRegistry(): StressScenario[] {
   return createStressScenarioRegistry(defaultManager);
 }
 
-// Export scenario map for lookup by name
-// Note: We create wrapper functions to handle the interface mismatch with routeTrasher
+// Export scenario map for lookup by name.
+// RouteTrasher intentionally absent — route-mutation is disabled engine-wide.
 export const stressScenarioMap: Record<string, StressScenario> = {
-  RouteTrasher: {
-    name: routeTrasher.name,
-    async execute(page: Page, target?: InteractiveElement): Promise<void> {
-      // No transaction manager in the static map path; the live engine path uses
-      // the ActionExecutor adapter which injects the real ChaosTransactionManager.
-      await routeTrasher.execute(page, target, null);
-    },
-  },
   CoordinateBombing: coordinateBombing,
   ButtonSpammer: buttonSpammer,
   AsyncStateRacer: {
