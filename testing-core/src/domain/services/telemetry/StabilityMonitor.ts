@@ -239,9 +239,11 @@ export class StabilityMonitor {
       const timestamp = new Date().toISOString();
       const breadcrumbs = this.deps.getBreadcrumbs();
 
-      // Freeze the rolling buffer and flush the active scenario's deliberate steps
-      // (falling back to the rolling action log) at the exact moment of the crash.
-      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // Freeze the rolling buffer and minimize it to the steps causally required to
+      // reach this crash — the active scenario's deliberate steps when one is
+      // running, else the fault-anchored slice of the rolling action log.
+      const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+      const reproductionPlaybook = reproduction.narrative;
       // Verify the fault: classify + provenance-gate + score. A fault whose root
       // cause is not the target app (harness/driver/browser/env) is demoted to
       // informational telemetry and never registered as a bug.
@@ -313,6 +315,7 @@ export class StabilityMonitor {
         advice: remediation,
         stackTrace,
         reproductionSteps: reproductionPlaybook,
+        reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(timestamp),
       });
@@ -335,9 +338,9 @@ export class StabilityMonitor {
       const timestamp = new Date().toISOString();
       const breadcrumbs = this.deps.getBreadcrumbs();
 
-      // Freeze the rolling buffer and flush the active scenario's deliberate steps
-      // (falling back to the rolling action log) at the exact moment of the crash.
-      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      // Freeze the rolling buffer and minimize it to the causal steps (see pageerror).
+      const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+      const reproductionPlaybook = reproduction.narrative;
       // Verify before reporting (see pageerror): provenance-gate + score.
       const verdict = this.verifyFault('CONSOLE', text, {
         url,
@@ -406,6 +409,7 @@ export class StabilityMonitor {
         advice: remediation,
         stackTrace: text,
         reproductionSteps: reproductionPlaybook,
+        reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(timestamp),
       });
@@ -481,7 +485,11 @@ export class StabilityMonitor {
       // identically to the live telemetry and the saved confirmed bug. Reading
       // the global rolling buffer twice (once per consumer) risks the live card
       // and the stored record diverging if an action lands between the reads.
-      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      const reproduction = ActiveScenarioTracker.flushSnapshot({
+        faultUrl: this.deps.getLastKnownUrl() || page.url(),
+        faultAtMs: Date.now(),
+      });
+      const reproductionPlaybook = reproduction.narrative;
       // Verify before reporting: the response body is scanned for NoSQL/server-error
       // signatures, the 5xx escalates severity, and provenance rejects third-party /
       // environment failures so only genuine target-app backend faults are reported.
@@ -542,6 +550,7 @@ export class StabilityMonitor {
         advice: remediation,
         stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
         reproductionSteps: reproductionPlaybook,
+        reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(),
       });
@@ -578,7 +587,11 @@ export class StabilityMonitor {
       }
 
       // Process as EXCEPTION for real network failures
-      const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+      const reproduction = ActiveScenarioTracker.flushSnapshot({
+        faultUrl: this.deps.getLastKnownUrl() || page.url(),
+        faultAtMs: Date.now(),
+      });
+      const reproductionPlaybook = reproduction.narrative;
       // Verify before reporting: DNS/TLS/connection failures and third-party hosts
       // are environment artifacts, not target-app defects, and are gated out here.
       const failureDetail = `${method} ${url} - ${reason}`;
@@ -655,6 +668,7 @@ export class StabilityMonitor {
         advice: remediation,
         stackTrace: failureDetail,
         reproductionSteps: reproductionPlaybook,
+        reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(),
       });

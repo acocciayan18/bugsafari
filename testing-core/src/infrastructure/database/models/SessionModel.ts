@@ -35,6 +35,8 @@ export interface ICaughtBug {
   stackTrace?: string;
   /** Per-finding human-actionable replication checklist (sequentially numbered upstream). */
   reproductionSteps?: string[];
+  /** Minimized, replayable action timeline for THIS finding — drives per-finding regression replay. */
+  actionSteps?: ActionStepTrace[];
   /** Deterministic classification + scenario/step attribution (knowledge base) plus verification verdict. */
   attribution?: {
     bugClass: string;
@@ -229,6 +231,19 @@ const sessionSchema = new Schema(
           // exact parity with the live Error Tab.
           stackTrace: { type: String, default: '' },
           reproductionSteps: { type: [String], default: [] },
+          // Minimized replayable timeline for THIS finding — the causal steps only,
+          // consumed per-finding by the regression verifier.
+          actionSteps: {
+            type: [{
+              stepNumber:         { type: Number, required: true, min: 1 },
+              timestamp:          { type: String, required: true },
+              actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass'] },
+              selector:           { type: String, required: true, default: '' },
+              payloadText:        { type: String, required: false, default: null },
+              resultingStateHash: { type: String, required: false, default: '' },
+            }],
+            default: [],
+          },
           // Deterministic knowledge-base classification + scenario/step attribution,
           // plus the verification verdict (provenance, confidence, status, score).
           attribution: {

@@ -40,6 +40,7 @@ import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
+import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import type { ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
 
@@ -99,6 +100,9 @@ export class ExplorationEngine {
   // control may re-navigate its shell back to a seen view before it is blocked as
   // an SPA navigation-loop source.
   private readonly edgeRepeat = new EdgeRepeatTracker();
+  // Per-form fuzz-attempt budget — excludes a form after formFuzzCap submissions
+  // to prevent input over-fuzzing on multi-field forms.
+  private readonly formFuzz = new FormFuzzRegistry();
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
@@ -123,10 +127,11 @@ export class ExplorationEngine {
   private readonly strictUrlLock: boolean;
   // Session-wide transition-repeat budget (resolved in the constructor).
   private readonly transitionRepeatBudget: number;
+  // Per-form fuzz cap (resolved in the constructor).
+  private readonly formFuzzCap: number;
 
   private isPaused = false;
   private isStopRequested = false;
-  private chaosThreshold = 0.25; // 25% chance to escalate to security scenarios for text inputs
 
   // Accumulative active time tracking for timebox (only counts when NOT paused)
   private elapsedActiveTimeMs: number = 0;
@@ -202,6 +207,12 @@ export class ExplorationEngine {
       ?? defaultOptimizationSettings['transition-repeat-budget']
       ?? 3;
     console.log(`[ExplorationEngine] Transition-repeat budget:`, this.transitionRepeatBudget);
+
+    // Resolve the per-form fuzz cap (default 2; 0 disables).
+    this.formFuzzCap = optimizationSettings?.['form-fuzz-cap']
+      ?? defaultOptimizationSettings['form-fuzz-cap']
+      ?? 2;
+    console.log(`[ExplorationEngine] Form fuzz cap:`, this.formFuzzCap);
 
     // Resolve page-saturation caps (per structural shell; 0 disables each cap).
     const maxVisits = optimizationSettings?.['page-saturation-visits']
@@ -436,6 +447,7 @@ export class ExplorationEngine {
     this.escalationTracker.resetAll();
     this.routeExhaustion.reset();
     this.edgeRepeat.reset();
+    this.formFuzz.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -483,6 +495,8 @@ export class ExplorationEngine {
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
       escalationTracker: this.escalationTracker,
+      formFuzz: this.formFuzz,
+      formFuzzCap: this.formFuzzCap,
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
     });
 
@@ -708,6 +722,8 @@ export class ExplorationEngine {
         clusterRegistry: this.clusterRegistry,
         routeExhaustion: this.routeExhaustion,
         edgeRepeat: this.edgeRepeat,
+        formFuzz: this.formFuzz,
+        formFuzzCap: this.formFuzzCap,
         gate: this.gate,
         visitedUrls: this.visitedUrls,
         visitedHashes: this.visitedHashes,

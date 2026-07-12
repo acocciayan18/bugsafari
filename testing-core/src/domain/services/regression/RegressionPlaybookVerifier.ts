@@ -152,9 +152,13 @@ export class RegressionPlaybookVerifier {
     const bug = doc.forensicTrace?.caughtBugs?.find((candidate: ICaughtBug) => candidate.bugId === bugId);
     if (!bug) return null;
 
+    // Prefer THIS finding's own minimized, replayable timeline; fall back to the
+    // session-global timeline only for legacy records saved before per-finding
+    // capture existed. Per-finding steps replay just the causally-required actions.
+    const perFindingSteps = Array.isArray(bug.actionSteps) ? bug.actionSteps : [];
     return {
       targetUrl: doc.targetUrl,
-      actionSteps: doc.actionSteps ?? [],
+      actionSteps: perFindingSteps.length > 0 ? perFindingSteps : doc.actionSteps ?? [],
       bug,
     };
   }

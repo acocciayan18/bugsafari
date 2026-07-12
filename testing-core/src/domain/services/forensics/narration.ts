@@ -229,6 +229,12 @@ export function describeRecovery(requeued: number): string {
  * canonical builders so buffer narration matches scenario-window phrasing.
  */
 export function describeActionRecord(record: ActionRecord): string {
+  const description = describeSingleAction(record);
+  const repeats = record.repeatCount ?? 1;
+  return repeats > 1 ? `${description} — repeat ${repeats} times in rapid succession` : description;
+}
+
+function describeSingleAction(record: ActionRecord): string {
   const rawLabel = collapse(record.fallbackLabel);
   const label = rawLabel || defaultLabelForType(record.type);
 

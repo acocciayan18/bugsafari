@@ -25,4 +25,7 @@ export interface InteractiveElement {
   inActiveLayer?: boolean;
   // Close/dismiss control (postponed until the layer is otherwise explored)
   isDismiss?: boolean;
+  // Value-independent signature of the field's owning <form> ('' if form-less),
+  // keying the per-form fuzz cap so payload mutation can't mint a fresh form.
+  formKey?: string;
 }

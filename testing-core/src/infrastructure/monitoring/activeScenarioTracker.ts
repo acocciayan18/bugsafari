@@ -1,4 +1,15 @@
+import type { ReproductionSnapshot } from '../../../../shared/types.ts';
+
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
+import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
+import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
+
+// Cap the deliberate steps carried into a finding — keep those closest to the fault.
+const MAX_SCENARIO_STEPS = 12;
+
+// Engine-internal scenarios: BugSafari's own bookkeeping, never a target-facing
+// action a developer reproduces. They must never seed a reproduction playbook.
+const INTERNAL_SCENARIOS: ReadonlySet<string> = new Set(['AdaptiveRecovery']);
 
 /**
  * An active scenario recording window. Holds the deliberate, payload-specific
@@ -11,6 +22,13 @@ interface ScenarioWindow {
   openedAt: number;
 }
 
+interface SnapshotOptions {
+  /** URL the fault fired on — anchors the causal minimization of the rolling buffer. */
+  faultUrl?: string;
+  /** Epoch ms of the fault; later actions are dropped as non-causal. */
+  faultAtMs?: number;
+}
+
 /**
  * Scenario-Driven Intent Registry.
  *
@@ -19,10 +37,11 @@ interface ScenarioWindow {
  * concurrent clicks, navigation trashing, …) as human-readable steps.
  *
  * When any global monitor (exception, console, network, 500, freeze, lockup)
- * catches a fault it calls {@link flushPlaybook} to obtain the exact chronological
- * step progression created by the active scenario. If no scenario is executing
- * (idle phase), it falls back to a clean extraction of the rolling action log so
- * that no defect ever registers without sequentially numbered steps.
+ * catches a fault it calls {@link flushSnapshot} to obtain the minimal reproduction
+ * evidence: the deliberate steps of the active scenario when one is running, else a
+ * causally-minimized slice of the rolling action log (unrelated exploratory actions
+ * and BugSafari's own wandering stripped out). The returned narrative and the
+ * replayable action timeline describe one and the same minimal sequence.
  */
 export class ActiveScenarioTracker {
   private static active: ScenarioWindow | null = null;
@@ -31,6 +50,11 @@ export class ActiveScenarioTracker {
 
   /** Open an active recording window for a scenario. */
   public static begin(scenario: string, targetUrl: string): void {
+    // Engine-internal scenarios never record a playbook window — otherwise their
+    // bookkeeping steps become the reported reproduction for a later fault.
+    if (INTERNAL_SCENARIOS.has(scenario)) {
+      return;
+    }
     const steps: string[] = [];
     // Seed the navigation step when the rolling log has nothing yet, so the
     // playbook always opens with context even on the very first scenario.
@@ -84,11 +108,7 @@ export class ActiveScenarioTracker {
    * to the rolling action-log length when no scenario window is populated.
    */
   public static getCurrentStepIndex(): number {
-    const window = ActiveScenarioTracker.active?.steps.length
-      ? ActiveScenarioTracker.active
-      : ActiveScenarioTracker.lastClosed?.steps.length
-        ? ActiveScenarioTracker.lastClosed
-        : null;
+    const window = ActiveScenarioTracker.populatedWindow();
     if (window) return window.steps.length;
     return ReproductionPlaybookStore.snapshot().length;
   }
@@ -99,26 +119,52 @@ export class ActiveScenarioTracker {
   }
 
   /**
-   * The global flush rule. Prefer the active scenario's exact steps, then the
-   * most-recently-closed scenario, then the rolling action log, and finally a
-   * safe placeholder — guaranteeing the returned array is never empty.
+   * Freeze the minimal reproduction evidence for a fault. The replayable `actions`
+   * are ALWAYS the causally-minimized rolling buffer (drop post-fault and
+   * pre-fault-page actions, collapse repeats, cap length) so a regression replay
+   * runs exactly the required steps. The `narrative` prefers the active scenario's
+   * own deliberate steps (already minimal by construction), else it renders those
+   * same minimized actions — so what a human follows matches what is replayed.
    */
-  public static flushPlaybook(): string[] {
-    const window = ActiveScenarioTracker.active?.steps.length
-      ? ActiveScenarioTracker.active
-      : ActiveScenarioTracker.lastClosed?.steps.length
-        ? ActiveScenarioTracker.lastClosed
-        : null;
+  public static flushSnapshot(options: SnapshotOptions = {}): ReproductionSnapshot {
+    const buffer = ReproductionPlaybookStore.snapshot();
+    const actions = minimizeActionRecords(buffer, {
+      faultUrl: options.faultUrl,
+      faultAtMs: options.faultAtMs,
+    });
 
-    if (window) {
-      return window.steps.map((description, index) => `Step ${index + 1}. ${description}`);
-    }
+    const window = ActiveScenarioTracker.populatedWindow();
+    const narrative = window
+      ? ActiveScenarioTracker.numberScenarioSteps(window.steps)
+      : narrateActionRecords(actions);
 
-    const rolling = ReproductionPlaybookStore.getNarrativeSteps();
-    if (rolling.length > 0) {
-      return rolling;
-    }
+    return {
+      actions,
+      narrative: narrative.length > 0 ? narrative : ['Step 1. No deterministic actions were recorded before this fault.'],
+    };
+  }
 
-    return ['Step 1. No deterministic actions were recorded before this fault.'];
+  /**
+   * Backward-compatible narrative-only flush. Prefer {@link flushSnapshot} for new
+   * code so the replayable action timeline travels with the narrative.
+   */
+  public static flushPlaybook(options: SnapshotOptions = {}): string[] {
+    return ActiveScenarioTracker.flushSnapshot(options).narrative;
+  }
+
+  /** The window whose deliberate steps should drive a fault's narrative, if any. */
+  private static populatedWindow(): ScenarioWindow | null {
+    if (ActiveScenarioTracker.active?.steps.length) return ActiveScenarioTracker.active;
+    if (ActiveScenarioTracker.lastClosed?.steps.length) return ActiveScenarioTracker.lastClosed;
+    return null;
+  }
+
+  /** Cap deliberate steps to those closest to the fault, keeping the opening context. */
+  private static numberScenarioSteps(steps: string[]): string[] {
+    const capped =
+      steps.length <= MAX_SCENARIO_STEPS
+        ? steps
+        : [steps[0], ...steps.slice(steps.length - (MAX_SCENARIO_STEPS - 1))];
+    return capped.map((description, index) => `Step ${index + 1}. ${description}`);
   }
 }

@@ -29,6 +29,7 @@ export interface ClientFinding {
     advice?: string;
     stackTrace?: string;
     reproductionSteps?: string[];
+    reproductionActions?: ActionRecord[];
     timestamp?: string;
     attribution?: FindingAttribution;
 }
@@ -188,6 +189,7 @@ export class StartExplorationUseCase {
                 timestamp: Date;
                 stackTrace?: string;
                 reproductionSteps?: string[];
+                reproductionActions?: ActionRecord[];
                 attribution?: FindingAttribution;
             }) => ({
                 bugId: bug.bugId,
@@ -198,6 +200,9 @@ export class StartExplorationUseCase {
                 advice: bug.advice,
                 stackTrace: bug.stackTrace ?? '',
                 reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
+                // Per-finding minimized, replayable timeline (empty ⇒ verifier falls
+                // back to the session-global actionSteps below).
+                actionSteps: this.buildActionSteps(Array.isArray(bug.reproductionActions) ? bug.reproductionActions : []),
                 timestamp: bug.timestamp,
                 attribution: bug.attribution,
             }))
@@ -210,6 +215,7 @@ export class StartExplorationUseCase {
                 advice: finding.advice ?? '',
                 stackTrace: finding.stackTrace ?? '',
                 reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
+                actionSteps: this.buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
                 attribution: finding.attribution,
             }));

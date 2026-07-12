@@ -27,6 +27,7 @@ import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
 import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import type { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
+import type { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -68,8 +69,10 @@ export interface ConfirmedBug {
   timestamp: Date;
   /** Full sanitized stack trace — preserved so distinct exceptions never collapse. */
   stackTrace?: string;
-  /** Per-finding sequentially-numbered replication checklist. */
+  /** Per-finding sequentially-numbered replication checklist (narrative of {@link reproductionActions}). */
   reproductionSteps?: string[];
+  /** Minimized, replayable action timeline for THIS finding — the causal steps only. */
+  reproductionActions?: ActionRecord[];
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
 }
@@ -149,6 +152,10 @@ export interface ActionExecutorDeps {
   getTargetOrigin(): string;
   /** Per-(selector, category) payload-escalation level, run-scoped. */
   escalationTracker: EscalationTracker;
+  /** Per-form fuzz-attempt budget — excludes a form after `formFuzzCap` submissions. */
+  formFuzz: FormFuzzRegistry;
+  /** Max fuzz submissions per form before it is excluded (0 disables). */
+  formFuzzCap: number;
   /** Sink for confirmed findings — used to register oracle-confirmed fuzz leaks. */
   registerConfirmedBug(bug: ConfirmedBug): void;
 }
@@ -163,6 +170,10 @@ export interface ExplorationLoopDeps {
   routeExhaustion: RouteExhaustionTracker;
   /** Session-wide structural-transition repeat counter (SPA navigation-loop cap). */
   edgeRepeat: EdgeRepeatTracker;
+  /** Per-form fuzz-attempt budget — withdraws the attack boost once a form is capped. */
+  formFuzz: FormFuzzRegistry;
+  /** Max fuzz submissions per form before it is excluded (0 disables). */
+  formFuzzCap: number;
   gate: ScenarioGate;
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;

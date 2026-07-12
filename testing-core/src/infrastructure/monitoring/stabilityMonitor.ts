@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { FindingAttribution } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution } from '../../../../shared/types.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 
@@ -55,6 +55,8 @@ export type BugRegistrationCallback = (bug: {
   payloadUsed: string;
   advice: string;
   timestamp: Date;
+  reproductionSteps?: string[];
+  reproductionActions?: ActionRecord[];
   attribution?: FindingAttribution;
 }) => void;
 
@@ -88,7 +90,8 @@ export function setupStabilityMonitoring(
   const emitFreezeFinding = (): void => {
     const timestamp = new Date().toISOString();
     const url = page.url();
-    const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproductionPlaybook = reproduction.narrative;
 
     const faultType: FaultType = 'FREEZE';
     const reason = "System Lock-up Detected: The browser's Main Thread is unresponsive.";
@@ -136,6 +139,8 @@ export function setupStabilityMonitoring(
         payloadUsed: '',
         advice,
         timestamp: new Date(),
+        reproductionSteps: reproductionPlaybook,
+        reproductionActions: reproduction.actions,
         attribution,
       });
     }

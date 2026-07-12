@@ -600,7 +600,9 @@ export class ExplorationLoop {
     if (this.deps.gate.isEnabled('dataFuzzing')) {
       const isFreshAttackVector = (element: InteractiveElement): boolean =>
         attackTargetBoost(element) > 0 &&
-        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector);
+        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector) &&
+        // A form at its session fuzz cap loses the boost so unexplored controls win.
+        !this.deps.formFuzz.isExhausted(element.formKey ?? '', this.deps.formFuzzCap);
       const otherScores = ranked.filter((el) => !isFreshAttackVector(el)).map((el) => el.riskScore);
       const maxOther = otherScores.length > 0 ? Math.max(...otherScores) : 0;
       ranked = ranked
@@ -874,11 +876,9 @@ export class ExplorationLoop {
       actionExecuted: 'adaptive-recovery',
       message: describeRecovery(recovery.requeuedEdges),
     });
-    // Record the recovery deliberately through centralized forensics so the
-    // reproduction playbook reflects it.
-    ActiveScenarioTracker.begin('AdaptiveRecovery', currentUrl);
-    ActiveScenarioTracker.record(describeRecovery(recovery.requeuedEdges));
-    ActiveScenarioTracker.end();
+    // Adaptive recovery is BugSafari-internal bookkeeping, not a target-facing
+    // action — it is surfaced as ACTION telemetry above but deliberately kept OUT
+    // of the reproduction playbook so it never appears in a finding's repro steps.
 
     if (recovery.requeuedEdges === 0) {
       // Nothing soft-blocked left to re-queue — re-seed from the origin once
@@ -1072,6 +1072,11 @@ export class ExplorationLoop {
     if (this.deps.edgeRepeat.isExhausted(structureHash, target.selector, this.deps.transitionRepeatBudget)) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
+      // Reset the learning bias toward this deadlocked control: contrastive
+      // perceptron nudge + persistent per-selector penalty so the model stops
+      // steering back into the loop and the frontier redirects to unexplored branches.
+      this.deps.scorer.penalizeRevisit(target);
+      this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       const human = humanizeElement(target);
       this.deps.telemetry.emitMilestone(
         `🔁 Transition budget reached: ${human} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,

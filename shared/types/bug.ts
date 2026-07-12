@@ -55,6 +55,22 @@ export interface ActionRecord {
   url: string;
   payload?: string;
   fallbackLabel?: string;
+  /** Consecutive identical repeats collapsed into this record (>1 ⇒ "repeat N times"). */
+  repeatCount?: number;
+}
+
+/**
+ * The per-finding reproduction evidence, frozen at fault time.
+ *
+ * `actions` is the MINIMIZED, machine-replayable action timeline — only the steps
+ * causally required to reach the fault (see forensics/stepMinimizer). `narrative`
+ * is the human-readable rendering of exactly those same actions. Both describe one
+ * timeline, so what a developer follows by hand is what the regression verifier
+ * replays.
+ */
+export interface ReproductionSnapshot {
+  actions: ActionRecord[];
+  narrative: string[];
 }
 
 export interface IncidentReport {

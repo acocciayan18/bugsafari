@@ -33,6 +33,10 @@ export interface OptimizationSettings {
   // Repeat actuations (re-triggering an already-triggered control) on one shell
   // before it saturates — bounds input-fuzz / interactive churn on a spent page.
   'page-saturation-interactions'?: number;
+  // Per-form fuzz cap: max fuzz submissions committed against one <form> before it
+  // is excluded from further fuzzing and the engine advances to unexplored elements
+  // (prevents input over-fuzzing on multi-field forms). 0 disables (default: 2).
+  'form-fuzz-cap'?: number;
   // Reproducibility seed. When set, edge-selection softmax AND fuzz payload/vector
   // choice become deterministic (same seed + target → same action sequence) for
   // thesis-panel replays. Omitted (default) → Math.random, non-reproducible.
@@ -48,6 +52,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
   'page-saturation-visits': 3,  // 3 gain-less revisits to a shell → fully explored
   'page-saturation-interactions': 8,  // 8 repeat actuations on a shell → fully explored
+  'form-fuzz-cap': 2,  // 2 fuzz submissions per form → excluded from further fuzzing
 };
 
 // ─────────────────────────────────────────────────────────────

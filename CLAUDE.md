@@ -1,4 +1,4 @@
-d
+Use multiple agents from yourself or from the /.claude/agents file if necessary and relevant
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

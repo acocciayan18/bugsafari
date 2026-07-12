@@ -20,6 +20,7 @@ export interface ParsedElement {
   opensLayer: boolean;
   inActiveLayer: boolean;
   isDismiss: boolean;
+  formKey: string;
 }
 
 /**
@@ -50,6 +51,7 @@ export class RecursiveDomParser {
       opensLayer: element.opensLayer,
       inActiveLayer: element.inActiveLayer,
       isDismiss: element.isDismiss,
+      formKey: element.formKey,
     }));
   }
 }
@@ -491,6 +493,10 @@ const isDisabled = (element) => {
           name: data.name,
           text: data.fullText,
           selector: buildSelector(data.element),
+          formKey: (() => {
+            const formEl = data.element.closest('form');
+            return formEl ? buildSelector(formEl) : '';
+          })(),
           role: data.role,
           href: data.href,
           placeholder: data.placeholder,

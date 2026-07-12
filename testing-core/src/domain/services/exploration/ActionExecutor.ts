@@ -37,6 +37,12 @@ export class ActionExecutor {
   // fuzz injection produced any observable reaction (drives escalation below).
   private readonly fuzzHasher = new DomHasher();
 
+  // Per-selector stress-scenario rotation cursor. A control re-selected across the
+  // run cycles deterministically through its applicable+enabled scenarios instead
+  // of re-running the first one forever, so every attack that suits the element
+  // eventually fires. Counter-based (no RNG) so seeded runs stay reproducible.
+  private readonly scenarioRotation = new Map<string, number>();
+
   constructor(private readonly deps: ActionExecutorDeps) {}
 
   public logHighImpact(target: InteractiveElement): void {
@@ -72,6 +78,17 @@ export class ActionExecutor {
     // constraints, injects a context-aware payload, and commits via submission) IS
     // the interaction. Gated: Data Fuzzing is exclusive when enabled.
     if (scope === 'attack-vector') {
+      // Per-form fuzz cap: a form that has hit its session budget is excluded from
+      // further fuzzing so the engine advances to unexplored elements instead of
+      // over-fuzzing the same form field-by-field.
+      if (this.deps.formFuzz.isExhausted(target.formKey ?? '', this.deps.formFuzzCap)) {
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'form-fuzz-cap-reached',
+          selector: target.selector,
+          message: `🧯 Form fuzz cap (${this.deps.formFuzzCap}) reached for ${humanizeElement(target)} — excluding form from further fuzzing.`,
+        });
+        return;
+      }
       if (this.deps.gate.isEnabled('dataFuzzing')) {
         await this.executeInputFuzzing(page, target, 'fuzz');
       } else if (this.deps.gate.isEnabled('exploratory')) {
@@ -115,7 +132,7 @@ export class ActionExecutor {
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
     //    this element (if any) AFTER navigation, so scenario-specific actions
     //    execute on the freshly discovered state rather than replacing traversal.
-    const scenario = this.pickStressScenario(target, revisitedPage);
+    const scenario = this.pickStressScenario(target);
     if (scenario) {
       await this.runStressScenario(page, target, scenario);
     }
@@ -414,13 +431,14 @@ export class ActionExecutor {
   }
 
   /**
-   * Heuristically rank the stress scenarios that suit this element, then return
-   * the first whose owning testing-type the operator left enabled. Returns null
-   * when every applicable scenario has been deactivated for this run.
+   * Heuristically rank the stress scenarios that suit this element, keep only the
+   * ones whose owning testing-type the operator left enabled, then rotate through
+   * them deterministically across re-selections of the same control (first pick is
+   * index 0 — unchanged from the prior first-enabled behavior). Returns null when
+   * every applicable scenario has been deactivated for this run.
    */
   private pickStressScenario(
     target: InteractiveElement,
-    revisitedPage: boolean,
   ): StressScenario | null {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
@@ -460,13 +478,16 @@ export class ActionExecutor {
     if (authRelevant) candidates.unshift(storageTamperScenario);
     else candidates.push(storageTamperScenario);
 
-    // Return the first candidate whose testing-type is enabled this session.
-    for (const candidate of candidates) {
-      if (this.deps.gate.isScenarioEnabled(candidate.name)) {
-        return candidate;
-      }
-    }
-    return null;
+    // Keep only enabled candidates, preserving heuristic priority order.
+    const enabled = candidates.filter((candidate) => this.deps.gate.isScenarioEnabled(candidate.name));
+    if (enabled.length === 0) return null;
+
+    // Rotate deterministically per control: the Nth scenario run on this selector
+    // takes slot N mod len, so repeated selections exercise every applicable attack
+    // rather than re-firing the first one. First run → slot 0 (backward compatible).
+    const cursor = this.scenarioRotation.get(target.selector) ?? 0;
+    this.scenarioRotation.set(target.selector, cursor + 1);
+    return enabled[cursor % enabled.length];
   }
 
   /**
@@ -548,6 +569,9 @@ export class ActionExecutor {
 
           await this.fillEmptyFormSiblings(page, target.selector);
           const submissionMethod = await triggerFormSubmission(page, target.selector);
+          // Count this commit against the form's session fuzz budget so a multi-field
+          // form is excluded after formFuzzCap submissions (input over-fuzzing guard).
+          this.deps.formFuzz.recordAttempt(target.formKey ?? '');
 
           if (mode === 'fuzz') {
             t.emit('ACTION', {
