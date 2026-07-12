@@ -657,7 +657,6 @@ export class ExplorationEngine {
         await this.ensureDomReady(fresh, emitter);
         this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
           fresh,
-          this.targetUrl,
           (bug) => this.registerConfirmedBug(bug),
         );
         return fresh;
@@ -726,7 +725,6 @@ export class ExplorationEngine {
       // 🛡️ Initialize background stability/console monitoring (heartbeat + console tab).
       this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
         page,
-        this.targetUrl,
         (bug) => this.registerConfirmedBug(bug),
       );
 

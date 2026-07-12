@@ -3,14 +3,10 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { FindingAttribution } from '../../../../shared/types.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
-import { isServerReachable } from './serverReachability.js';
 
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
-// Isolated server probe budget when a heartbeat times out — independent of the
-// (possibly frozen) browser thread, so it can't be starved by the lockup.
-const HEALTH_PROBE_TIMEOUT_MS = 5_000;
-// After confirming the server is up, let the browser thread settle then re-probe
+// After a heartbeat timeout, let the browser thread settle then re-probe
 // its responsiveness a bounded number of times before declaring a real UI freeze.
 const RECOVERY_SETTLE_MS = 500;
 const STABILITY_RETRIES = 3;
@@ -74,14 +70,11 @@ export type BugRegistrationCallback = (bug: {
  *
  * @param page - Playwright page to monitor
  * @param telemetry - Telemetry gateway for emitting events
- * @param targetUrl - Target URL probed by the ISOLATED Node health client on a
- *   heartbeat timeout, to tell a local browser freeze apart from a server outage
  * @param onBugRegistered - Optional callback to register confirmed bugs to memory
  */
 export function setupStabilityMonitoring(
   page: Page,
   telemetry: TelemetryGateway,
-  targetUrl: string,
   onBugRegistered?: BugRegistrationCallback
 ): Cleanup {
   let disposed = false;
@@ -89,25 +82,18 @@ export function setupStabilityMonitoring(
   let heartbeatInFlight = false;
   let lastHeartbeatAlertAt = 0;
 
-  // Emit a confirmed freeze/crash finding. `kind` decides the classification: a
-  // sustained local browser freeze (server proven up) vs a genuine server crash
-  // (isolated probe proven down) — the two are never conflated.
-  const emitFreezeFinding = (kind: 'ui-freeze' | 'server-crash'): void => {
+  // Emit a confirmed UI-freeze finding. Genuine server faults (5xx / requestfailed
+  // / pageerror) are owned solely by the primary domain StabilityMonitor, so this
+  // detector only ever reports a sustained local browser lock-up.
+  const emitFreezeFinding = (): void => {
     const timestamp = new Date().toISOString();
     const url = page.url();
     const reproductionPlaybook = ActiveScenarioTracker.flushPlaybook();
 
-    const isCrash = kind === 'server-crash';
-    const faultType: FaultType = isCrash ? 'NETWORK' : 'FREEZE';
-    const reason = isCrash
-      ? `Critical Server Crash: target ${targetUrl} unreachable while the browser thread was blocked.`
-      : "System Lock-up Detected: The browser's Main Thread is unresponsive.";
-    const banner = isCrash
-      ? `🔴 Critical Server Crash: ${targetUrl} is unreachable (confirmed by isolated health check).`
-      : "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
-    const stackTrace = isCrash
-      ? `Isolated Node health probe to ${targetUrl} failed after ${HEALTH_PROBE_TIMEOUT_MS}ms.`
-      : 'Heartbeat evaluate call exceeded 5000ms timeout.';
+    const faultType: FaultType = 'FREEZE';
+    const reason = "System Lock-up Detected: The browser's Main Thread is unresponsive.";
+    const banner = "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
+    const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
     const { advice, attribution } = classify(faultType, reason, { url });
 
     telemetry.emitTelemetry({
@@ -122,7 +108,7 @@ export function setupStabilityMonitoring(
     });
     telemetry.emitIncidentReport({
       timestamp,
-      reason: isCrash ? 'Critical Server Crash' : 'Main Thread Lock-up Detected',
+      reason: 'Main Thread Lock-up Detected',
       url,
       stackTrace,
       steps: [],
@@ -143,8 +129,8 @@ export function setupStabilityMonitoring(
 
     if (onBugRegistered) {
       onBugRegistered({
-        bugId: `${isCrash ? 'server-crash' : 'main-thread-lockup'}-${Date.now()}`,
-        type: isCrash ? 'NETWORK' : 'RUNTIME_UI_FREEZE',
+        bugId: `main-thread-lockup-${Date.now()}`,
+        type: 'RUNTIME_UI_FREEZE',
         message: banner,
         selector: '',
         payloadUsed: '',
@@ -155,8 +141,8 @@ export function setupStabilityMonitoring(
     }
   };
 
-  // Informational-only: a browser freeze was seen but the server is fine, so we
-  // are attempting recovery. No finding, no forensic record — just operator signal.
+  // Informational-only: a browser freeze was seen and recovery is being attempted.
+  // No finding, no forensic record — just operator signal.
   const emitInfo = (message: string): void => {
     telemetry.emitTelemetry({
       timestamp: new Date().toISOString(),
@@ -196,31 +182,19 @@ export function setupStabilityMonitoring(
     return false;
   };
 
-  // Heartbeat timeout handler. A blocked browser thread is NOT proof of a server
-  // outage, so before classifying anything we consult the ISOLATED Node health
-  // client (immune to the browser lockup):
-  //   • server up   → local browser freeze: recover briefly, re-validate stability,
-  //                    resume on recovery; only a sustained freeze emits a UI finding.
-  //   • server down → confirmed Critical Server Crash.
+  // Heartbeat timeout handler. A blocked browser thread is a local freeze — give
+  // it a brief window to recover before declaring a sustained UI lock-up. Real
+  // server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
+  // /pageerror listeners, not this heartbeat.
   const handleHeartbeatTimeout = async (): Promise<void> => {
-    const serverUp = await isServerReachable(targetUrl, HEALTH_PROBE_TIMEOUT_MS);
-    if (disposed) return;
-
-    if (!serverUp) {
-      emitFreezeFinding('server-crash');
-      return;
-    }
-
-    // Server reachable → the freeze is local to the browser. Reset error state and
-    // let it recover before deciding anything.
-    emitInfo('⏳ Browser thread stalled but server is reachable — attempting local recovery...');
+    emitInfo('⏳ Browser thread stalled — attempting local recovery...');
     const recovered = await validatePageStability();
     if (disposed) return;
 
     if (recovered) {
-      emitInfo('✅ Browser thread recovered — resuming exploration (no server crash).');
+      emitInfo('✅ Browser thread recovered — resuming exploration.');
     } else {
-      emitFreezeFinding('ui-freeze');
+      emitFreezeFinding();
     }
   };
 

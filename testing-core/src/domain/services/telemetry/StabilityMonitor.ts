@@ -585,13 +585,12 @@ export class StabilityMonitor {
    */
   public async attachAfterNavigation(
     page: Page,
-    targetUrl: string,
     onBugRegistered: StabilityMonitorDeps['registerConfirmedBug'],
   ): Promise<() => void> {
     // 🛡️ Initialize stability monitoring - runs silently in background
-    // Monitors System Lock-up (5s heartbeat timeout), cross-checked against an
-    // isolated Node health probe so a browser freeze is never miscalled a crash.
-    const cleanup = setupStabilityMonitoring(page, this.deps.telemetry.gateway, targetUrl, onBugRegistered);
+    // Monitors System Lock-up (5s heartbeat timeout). Real server outages are
+    // caught separately via 5xx/requestfailed/pageerror listeners below.
+    const cleanup = setupStabilityMonitoring(page, this.deps.telemetry.gateway, onBugRegistered);
 
     // 🖥️ Setup isolated browser console listener for dedicated Console Tab in dashboard
     // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
