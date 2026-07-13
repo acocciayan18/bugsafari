@@ -89,6 +89,7 @@ interface SessionReportData {
   executionDate?: Date;
   timeElapsed?: number;
   status?: string;
+  coveragePercentage?: number;
   metrics?: {
     totalActions?: number;
     totalBugsFound?: number;
@@ -748,6 +749,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         executionDate: sessionDoc.startedAt,
         timeElapsed: sessionDoc.stats?.runtimeMs || 0,
         status: sessionDoc.status,
+        coveragePercentage: sessionDoc.stats?.coveragePercentage,
         metrics: {
           totalActions: sessionDoc.stats?.actionsExecuted || 0,
           totalBugsFound: sessionDoc.findingCount || 0,
@@ -832,9 +834,9 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         url: session.targetUrl,
         date: session.executionDate,
         status: session.status,
-        coverage: session.metrics?.totalActions ? Math.min(100, Math.floor(60 + (session.metrics.totalActions / 50) * 40)) : 0,
+        coverage: session.coveragePercentage ?? 0,
         duration: session.timeElapsed,
-        riskScore: formattedAnalysis?.riskScore || (session.metrics?.totalBugsFound || 0) * 25,
+        riskScore: Math.min(100, formattedAnalysis?.riskScore ?? ((session.metrics?.totalBugsFound || 0) * 25)),
 
         // Findings
         findings: {

@@ -121,6 +121,8 @@ export interface ForensicCaughtBug {
   type: string;
   message: string;
   selector: string;
+  /** How many times this identical fault fired this session (deduped at save). */
+  occurrences?: number;
   payloadUsed: string;
   advice: string;
   timestamp: string;

@@ -77,11 +77,6 @@ function formatDate(dateStr: string): string {
   }).toUpperCase();
 }
 
-// Helper to calculate mock coverage percentage
-function calculateCoverage(actions: number): number {
-  return Math.min(100, Math.floor(60 + (actions / 50) * 40));
-}
-
 // Transform API response to evaluation format
 function transformToEvaluations(docs: SavedSafariDocument[]): EvaluationSafari[] {
   return docs.map((doc) => {
@@ -91,7 +86,7 @@ function transformToEvaluations(docs: SavedSafariDocument[]): EvaluationSafari[]
       targetUrl: doc.targetUrl,
       date: formatDate(doc.executionDate),
       steps: metrics.totalActions,
-      coverage: calculateCoverage(metrics.totalActions),
+      coverage: 0,
       severity: determineSeverity(metrics.totalBugsFound),
       severityCount: metrics.totalBugsFound,
       status: doc.status,
@@ -115,7 +110,7 @@ function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): Evalua
     targetUrl: session.targetUrl,
     date: formatDate(session.startedAt),
     steps: session.actionTraceCount,
-    coverage: session.coveragePercentage ?? calculateCoverage(session.actionTraceCount),
+    coverage: session.coveragePercentage ?? 0,
     severity: determineSeverity(session.findingCount),
     severityCount: session.findingCount,
     status: mapSessionStatus(session.status),

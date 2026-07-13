@@ -105,6 +105,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // Fresh run: any cancellation tag belongs to a previous run and must not
     // leak forward and swallow a genuine failure in this one.
     this.cancelledDuringRun = false;
+    // Drop the prior run's confirmed-bug snapshot so a save during THIS run can
+    // never persist another run's (or another user's) findings.
+    this.capturedConfirmedBugs = [];
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
@@ -276,7 +279,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     advice: string;
     timestamp: Date;
   }> {
-    return this.capturedConfirmedBugs;
+    // While a run is live, read straight from the active engine (this run's own
+    // memory); only fall back to the captured snapshot after teardown.
+    return this.activeEngine?.getConfirmedBugsFromMemory() ?? this.capturedConfirmedBugs;
   }
 
   private async cleanupResources(): Promise<void> {

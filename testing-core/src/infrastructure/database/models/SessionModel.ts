@@ -28,6 +28,8 @@ export interface ICaughtBug {
   type: string;
   message: string;
   selector: string;
+  /** How many times this identical fault fired this session (dedup at save). */
+  occurrences?: number;
   payloadUsed: string;
   advice: string;
   timestamp: Date;
@@ -224,6 +226,8 @@ const sessionSchema = new Schema(
           type: { type: String, default: '' },
           message: { type: String, default: '' },
           selector: { type: String, default: '' },
+          // How many times this identical fault fired this session (dedup at save).
+          occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },
           advice: { type: String, default: '' },
           timestamp: { type: Date, default: Date.now },

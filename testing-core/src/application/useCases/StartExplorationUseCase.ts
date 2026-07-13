@@ -151,6 +151,33 @@ export class StartExplorationUseCase {
         }));
     }
 
+    // Signature that treats volatile tokens (urls, hex ids, digits) as equal so a
+    // fault repeated with slightly different message text collapses to one finding.
+    private normalizeFaultSignature(type: string, message: string, selector: string): string {
+        const norm = (message ?? '')
+            .toLowerCase()
+            .replace(/https?:\/\/\S+/g, '#url')
+            .replace(/0x[0-9a-f]+/g, '#hex')
+            .replace(/\d+/g, '#n')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return `${type}||${norm}||${selector ?? ''}`;
+    }
+
+    // Collapse duplicate findings, keeping the first as representative and counting repeats.
+    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string }>(
+        bugs: T[],
+    ): Array<T & { occurrences: number }> {
+        const groups = new Map<string, T & { occurrences: number }>();
+        for (const bug of bugs) {
+            const key = this.normalizeFaultSignature(bug.type, bug.message, bug.selector);
+            const existing = groups.get(key);
+            if (existing) existing.occurrences += 1;
+            else groups.set(key, { ...bug, occurrences: 1 });
+        }
+        return [...groups.values()];
+    }
+
 /**
      * Manual save triggered by user clicking "Save to History" button.
      * Called externally via the API endpoint /api/history/save-session.
@@ -178,7 +205,7 @@ export class StartExplorationUseCase {
         const clientFindings = options?.clientFindings ?? [];
         const engineBugs = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
 
-        const caughtBugs = engineBugs.length > 0
+        const rawCaughtBugs = engineBugs.length > 0
             ? engineBugs.map((bug: {
                 bugId: string;
                 type: string;
@@ -220,6 +247,11 @@ export class StartExplorationUseCase {
                 attribution: finding.attribution,
             }));
 
+        // Collapse duplicate findings (same fault repeated across the run) into one
+        // representative carrying an occurrence count, so the persisted findingCount
+        // matches what the report renders and the history list reports.
+        const caughtBugs = this.dedupeCaughtBugs(rawCaughtBugs);
+
         // Derive the category breakdown dynamically from the *actual* persisted
         // findings so no category (known or novel) is ever silently zeroed out.
         const breakdownCategories: Record<string, number> = {};
@@ -241,9 +273,13 @@ export class StartExplorationUseCase {
         }
         const userObjectId = new Types.ObjectId(userId);
 
-        // Use frontend-reported elapsed time first, then fall back to server-side start time
-        const runtimeMs = options?.elapsedTimeMs ??
-            (this.executionStartTime > 0 ? Date.now() - this.executionStartTime : 0);
+        // Use frontend-reported elapsed time first, then fall back to server-side start time.
+        // Treat a 0/invalid reported value as absent (?? keeps 0), so a mid-run save still
+        // records real elapsed from the server start time.
+        const reportedElapsed = options?.elapsedTimeMs;
+        const runtimeMs = reportedElapsed && reportedElapsed > 0
+            ? reportedElapsed
+            : (this.executionStartTime > 0 ? Date.now() - this.executionStartTime : 0);
         const startedAt = this.executionStartTime > 0
             ? new Date(this.executionStartTime)
             : new Date(Date.now() - runtimeMs);

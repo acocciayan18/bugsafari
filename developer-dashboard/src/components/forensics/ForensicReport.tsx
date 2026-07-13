@@ -19,7 +19,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
-import { groupBySignature } from '../../utils/errorDeduplication';
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
@@ -672,6 +671,42 @@ function CleanRunCard() {
 // at the bottom rather than a peer section competing for attention.
 // ─────────────────────────────────────────────────────────────
 
+// Static WCAG audit findings — no runtime reproduction or Verify Fix — grouped into
+// their own de-emphasized collapsible section so they don't clutter runtime faults.
+function AccessibilityAudit({ bugs }: { bugs: ForensicCaughtBug[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  if (!bugs.length) return null;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white">
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100"
+      >
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Accessibility Audit ({bugs.length})
+        </span>
+        <span className="text-xs text-gray-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+      </button>
+      {isOpen && (
+        <ul className="divide-y divide-gray-100 border-t border-gray-200">
+          {bugs.map((bug, i) => (
+            <li key={bug.bugId || i} className="px-4 py-3">
+              <div className="text-xs text-gray-800">{bug.message || 'No details provided'}</div>
+              {bug.selector && (
+                <div className="mt-1 truncate font-mono text-[11px] text-gray-500" title={bug.selector}>{bug.selector}</div>
+              )}
+              {bug.occurrences && bug.occurrences > 1 && (
+                <span className="mt-1 inline-block font-mono text-[10px] text-gray-400">×{bug.occurrences}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -747,10 +782,10 @@ export default function ForensicReport() {
   const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
   // Collapse identical repeats (same fault registered per-occurrence) into one
   // card with an ×N count — lossless: every stored instance is still on `bugs`.
-  const bugGroups = useMemo(
-    () => groupBySignature(bugs, (b) => `${b.type}||${(b.message ?? '').trim()}||${b.selector ?? ''}`),
-    [bugs],
-  );
+  // Findings are deduped server-side at save (each bug carries an `occurrences` count),
+  // so render the caughtBugs directly. Static WCAG audit rows are split out below.
+  const runtimeBugs = useMemo(() => bugs.filter((b) => b.type !== 'ACCESSIBILITY'), [bugs]);
+  const a11yBugs = useMemo(() => bugs.filter((b) => b.type === 'ACCESSIBILITY'), [bugs]);
   const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) {
@@ -798,22 +833,22 @@ export default function ForensicReport() {
       {/* Report Body */}
       <main className="flex-1 overflow-auto p-6">
         <div className="mx-auto flex max-w-4xl flex-col gap-6">
-          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={bugGroups.length} />
+          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={runtimeBugs.length} />
 
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 
           <section>
             <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
-              Findings {bugGroups.length > 0 ? `(${bugGroups.length})` : ''}
+              Findings {runtimeBugs.length > 0 ? `(${runtimeBugs.length})` : ''}
             </h2>
-            {bugGroups.length > 0 ? (
+            {runtimeBugs.length > 0 ? (
               <div className="flex flex-col gap-4">
-                {bugGroups.map(({ item: bug, count }, index) => (
+                {runtimeBugs.map((bug, index) => (
                   <FindingCard
                     key={bug.bugId || index}
                     bug={bug}
                     index={index}
-                    occurrences={count}
+                    occurrences={bug.occurrences ?? 1}
                     sessionId={sessionId}
                     status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
                     onVerify={verify}
@@ -824,6 +859,8 @@ export default function ForensicReport() {
               <CleanRunCard />
             )}
           </section>
+
+          <AccessibilityAudit bugs={a11yBugs} />
 
           <ActionTimelineAppendix steps={report.actionSteps ?? []} />
         </div>
