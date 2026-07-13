@@ -1,25 +1,19 @@
 // ═══════════════════════════════════════════════════════════════
 // ClinicalForensicsDashboard.tsx - FORENSIC TELEMETRY VIEW
 // ═══════════════════════════════════════════════════════════════
-// Purified component for telemetry visualization ONLY
-// Handles: Live Feed (browser frame) + Terminal (telemetry/errors/network/console/history tabs)
-// No auth, no sidebar, no control panel - just forensic views
-// Receives all telemetry data via props from App.tsx
 
-import { useMemo, useState } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport,  BrowserConsoleMessage } from '../../types';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
-import ForensicHelpIcon from '../../designs/icons/ForensicHelpIcon';
 import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
 
-// Tab state type for the bottom terminal
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
+type ProfileType = 'chaos' | 'deep-semantic' | 'high-freq' | 'async';
 
-// Count badge on a tab header — hidden entirely when the stream is empty.
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
@@ -29,21 +23,13 @@ function TabCount({ count }: { count: number }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS: Clipboard, Formatting, Text Processing
-// ═══════════════════════════════════════════════════════════════
-
-// ─────────────────────────────────────────────────────────────
-// PROPS INTERFACE - Purely telemetry-focused
-// ─────────────────────────────────────────────────────────────
-
 interface ClinicalForensicsDashboardProps {
   targetUrl: string;
-  currentUrl?: string; // FIX: Dynamic URL from backend (updates in real-time as browser navigates)
+  currentUrl?: string; 
   frameBuffer: string | null;
   telemetry: TelemetryEvent[] | string[];
-  networkEvents: TelemetryEvent[]; // Dedicated NETWORK stream — never rendered in the terminal log
-  browserConsole: BrowserConsoleMessage[]; // Browser console output from target browser
+  networkEvents: TelemetryEvent[]; 
+  browserConsole: BrowserConsoleMessage[]; 
   errors: {
     incidents: IncidentReport[];
     reports: ForensicCrashReport[];
@@ -51,21 +37,19 @@ interface ClinicalForensicsDashboardProps {
   isConnected: boolean;
   isTestRunning: boolean;
   testStatus?: TestSessionStatus;
-  currentEngineAction?: string; // 👈 Dynamic engine status from backend (Task 3)
-  hasRunCompleted?: boolean; // 👈 True after first test run completes
-  isInitializing?: boolean; // 👈 True when test started but no frame received yet
-  liveFrame?: string | null; // 👈 Active frame buffer - cleared on test conclusion
-  sessionTimeMs?: number; // Total timebox for the active run, from optimizationSettings
-  remainingTimeMs?: number; // Authoritative remaining time (backend-tracked), seeds the timer clock
+  currentEngineAction?: string; 
+  hasRunCompleted?: boolean; 
+  isInitializing?: boolean; 
+  liveFrame?: string | null; 
+  sessionTimeMs?: number; 
+  remainingTimeMs?: number; 
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
+  onStartInitialization?: (url: string, profile: ProfileType, strictBoundary: boolean) => void;
+  children?: ReactNode;
 }
-
-// ═══════════════════════════════════════════════════════════════
-// COMPONENT: ClinicalForensicsDashboard (Purified - Telemetry Only)
-// ═══════════════════════════════════════════════════════════════
 
 export default function ClinicalForensicsDashboard({
   targetUrl = 'https://cafesplatform.elementfx.com/',
@@ -87,76 +71,243 @@ export default function ClinicalForensicsDashboard({
   onPause,
   onResume,
   onStop,
+  onSaveSessionToHistory,
+  onStartInitialization,
 }: ClinicalForensicsDashboardProps) {
 
   // ─────────────────────────────────────────────────────────────
-  // STATE MANAGEMENT - Terminal tabs & expandable sections
+  // STATE MANAGEMENT
   // ─────────────────────────────────────────────────────────────
-
-const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
+  const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
+  const [urlInput, setUrlInput] = useState(targetUrl);
+  const [selectedProfile, setSelectedProfile] = useState<ProfileType>('chaos');
+  const [strictBoundary, setStrictBoundary] = useState(false);
 
   // ─────────────────────────────────────────────────────────────
-  // EFFECTS & MEMOIZATION
+  // TELEMETRY SCROLL & UTILITIES
   // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Format telemetry events with consistent timestamp, type, and color coding
-   */
-const formattedTelemetry = useMemo(() => {
+  const formattedTelemetry = useMemo(() => {
     const events = Array.isArray(telemetry)
       ? telemetry
-        // Network events belong to the Network tab only — keep the logic log clean.
-        .filter((event) => (typeof event === 'string' ? !event.includes('[NETWORK]') : event?.type !== 'NETWORK'))
-        .map((event) => {
-          if (typeof event === 'string') {
-            return { rawText: event, aiDiagnostics: null };
-          }
-          // Timestamp display removed for simplified console matching - keeping raw timestamp for database sorting only
-          const type = event.type ?? 'EVENT';
-          const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
+          .filter((event) => (typeof event === 'string' ? !event.includes('[NETWORK]') : event?.type !== 'NETWORK'))
+          .map((event) => {
+            if (typeof event === 'string') {
+              return { rawText: event, aiDiagnostics: null };
+            }
+            const type = event.type ?? 'EVENT';
+            const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
 
-          return {
-            rawText: `[${type}] ${message}`,
-            aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
-          };
-        })
+            return {
+              rawText: `[${type}] ${message}`,
+              aiDiagnostics: event.meta?.aiDiagnostics || null 
+            };
+          })
       : [];
     return events.slice(-100);
   }, [telemetry]);
 
   const errorCount = errors.incidents.length + errors.reports.length;
-
-  // Combined growth signal across all streamed tabs sharing the terminal container;
-  // sticky-lock only re-pins when the user was already at the bottom.
   const terminalContentSignal = formattedTelemetry.length + errorCount + networkEvents.length + browserConsole.length;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER: Forensic View (55% of screen)
-  // ─────────────────────────────────────────────────────────────
+  const handleInitialize = () => {
+    if (onStartInitialization) {
+      onStartInitialization(urlInput, selectedProfile, strictBoundary);
+    }
+  };
+
+  const isActiveSession = testStatus === 'ACTIVE' || testStatus === 'PAUSED' || isTestRunning;
+  const showSessionControls = isActiveSession || hasRunCompleted;
+
+  const profiles = [
+    { id: 'chaos', name: 'Chaos Infiltration', desc: 'Full-spectrum assault execution' },
+    { id: 'deep-semantic', name: 'Deep Semantic Data Attack', desc: 'Context-aware form fuzzing' },
+    { id: 'high-freq', name: 'High-Frequency Concurrency Strain', desc: 'Rapid UI actions & network load' },
+    { id: 'async', name: 'Async Lifecycle Assault', desc: 'Race condition validation' },
+  ] as const;
+
+  const currentProfileName = profiles.find(p => p.id === selectedProfile)?.name || 'Chaos Infiltration';
 
   return (
-    <section className="flex flex-1 flex-row overflow-hidden bg-white">
-
+    <div className="flex flex-1 flex-col overflow-hidden bg-[#F8FAFC]">
+      
       {/* ═══════════════════════════════════════════════════════════════
-          LEFT PANEL: Browser Frame (Live Feed)
+          TOP CONTROLS: COMMAND CENTER LAYER
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="w-[55%] h-full overflow-hidden border-r border-gray-200">
-        <div className="h-full overflow-hidden bg-gray-100 p-4">
-          <div className="h-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <LiveFeed
-              currentUrl={currentUrl || targetUrl}
-              frame={frameBuffer}
-              isConnected={isConnected}
-              isTestRunning={isTestRunning}
-              hasRunCompleted={hasRunCompleted}
-              isInitializing={isInitializing}
-              liveFrame={liveFrame}
-            />
+      <div className="w-full bg-white border-b border-gray-200 p-5 shrink-0 space-y-4">
+        <div className="flex items-center justify-between h-9">
+          <div className="flex items-center gap-4">
+            <h2 className="text-sm font-bold tracking-[0.2em] text-[#4B5563] uppercase font-sans">
+              COMMAND CENTER
+            </h2>
+            
+            {/* Hover Trigger Container for Dropdown */}
+            <div className="relative group py-2">
+              <button 
+                disabled={isActiveSession}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 bg-gray-50 group-hover:bg-gray-100 transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <svg className="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+                </svg>
+                <span>{currentProfileName}</span>
+                <svg className="ml-1 h-3 w-3 text-gray-400 transform transition-transform duration-200 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Floating Dropdown via Hover */}
+              {!isActiveSession && (
+                <div className="hidden absolute left-0 mt-1 w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50 group-hover:block animate-in fade-in slide-in-from-top-1 duration-100">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 mb-1 font-sans">
+                    Select Infiltration Matrix
+                  </div>
+                  {profiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      onClick={() => setSelectedProfile(profile.id)}
+                      className={`w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-gray-50 ${selectedProfile === profile.id ? 'bg-blue-50/50' : ''}`}
+                    >
+                      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selectedProfile === profile.id ? 'border-blue-500 text-blue-500' : 'border-gray-300'}`}>
+                        {selectedProfile === profile.id && <span className="h-2 w-2 rounded-full bg-blue-500" />}
+                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-xs font-semibold leading-tight font-sans ${selectedProfile === profile.id ? 'text-blue-600' : 'text-gray-800'}`}>
+                          {profile.name}
+                        </span>
+                        <span className="text-[10px] text-gray-400 truncate mt-0.5 font-sans">
+                          {profile.desc}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                  
+                  <div className="mt-2 pt-2 border-t border-gray-100 px-3 pb-1">
+                    <label htmlFor="strict-lock-hover" className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        id="strict-lock-hover"
+                        type="checkbox"
+                        checked={strictBoundary}
+                        onChange={(e) => setStrictBoundary(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                      />
+                      <span className="text-[10px] font-bold tracking-wider text-gray-600 uppercase font-sans">Strict Boundary Lock</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Test Status Bar - Uses testStatus, onPause, onResume, onStop */}
-          <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2">
+          {/* Session controls and Timer management */}
+          {showSessionControls && (
+            <div className="flex items-center gap-3">
+              <SessionTimer
+                initialTimeMs={sessionTimeMs}
+                remainingTimeMs={remainingTimeMs}
+                isRunning={isTestRunning}
+                isPaused={testStatus === 'PAUSED'}
+              />
+              {testStatus === 'ACTIVE' && onPause && (
+                <button
+                  onClick={onPause}
+                  className="flex items-center gap-2 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6" />
+                  </svg>
+                  Pause
+                </button>
+              )}
+              {testStatus === 'PAUSED' && onResume && (
+                <button
+                  onClick={onResume}
+                  className="flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  </svg>
+                  Resume
+                </button>
+              )}
+              {isActiveSession && onStop && (
+                <button
+                  onClick={onStop}
+                  className="flex items-center gap-2 rounded-lg bg-red-500 hover:bg-red-600 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                  </svg>
+                  Stop
+                </button>
+              )}
+              {onSaveSessionToHistory && (
+                <button
+                  onClick={onSaveSessionToHistory}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                >
+                  Save Session
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* URL Input Bar + Side Anchored Initialize Button */}
+        <div className="flex items-center gap-3 w-full">
+          <div className="relative flex-1">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              value={isActiveSession ? (currentUrl || targetUrl) : urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              disabled={isActiveSession}
+              className="w-full h-11 border border-gray-300 rounded-lg pl-11 pr-4 text-sm font-sans bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+              placeholder="Enter target URL to initiate..."
+            />
+          </div>
+          
+          <button
+            onClick={handleInitialize}
+            disabled={isActiveSession}
+            className="flex h-11 items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-5 text-xs font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-blue-600"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            </svg>
+            <span>Initialize Exploratory Safari</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MAIN WORKSPACE LAYOUT PANELS (55% / 45%)
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-1 flex-row overflow-hidden bg-white">
+        
+        {/* LEFT PANEL: Browser Frame Viewport */}
+        <div className="w-[55%] h-full overflow-hidden border-r border-gray-200 flex flex-col">
+          <div className="flex-1 overflow-hidden bg-gray-100 p-4 pb-2">
+            <div className="h-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <LiveFeed
+                currentUrl={currentUrl || targetUrl}
+                frame={frameBuffer}
+                isConnected={isConnected}
+                isTestRunning={isTestRunning}
+                hasRunCompleted={hasRunCompleted}
+                isInitializing={isInitializing}
+                liveFrame={liveFrame}
+              />
+            </div>
+          </div>
+          
+          {/* Internal Telemetry System Action Status Notification Strip */}
+          <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs font-semibold text-gray-600">Status:</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${testStatus === 'ACTIVE'
@@ -171,193 +322,118 @@ const formattedTelemetry = useMemo(() => {
                   }`} />
                 {testStatus}
               </span>
-              <SessionTimer
-                initialTimeMs={sessionTimeMs}
-                remainingTimeMs={remainingTimeMs}
-                isRunning={isTestRunning}
-                isPaused={testStatus === 'PAUSED'}
-              />
             </div>
-
-            {/* Control Buttons - Pause/Resume/Stop */}
-            {(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
-              <div className="flex items-center gap-2">
-                {testStatus === 'ACTIVE' && onPause && (
-                  <button
-                    onClick={onPause}
-                    className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Pause
-                  </button>
-                )}
-                {testStatus === 'PAUSED' && onResume && (
-                  <button
-                    onClick={onResume}
-                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    </svg>
-                    Resume
-                  </button>
-                )}
-                {onStop && (
-                  <button
-                    onClick={onStop}
-                    className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                    </svg>
-                    Stop
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          RIGHT PANEL: Terminal with Telemetry Tabs
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
-
-        {/* Tab Headers */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 shrink-0 overflow-visible">
-          <div className="flex overflow-visible">
-            <button
-              onClick={() => setActiveTab('telemetry')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'telemetry' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              telemetry live-feed
-            </button>
-            <button
-              onClick={() => setActiveTab('errors')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'errors' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              errors
-              <TabCount count={errorCount} />
-            </button>
-            <button
-              onClick={() => setActiveTab('network')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              network
-              <TabCount count={networkEvents.length} />
-            </button>
-<button
-              onClick={() => setActiveTab('console')}
-              className={`border-b-2 px-4 py-2 text-xs font-medium tracking-widest transition-colors ${activeTab === 'console' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-            >
-              console
-              <TabCount count={browserConsole.length} />
-            </button>
-          </div>
-          {/* Forensic Help Icon - Right side of header */}
-          <div className="pr-2">
-            <ForensicHelpIcon />
           </div>
         </div>
 
-        {/* Terminal Output Container */}
-        <div className="relative flex-1 overflow-hidden">
-        <div
-          ref={logContainerRef}
-          className="h-full overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-gray-200 border-t-0"
-          style={{ scrollBehavior: 'smooth' }}
-        >
+        {/* RIGHT PANEL: Streams output workspace */}
+        <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
+          
+          {/* Clean Terminal Header Tabs Layout */}
+          <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 h-[46px] shrink-0">
+            <div className="flex overflow-visible">
+              <button
+                onClick={() => setActiveTab('telemetry')}
+                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                telemetry live-feed
+              </button>
+              <button
+                onClick={() => setActiveTab('errors')}
+                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                errors
+                <TabCount count={errorCount} />
+              </button>
+              <button
+                onClick={() => setActiveTab('network')}
+                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                network
+                <TabCount count={networkEvents.length} />
+              </button>
+              <button
+                onClick={() => setActiveTab('console')}
+                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                console
+                <TabCount count={browserConsole.length} />
+              </button>
+            </div>
+          </div>
 
-          {/* ════════════════════════════════════════
-              TAB: TELEMETRY LIVE-FEED
-              ════════════════════════════════════════ */}
-          {activeTab === 'telemetry' && (
-            <>
-              {isTestRunning ? (
+          {/* Core Logs Output Viewer Container */}
+          <div className="relative flex-1 overflow-hidden">
+            <div
+              ref={logContainerRef}
+              className="h-full overflow-y-auto overflow-x-hidden bg-[#f8f9fa] p-4 font-mono text-xs border border-gray-200 border-t-0"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              {activeTab === 'telemetry' && (
                 <>
-                  {formattedTelemetry.map((logObj, index) => (
-                    <div key={index} className="py-1 border-b border-gray-100/50 last:border-0">
-                      <div
-                        className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-gray-600'
-                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                            ? 'text-red-600 font-semibold'
-                            : 'text-gray-800'
-                          }`}
-                      >
-                        {logObj.rawText}
-                      </div>
-
-{/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
-                      <AiDiagnosticCard ai={logObj.aiDiagnostics} />
+                  {showSessionControls ? (
+                    <>
+                      {formattedTelemetry.map((logObj, index) => (
+                        <div key={index} className="py-1 border-b border-gray-100/50 last:border-0">
+                          <div
+                            className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
+                              ? 'text-gray-600'
+                              : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                                ? 'text-red-600 font-semibold'
+                                : 'text-gray-800'
+                              }`}
+                          >
+                            {logObj.rawText}
+                          </div>
+                          <AiDiagnosticCard ai={logObj.aiDiagnostics} />
+                        </div>
+                      ))}
+                      {isActiveSession && (
+                        <div className="flex items-center gap-2 py-2 text-gray-500">
+                          <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
+                          <span className="font-mono text-xs">
+                            {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : formattedTelemetry.length === 0 ? (
+                    <div className="text-gray-600 py-4">
+                      <span className="text-gray-800">█</span> Ready for telemetry...
                     </div>
-                  ))}
-                  <div className="flex items-center gap-2 py-2 text-gray-500">
-                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
-                    <span className="font-mono text-xs">
-                      {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
-                    </span>
-                  </div>
-                </>
-              ) : formattedTelemetry.length === 0 ? (
-                <div className="text-gray-600 py-4">
-                  <span className="text-gray-800">█</span> Ready for telemetry...
-                </div>
-              ) : (
-                <>
-                  {formattedTelemetry.map((logObj, index) => (
-                    <div key={index} className="py-1">
-                      <div
-                        className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
-                          ? 'text-gray-600'
-                          : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                            ? 'text-red-600 font-semibold'
-                            : 'text-gray-800'
-                          }`}
-                      >
-                        {logObj.rawText}
+                  ) : (
+                    <>
+                      {formattedTelemetry.map((logObj, index) => (
+                        <div key={index} className="py-1">
+                          <div
+                            className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
+                              ? 'text-gray-600'
+                              : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
+                                ? 'text-red-600 font-semibold'
+                                : 'text-gray-800'
+                              }`}
+                          >
+                            {logObj.rawText}
+                          </div>
+                          <AiDiagnosticCard ai={logObj.aiDiagnostics} />
+                        </div>
+                      ))}
+                      <div className="py-2 text-gray-800">
+                        <span className="text-gray-800">█</span> Ready for telemetry...
                       </div>
-<AiDiagnosticCard ai={logObj.aiDiagnostics} />
-                    </div>
-                  ))}
-                  <div className="py-2 text-gray-800">
-                    <span className="text-gray-800">█</span> Ready for telemetry...
-                  </div>
+                    </>
+                  )}
                 </>
               )}
-            </>
-          )}
 
-{/* ════════════════════════════════════════
-              TAB: ERRORS (Incidents & Crash Reports)
-              ════════════════════════════════════════ */}
-          {activeTab === 'errors' && (
-            <ErrorTabPanel errors={errors} />
-          )}
-
-{/* ════════════════════════════════════════
-              TAB: NETWORK
-              ════════════════════════════════════════ */}
-          {activeTab === 'network' && (
-            <NetworkTabPanel events={networkEvents} />
-          )}
-
-{/* ════════════════════════════════════════
-              TAB: CONSOLE (Browser Console Output)
-              ════════════════════════════════════════ */}
-          {activeTab === 'console' && (
-            <ConsoleTabPanel browserConsole={browserConsole} />
-          )}
-
-
-        </div>
-        <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
+              {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
+              {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
+              {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} />}
+            </div>
+            <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

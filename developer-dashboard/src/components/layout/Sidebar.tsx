@@ -1,10 +1,9 @@
-// Sidebar Component - Monochrome Developer Aesthetic
+// Sidebar Component - NovaSpark Design System
 // Handles navigation only - no telemetry logic.
 // Supports light and dark mode via Tailwind dark: variants.
 
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import HelpMenuIcon from '../common/HelpMenuIcon';
 
 interface User {
   id: string;
@@ -26,8 +25,8 @@ interface SidebarProps {
 function navItemClass(isActive: boolean, isCollapsed: boolean) {
   const base = 'flex w-full items-center gap-3 border-l-[3px] px-4 py-3 text-sm font-medium transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2';
   const state = isActive
-    ? 'border-nova-blue bg-blue-50 text-nova-blue dark:bg-blue-950/40 dark:text-blue-400'
-    : 'border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800';
+    ? 'border-nova-blue bg-blue-100 text-nova-blue dark:bg-slate-800 dark:text-blue-400'
+    : 'border-transparent text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-slate-100';
   const layout = isCollapsed ? 'justify-center px-2' : '';
   return `${base} ${state} ${layout}`;
 }
@@ -41,35 +40,42 @@ export default function Sidebar({
   displayName,
 }: SidebarProps) {
   const navigate = useNavigate();
-  const sidebarWidth = isCollapsed ? 'w-16' : 'w-60';
+  const sidebarWidth = isCollapsed ? 'w-16' : 'w-[240px]';
 
   return (
-    <section className={`${sidebarWidth} shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-700 bg-nova-light dark:bg-nova-dark transition-[width] duration-[350ms] ease-in-out overflow-hidden`}>
+    <section 
+      className={`${sidebarWidth} shrink-0 flex flex-col border-r border-gray-300 dark:border-slate-700 bg-nova-light dark:bg-nova-dark transition-[width] duration-200 ease-in-out overflow-hidden`}
+    >
       {/* Header */}
-      <div className={`border-b border-gray-200 dark:border-gray-700 transition-[padding] duration-[350ms] ${isCollapsed ? 'p-2 flex justify-center' : 'p-5 flex items-center gap-3'}`}>
+      <div className={`h-16 shrink-0 border-b border-gray-300 dark:border-slate-700 flex items-center transition-[padding] duration-200 ${isCollapsed ? 'px-2 justify-center' : 'px-4 gap-3'}`}>
         <button
           onClick={onToggleCollapse}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={`flex h-11 w-11 items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${isCollapsed ? 'mb-2' : ''}`}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
         >
-          <svg className="h-6 w-6 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          {isCollapsed ? (
+            /* Burger icon shows ONLY when closed/collapsed to expand it open */
+            <svg className="h-5 w-5 text-gray-600 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          ) : (
+            /* Custom Sidebar Layout Box Icon shows ONLY when open to close/collapse it */
+            <svg className="h-5 w-5 text-gray-600 dark:text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
+          )}
         </button>
 
-        {/* BUGSAFARI branding - visible when expanded */}
+        {/* BUGSAFARI Branding - Inter, Bold, 20px, Color #2563EB */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-0 h-0' : 'w-auto h-auto flex-1'}`}>
-          <h1 className="text-xl font-bold uppercase tracking-wider text-gray-900 dark:text-gray-100 whitespace-nowrap">
+          <h1 className="font-sans font-bold text-[20px] uppercase tracking-wider text-nova-blue whitespace-nowrap leading-none">
             BUGSAFARI
           </h1>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            Clinical Forensics Engine
+          {/* TERMINAL ACCESS - Inter, Medium, 10px */}
+          <p className="mt-1 font-sans font-medium text-[10px] text-gray-600 dark:text-slate-400 whitespace-nowrap leading-none tracking-wider">
+            TERMINAL ACCESS
           </p>
-        </div>
-
-        {/* Help Menu - visible when collapsed */}
-        <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-auto h-auto' : 'w-0 h-0'}`}>
-          <HelpMenuIcon />
         </div>
       </div>
 
@@ -94,13 +100,13 @@ export default function Sidebar({
             <button
               onClick={() => navigate('/history')}
               className={navItemClass(activeView === 'history', isCollapsed)}
-              title={isCollapsed ? 'Sessions History' : undefined}
+              title={isCollapsed ? 'Forensic History' : undefined}
             >
               <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'w-auto'}`}>
-                Sessions History
+                Forensic History
               </span>
             </button>
           </li>
@@ -123,44 +129,38 @@ export default function Sidebar({
       </nav>
 
       {/* Footer - User Profile Card */}
-      <div className={`border-t border-gray-200 dark:border-gray-700 transition-[padding] duration-[350ms] ${isCollapsed ? 'p-2' : 'p-4'}`}>
+      <div className={`border-t border-gray-300 dark:border-slate-700 transition-[padding] duration-200 ${isCollapsed ? 'p-2' : 'p-4'}`}>
         {isLoggedIn && user ? (
-          <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
-            <div className={`flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-nova-dark dark:bg-gray-600 text-base font-bold text-white">
+          <div className={`${isCollapsed ? '' : 'space-y-3'}`}>
+            <div className={`flex items-center rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-3 p-3'}`}>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-nova-dark dark:bg-slate-700 text-base font-bold text-white">
                 {(displayName || user.email).charAt(0).toUpperCase()}
               </div>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1 min-w-0'}`}>
-                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {displayName || user.email}
-                </div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                  {displayName ? 'Logged in' : user.email}
+                {/* Admin/User Name: Inter, Bold, Size 12px */}
+                <div className="font-sans font-bold text-[12px] text-gray-900 dark:text-slate-100 truncate">
+                  {displayName || 'ADMIN_01'}
                 </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className={`${isCollapsed ? '' : 'space-y-2'}`}>
-            <div className={`flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-200 ${isCollapsed ? 'p-2 justify-center' : 'gap-3 p-3'}`}>
-              <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
-                <div className="text-xs font-medium text-gray-900 dark:text-gray-100">
-                  Guest User
-                </div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                  Guest mode
-                </div>
-              </div>
-            </div>
+
+            {/* LOG OUT Button: Inter, Bold, Size 12px */}
             <button
               onClick={() => navigate('/')}
-              className={`flex w-full items-center justify-center gap-2 rounded-md bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200 transition-all duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${isCollapsed ? 'h-0 p-0 opacity-0 overflow-hidden' : 'opacity-100 py-2'}`}
+              className={`flex w-full h-10 items-center justify-center rounded-md bg-nova-blue px-4 font-sans font-bold text-[12px] text-white hover:bg-blue-700 active:bg-blue-800 transition-all duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${isCollapsed ? 'h-0 p-0 opacity-0 overflow-hidden' : 'opacity-100'}`}
             >
-              <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0m-4 4V4m0 0l4 4m-4-4H3" />
-              </svg>
-              Back to Landingpage
+              LOG OUT
             </button>
+          </div>
+        ) : (
+          <div className={`${isCollapsed ? '' : 'space-y-3'}`}>
+            <div className={`flex items-center rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-3 p-3'}`}>
+              <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
+                <div className="font-sans font-bold text-[12px] text-gray-900 dark:text-slate-100">
+                  Guest User
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
