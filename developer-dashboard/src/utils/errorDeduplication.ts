@@ -73,3 +73,38 @@ export function dedupeReportsAgainstIncidents(
     ),
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Lossless occurrence grouping
+// ─────────────────────────────────────────────────────────────
+// The engine registers one finding PER OCCURRENCE (a JS exception re-thrown on
+// every revisit, the same 5xx hit repeatedly), so identical faults pile up. This
+// collapses them for DISPLAY only — the first is the representative, `count` is
+// how many collapsed into it — without discarding any underlying record.
+
+export interface FindingGroup<T> {
+  item: T;
+  count: number;
+}
+
+/** Group items by a content signature, preserving first-seen order. */
+export function groupBySignature<T>(items: T[], signature: (item: T) => string): FindingGroup<T>[] {
+  const order: string[] = [];
+  const groups = new Map<string, FindingGroup<T>>();
+  for (const item of items) {
+    const key = signature(item);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groups.set(key, { item, count: 1 });
+      order.push(key);
+    }
+  }
+  return order.map((key) => groups.get(key)!);
+}
+
+/** Visible-fault signature for live incidents/crash reports (reason + url + status). */
+export function liveFaultSignature(fault: IncidentReport | ForensicCrashReport): string {
+  return `${normalizeSignature(fault.reason)}|${(fault.url ?? '').trim().toLowerCase()}|${fault.statusCode ?? ''}`;
+}

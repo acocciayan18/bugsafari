@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import type { IncidentReport, ForensicCrashReport } from '../../types';
-import { dedupeReportsAgainstIncidents } from '../../utils/errorDeduplication';
+import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import ReproductionChecklist from './ReproductionChecklist';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import { AttributionBadges as AttributionBadgesBase, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
@@ -46,6 +46,19 @@ const AttributionBadges = ({ attribution }: Parameters<typeof AttributionBadgesB
   </div>
 );
 
+/** Occurrence count for a collapsed group of identical faults (hidden when singular). */
+const OccurrenceBadge = ({ count }: { count: number }) => {
+  if (count <= 1) return null;
+  return (
+    <span
+      title={`This fault occurred ${count} times this session`}
+      className="rounded-full bg-red-600 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-white"
+    >
+      ×{count}
+    </span>
+  );
+};
+
 /**
  * Bind directly to the frozen, backend-narrated reproduction playbook attached to
  * this finding. No fallback recompilation from raw steps/breadcrumbs — the steps
@@ -78,14 +91,19 @@ export default function ErrorTabPanel({
   // fault is a single card (matching the engine's confirmed-bug count).
   const errorReports = dedupeReportsAgainstIncidents(errorIncidents, errors?.reports ?? []);
 
+  // Collapse identical repeats (same fault re-thrown across the run) into one card
+  // with an ×N count — lossless display grouping, nothing is dropped.
+  const incidentGroups = groupBySignature(errorIncidents, liveFaultSignature);
+  const reportGroups = groupBySignature(errorReports, liveFaultSignature);
+
   return (
     <div className="space-y-4 p-2">
-      {errorIncidents.length === 0 && errorReports.length === 0 ? (
+      {incidentGroups.length === 0 && reportGroups.length === 0 ? (
         <div className="text-gray-500 italic py-4">No errors captured yet.</div>
       ) : (
         <>
           {/* INCIDENT CARDS */}
-          {errorIncidents.map((incident, idx) => {
+          {incidentGroups.map(({ item: incident, count }, idx) => {
             const incidentKey = `incident-${idx}`;
             const metadata = extractErrorMetadata(incident);
             const isExpanded = expandedStackTrace[incidentKey];
@@ -104,7 +122,10 @@ export default function ErrorTabPanel({
                       ⚠
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-sm text-red-900">Forensics (Incident)</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-red-900">Forensics (Incident)</span>
+                        <OccurrenceBadge count={count} />
+                      </div>
                       <div className="text-[11px] text-red-700 opacity-75">
                         {metadata.timestamp.split('T')[1]?.slice(0, 8) || 'Unknown'}
                       </div>
@@ -169,7 +190,7 @@ export default function ErrorTabPanel({
           })}
 
           {/* CRASH REPORT CARDS */}
-          {errorReports.map((report, idx) => {
+          {reportGroups.map(({ item: report, count }, idx) => {
             const reportKey = `report-${idx}`;
             const metadata = extractErrorMetadata(report);
             const isExpanded = expandedStackTrace[reportKey];
@@ -186,7 +207,10 @@ export default function ErrorTabPanel({
                       🔥
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-sm text-red-900">Console Error</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-red-900">Console Error</span>
+                        <OccurrenceBadge count={count} />
+                      </div>
                       <div className="text-[11px] text-red-700 opacity-75">
                         {report.timestamp || 'Unknown'}
                       </div>

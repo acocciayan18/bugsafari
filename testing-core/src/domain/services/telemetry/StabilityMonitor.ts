@@ -259,8 +259,17 @@ export class StabilityMonitor {
         attribution,
       });
 
-      // Single incident source: emitForensicReport synthesizes the matching
-      // incident-report internally, so the explicit emit here would double-count.
+      t.gateway.emitIncidentReport({
+        timestamp,
+        reason: `Unhandled JS Exception: ${message}`,
+        url,
+        stackTrace,
+        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
+        advice: remediation,
+        attribution,
+      });
+
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Unhandled JS Exception: ${message}`,
@@ -346,8 +355,17 @@ export class StabilityMonitor {
         attribution,
       });
 
-      // Single incident source: emitForensicReport synthesizes the matching
-      // incident-report internally, so the explicit emit here would double-count.
+      t.gateway.emitIncidentReport({
+        timestamp,
+        reason: `Console Error: ${text}`,
+        url,
+        stackTrace: text,
+        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
+        advice: remediation,
+        attribution,
+      });
+
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Console Error: ${text}`,
@@ -603,8 +621,17 @@ export class StabilityMonitor {
         attribution,
       });
 
-      // Single incident source: emitForensicReport synthesizes the matching
-      // incident-report internally, so the explicit emit here would double-count.
+      t.gateway.emitIncidentReport({
+        timestamp,
+        reason: `Network Request Failed: ${reason}`,
+        url: this.deps.getLastKnownUrl() || page.url(),
+        stackTrace: failureDetail,
+        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionPlaybook,
+        advice: remediation,
+        attribution,
+      });
+
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Network Request Failed: ${reason}`,

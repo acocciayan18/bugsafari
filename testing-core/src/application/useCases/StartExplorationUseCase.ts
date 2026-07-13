@@ -145,7 +145,7 @@ export class StartExplorationUseCase {
             stepNumber:         index + 1,
             timestamp:          record.timestamp,
             actionType:         this.mapActionType(record.type),
-            selector:           record.selector ?? '',
+            selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
             payloadText:        record.payload,
             resultingStateHash: '',
         }));

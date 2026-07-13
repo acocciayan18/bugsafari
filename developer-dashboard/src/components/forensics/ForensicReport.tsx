@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
+import { groupBySignature } from '../../utils/errorDeduplication';
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
@@ -87,9 +88,13 @@ function StatBlock({ label, value, valueClassName = 'text-gray-900' }: { label: 
   );
 }
 
-function ExecutiveSummary({ report, sessionId }: { report: ForensicReportResponse; sessionId: string }) {
+function ExecutiveSummary({ report, sessionId, findingsCount }: { report: ForensicReportResponse; sessionId: string; findingsCount?: number }) {
   const theme = statusTheme(report.status);
-  const findingsTotal = report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0;
+  // Prefer the DISTINCT finding count (identical repeats collapsed) so the summary
+  // matches the number of cards below; fall back to raw totals for legacy data.
+  const findingsTotal = findingsCount && findingsCount > 0
+    ? findingsCount
+    : (report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0);
 
   return (
     <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
@@ -462,12 +467,14 @@ function VerificationResultModal({
 function FindingCard({
   bug,
   index,
+  occurrences = 1,
   sessionId,
   status,
   onVerify,
 }: {
   bug: ForensicCaughtBug;
   index: number;
+  occurrences?: number;
   sessionId?: string;
   status: VerifyStatus;
   onVerify: (request: VerifyFixRequest) => void;
@@ -511,6 +518,14 @@ function FindingCard({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{bugClass}</span>
+              {occurrences > 1 && (
+                <span
+                  title={`This fault occurred ${occurrences} times this session`}
+                  className="inline-flex shrink-0 items-center rounded-full bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-white"
+                >
+                  ×{occurrences}
+                </span>
+              )}
               {verdictMeta && (
                 <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
@@ -705,6 +720,12 @@ export default function ForensicReport() {
   }, [sessionId]);
 
   const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
+  // Collapse identical repeats (same fault registered per-occurrence) into one
+  // card with an ×N count — lossless: every stored instance is still on `bugs`.
+  const bugGroups = useMemo(
+    () => groupBySignature(bugs, (b) => `${b.type}||${(b.message ?? '').trim()}||${b.selector ?? ''}`),
+    [bugs],
+  );
   const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) {
@@ -752,21 +773,22 @@ export default function ForensicReport() {
       {/* Report Body */}
       <main className="flex-1 overflow-auto p-6">
         <div className="mx-auto flex max-w-4xl flex-col gap-6">
-          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} />
+          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={bugGroups.length} />
 
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 
           <section>
             <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
-              Findings {bugs.length > 0 ? `(${bugs.length})` : ''}
+              Findings {bugGroups.length > 0 ? `(${bugGroups.length})` : ''}
             </h2>
-            {bugs.length > 0 ? (
+            {bugGroups.length > 0 ? (
               <div className="flex flex-col gap-4">
-                {bugs.map((bug, index) => (
+                {bugGroups.map(({ item: bug, count }, index) => (
                   <FindingCard
                     key={bug.bugId || index}
                     bug={bug}
                     index={index}
+                    occurrences={count}
                     sessionId={sessionId}
                     status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
                     onVerify={verify}

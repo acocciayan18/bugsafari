@@ -10,9 +10,10 @@ import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
+import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, type InfiltrationProfileId } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
-type ProfileType = 'chaos' | 'deep-semantic' | 'high-freq' | 'async';
 
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -47,7 +48,7 @@ interface ClinicalForensicsDashboardProps {
   onStop?: () => void;
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
-  onStartInitialization?: (url: string, profile: ProfileType, strictBoundary: boolean) => void;
+  onStartInitialization?: (url: string, profile: InfiltrationProfileId, strictBoundary: boolean) => void;
   children?: ReactNode;
 }
 
@@ -80,7 +81,7 @@ export default function ClinicalForensicsDashboard({
   // ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
   const [urlInput, setUrlInput] = useState(targetUrl);
-  const [selectedProfile, setSelectedProfile] = useState<ProfileType>('chaos');
+  const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
 
   // ─────────────────────────────────────────────────────────────
@@ -106,8 +107,15 @@ export default function ClinicalForensicsDashboard({
     return events.slice(-100);
   }, [telemetry]);
 
-  const errorCount = errors.incidents.length + errors.reports.length;
-  const terminalContentSignal = formattedTelemetry.length + errorCount + networkEvents.length + browserConsole.length;
+  // Badge reflects DISTINCT fault cards the Errors tab renders (mirrored crash
+  // reports deduped, identical repeats collapsed), not the raw occurrence count.
+  const dedupedReports = dedupeReportsAgainstIncidents(errors.incidents, errors.reports);
+  const errorCount =
+    groupBySignature(errors.incidents, liveFaultSignature).length +
+    groupBySignature(dedupedReports, liveFaultSignature).length;
+  // Scroll growth uses raw counts so a new occurrence still nudges the view.
+  const terminalContentSignal =
+    formattedTelemetry.length + errors.incidents.length + errors.reports.length + networkEvents.length + browserConsole.length;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   const handleInitialize = () => {
@@ -119,12 +127,9 @@ export default function ClinicalForensicsDashboard({
   const isActiveSession = testStatus === 'ACTIVE' || testStatus === 'PAUSED' || isTestRunning;
   const showSessionControls = isActiveSession || hasRunCompleted;
 
-  const profiles = [
-    { id: 'chaos', name: 'Chaos Infiltration', desc: 'Full-spectrum assault execution' },
-    { id: 'deep-semantic', name: 'Deep Semantic Data Attack', desc: 'Context-aware form fuzzing' },
-    { id: 'high-freq', name: 'High-Frequency Concurrency Strain', desc: 'Rapid UI actions & network load' },
-    { id: 'async', name: 'Async Lifecycle Assault', desc: 'Race condition validation' },
-  ] as const;
+  const profiles = INFILTRATION_PROFILE_CATALOG.map((p) => ({
+    id: p.id, name: p.label, desc: p.description,
+  }));
 
   const currentProfileName = profiles.find(p => p.id === selectedProfile)?.name || 'Chaos Infiltration';
 

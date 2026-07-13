@@ -147,7 +147,7 @@ function AuthAppContent() {
                   onSaveSessionToHistory={handleSaveSessionToHistory}
                   onStartInitialization={(url, profile, strictBoundary) => {
                     setTargetUrl(url); 
-                    startTest(url, { ...defaultOptimizationSettings, strictUrlLock: !!strictBoundary }, profile as any);
+                    startTest(url, { ...defaultOptimizationSettings, strictUrlLock: !!strictBoundary }, { profile });
                   }}
                 />
               </div>
