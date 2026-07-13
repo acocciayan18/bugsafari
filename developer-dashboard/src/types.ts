@@ -128,6 +128,8 @@ export interface ForensicCaughtBug {
   stackTrace?: string;
   /** Per-finding, human-actionable numbered replication checklist. */
   reproductionSteps?: string[];
+  /** Per-finding minimized, replayable action trace — the same timeline Verify Fix replays. */
+  actionSteps?: ForensicActionStep[];
   /** Deterministic knowledge-base classification + scenario/step attribution. */
   attribution?: FindingAttribution;
 }

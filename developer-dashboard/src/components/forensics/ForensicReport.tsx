@@ -171,6 +171,38 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 // Steps sections.
 // ─────────────────────────────────────────────────────────────
 
+// Human-readable action target — bare "N/A" (navigation / page-level steps carry no
+// DOM selector) reads badly in a report, so map it to intent per actionType.
+function stepTarget(step: ForensicActionStep): string {
+  const s = step.selector;
+  if (step.actionType === 'navigation') return s && s !== 'N/A' ? s : 'page navigation';
+  return s && s !== 'N/A' ? s : 'page-level (no element)';
+}
+
+// One-line rendering of a step, shared by the plaintext copy paths.
+function stepLine(step: ForensicActionStep): string {
+  const payload = step.payloadText ? ` with "${step.payloadText}"` : '';
+  return `#${step.stepNumber} ${step.actionType}${payload} on ${stepTarget(step)}`;
+}
+
+// Ordered structured trace, shared by the per-finding block and the session appendix.
+function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
+  return (
+    <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600">
+      {steps.map((step) => (
+        <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0">
+          <span className="text-gray-400">#{step.stepNumber}</span>{' '}
+          <span className="font-semibold text-gray-700">{step.actionType}</span>
+          {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
+          {' on '}
+          <span>{stepTarget(step)}</span>
+          <span className="text-gray-400"> ({formatDate(step.timestamp)})</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   return [
@@ -180,6 +212,7 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
     bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
     `Detected: ${formatDate(bug.timestamp)}`,
     bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
+    bug.actionSteps?.length ? `\nReproduction Trace:\n${bug.actionSteps.map(stepLine).join('\n')}` : '',
     bug.reproductionSteps?.length ? `\nReproduction Steps:\n${bug.reproductionSteps.join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -571,9 +604,17 @@ function FindingCard({
         )}
       </div>
 
-      {/* Reproduction steps */}
+      {/* Reproduction steps — prefer the structured, replayable trace (same timeline
+          Verify Fix replays); fall back to the prose checklist, then the empty message. */}
       <div className="px-4 pt-3">
-        {bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
+        {bug.actionSteps && bug.actionSteps.length > 0 ? (
+          <div>
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              Reproduction Trace ({bug.actionSteps.length} steps)
+            </div>
+            <ActionStepList steps={bug.actionSteps} />
+          </div>
+        ) : bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
           <ReproductionChecklist steps={bug.reproductionSteps} />
         ) : (
           <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400">
@@ -636,12 +677,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
 
   if (!steps.length) return null;
 
-  const timelineText = steps
-    .map((step) => {
-      const payload = step.payloadText ? ` with payload "${step.payloadText}"` : '';
-      return `Step ${step.stepNumber}: ${step.actionType}${payload} on ${step.selector || 'N/A'} (${formatDate(step.timestamp)})`;
-    })
-    .join('\n');
+  const timelineText = steps.map(stepLine).join('\n');
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
@@ -659,18 +695,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
           <div className="mb-3 flex justify-end">
             <CopyButton text={timelineText} label="Action Timeline" />
           </div>
-          <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600">
-            {steps.map((step) => (
-              <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0">
-                <span className="text-gray-400">#{step.stepNumber}</span>{' '}
-                <span className="font-semibold text-gray-700">{step.actionType}</span>
-                {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
-                {' on '}
-                <span>{step.selector || 'N/A'}</span>
-                <span className="text-gray-400"> ({formatDate(step.timestamp)})</span>
-              </li>
-            ))}
-          </ol>
+          <ActionStepList steps={steps} />
         </div>
       )}
     </section>
