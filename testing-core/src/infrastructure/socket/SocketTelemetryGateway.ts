@@ -1,6 +1,6 @@
 import type { Server } from 'socket.io';
 import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
-import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
 export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report';
@@ -80,5 +80,11 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitIncidentReport(report: IncidentReport): void {
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
+  }
+
+  // Live-only: browser console is transient telemetry (not a saved finding), so it
+  // streams to attached clients without buffering for reconnect replay.
+  public emitBrowserConsole(message: BrowserConsoleMessage): void {
+    this.channel().emit('browser-console', message);
   }
 }

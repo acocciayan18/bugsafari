@@ -2,7 +2,7 @@ import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
-import type { ActionBreadcrumb, ActionRecord, ActionType, TelemetryEvent } from '../../../../../shared/types.ts';
+import type { ActionBreadcrumb, ActionRecord, ActionType, IncidentReport, TelemetryEvent } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
@@ -153,6 +153,10 @@ export class ExplorationEngine {
   // Live page reference for action-trace URL resolution.
   private activePage: Page | null = null;
 
+  // Live telemetry gateway for the active run — lets registerConfirmedBug stream
+  // arsenal-discovered bugs to the Errors tab. Null between runs.
+  private activeGateway: TelemetryGateway | null = null;
+
   private confirmedBugsMemory: ConfirmedBug[] = [];
 
   // Runtime metrics for Phase 3 telemetry tracking
@@ -288,7 +292,30 @@ export class ExplorationEngine {
       if (this.lastActedTarget) {
         this.scorer.applyCompoundReward(this.lastActedTarget, { faultDetected: true });
       }
+
+      // Surface arsenal-discovered bugs (fuzzing/injection/stress/storage) on the
+      // live Errors tab. JS/console exceptions are already streamed by
+      // StabilityMonitor (streamed=true); network faults own the Network tab.
+      if (!bug.streamed && bug.type !== 'NETWORK') {
+        this.streamBugToErrorsTab(bug);
+      }
     }
+  }
+
+  /** Emit a confirmed arsenal bug as a live incident-report for the Errors tab. */
+  private streamBugToErrorsTab(bug: ConfirmedBug): void {
+    if (!this.activeGateway) return;
+    const incident: IncidentReport = {
+      timestamp: bug.timestamp.toISOString(),
+      reason: bug.message,
+      url: this.activePage?.url() ?? this.targetUrl,
+      stackTrace: bug.stackTrace,
+      steps: bug.reproductionActions ?? [],
+      reproductionPlaybook: bug.reproductionSteps,
+      advice: bug.advice,
+      attribution: bug.attribution,
+    };
+    this.activeGateway.emitIncidentReport(incident);
   }
 
   public pause() {
@@ -442,6 +469,7 @@ export class ExplorationEngine {
     };
 
     telemetry = this.createPersistentTelemetryGateway(telemetry);
+    this.activeGateway = telemetry;
     this.targetOrigin = new URL(targetUrl).origin;
     this.targetUrl = targetUrl;
     this.freezeActionTraceRecording = false;
@@ -812,6 +840,7 @@ export class ExplorationEngine {
       await this.completeSession();
       this.sessionId = null;
       this.activePage = null;
+      this.activeGateway = null;
       this.recentActionTraceIds.length = 0;
     }
   }

@@ -259,17 +259,8 @@ export class StabilityMonitor {
         attribution,
       });
 
-      t.gateway.emitIncidentReport({
-        timestamp,
-        reason: `Unhandled JS Exception: ${message}`,
-        url,
-        stackTrace,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
-
+      // Single incident source: emitForensicReport synthesizes the matching
+      // incident-report internally, so the explicit emit here would double-count.
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Unhandled JS Exception: ${message}`,
@@ -308,6 +299,7 @@ export class StabilityMonitor {
         reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(timestamp),
+        streamed: true, // already emitted to the Errors tab above
       });
     });
 
@@ -354,17 +346,8 @@ export class StabilityMonitor {
         attribution,
       });
 
-      t.gateway.emitIncidentReport({
-        timestamp,
-        reason: `Console Error: ${text}`,
-        url,
-        stackTrace: text,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
-
+      // Single incident source: emitForensicReport synthesizes the matching
+      // incident-report internally, so the explicit emit here would double-count.
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Console Error: ${text}`,
@@ -402,6 +385,7 @@ export class StabilityMonitor {
         reproductionActions: reproduction.actions,
         attribution,
         timestamp: new Date(timestamp),
+        streamed: true, // already emitted to the Errors tab above
       });
     });
   }
@@ -619,17 +603,8 @@ export class StabilityMonitor {
         attribution,
       });
 
-      t.gateway.emitIncidentReport({
-        timestamp,
-        reason: `Network Request Failed: ${reason}`,
-        url: this.deps.getLastKnownUrl() || page.url(),
-        stackTrace: failureDetail,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
-
+      // Single incident source: emitForensicReport synthesizes the matching
+      // incident-report internally, so the explicit emit here would double-count.
       t.gateway.emitForensicReport({
         timestamp,
         reason: `Network Request Failed: ${reason}`,

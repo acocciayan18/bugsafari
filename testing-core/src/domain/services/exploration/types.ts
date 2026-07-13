@@ -75,6 +75,10 @@ export interface ConfirmedBug {
   reproductionActions?: ActionRecord[];
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
+  /** True when this bug was already streamed to the Errors tab by StabilityMonitor
+   *  (raw JS/console exceptions). Arsenal-discovered bugs leave it falsy so
+   *  registerConfirmedBug bridges them to the live Errors tab. */
+  streamed?: boolean;
 }
 
 /** Parameters for persisting a single forensic error row (sans forensicRunId). */
