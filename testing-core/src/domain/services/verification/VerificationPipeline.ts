@@ -24,7 +24,6 @@ export interface VerificationCandidate {
   url?: string;
   statusCode?: number;
   content?: string;
-  targetOrigin?: string;
   /** Present evidence artifacts — drives the evidence-completeness component of the score. */
   evidence?: {
     hasMessage?: boolean;
@@ -97,7 +96,6 @@ export class VerificationPipeline {
       message: candidate.message,
       url: candidate.url,
       statusCode: candidate.statusCode,
-      targetOrigin: candidate.targetOrigin,
     });
 
     const signature = `${candidate.faultType}|${normalizeMessage(candidate.message)}|${candidate.statusCode ?? ''}`;

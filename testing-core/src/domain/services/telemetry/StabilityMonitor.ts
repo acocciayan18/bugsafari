@@ -144,15 +144,6 @@ export class StabilityMonitor {
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
 
-  /** Origin (protocol+host) of the page under test, derived from the last known URL. */
-  private targetOrigin(): string | undefined {
-    try {
-      return new URL(this.deps.getLastKnownUrl()).origin;
-    } catch {
-      return undefined;
-    }
-  }
-
   /**
    * Verify a caught fault before it is reported. Classifies it against the
    * knowledge base, then runs it through the verification pipeline (provenance →
@@ -190,7 +181,6 @@ export class StabilityMonitor {
       statusCode: opts?.statusCode,
       url: opts?.url,
       content: opts?.content,
-      targetOrigin: this.targetOrigin(),
       evidence: opts?.evidence,
     });
 
@@ -440,6 +430,11 @@ export class StabilityMonitor {
         return;
       }
 
+      // Cascade tracking on the raw failure — a filtered 404 still costs real network-stack work.
+      if (status >= 400) {
+        this.deps.recordNetworkFailure();
+      }
+
       // Soft-fail detection: a <400 response whose body flags an error is a
       // masked backend failure. Only the body of an otherwise-successful response
       // is read (a 4xx/5xx is classified by status alone, as before).
@@ -585,6 +580,9 @@ export class StabilityMonitor {
         // Skip persistent logging for aborts - these are expected cancellation events
         return;
       }
+
+      // Cascade tracking on the raw failure — see the response handler above.
+      this.deps.recordNetworkFailure();
 
       // Process as EXCEPTION for real network failures
       const reproduction = ActiveScenarioTracker.flushSnapshot({

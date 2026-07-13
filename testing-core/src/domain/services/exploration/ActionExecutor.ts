@@ -129,6 +129,16 @@ export class ActionExecutor {
     //    execution only, never navigation.
     await this.navigateTarget(page, target);
 
+    // Cascade back-off: skip the stress/concurrency payload (navigation above already ran) until the failure burst clears.
+    if (this.deps.isNetworkCascading()) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'network-cascade-backoff',
+        selector: target.selector,
+        message: `🧯 Network failure cascade detected — skipping stress-scenario payload on ${humanizeElement(target)} to avoid piling onto an unstable page.`,
+      });
+      return;
+    }
+
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
     //    this element (if any) AFTER navigation, so scenario-specific actions
     //    execute on the freshly discovered state rather than replacing traversal.
@@ -406,7 +416,8 @@ export class ActionExecutor {
     return {
       name: asyncStateRacer.name,
       execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
-        await asyncStateRacer.execute(page, target, this.deps.fuzzManager);
+        // Live cascade read per-cycle — the race's own traffic can trip it mid-run, after the upfront gate already passed.
+        await asyncStateRacer.execute(page, target, this.deps.fuzzManager, () => this.deps.isNetworkCascading());
       },
     };
   }

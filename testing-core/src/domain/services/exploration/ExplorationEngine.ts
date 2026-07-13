@@ -40,6 +40,7 @@ import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
+import { NetworkFailureCascadeTracker } from './NetworkFailureCascadeTracker.js';
 import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import type { ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
@@ -103,6 +104,8 @@ export class ExplorationEngine {
   // Per-form fuzz-attempt budget — excludes a form after formFuzzCap submissions
   // to prevent input over-fuzzing on multi-field forms.
   private readonly formFuzz = new FormFuzzRegistry();
+  // Rolling-window burst detector for failed network events — lets rapid-fire scenarios back off before a freeze.
+  private readonly networkFailureCascade = new NetworkFailureCascadeTracker();
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
@@ -448,6 +451,7 @@ export class ExplorationEngine {
     this.routeExhaustion.reset();
     this.edgeRepeat.reset();
     this.formFuzz.reset();
+    this.networkFailureCascade.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
 
@@ -477,6 +481,7 @@ export class ExplorationEngine {
       setFreeze: () => { this.freezeActionTraceRecording = true; },
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
+      recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
     });
 
     const stateRestorer = new StateRestorer({
@@ -498,6 +503,7 @@ export class ExplorationEngine {
       formFuzz: this.formFuzz,
       formFuzzCap: this.formFuzzCap,
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
+      isNetworkCascading: () => this.networkFailureCascade.isCascading(),
     });
 
     // Operator visibility: announce which testing strategies are active this run.

@@ -70,6 +70,9 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
   areaNorm: 0.3,
   yNorm: -0.2,
   textLenNorm: 0.2,
+  // Dropdown/menu-navigation priors (Issue #1): encourage exploring menu triggers/items.
+  kwDropdown: 0.6,
+  opensLayer: 0.4,
 };
 
 // Reference scales for normalizing layout features into ~[0,1].
@@ -197,6 +200,7 @@ export function buildFeatureVectorFromElement(input: {
   ariaLabel?: string;
   role?: string;
   name?: string;
+  opensLayer?: boolean;
 }): FeatureVector {
   // Robust fallbacks: coerce every optional string field to '' so incomplete
   // element data never throws or produces non-finite features.
@@ -235,6 +239,8 @@ export function buildFeatureVectorFromElement(input: {
     kwPassword: includesKeyword(normalizedText, ['password', 'pin']) ? 1 : 0,
     kwEmail: includesKeyword(normalizedText, ['email', 'e-mail']) ? 1 : 0,
     kwSearch: includesKeyword(normalizedText, ['search', 'find', 'query', 'filter']) ? 1 : 0,
+    kwDropdown: includesKeyword(normalizedText, ['menu', 'dropdown', 'categories']) ? 1 : 0,
+    opensLayer: input.opensLayer ? 1 : 0,
     // Normalized layout features (0 when geometry is unknown).
     areaNorm: box ? clamp01((box.width * box.height) / LAYOUT_AREA_REF) : 0,
     yNorm: box ? clamp01(box.y / LAYOUT_VIEWPORT_H) : 0,

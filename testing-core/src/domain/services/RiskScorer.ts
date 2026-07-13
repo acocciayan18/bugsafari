@@ -73,6 +73,9 @@ export interface ScoredElement extends ParsedElement {
 // yet finite (no NaN/Infinity in downstream telemetry .toFixed()).
 const SATURATED_DESTINATION_FLOOR = 1_000_000;
 
+// Keeps heuristicScore on the same 0-100 scale as mlScore (sigmoid-bounded) so stacked keyword matches can't dominate combinedScore.
+const HEURISTIC_SCORE_CAP = 100;
+
 export class RiskScorer {
   private readonly perceptron = new SingleLayerPerceptron();
   private readonly penalties = new Map<string, number>();
@@ -112,6 +115,7 @@ export class RiskScorer {
         ariaLabel: element.ariaLabel ?? '',
         role: element.role ?? '',
         name: element.name ?? '',
+        opensLayer: element.opensLayer ?? false,
       });
 
       // Compute ML score using perceptron
@@ -161,8 +165,8 @@ export class RiskScorer {
         score += weight;
       }
     }
-    
-    return score;
+
+    return Math.min(score, HEURISTIC_SCORE_CAP);
   }
 
   /**

@@ -29,7 +29,8 @@ const app = express();
 // behavior for this public demo/testing tool. Do not add `credentials: true`
 // to this config without also switching to an explicit env-driven allow-list.
 app.use(cors());
-app.use(express.json());
+// Default 100kb is too small for /api/history/save-session's findings array (stack traces + reproduction steps accumulate across a run and were observed hitting 413).
+app.use(express.json({ limit: '2mb' }));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {

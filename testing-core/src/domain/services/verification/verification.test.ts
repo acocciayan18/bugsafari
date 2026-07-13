@@ -39,16 +39,15 @@ check('ResizeObserver loop → BROWSER_EXTENSION noise', () => {
   assert.equal(v.origin, 'BROWSER_EXTENSION');
 });
 
-check('third-party host failure is not the target app', () => {
+check('cross-origin API failure (split frontend/backend deploy) is still TARGET_APP', () => {
   const v = classifyFaultOrigin({
     faultType: 'NETWORK',
-    message: 'HTTP 500 GET https://cdn.analytics.io/t.js',
-    url: 'https://cdn.analytics.io/t.js',
+    message: 'HTTP 500 GET https://api.app.test/orders',
+    url: 'https://api.app.test/orders',
     statusCode: 500,
-    targetOrigin: 'https://app.test',
   });
-  assert.equal(v.origin, 'NETWORK_ENV');
-  assert.equal(v.isTargetApp, false);
+  assert.equal(v.origin, 'TARGET_APP');
+  assert.equal(v.isTargetApp, true);
 });
 
 check('real app JS exception → TARGET_APP', () => {
@@ -87,14 +86,14 @@ check('pipeline reports a real 5xx and marks it corroborated on recurrence', () 
   const p = new VerificationPipeline(() => 1000);
   const first = p.evaluate({
     faultType: 'NETWORK', message: 'HTTP 500 POST /api/orders', confidence: 'SIGNAL',
-    url: 'https://app.test/api/orders', statusCode: 500, targetOrigin: 'https://app.test',
+    url: 'https://app.test/api/orders', statusCode: 500,
     content: 'Internal Server Error', evidence: { hasMessage: true, hasStatusCode: true },
   });
   assert.equal(first.report, true);
   assert.equal(first.corroborated, false);
   const second = p.evaluate({
     faultType: 'NETWORK', message: 'HTTP 500 POST /api/orders', confidence: 'SIGNAL',
-    url: 'https://app.test/api/orders', statusCode: 500, targetOrigin: 'https://app.test',
+    url: 'https://app.test/api/orders', statusCode: 500,
     content: 'Internal Server Error', evidence: { hasMessage: true, hasStatusCode: true },
   });
   assert.equal(second.corroborated, true);
@@ -104,9 +103,9 @@ check('pipeline reports a real 5xx and marks it corroborated on recurrence', () 
 check('cross-channel: console error + same-URL 5xx within window → corroborated', () => {
   let t = 1000;
   const p = new VerificationPipeline(() => t);
-  p.evaluate({ faultType: 'NETWORK', message: 'HTTP 500 GET /api/x', confidence: 'SIGNAL', url: 'https://app.test/api/x', statusCode: 500, targetOrigin: 'https://app.test' });
+  p.evaluate({ faultType: 'NETWORK', message: 'HTTP 500 GET /api/x', confidence: 'SIGNAL', url: 'https://app.test/api/x', statusCode: 500 });
   t = 1500;
-  const out = p.evaluate({ faultType: 'CONSOLE', message: 'fetch failed for /api/x', confidence: 'SIGNAL', url: 'https://app.test/api/x', targetOrigin: 'https://app.test' });
+  const out = p.evaluate({ faultType: 'CONSOLE', message: 'fetch failed for /api/x', confidence: 'SIGNAL', url: 'https://app.test/api/x' });
   assert.equal(out.corroborated, true);
 });
 

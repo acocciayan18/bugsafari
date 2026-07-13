@@ -23,14 +23,20 @@ export interface ParsedElement {
   formKey: string;
 }
 
+// Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
+const MAX_DROPDOWN_REVEALS_PER_PARSE = 3;
+
 /**
  * Backward-compatible wrapper class that provides the same interface as the removed RecursiveDomParser.
  * Uses the advanced scanInteractiveElements() which supports Shadow DOM, IFrames, and Z-index overlay checks.
  */
 export class RecursiveDomParser {
+  // Trigger selectors already hover-revealed this run, so they aren't re-probed every parse() call.
+  private readonly probedTriggers = new Set<string>();
+
   public async parse(page: Page): Promise<InteractiveElement[]> {
-    const parsedElements = await scanInteractiveElements(page);
-    
+    const parsedElements = await this.scanWithDropdownReveal(page);
+
     return parsedElements.map((element) => ({
       selector: element.selector,
       id: element.id,
@@ -53,6 +59,32 @@ export class RecursiveDomParser {
       isDismiss: element.isDismiss,
       formKey: element.formKey,
     }));
+  }
+
+  // Dropdown items are hidden until their trigger is hovered, so hover each new opensLayer trigger and rescan (Issue #1).
+  private async scanWithDropdownReveal(page: Page): Promise<ParsedElement[]> {
+    const baseline = await scanInteractiveElements(page);
+    const merged = new Map(baseline.map((element) => [element.selector, element]));
+
+    const unprobedTriggers = baseline.filter(
+      (element) => element.opensLayer && !this.probedTriggers.has(element.selector),
+    );
+
+    for (const trigger of unprobedTriggers.slice(0, MAX_DROPDOWN_REVEALS_PER_PARSE)) {
+      this.probedTriggers.add(trigger.selector);
+      try {
+        await page.hover(trigger.selector, { timeout: 500 });
+      } catch {
+        continue; // trigger not hoverable (detached/obscured) — nothing to reveal
+      }
+      await page.waitForTimeout(150); // let CSS/JS-driven reveal settle before rescan
+      const revealed = await scanInteractiveElements(page).catch(() => [] as ParsedElement[]);
+      for (const element of revealed) {
+        if (!merged.has(element.selector)) merged.set(element.selector, element);
+      }
+    }
+
+    return Array.from(merged.values());
   }
 }
 

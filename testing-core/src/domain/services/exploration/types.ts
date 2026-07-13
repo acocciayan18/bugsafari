@@ -133,6 +133,8 @@ export interface StabilityMonitorDeps {
   getLastKnownUrl(): string;
   /** Increment the failed-requests metric (Phase 3 telemetry). */
   onApiFailure(): void;
+  /** Record one raw network failure (>=400 response or non-aborted requestfailed) into the run-scoped cascade tracker, ahead of any reportability filtering. */
+  recordNetworkFailure(): void;
 }
 
 export interface StateRestorerDeps {
@@ -158,6 +160,8 @@ export interface ActionExecutorDeps {
   formFuzzCap: number;
   /** Sink for confirmed findings — used to register oracle-confirmed fuzz leaks. */
   registerConfirmedBug(bug: ConfirmedBug): void;
+  /** True once the run-scoped NetworkFailureCascadeTracker sees a burst of failed responses — rapid-fire scenarios should back off rather than pile on. */
+  isNetworkCascading(): boolean;
 }
 
 export interface ExplorationLoopDeps {

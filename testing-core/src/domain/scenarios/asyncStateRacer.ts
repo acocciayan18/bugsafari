@@ -92,6 +92,7 @@ export const asyncStateRacer = {
     page: Page,
     target?: InteractiveElement,
     chaosManager?: ChaosTransactionManager<AsyncRaceMetadata> | null,
+    isCascading?: () => boolean,
   ): Promise<void> {
     if (page.isClosed()) return;
 
@@ -126,6 +127,14 @@ export const asyncStateRacer = {
     try {
       for (let cycle = 0; cycle < RACE_CYCLES; cycle++) {
         if (page.isClosed()) break;
+
+        // Back off mid-race on a failure burst — this scenario's own traffic can tip it over.
+        if (isCascading?.()) {
+          ActiveScenarioTracker.record(
+            `Aborted remaining interruption cycles on "${label}" after cycle ${cycle}/${RACE_CYCLES} — network failure cascade detected.`,
+          );
+          break;
+        }
 
         // a) Trigger the async action WITHOUT awaiting settle — the request goes in flight.
         //    noWaitAfter so Playwright does not block on a resulting navigation.
