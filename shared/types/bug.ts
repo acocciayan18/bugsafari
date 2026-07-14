@@ -88,6 +88,8 @@ export interface IncidentReport {
   advice?: string;
   // Deterministic classification + scenario/step attribution for this incident.
   attribution?: FindingAttribution;
+  // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
+  occurrences?: number;
 }
 
 export interface ForensicCrashReport {
@@ -103,4 +105,6 @@ export interface ForensicCrashReport {
   advice?: string;
   // Deterministic classification + scenario/step attribution for this crash.
   attribution?: FindingAttribution;
+  // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
+  occurrences?: number;
 }

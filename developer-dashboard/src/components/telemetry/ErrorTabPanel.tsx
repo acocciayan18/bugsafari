@@ -93,8 +93,8 @@ export default function ErrorTabPanel({
 
   // Collapse identical repeats (same fault re-thrown across the run) into one card
   // with an ×N count — lossless display grouping, nothing is dropped.
-  const incidentGroups = groupBySignature(errorIncidents, liveFaultSignature);
-  const reportGroups = groupBySignature(errorReports, liveFaultSignature);
+  const incidentGroups = groupBySignature(errorIncidents, liveFaultSignature, (i) => i.occurrences ?? 1);
+  const reportGroups = groupBySignature(errorReports, liveFaultSignature, (r) => r.occurrences ?? 1);
 
   return (
     <div className="space-y-4 p-2">

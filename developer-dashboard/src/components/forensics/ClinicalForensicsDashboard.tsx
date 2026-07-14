@@ -113,9 +113,12 @@ export default function ClinicalForensicsDashboard({
   const errorCount =
     groupBySignature(errors.incidents, liveFaultSignature).length +
     groupBySignature(dedupedReports, liveFaultSignature).length;
-  // Scroll growth uses raw counts so a new occurrence still nudges the view.
+  // Scroll growth uses raw occurrence totals (not distinct-card length) so a
+  // repeat of an already-collapsed fault still nudges the view.
+  const occurrenceTotal = (faults: { occurrences?: number }[]): number =>
+    faults.reduce((sum, f) => sum + (f.occurrences ?? 1), 0);
   const terminalContentSignal =
-    formattedTelemetry.length + errors.incidents.length + errors.reports.length + networkEvents.length + browserConsole.length;
+    formattedTelemetry.length + occurrenceTotal(errors.incidents) + occurrenceTotal(errors.reports) + networkEvents.length + browserConsole.length;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   const handleInitialize = () => {

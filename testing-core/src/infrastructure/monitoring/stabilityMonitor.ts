@@ -58,6 +58,7 @@ export type BugRegistrationCallback = (bug: {
   reproductionSteps?: string[];
   reproductionActions?: ActionRecord[];
   attribution?: FindingAttribution;
+  streamed?: boolean;
 }) => void;
 
 /**
@@ -111,7 +112,9 @@ export function setupStabilityMonitoring(
     });
     telemetry.emitIncidentReport({
       timestamp,
-      reason: 'Main Thread Lock-up Detected',
+      // Same canonical reason as the forensic emission below so the incident +
+      // forensic + synthesized-incident collapse to one Errors-tab card.
+      reason,
       url,
       stackTrace,
       steps: [],
@@ -134,7 +137,9 @@ export function setupStabilityMonitoring(
       onBugRegistered({
         bugId: `main-thread-lockup-${Date.now()}`,
         type: 'RUNTIME_UI_FREEZE',
-        message: banner,
+        // Same canonical text as the live incident/forensic reason so the saved
+        // finding message matches the Errors-tab card (banner stays terminal-only).
+        message: reason,
         selector: '',
         payloadUsed: '',
         advice,
@@ -142,6 +147,7 @@ export function setupStabilityMonitoring(
         reproductionSteps: reproductionPlaybook,
         reproductionActions: reproduction.actions,
         attribution,
+        streamed: true, // already emitted to the Errors tab above — don't double-stream
       });
     }
   };

@@ -4,6 +4,7 @@ import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, Optimi
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
+import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
 import { useAuth } from '../../context/AuthContext';
 
 // 👈 Unified Test Session Status Type for visibility matrix
@@ -211,9 +212,10 @@ return () => {
 
       setTelemetry(snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-500));
       setNetworkEvents(snapshot.telemetry.filter((e) => e.type === 'NETWORK').slice(-200));
-      // Buffers arrive oldest→newest; the UI lists render newest-first.
-      setReports([...snapshot.reports].reverse());
-      setIncidents([...snapshot.incidents].reverse());
+      // Buffers arrive oldest→newest; fold through the same collapse so a
+      // restored session holds one entry per fault (newest-first) with counts.
+      setReports(snapshot.reports.reduce<ForensicCrashReport[]>((buf, r) => collapseFaultIntoBuffer(buf, r), []));
+      setIncidents(snapshot.incidents.reduce<IncidentReport[]>((buf, i) => collapseFaultIntoBuffer(buf, i), []));
       setCurrentUrl(snapshot.currentUrl || snapshot.targetUrl);
 
       setSessionTimeMs(snapshot.timeboxMs);
@@ -344,8 +346,8 @@ return () => {
       }
     });
 
-    gateway.onForensicReport((report) => setReports((prev) => [report, ...prev].slice(0, 100)));
-    gateway.onIncidentReport((report) => setIncidents((prev) => [report, ...prev].slice(0, 100)));
+    gateway.onForensicReport((report) => setReports((prev) => collapseFaultIntoBuffer(prev, report)));
+    gateway.onIncidentReport((report) => setIncidents((prev) => collapseFaultIntoBuffer(prev, report)));
     gateway.onUrlChanged((url) => setCurrentUrl(url));
     gateway.onLiveFrame((frame) => {
       setIsThinking(false);
