@@ -1,8 +1,19 @@
 import { useState } from 'react';
-import type { BrowserConsoleMessage } from '../../types';
+import type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
 import { CopyButton, ExpandableCodeBlock } from '../common/ForensicCardKit';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
+
+// Per-level pill styling so severity is visible at a glance.
+const LEVEL_STYLES: Record<BrowserConsoleLevel, string> = {
+  error: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  debug: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  trace: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  notice: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+  log: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -41,15 +52,23 @@ export default function ConsoleTabPanel({
             <div className="text-gray-500 italic text-xs py-4 px-4">No browser console logs captured yet.</div>
           ) : (
             <div className="p-3 space-y-2">
-              {browserConsole.slice(-50).map((log, idx) => (
+              {browserConsole.map((log, idx) => (
                 <div key={idx} className="group flex items-start gap-2 justify-between p-2 border border-gray-200 rounded-md hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-gray-700 flex-shrink-0 w-6">{idx + 1}.</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase flex-shrink-0 ${LEVEL_STYLES[log.level] ?? LEVEL_STYLES.log}`}>
+                        {log.level}
+                      </span>
                       <span className="font-semibold text-xs whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300">
                         {log.message}
                       </span>
                     </div>
+                    {(log.url || log.line) && (
+                      <div className="text-[10px] text-gray-400 pl-8 truncate">
+                        {log.url}{log.line ? `:${log.line}` : ''}{log.column ? `:${log.column}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out flex-shrink-0">
                     <CopyButton text={log.message} label="Log" />
@@ -59,7 +78,7 @@ export default function ConsoleTabPanel({
 
               <ExpandableCodeBlock
                 title="View Full Console Logs JSON"
-                content={JSON.stringify(browserConsole.slice(-50), null, 2)}
+                content={JSON.stringify(browserConsole, null, 2)}
                 isExpanded={expandedActionTrail['console']}
                 onToggle={() => setExpandedActionTrail(prev => ({ ...prev, 'console': !prev['console'] }))}
               />

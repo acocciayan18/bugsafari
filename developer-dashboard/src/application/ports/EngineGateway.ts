@@ -1,11 +1,17 @@
 import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
+export type BrowserConsoleLevel =
+  | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
+
 export interface BrowserConsoleMessage {
   timestamp: string;
-  level: 'log' | 'error' | 'warn' | 'info';
+  level: BrowserConsoleLevel;
+  type: string;
   message: string;
   url?: string;
   line?: number;
+  column?: number;
+  stackTrace?: string;
 }
 
 /** Outcome of a start request: a synchronous run yields just a runId; a queued

@@ -67,12 +67,18 @@ export {
 // Local binding (the re-export above does not bring the name into local scope).
 import type { FindingAttribution } from '../../shared/types.js';
 
+export type BrowserConsoleLevel =
+  | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
+
 export interface BrowserConsoleMessage {
   timestamp: string;
-  level: 'log' | 'error' | 'warn' | 'info';
+  level: BrowserConsoleLevel;
+  type: string;
   message: string;
   url?: string;
   line?: number;
+  column?: number;
+  stackTrace?: string;
 }
 
 export interface SessionHistoryEntry {

@@ -40,8 +40,9 @@ interface ClinicalForensicsDashboardProps {
   isTestRunning: boolean;
   testStatus?: TestSessionStatus;
   currentEngineAction?: string; 
-  hasRunCompleted?: boolean; 
-  isInitializing?: boolean; 
+  hasRunCompleted?: boolean;
+  isSessionSaved?: boolean;
+  isInitializing?: boolean;
   liveFrame?: string | null; 
   sessionTimeMs?: number; 
   remainingTimeMs?: number; 
@@ -67,6 +68,7 @@ export default function ClinicalForensicsDashboard({
   testStatus = 'IDLE',
   currentEngineAction = '',
   hasRunCompleted = false,
+  isSessionSaved = false,
   isInitializing = false,
   liveFrame = null,
   sessionTimeMs,
@@ -252,12 +254,20 @@ export default function ClinicalForensicsDashboard({
                   Stop
                 </button>
               )}
-              {onSaveSessionToHistory && (
+              {/* Save Session — only in a terminal state (Completed/Stopped/Failed), never while live; single-save. */}
+              {onSaveSessionToHistory && hasRunCompleted && !isActiveSession && (
                 <button
                   onClick={onSaveSessionToHistory}
-                  className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                  disabled={isSessionSaved}
+                  title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${isSessionSaved ? 'bg-emerald-600 text-white cursor-not-allowed opacity-80' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                 >
-                  Save Session
+                  {isSessionSaved && (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {isSessionSaved ? 'Saved' : 'Save Session'}
                 </button>
               )}
             </div>

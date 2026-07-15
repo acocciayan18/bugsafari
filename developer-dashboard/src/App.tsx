@@ -62,6 +62,10 @@ function AuthAppContent() {
     useDashboardController(() => createGateway);
 
   const handleSaveSessionToHistory = () => {
+    if (state.isSessionSaved) {
+      toast('Session has already been saved.');
+      return;
+    }
     toast.promise(
       saveSessionToHistory(targetUrl),
       {
@@ -144,6 +148,7 @@ function AuthAppContent() {
                   testStatus={state.status}
                   currentEngineAction={state.currentEngineAction}
                   hasRunCompleted={state.hasRunCompleted}
+                  isSessionSaved={state.isSessionSaved}
                   isInitializing={state.isInitializing}
                   liveFrame={state.liveFrame}
                   sessionTimeMs={state.activeTimeboxMs}

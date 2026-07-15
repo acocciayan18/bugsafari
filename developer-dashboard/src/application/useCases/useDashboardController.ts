@@ -10,6 +10,9 @@ import { useAuth } from '../../context/AuthContext';
 // 👈 Unified Test Session Status Type for visibility matrix
 export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED';
 
+// Single capped console buffer — badge count and rendered logs share this bound.
+const CONSOLE_BUFFER_CAP = 50;
+
 export interface DashboardState {
   isConnected: boolean;
   isLaunching: boolean;
@@ -34,6 +37,7 @@ export interface DashboardState {
   currentUrl: string;
   sessionHistory: SessionHistoryEntry[];
   isSavingSession: boolean;
+  isSessionSaved: boolean;
   browserConsole: BrowserConsoleMessage[];
   // Reconnection & recovery surface.
   isReconnecting: boolean;
@@ -120,6 +124,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [currentUrl, setCurrentUrl] = useState<string>('');
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  // Single-save guard — flips true after a session is committed, reset on new run.
+  const [isSessionSaved, setIsSessionSaved] = useState(false);
 const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [isInitializing, setIsInitializing] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
@@ -416,9 +422,10 @@ return () => {
     });
 
     gateway.onBrowserConsole((message) => {
+      // Single capped source (last 50) so badge count always matches render.
       setBrowserConsole((prev) => {
         const next = [...prev, message];
-        return next.length > 100 ? next.slice(next.length - 100) : next;
+        return next.length > CONSOLE_BUFFER_CAP ? next.slice(next.length - CONSOLE_BUFFER_CAP) : next;
       });
     });
 
@@ -476,6 +483,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
+    setIsSessionSaved(false);
     setIsQueued(false);
     setQueuePosition(null);
     setQueueDepth(0);
@@ -527,7 +535,8 @@ try {
   };
 
 const saveSession = async (inputTargetUrl: string): Promise<void> => {
-    if (isSavingSession) {
+    // Idempotent by design — an in-flight or already-committed save is a no-op.
+    if (isSavingSession || isSessionSaved) {
       return;
     }
     setIsSavingSession(true);
@@ -538,6 +547,7 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
       const liveFindings = buildLiveFindings(incidents, reports);
       // Save now requires authentication (throws 403 for guests)
       await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs, findings: liveFindings });
+      setIsSessionSaved(true);
       await refreshHistory();
       setTelemetry((prev) => [
         ...prev,
@@ -615,6 +625,7 @@ return {
       currentUrl,
       sessionHistory,
       isSavingSession,
+      isSessionSaved,
       browserConsole,
       isReconnecting,
       reconnectAttempt,

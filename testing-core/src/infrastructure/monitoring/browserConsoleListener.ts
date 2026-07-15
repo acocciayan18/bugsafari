@@ -1,59 +1,94 @@
-import type { Page } from 'playwright';
-import type { TelemetryEvent } from '../../../../shared/types.ts';
-import type { TelemetryGateway, BrowserConsoleMessage } from '../../application/ports/TelemetryGateway.js';
+import type { ConsoleMessage, Page } from 'playwright';
+import type { TelemetryGateway, BrowserConsoleLevel, BrowserConsoleMessage } from '../../application/ports/TelemetryGateway.js';
+
+// One listener per Page — attachAfterNavigation re-runs on every navigation, so
+// guard against stacking duplicate page.on('console') handlers on the same page.
+const attachedPages = new WeakSet<Page>();
+
+// Forward-only session dedup: bounded FIFO of recently emitted signatures.
+const DEDUP_CAP = 500;
+
+// Map Playwright's raw console type to a normalized severity level.
+function classifyLevel(rawType: string): BrowserConsoleLevel {
+  switch (rawType) {
+    case 'error':
+    case 'assert':
+      return 'error';
+    case 'warning':
+      return 'warning';
+    case 'info':
+    case 'dir':
+    case 'dirxml':
+    case 'table':
+      return 'info';
+    case 'debug':
+      return 'debug';
+    case 'trace':
+      return 'trace';
+    case 'log':
+      return 'log';
+    case 'count':
+    case 'timeEnd':
+    case 'group':
+    case 'groupCollapsed':
+      return 'notice';
+    default:
+      return 'log';
+  }
+}
 
 /**
- * Setup a dedicated Playwright page listener to capture browser console logs.
- * This isolates real browser console output from BugSafari's internal backend telemetry.
- * 
- * @param page - The Playwright Page instance
- * @param gateway - The TelemetryGateway for emitting events
+ * Attach a dedicated browser console listener isolating real page console output
+ * from BugSafari's internal telemetry. Idempotent per page; forward-only.
  */
 export async function setupBrowserConsoleListener(
   page: Page,
   gateway: TelemetryGateway,
 ): Promise<void> {
-  // Listen to all console messages from the browser context
-  page.on('console', (message) => {
-    const msgType = message.type() as 'log' | 'error' | 'warn' | 'info';
-    
-    // Only capture meaningful console output (skip verbose debug logs)
-    if (msgType === 'log' && message.text().startsWith('[BugSafari')) {
-      // Skip BugSafari's own injected scripts
-      return;
-    }
+  if (attachedPages.has(page)) return;
+  attachedPages.add(page);
 
-    const browserConsoleMessage: BrowserConsoleMessage = {
-      timestamp: new Date().toISOString(),
-      level: msgType,
-      message: message.text(),
-      url: page.url(),
-    };
+  const seen = new Set<string>();
 
-    // Extract location if available
+  // Bounded forward-only dedup: emit each distinct signature once per session.
+  const emitOnce = (msg: BrowserConsoleMessage): void => {
+    const key = `${msg.level}|${msg.message}|${msg.url ?? ''}|${msg.line ?? ''}|${msg.column ?? ''}`;
+    if (seen.has(key)) return;
+    if (seen.size >= DEDUP_CAP) seen.delete(seen.values().next().value as string);
+    seen.add(key);
+    gateway.emitBrowserConsole?.(msg);
+  };
+
+  page.on('console', (message: ConsoleMessage) => {
+    const rawType = message.type();
+    const text = message.text();
+
+    // Skip BugSafari's own injected instrumentation logs.
+    if (rawType === 'log' && text.startsWith('[BugSafari')) return;
+
     const location = message.location();
-    if (location.url) {
-      browserConsoleMessage.url = location.url;
-      browserConsoleMessage.line = location.lineNumber;
-    }
+    const msg: BrowserConsoleMessage = {
+      timestamp: new Date().toISOString(),
+      level: classifyLevel(rawType),
+      type: rawType,
+      message: text,
+      url: location.url || page.url(),
+    };
+    if (location.lineNumber) msg.line = location.lineNumber;
+    if (location.columnNumber) msg.column = location.columnNumber;
 
-    // Emit to dedicated browser-console channel if supported
-    if (gateway.emitBrowserConsole) {
-      gateway.emitBrowserConsole(browserConsoleMessage);
-    }
+    emitOnce(msg);
   });
 
-  // Also capture page errors that might not appear in console
+  // Uncaught page errors carry a stack the console channel lacks.
   page.on('pageerror', (error) => {
-    const browserConsoleMessage: BrowserConsoleMessage = {
+    emitOnce({
       timestamp: new Date().toISOString(),
       level: 'error',
+      type: 'pageerror',
       message: error.message,
       url: page.url(),
-    };
-
-    if (gateway.emitBrowserConsole) {
-      gateway.emitBrowserConsole(browserConsoleMessage);
-    }
+      stackTrace: error.stack,
+    });
   });
 }

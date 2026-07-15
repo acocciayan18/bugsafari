@@ -81,27 +81,12 @@ function CompactTimer({
     const seconds = Math.floor((timeRemaining % 60000) / 1000);
     const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-    const progressPercent = (timeRemaining / initialTimeMs) * 100;
-
-    const getColor = () => {
-        if (progressPercent > 50) return 'bg-green-500';
-        if (progressPercent > 20) return 'bg-amber-500';
-        return 'bg-red-500';
-    };
-
     const isUrgent = timeRemaining <= 30000;
 
     return (
         <div className="flex items-center gap-2">
-            <div className="text-sm font-mono font-semibold text-gray-700">
+            <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
                 {formattedTime}
-            </div>
-
-            <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                    className={`h-full ${getColor()} transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
-                    style={{ width: `${progressPercent}%` }}
-                />
             </div>
         </div>
     );
