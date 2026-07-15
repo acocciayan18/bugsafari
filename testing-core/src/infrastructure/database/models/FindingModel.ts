@@ -1,3 +1,4 @@
+// DEPRECATED: no longer written. Verified defects live in forensic_errors + session.forensicTrace; high-frequency telemetry is WebSocket-only.
 import { Schema, model, Types, Document } from 'mongoose';
 import { FindingType } from './FindingType.js';
 

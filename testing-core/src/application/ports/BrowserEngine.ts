@@ -25,6 +25,8 @@ export interface BrowserEngine {
     timestamp: Date;
   }>;
   getConfig?(): BrowserEngineConfig;
+  /** Distinct routes/URLs visited during the most recent run — session-global page set for history metadata. */
+  getVisitedRoutes?(): string[];
   /** DB session id of the most recently started run (survives after run() returns). Null for guests/in-memory runs. */
   getLastSessionId?(): string | null;
 }

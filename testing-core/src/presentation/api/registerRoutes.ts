@@ -869,6 +869,10 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         metrics: session.metrics,
         forensicTrace: session.forensicTrace,
         actionSteps: session.actionSteps ?? [],
+
+        // Session-global execution context — rehydrates the live tabbed layout.
+        visitedRoutes: sessionDoc.visitedRoutes ?? [],
+        pagesVisited: sessionDoc.stats?.pagesVisited ?? 0,
       };
 
       console.log('[API] Returning complete forensic report for session:', sessionId);

@@ -287,6 +287,12 @@ export class StartExplorationUseCase {
         const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
         const coveragePercentage = Math.min(100, Math.round((actionRecords.length / maxActions) * 100));
 
+        // Session-global execution context for history hydration. Distinct visited
+        // routes come from the engine; errorsEncountered excludes static WCAG audit
+        // rows so it counts runtime faults only (matching the live Errors tab).
+        const visitedRoutes = (this.browserEngine.getVisitedRoutes?.() ?? []).slice(0, 500);
+        const errorsEncountered = caughtBugs.filter((bug) => bug.type !== 'ACCESSIBILITY').length;
+
         const sessionFields = {
             userId: userObjectId,
             targetUrl,
@@ -297,10 +303,17 @@ export class StartExplorationUseCase {
             endedReason: 'Manually saved by operator',
             findingCount: findingsTotal,
             actionTraceCount: actionRecords.length,
+            config: {
+                maxActions,
+            },
             stats: {
                 runtimeMs,
                 actionsExecuted: actionRecords.length,
+                findingsFound: findingsTotal,
+                pagesVisited: visitedRoutes.length,
+                errorsEncountered,
                 coveragePercentage,
+                maxActions,
             },
             metrics: {
                 totalActions: actionRecords.length,
@@ -312,6 +325,7 @@ export class StartExplorationUseCase {
                 caughtBugs,
             },
             actionSteps,
+            visitedRoutes,
             executionDate: startedAt,
             timeElapsed: runtimeMs,
         };

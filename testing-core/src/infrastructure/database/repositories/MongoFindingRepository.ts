@@ -1,19 +1,13 @@
 import { Types, isValidObjectId } from "mongoose";
 import type {
   BrainState,
-  BugFinding,
   CreateSessionInput,
   FindingRepository,
-  SaveActionTraceInput,
   SaveBrainConfigInput,
-  SaveFindingInput,
   SessionHistoryRecord,
 } from "../../../domain/repositories/FindingRepository.js";
-import type { TelemetryMeta } from "../../../types.js";
-import { ActionTraceModel } from "../models/ActionTraceModel.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
-import { FindingType, SessionStatus } from "../models/FindingType.js";
-import { FindingModel } from "../models/FindingModel.js";
+import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
 
 function toObjectId(id: string): Types.ObjectId | null {
@@ -22,30 +16,6 @@ function toObjectId(id: string): Types.ObjectId | null {
   }
   return new Types.ObjectId(id);
 }
-
-/**
- * Telemetry that is never a finding (pure instrumentation, not an error).
- */
-const NON_BUG_TYPES = ['ACTION', 'HEURISTIC_SCORE'] as const;
-
-/**
- * 100% retention policy: every real finding is persisted. Only pure non-bug
- * telemetry (ACTION / HEURISTIC_SCORE) is skipped. Runtime exceptions, console
- * and server-side rejections, and ALL network faults (no longer gated on a
- * >= 400 status code or "critical string" allow-list) are retained so saved
- * history mirrors the live Errors Tab exactly — no over-aggressive filtering.
- */
-function shouldSaveFinding(type: string, _meta?: TelemetryMeta): boolean {
-  const bugType = type?.toUpperCase();
-
-  if (bugType && NON_BUG_TYPES.includes(bugType as typeof NON_BUG_TYPES[number])) {
-    return false;
-  }
-
-  // Retain every other finding type, known or novel — nothing is truncated.
-  return Boolean(bugType);
-}
-
 
 
 export class MongoFindingRepository implements FindingRepository {
@@ -105,98 +75,6 @@ public async createSession(input: CreateSessionInput): Promise<string> {
         },
       },
     );
-  }
-
-  public async save(input: SaveFindingInput): Promise<string> {
-    if (!input.sessionId) {
-      console.warn('[MongoFindingRepository] Skipping finding save — no active session (in-memory mode)');
-      return '';
-    }
-    const objectId = toObjectId(input.sessionId);
-    if (!objectId) {
-      throw new Error(`Invalid session ID: ${input.sessionId}`);
-    }
-
-    // Filter out non-bug types before saving
-    if (!shouldSaveFinding(input.event.type, input.event.meta)) {
-      console.log(`[MongoFindingRepository] Skipping non-bug finding: ${input.event.type}`);
-      return "";
-    }
-
-    // Promote the crash-time reproduction narrative to a first-class field on the
-    // finding document (it also remains inside `meta` for backward compatibility).
-    const reproductionPlaybook = Array.isArray(input.event.meta?.reproductionSteps)
-      ? input.event.meta.reproductionSteps
-      : [];
-
-    const finding = await FindingModel.create({
-      sessionId: objectId,
-      timestamp: new Date(input.event.timestamp),
-      type: input.event.type as FindingType,
-      meta: input.event.meta,
-      reproductionPlaybook,
-    });
-
-    await SessionModel.updateOne(
-      { _id: objectId },
-      { $inc: { findingCount: 1 } },
-    );
-    return finding._id.toString();
-  }
-
-  public async saveActionTrace(input: SaveActionTraceInput): Promise<string> {
-    const objectId = toObjectId(input.sessionId);
-    if (!objectId) {
-      throw new Error(`Invalid session ID: ${input.sessionId}`);
-    }
-
-    const trace = await ActionTraceModel.create({
-      sessionId: objectId,
-      timestamp: new Date(input.trace.timestamp),
-      selector: input.trace.selector,
-      action: input.trace.action,
-      payload: input.trace.payload,
-      score: input.trace.score,
-    });
-
-    await SessionModel.updateOne(
-      { _id: objectId },
-      { $inc: { actionTraceCount: 1 } },
-    );
-    return trace._id.toString();
-  }
-
-  public async linkActionTracesToFinding(
-    findingId: string,
-    actionTraceIds: string[],
-  ): Promise<void> {
-    if (actionTraceIds.length === 0) {
-      return;
-    }
-
-    const findingObjectId = toObjectId(findingId);
-    if (!findingObjectId) {
-      return;
-    }
-
-    const traceObjectIds = actionTraceIds
-      .map((id) => toObjectId(id))
-      .filter((id): id is Types.ObjectId => id !== null);
-
-    if (traceObjectIds.length === 0) {
-      return;
-    }
-
-    await Promise.all([
-      FindingModel.updateOne(
-        { _id: findingObjectId },
-        { $set: { linkedActionTraceIds: traceObjectIds } },
-      ),
-      ActionTraceModel.updateMany(
-        { _id: { $in: traceObjectIds } },
-        { $set: { findingId: findingObjectId } },
-      ),
-    ]);
   }
 
   public async saveBrainConfig(input: SaveBrainConfigInput): Promise<string> {
@@ -374,6 +252,7 @@ public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHis
               runtimeMs: session.stats?.runtimeMs,
               coveragePercentage: session.stats?.coveragePercentage,
               maxActions: session.stats?.maxActions,
+              pagesVisited: session.stats?.pagesVisited,
             };
           } catch (mapError) {
             console.error("[Repository] Error mapping session:", mapError);
@@ -405,72 +284,4 @@ public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHis
     }
   }
 
-  /**
-     * Collect bug findings from the most recent session for the target URL.
-     * Applies proper domain filtering - only returns actual bugs.
-     * Uses centralized BugClassifier - single source of truth.
-     */
-  public async collectBugFindings(targetUrl: string, userId?: string): Promise<BugFinding[]> {
-    try {
-      // Multi-tenancy guard, matching listSessionHistory's ownership filter:
-      // scope the lookup to the requesting user's own session so this method
-      // can't leak another user's findings once it's wired up to a route.
-      const filter: Record<string, unknown> = { targetUrl };
-      if (userId) {
-        if (!isValidObjectId(userId)) {
-          console.log("[MongoFindingRepository] Invalid userId, returning empty array");
-          return [];
-        }
-        filter.userId = new Types.ObjectId(userId);
-      }
-
-      // Find the most recent session for this target URL
-      const session = await SessionModel.findOne(filter)
-        .sort({ startedAt: -1 })
-        .lean()
-        .exec();
-
-      if (!session || !session._id) {
-        console.log("[MongoFindingRepository] No session found for target URL");
-        return [];
-      }
-
-      // Query ALL findings for this session first
-      const allFindings = await FindingModel.find({ sessionId: session._id })
-        .lean()
-        .exec();
-
-      if (allFindings.length === 0) {
-        console.log("[MongoFindingRepository] No findings for session:", session._id);
-        return [];
-      }
-
-      console.log("[MongoFindingRepository] Raw findings count:", allFindings.length);
-
-      // Filter to only include ACTUAL BUGS
-      const filteredFindings = allFindings.filter((finding) =>
-        shouldSaveFinding(finding.type as string, finding.meta as TelemetryMeta | undefined)
-      );
-
-      console.log("[MongoFindingRepository] Filtered findings:", allFindings.length, "->", filteredFindings.length);
-
-      // Transform filtered findings to BugFinding format
-      const bugFindings: BugFinding[] = filteredFindings.map((finding) => ({
-        bugId: finding._id?.toString() || new Types.ObjectId().toString(),
-        type: String(finding.type || "UNKNOWN"),
-        message: String(finding.meta?.message || JSON.stringify(finding.meta || {})),
-        selector: String(finding.meta?.selector || ""),
-        payloadUsed: String(finding.meta?.payloadUsed || ""),
-        advice: String(finding.meta?.advice || "Review and remediate based on findings."),
-        timestamp: finding.timestamp || new Date(),
-      }));
-
-      console.log("[MongoFindingRepository] Collected", bugFindings.length, "actual bug findings after filtering");
-      return bugFindings;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("[MongoFindingRepository] Error collecting bug findings:", errorMessage);
-      return [];
-    }
-  }
 }

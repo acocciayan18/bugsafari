@@ -83,6 +83,7 @@ export interface SessionHistoryEntry {
   runtimeMs?: number;
   coveragePercentage?: number;
   maxActions?: number;
+  pagesVisited?: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -177,6 +178,10 @@ export interface ForensicReportResponse {
     caughtBugs: ForensicCaughtBug[];
   };
   actionSteps: ForensicActionStep[];
+  /** Distinct routes/URLs visited this run — session-global page set. */
+  visitedRoutes?: string[];
+  /** Count of distinct pages visited (= visitedRoutes.length). */
+  pagesVisited?: number;
 }
 
 // ─────────────────────────────────────────────────────────────

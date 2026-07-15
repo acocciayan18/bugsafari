@@ -291,6 +291,15 @@ const sessionSchema = new Schema(
         message: 'actionSteps cannot exceed the 20-step limit.',
       },
     },
+    // Distinct routes/URLs visited this run — session-global page set for history context.
+    visitedRoutes: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (routes: string[]) => routes.length <= 500,
+        message: 'visitedRoutes cannot exceed the 500-route limit.',
+      },
+    },
   },
   {
     timestamps: true,
@@ -320,6 +329,7 @@ export interface ISession extends Document {
   metrics: ISessionMetrics;
   forensicTrace: IForensicTrace;
   actionSteps: ActionStepTrace[];
+  visitedRoutes: string[];
   error?: {
     message?: string;
     stackTrace?: string;

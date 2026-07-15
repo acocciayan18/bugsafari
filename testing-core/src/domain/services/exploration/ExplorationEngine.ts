@@ -2,7 +2,7 @@ import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
-import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport, TelemetryEvent } from '../../../../../shared/types.ts';
+import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
@@ -115,7 +115,6 @@ export class ExplorationEngine {
   // Timestamp + counter bounding causal network-signal attribution to the current action.
   private lastActedAtMs = 0;
   private networkRewardsThisAction = 0;
-  private readonly recentActionTraceIds: string[] = [];
   // State Graph Navigator for directed path finding and loop prevention (Task 2)
   // Initialised in the constructor after mode is derived from selectedScenarios.
   private readonly pathNavigator: StateGraphNavigator;
@@ -268,6 +267,11 @@ export class ExplorationEngine {
 
   public getConfirmedBugsFromMemory(): ConfirmedBug[] {
     return this.confirmedBugsMemory;
+  }
+
+  // Distinct routes/URLs visited this run — the session-global page set for history metadata.
+  public getVisitedRoutes(): string[] {
+    return [...this.visitedUrls];
   }
 
   public registerConfirmedBug(bug: ConfirmedBug): void {
@@ -472,7 +476,6 @@ export class ExplorationEngine {
       failureCount: 0,
     };
 
-    telemetry = this.createPersistentTelemetryGateway(telemetry);
     this.activeGateway = telemetry;
     this.targetOrigin = new URL(targetUrl).origin;
     this.targetUrl = targetUrl;
@@ -905,26 +908,7 @@ export class ExplorationEngine {
       this.sessionId = null;
       this.activePage = null;
       this.activeGateway = null;
-      this.recentActionTraceIds.length = 0;
     }
-  }
-
-  private createPersistentTelemetryGateway(telemetry: TelemetryGateway): TelemetryGateway {
-    return {
-      emitTelemetry: (event: TelemetryEvent) => {
-        telemetry.emitTelemetry(event);
-        void this.persistFinding(event);
-      },
-      emitUrlChanged: (url: string) => telemetry.emitUrlChanged(url),
-      emitTargets: (targets) => telemetry.emitTargets(targets),
-      emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
-      emitForensicReport: (report) => telemetry.emitForensicReport(report),
-      emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
-      emitAccessibility: (finding) => telemetry.emitAccessibility(finding),
-      emitBrowserConsole: telemetry.emitBrowserConsole
-        ? (message) => telemetry.emitBrowserConsole!(message)
-        : undefined,
-    };
   }
 
   private async createSession(targetUrl: string): Promise<string | null> {
@@ -962,26 +946,8 @@ export class ExplorationEngine {
     }
   }
 
-  private async persistFinding(event: TelemetryEvent): Promise<void> {
-    if (!this.findingRepo || !this.sessionId) {
-      return;
-    }
-
-    try {
-      const findingId = await this.findingRepo.save({
-        sessionId: this.sessionId,
-        event,
-      });
-
-      if (event.type === 'EXCEPTION' && this.recentActionTraceIds.length > 0) {
-        this.freezeActionTraceRecording = true;
-        await this.findingRepo.linkActionTracesToFinding(findingId, [...this.recentActionTraceIds]);
-      }
-    } catch (error) {
-      console.error('[ExplorationEngine] Failed to persist finding:', error);
-    }
-  }
-
+  // Records an executed action into the in-memory breadcrumb + reproduction buffers only.
+  // High-frequency action traces are WebSocket/in-memory telemetry — never persisted to Mongo.
   private recordActionTrace(
     trace: ActionBreadcrumb,
     clean?: { actionType: ActionType; humanIdentifier?: string; value?: string; url?: string },
@@ -1004,22 +970,6 @@ export class ExplorationEngine {
       fallbackLabel: clean?.humanIdentifier,
     };
     ReproductionPlaybookStore.push(actionRecord);
-
-    if (!this.findingRepo || !this.sessionId || this.freezeActionTraceRecording) {
-      return;
-    }
-
-    void this.findingRepo
-      .saveActionTrace({ sessionId: this.sessionId, trace })
-      .then((actionTraceId) => {
-        this.recentActionTraceIds.push(actionTraceId);
-        while (this.recentActionTraceIds.length > 20) {
-          this.recentActionTraceIds.shift();
-        }
-      })
-      .catch((error) => {
-        console.error('[ExplorationEngine] Failed to persist action trace:', error);
-      });
   }
 
   private async persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void> {

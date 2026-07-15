@@ -55,6 +55,7 @@ export interface EvaluationSafari {
   severityCount: number;
   status: 'COMPLETED' | 'CRASHED' | 'HALTED';
   timeElapsed: number;
+  pagesVisited?: number;
   bugsByCategory: Record<string, number>;
   forensicTrace: ForensicTrace;
   isExpanded?: boolean;
@@ -115,6 +116,7 @@ function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): Evalua
     severityCount: session.findingCount,
     status: mapSessionStatus(session.status),
     timeElapsed: session.runtimeMs ?? 0,
+    pagesVisited: session.pagesVisited,
     bugsByCategory: {},
     forensicTrace: { finalBreadcrumbSteps: [], caughtBugs: [] },
     isExpanded: false,
@@ -735,9 +737,15 @@ paginatedEvaluations.map((evalItem) => {
                           <span>{evalItem.date}</span>
                           <span>•</span>
                           <span>
-                            {evalItem.steps} steps, 
+                            {evalItem.steps} steps,
                             <CoverageDisplay percentage={evalItem.coverage} />
                           </span>
+                          {typeof evalItem.pagesVisited === 'number' && (
+                            <>
+                              <span>•</span>
+                              <span>{evalItem.pagesVisited} pages</span>
+                            </>
+                          )}
                         </div>
                       </div>
 <div className="flex items-center gap-4">

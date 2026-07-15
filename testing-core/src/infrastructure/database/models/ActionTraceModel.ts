@@ -1,3 +1,4 @@
+// DEPRECATED: no longer written. Action traces are high-frequency telemetry (WebSocket + in-memory reproduction buffer only), never persisted.
 import { Schema, model, Types, Document } from 'mongoose';
 
 const actionTraceSchema = new Schema(

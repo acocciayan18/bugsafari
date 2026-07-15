@@ -42,6 +42,8 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     advice: string;
     timestamp: Date;
   }> = [];
+  // Snapshot of distinct visited routes, captured at teardown so it survives after run() returns.
+  private capturedVisitedRoutes: string[] = [];
   private currentBrowserInfo: BrowserInfo | null = null;
 
   public pause(): void {
@@ -257,6 +259,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       throw err;
     } finally {
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
+      this.capturedVisitedRoutes = this.activeEngine?.getVisitedRoutes() ?? this.capturedVisitedRoutes;
       await this.cleanupResources();
       this.activeEngine = null;
     }
@@ -282,6 +285,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // While a run is live, read straight from the active engine (this run's own
     // memory); only fall back to the captured snapshot after teardown.
     return this.activeEngine?.getConfirmedBugsFromMemory() ?? this.capturedConfirmedBugs;
+  }
+
+  public getVisitedRoutes(): string[] {
+    // Live: read the active engine; post-teardown: the captured snapshot.
+    return this.activeEngine?.getVisitedRoutes() ?? this.capturedVisitedRoutes;
   }
 
   private async cleanupResources(): Promise<void> {

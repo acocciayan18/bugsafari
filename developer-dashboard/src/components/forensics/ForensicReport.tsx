@@ -22,6 +22,7 @@ import { fetchForensicReport } from '../../services/historyService';
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
+  ForensicReportError,
   ForensicReportResponse,
   VerifyFixRequest,
   VerifyFixResult,
@@ -89,11 +90,15 @@ function StatBlock({ label, value, valueClassName = 'text-gray-900' }: { label: 
 
 function ExecutiveSummary({ report, sessionId, findingsCount }: { report: ForensicReportResponse; sessionId: string; findingsCount?: number }) {
   const theme = statusTheme(report.status);
+  const [showRoutes, setShowRoutes] = useState(false);
   // Prefer the DISTINCT finding count (identical repeats collapsed) so the summary
   // matches the number of cards below; fall back to raw totals for legacy data.
   const findingsTotal = findingsCount && findingsCount > 0
     ? findingsCount
     : (report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0);
+
+  const routes = report.visitedRoutes ?? [];
+  const pagesVisited = report.pagesVisited ?? routes.length;
 
   return (
     <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
@@ -116,9 +121,30 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         <StatBlock label="Duration" value={formatDuration(report.duration)} />
         <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
         <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600' : 'text-green-600'} />
+        <StatBlock label="Pages" value={pagesVisited} />
         <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
         <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
       </div>
+
+      {routes.length > 0 && (
+        <div className="mt-4 border-t border-gray-200/70 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowRoutes((prev) => !prev)}
+            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-700"
+          >
+            <span>{showRoutes ? '▼' : '▶'}</span>
+            <span>Visited Routes ({routes.length})</span>
+          </button>
+          {showRoutes && (
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-gray-600">
+              {routes.map((route, idx) => (
+                <li key={idx} className="truncate border-b border-gray-100 py-1 last:border-0" title={route}>{route}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -671,39 +697,117 @@ function CleanRunCard() {
 // at the bottom rather than a peer section competing for attention.
 // ─────────────────────────────────────────────────────────────
 
-// Static WCAG audit findings — no runtime reproduction or Verify Fix — grouped into
-// their own de-emphasized collapsible section so they don't clutter runtime faults.
-function AccessibilityAudit({ bugs }: { bugs: ForensicCaughtBug[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  if (!bugs.length) return null;
+// ─────────────────────────────────────────────────────────────
+// Tabbed panels — mirror the live dashboard's right-panel tabs
+// (Findings / Accessibility / Network / Console) so a saved session
+// rehydrates the same categorized context the operator saw live.
+// Successful network and non-error console are WebSocket-only (never
+// persisted), so the Network/Console tabs show verified faults only.
+// ─────────────────────────────────────────────────────────────
 
+const NETWORK_ERROR_TYPES = new Set(['API_FAILURE', 'NAVIGATION_FAILURE', 'TIMEOUT_FAILURE']);
+const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPTION', 'UNHANDLED_REJECTION']);
+
+function TabCount({ count }: { count: number }) {
+  if (count <= 0) return null;
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <button
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100"
-      >
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Accessibility Audit ({bugs.length})
-        </span>
-        <span className="text-xs text-gray-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
-      </button>
-      {isOpen && (
-        <ul className="divide-y divide-gray-100 border-t border-gray-200">
-          {bugs.map((bug, i) => (
-            <li key={bug.bugId || i} className="px-4 py-3">
-              <div className="text-xs text-gray-800">{bug.message || 'No details provided'}</div>
-              {bug.selector && (
-                <div className="mt-1 truncate font-mono text-[11px] text-gray-500" title={bug.selector}>{bug.selector}</div>
-              )}
-              {bug.occurrences && bug.occurrences > 1 && (
-                <span className="mt-1 inline-block font-mono text-[10px] text-gray-400">×{bug.occurrences}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-700">
+      {count > 999 ? '999+' : count}
+    </span>
+  );
+}
+
+function TabButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+        active
+          ? 'border-gray-900 text-gray-900'
+          : 'border-transparent text-gray-500 hover:text-gray-800'
+      }`}
+    >
+      {label}
+      <TabCount count={count} />
+    </button>
+  );
+}
+
+function EmptyTab({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-8 text-center text-xs italic text-gray-400">
+      {message}
+    </div>
+  );
+}
+
+// Static WCAG audit findings — no runtime reproduction or Verify Fix.
+function AccessibilityList({ bugs }: { bugs: ForensicCaughtBug[] }) {
+  if (!bugs.length) return <EmptyTab message="No accessibility violations were recorded for this session." />;
+  return (
+    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+      {bugs.map((bug, i) => (
+        <li key={bug.bugId || i} className="px-4 py-3">
+          <div className="text-xs text-gray-800">{bug.message || 'No details provided'}</div>
+          {bug.selector && (
+            <div className="mt-1 truncate font-mono text-[11px] text-gray-500" title={bug.selector}>{bug.selector}</div>
+          )}
+          {bug.occurrences && bug.occurrences > 1 && (
+            <span className="mt-1 inline-block font-mono text-[10px] text-gray-400">×{bug.occurrences}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function NetworkErrorList({ errors }: { errors: ForensicReportError[] }) {
+  if (!errors.length) return <EmptyTab message="No failed network requests were recorded for this session." />;
+  return (
+    <ul className="flex flex-col gap-2">
+      {errors.map((error, i) => (
+        <li key={error.id || i} className="rounded-md border border-red-200 bg-red-50 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {error.method && (
+              <span className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{error.method}</span>
+            )}
+            {typeof error.statusCode === 'number' && (
+              <span className="font-mono text-[11px] font-bold text-red-700">HTTP {error.statusCode}</span>
+            )}
+            {error.type && (
+              <span className="font-mono text-[10px] uppercase tracking-wide text-gray-500">{error.type}</span>
+            )}
+          </div>
+          {(error.endpoint || error.url) && (
+            <div className="mt-1 truncate font-mono text-[11px] text-gray-600" title={error.endpoint || error.url}>{error.endpoint || error.url}</div>
+          )}
+          {error.message && <div className="mt-1 break-words text-xs text-gray-800">{error.message}</div>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ConsoleErrorList({ errors }: { errors: ForensicReportError[] }) {
+  if (!errors.length) return <EmptyTab message="No console errors were recorded for this session." />;
+  return (
+    <ul className="flex flex-col gap-2">
+      {errors.map((error, i) => (
+        <li key={error.id || i} className="rounded-md border border-gray-200 bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded bg-gray-700 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{error.type || 'CONSOLE'}</span>
+            {error.severity && (
+              <span className="font-mono text-[10px] uppercase tracking-wide text-gray-500">{error.severity}</span>
+            )}
+          </div>
+          {error.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800">{error.message}</div>}
+          {error.stackTrace && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 font-mono text-[10px] leading-relaxed text-gray-200">{error.stackTrace}</pre>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -786,6 +890,11 @@ export default function ForensicReport() {
   // so render the caughtBugs directly. Static WCAG audit rows are split out below.
   const runtimeBugs = useMemo(() => bugs.filter((b) => b.type !== 'ACCESSIBILITY'), [bugs]);
   const a11yBugs = useMemo(() => bugs.filter((b) => b.type === 'ACCESSIBILITY'), [bugs]);
+  // Persisted forensic_errors, split into the live-mirroring Network / Console tabs.
+  const reportErrors = useMemo(() => report?.errorLogs?.errors ?? [], [report]);
+  const networkErrors = useMemo(() => reportErrors.filter((e) => e.type && NETWORK_ERROR_TYPES.has(e.type)), [reportErrors]);
+  const consoleErrors = useMemo(() => reportErrors.filter((e) => e.type && CONSOLE_ERROR_TYPES.has(e.type)), [reportErrors]);
+  const [activeTab, setActiveTab] = useState<'findings' | 'accessibility' | 'network' | 'console'>('findings');
   const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) {
@@ -837,30 +946,38 @@ export default function ForensicReport() {
 
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 
+          {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
-              Findings {runtimeBugs.length > 0 ? `(${runtimeBugs.length})` : ''}
-            </h2>
-            {runtimeBugs.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {runtimeBugs.map((bug, index) => (
-                  <FindingCard
-                    key={bug.bugId || index}
-                    bug={bug}
-                    index={index}
-                    occurrences={bug.occurrences ?? 1}
-                    sessionId={sessionId}
-                    status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
-                    onVerify={verify}
-                  />
-                ))}
-              </div>
-            ) : (
-              <CleanRunCard />
-            )}
-          </section>
+            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200">
+              <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
+              <TabButton label="Accessibility" count={a11yBugs.length} active={activeTab === 'accessibility'} onClick={() => setActiveTab('accessibility')} />
+              <TabButton label="Network" count={networkErrors.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
+              <TabButton label="Console" count={consoleErrors.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
+            </div>
 
-          <AccessibilityAudit bugs={a11yBugs} />
+            {activeTab === 'findings' && (
+              runtimeBugs.length > 0 ? (
+                <div className="flex flex-col gap-4">
+                  {runtimeBugs.map((bug, index) => (
+                    <FindingCard
+                      key={bug.bugId || index}
+                      bug={bug}
+                      index={index}
+                      occurrences={bug.occurrences ?? 1}
+                      sessionId={sessionId}
+                      status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
+                      onVerify={verify}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <CleanRunCard />
+              )
+            )}
+            {activeTab === 'accessibility' && <AccessibilityList bugs={a11yBugs} />}
+            {activeTab === 'network' && <NetworkErrorList errors={networkErrors} />}
+            {activeTab === 'console' && <ConsoleErrorList errors={consoleErrors} />}
+          </section>
 
           <ActionTimelineAppendix steps={report.actionSteps ?? []} />
         </div>
