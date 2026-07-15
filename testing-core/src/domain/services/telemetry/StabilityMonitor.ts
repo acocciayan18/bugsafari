@@ -6,14 +6,28 @@ import {
   ForensicErrorType,
   ForensicErrorSeverity,
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
-import { classifyFault, matchesCategory, type FaultType } from '../../../bugs/knowledgeBase/index.js';
+import {
+  classifyFault,
+  matchesCategory,
+  FREEZE_SELECTORS,
+  INPUT_BLOCK_SELECTORS,
+  type FaultType,
+} from '../../../bugs/knowledgeBase/index.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
+import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import { VerificationPipeline, type VerificationCandidate } from '../verification/index.js';
+
+// Infinite-loading watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
+// hang candidate; CONFIRM_MS is the persistence gap between the two DOM probes; the rest bound cost.
+const MAX_PENDING = 300;
+const WATCHDOG_TICK_MS = 1000;
+const HANG_THRESHOLD_MS = 8000;
+const CONFIRM_MS = 2500;
 
 /** Maps the knowledge-base severity scale to the persisted forensic-error scale. */
 const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', ForensicErrorSeverity> = {
@@ -162,6 +176,13 @@ export class StabilityMonitor {
 
   // Passive double-submit detector: collapses identical state-changing request bursts (one per run).
   private readonly duplicateFinder = new DuplicateActionFinder();
+
+  // Infinite-loading detector + the impure edges that feed it: an in-flight fetch/XHR registry,
+  // the watchdog interval sweeping it, and a per-endpoint guard against concurrent confirmations.
+  private readonly apiHangFinder = new ApiHangFinder();
+  private readonly pending = new Map<Request, { url: string; method: string; startMs: number; swept: boolean }>();
+  private readonly confirming = new Set<string>();
+  private watchdogTimer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
 
@@ -486,6 +507,209 @@ export class StabilityMonitor {
     });
   }
 
+  // Register an in-flight fetch/XHR so the watchdog can later flag it if it never settles.
+  private trackPending(request: Request): void {
+    const rt = request.resourceType();
+    if (rt !== 'xhr' && rt !== 'fetch') return;
+    if (this.pending.size >= MAX_PENDING) {
+      const oldest = this.pending.keys().next().value as Request | undefined;
+      if (oldest) this.pending.delete(oldest);
+    }
+    this.pending.set(request, { url: request.url(), method: request.method(), startMs: Date.now(), swept: false });
+  }
+
+  // Watchdog tick: arm an infinite-loading check for any fetch/XHR pending past the threshold.
+  private sweepPending(page: Page): void {
+    const now = Date.now();
+    for (const [, meta] of this.pending) {
+      if (meta.swept) continue;
+      const pendingMs = now - meta.startMs;
+      if (pendingMs <= HANG_THRESHOLD_MS) continue;
+      meta.swept = true;
+      void this.confirmStuckLoading(page, { trigger: 'PENDING_TIMEOUT', url: meta.url, method: meta.method, pendingMs });
+    }
+  }
+
+  // Two-probe persistence check: a loading indicator must survive both probes (recovered-gracefully
+  // gate) before the finder emits. Fire-and-forget; a page nav/close mid-probe simply drops the check.
+  private async confirmStuckLoading(
+    page: Page,
+    trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; failureDetail?: string },
+  ): Promise<void> {
+    const key = `${trigger.trigger}::${(trigger.url || '').split('#')[0].toLowerCase()}`;
+    if (this.confirming.has(key)) return;
+    this.confirming.add(key);
+    try {
+      const initial = await this.probeLoadingState(page);
+      if (!initial.present) return;
+      await page.waitForTimeout(CONFIRM_MS);
+      const confirm = await this.probeLoadingState(page);
+      const result = this.apiHangFinder.evaluate({
+        method: trigger.method,
+        url: trigger.url,
+        trigger: trigger.trigger,
+        failureDetail: trigger.failureDetail ?? '',
+        status: trigger.status,
+        pendingMs: trigger.pendingMs,
+        confirmGapMs: CONFIRM_MS,
+        initial,
+        confirm,
+        scenarioActive: isStressScenarioActive(),
+        timestampMs: Date.now(),
+      });
+      if (!result) return;
+      if (result.isNew) {
+        this.reportApiHang(page, result.defect);
+      } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'api-hang-recurred',
+          message: `⏳ ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
+        });
+      }
+    } catch {
+      // page navigated/closed mid-probe → drop; the engine health gate handles teardown
+    } finally {
+      this.confirming.delete(key);
+    }
+  }
+
+  // Read the live DOM for stuck-loading indicators. Runs in the page context; selector lists are
+  // passed as args (browser context can't see Node closures). Never throws — a failed scan is empty.
+  private async probeLoadingState(page: Page): Promise<LoadingProbe> {
+    try {
+      return await page.evaluate(
+        ([freezeSelectors, inputSelectors]) => {
+          const visible = (el: Element): boolean => {
+            const rect = (el as HTMLElement).getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            const style = window.getComputedStyle(el);
+            return style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+          };
+          const matched: string[] = [];
+          for (const sel of freezeSelectors) {
+            try {
+              if (Array.from(document.querySelectorAll(sel)).some(visible)) matched.push(sel);
+            } catch {
+              // ignore an invalid selector
+            }
+          }
+          let textLoading = false;
+          const leaves = Array.from(document.querySelectorAll('body *')).slice(0, 4000);
+          for (const el of leaves) {
+            if (el.children.length > 0) continue;
+            const text = (el.textContent || '').trim();
+            if (text.length > 0 && text.length <= 40 && /loading|please wait/i.test(text) && visible(el)) {
+              textLoading = true;
+              break;
+            }
+          }
+          if (textLoading) matched.push('text:loading');
+          let inputsBlocked = false;
+          for (const sel of inputSelectors) {
+            try {
+              if (document.querySelector(sel)) {
+                inputsBlocked = true;
+                break;
+              }
+            } catch {
+              // ignore an invalid selector
+            }
+          }
+          const indicators = Array.from(new Set(matched)).sort();
+          return { present: indicators.length > 0, indicators, inputsBlocked, signature: indicators.join('|') };
+        },
+        [[...FREEZE_SELECTORS], [...INPUT_BLOCK_SELECTORS]],
+      );
+    } catch {
+      return { present: false, indicators: [], inputsBlocked: false, signature: '' };
+    }
+  }
+
+  // Report one confirmed infinite-loading fault. Direct SIGNAL emit like reportDuplicateAction —
+  // the finder's two-probe persistence check self-gates, so this bypasses verifyFault and reports
+  // under INFINITE_LOADING with the finder's stable, signature-derived bugId.
+  private reportApiHang(page: Page, defect: ApiHangDefect): void {
+    const t = this.deps.telemetry;
+    const url = defect.endpoint || page.url();
+    const timestamp = new Date().toISOString();
+    const breadcrumbs = this.deps.getBreadcrumbs();
+    const stackTrace = defect.evidence.join('\n');
+
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproductionPlaybook = reproduction.narrative;
+
+    const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
+    const attribution: FindingAttribution = {
+      bugClass: defect.bugClass,
+      cwe: defect.cwe,
+      scenario: scenario.scenario,
+      testingType: scenario.testingType,
+      stepIndex: reproduction.actions.length,
+      confidence: 'SIGNAL',
+      corroborated: defect.corroborated,
+    };
+
+    t.emit('NETWORK', {
+      url,
+      method: defect.method,
+      message: `🟠 ${defect.message}`,
+      severity: 'WARNING',
+      attribution,
+    });
+    t.emitMilestone(`⏳ API hang: ${defect.method} ${url}`);
+
+    t.gateway.emitIncidentReport({
+      timestamp,
+      reason: defect.message,
+      url,
+      stackTrace,
+      steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionPlaybook,
+      advice: defect.advice,
+      attribution,
+    });
+
+    t.gateway.emitForensicReport({
+      timestamp,
+      reason: defect.message,
+      url,
+      stackTrace,
+      breadcrumbs,
+      reproductionPlaybook,
+      advice: defect.advice,
+      attribution,
+    });
+
+    this.deps.persistForensicError({
+      type: ForensicErrorType.TIMEOUT_FAILURE,
+      severity: SEVERITY_TO_FORENSIC[defect.severity],
+      message: `🟠 ${defect.message}`,
+      stackTrace,
+      url,
+      endpoint: url,
+      method: defect.method,
+      bugClass: defect.bugClass,
+      scenario: attribution.scenario,
+      cwe: defect.cwe,
+    });
+
+    // type is deliberately not NETWORK/ACCESSIBILITY so registerConfirmedBug streams it to the Errors tab.
+    this.deps.registerConfirmedBug({
+      bugId: defect.bugId,
+      type: 'INFINITE_LOADING',
+      message: defect.message,
+      selector: '',
+      payloadUsed: defect.method,
+      advice: defect.advice,
+      stackTrace,
+      reproductionSteps: reproductionPlaybook,
+      reproductionActions: reproduction.actions,
+      attribution,
+      timestamp: new Date(timestamp),
+      streamed: true, // already emitted to the Errors tab above
+    });
+  }
+
   /** Monitor HTTP responses (>=400 or soft-fail body) and outright request failures. */
   public attachNetworkMonitoring(page: Page): void {
     const t = this.deps.telemetry;
@@ -494,6 +718,7 @@ export class StabilityMonitor {
     // endpoint+payload inside a tight window means no debounce/disable-on-submit guard fired.
     page.on('request', (request: Request) => {
       try {
+        this.trackPending(request);
         const result = this.duplicateFinder.observeRequest({
           method: request.method(),
           url: request.url(),
@@ -515,6 +740,18 @@ export class StabilityMonitor {
       }
     });
 
+    // Infinite-loading watchdog: a settled request leaves the pending registry; the interval
+    // sweeps for any fetch/XHR still pending past the hang threshold and confirms via DOM probe.
+    page.on('requestfinished', (request: Request) => this.pending.delete(request));
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => this.sweepPending(page), WATCHDOG_TICK_MS);
+    this.watchdogTimer.unref?.();
+    page.on('close', () => {
+      if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+      this.watchdogTimer = undefined;
+      this.pending.clear();
+    });
+
     // Centralized three-tier network classification (see routeTrashClassifier —
     // the single source of truth shared with the RouteTrasher scenario):
     //   • Expected resource noise (favicon/image/font/bundle failures) → ignored.
@@ -528,6 +765,12 @@ export class StabilityMonitor {
       const url = response.url();
       const method = response.request().method();
       const resourceType = response.request().resourceType();
+
+      // Settle the request in the hang registry; a 5xx fetch/XHR also arms an infinite-loading check.
+      this.pending.delete(response.request());
+      if (status >= 500 && (resourceType === 'xhr' || resourceType === 'fetch')) {
+        void this.confirmStuckLoading(page, { trigger: 'SERVER_ERROR', url, method, status });
+      }
 
       // Filter expected browser/network noise (missing static assets, etc.) so a
       // normal 404 favicon/image can never create a false-positive finding.
@@ -665,10 +908,20 @@ export class StabilityMonitor {
       const reason = failure?.errorText ?? 'Unknown network failure';
       const breadcrumbs = this.deps.getBreadcrumbs();
 
+      // Settle the request in the hang registry regardless of how the failure is classified below.
+      this.pending.delete(request);
+
       // NEW: Filter out false-positive ERR_ABORTED errors from user session cancellation
       // When users cancel a Safari session, unresolved HTTP requests are forcefully cancelled
       // These should be demoted to informational ACTION instead of EXCEPTION to prevent dashboard clutter
       const isAborted = isNetworkAbortedError(reason);
+
+      // A genuine (non-abort) fetch/XHR failure arms an infinite-loading check — a dropped call
+      // that leaves the spinner up with no error fallback is exactly the fault we want to catch.
+      const failedResource = request.resourceType();
+      if (!isAborted && (failedResource === 'xhr' || failedResource === 'fetch')) {
+        void this.confirmStuckLoading(page, { trigger: 'REQUEST_FAILED', url, method, failureDetail: reason });
+      }
 
       if (isAborted) {
         // During stress scenarios (RouteTrasher, CoordinateBombing, etc.), network aborts

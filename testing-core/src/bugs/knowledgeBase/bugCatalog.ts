@@ -172,4 +172,16 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a test that forges role=admin in client storage and asserts the server still denies access',
     ),
   },
+  INFINITE_LOADING: {
+    title: 'Unhandled API failure / infinite loading',
+    description: 'An API request failed or never resolved and the UI stayed stuck in a loading state with no error/timeout fallback.',
+    defaultSeverity: 'HIGH',
+    cwe: 'CWE-400',
+    remediation: remediation(
+      'Suggested remediation — infinite loading',
+      '1. Add a request timeout (AbortController/axios timeout) so a hung call cannot pend forever',
+      '2. Render an error/retry state on failure instead of leaving the spinner up',
+      '3. Clear the loading flag in a finally block so every path (success/error) exits loading',
+    ),
+  },
 };

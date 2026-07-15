@@ -145,6 +145,7 @@ export const FREEZE_SELECTORS: readonly string[] = [
   '[class*="backdrop"]',
   '[role="alertdialog"]',
   '[aria-modal="true"]',
+  '[role="progressbar"]',
 ];
 
 /** Input selectors whose disabled state indicates a UI blocked by a stuck request. */
