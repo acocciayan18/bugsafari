@@ -67,7 +67,15 @@ export interface SaveFindingPayload {
 
 export async function saveSessionToHistory(
   targetUrl: string,
-  options?: { initialUrl?: string; elapsedTimeMs?: number; findings?: SaveFindingPayload[] }
+  options?: {
+    initialUrl?: string;
+    elapsedTimeMs?: number;
+    findings?: SaveFindingPayload[];
+    // Full live streams transferred so the saved report mirrors the live tabs
+    // (works across the queue architecture, where the run executes out-of-process).
+    networkLog?: unknown[];
+    consoleLog?: unknown[];
+  }
 ): Promise<void> {
   const token = localStorage.getItem('bugsafari_token');
   console.log('[historyService] 📤 saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
@@ -83,6 +91,9 @@ export async function saveSessionToHistory(
     ...(typeof options?.elapsedTimeMs === 'number' && { elapsedTimeMs: options.elapsedTimeMs }),
     // Transfer the complete raw findings array — every live error, untruncated.
     ...(Array.isArray(options?.findings) && { findings: options.findings }),
+    // Transfer the full network + console streams the operator saw live.
+    ...(Array.isArray(options?.networkLog) && { networkLog: options.networkLog }),
+    ...(Array.isArray(options?.consoleLog) && { consoleLog: options.consoleLog }),
   };
 
   if (!token) {

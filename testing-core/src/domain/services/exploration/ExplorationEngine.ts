@@ -972,6 +972,11 @@ export class ExplorationEngine {
     // Push a clean, human-descriptive record into the canonical playbook buffer
     // so crash-time narrative serialization reads accurate action types, visible
     // labels, live URLs, and real fuzz/text values instead of internal engine verbs.
+    // Real execution time: elapsed since noteActedTarget stamped the action start.
+    // Guarded to a sane window so replay/restore traces don't record a stale delta.
+    const sinceActionMs = this.lastActedAtMs > 0 ? Date.now() - this.lastActedAtMs : -1;
+    const durationMs = sinceActionMs >= 0 && sinceActionMs <= 60000 ? sinceActionMs : undefined;
+
     const actionRecord: ActionRecord = {
       timestamp: trace.timestamp,
       type: clean?.actionType ?? 'CLICK',
@@ -979,6 +984,7 @@ export class ExplorationEngine {
       url: clean?.url ?? this.activePage?.url() ?? this.targetOrigin ?? 'unknown',
       payload: clean?.value ?? trace.payload,
       fallbackLabel: clean?.humanIdentifier,
+      durationMs,
     };
     ReproductionPlaybookStore.push(actionRecord);
   }

@@ -10,6 +10,21 @@ interface NetworkTabPanelProps {
   events: TelemetryEvent[];
 }
 
+// Collapse NETWORK events by method+url+status (preserving first-seen order) so a
+// polled endpoint is one row with a repeat count. Shared with the tab badge so the
+// header count and the list length always match.
+export function dedupeNetworkEvents(events: TelemetryEvent[]): { event: TelemetryEvent; count: number }[] {
+  const map = new Map<string, { event: TelemetryEvent; count: number }>();
+  for (const event of Array.isArray(events) ? events : []) {
+    const m = event.meta;
+    const key = `${m?.method ?? 'GET'}|${m?.url ?? ''}|${m?.statusCode ?? ''}`;
+    const existing = map.get(key);
+    if (existing) existing.count += 1;
+    else map.set(key, { event, count: 1 });
+  }
+  return [...map.values()];
+}
+
 // ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT: NetworkTabPanel
 // ─────────────────────────────────────────────────────────────
@@ -17,9 +32,10 @@ interface NetworkTabPanelProps {
 export default function NetworkTabPanel({
   events = []
 }: NetworkTabPanelProps) {
-  const networkEvents = (Array.isArray(events) ? events : []).slice(-50);
+  // Dedup (shared with the tab badge), then cap the rendered rows.
+  const deduped = dedupeNetworkEvents(events).slice(-50);
 
-  if (networkEvents.length === 0) {
+  if (deduped.length === 0) {
     return (
       <div className="text-gray-500 py-4">
         <div className="text-gray-800 mb-2 font-bold">Network Diagnostics</div>
@@ -32,13 +48,12 @@ export default function NetworkTabPanel({
 
   return (
     <div className="space-y-3 p-2">
-      <div className="text-gray-800 mb-2 font-bold">Network Diagnostics ({networkEvents.length})</div>
-      {networkEvents.map((event, idx) => {
+      <div className="text-gray-800 mb-2 font-bold">Network Diagnostics ({deduped.length})</div>
+      {deduped.map(({ event, count }, idx) => {
         const meta = event.meta;
         const statusCode = meta?.statusCode;
         const url = meta?.url || 'unknown';
         const method = meta?.method || 'GET';
-        const duration = meta?.durationMs;
         const message = meta?.message || '';
         const aiDiagnostics = meta?.aiDiagnostics || null;
         const reproductionSteps = meta?.reproductionSteps ?? [];
@@ -69,10 +84,8 @@ export default function NetworkTabPanel({
                 <span className={`font-mono text-xs font-bold ${textColor}`}>
                   {method} {statusCode || 'ERR'}
                 </span>
-                {duration !== undefined && (
-                  <span className="text-[10px] text-gray-500">
-                    {duration}ms
-                  </span>
+                {count > 1 && (
+                  <span className="text-[10px] text-gray-500">×{count}</span>
                 )}
               </div>
             </div>

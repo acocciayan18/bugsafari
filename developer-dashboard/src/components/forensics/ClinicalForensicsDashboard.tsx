@@ -10,6 +10,7 @@ import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
+import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
@@ -323,7 +324,7 @@ export default function ClinicalForensicsDashboard({
             </span>
             <input
               type="text"
-              value={isActiveSession ? (currentUrl || targetUrl) : urlInput}
+              value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               disabled={isActiveSession}
               className="w-full h-11 border border-gray-300 rounded-lg pl-11 pr-4 text-sm font-sans bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
@@ -416,7 +417,7 @@ export default function ClinicalForensicsDashboard({
                 className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
               >
                 network
-                <TabCount count={networkEvents.length} />
+                <TabCount count={dedupeNetworkEvents(networkEvents).length} />
               </button>
               <button
                 onClick={() => setActiveTab('console')}

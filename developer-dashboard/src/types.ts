@@ -113,6 +113,33 @@ export interface ForensicActionStep {
   selector: string;
   payloadText?: string;
   resultingStateHash: string;
+  /** Real execution time of this step in ms (measured in the engine). */
+  durationMs?: number;
+}
+
+// Full per-run network row (every request, incl. successful) — mirrors live Network tab.
+export interface ForensicNetworkLog {
+  timestamp: string;
+  method: string;
+  url: string;
+  statusCode?: number;
+  durationMs?: number;
+  resourceType?: string;
+  ok: boolean;
+  message?: string;
+  repeatCount?: number;
+}
+
+// Full per-run console row (every level) — mirrors live Console tab.
+export interface ForensicConsoleLog {
+  timestamp: string;
+  level: 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
+  type: string;
+  message: string;
+  url?: string;
+  line?: number;
+  column?: number;
+  stackTrace?: string;
 }
 
 export interface ForensicReportError {
@@ -191,6 +218,10 @@ export interface ForensicReportResponse {
     caughtBugs: ForensicCaughtBug[];
   };
   actionSteps: ForensicActionStep[];
+  /** Full network log (all requests) — mirrors the live Network tab. */
+  networkLog?: ForensicNetworkLog[];
+  /** Full console log (all levels) — mirrors the live Console tab. */
+  consoleLog?: ForensicConsoleLog[];
   /** Distinct routes/URLs visited this run — session-global page set. */
   visitedRoutes?: string[];
   /** Count of distinct pages visited (= visitedRoutes.length). */

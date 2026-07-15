@@ -57,6 +57,8 @@ export interface ActionRecord {
   fallbackLabel?: string;
   /** Consecutive identical repeats collapsed into this record (>1 ⇒ "repeat N times"). */
   repeatCount?: number;
+  /** Real execution time of the action in ms (measured in the executor). */
+  durationMs?: number;
 }
 
 /**

@@ -4,7 +4,7 @@ import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
-import type { ActionRecord, FindingAttribution } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry } from '../../../../shared/types.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
@@ -140,6 +140,41 @@ export class StartExplorationUseCase {
         }
     }
 
+    // Coerce a client-transferred network row into a persisted NetworkLogEntry.
+    private mapNetworkEntry(raw: Record<string, unknown>): NetworkLogEntry {
+        const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+        const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+        return {
+            timestamp: str(raw.timestamp) ?? new Date().toISOString(),
+            method: str(raw.method) ?? 'GET',
+            url: str(raw.url) ?? '',
+            statusCode: num(raw.statusCode),
+            durationMs: num(raw.durationMs),
+            resourceType: str(raw.resourceType),
+            ok: typeof raw.ok === 'boolean' ? raw.ok : (num(raw.statusCode) ?? 0) < 400,
+            message: str(raw.message),
+            repeatCount: num(raw.repeatCount),
+        };
+    }
+
+    // Coerce a client-transferred console row into a persisted ConsoleLogEntry.
+    private mapConsoleEntry(raw: Record<string, unknown>): ConsoleLogEntry {
+        const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+        const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+        const level = str(raw.level);
+        const allowed = ['log', 'error', 'warning', 'info', 'debug', 'trace', 'notice'];
+        return {
+            timestamp: str(raw.timestamp) ?? new Date().toISOString(),
+            level: (allowed.includes(level ?? '') ? level : 'log') as ConsoleLogEntry['level'],
+            type: str(raw.type) ?? 'log',
+            message: str(raw.message) ?? '',
+            url: str(raw.url),
+            line: num(raw.line),
+            column: num(raw.column),
+            stackTrace: str(raw.stackTrace),
+        };
+    }
+
     private buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
         return records.map((record, index) => ({
             stepNumber:         index + 1,
@@ -148,6 +183,7 @@ export class StartExplorationUseCase {
             selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
             payloadText:        record.payload,
             resultingStateHash: '',
+            durationMs:         record.durationMs,
         }));
     }
 
@@ -189,7 +225,13 @@ export class StartExplorationUseCase {
     public async manualSaveToHistory(
         targetUrl: string,
         userId: string,
-        options?: { ownerType?: string; elapsedTimeMs?: number; clientFindings?: ClientFinding[] },
+        options?: {
+            ownerType?: string;
+            elapsedTimeMs?: number;
+            clientFindings?: ClientFinding[];
+            clientNetworkLog?: Record<string, unknown>[];
+            clientConsoleLog?: Record<string, unknown>[];
+        },
     ): Promise<{ success: boolean; message: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
@@ -277,9 +319,14 @@ export class StartExplorationUseCase {
         // Treat a 0/invalid reported value as absent (?? keeps 0), so a mid-run save still
         // records real elapsed from the server start time.
         const reportedElapsed = options?.elapsedTimeMs;
+        // Prefer the frontend-reported elapsed; else the engine's paused-aware active
+        // time (robust even when executionStartTime was never set); else wall-clock.
+        const engineElapsed = this.browserEngine.getElapsedActiveTimeMs?.() ?? 0;
         const runtimeMs = reportedElapsed && reportedElapsed > 0
             ? reportedElapsed
-            : (this.executionStartTime > 0 ? Date.now() - this.executionStartTime : 0);
+            : engineElapsed > 0
+                ? engineElapsed
+                : (this.executionStartTime > 0 ? Date.now() - this.executionStartTime : 0);
         const startedAt = this.executionStartTime > 0
             ? new Date(this.executionStartTime)
             : new Date(Date.now() - runtimeMs);
@@ -351,6 +398,30 @@ export class StartExplorationUseCase {
             }
 
             console.log(`[StartExplorationUseCase] ✓ Manual save to sessions (${source}): ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
+
+            // Flush the full network/console logs for this run so the saved report's
+            // Network/Console tabs mirror the live dashboard. A flush failure must
+            // never fail the save itself.
+            try {
+                const { NetworkLogStore } = await import('../../infrastructure/monitoring/NetworkLogStore.js');
+                const { ConsoleLogStore } = await import('../../infrastructure/monitoring/ConsoleLogStore.js');
+                const { networkLogRepository } = await import('../../infrastructure/database/repositories/NetworkLogRepository.js');
+                const { consoleLogRepository } = await import('../../infrastructure/database/repositories/ConsoleLogRepository.js');
+                // Client-transferred streams are authoritative (run executes out-of-process
+                // under the queue); the in-process buffers are a same-process fallback.
+                const netEntries = options?.clientNetworkLog?.length
+                    ? options.clientNetworkLog.map((r) => this.mapNetworkEntry(r))
+                    : NetworkLogStore.snapshot();
+                const conEntries = options?.clientConsoleLog?.length
+                    ? options.clientConsoleLog.map((r) => this.mapConsoleEntry(r))
+                    : ConsoleLogStore.snapshot();
+                await networkLogRepository.createMany(savedDocument._id as Types.ObjectId, netEntries);
+                await consoleLogRepository.createMany(savedDocument._id as Types.ObjectId, conEntries);
+                console.log(`[StartExplorationUseCase] ✓ Saved logs: network=${netEntries.length} console=${conEntries.length}`);
+            } catch (logError) {
+                console.error(`[StartExplorationUseCase] ⚠ Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
+            }
+
             return { success: true, message: `Saved as ${savedDocument._id}` };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
@@ -373,6 +444,11 @@ export class StartExplorationUseCase {
         // Reset the navigation forensic log so route-trash snapshots are scoped to this run.
         const { NavForensicLog } = await import('../../infrastructure/monitoring/navForensics.js');
         NavForensicLog.reset();
+        // Reset the full network/console log buffers so they're scoped to this run.
+        const { NetworkLogStore } = await import('../../infrastructure/monitoring/NetworkLogStore.js');
+        NetworkLogStore.reset();
+        const { ConsoleLogStore } = await import('../../infrastructure/monitoring/ConsoleLogStore.js');
+        ConsoleLogStore.reset();
 
         // Phase 3: Get timebox from optimization settings (default: 600000ms = 10 minutes)
         const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;

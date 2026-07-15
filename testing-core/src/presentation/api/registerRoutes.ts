@@ -11,6 +11,8 @@ import { forensicAnalysisRepository } from '../../infrastructure/database/reposi
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
+import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
+import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { Types } from 'mongoose';
 import {
@@ -19,6 +21,7 @@ import {
   type TestingTypeId,
   type InfiltrationProfileId,
   type ExplorationRunConfig,
+  type FindingAttribution,
 } from '../../../../shared/types.js';
 
 /**
@@ -349,11 +352,26 @@ export function registerRoutes(
             ? f.reproductionSteps.filter((s): s is string => typeof s === 'string')
             : undefined,
           timestamp: typeof f.timestamp === 'string' ? f.timestamp : undefined,
+          // Carry the knowledge-base attribution through so the saved report's
+          // finding cards show bugClass / scenario / CWE / step badges (Mongoose
+          // strips any unknown keys against the caughtBugs.attribution sub-schema).
+          attribution: f.attribution && typeof f.attribution === 'object'
+            ? (f.attribution as unknown as FindingAttribution)
+            : undefined,
         }));
       console.log(`[API] Transferred live findings count: ${clientFindings.length}`);
 
+      // Full live Network + Console streams transferred from the dashboard so the
+      // saved report mirrors the live tabs (the run executes out-of-process, so the
+      // client buffers are the authoritative source at save time). Capped defensively.
+      const asArray = (v: unknown): Record<string, unknown>[] =>
+        (Array.isArray(v) ? v : []).filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
+      const clientNetworkLog = asArray(request.body?.networkLog).slice(0, 2000);
+      const clientConsoleLog = asArray(request.body?.consoleLog).slice(0, 1000);
+      console.log(`[API] Transferred network rows: ${clientNetworkLog.length} | console rows: ${clientConsoleLog.length}`);
+
       // Call manualSaveToHistory to save to sessions collection
-      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, clientFindings });
+      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, clientFindings, clientNetworkLog, clientConsoleLog });
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);
@@ -788,6 +806,31 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         createdAt: e.createdAt?.toISOString(),
       }));
 
+      // Full per-run network + console logs — mirror the live dashboard tabs.
+      const networkLog = await networkLogRepository.findByRunId(sessionId).catch(() => []);
+      const formattedNetworkLog = networkLog.map(n => ({
+        timestamp: n.timestamp,
+        method: n.method,
+        url: n.url,
+        statusCode: n.statusCode,
+        durationMs: n.durationMs,
+        resourceType: n.resourceType,
+        ok: n.ok,
+        message: n.message,
+        repeatCount: n.repeatCount,
+      }));
+      const consoleLog = await consoleLogRepository.findByRunId(sessionId).catch(() => []);
+      const formattedConsoleLog = consoleLog.map(c => ({
+        timestamp: c.timestamp,
+        level: c.level,
+        type: c.type,
+        message: c.message,
+        url: c.url,
+        line: c.line,
+        column: c.column,
+        stackTrace: c.stackTrace,
+      }));
+
 // Screenshots removed - return empty array
       const formattedScreenshots: never[] = [];
 
@@ -860,6 +903,10 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
 
         // Telemetry
         telemetry: formattedTelemetry,
+
+        // Full network + console logs (all requests / all levels) — mirror live tabs.
+        networkLog: formattedNetworkLog,
+        consoleLog: formattedConsoleLog,
 
         // Screenshots
         screenshots: formattedScreenshots,

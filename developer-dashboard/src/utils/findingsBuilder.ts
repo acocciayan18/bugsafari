@@ -37,6 +37,16 @@ function classifyFinding(statusCode?: number): string {
   return typeof statusCode === 'number' && statusCode >= 400 ? 'NETWORK' : 'EXCEPTION';
 }
 
+// The element the fault attaches to = the last real selector in the fault's
+// timeline (navigation / page-level steps carry no selector).
+function culpritSelector(steps: Array<{ selector?: string }>): string {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i]?.selector;
+    if (s && s.trim() && s !== 'N/A') return s;
+  }
+  return '';
+}
+
 // Build the complete, uncompressed findings array from the exact incidents and
 // crash reports the operator saw live — no dedup, no filter, no truncation.
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
@@ -49,7 +59,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       bugId: `incident-${i + 1}`,
       type,
       message: inc.reason,
-      selector: '',
+      selector: culpritSelector(inc.steps ?? []),
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
@@ -73,7 +83,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       bugId: `report-${i + 1}`,
       type,
       message: rep.reason,
-      selector: '',
+      selector: culpritSelector(rep.breadcrumbs ?? []),
       payloadUsed: '',
       stackTrace: rep.stackTrace ?? '',
       reproductionSteps: checklist,

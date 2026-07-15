@@ -24,9 +24,13 @@ npm run dev:client
 
 If Docker doesn't work or isn't installed, you can use Podman as a drop-in replacement. Podman is daemonless and doesn't require root privileges.
 
+
 ```bash
 # Option 1: Use podman-compose (recommended if installed)
 podman compose -f docker-compose.local.yml up -d
+
+# Podman Build
+podman compose -f docker-compose.local.yml up -d --build
 
 # Option 2: Generate Kubernetes YAML and apply (native Podman)
 podman generate kube docker-compose.local.yml > bugsafari-kube.yaml

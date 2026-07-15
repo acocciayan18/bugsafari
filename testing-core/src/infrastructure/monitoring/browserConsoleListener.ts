@@ -1,5 +1,6 @@
 import type { ConsoleMessage, Page } from 'playwright';
 import type { TelemetryGateway, BrowserConsoleLevel, BrowserConsoleMessage } from '../../application/ports/TelemetryGateway.js';
+import { ConsoleLogStore } from './ConsoleLogStore.js';
 
 // One listener per Page — attachAfterNavigation re-runs on every navigation, so
 // guard against stacking duplicate page.on('console') handlers on the same page.
@@ -57,6 +58,7 @@ export async function setupBrowserConsoleListener(
     if (seen.size >= DEDUP_CAP) seen.delete(seen.values().next().value as string);
     seen.add(key);
     gateway.emitBrowserConsole?.(msg);
+    ConsoleLogStore.push(msg);
   };
 
   page.on('console', (message: ConsoleMessage) => {

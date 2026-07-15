@@ -68,6 +68,8 @@ export interface ActionStepTrace {
   selector: string;
   payloadText?: string;
   resultingStateHash: string;
+  /** Real execution time of this step in ms (measured in the executor). */
+  durationMs?: number;
 }
 
 export interface ISessionMetrics {
@@ -245,6 +247,7 @@ const sessionSchema = new Schema(
               selector:           { type: String, required: true, default: '' },
               payloadText:        { type: String, required: false, default: null },
               resultingStateHash: { type: String, required: false, default: '' },
+              durationMs:         { type: Number, required: false, default: null },
             }],
             default: [],
           },
@@ -283,6 +286,7 @@ const sessionSchema = new Schema(
         selector:           { type: String, required: true, default: '' },
         payloadText:        { type: String, required: false, default: null },
         resultingStateHash: { type: String, required: false, default: '' },
+        durationMs:         { type: Number, required: false, default: null },
       }],
       required: false,
       default: [],

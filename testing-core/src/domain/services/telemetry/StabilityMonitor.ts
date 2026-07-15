@@ -2,6 +2,7 @@ import type { Dialog, Page, Request, Response } from 'playwright';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { setupStabilityMonitoring } from '../../../infrastructure/monitoring/stabilityMonitor.js';
 import { setupBrowserConsoleListener } from '../../../infrastructure/monitoring/browserConsoleListener.js';
+import { NetworkLogStore } from '../../../infrastructure/monitoring/NetworkLogStore.js';
 import {
   ForensicErrorType,
   ForensicErrorSeverity,
@@ -28,6 +29,10 @@ const MAX_PENDING = 300;
 const WATCHDOG_TICK_MS = 1000;
 const HANG_THRESHOLD_MS = 8000;
 const CONFIRM_MS = 2500;
+
+// Only meaningful traffic (API + navigation) is logged/emitted — static asset
+// noise (images/fonts/stylesheets) is excluded from both the live tab and store.
+const LOGGED_RESOURCE_TYPES = new Set(['xhr', 'fetch', 'document']);
 
 /** Maps the knowledge-base severity scale to the persisted forensic-error scale. */
 const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', ForensicErrorSeverity> = {
@@ -183,8 +188,42 @@ export class StabilityMonitor {
   private readonly pending = new Map<Request, { url: string; method: string; startMs: number; swept: boolean }>();
   private readonly confirming = new Set<string>();
   private watchdogTimer?: ReturnType<typeof setInterval>;
+  // Wall-clock start per request, for duration when Playwright timing is unavailable.
+  private readonly requestStartTimes = new WeakMap<Request, number>();
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
+
+  // Wall-clock duration of a settled request; prefers Playwright's precise timing.
+  private computeRequestDuration(request: Request): number | undefined {
+    try {
+      const responseEnd = request.timing()?.responseEnd;
+      if (typeof responseEnd === 'number' && responseEnd > 0) return Math.round(responseEnd);
+    } catch {
+      // timing unavailable (e.g. failed request) — fall back to tracked start
+    }
+    const start = this.requestStartTimes.get(request);
+    return start ? Date.now() - start : undefined;
+  }
+
+  // Record one settled request into the full per-run network log (Network tab).
+  // Skips static-asset noise; never throws inside a page listener.
+  private recordNetworkLog(request: Request, statusCode: number | undefined, ok: boolean, message?: string): void {
+    try {
+      if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
+      NetworkLogStore.push({
+        timestamp: new Date().toISOString(),
+        method: request.method(),
+        url: request.url(),
+        statusCode,
+        durationMs: this.computeRequestDuration(request),
+        resourceType: request.resourceType(),
+        ok,
+        message,
+      });
+    } catch {
+      // never let logging throw inside a page listener
+    }
+  }
 
   /**
    * Verify a caught fault before it is reported. Classifies it against the
@@ -718,6 +757,7 @@ export class StabilityMonitor {
     // endpoint+payload inside a tight window means no debounce/disable-on-submit guard fired.
     page.on('request', (request: Request) => {
       try {
+        this.requestStartTimes.set(request, Date.now());
         this.trackPending(request);
         const result = this.duplicateFinder.observeRequest({
           method: request.method(),
@@ -772,6 +812,9 @@ export class StabilityMonitor {
         void this.confirmStuckLoading(page, { trigger: 'SERVER_ERROR', url, method, status });
       }
 
+      // Full network log (Network tab): record every meaningful request, any status.
+      this.recordNetworkLog(response.request(), status, status < 400);
+
       // Filter expected browser/network noise (missing static assets, etc.) so a
       // normal 404 favicon/image can never create a false-positive finding.
       if (isExpectedResourceNoise(url, resourceType, status)) {
@@ -803,6 +846,18 @@ export class StabilityMonitor {
         }
       }
 
+      // Live parity: surface clean successful/redirect requests on the Network tab
+      // (failures are emitted by the fault/informational paths below).
+      if (status < 400 && !softFailBody && LOGGED_RESOURCE_TYPES.has(resourceType)) {
+        t.emit('NETWORK', {
+          statusCode: status,
+          url,
+          method,
+          durationMs: this.computeRequestDuration(response.request()),
+          message: `HTTP ${status} ${method} ${url}`,
+        });
+      }
+
       // A clean success with no soft-fail body is not a fault — nothing to emit.
       if (status < 400 && !softFailBody) {
         return;
@@ -818,6 +873,7 @@ export class StabilityMonitor {
           statusCode: status,
           url,
           method,
+          durationMs: this.computeRequestDuration(response.request()),
           message: `🛡️ Defensive response (informational): HTTP ${status} ${method} ${url} — ${verdict.reason}`,
         });
         return;
@@ -860,6 +916,7 @@ export class StabilityMonitor {
         statusCode: status,
         url,
         method,
+        durationMs: this.computeRequestDuration(response.request()),
         message: `Network ${status} ${method} ${url}`,
         reproductionSteps: reproductionPlaybook,
         attribution,
@@ -941,6 +998,9 @@ export class StabilityMonitor {
 
       // Cascade tracking on the raw failure — see the response handler above.
       this.deps.recordNetworkFailure();
+
+      // Full network log: a genuine (non-abort) failure is a Network-tab row too.
+      this.recordNetworkLog(request, undefined, false, reason);
 
       // Process as EXCEPTION for real network failures
       const reproduction = ActiveScenarioTracker.flushSnapshot({

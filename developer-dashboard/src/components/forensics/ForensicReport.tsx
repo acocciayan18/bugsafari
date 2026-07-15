@@ -22,7 +22,8 @@ import { fetchForensicReport } from '../../services/historyService';
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
-  ForensicReportError,
+  ForensicNetworkLog,
+  ForensicConsoleLog,
   ForensicReportResponse,
   VerifyFixRequest,
   VerifyFixResult,
@@ -221,6 +222,7 @@ function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
           {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
           {' on '}
           <span>{stepTarget(step)}</span>
+          {typeof step.durationMs === 'number' && <span className="text-gray-400"> ({step.durationMs}ms)</span>}
           <span className="text-gray-400"> ({formatDate(step.timestamp)})</span>
         </li>
       ))}
@@ -231,7 +233,7 @@ function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
 function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   return [
-    `Finding #${index + 1}: ${bugClass}`,
+    `Finding #${index}: ${bugClass}`,
     bug.message ? `Message: ${bug.message}` : '',
     bug.selector ? `Selector: ${bug.selector}` : '',
     bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
@@ -571,7 +573,7 @@ function FindingCard({
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
           <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-white`}>
-            {index + 1}
+            {index}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -699,10 +701,11 @@ function CleanRunCard() {
 
 // ─────────────────────────────────────────────────────────────
 // Tabbed panels — mirror the live dashboard's right-panel tabs
-// (Findings / Network / Console) so a saved session
-// rehydrates the same categorized context the operator saw live.
-// Successful network and non-error console are WebSocket-only (never
-// persisted), so the Network/Console tabs show verified faults only.
+// (Findings / Network / Console) so a saved session rehydrates the same
+// categorized context the operator saw live. Network/Console now persist the
+// FULL streams (every request, every console level), matching the live tabs.
+// The *_ERROR_TYPES sets below only drive the legacy fallback for old sessions
+// saved before full-log persistence existed.
 // ─────────────────────────────────────────────────────────────
 
 const NETWORK_ERROR_TYPES = new Set(['API_FAILURE', 'NAVIGATION_FAILURE', 'TIMEOUT_FAILURE']);
@@ -742,48 +745,65 @@ function EmptyTab({ message }: { message: string }) {
   );
 }
 
-function NetworkErrorList({ errors }: { errors: ForensicReportError[] }) {
-  if (!errors.length) return <EmptyTab message="No failed network requests were recorded for this session." />;
+// Full network log — every request (incl. successful), mirroring the live Network tab.
+function statusTint(row: ForensicNetworkLog): { border: string; bg: string; status: string } {
+  const code = row.statusCode ?? 0;
+  if (!row.ok || code >= 500) return { border: 'border-red-200', bg: 'bg-red-50', status: 'text-red-700' };
+  if (code >= 400) return { border: 'border-amber-200', bg: 'bg-amber-50', status: 'text-amber-700' };
+  return { border: 'border-gray-200', bg: 'bg-white', status: 'text-green-700' };
+}
+
+function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
+  if (!rows.length) return <EmptyTab message="No network requests were recorded for this session." />;
   return (
     <ul className="flex flex-col gap-2">
-      {errors.map((error, i) => (
-        <li key={error.id || i} className="rounded-md border border-red-200 bg-red-50 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {error.method && (
-              <span className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{error.method}</span>
-            )}
-            {typeof error.statusCode === 'number' && (
-              <span className="font-mono text-[11px] font-bold text-red-700">HTTP {error.statusCode}</span>
-            )}
-            {error.type && (
-              <span className="font-mono text-[10px] uppercase tracking-wide text-gray-500">{error.type}</span>
-            )}
-          </div>
-          {(error.endpoint || error.url) && (
-            <div className="mt-1 truncate font-mono text-[11px] text-gray-600" title={error.endpoint || error.url}>{error.endpoint || error.url}</div>
-          )}
-          {error.message && <div className="mt-1 break-words text-xs text-gray-800">{error.message}</div>}
-        </li>
-      ))}
+      {rows.map((row, i) => {
+        const tint = statusTint(row);
+        return (
+          <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{row.method}</span>
+              <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
+              {row.resourceType && (
+                <span className="font-mono text-[10px] uppercase tracking-wide text-gray-400">{row.resourceType}</span>
+              )}
+              {row.repeatCount && row.repeatCount > 1 && (
+                <span className="font-mono text-[10px] text-gray-500">×{row.repeatCount}</span>
+              )}
+            </div>
+            <div className="mt-1 truncate font-mono text-[11px] text-gray-600" title={row.url}>{row.url}</div>
+            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-gray-800">{row.message}</div>}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function ConsoleErrorList({ errors }: { errors: ForensicReportError[] }) {
-  if (!errors.length) return <EmptyTab message="No console errors were recorded for this session." />;
+const CONSOLE_LEVEL_STYLES: Record<string, string> = {
+  error: 'bg-red-100 text-red-800',
+  warning: 'bg-amber-100 text-amber-800',
+  info: 'bg-blue-100 text-blue-800',
+  debug: 'bg-purple-100 text-purple-800',
+  trace: 'bg-gray-100 text-gray-600',
+  notice: 'bg-gray-100 text-gray-600',
+  log: 'bg-gray-100 text-gray-700',
+};
+
+// Full console log — every level, mirroring the live Console tab.
+function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
+  if (!rows.length) return <EmptyTab message="No console output was recorded for this session." />;
   return (
     <ul className="flex flex-col gap-2">
-      {errors.map((error, i) => (
-        <li key={error.id || i} className="rounded-md border border-gray-200 bg-white p-3">
+      {rows.map((row, i) => (
+        <li key={i} className="rounded-md border border-gray-200 bg-white p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-gray-700 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{error.type || 'CONSOLE'}</span>
-            {error.severity && (
-              <span className="font-mono text-[10px] uppercase tracking-wide text-gray-500">{error.severity}</span>
-            )}
+            <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
+            {row.url && <span className="truncate font-mono text-[10px] text-gray-400" title={row.url}>{row.url}</span>}
           </div>
-          {error.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800">{error.message}</div>}
-          {error.stackTrace && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 font-mono text-[10px] leading-relaxed text-gray-200">{error.stackTrace}</pre>
+          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800">{row.message}</div>}
+          {row.stackTrace && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 font-mono text-[10px] leading-relaxed text-gray-200">{row.stackTrace}</pre>
           )}
         </li>
       ))}
@@ -870,10 +890,21 @@ export default function ForensicReport() {
   // so render the caughtBugs directly. WCAG findings are ephemeral (never persisted);
   // the filter only guards legacy sessions saved before that change.
   const runtimeBugs = useMemo(() => bugs.filter((b) => b.type !== 'ACCESSIBILITY'), [bugs]);
-  // Persisted forensic_errors, split into the live-mirroring Network / Console tabs.
+  // Full network / console logs mirror the live tabs. New saves carry the complete
+  // streams; legacy sessions (no logs) fall back to the persisted fault rows.
   const reportErrors = useMemo(() => report?.errorLogs?.errors ?? [], [report]);
-  const networkErrors = useMemo(() => reportErrors.filter((e) => e.type && NETWORK_ERROR_TYPES.has(e.type)), [reportErrors]);
-  const consoleErrors = useMemo(() => reportErrors.filter((e) => e.type && CONSOLE_ERROR_TYPES.has(e.type)), [reportErrors]);
+  const networkRows = useMemo<ForensicNetworkLog[]>(() => {
+    if (Array.isArray(report?.networkLog)) return report!.networkLog;
+    return reportErrors
+      .filter((e) => e.type && NETWORK_ERROR_TYPES.has(e.type))
+      .map((e) => ({ timestamp: e.createdAt ?? '', method: e.method ?? 'GET', url: e.endpoint || e.url || '', statusCode: e.statusCode, ok: false, message: e.message }));
+  }, [report, reportErrors]);
+  const consoleRows = useMemo<ForensicConsoleLog[]>(() => {
+    if (Array.isArray(report?.consoleLog)) return report!.consoleLog;
+    return reportErrors
+      .filter((e) => e.type && CONSOLE_ERROR_TYPES.has(e.type))
+      .map((e) => ({ timestamp: e.createdAt ?? '', level: 'error' as const, type: e.type ?? 'CONSOLE', message: e.message ?? '', stackTrace: e.stackTrace }));
+  }, [report, reportErrors]);
   const [activeTab, setActiveTab] = useState<'findings' | 'network' | 'console'>('findings');
   const { statuses, verify } = useRegressionVerifier();
 
@@ -930,8 +961,8 @@ export default function ForensicReport() {
           <section>
             <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
-              <TabButton label="Network" count={networkErrors.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
-              <TabButton label="Console" count={consoleErrors.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
+              <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
+              <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
             </div>
 
             {activeTab === 'findings' && (
@@ -953,8 +984,8 @@ export default function ForensicReport() {
                 <CleanRunCard />
               )
             )}
-            {activeTab === 'network' && <NetworkErrorList errors={networkErrors} />}
-            {activeTab === 'console' && <ConsoleErrorList errors={consoleErrors} />}
+            {activeTab === 'network' && <NetworkLogList rows={networkRows} />}
+            {activeTab === 'console' && <ConsoleLogList rows={consoleRows} />}
           </section>
 
           <ActionTimelineAppendix steps={report.actionSteps ?? []} />

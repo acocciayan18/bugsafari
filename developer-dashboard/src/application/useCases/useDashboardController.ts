@@ -132,6 +132,14 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   // Tracks whether a run actually started, so the IDLE handler can enable Save
   // History after ANY finish — including a fatal crash that sends no terminal action.
   const runStartedRef = useRef(false);
+  // Wall-clock start of the run — a process-independent duration fallback for save,
+  // used when the worker timer snapshot didn't populate elapsedTimeMs.
+  const runStartWallClockRef = useRef(0);
+  // Absolute epoch (ms) when the timebox expires. Drives a persistent countdown so
+  // the timer survives view switches and always halts at the timebox.
+  const runDeadlineRef = useRef(0);
+  // Remaining ms captured at pause, so paused time is not counted on resume.
+  const pausedRemainingRef = useRef(0);
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   // NETWORK events are kept out of the main logic log and streamed to the Network tab only.
   const [networkEvents, setNetworkEvents] = useState<TelemetryEvent[]>([]);
@@ -259,7 +267,11 @@ return () => {
 
       setSessionTimeMs(snapshot.timeboxMs);
       setElapsedTimeMs(snapshot.elapsedTimeMs);
-      setRemainingTimeMs(Math.max(0, snapshot.timeboxMs - snapshot.elapsedTimeMs));
+      const snapshotRemaining = Math.max(0, snapshot.timeboxMs - snapshot.elapsedTimeMs);
+      setRemainingTimeMs(snapshotRemaining);
+      // Anchor the persistent countdown to the backend-authoritative remaining.
+      runDeadlineRef.current = Date.now() + snapshotRemaining;
+      pausedRemainingRef.current = 0;
 
       setStatus(lifecycleToStatus(snapshot.status));
       setIsTestRunning(live);
@@ -526,6 +538,9 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setQueuePosition(null);
     setQueueDepth(0);
     runStartedRef.current = true;
+    runStartWallClockRef.current = Date.now();
+    runDeadlineRef.current = Date.now() + resolvedTimeboxMs;
+    pausedRemainingRef.current = 0;
 
 try {
       const { runId, queued } = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
@@ -588,8 +603,53 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
       // Transfer the exact live findings (incidents + crash reports) so saved
       // history mirrors the Error Tab with 100% parity.
       const liveFindings = buildLiveFindings(incidents, reports);
+      // Transfer the full live Network + Console streams so the saved report's
+      // tabs mirror what the operator watched (the run executes out-of-process,
+      // so these buffers are the only complete source available at save time).
+      // Dedup by method+url+status so a polled endpoint collapses to one row with
+      // a repeatCount instead of flooding the Network tab.
+      const networkMap = new Map<string, { timestamp: string; method: string; url: string; statusCode?: number; durationMs?: number; ok: boolean; message?: string; repeatCount: number }>();
+      for (const e of networkEvents) {
+        if (e.type !== 'NETWORK') continue;
+        const method = e.meta?.method ?? 'GET';
+        const url = e.meta?.url ?? '';
+        const statusCode = e.meta?.statusCode;
+        const key = `${method}|${url}|${statusCode ?? ''}`;
+        const existing = networkMap.get(key);
+        if (existing) {
+          existing.repeatCount += 1;
+          if (typeof e.meta?.durationMs === 'number') existing.durationMs = e.meta.durationMs;
+        } else {
+          networkMap.set(key, {
+            timestamp: e.timestamp,
+            method,
+            url,
+            statusCode,
+            durationMs: e.meta?.durationMs,
+            ok: typeof statusCode === 'number' ? statusCode < 400 : true,
+            message: e.meta?.message,
+            repeatCount: 1,
+          });
+        }
+      }
+      const networkLog = [...networkMap.values()];
+      const consoleLog = browserConsole.map((c) => ({
+        timestamp: c.timestamp,
+        level: c.level,
+        type: c.type,
+        message: c.message,
+        url: c.url,
+        line: c.line,
+        column: c.column,
+        stackTrace: c.stackTrace,
+      }));
+      // Duration fallback: if the worker timer snapshot never populated elapsed,
+      // use the wall-clock span so the saved report never shows Duration N/A.
+      const effectiveElapsedMs = elapsedTimeMs > 0
+        ? elapsedTimeMs
+        : (runStartWallClockRef.current > 0 ? Date.now() - runStartWallClockRef.current : 0);
       // Save now requires authentication (throws 403 for guests)
-      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs, findings: liveFindings });
+      await saveSessionToHistory(runtimeUrl.trim(), { initialUrl: inputTargetUrl.trim(), elapsedTimeMs: effectiveElapsedMs, findings: liveFindings, networkLog, consoleLog });
       setIsSessionSaved(true);
       await refreshHistory();
       setTelemetry((prev) => [
@@ -646,6 +706,36 @@ const saveSession = async (inputTargetUrl: string): Promise<void> => {
     setStatus('FINISHED');
     setHasRunCompleted(true);
   };
+
+  // Freeze/shift the deadline across pause so paused time is never counted.
+  // Declared BEFORE the tick effect so a resume fixes the deadline first.
+  useEffect(() => {
+    if (status === 'PAUSED' || status === 'PAUSING') {
+      if (runDeadlineRef.current > 0 && pausedRemainingRef.current === 0) {
+        pausedRemainingRef.current = Math.max(0, runDeadlineRef.current - Date.now());
+      }
+    } else if (status === 'ACTIVE' && pausedRemainingRef.current > 0) {
+      runDeadlineRef.current = Date.now() + pausedRemainingRef.current;
+      pausedRemainingRef.current = 0;
+    }
+  }, [status]);
+
+  // Persistent wall-clock countdown. Lives in the controller (which outlives the
+  // dashboard view), so remainingTimeMs stays current across dashboard↔history
+  // switches, and the run always halts at the timebox (10 min).
+  useEffect(() => {
+    if (status !== 'ACTIVE') return;
+    if (runDeadlineRef.current <= 0) runDeadlineRef.current = Date.now() + sessionTimeMs;
+    const tick = () => {
+      const remaining = Math.max(0, runDeadlineRef.current - Date.now());
+      setRemainingTimeMs(remaining);
+      setElapsedTimeMs(Math.max(0, sessionTimeMs - remaining));
+      if (remaining <= 0) handleTimeLimitExceeded();
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [status, sessionTimeMs]);
 
 return {
     state: {
