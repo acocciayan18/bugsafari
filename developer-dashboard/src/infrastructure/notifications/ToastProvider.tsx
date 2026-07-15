@@ -119,9 +119,7 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
     const { variant = 'telemetry', message, duration = 3000 } = options;
 
     const baseStyle = {
-      backgroundColor: '#ffffff',
       color: '#000000',
-      border: '1px solid #e5e7eb',
     };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
