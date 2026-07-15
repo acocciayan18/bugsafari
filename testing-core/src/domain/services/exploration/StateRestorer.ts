@@ -251,9 +251,22 @@ export class StateRestorer {
         // goBack can walk into the pre-origin about:blank entry (or off-origin). Don't
         // poll a dead/blank context for 3s — bail to the deep-link rung immediately so
         // no blank frame is ever streamed.
-        const landedInvalid =
-          PageHealthGuard.isInvalidContext(page) || this.landedOffOrigin(page);
-        if (!landedInvalid && (await this.verifyReachedHash(page, targetHash, 3000))) {
+        const contextInvalid = PageHealthGuard.isInvalidContext(page);
+        const offOrigin = this.landedOffOrigin(page);
+        const landedInvalid = contextInvalid || offOrigin;
+        const hashMatched =
+          !landedInvalid && (await this.verifyReachedHash(page, targetHash, 3000));
+        // Back-nav defect oracle: report how history.back() actually landed.
+        if (!page.isClosed()) {
+          this.deps.onBackNavOutcome?.({
+            expectedUrl: targetUrl,
+            landedUrl: page.url(),
+            contextInvalid,
+            offOrigin,
+            hashMatched,
+          });
+        }
+        if (hashMatched) {
           console.log('[StateRestorer] restore strategy A (history) succeeded');
           this.deps.telemetry.emitSystemStatus('Restored via history navigation.');
           this.recordRestoreTrace(targetUrl, 'history-back');

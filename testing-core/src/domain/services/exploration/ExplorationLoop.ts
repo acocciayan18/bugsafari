@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import { ALL_TESTING_TYPE_IDS } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
+import { normalizeRoutePath } from '../../../ml/domHasher.js';
 import type { CompoundStateHash } from '../../../ml/domHasher.js';
 import type {
   PathfinderElement,
@@ -114,6 +115,10 @@ type FingerprintResult =
 export class ExplorationLoop {
   constructor(private readonly deps: ExplorationLoopDeps) {}
 
+  // Normalized route the static lookahead probe resolved for the current target
+  // (null = no static destination) — feeds the dead-interaction oracle.
+  private lastProbedRoute: string | null = null;
+
   public async execute(page: Page, maxSteps: number): Promise<LoopResult> {
     const telemetry = this.deps.telemetry;
 
@@ -182,6 +187,8 @@ export class ExplorationLoop {
           };
         }
         page = health.page;
+        // Recovery navigations create A→B→A URL shapes — suppress the oscillation oracle.
+        if (health.status === 'recovered') this.deps.navigationFinder.noteEngineNavigation();
 
         if (runtimeCrashReason) {
           return { completed: false, reason: runtimeCrashReason, outcome: 'exception' };
@@ -288,7 +295,7 @@ export class ExplorationLoop {
         // The edge stays 'traversing' in the navigator until we observe a new
         // stable DOM state; an unverified/failed click is isolated as unstable
         // and the parent is restored locally (never collapses the graph).
-        const { traversalOk, childHash, childStructure, landedInvalid } = await this.executeAndVerifyAction(
+        const { traversalOk, childHash, childStructure, landedInvalid, actionThrew } = await this.executeAndVerifyAction(
           page,
           step,
           target,
@@ -297,6 +304,14 @@ export class ExplorationLoop {
           fingerprint.currentHash,
           decision.score,
         );
+
+        // 🧭 Navigation-defect observation BEFORE any parent restore, so the
+        // post-action URL still reflects what the interaction actually did.
+        this.observeNavigation(page, fingerprint.compound, target, {
+          traversalOk,
+          landedInvalid,
+          actionThrew,
+        });
 
         await this.applyTraversalOutcome(
           page,
@@ -775,29 +790,32 @@ export class ExplorationLoop {
 
   /**
    * Run the static WCAG auditor against the current DOM and surface any NEW
-   * violations as findings (live 'BUG' telemetry + the confirmed-bug ledger, so
-   * they persist to saved history alongside runtime faults). The auditor dedupes
-   * by (rule, selector) and audits each structural shell once, so this is cheap on
-   * revisits. Isolated: a scan failure is logged and swallowed.
+   * violations. Findings stream on the dedicated accessibility channel (isolated
+   * Accessibility tab) and are recorded in the confirmed-bug ledger for saved
+   * history — but are kept OUT of the Errors tab (see registerConfirmedBug). The
+   * auditor dedupes by (rule, selector) and audits each structural shell once, so
+   * this is cheap on revisits. Isolated: a scan failure is logged and swallowed.
    */
   private async auditAccessibility(page: Page, structureHash: string, step: number): Promise<void> {
     try {
       const violations = await this.deps.accessibilityAuditor.audit(page, structureHash);
       for (const v of violations) {
-        const severity = v.impact === 'critical' ? 'CRITICAL' : v.impact === 'minor' ? 'INFO' : 'WARNING';
-        this.deps.telemetry.emit('BUG', {
-          actionExecuted: 'accessibility-violation',
+        this.deps.telemetry.emitAccessibility({
+          timestamp: new Date().toISOString(),
+          rule: v.rule,
+          wcag: v.wcag,
+          impact: v.impact,
           selector: v.selector,
-          severity,
-          message: `♿ WCAG ${v.wcag} (${v.rule}): ${v.message}`,
+          description: v.description,
+          suggestedFix: v.suggestedFix,
         });
         this.deps.registerConfirmedBug({
           bugId: `a11y-${v.rule}-${step}-${v.selector || 'page'}`,
           type: 'ACCESSIBILITY',
-          message: `WCAG ${v.wcag} — ${v.rule}: ${v.message}`,
+          message: `WCAG ${v.wcag} — ${v.rule}: ${v.description}`,
           selector: v.selector,
           payloadUsed: '',
-          advice: v.message,
+          advice: v.suggestedFix,
           timestamp: new Date(),
         });
       }
@@ -810,6 +828,38 @@ export class ExplorationLoop {
       console.warn(
         '[ExplorationLoop] Accessibility audit failed:',
         a11yErr instanceof Error ? a11yErr.message : String(a11yErr),
+      );
+    }
+  }
+
+  /** Feed the post-action outcome to the navigation-defect oracle (never derails the loop). */
+  private observeNavigation(
+    page: Page,
+    compound: CompoundStateHash,
+    target: InteractiveElement,
+    outcome: { traversalOk: boolean; landedInvalid: boolean; actionThrew: boolean },
+  ): void {
+    try {
+      const url = page.isClosed() ? '' : page.url();
+      const defects = this.deps.navigationFinder.observeInteraction({
+        selector: target.selector,
+        fromStructure: compound.structure,
+        fromRoute: compound.routePath,
+        toRoute: normalizeRoutePath(url),
+        probedRoute: this.lastProbedRoute,
+        semanticRole: inferSemanticRole(target),
+        traversalOk: outcome.traversalOk,
+        landedInvalid: outcome.landedInvalid,
+        actionThrew: outcome.actionThrew,
+        networkActivity: this.deps.hadNetworkActivitySinceAction(),
+        url,
+        timestampMs: Date.now(),
+      });
+      this.deps.reportNavigationDefects(defects);
+    } catch (navErr) {
+      console.warn(
+        '[ExplorationLoop] Navigation observation failed:',
+        navErr instanceof Error ? navErr.message : String(navErr),
       );
     }
   }
@@ -994,6 +1044,17 @@ export class ExplorationLoop {
       `⛔ Error/invalid page excluded from graph (${routeVerdict.reason}) — treating as a dead end and recovering to the nearest unexplored state.`,
     );
 
+    // 🧭 Broken-route oracle: raise a navigation defect when this hard HTTP error
+    // state was reached via a user-style interaction (never via engine recovery).
+    this.deps.reportNavigationDefects(
+      this.deps.navigationFinder.observeErrorState({
+        route: compound.routePath,
+        url,
+        statusCode: mainFrameStatus,
+        reason: routeVerdict.reason,
+      }),
+    );
+
     // Mark the error hash a structural dead end: registered only as an inert,
     // edge-less skipped tombstone (never a traversable node) and immediately
     // unwound off the breadcrumb stack, so it can never be backtracked into.
@@ -1039,6 +1100,9 @@ export class ExplorationLoop {
       this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
       return;
     }
+
+    // Engine-initiated navigation ahead — suppress navigation-defect false positives.
+    this.deps.navigationFinder.noteEngineNavigation();
 
     // Forensic log of the global frontier selection: priority breakdown + plan,
     // so every jump is attributable and reproducible from telemetry alone.
@@ -1101,6 +1165,7 @@ export class ExplorationLoop {
     target: InteractiveElement,
     step: number,
   ): Promise<boolean> {
+    this.lastProbedRoute = null;
     // Session-wide transition-repeat cap: this exact control has already driven
     // its structural shell back to already-seen views `budget` times — a
     // navigation-loop source the combined-hash edge model can't see (each variant
@@ -1127,6 +1192,7 @@ export class ExplorationLoop {
     }
 
     const probe = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
+    this.lastProbedRoute = probe.href && !probe.deadEnd ? normalizeRoutePath(probe.href) || null : null;
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
     if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {
@@ -1192,7 +1258,7 @@ export class ExplorationLoop {
     revisitedPage: boolean,
     currentHash: string,
     exploreScore: number,
-  ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean }> {
+  ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean; actionThrew: boolean }> {
     // Emit exploration milestone
     const humanTarget = humanizeElement(target);
     this.deps.telemetry.emitMilestone(`🎯 Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
@@ -1203,6 +1269,7 @@ export class ExplorationLoop {
     let traversalOk = false;
     let childHash = currentHash;
     let childStructure = '';
+    let actionThrew = false;
     try {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
@@ -1217,6 +1284,7 @@ export class ExplorationLoop {
       if (isBrowserClosedError(actionErr)) throw actionErr;
       // Detached element / intercepting overlay / click error → unstable edge.
       traversalOk = false;
+      actionThrew = true;
       console.warn(
         '[ExplorationLoop] Traversal action failed:',
         actionErr instanceof Error ? actionErr.message : String(actionErr),
@@ -1248,7 +1316,7 @@ export class ExplorationLoop {
 
     await this.deps.persistBrainSnapshot('runtime', step);
 
-    return { traversalOk, childHash, childStructure, landedInvalid };
+    return { traversalOk, childHash, childStructure, landedInvalid, actionThrew };
   }
 
   private async applyTraversalOutcome(
@@ -1330,6 +1398,7 @@ export class ExplorationLoop {
         this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
       } else {
         this.deps.telemetry.emitMilestone(`🩹 Edge unstable — restoring parent locally (no false exhaustion).`);
+        this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
       }
     }

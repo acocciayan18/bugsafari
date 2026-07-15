@@ -1,4 +1,4 @@
-import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -15,6 +15,9 @@ export interface TelemetryGateway {
   emitLiveFrameBinary?(frameBuffer: Buffer): void;
   emitForensicReport(report: ForensicCrashReport): void;
   emitIncidentReport(report: IncidentReport): void;
+
+  /** Dedicated WCAG channel — kept separate from the generic fault streams. */
+  emitAccessibility(finding: AccessibilityFinding): void;
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;

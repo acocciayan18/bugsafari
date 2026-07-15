@@ -130,6 +130,7 @@ function AuthAppContent() {
                   frameBuffer={state.latestFrame}
                   telemetry={state.telemetry}
                   networkEvents={state.networkEvents}
+                  accessibility={state.accessibilityLogs}
                   browserConsole={state.browserConsole}
                   errors={{ incidents: state.incidents, reports: state.reports }}
                   isConnected={state.isConnected}

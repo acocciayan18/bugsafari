@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -104,6 +104,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onIncidentReport(handler: (report: IncidentReport) => void): void {
     this.connection.onIncidentReport(handler);
+  }
+  public onAccessibility(handler: (finding: AccessibilityFinding) => void): void {
+    this.connection.onAccessibility(handler);
   }
   public onLiveFrame(handler: (base64Jpeg: string) => void): void {
     this.connection.onLiveFrame(handler);

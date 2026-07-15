@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import type { TelemetryEvent } from '../../../../../shared/types.ts';
+import type { AccessibilityFinding, TelemetryEvent } from '../../../../../shared/types.ts';
 import type { TelemetryEmitterFlags } from '../exploration/types.js';
 import { isBrowserClosedError } from './StabilityMonitor.js';
 
@@ -38,6 +38,11 @@ export class TelemetryEmitter {
   /** Convenience: build and emit a telemetry event in one call. */
   public emit(type: TelemetryEvent['type'], meta: TelemetryEvent['meta']): void {
     this.gateway.emitTelemetry(this.event(type, meta));
+  }
+
+  /** Stream a WCAG finding on the dedicated accessibility channel. */
+  public emitAccessibility(finding: AccessibilityFinding): void {
+    this.gateway.emitAccessibility(finding);
   }
 
   public emitMilestone(message: string): void {

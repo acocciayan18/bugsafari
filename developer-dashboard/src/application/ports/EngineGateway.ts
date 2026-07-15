@@ -1,4 +1,4 @@
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -15,6 +15,8 @@ export interface EngineGateway {
   onTelemetry(handler: (event: TelemetryEvent) => void): void;
   onForensicReport(handler: (report: ForensicCrashReport) => void): void;
   onIncidentReport(handler: (report: IncidentReport) => void): void;
+  /** Dedicated WCAG stream — feeds the isolated Accessibility tab only. */
+  onAccessibility(handler: (finding: AccessibilityFinding) => void): void;
   onLiveFrame(handler: (base64Jpeg: string) => void): void;
   onUrlChanged(handler: (url: string) => void): void;
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;

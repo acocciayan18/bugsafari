@@ -25,6 +25,7 @@ const noopTelemetry: TelemetryGateway = {
   emitLiveFrame() {},
   emitForensicReport() {},
   emitIncidentReport() {},
+  emitAccessibility() {},
   emitUrlChanged() {},
 };
 

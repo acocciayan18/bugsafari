@@ -1,12 +1,13 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { ACCESSIBILITY_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
 type ForensicHandler = (report: ForensicCrashReport) => void;
 type IncidentHandler = (report: IncidentReport) => void;
+type AccessibilityHandler = (finding: AccessibilityFinding) => void;
 type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
@@ -38,6 +39,7 @@ export class SocketConnectionManager {
   private telemetryHandler: TelemetryHandler | null = null;
   private forensicHandler: ForensicHandler | null = null;
   private incidentHandler: IncidentHandler | null = null;
+  private accessibilityHandler: AccessibilityHandler | null = null;
   private frameHandler: FrameHandler | null = null;
   private urlChangedHandler: UrlChangedHandler | null = null;
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
@@ -117,6 +119,7 @@ export class SocketConnectionManager {
     this.socket.on('telemetry', this.handleTelemetry);
     this.socket.on('forensic-report', this.handleForensicReport);
     this.socket.on('incident-report', this.handleIncidentReport);
+    this.socket.on(ACCESSIBILITY_EVENT, this.handleAccessibility);
     this.socket.on('live-frame', this.handleLiveFrame);
     this.socket.on('url-changed', this.handleUrlChanged);
     this.socket.on('browser-console', this.handleBrowserConsole);
@@ -141,6 +144,7 @@ export class SocketConnectionManager {
     this.socket.off('telemetry', this.handleTelemetry);
     this.socket.off('forensic-report', this.handleForensicReport);
     this.socket.off('incident-report', this.handleIncidentReport);
+    this.socket.off(ACCESSIBILITY_EVENT, this.handleAccessibility);
     this.socket.off('live-frame', this.handleLiveFrame);
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
@@ -216,6 +220,10 @@ export class SocketConnectionManager {
     this.incidentHandler?.(report);
   };
 
+  private readonly handleAccessibility = (finding: AccessibilityFinding): void => {
+    this.accessibilityHandler?.(finding);
+  };
+
   private readonly handleLiveFrame = (base64Jpeg: string): void => {
     this.frameHandler?.(base64Jpeg);
   };
@@ -244,6 +252,9 @@ export class SocketConnectionManager {
   public onIncidentReport(handler: IncidentHandler): void {
     this.incidentHandler = handler;
   }
+  public onAccessibility(handler: AccessibilityHandler): void {
+    this.accessibilityHandler = handler;
+  }
   public onLiveFrame(handler: FrameHandler): void {
     this.frameHandler = handler;
   }
@@ -264,6 +275,7 @@ export class SocketConnectionManager {
     this.telemetryHandler = null;
     this.forensicHandler = null;
     this.incidentHandler = null;
+    this.accessibilityHandler = null;
     this.frameHandler = null;
     this.urlChangedHandler = null;
     this.browserConsoleHandler = null;

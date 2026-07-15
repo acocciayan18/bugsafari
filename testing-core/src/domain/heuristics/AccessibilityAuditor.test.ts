@@ -19,7 +19,8 @@ const v = (rule: string, selector: string): A11yViolation => ({
   selector,
   wcag: '4.1.2',
   impact: 'serious',
-  message: 'test',
+  description: 'test',
+  suggestedFix: 'fix it',
 });
 
 console.log('AccessibilityAuditor — dedup accounting');

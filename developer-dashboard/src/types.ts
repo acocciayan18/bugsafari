@@ -12,6 +12,9 @@ export type {
   TelemetryType,
   TelemetryMeta,
   ExceptionDetails,
+  // Dedicated WCAG accessibility stream
+  AccessibilityFinding,
+  A11yImpact,
   SemanticRole,
   BoundingBox,
   DiscoveredElement,
@@ -52,6 +55,7 @@ export {
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
+  ACCESSIBILITY_EVENT,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).

@@ -21,7 +21,9 @@ export class BoundingBoxHighlighter {
         return;
       }
 
-      const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Namespaced id — DomHasher excludes [id^="bugsafari-highlight-"] so this
+      // engine-injected overlay never registers as an app state change.
+      const highlightId = `bugsafari-highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // Create overlay div with red border
       await page.evaluate(
@@ -87,7 +89,9 @@ export class BoundingBoxHighlighter {
         return;
       }
 
-      const highlightId = `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Namespaced id — DomHasher excludes [id^="bugsafari-highlight-"] so this
+      // engine-injected overlay never registers as an app state change.
+      const highlightId = `bugsafari-highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // Create overlay using absolute positioning
       await page.evaluate(

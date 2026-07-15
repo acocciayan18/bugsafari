@@ -2,12 +2,15 @@ import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
-import type { ActionBreadcrumb, ActionRecord, ActionType, IncidentReport, TelemetryEvent } from '../../../../../shared/types.ts';
+import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport, TelemetryEvent } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
+import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
+import type { NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
+import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
@@ -295,8 +298,9 @@ export class ExplorationEngine {
 
       // Surface arsenal-discovered bugs (fuzzing/injection/stress/storage) on the
       // live Errors tab. JS/console exceptions are already streamed by
-      // StabilityMonitor (streamed=true); network faults own the Network tab.
-      if (!bug.streamed && bug.type !== 'NETWORK') {
+      // StabilityMonitor (streamed=true); network faults own the Network tab;
+      // WCAG findings own the dedicated Accessibility tab (streamed separately).
+      if (!bug.streamed && bug.type !== 'NETWORK' && bug.type !== 'ACCESSIBILITY') {
         this.streamBugToErrorsTab(bug);
       }
     }
@@ -493,11 +497,56 @@ export class ExplorationEngine {
     // lastKnownUrl, so it survives the deepest recovery rung.
     let lastMainFrameStatus: { path: string; status: number } | null = null;
 
+    // Run-scoped passive navigation-defect analyzer (dead links, broken routes,
+    // redirect loops, back-nav state loss) — fed from the observation hooks below.
+    const navigationFinder = new BrokenNavigationFinder();
+
     // Build the telemetry emitter around the persistent gateway.
     const emitter = new TelemetryEmitter(telemetry, {
       isPaused: () => this.isPaused,
       isStopRequested: () => this.isStopRequested,
     });
+
+    // Turn verified navigation defects into forensic telemetry + confirmed bugs.
+    // type:'NAVIGATION' auto-streams to the live Errors tab via registerConfirmedBug.
+    const reportNavigationDefects = (defects: NavigationDefect[]): void => {
+      for (const defect of defects) {
+        const reproduction = ActiveScenarioTracker.flushSnapshot({
+          faultUrl: defect.url || lastKnownUrl,
+          faultAtMs: Date.now(),
+        });
+        const attribution: FindingAttribution = {
+          bugClass: defect.bugClass,
+          cwe: defect.cwe,
+          ...resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName()),
+          stepIndex: reproduction.actions.length,
+          confidence: 'SIGNAL',
+          corroborated: defect.corroborated,
+        };
+        emitter.emit('BUG', {
+          message: defect.message,
+          selector: defect.selector,
+          url: defect.url,
+          statusCode: defect.statusCode,
+          severity: defect.severity === 'HIGH' ? 'CRITICAL' : 'WARNING',
+          reproductionSteps: reproduction.narrative,
+          attribution,
+        });
+        emitter.emitMilestone(`🧭 Navigation defect: ${defect.message}`);
+        this.registerConfirmedBug({
+          bugId: defect.bugId,
+          type: 'NAVIGATION',
+          message: defect.message,
+          selector: defect.selector,
+          payloadUsed: '',
+          advice: defect.advice,
+          timestamp: new Date(),
+          reproductionSteps: reproduction.narrative,
+          reproductionActions: reproduction.actions,
+          attribution,
+        });
+      }
+    };
 
     // Assemble the extracted domain services with explicit dependency contracts.
     const stabilityMonitor = new StabilityMonitor({
@@ -517,6 +566,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
+      onBackNavOutcome: (o) => reportNavigationDefects(navigationFinder.observeBackNav(o)),
     });
 
     const actionExecutor = new ActionExecutor({
@@ -587,6 +637,7 @@ export class ExplorationEngine {
       // Phase 3: Track page count when navigating
       this.runtimeMetrics.pageCount++;
       emitter.gateway.emitUrlChanged(url);
+      reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
     };
 
     const handleRequest = (request: Request): void => {
@@ -628,6 +679,12 @@ export class ExplorationEngine {
         if (request.resourceType() !== 'document' || !request.isNavigationRequest()) return;
         if (response.frame() !== page.mainFrame()) return;
         lastMainFrameStatus = { path: normalizeRoutePath(response.url()), status: response.status() };
+        reportNavigationDefects(navigationFinder.observeRedirectHop({
+          url: response.url(),
+          route: lastMainFrameStatus.path,
+          status: lastMainFrameStatus.status,
+          timestampMs: Date.now(),
+        }));
       } catch {
         /* response already gone — ignore */
       }
@@ -636,6 +693,7 @@ export class ExplorationEngine {
     const attachPageListeners = (p: Page): void => {
       stabilityMonitor.attachDialogAutoDismiss(p);
       stabilityMonitor.attachExceptionMonitoring(p);
+      stabilityMonitor.attachCrashMonitoring(p);
       p.on('request', handleRequest);
       p.on('response', handleResponse);
       stabilityMonitor.attachNetworkMonitoring(p);
@@ -653,6 +711,7 @@ export class ExplorationEngine {
     // Deepest recovery rung: replace a dead/blank page with a fresh, fully re-wired
     // one navigated back to the target (strict guard reinstalled if enabled).
     const recreatePage = async (): Promise<Page | null> => {
+      navigationFinder.noteEngineNavigation();
       try {
         const context = page.context();
         emitter.stopFrameCaptureLoop();
@@ -693,11 +752,13 @@ export class ExplorationEngine {
       getTargetOrigin: () => this.targetOrigin,
       strictUrlLock: this.strictUrlLock,
       recreatePage,
-      recordRecovery: (url, strategy) =>
-        this.recordActionTrace(
+      recordRecovery: (url, strategy) => {
+        navigationFinder.noteEngineNavigation();
+        return this.recordActionTrace(
           { timestamp: new Date().toISOString(), selector: url, action: `recover-${strategy}` },
           { actionType: 'NAVIGATE', humanIdentifier: `recovery via ${strategy}`, url },
-        ),
+        );
+      },
     });
 
     try {
@@ -784,6 +845,9 @@ export class ExplorationEngine {
         strictUrlLock: this.strictUrlLock,
         transitionRepeatBudget: this.transitionRepeatBudget,
         accessibilityAuditor: this.accessibilityAuditor,
+        navigationFinder,
+        reportNavigationDefects,
+        hadNetworkActivitySinceAction: () => this.networkRewardsThisAction > 0,
         registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       });
 
@@ -856,6 +920,7 @@ export class ExplorationEngine {
       emitLiveFrame: (base64Jpeg) => telemetry.emitLiveFrame(base64Jpeg),
       emitForensicReport: (report) => telemetry.emitForensicReport(report),
       emitIncidentReport: (report) => telemetry.emitIncidentReport(report),
+      emitAccessibility: (finding) => telemetry.emitAccessibility(finding),
       emitBrowserConsole: telemetry.emitBrowserConsole
         ? (message) => telemetry.emitBrowserConsole!(message)
         : undefined,

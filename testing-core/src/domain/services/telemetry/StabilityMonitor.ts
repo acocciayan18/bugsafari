@@ -7,6 +7,9 @@ import {
   ForensicErrorSeverity,
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
 import { classifyFault, matchesCategory, type FaultType } from '../../../bugs/knowledgeBase/index.js';
+import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
+import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
+import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
@@ -125,6 +128,18 @@ export function isStressScenarioActive(): boolean {
   return stressScenarios.some((s) => scenario.includes(s));
 }
 
+/**
+ * Checks if a concurrency / rapid-click scenario is executing, used to corroborate a
+ * duplicate-action finding: a duplicate observed while one of these probes provokes
+ * double-submits is far more likely a genuine missing-guard defect than coincidence.
+ */
+export function isRaceScenarioActive(): boolean {
+  const scenario = ActiveScenarioTracker.getActiveScenarioName();
+  if (!scenario) return false;
+  const raceScenarios = ['AsyncStateRacer', 'ButtonSpammer'];
+  return raceScenarios.some((s) => scenario.includes(s));
+}
+
 // ─────────────────────────────────────────────────────────────
 // StabilityMonitor — attaches fault-catching page listeners
 // ─────────────────────────────────────────────────────────────
@@ -141,6 +156,12 @@ export class StabilityMonitor {
   // evidence before it can become a reported finding, and tracks recurrence /
   // cross-channel correlation for the consistency check.
   private readonly verifier = new VerificationPipeline();
+
+  // Fine-grained runtime-error classifier + collapse-count dedup (one per run).
+  private readonly runtimeFinder = new RuntimeStabilityFinder();
+
+  // Passive double-submit detector: collapses identical state-changing request bursts (one per run).
+  private readonly duplicateFinder = new DuplicateActionFinder();
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
 
@@ -217,200 +238,282 @@ export class StabilityMonitor {
     });
   }
 
-  /** Monitor uncaught JavaScript exceptions and error-level console output. */
-  public attachExceptionMonitoring(page: Page): void {
+  // Report one JavaScript runtime fault through the full pipeline: verify (classify +
+  // provenance-gate + score), then classify into a fine-grained subtype and collapse
+  // same-signature repeats into one finding with an occurrence count. Only the first
+  // sighting of a signature becomes a finding; repeats emit a throttled informational
+  // note so a per-render error flood cannot swamp the Errors tab or the saved history.
+  private reportRuntimeFault(
+    page: Page,
+    source: RuntimeObservation['source'],
+    rawMessage: string,
+    stack?: string,
+  ): void {
     const t = this.deps.telemetry;
+    const message = rawMessage || 'Unknown runtime error';
+    const stackTrace = stack ?? message;
+    const url = page.url();
+    const timestamp = new Date().toISOString();
+    const breadcrumbs = this.deps.getBreadcrumbs();
+    const faultType: FaultType = source === 'CONSOLE' ? 'CONSOLE' : 'EXCEPTION';
+    const forensicType = source === 'CONSOLE' ? ForensicErrorType.CONSOLE_ERROR : ForensicErrorType.JS_EXCEPTION;
 
-    // Monitor uncaught JavaScript exceptions
-    page.on('pageerror', (error: Error) => {
-      const message = error?.message ?? 'Unknown page error';
-      const stackTrace = error?.stack ?? message;
-      const url = page.url();
-      const timestamp = new Date().toISOString();
-      const breadcrumbs = this.deps.getBreadcrumbs();
+    // Freeze the rolling buffer and minimize it to the steps causally required to reach
+    // this fault before anything else can advance it (see the network handlers).
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproductionPlaybook = reproduction.narrative;
 
-      // Freeze the rolling buffer and minimize it to the steps causally required to
-      // reach this crash — the active scenario's deliberate steps when one is
-      // running, else the fault-anchored slice of the rolling action log.
-      const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
-      const reproductionPlaybook = reproduction.narrative;
-      // Verify the fault: classify + provenance-gate + score. A fault whose root
-      // cause is not the target app (harness/driver/browser/env) is demoted to
-      // informational telemetry and never registered as a bug.
-      const verdict = this.verifyFault('EXCEPTION', message, {
-        url,
-        content: stackTrace,
-        evidence: { hasMessage: true, hasStackTrace: Boolean(error?.stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
+    // A fault whose root cause is not the target app (harness/driver/browser/env) is
+    // demoted to informational telemetry and never registered as a bug.
+    const verdict = this.verifyFault(faultType, message, {
+      url,
+      content: stackTrace,
+      evidence: { hasMessage: true, hasStackTrace: Boolean(stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
+    });
+    const { severity, attribution } = verdict;
+    if (!verdict.report) {
+      t.emit('ACTION', {
+        actionExecuted: 'unverified-runtime-fault',
+        message: `ℹ️ Unverified runtime fault suppressed (${attribution.origin}): ${verdict.reason}`,
       });
-      const { advice: remediation, severity, attribution } = verdict;
-      if (!verdict.report) {
+      return;
+    }
+
+    // Classify into a subtype + student-friendly remediation and dedup by signature.
+    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack, url, timestampMs: Date.now() });
+
+    // Collapse: a repeat of an already-reported signature never re-registers a bug.
+    // Surface it as a throttled informational note so the recurrence stays visible.
+    if (!isNew) {
+      if (finding.occurrence === 2 || finding.occurrence % 25 === 0) {
         t.emit('ACTION', {
-          actionExecuted: 'unverified-exception',
-          message: `ℹ️ Unverified JS exception suppressed (${attribution.origin}): ${verdict.reason}`,
+          actionExecuted: 'runtime-fault-recurred',
+          message: `🔁 ${finding.message} — recurred ${finding.occurrence}× this run`,
         });
-        return;
       }
-      this.deps.setFreeze();
+      return;
+    }
 
-      t.emit('EXCEPTION', {
-        message: `🔴 Unhandled JS Exception: ${message}`,
-        exceptionDetails: { message, stackTrace },
-        reproductionSteps: reproductionPlaybook,
-        attribution,
-      });
+    this.deps.setFreeze();
+    const remediation = finding.studentAdvice;
+    const reason = finding.message;
 
-      t.gateway.emitIncidentReport({
-        timestamp,
-        reason: `Unhandled JS Exception: ${message}`,
-        url,
-        stackTrace,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
-
-      t.gateway.emitForensicReport({
-        timestamp,
-        reason: `Unhandled JS Exception: ${message}`,
-        url,
-        stackTrace,
-        breadcrumbs,
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
-
-      // Persist error to forensic_errors database (Phase 2: Error Logging System)
-      this.deps.persistForensicError({
-        type: ForensicErrorType.JS_EXCEPTION,
-        severity,
-        message: `🔴 Unhandled JS Exception: ${message}`,
-        stackTrace,
-        url,
-        bugClass: attribution.bugClass,
-        scenario: attribution.scenario,
-        cwe: attribution.cwe,
-      });
-
-      // CRITICAL: register the exception into confirmed-bug memory so the saved
-      // history mirrors the live Errors Tab. Previously only HTTP/network faults
-      // were registered, so JS exceptions silently vanished from saved history.
-      this.deps.registerConfirmedBug({
-        bugId: `js-exception-${timestamp}-${nextBugSeq()}`,
-        type: 'EXCEPTION',
-        message: `Unhandled JS Exception: ${message}`,
-        selector: '',
-        payloadUsed: '',
-        advice: remediation,
-        stackTrace,
-        reproductionSteps: reproductionPlaybook,
-        reproductionActions: reproduction.actions,
-        attribution,
-        timestamp: new Date(timestamp),
-        streamed: true, // already emitted to the Errors tab above
-      });
+    t.emit('EXCEPTION', {
+      message: `🔴 ${finding.message}`,
+      exceptionDetails: { message, stackTrace },
+      reproductionSteps: reproductionPlaybook,
+      attribution,
     });
 
-    // Monitor unhandled promise rejections via console errors
+    t.gateway.emitIncidentReport({
+      timestamp,
+      reason,
+      url,
+      stackTrace,
+      steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionPlaybook,
+      advice: remediation,
+      attribution,
+    });
+
+    t.gateway.emitForensicReport({
+      timestamp,
+      reason,
+      url,
+      stackTrace,
+      breadcrumbs,
+      reproductionPlaybook,
+      advice: remediation,
+      attribution,
+    });
+
+    // Persist to forensic_errors so saved history mirrors the live Errors tab.
+    this.deps.persistForensicError({
+      type: forensicType,
+      severity,
+      message: `🔴 ${finding.message}`,
+      stackTrace,
+      url,
+      bugClass: attribution.bugClass,
+      scenario: attribution.scenario,
+      cwe: attribution.cwe,
+    });
+
+    // Register the confirmed bug under the finder's stable, signature-derived id so a
+    // re-run of the same logical error stays one finding instead of flooding the ledger.
+    this.deps.registerConfirmedBug({
+      bugId: finding.bugId,
+      type: 'EXCEPTION',
+      message: finding.message,
+      selector: '',
+      payloadUsed: source,
+      advice: remediation,
+      stackTrace,
+      reproductionSteps: reproductionPlaybook,
+      reproductionActions: reproduction.actions,
+      attribution,
+      timestamp: new Date(timestamp),
+      streamed: true, // already emitted to the Errors tab above
+    });
+  }
+
+  /** Monitor uncaught JS exceptions, error-level console output, and unhandled rejections. */
+  public attachExceptionMonitoring(page: Page): void {
+    // Uncaught JavaScript exceptions.
+    page.on('pageerror', (error: Error) => {
+      this.reportRuntimeFault(page, 'EXCEPTION', error?.message ?? 'Unknown page error', error?.stack);
+    });
+
+    // Error-level console output. Network-stack console errors are skipped — they are
+    // already covered by response/requestfailed monitoring.
     page.on('console', (message) => {
-      if (message.type() !== 'error') {
-        return;
-      }
-
+      if (message.type() !== 'error') return;
       const text = message.text();
+      if (text.includes('net::ERR') || text.includes('ERR_')) return;
+      this.reportRuntimeFault(page, 'CONSOLE', text);
+    });
 
-      // Skip network-related console errors (these are already handled by response monitoring)
-      if (text.includes('net::ERR') || text.includes('ERR_')) {
-        return;
-      }
-
-      const url = page.url();
-      const timestamp = new Date().toISOString();
-      const breadcrumbs = this.deps.getBreadcrumbs();
-
-      // Freeze the rolling buffer and minimize it to the causal steps (see pageerror).
-      const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
-      const reproductionPlaybook = reproduction.narrative;
-      // Verify before reporting (see pageerror): provenance-gate + score.
-      const verdict = this.verifyFault('CONSOLE', text, {
-        url,
-        content: text,
-        evidence: { hasMessage: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
-      });
-      const { advice: remediation, severity, attribution } = verdict;
-      if (!verdict.report) {
-        t.emit('ACTION', {
-          actionExecuted: 'unverified-console-error',
-          message: `ℹ️ Unverified console error suppressed (${attribution.origin}): ${verdict.reason}`,
+    // Silent unhandled promise rejections — captured in-page and forwarded through the
+    // same pipeline. The exposed binding + init script are re-installed per page; the
+    // catch handles the already-bound error thrown when a page is recreated.
+    page
+      .exposeFunction('__bugsafariOnUnhandledRejection', (payload: { message?: string; stack?: string }) => {
+        this.reportRuntimeFault(page, 'REJECTION', payload?.message ?? 'Unhandled promise rejection', payload?.stack);
+      })
+      .catch(() => undefined);
+    page
+      .addInitScript(() => {
+        window.addEventListener('unhandledrejection', (event) => {
+          try {
+            const reason = (event as PromiseRejectionEvent).reason as { message?: string; stack?: string } | undefined;
+            const message = reason?.message ? String(reason.message) : String(reason ?? 'Unhandled promise rejection');
+            const stack = reason?.stack ? String(reason.stack) : undefined;
+            const hook = (window as unknown as { __bugsafariOnUnhandledRejection?: (p: unknown) => void }).__bugsafariOnUnhandledRejection;
+            hook?.({ message, stack });
+          } catch {
+            // never let the reporter hook throw inside the page
+          }
         });
-        return;
-      }
-      this.deps.setFreeze();
+      })
+      .catch(() => undefined);
+  }
 
-      t.emit('EXCEPTION', {
-        message: `🔴 Console Error: ${text}`,
-        exceptionDetails: { message: text, stackTrace: text },
-        reproductionSteps: reproductionPlaybook,
-        attribution,
-      });
+  /** Capture renderer/tab crashes (OOM / GPU fault) directly instead of only inferring them via the freeze heartbeat. */
+  public attachCrashMonitoring(page: Page): void {
+    page.on('crash', () => {
+      this.reportRuntimeFault(page, 'CRASH', 'Renderer process crashed (out-of-memory or GPU fault)');
+    });
+  }
 
-      t.gateway.emitIncidentReport({
-        timestamp,
-        reason: `Console Error: ${text}`,
-        url,
-        stackTrace: text,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
+  // Report one confirmed duplicate state-changing request. Direct SIGNAL emit — the
+  // knowledge-base classifier has no path to SPA_STATE_RACE_CONDITION, and the finder's
+  // burst logic already self-gates, so this bypasses verifyFault and reports with the
+  // finder's stable, signature-derived bugId (collapse+count keeps it one finding).
+  private reportDuplicateAction(page: Page, defect: DuplicateActionDefect): void {
+    const t = this.deps.telemetry;
+    const url = defect.endpoint || page.url();
+    const timestamp = new Date().toISOString();
+    const breadcrumbs = this.deps.getBreadcrumbs();
 
-      t.gateway.emitForensicReport({
-        timestamp,
-        reason: `Console Error: ${text}`,
-        url,
-        stackTrace: text,
-        breadcrumbs,
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-      });
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproductionPlaybook = reproduction.narrative;
 
-      // Persist console error to forensic_errors database (Phase 2: Error Logging System)
-      this.deps.persistForensicError({
-        type: ForensicErrorType.CONSOLE_ERROR,
-        severity,
-        message: `🔴 Console Error: ${text}`,
-        stackTrace: text,
-        url,
-        bugClass: attribution.bugClass,
-        scenario: attribution.scenario,
-        cwe: attribution.cwe,
-      });
+    const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
+    const attribution: FindingAttribution = {
+      bugClass: defect.bugClass,
+      cwe: defect.cwe,
+      scenario: scenario.scenario,
+      testingType: scenario.testingType,
+      stepIndex: reproduction.actions.length,
+      confidence: 'SIGNAL',
+      corroborated: defect.corroborated,
+    };
 
-      // CRITICAL: register the console error into confirmed-bug memory too, so
-      // saved history retains every error the live Errors Tab displayed.
-      this.deps.registerConfirmedBug({
-        bugId: `console-error-${timestamp}-${nextBugSeq()}`,
-        type: 'EXCEPTION',
-        message: `Console Error: ${text}`,
-        selector: '',
-        payloadUsed: '',
-        advice: remediation,
-        stackTrace: text,
-        reproductionSteps: reproductionPlaybook,
-        reproductionActions: reproduction.actions,
-        attribution,
-        timestamp: new Date(timestamp),
-        streamed: true, // already emitted to the Errors tab above
-      });
+    t.emit('NETWORK', {
+      url,
+      method: defect.method,
+      message: `🟠 ${defect.message}`,
+      severity: 'WARNING',
+      attribution,
+    });
+    t.emitMilestone(`🔁 Duplicate action: ${defect.method} ${url}`);
+
+    t.gateway.emitIncidentReport({
+      timestamp,
+      reason: defect.message,
+      url,
+      steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionPlaybook,
+      advice: defect.advice,
+      attribution,
+    });
+
+    t.gateway.emitForensicReport({
+      timestamp,
+      reason: defect.message,
+      url,
+      breadcrumbs,
+      reproductionPlaybook,
+      advice: defect.advice,
+      attribution,
+    });
+
+    this.deps.persistForensicError({
+      type: ForensicErrorType.API_FAILURE,
+      severity: SEVERITY_TO_FORENSIC[defect.severity],
+      message: `🟠 ${defect.message}`,
+      url,
+      endpoint: url,
+      method: defect.method,
+      bugClass: defect.bugClass,
+      scenario: attribution.scenario,
+      cwe: defect.cwe,
+    });
+
+    // type is deliberately not NETWORK/ACCESSIBILITY so registerConfirmedBug streams it to the Errors tab.
+    this.deps.registerConfirmedBug({
+      bugId: defect.bugId,
+      type: 'DUPLICATE_ACTION',
+      message: defect.message,
+      selector: '',
+      payloadUsed: defect.method,
+      advice: defect.advice,
+      reproductionSteps: reproductionPlaybook,
+      reproductionActions: reproduction.actions,
+      attribution,
+      timestamp: new Date(timestamp),
+      streamed: true, // already emitted to the Errors tab above
     });
   }
 
   /** Monitor HTTP responses (>=400 or soft-fail body) and outright request failures. */
   public attachNetworkMonitoring(page: Page): void {
     const t = this.deps.telemetry;
+
+    // Passive double-submit detection: a state-changing request repeated with an identical
+    // endpoint+payload inside a tight window means no debounce/disable-on-submit guard fired.
+    page.on('request', (request: Request) => {
+      try {
+        const result = this.duplicateFinder.observeRequest({
+          method: request.method(),
+          url: request.url(),
+          body: request.postData() ?? undefined,
+          raceScenarioActive: isRaceScenarioActive(),
+          timestampMs: Date.now(),
+        });
+        if (!result) return;
+        if (result.isNew) {
+          this.reportDuplicateAction(page, result.defect);
+        } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
+          t.emit('ACTION', {
+            actionExecuted: 'duplicate-action-recurred',
+            message: `🔁 ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
+          });
+        }
+      } catch {
+        // never let the reporter hook throw inside a page listener
+      }
+    });
 
     // Centralized three-tier network classification (see routeTrashClassifier —
     // the single source of truth shared with the RouteTrasher scenario):

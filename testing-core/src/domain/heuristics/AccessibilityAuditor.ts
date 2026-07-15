@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
+import type { A11yImpact } from '../../../../shared/types.js';
 
-/** Severity buckets mirror axe-core impact levels for familiar reporting. */
-export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+export type { A11yImpact };
 
 /** A single WCAG violation found on a live DOM state. */
 export interface A11yViolation {
@@ -12,8 +12,10 @@ export interface A11yViolation {
   impact: A11yImpact;
   /** Best-effort CSS selector locating the offending element (empty for page-level rules). */
   selector: string;
-  /** Human-readable description of the violation and its fix. */
-  message: string;
+  /** What is wrong and why it matters for assistive tech. */
+  description: string;
+  /** Concrete remediation for this violation. */
+  suggestedFix: string;
 }
 
 // Bound the per-run ledger so a pathological page (thousands of unlabeled cells)
@@ -135,7 +137,8 @@ export class AccessibilityAuditor {
           wcag: '1.1.1',
           impact: 'serious',
           selector: selectorFor(el),
-          message: 'Image has no alt attribute — screen readers cannot describe it. Add alt text (or alt="" if purely decorative).',
+          description: 'Image has no alt attribute — screen readers cannot describe it.',
+          suggestedFix: 'Add alt text (or alt="" if the image is purely decorative).',
         });
       });
 
@@ -152,7 +155,8 @@ export class AccessibilityAuditor {
             wcag: '4.1.2',
             impact: 'critical',
             selector: selectorFor(el),
-            message: 'Form control has no associated label or accessible name. Add a <label for>, wrapping <label>, or aria-label.',
+            description: 'Form control has no associated label or accessible name.',
+            suggestedFix: 'Add a <label for>, a wrapping <label>, or an aria-label.',
           });
         }
       });
@@ -165,7 +169,8 @@ export class AccessibilityAuditor {
             wcag: '4.1.2',
             impact: 'serious',
             selector: selectorFor(el),
-            message: 'Interactive control has no accessible name (empty text and no aria-label/title). Screen-reader users hear only its role.',
+            description: 'Interactive control has no accessible name (empty text, no aria-label/title) — screen-reader users hear only its role.',
+            suggestedFix: 'Add visible text, an aria-label, or a title attribute.',
           });
         }
       });
@@ -179,7 +184,8 @@ export class AccessibilityAuditor {
             wcag: '2.4.3',
             impact: 'moderate',
             selector: selectorFor(el),
-            message: `tabindex="${ti}" forces a manual focus order that diverges from the DOM. Use tabindex="0" or restructure the DOM instead.`,
+            description: `tabindex="${ti}" forces a manual focus order that diverges from the DOM.`,
+            suggestedFix: 'Use tabindex="0" and restructure the DOM to reflect the intended order.',
           });
         }
       });
@@ -197,7 +203,8 @@ export class AccessibilityAuditor {
             wcag: '4.1.1',
             impact: 'minor',
             selector: `#${CSS.escape(id)}`,
-            message: `id "${id}" is used ${count} times. Duplicate ids break label[for]/aria-* references and are invalid HTML.`,
+            description: `id "${id}" is used ${count} times — duplicate ids break label[for]/aria-* references and are invalid HTML.`,
+            suggestedFix: 'Make every id unique on the page.',
           });
         }
       });
@@ -210,7 +217,8 @@ export class AccessibilityAuditor {
           wcag: '3.1.1',
           impact: 'serious',
           selector: 'html',
-          message: 'Document has no lang attribute — assistive tech cannot pick the right pronunciation. Add <html lang="…">.',
+          description: 'Document has no lang attribute — assistive tech cannot pick the right pronunciation.',
+          suggestedFix: 'Add a language to the root element, e.g. <html lang="en">.',
         });
       }
 
@@ -221,7 +229,8 @@ export class AccessibilityAuditor {
           wcag: '2.4.2',
           impact: 'serious',
           selector: '',
-          message: 'Document has no <title> — users cannot identify the page in tabs/history. Add a descriptive title.',
+          description: 'Document has no <title> — users cannot identify the page in tabs/history.',
+          suggestedFix: 'Add a concise, descriptive <title>.',
         });
       }
 

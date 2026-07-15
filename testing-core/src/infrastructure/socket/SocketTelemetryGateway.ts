@@ -1,9 +1,10 @@
 import type { Server } from 'socket.io';
-import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -80,6 +81,13 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitIncidentReport(report: IncidentReport): void {
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
+  }
+
+  // WCAG findings ride their own channel so the dashboard's Accessibility tab
+  // listens in isolation — never mixed into the generic Error/telemetry streams.
+  public emitAccessibility(finding: AccessibilityFinding): void {
+    this.recorder?.record('accessibility', finding);
+    this.channel().emit(ACCESSIBILITY_EVENT, finding);
   }
 
   // Live-only: browser console is transient telemetry (not a saved finding), so it

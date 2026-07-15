@@ -29,6 +29,7 @@ const gateway: TelemetryGateway = {
   emitLiveFrame() {},
   emitForensicReport() {},
   emitIncidentReport() {},
+  emitAccessibility() {},
   emitUrlChanged() {},
 };
 

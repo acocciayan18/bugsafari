@@ -1,7 +1,8 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
-import type { DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
+import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
 
 interface BrowserConsoleMessage {
   timestamp: string;
@@ -56,6 +57,10 @@ export class TelemetryHub {
 
   emitIncidentReport(report: IncidentReport): void {
     this.io.emit('incident-report', report);
+  }
+
+  emitAccessibility(finding: AccessibilityFinding): void {
+    this.io.emit(ACCESSIBILITY_EVENT, finding);
   }
 
 emitUrlChanged(url: string): void {

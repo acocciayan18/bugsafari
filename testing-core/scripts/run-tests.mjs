@@ -36,8 +36,9 @@ let failed = 0;
 for (const file of files) {
   const rel = file.slice(rootDir.length + 1);
   console.log(`\n▶ ${rel}`);
-  // shell:true so `tsx` resolves via node_modules/.bin on both PowerShell and sh.
-  const result = spawnSync('npx', ['tsx', file], { stdio: 'inherit', shell: true });
+  // shell:true so `tsx` resolves via node_modules/.bin on both PowerShell and sh;
+  // the path is quoted so a repo directory containing spaces still resolves.
+  const result = spawnSync('npx', ['tsx', `"${file}"`], { stdio: 'inherit', shell: true });
   if (result.status !== 0) {
     failed += 1;
     console.error(`✗ FAILED: ${rel}`);

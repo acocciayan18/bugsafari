@@ -16,6 +16,11 @@ import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import type {
+  BackNavObservation,
+  BrokenNavigationFinder,
+  NavigationDefect,
+} from '../../heuristics/BrokenNavigationFinder.js';
+import type {
   ForensicErrorType,
   ForensicErrorSeverity,
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
@@ -146,6 +151,8 @@ export interface StateRestorerDeps {
   telemetry: TelemetryEmitter;
   recordActionTrace: RecordActionTrace;
   getTargetOrigin(): string;
+  /** Optional observer for history-back restore outcomes (back-nav defect oracle). */
+  onBackNavOutcome?(o: BackNavObservation): void;
 }
 
 export interface ActionExecutorDeps {
@@ -221,6 +228,12 @@ export interface ExplorationLoopDeps {
   transitionRepeatBudget: number;
   /** Static WCAG auditor run once per novel structural shell (read-only DOM scan). */
   accessibilityAuditor: AccessibilityAuditor;
+  /** Passive navigation-defect analyzer fed from per-step observation signals. */
+  navigationFinder: BrokenNavigationFinder;
+  /** Sink turning navigation defects into telemetry + confirmed-bug registrations. */
+  reportNavigationDefects(defects: NavigationDefect[]): void;
+  /** True when the last acted-on element triggered xhr/fetch activity (network attribution). */
+  hadNetworkActivitySinceAction(): boolean;
   /** Sink for confirmed findings (shared with StabilityMonitor) — a11y violations land here too. */
   registerConfirmedBug(bug: ConfirmedBug): void;
 }

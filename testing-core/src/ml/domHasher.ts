@@ -140,6 +140,7 @@ export class DomHasher {
           // an endless stream of new states — the false-novelty loop. Excluded from
           // BOTH signatures so identical pages hash identically across reloads.
           var VOLATILE = 'script,style,noscript,template,svg,iframe,ins,' +
+            '[id^="bugsafari-highlight-"],' +
             '.adsbygoogle,[id^="google_ads"],[id^="div-gpt-ad"],[id^="aswift"],' +
             '[data-ad-client],[data-ad-slot],[data-google-query-id],' +
             '[aria-label="Advertisement"],[aria-label="Advertisements"]';

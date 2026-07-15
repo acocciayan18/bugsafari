@@ -1,6 +1,7 @@
 import type { Socket } from 'socket.io';
 import { Types, isValidObjectId } from 'mongoose';
 import type {
+  AccessibilityFinding,
   ActiveSessionSnapshot,
   ForensicCrashReport,
   IncidentReport,
@@ -75,6 +76,7 @@ interface ActiveRun {
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
+  accessibility: AccessibilityFinding[];
   lastFrame: string | null;
 }
 
@@ -144,6 +146,7 @@ export class SessionManager implements TelemetryRecorder {
       telemetry: [],
       reports: [],
       incidents: [],
+      accessibility: [],
       lastFrame: null,
     };
 
@@ -206,6 +209,9 @@ export class SessionManager implements TelemetryRecorder {
         break;
       case 'incident-report':
         pushCapped(run.incidents, payload as IncidentReport, REPORT_BUFFER_CAP);
+        break;
+      case 'accessibility':
+        pushCapped(run.accessibility, payload as AccessibilityFinding, REPORT_BUFFER_CAP);
         break;
     }
   }
@@ -286,6 +292,7 @@ export class SessionManager implements TelemetryRecorder {
       telemetry: [...run.telemetry],
       reports: [...run.reports],
       incidents: [...run.incidents],
+      accessibility: [...run.accessibility],
       lastFrame: run.lastFrame,
     };
   }

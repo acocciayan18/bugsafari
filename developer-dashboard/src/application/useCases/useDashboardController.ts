@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -27,6 +27,7 @@ export interface DashboardState {
   activeTimeboxMs: number;
   telemetry: TelemetryEvent[];
   networkEvents: TelemetryEvent[];
+  accessibilityLogs: AccessibilityFinding[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
   latestFrame: string | null;
@@ -106,6 +107,8 @@ export function useDashboardController(gatewayFactory: () => EngineGateway) {
   const [telemetry, setTelemetry] = useState<TelemetryEvent[]>([]);
   // NETWORK events are kept out of the main logic log and streamed to the Network tab only.
   const [networkEvents, setNetworkEvents] = useState<TelemetryEvent[]>([]);
+  // WCAG findings arrive on a dedicated channel and feed the Accessibility tab only.
+  const [accessibilityLogs, setAccessibilityLogs] = useState<AccessibilityFinding[]>([]);
   const [reports, setReports] = useState<ForensicCrashReport[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [latestFrame, setLatestFrame] = useState<string | null>(null);
@@ -212,6 +215,7 @@ return () => {
 
       setTelemetry(snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-500));
       setNetworkEvents(snapshot.telemetry.filter((e) => e.type === 'NETWORK').slice(-200));
+      setAccessibilityLogs((snapshot.accessibility ?? []).slice(-300));
       // Buffers arrive oldest→newest; fold through the same collapse so a
       // restored session holds one entry per fault (newest-first) with counts.
       setReports(snapshot.reports.reduce<ForensicCrashReport[]>((buf, r) => collapseFaultIntoBuffer(buf, r), []));
@@ -346,6 +350,13 @@ return () => {
       }
     });
 
+    gateway.onAccessibility((finding) => {
+      setAccessibilityLogs((prev) => {
+        const next = [...prev, finding];
+        return next.length > 300 ? next.slice(next.length - 300) : next;
+      });
+    });
+
     gateway.onForensicReport((report) => setReports((prev) => collapseFaultIntoBuffer(prev, report)));
     gateway.onIncidentReport((report) => setIncidents((prev) => collapseFaultIntoBuffer(prev, report)));
     gateway.onUrlChanged((url) => setCurrentUrl(url));
@@ -408,6 +419,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setLiveFrame(null);
     setTelemetry([]);
     setNetworkEvents([]);
+    setAccessibilityLogs([]);
     setReports([]);
     setIncidents([]);
     setCurrentUrl(targetUrl);
@@ -542,6 +554,7 @@ return {
       activeTimeboxMs: sessionTimeMs,
       telemetry,
       networkEvents,
+      accessibilityLogs,
       reports,
       incidents,
       latestFrame,

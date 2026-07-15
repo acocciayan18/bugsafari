@@ -4,7 +4,7 @@
 // Cross-package contracts for surviving refreshes, network blips, and
 // WebSocket drops without losing the active exploration run.
 
-import type { TelemetryEvent } from './telemetry.js';
+import type { AccessibilityFinding, TelemetryEvent } from './telemetry.js';
 import type { ForensicCrashReport, IncidentReport } from './bug.js';
 
 /** Live lifecycle of the single active run — superset of the DB SessionStatus. */
@@ -38,6 +38,8 @@ export interface ActiveSessionSnapshot {
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
+  /** WCAG findings replayed on the dedicated accessibility channel. */
+  accessibility: AccessibilityFinding[];
   /** Latest base64 JPEG frame (no data: prefix); only the newest is retained. */
   lastFrame: string | null;
 }

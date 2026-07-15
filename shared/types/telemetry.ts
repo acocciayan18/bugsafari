@@ -7,6 +7,28 @@ import type { FindingAttribution } from './bug.js';
 
 export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE' | 'BUG';
 
+// ─────────────────────────────────────────────────────────────
+// ♿ ACCESSIBILITY (WCAG) TELEMETRY — isolated from the fault pipeline
+// ─────────────────────────────────────────────────────────────
+
+// Dedicated Socket.IO channel so WCAG findings never mix with the generic
+// telemetry/error streams (client/server share this const to avoid drift).
+export const ACCESSIBILITY_EVENT = 'accessibility' as const;
+
+// axe-core-style impact bucket for a WCAG violation.
+export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+
+// A single WCAG finding streamed on the dedicated accessibility channel.
+export interface AccessibilityFinding {
+  timestamp: string;
+  rule: string;
+  wcag: string;
+  impact: A11yImpact;
+  selector: string;
+  description: string;
+  suggestedFix: string;
+}
+
 export type SemanticRole =
   | 'LOGIN'
   | 'SEARCH'
