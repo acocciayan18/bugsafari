@@ -16,6 +16,7 @@ import { SessionModel } from '../../infrastructure/database/models/SessionModel.
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
 import { TargetHealthMonitor } from './TargetHealthMonitor.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.js';
 
 /** Minimal control surface the manager needs from the live browser engine. */
 export interface EngineControl {
@@ -351,6 +352,21 @@ export class SessionManager implements TelemetryRecorder {
     if (!run || typeof run.engine.stop !== 'function') return;
     await Promise.resolve(run.engine.stop());
     // endRun() is invoked by the run's own finally block; status settles there.
+  }
+
+  /** RunId of the active run, or null. Used to scope cross-process controls. */
+  public getActiveRunId(): string | null {
+    return this.run?.runId ?? null;
+  }
+
+  // Apply an operator control bridged from the API process, scoped to runId.
+  // Ignored if this process holds no matching run (another worker owns it).
+  public applyOperatorControl(command: OperatorCommand, runId: string | null): void {
+    const run = this.run;
+    if (!run || (runId !== null && runId !== run.runId)) return;
+    if (command === 'pause') this.pauseByOperator();
+    else if (command === 'resume') this.resumeByOperator();
+    else void this.stopByOperator();
   }
 
   // ── Target health handler (crash escalation only) ───────────────────────────

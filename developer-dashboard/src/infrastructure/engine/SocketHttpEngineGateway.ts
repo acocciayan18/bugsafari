@@ -1,5 +1,5 @@
-import type { BrowserConsoleMessage, EngineGateway } from '../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { BrowserConsoleMessage, EngineGateway, StartTestResult } from '../../application/ports/EngineGateway';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -44,15 +44,20 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
 
   // ── HTTP/REST routines ────────────────────────────────────────
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null> {
-    const runId = await this.http.startTest(targetUrl, optimizationSettings, infiltration);
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult> {
+    const result = await this.http.startTest(targetUrl, optimizationSettings, infiltration);
     // Persist the token so the socket re-attaches to THIS run on reconnect.
-    this.setRunId(runId);
-    // The socket is typically already connected here, so join the freshly-created
-    // run room now — otherwise room-scoped telemetry would only reach us via the
-    // reconnect path.
-    if (runId) this.connection.reattach();
-    return runId;
+    this.setRunId(result.runId);
+    if (result.queued && result.jobId) {
+      // Distributed run: track its place in line + join the future run room now so
+      // bridged worker telemetry reaches us the instant the job goes active.
+      this.connection.subscribeQueue(result.jobId, result.runId);
+    } else if (result.runId) {
+      // Synchronous run: the socket is typically already connected, so join the
+      // freshly-created run room now instead of waiting for the reconnect path.
+      this.connection.reattach();
+    }
+    return result;
   }
 
   public saveSession(targetUrl: string): Promise<void> {
@@ -122,6 +127,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void {
     this.connection.onSessionSnapshot(handler);
+  }
+  public onQueueUpdate(handler: (update: QueueUpdate) => void): void {
+    this.connection.onQueueUpdate(handler);
   }
   public removeAllListeners(): void {
     this.connection.removeAllListeners();

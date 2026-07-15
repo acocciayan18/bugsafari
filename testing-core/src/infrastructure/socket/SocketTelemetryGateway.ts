@@ -1,7 +1,13 @@
-import type { Server } from 'socket.io';
 import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+
+/** Room-capable event sink. Socket.IO's Server satisfies it, as does the worker's
+ *  Redis publisher — so the same gateway drives either transport unchanged. */
+export interface RoomEmitter {
+  emit(event: string, ...args: unknown[]): unknown;
+  to(room: string): { emit(event: string, ...args: unknown[]): unknown };
+}
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
 export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility';
@@ -19,7 +25,7 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   private room: string | null = null;
   private recorder: TelemetryRecorder | null = null;
 
-  constructor(private readonly io: Server) { }
+  constructor(private readonly io: RoomEmitter) { }
 
   /** Bind/clear the active run's room (set at run start, cleared at run end). */
   public setRoom(room: string | null): void {
@@ -32,7 +38,7 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   }
 
   // Room-scoped emitter when a run owns the wire, otherwise a plain broadcast.
-  private channel(): Pick<Server, 'emit'> {
+  private channel(): Pick<RoomEmitter, 'emit'> {
     return this.room ? this.io.to(this.room) : this.io;
   }
 

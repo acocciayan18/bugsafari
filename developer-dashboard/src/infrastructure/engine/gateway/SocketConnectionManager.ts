@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { ACCESSIBILITY_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -13,6 +13,7 @@ type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 type ReconnectingHandler = (attempt: number) => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
+type QueueUpdateHandler = (update: QueueUpdate) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -45,6 +46,10 @@ export class SocketConnectionManager {
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
   private reconnectingHandler: ReconnectingHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
+  private queueUpdateHandler: QueueUpdateHandler | null = null;
+  // jobId + runId of the enqueued run this client is tracking; re-sent on every
+  // (re)connect so a drop during the queued phase rejoins the position stream.
+  private queueSubscription: QueueSubscribeRequest | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     // Use hybrid fallback: environment variable first, then window.location.origin for proxy-aware routing
@@ -88,6 +93,26 @@ export class SocketConnectionManager {
     });
   }
 
+  /**
+   * Track an enqueued run: join its queue-position room + future run room and
+   * start receiving QUEUE_UPDATE pushes. Remembered so a reconnect re-subscribes.
+   */
+  public subscribeQueue(jobId: string, runId: string | null): void {
+    this.queueSubscription = { jobId, runId: runId ?? undefined };
+    this.emitQueueSubscribe();
+  }
+
+  /** Stop tracking once the run goes live (telemetry takes over) or is abandoned. */
+  public clearQueueSubscription(): void {
+    this.queueSubscription = null;
+  }
+
+  private emitQueueSubscribe(): void {
+    if (this.queueSubscription) {
+      this.socket.emit(QUEUE_SUBSCRIBE_EVENT, this.queueSubscription);
+    }
+  }
+
   public connect(): void {
     // Set connection state to connecting
     this.connectionStateValue = 'connecting';
@@ -124,6 +149,7 @@ export class SocketConnectionManager {
     this.socket.on('url-changed', this.handleUrlChanged);
     this.socket.on('browser-console', this.handleBrowserConsole);
     this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
+    this.socket.on(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
     this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
@@ -149,6 +175,7 @@ export class SocketConnectionManager {
     this.socket.off('url-changed', this.handleUrlChanged);
     this.socket.off('browser-console', this.handleBrowserConsole);
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
+    this.socket.off(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.off('connect_error');
     this.socket.off('error');
@@ -196,6 +223,8 @@ export class SocketConnectionManager {
     // Re-attach to the owned run (if any). The backend replays the buffered
     // session into this socket via the ack — closing any gap opened by the drop.
     this.reattach();
+    // Re-join the queue-position stream if we dropped while still waiting in line.
+    this.emitQueueSubscribe();
   };
 
   private readonly handleDisconnect = (): void => {
@@ -240,6 +269,16 @@ export class SocketConnectionManager {
     this.sessionSnapshotHandler?.(snapshot);
   };
 
+  private readonly handleQueueUpdate = (update: QueueUpdate): void => {
+    // Drop tracking only on a terminal outcome. We deliberately keep the
+    // subscription through 'active' so a mid-run reconnect re-joins run:${runId}
+    // (a worker run lives in another process; this is our only room-rejoin path).
+    if (update.state === 'completed' || update.state === 'failed') {
+      this.clearQueueSubscription();
+    }
+    this.queueUpdateHandler?.(update);
+  };
+
   public onConnected(handler: ConnectedHandler): void {
     this.connectedHandler = handler;
   }
@@ -270,6 +309,9 @@ export class SocketConnectionManager {
   public onSessionSnapshot(handler: SessionSnapshotHandler): void {
     this.sessionSnapshotHandler = handler;
   }
+  public onQueueUpdate(handler: QueueUpdateHandler): void {
+    this.queueUpdateHandler = handler;
+  }
   public removeAllListeners(): void {
     this.connectedHandler = null;
     this.telemetryHandler = null;
@@ -281,5 +323,6 @@ export class SocketConnectionManager {
     this.browserConsoleHandler = null;
     this.reconnectingHandler = null;
     this.sessionSnapshotHandler = null;
+    this.queueUpdateHandler = null;
   }
 }

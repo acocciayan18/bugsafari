@@ -16,6 +16,9 @@ import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
+import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
+import { TelemetryBridgeSubscriber } from './infrastructure/queue/telemetryBridge.js';
+import { ControlBridgePublisher } from './infrastructure/queue/controlBridge.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -40,7 +43,8 @@ const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
 });
 
-registerSocketHandlers(io);
+// Socket handlers are registered after the queue is built (below) so the
+// distributed queue-subscribe handler can be wired when BUGSAFARI_USE_QUEUE=1.
 
 // Debug endpoint to verify database collections
 app.get('/api/debug/db', async (req, res) => {
@@ -90,9 +94,25 @@ const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { a
 // opens a Redis connection) and route /api/start-test through the worker fleet.
 // Unset => taskQueue stays undefined and the synchronous path is byte-identical.
 const taskQueue = process.env.BUGSAFARI_USE_QUEUE === '1' ? new TaskQueue() : undefined;
+// Distributed-mode wiring (queue enabled only): the bridge re-emits isolated
+// worker telemetry into the browser-facing io, and the broadcaster pushes live
+// queue positions. Both are optional and absent in the synchronous default path.
+let queueStatusBroadcaster: QueueStatusBroadcaster | undefined;
+let telemetryBridge: TelemetryBridgeSubscriber | undefined;
+let controlPublisher: ControlBridgePublisher | undefined;
 if (taskQueue) {
   console.log('[BugSafari] ⚑ BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
+  telemetryBridge = new TelemetryBridgeSubscriber(io);
+  await telemetryBridge.start();
+  queueStatusBroadcaster = new QueueStatusBroadcaster(io, taskQueue);
+  await queueStatusBroadcaster.start();
+  // Reverse control channel: dashboard pause/resume/stop → worker run.
+  controlPublisher = new ControlBridgePublisher();
 }
+
+// Register socket handlers now that optional queue support is resolved.
+registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher ? { broadcaster: queueStatusBroadcaster, controlPublisher } : undefined);
+
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
 registerRoutes(app, useCase, port, findingRepository, taskQueue);
@@ -114,6 +134,9 @@ const shutdown = async (signal: string): Promise<void> => {
   try {
     await disconnectDatabase();
     console.log('[BugSafari] Database disconnected');
+    await queueStatusBroadcaster?.close();
+    await telemetryBridge?.close();
+    await controlPublisher?.close();
     await taskQueue?.close();
   } catch (err) {
     console.error('[BugSafari] Error during shutdown:', err);

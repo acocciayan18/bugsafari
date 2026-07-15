@@ -42,6 +42,10 @@ export type {
   SessionAttachAck,
   RunLifecycleStatus,
   SessionOwnerType,
+  // Redis execution queue
+  QueueUpdate,
+  QueueSubscribeRequest,
+  QueueJobState,
 } from '../../shared/types.js';
 
 // Value re-exports (runtime constants used to render the selector + defaults).
@@ -56,6 +60,8 @@ export {
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
   ACCESSIBILITY_EVENT,
+  QUEUE_SUBSCRIBE_EVENT,
+  QUEUE_UPDATE_EVENT,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).

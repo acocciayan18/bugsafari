@@ -6,7 +6,9 @@
   "main": "./dist/testing-core/src/index.js",
   "scripts": {
     "start": "node dist/testing-core/src/index.js",
+    "start:worker": "node dist/testing-core/src/worker-entry.js",
     "dev": "tsc-watch --onSuccess \"node dist/testing-core/src/index.js\"",
+    "dev:worker": "tsc-watch --onSuccess \"node dist/testing-core/src/worker-entry.js\"",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "node scripts/run-tests.mjs",
@@ -20,6 +22,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.24.0",
     "nodemailer": "^9.0.3",

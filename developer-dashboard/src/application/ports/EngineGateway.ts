@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export interface BrowserConsoleMessage {
   timestamp: string;
@@ -6,6 +6,14 @@ export interface BrowserConsoleMessage {
   message: string;
   url?: string;
   line?: number;
+}
+
+/** Outcome of a start request: a synchronous run yields just a runId; a queued
+ *  run additionally yields the jobId used to track its place in line. */
+export interface StartTestResult {
+  runId: string | null;
+  jobId: string | null;
+  queued: boolean;
 }
 
 export interface EngineGateway {
@@ -23,13 +31,15 @@ export interface EngineGateway {
   // Reconnection & recovery.
   onReconnecting(handler: (attempt: number) => void): void;
   onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
+  /** Live queue-position / lifecycle pushes for an enqueued (distributed) run. */
+  onQueueUpdate(handler: (update: QueueUpdate) => void): void;
   removeAllListeners(): void;
   /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
   setRunId(runId: string | null): void;
   /** Ask the backend whether the requester owns an active run; null if none. */
   fetchActiveSession(): Promise<ActiveSessionSnapshot | null>;
-  /** Launch a run; resolves with the server-issued run token (null if not accepted). */
-  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null>;
+  /** Launch a run; resolves with the run token and (when queued) its jobId. */
+  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */

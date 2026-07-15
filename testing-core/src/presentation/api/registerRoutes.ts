@@ -213,8 +213,10 @@ export function registerRoutes(
           targetUrl,
           requestedBy: request.userId ?? undefined,
         });
-        console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} for ${targetUrl} (queue=${enqueued.queueName})`);
-        response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, queued: true });
+        console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName})`);
+        // runId lets the client join run:${runId} for bridged worker telemetry;
+        // jobId lets it subscribe to queue:${jobId} position pushes.
+        response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runId: enqueued.runId, queued: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[API] ❌ Failed to enqueue safari job:', message);

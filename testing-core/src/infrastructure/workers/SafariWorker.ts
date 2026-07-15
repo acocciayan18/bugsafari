@@ -1,5 +1,4 @@
 import { Worker, type Job } from 'bullmq';
-import { Server } from 'socket.io';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { MongoFindingRepository } from '../database/repositories/MongoFindingRepository.js';
 import { connectDatabase } from '../database/mongooseClient.js';
@@ -7,6 +6,8 @@ import { PlaywrightBrowserEngine } from '../playwright/PlaywrightBrowserEngine.j
 import { SocketTelemetryGateway } from '../socket/SocketTelemetryGateway.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
+import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
+import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { resolveEngineTargetUrl } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
@@ -44,21 +45,23 @@ export async function createSafariWorker(
   const dbReady = await connectDatabase();
   const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
 
-  // Real telemetry wiring, mirrored from index.ts: a Socket.IO Server + the shared
-  // SocketTelemetryGateway, registered with the SessionManager so a worker run
-  // drives the exact same room-scoped/recorded event path as the synchronous API.
-  //
-  // KNOWN GAP (cross-process reachability): this io Server is process-local. The
-  // dashboard connects to the API process's Socket.IO server on port 3000, NOT to
-  // this one, and Socket.IO does no cross-process fan-out without a broker. The
-  // correct fix is the @socket.io/redis-adapter on BOTH the API's io and this io
-  // (Redis is already running) — but that's a new dependency, disallowed here, so
-  // it is deliberately NOT added. Consequence: worker-run events are emitted and
-  // buffered correctly but do NOT yet reach the browser. Faking a bridge was
-  // explicitly avoided; this is wired as far as is correct without new infra.
-  const io = new Server({ cors: { origin: '*', methods: ['GET', 'POST'] } });
-  const telemetry = new SocketTelemetryGateway(io);
+  // Cross-process telemetry: the isolated worker has no browser-facing Socket.IO
+  // server, so the gateway publishes every room-scoped event to Redis instead.
+  // The API process's TelemetryBridgeSubscriber re-emits each frame into the same
+  // run:${runId} room the dashboard is watching. SessionManager still buffers for
+  // replay and scopes rooms exactly as in the synchronous path — only the wire
+  // transport changed.
+  const publisher = new RedisTelemetryPublisher(redisUrl);
+  const telemetry = new SocketTelemetryGateway(publisher);
   sessionManager.initialize(telemetry);
+
+  // Reverse of the telemetry bridge: apply operator pause/resume/stop clicks that
+  // the API process publishes to this worker's live run.
+  const controlSubscriber = new ControlBridgeSubscriber(
+    (command, runId) => sessionManager.applyOperatorControl(command, runId),
+    redisUrl,
+  );
+  await controlSubscriber.start();
 
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
@@ -91,8 +94,10 @@ async (job) => {
         console.log(`[SafariWorker] ↪ Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
       }
 
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} target=${engineUrl}`);
-      await useCase.execute(engineUrl);
+      // Bind the run to the SAME runId the client received at enqueue, so the
+      // worker's telemetry room (run:${runId}) matches the room the dashboard joined.
+      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runId=${payload.runId} target=${engineUrl}`);
+      await useCase.execute(engineUrl, undefined, undefined, payload.runId);
       console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
     },
     {
@@ -132,7 +137,8 @@ async (job) => {
     worker,
     async close(): Promise<void> {
       await worker.close();
-      io.close();
+      await controlSubscriber.close();
+      await publisher.close();
     },
   };
 }

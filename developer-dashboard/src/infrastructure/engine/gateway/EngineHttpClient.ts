@@ -1,4 +1,5 @@
 import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
+import type { StartTestResult } from '../../../application/ports/EngineGateway';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
 
@@ -36,7 +37,7 @@ export class EngineHttpClient {
     return fetch(url, { ...init, headers: this.getAuthHeaders() });
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<string | null> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
@@ -67,10 +68,14 @@ export class EngineHttpClient {
       }
 
       // Capture the server-issued run token so a later refresh / reconnect can
-      // prove ownership and re-attach to this exact run.
-      const data = (await response.json().catch(() => ({}))) as { runId?: string };
-      console.log(`[Gateway] ✅ Safari launch accepted (runId=${data.runId ?? 'n/a'})`);
-      return typeof data.runId === 'string' ? data.runId : null;
+      // prove ownership and re-attach. A queued (202) response additionally carries
+      // the jobId used to track the run's place in the worker-fleet line.
+      const data = (await response.json().catch(() => ({}))) as { runId?: string; jobId?: string; queued?: boolean };
+      const runId = typeof data.runId === 'string' ? data.runId : null;
+      const jobId = typeof data.jobId === 'string' ? data.jobId : null;
+      const queued = data.queued === true;
+      console.log(`[Gateway] ✅ Safari launch accepted (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
+      return { runId, jobId, queued };
     } catch (error) {
       if (error instanceof TypeError) {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {

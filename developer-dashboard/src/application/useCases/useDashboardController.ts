@@ -39,6 +39,11 @@ export interface DashboardState {
   isReconnecting: boolean;
   reconnectAttempt: number;
   isRestoring: boolean;
+  // Distributed execution queue (BUGSAFARI_USE_QUEUE): the run is waiting for a
+  // free worker before execution begins.
+  isQueued: boolean;
+  queuePosition: number | null;
+  queueDepth: number;
 }
 
 // localStorage key for the server-issued run token — lets a guest survive a full
@@ -123,6 +128,9 @@ const [currentEngineAction, setCurrentEngineAction] = useState<string>('');
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isQueued, setIsQueued] = useState(false);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [queueDepth, setQueueDepth] = useState(0);
 
 const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
   const [elapsedTimeMs, setElapsedTimeMs] = useState<number>(0);
@@ -269,6 +277,44 @@ return () => {
       hydrateFromSnapshot(snapshot);
     });
 
+    // Distributed queue position/lifecycle pushes for an enqueued run.
+    gateway.onQueueUpdate((update) => {
+      if (update.state === 'waiting') {
+        setIsQueued(true);
+        setQueuePosition(update.position);
+        setQueueDepth(update.queueDepth);
+        // Engine hasn't launched yet — keep the 30s no-frame watchdog disarmed.
+        setIsInitializing(false);
+        return;
+      }
+      if (update.state === 'active') {
+        // A worker picked up the run: clear the queued banner and arm the launch
+        // watchdog; bridged engine-started + live frames flow from here.
+        setIsQueued(false);
+        setQueuePosition(null);
+        setIsInitializing(true);
+        return;
+      }
+      // completed → the run's own IDLE telemetry resets the UI; failed → surface it.
+      setIsQueued(false);
+      setQueuePosition(null);
+      if (update.state === 'failed') {
+        setIsInitializing(false);
+        setIsThinking(false);
+        setIsLaunching(false);
+        setIsTestRunning(false);
+        setStatus('IDLE');
+        setTelemetry((prev) => [
+          ...prev,
+          {
+            timestamp: new Date().toISOString(),
+            type: 'EXCEPTION',
+            meta: { message: `Queued run failed before execution: ${update.message ?? 'unknown error'}` },
+          },
+        ]);
+      }
+    });
+
     gateway.onTelemetry((event) => {
       // Network telemetry is routed to its own stream — never into the terminal log.
       if (event.type === 'NETWORK') {
@@ -332,6 +378,8 @@ return () => {
         setIsLaunching(false);
         setIsThinking(false);
         setIsInitializing(false);
+        setIsQueued(false);
+        setQueuePosition(null);
         setStatus('IDLE');
         setLiveFrame(null);
         // The run is over — drop the persisted run token so a future refresh
@@ -428,15 +476,21 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     // Reset session completion states to prevent UI state leak
     setHasRunCompleted(false);
     setHasTimeLimitExceeded(false);
+    setIsQueued(false);
+    setQueuePosition(null);
+    setQueueDepth(0);
     runStartedRef.current = true;
 
 try {
-      const runId = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      const { runId, queued } = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
       // Persist the server-issued run token so a refresh / reconnect re-attaches.
       try {
         if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
       } catch { /* storage unavailable */ }
       setIsLaunching(false);
+      // Queued runs haven't launched an engine yet: disarm the 30s no-frame
+      // watchdog until a worker picks the job up (onQueueUpdate 'active' re-arms it).
+      if (queued) setIsInitializing(false);
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing
       setIsInitializing(false);
@@ -565,6 +619,9 @@ return {
       isReconnecting,
       reconnectAttempt,
       isRestoring,
+      isQueued,
+      queuePosition,
+      queueDepth,
     },
     handleTimeLimitExceeded,
     startTest,
