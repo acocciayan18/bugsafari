@@ -106,7 +106,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     socket.on('pause-test', () => {
       console.log('[Socket] Session PAUSED manually');
       if (controlPublisher) controlPublisher.publish('pause', socketRunId());
-      else sessionManager.pauseByOperator();
+      else void sessionManager.pauseByOperator();
     });
 
     socket.on('resume-test', () => {

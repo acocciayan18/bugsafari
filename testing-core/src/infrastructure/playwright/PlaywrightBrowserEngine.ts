@@ -54,6 +54,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     this.activeEngine?.resume();
   }
 
+  // Delegate the settlement barrier to the live engine (no-op once torn down).
+  public async settlePendingTasks(): Promise<void> {
+    await this.activeEngine?.settlePendingTasks();
+  }
+
   /**
    * Get the accumulated active execution time in milliseconds.
    * Only counts time when the engine is NOT paused.
@@ -90,6 +95,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       if (this.activeEngine) {
         this.activeEngine.stop();
         console.log('[PlaywrightBrowserEngine] Engine stop requested');
+        // Graceful shutdown: flush pending telemetry/DB writes BEFORE closing the
+        // browser, so a stop can't strand in-flight forensic persistence.
+        await this.activeEngine.settlePendingTasks();
       }
       // Clear engine reference immediately to prevent stale state
       this.activeEngine = null;

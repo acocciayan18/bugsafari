@@ -32,13 +32,19 @@ interface CommandCenterProps {
   children?: ReactNode;
 }
 
-// 👈 Visibility Matrix: Compute which controls are visible based on status
+// 👈 Visibility Matrix: Compute which controls are visible based on status.
+// Transitional states (PAUSING/STOPPING) hide every actionable control and surface
+// a disabled loading indicator instead — the backend confirms completion via
+// engine-paused / IDLE telemetry, which flips the status out of the transition.
 const computeControlVisibility = (status: TestSessionStatus) => {
   return {
     showStartButton: status === 'IDLE' || status === 'STOPPED' || status === 'FINISHED',
     showPauseButton: status === 'ACTIVE',
     showResumeButton: status === 'PAUSED',
     showStopButton: status === 'ACTIVE' || status === 'PAUSED',
+    transitionLabel: status === 'PAUSING' ? 'Pausing…' : status === 'STOPPING' ? 'Stopping…' : null,
+    // Queued behind the worker fleet — lock controls and show a standby chip.
+    standbyLabel: status === 'QUEUED' ? 'Queued…' : null,
   };
 };
 
@@ -94,16 +100,46 @@ const [localTargetUrl, setLocalTargetUrl] = useState(initialTargetUrl);
 
 {/* Right: Control Button Group - Conditional Visibility */}
         <div className="flex items-center gap-3">
-          {/* Strict conditional unmounting: Only render timer when session is ACTIVE or PAUSED */}
-          {(testStatus === 'ACTIVE' || testStatus === 'PAUSED') && (
+          {/* Keep the timer mounted across ACTIVE/PAUSED and the transitional states so
+              it doesn't flicker out mid-pause; freeze it whenever not strictly ACTIVE. */}
+          {(testStatus === 'ACTIVE' || testStatus === 'PAUSING' || testStatus === 'PAUSED' || testStatus === 'STOPPING') && (
             <SessionTimer
               initialTimeMs={sessionTimeMs}
               remainingTimeMs={remainingTimeMs}
               isRunning={isTestRunning}
-              isPaused={testStatus === 'PAUSED'}
+              isPaused={testStatus !== 'ACTIVE'}
               onTimeUp={onTimeUp}
               variant="compact"
             />
+          )}
+
+          {/* Standby indicator — disabled, shown while the run waits for a free worker. */}
+          {controlVisibility.standbyLabel && (
+            <button
+              disabled
+              className="bg-indigo-100 text-indigo-700 font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase cursor-not-allowed opacity-80"
+              title={controlVisibility.standbyLabel}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="animate-spin">
+                <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+              </svg>
+              {controlVisibility.standbyLabel}
+            </button>
+          )}
+
+          {/* Transitional indicator — disabled, replaces the action buttons while the
+              backend settles in-flight tasks before confirming PAUSED / IDLE. */}
+          {controlVisibility.transitionLabel && (
+            <button
+              disabled
+              className="bg-gray-300 text-gray-600 font-bold text-xs tracking-wider px-4 py-2.5 flex items-center gap-2 uppercase cursor-not-allowed opacity-60"
+              title={controlVisibility.transitionLabel}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="animate-spin">
+                <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+              </svg>
+              {controlVisibility.transitionLabel}
+            </button>
           )}
 
           {/* STOP Button - Only visible when ACTIVE or PAUSED */}

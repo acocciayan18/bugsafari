@@ -23,6 +23,8 @@ export interface EngineControl {
   pause?: () => void;
   resume?: () => void;
   stop?: () => Promise<void> | void;
+  // Settlement barrier: flush in-flight telemetry/DB writes before the state settles.
+  settlePendingTasks?: () => Promise<void>;
   getElapsedActiveTimeMs?: () => number;
   getLastSessionId?: () => string | null;
 }
@@ -222,6 +224,9 @@ export class SessionManager implements TelemetryRecorder {
   private observeStatusFrom(event: TelemetryEvent): void {
     const run = this.run;
     if (!run || run.crashTerminated || event.type !== 'ACTION') return; // crash is terminal
+    // The orchestrated transitional states own the status until they settle — engine
+    // telemetry must not race them back to a premature PAUSED/RUNNING.
+    if (run.status === 'PAUSING' || run.status === 'STOPPING') return;
     const action = event.meta.actionExecuted;
     if (action === 'engine-paused') run.status = 'PAUSED';
     else if (action === 'engine-resumed') run.status = 'RUNNING';
@@ -329,12 +334,23 @@ export class SessionManager implements TelemetryRecorder {
 
   // ── Operator controls (routed from socket handlers) ─────────────────────────
 
-  public pauseByOperator(): void {
+  // Graceful pause: enter PAUSING, halt the engine, await in-flight tasks so their
+  // telemetry is delivered, then settle to PAUSED. Transitional state is broadcast
+  // via engine-pausing/engine-paused so the dashboard can show "Pausing…".
+  public async pauseByOperator(): Promise<void> {
     const run = this.run;
     if (!run || typeof run.engine.pause !== 'function') return;
-    if (run.manualPaused) return; // already paused — idempotent no-op against duplicate events
+    // Idempotent against duplicate events and re-entry while a pause is settling.
+    if (run.manualPaused || run.status === 'PAUSING' || run.status === 'STOPPING') return;
     run.manualPaused = true;
+    run.status = 'PAUSING';
     run.engine.pause();
+    this.emitEngineAction('engine-pausing', 'Pausing Safari — waiting for in-flight tasks to settle…');
+    await Promise.resolve(run.engine.settlePendingTasks?.());
+    // A stop that raced in during settlement wins — don't downgrade it to PAUSED.
+    if (this.run !== run || (run.status as RunLifecycleStatus) === 'STOPPING') return;
+    run.status = 'PAUSED';
+    void this.persistStatus('PAUSED');
     this.emitEngineAction('engine-paused', 'Safari session paused by user.');
   }
 
@@ -342,16 +358,24 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run || typeof run.engine.resume !== 'function') return;
     if (!run.manualPaused) return; // already resumed — idempotent no-op against duplicate events
+    if (run.status === 'PAUSING' || run.status === 'STOPPING') return; // let the transition settle first
     run.manualPaused = false;
+    run.status = 'RUNNING';
     run.engine.resume();
     this.emitEngineAction('engine-resumed', 'Safari session resumed by user.');
   }
 
+  // Graceful stop: enter STOPPING and broadcast engine-stopping so the dashboard
+  // shows "Stopping…". engine.stop() flushes pending writes before releasing the
+  // browser; the run's own finally emits IDLE and invokes endRun() to settle state.
   public async stopByOperator(): Promise<void> {
     const run = this.run;
     if (!run || typeof run.engine.stop !== 'function') return;
+    if (run.status === 'STOPPING') return; // idempotent against duplicate stop clicks
+    run.status = 'STOPPING';
+    this.emitEngineAction('engine-stopping', 'Stopping Safari — flushing telemetry and pending writes…');
     await Promise.resolve(run.engine.stop());
-    // endRun() is invoked by the run's own finally block; status settles there.
+    // endRun() is invoked by the run's own finally block; status settles to IDLE there.
   }
 
   /** RunId of the active run, or null. Used to scope cross-process controls. */
@@ -364,7 +388,7 @@ export class SessionManager implements TelemetryRecorder {
   public applyOperatorControl(command: OperatorCommand, runId: string | null): void {
     const run = this.run;
     if (!run || (runId !== null && runId !== run.runId)) return;
-    if (command === 'pause') this.pauseByOperator();
+    if (command === 'pause') void this.pauseByOperator();
     else if (command === 'resume') this.resumeByOperator();
     else void this.stopByOperator();
   }

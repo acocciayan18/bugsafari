@@ -11,6 +11,8 @@ export interface BrowserEngine {
   pause?(): void;
   resume?(): void;
   stop?(): Promise<void> | void;
+  /** Flush in-flight fire-and-forget telemetry/DB writes; the Pause/Stop settlement barrier. */
+  settlePendingTasks?(): Promise<void>;
   /** Get the accumulated active execution time in milliseconds. Only counts time when NOT paused. */
   getElapsedActiveTimeMs?(): number;
   /** Check if timebox has been exceeded. Returns true only when elapsed time >= timeboxMs AND NOT paused. */

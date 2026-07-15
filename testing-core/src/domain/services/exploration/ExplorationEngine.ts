@@ -40,6 +40,7 @@ import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
+import { AsyncTaskTracker } from './AsyncTaskTracker.js';
 import { EscalationTracker } from './EscalationTracker.js';
 import { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
@@ -137,6 +138,10 @@ export class ExplorationEngine {
 
   private isPaused = false;
   private isStopRequested = false;
+
+  // Tracks fire-and-forget DB/telemetry writes so Pause/Stop can flush them before
+  // the lifecycle settles (graceful settlement barrier).
+  private readonly asyncTasks = new AsyncTaskTracker();
 
   // Accumulative active time tracking for timebox (only counts when NOT paused)
   private elapsedActiveTimeMs: number = 0;
@@ -363,6 +368,12 @@ export class ExplorationEngine {
     this.isPaused = false;
   }
 
+  // Settlement barrier: await every in-flight fire-and-forget write so Pause/Stop
+  // flush pending telemetry + DB persistence before the lifecycle transitions.
+  public async settlePendingTasks(): Promise<void> {
+    await this.asyncTasks.settle();
+  }
+
   /**
    * Get the accumulated active execution time (in ms).
    * Only counts time when the engine is NOT paused.
@@ -556,7 +567,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       getBreadcrumbs: () => this.actions.snapshot(),
       breadcrumbsToActionRecords: (b) => this.breadcrumbsToActionRecords(b),
-      persistForensicError: (params) => { void this.persistForensicError(params); },
+      persistForensicError: (params) => { this.asyncTasks.track(this.persistForensicError(params)); },
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       setFreeze: () => { this.freezeActionTraceRecording = true; },
       getLastKnownUrl: () => lastKnownUrl,
@@ -609,7 +620,7 @@ export class ExplorationEngine {
 
     // Persist initial telemetry with browser info (Phase 3)
     if (browserInfo && this.sessionId) {
-      this.persistTelemetry({
+      this.asyncTasks.track(this.persistTelemetry({
         browser: browserInfo.browser,
         browserVersion: browserInfo.browserVersion,
         browserEngine: browserInfo.browserEngine,
@@ -623,7 +634,7 @@ export class ExplorationEngine {
         pageCount: 0,
         interactionCount: 0,
         failureCount: 0,
-      });
+      }));
     }
 
     // StateGraphNavigator handles its own state management - no clear() needed
@@ -882,7 +893,7 @@ export class ExplorationEngine {
       // Phase 3: Persist final telemetry with execution duration (use instance metrics)
       const executionDuration = this.runtimeMetrics.startTime ? Date.now() - this.runtimeMetrics.startTime : 0;
       if (browserInfo && this.sessionId) {
-        this.persistTelemetry({
+        this.asyncTasks.track(this.persistTelemetry({
           browser: browserInfo.browser,
           browserVersion: browserInfo.browserVersion,
           browserEngine: browserInfo.browserEngine,
@@ -896,7 +907,7 @@ export class ExplorationEngine {
           pageCount: this.runtimeMetrics.pageCount,
           interactionCount: this.runtimeMetrics.interactionCount,
           failureCount: this.runtimeMetrics.failureCount,
-        });
+        }));
       }
 
       page.off('framenavigated', handleFramenavigated);

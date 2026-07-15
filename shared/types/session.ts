@@ -11,7 +11,9 @@ import type { ForensicCrashReport, IncidentReport } from './bug.js';
 export type RunLifecycleStatus =
   | 'IDLE'          // no active run
   | 'RUNNING'       // engine executing, owner attached
+  | 'PAUSING'       // pause requested; awaiting in-flight tasks to settle (transient)
   | 'PAUSED'        // paused by operator
+  | 'STOPPING'      // stop requested; flushing pending writes before teardown (transient)
   | 'INTERRUPTED'   // owner dropped; engine alive inside grace window
   | 'DISCONNECTED'  // grace expired; engine being torn down
   | 'COMPLETED'     // finished normally

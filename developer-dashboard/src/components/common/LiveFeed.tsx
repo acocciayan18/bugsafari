@@ -11,6 +11,7 @@ interface LiveFeedProps {
   targetUrl?: string;
   isConnected?: boolean;
   isTestRunning: boolean;
+  isQueued?: boolean;
   useBinaryStream?: boolean;
   binaryWsUrl?: string;
   hasRunCompleted?: boolean;
@@ -27,6 +28,7 @@ export default function LiveFeed({
   currentUrl,
   targetUrl,
   isTestRunning,
+  isQueued = false,
   useBinaryStream = false,
   binaryWsUrl = 'ws://localhost:8765',
   hasRunCompleted = false,
@@ -43,9 +45,11 @@ export default function LiveFeed({
     height: `${NATIVE_VIEWPORT_HEIGHT}px` 
   });
 
-  // Status determination
-  const isIdle = !isTestRunning && !hasRunCompleted && !isInitializing;
-  const isInitializingScreen = isInitializing || (isTestRunning && !liveFrame);
+  // Status determination — QUEUED holds a dedicated standby screen and suppresses
+  // the initializing/idle states so the viewport never reads as "streaming" while
+  // the run is still waiting for a worker.
+  const isIdle = !isTestRunning && !hasRunCompleted && !isInitializing && !isQueued;
+  const isInitializingScreen = !isQueued && (isInitializing || (isTestRunning && !liveFrame));
   const isCompleted = hasRunCompleted && !isTestRunning;
 
 // Calculate optimal dimensions for object-fit: cover (no empty margins, cropping allowed)
@@ -196,13 +200,19 @@ export default function LiveFeed({
 
         {/* RIGHT: Status indicator */}
         <div className="flex items-center gap-2">
-          {(isTestRunning || useBinaryStream) && (
+          {isQueued && (
+            <span className="flex items-center gap-1.5 text-xs font-mono text-indigo-600">
+              <span className="h-2 w-2 bg-indigo-500 rounded-full animate-pulse"></span>
+              QUEUED
+            </span>
+          )}
+          {!isQueued && (isTestRunning || useBinaryStream) && (
             <span className="flex items-center gap-1.5 text-xs font-mono text-green-600">
               <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
               {fps > 0 ? fps : 60} FPS
             </span>
           )}
-          {!isTestRunning && !useBinaryStream && (
+          {!isQueued && !isTestRunning && !useBinaryStream && (
             <span className="text-xs text-gray-400">Ready</span>
           )}
         </div>
@@ -221,6 +231,19 @@ export default function LiveFeed({
           >
             <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
               ENTER TARGET URL TO INITIATE
+            </p>
+          </div>
+        )}
+
+        {/* QUEUED STANDBY STATE — run parked behind the worker fleet; no stream yet. */}
+        {isQueued && (
+          <div
+            className="absolute flex flex-col items-center justify-center z-10 bg-white"
+            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
+          >
+            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-r-transparent"></span>
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
+              QUEUED — AWAITING WORKER FLEET
             </p>
           </div>
         )}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
@@ -8,7 +9,7 @@ import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
 import { useAuth } from '../../context/AuthContext';
 
 // 👈 Unified Test Session Status Type for visibility matrix
-export type TestSessionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'FINISHED';
+export type TestSessionStatus = 'IDLE' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
 
 // Single capped console buffer — badge count and rendered logs share this bound.
 const CONSOLE_BUFFER_CAP = 50;
@@ -63,8 +64,12 @@ function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
     case 'RUNNING':
     case 'INTERRUPTED':   // engine still alive inside the grace window
       return 'ACTIVE';
+    case 'PAUSING':
+      return 'PAUSING';
     case 'PAUSED':
       return 'PAUSED';
+    case 'STOPPING':
+      return 'STOPPING';
     case 'COMPLETED':
     case 'DISCONNECTED':
       return 'FINISHED';
@@ -78,7 +83,8 @@ function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
 
 // A run is still live (config controls stay locked) for these lifecycle states.
 function lifecycleIsLive(status: RunLifecycleStatus): boolean {
-  return status === 'RUNNING' || status === 'PAUSED' || status === 'INTERRUPTED';
+  return status === 'RUNNING' || status === 'PAUSING' || status === 'PAUSED'
+    || status === 'STOPPING' || status === 'INTERRUPTED';
 }
 
 const ENGINE_TERMINAL_ACTIONS = new Set([
@@ -94,6 +100,16 @@ const ENGINE_PAUSE_ACTIONS = new Set([
 
 const ENGINE_RESUME_ACTIONS = new Set([
   'engine-resumed',
+]);
+
+// Transitional lifecycle signals — the backend is settling in-flight tasks; the UI
+// shows a loading indicator and locks controls until the terminal signal arrives.
+const ENGINE_PAUSING_ACTIONS = new Set([
+  'engine-pausing',
+]);
+
+const ENGINE_STOPPING_ACTIONS = new Set([
+  'engine-stopping',
 ]);
 
 export function useDashboardController(gatewayFactory: () => EngineGateway) {
@@ -288,22 +304,31 @@ return () => {
       hydrateFromSnapshot(snapshot);
     });
 
-    // Distributed queue position/lifecycle pushes for an enqueued run.
+    // Distributed queue position/lifecycle pushes for an enqueued run. The BullMQ
+    // job state (waiting → active) is the single source of truth for dashboard
+    // activation: QUEUED freezes the UI in standby; only 'active' promotes to RUNNING.
     gateway.onQueueUpdate((update) => {
       if (update.state === 'waiting') {
         setIsQueued(true);
         setQueuePosition(update.position);
         setQueueDepth(update.queueDepth);
-        // Engine hasn't launched yet — keep the 30s no-frame watchdog disarmed.
+        // Standby: lock launch controls, freeze the stopwatch, keep telemetry/live
+        // feeds dormant, and keep the 30s no-frame watchdog disarmed until a worker picks up.
+        setIsTestRunning(true);
+        setStatus('QUEUED');
         setIsInitializing(false);
         return;
       }
       if (update.state === 'active') {
-        // A worker picked up the run: clear the queued banner and arm the launch
-        // watchdog; bridged engine-started + live frames flow from here.
+        // Worker picked up the run → RUNNING: leave standby, start the stopwatch,
+        // let telemetry/live feeds activate, and arm the launch watchdog. Runtime
+        // metrics were reset at launch and stayed frozen through QUEUED, so they
+        // begin accruing only now.
         setIsQueued(false);
         setQueuePosition(null);
+        setStatus('ACTIVE');
         setIsInitializing(true);
+        toast.success('Worker acquired — exploration is now running.');
         return;
       }
       // completed → the run's own IDLE telemetry resets the UI; failed → surface it.
@@ -315,6 +340,7 @@ return () => {
         setIsLaunching(false);
         setIsTestRunning(false);
         setStatus('IDLE');
+        toast.error(`Queued run failed before execution: ${update.message ?? 'unknown error'}`);
         setTelemetry((prev) => [
           ...prev,
           {
@@ -366,8 +392,16 @@ return () => {
         // elapsedTimeMs is intentionally preserved here so it can be included in the manual save payload.
       }
 
+      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_PAUSING_ACTIONS.has(event.meta.actionExecuted)) {
+        setStatus('PAUSING');
+      }
+
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_PAUSE_ACTIONS.has(event.meta.actionExecuted)) {
         setStatus('PAUSED');
+      }
+
+      if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_STOPPING_ACTIONS.has(event.meta.actionExecuted)) {
+        setStatus('STOPPING');
       }
 
       if (event.type === 'ACTION' && event.meta.actionExecuted && ENGINE_RESUME_ACTIONS.has(event.meta.actionExecuted)) {
@@ -500,9 +534,14 @@ try {
         if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
       } catch { /* storage unavailable */ }
       setIsLaunching(false);
-      // Queued runs haven't launched an engine yet: disarm the 30s no-frame
-      // watchdog until a worker picks the job up (onQueueUpdate 'active' re-arms it).
-      if (queued) setIsInitializing(false);
+      // Queued runs haven't launched an engine yet: drop into QUEUED standby and
+      // disarm the 30s no-frame watchdog until a worker picks the job up
+      // (onQueueUpdate 'active' promotes to RUNNING and re-arms it).
+      if (queued) {
+        setStatus('QUEUED');
+        setIsInitializing(false);
+        toast('Session queued — waiting for an available worker. Execution starts automatically.');
+      }
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing
       setIsInitializing(false);

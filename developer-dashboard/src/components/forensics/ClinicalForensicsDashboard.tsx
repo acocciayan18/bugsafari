@@ -138,8 +138,13 @@ export default function ClinicalForensicsDashboard({
     }
   };
 
+  // Job parked behind the worker fleet — hold the dashboard in standby (frozen
+  // timer, dormant feeds, locked controls) until the backend flips it to RUNNING.
+  const isQueued = testStatus === 'QUEUED';
   const isActiveSession = testStatus === 'ACTIVE' || testStatus === 'PAUSED' || isTestRunning;
   const showSessionControls = isActiveSession || hasRunCompleted;
+  // Backend settling in-flight tasks — lock every control until it confirms completion.
+  const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
 
   const profiles = INFILTRATION_PROFILE_CATALOG.map((p) => ({
     id: p.id, name: p.label, desc: p.description,
@@ -221,12 +226,39 @@ export default function ClinicalForensicsDashboard({
           {/* Session controls and Timer management */}
           {showSessionControls && (
             <div className="flex items-center gap-3">
-              <SessionTimer
-                initialTimeMs={sessionTimeMs}
-                remainingTimeMs={remainingTimeMs}
-                isRunning={isTestRunning}
-                isPaused={testStatus === 'PAUSED'}
-              />
+              {/* Stopwatch is hidden while queued — it must not tick until a worker
+                  promotes the run to RUNNING; a standby chip stands in its place. */}
+              {!isQueued && (
+                <SessionTimer
+                  initialTimeMs={sessionTimeMs}
+                  remainingTimeMs={remainingTimeMs}
+                  isRunning={isTestRunning}
+                  isPaused={testStatus !== 'ACTIVE'}
+                />
+              )}
+              {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
+              {isQueued && (
+                <span className="flex items-center gap-2 rounded-lg bg-indigo-50 text-indigo-700 px-4 py-2 text-xs font-bold uppercase tracking-wider">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                    <path strokeLinecap="round" d="M12 2a10 10 0 0 1 10 10" />
+                  </svg>
+                  Queued — awaiting worker
+                </span>
+              )}
+              {/* Transitional indicator — the backend is settling in-flight tasks; all
+                  controls are locked until it confirms PAUSED / IDLE via telemetry. */}
+              {transitionLabel && (
+                <button
+                  disabled
+                  title={transitionLabel}
+                  className="flex items-center gap-2 rounded-lg bg-gray-200 text-gray-600 px-4 py-2 text-xs font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
+                >
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                    <path strokeLinecap="round" d="M12 2a10 10 0 0 1 10 10" />
+                  </svg>
+                  {transitionLabel}
+                </button>
+              )}
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
@@ -249,7 +281,7 @@ export default function ClinicalForensicsDashboard({
                   Resume
                 </button>
               )}
-              {isActiveSession && onStop && (
+              {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
                   className="flex items-center gap-2 rounded-lg bg-red-500 hover:bg-red-600 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
@@ -326,6 +358,7 @@ export default function ClinicalForensicsDashboard({
                 frame={frameBuffer}
                 isConnected={isConnected}
                 isTestRunning={isTestRunning}
+                isQueued={isQueued}
                 hasRunCompleted={hasRunCompleted}
                 isInitializing={isInitializing}
                 liveFrame={liveFrame}
@@ -341,10 +374,16 @@ export default function ClinicalForensicsDashboard({
                 ? 'border-green-300 bg-green-50 text-green-700'
                 : testStatus === 'PAUSED'
                   ? 'border-amber-300 bg-amber-50 text-amber-700'
-                  : 'border-gray-300 bg-gray-100 text-gray-600'
+                  : isQueued
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                    : transitionLabel
+                      ? 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 bg-gray-100 text-gray-600'
                 }`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'ACTIVE' ? 'bg-green-500 animate-pulse'
                   : testStatus === 'PAUSED' ? 'bg-amber-500'
+                    : isQueued ? 'bg-indigo-500 animate-pulse'
+                    : transitionLabel ? 'bg-blue-500 animate-pulse'
                     : 'bg-gray-400'
                   }`} />
                 {testStatus}
@@ -418,7 +457,7 @@ export default function ClinicalForensicsDashboard({
                           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                         </div>
                       ))}
-                      {isActiveSession && (
+                      {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-gray-500">
                           <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping"></span>
                           <span className="font-mono text-xs">
