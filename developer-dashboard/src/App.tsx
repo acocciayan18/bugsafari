@@ -58,7 +58,7 @@ function AuthAppContent() {
     createGateway.setAuthToken(token);
   }, [createGateway, token]);
 
-  const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, handleTimeLimitExceeded } =
+  const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, handleTimeLimitExceeded, dismissAccessibilityBanner } =
     useDashboardController(() => createGateway);
 
   const handleSaveSessionToHistory = () => {
@@ -140,7 +140,9 @@ function AuthAppContent() {
                   frameBuffer={state.latestFrame}
                   telemetry={state.telemetry}
                   networkEvents={state.networkEvents}
-                  accessibility={state.accessibilityLogs}
+                  accessibilityCount={state.accessibilityCount}
+                  accessibilityBannerDismissed={state.accessibilityBannerDismissed}
+                  onDismissAccessibilityBanner={dismissAccessibilityBanner}
                   browserConsole={state.browserConsole}
                   errors={{ incidents: state.incidents, reports: state.reports }}
                   isConnected={state.isConnected}

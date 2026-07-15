@@ -15,6 +15,11 @@ export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCOR
 // telemetry/error streams (client/server share this const to avoid drift).
 export const ACCESSIBILITY_EVENT = 'accessibility' as const;
 
+// Aggregate gate: once this many distinct WCAG violations surface in a run the
+// engine stops auditing and the dashboard shows one summarizing warning banner
+// (no per-finding list). Tunable in one place — both packages read this const.
+export const ACCESSIBILITY_BANNER_THRESHOLD = 10;
+
 // axe-core-style impact bucket for a WCAG violation.
 export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
 

@@ -302,9 +302,9 @@ export class ExplorationEngine {
 
       // Surface arsenal-discovered bugs (fuzzing/injection/stress/storage) on the
       // live Errors tab. JS/console exceptions are already streamed by
-      // StabilityMonitor (streamed=true); network faults own the Network tab;
-      // WCAG findings own the dedicated Accessibility tab (streamed separately).
-      if (!bug.streamed && bug.type !== 'NETWORK' && bug.type !== 'ACCESSIBILITY') {
+      // StabilityMonitor (streamed=true); network faults own the Network tab.
+      // WCAG findings never reach this ledger — they are ephemeral, WS-only events.
+      if (!bug.streamed && bug.type !== 'NETWORK') {
         this.streamBugToErrorsTab(bug);
       }
     }

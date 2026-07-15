@@ -288,10 +288,10 @@ export class StartExplorationUseCase {
         const coveragePercentage = Math.min(100, Math.round((actionRecords.length / maxActions) * 100));
 
         // Session-global execution context for history hydration. Distinct visited
-        // routes come from the engine; errorsEncountered excludes static WCAG audit
-        // rows so it counts runtime faults only (matching the live Errors tab).
+        // routes come from the engine; WCAG findings are ephemeral (never persisted),
+        // so every caught bug here is a runtime fault matching the live Errors tab.
         const visitedRoutes = (this.browserEngine.getVisitedRoutes?.() ?? []).slice(0, 500);
-        const errorsEncountered = caughtBugs.filter((bug) => bug.type !== 'ACCESSIBILITY').length;
+        const errorsEncountered = caughtBugs.length;
 
         const sessionFields = {
             userId: userObjectId,

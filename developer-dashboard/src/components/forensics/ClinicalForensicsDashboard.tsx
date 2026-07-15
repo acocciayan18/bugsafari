@@ -3,17 +3,17 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, AccessibilityFinding } from '../../types';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
-import { ErrorTabPanel, AccessibilityPanel, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
+import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, type InfiltrationProfileId } from '../../types';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
-type TerminalTab = 'telemetry' | 'errors' | 'accessibility' | 'network' | 'console';
+type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -30,7 +30,9 @@ interface ClinicalForensicsDashboardProps {
   frameBuffer: string | null;
   telemetry: TelemetryEvent[] | string[];
   networkEvents: TelemetryEvent[];
-  accessibility?: AccessibilityFinding[];
+  accessibilityCount?: number;
+  accessibilityBannerDismissed?: boolean;
+  onDismissAccessibilityBanner?: () => void;
   browserConsole: BrowserConsoleMessage[];
   errors: {
     incidents: IncidentReport[];
@@ -60,7 +62,9 @@ export default function ClinicalForensicsDashboard({
   frameBuffer = null,
   telemetry = [],
   networkEvents = [],
-  accessibility = [],
+  accessibilityCount = 0,
+  accessibilityBannerDismissed = false,
+  onDismissAccessibilityBanner,
   browserConsole = [],
   errors = { incidents: [], reports: [] },
   isConnected = false,
@@ -122,7 +126,10 @@ export default function ClinicalForensicsDashboard({
   const occurrenceTotal = (faults: { occurrences?: number }[]): number =>
     faults.reduce((sum, f) => sum + (f.occurrences ?? 1), 0);
   const terminalContentSignal =
-    formattedTelemetry.length + occurrenceTotal(errors.incidents) + occurrenceTotal(errors.reports) + accessibility.length + networkEvents.length + browserConsole.length;
+    formattedTelemetry.length + occurrenceTotal(errors.incidents) + occurrenceTotal(errors.reports) + accessibilityCount + networkEvents.length + browserConsole.length;
+
+  // One aggregate WCAG banner per session — appears at the threshold, hidden once dismissed.
+  const showAccessibilityBanner = accessibilityCount >= ACCESSIBILITY_BANNER_THRESHOLD && !accessibilityBannerDismissed;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   const handleInitialize = () => {
@@ -366,13 +373,6 @@ export default function ClinicalForensicsDashboard({
                 <TabCount count={errorCount} />
               </button>
               <button
-                onClick={() => setActiveTab('accessibility')}
-                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'accessibility' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-              >
-                accessibility
-                <TabCount count={accessibility.length} />
-              </button>
-              <button
                 onClick={() => setActiveTab('network')}
                 className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-black text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
               >
@@ -398,6 +398,9 @@ export default function ClinicalForensicsDashboard({
             >
               {activeTab === 'telemetry' && (
                 <>
+                  {showAccessibilityBanner && onDismissAccessibilityBanner && (
+                    <AccessibilityWarningBanner count={accessibilityCount} onDismiss={onDismissAccessibilityBanner} />
+                  )}
                   {showSessionControls ? (
                     <>
                       {formattedTelemetry.map((logObj, index) => (
@@ -454,7 +457,6 @@ export default function ClinicalForensicsDashboard({
               )}
 
               {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
-              {activeTab === 'accessibility' && <AccessibilityPanel findings={accessibility} />}
               {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
               {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} />}
             </div>

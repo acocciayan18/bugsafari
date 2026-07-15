@@ -699,7 +699,7 @@ function CleanRunCard() {
 
 // ─────────────────────────────────────────────────────────────
 // Tabbed panels — mirror the live dashboard's right-panel tabs
-// (Findings / Accessibility / Network / Console) so a saved session
+// (Findings / Network / Console) so a saved session
 // rehydrates the same categorized context the operator saw live.
 // Successful network and non-error console are WebSocket-only (never
 // persisted), so the Network/Console tabs show verified faults only.
@@ -739,26 +739,6 @@ function EmptyTab({ message }: { message: string }) {
     <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-8 text-center text-xs italic text-gray-400">
       {message}
     </div>
-  );
-}
-
-// Static WCAG audit findings — no runtime reproduction or Verify Fix.
-function AccessibilityList({ bugs }: { bugs: ForensicCaughtBug[] }) {
-  if (!bugs.length) return <EmptyTab message="No accessibility violations were recorded for this session." />;
-  return (
-    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-      {bugs.map((bug, i) => (
-        <li key={bug.bugId || i} className="px-4 py-3">
-          <div className="text-xs text-gray-800">{bug.message || 'No details provided'}</div>
-          {bug.selector && (
-            <div className="mt-1 truncate font-mono text-[11px] text-gray-500" title={bug.selector}>{bug.selector}</div>
-          )}
-          {bug.occurrences && bug.occurrences > 1 && (
-            <span className="mt-1 inline-block font-mono text-[10px] text-gray-400">×{bug.occurrences}</span>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -887,14 +867,14 @@ export default function ForensicReport() {
   // Collapse identical repeats (same fault registered per-occurrence) into one
   // card with an ×N count — lossless: every stored instance is still on `bugs`.
   // Findings are deduped server-side at save (each bug carries an `occurrences` count),
-  // so render the caughtBugs directly. Static WCAG audit rows are split out below.
+  // so render the caughtBugs directly. WCAG findings are ephemeral (never persisted);
+  // the filter only guards legacy sessions saved before that change.
   const runtimeBugs = useMemo(() => bugs.filter((b) => b.type !== 'ACCESSIBILITY'), [bugs]);
-  const a11yBugs = useMemo(() => bugs.filter((b) => b.type === 'ACCESSIBILITY'), [bugs]);
   // Persisted forensic_errors, split into the live-mirroring Network / Console tabs.
   const reportErrors = useMemo(() => report?.errorLogs?.errors ?? [], [report]);
   const networkErrors = useMemo(() => reportErrors.filter((e) => e.type && NETWORK_ERROR_TYPES.has(e.type)), [reportErrors]);
   const consoleErrors = useMemo(() => reportErrors.filter((e) => e.type && CONSOLE_ERROR_TYPES.has(e.type)), [reportErrors]);
-  const [activeTab, setActiveTab] = useState<'findings' | 'accessibility' | 'network' | 'console'>('findings');
+  const [activeTab, setActiveTab] = useState<'findings' | 'network' | 'console'>('findings');
   const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) {
@@ -950,7 +930,6 @@ export default function ForensicReport() {
           <section>
             <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
-              <TabButton label="Accessibility" count={a11yBugs.length} active={activeTab === 'accessibility'} onClick={() => setActiveTab('accessibility')} />
               <TabButton label="Network" count={networkErrors.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
               <TabButton label="Console" count={consoleErrors.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
             </div>
@@ -974,7 +953,6 @@ export default function ForensicReport() {
                 <CleanRunCard />
               )
             )}
-            {activeTab === 'accessibility' && <AccessibilityList bugs={a11yBugs} />}
             {activeTab === 'network' && <NetworkErrorList errors={networkErrors} />}
             {activeTab === 'console' && <ConsoleErrorList errors={consoleErrors} />}
           </section>

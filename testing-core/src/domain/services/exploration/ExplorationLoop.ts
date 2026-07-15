@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { ALL_TESTING_TYPE_IDS } from '../../../../../shared/types.js';
+import { ALL_TESTING_TYPE_IDS, ACCESSIBILITY_BANNER_THRESHOLD } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { normalizeRoutePath } from '../../../ml/domHasher.js';
 import type { CompoundStateHash } from '../../../ml/domHasher.js';
@@ -245,7 +245,7 @@ export class ExplorationLoop {
 
         // ♿ Static WCAG audit of this state (runs once per novel structural shell;
         // fully isolated — an audit failure must never derail exploration).
-        await this.auditAccessibility(page, fingerprint.compound.structure, step);
+        await this.auditAccessibility(page, fingerprint.compound.structure);
 
         const decision = this.decidePathfinderAction(ctx, ranked, fingerprint);
 
@@ -790,13 +790,15 @@ export class ExplorationLoop {
 
   /**
    * Run the static WCAG auditor against the current DOM and surface any NEW
-   * violations. Findings stream on the dedicated accessibility channel (isolated
-   * Accessibility tab) and are recorded in the confirmed-bug ledger for saved
-   * history — but are kept OUT of the Errors tab (see registerConfirmedBug). The
-   * auditor dedupes by (rule, selector) and audits each structural shell once, so
-   * this is cheap on revisits. Isolated: a scan failure is logged and swallowed.
+   * violations. Findings are ephemeral, WebSocket-only events streamed on the
+   * dedicated accessibility channel — never persisted or put in any Errors ledger.
+   * Once the run has surfaced ACCESSIBILITY_BANNER_THRESHOLD distinct violations the
+   * dashboard shows one aggregate warning banner, so auditing halts here to avoid
+   * further per-view DOM scans. Isolated: a scan failure is logged and swallowed.
    */
-  private async auditAccessibility(page: Page, structureHash: string, step: number): Promise<void> {
+  private async auditAccessibility(page: Page, structureHash: string): Promise<void> {
+    // Banner already earned — stop scanning for the rest of the session.
+    if (this.deps.accessibilityAuditor.totalFound() >= ACCESSIBILITY_BANNER_THRESHOLD) return;
     try {
       const violations = await this.deps.accessibilityAuditor.audit(page, structureHash);
       for (const v of violations) {
@@ -809,20 +811,6 @@ export class ExplorationLoop {
           description: v.description,
           suggestedFix: v.suggestedFix,
         });
-        this.deps.registerConfirmedBug({
-          bugId: `a11y-${v.rule}-${step}-${v.selector || 'page'}`,
-          type: 'ACCESSIBILITY',
-          message: `WCAG ${v.wcag} — ${v.rule}: ${v.description}`,
-          selector: v.selector,
-          payloadUsed: '',
-          advice: v.suggestedFix,
-          timestamp: new Date(),
-        });
-      }
-      if (violations.length > 0) {
-        this.deps.telemetry.emitMilestone(
-          `♿ Accessibility: ${violations.length} new WCAG issue(s) on this view (${this.deps.accessibilityAuditor.totalFound()} total this run).`,
-        );
       }
     } catch (a11yErr) {
       console.warn(

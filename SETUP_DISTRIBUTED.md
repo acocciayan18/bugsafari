@@ -143,3 +143,10 @@ podman system prune --all --volumes --force
 
 podman compose -f docker-compose.local.yml up --build -d
 
+## GIT
+
+git init
+git add .
+git commit -m "files before adding graceful handling of stop and pause lifecycle"
+git checkout -b 7-15-Ayan-5
+git push --set-upstream origin 7-15-Ayan-5
