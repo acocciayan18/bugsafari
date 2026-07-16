@@ -64,15 +64,15 @@ function formatDate(value?: string): string {
 }
 
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
-  if (status === 'CRASHED') return { text: 'text-red-700', dot: 'bg-red-500', bg: 'bg-red-50', border: 'border-red-200' };
-  if (status === 'HALTED') return { text: 'text-amber-700', dot: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
-  return { text: 'text-green-700', dot: 'bg-green-500', bg: 'bg-green-50', border: 'border-green-200' };
+  if (status === 'CRASHED') return { text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-red-200 dark:border-red-900' };
+  if (status === 'HALTED') return { text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-900' };
+  return { text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500', bg: 'bg-green-50 dark:bg-green-950/30', border: 'border-green-200 dark:border-green-900' };
 }
 
 function riskTheme(score: number): string {
-  if (score >= 70) return 'text-red-600';
-  if (score >= 40) return 'text-amber-600';
-  return 'text-green-600';
+  if (score >= 70) return 'text-red-600 dark:text-red-400';
+  if (score >= 40) return 'text-amber-600 dark:text-amber-400';
+  return 'text-green-600 dark:text-green-400';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -80,11 +80,11 @@ function riskTheme(score: number): string {
 // is the at-a-glance context every reader needs immediately).
 // ─────────────────────────────────────────────────────────────
 
-function StatBlock({ label, value, valueClassName = 'text-gray-900' }: { label: string; value: ReactNode; valueClassName?: string }) {
+function StatBlock({ label, value, valueClassName = 'text-gray-900 dark:text-gray-100' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</div>
-      <div className={`mt-0.5 text-sm font-semibold ${valueClassName}`}>{value}</div>
+      <div className="text-caption font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</div>
+      <div className={`mt-0.5 text-sm font-bold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
 }
@@ -109,8 +109,8 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
-          <div className="mt-1 truncate text-sm font-medium text-gray-700" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+          <div className="mt-1 truncate text-sm font-medium text-gray-700 dark:text-gray-300" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
@@ -118,29 +118,29 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-gray-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-gray-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6 dark:border-gray-700/70">
         <StatBlock label="Duration" value={formatDuration(report.duration)} />
         <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
-        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600' : 'text-green-600'} />
+        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'} />
         <StatBlock label="Pages" value={pagesVisited} />
         <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
         <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
       </div>
 
       {routes.length > 0 && (
-        <div className="mt-4 border-t border-gray-200/70 pt-3">
+        <div className="mt-4 border-t border-gray-200/70 pt-3 dark:border-gray-700/70">
           <button
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
-            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-700"
+            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
             <span>{showRoutes ? '▼' : '▶'}</span>
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-gray-600">
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-gray-600 dark:text-gray-400">
               {routes.map((route, idx) => (
-                <li key={idx} className="truncate border-b border-gray-100 py-1 last:border-0" title={route}>{route}</li>
+                <li key={idx} className="truncate border-b border-gray-100 py-1 last:border-0 dark:border-gray-800" title={route}>{route}</li>
               ))}
             </ul>
           )}
@@ -167,7 +167,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
         </svg>
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-700">
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
@@ -179,7 +179,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
         <ul className="mt-3 space-y-1.5">
           {aiAnalysis.recommendations.map((recommendation, idx) => (
             <li key={idx} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
-              <span className="text-blue-500">→</span>
+              <span className="text-blue-500 dark:text-blue-400">→</span>
               <span>{recommendation}</span>
             </li>
           ))}
@@ -910,10 +910,10 @@ export default function ForensicReport() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-white">
+      <div className="flex h-full w-full items-center justify-center bg-white dark:bg-slate-900">
         <div className="text-center">
-          <div className="text-sm font-semibold text-gray-700">Loading forensic report…</div>
-          <div className="mt-2 text-xs text-gray-500">Fetching the latest session details from the backend.</div>
+          <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">Loading forensic report…</div>
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Fetching the latest session details from the backend.</div>
         </div>
       </div>
     );
@@ -921,27 +921,27 @@ export default function ForensicReport() {
 
   if (error || !report) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-white px-6">
+      <div className="flex h-full w-full items-center justify-center bg-white px-6 dark:bg-slate-900">
         <div className="max-w-md text-center">
-          <div className="text-sm font-semibold text-red-600">Failed to load report</div>
-          <div className="mt-2 text-xs text-gray-500">{error || 'No report data was returned for this session.'}</div>
+          <div className="text-sm font-semibold text-red-600 dark:text-red-400">Failed to load report</div>
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-gray-100">
+    <div className="flex h-full w-full flex-col bg-gray-100 dark:bg-gray-900">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-slate-900">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-gray-900">BUGSAFARI</span>
-          <span className="mx-3 text-gray-400">/</span>
-          <span className="text-sm font-semibold text-gray-600">FORENSIC REPORT</span>
+          <span className="text-sm font-bold tracking-wide text-gray-900 dark:text-gray-100">BUGSAFARI</span>
+          <span className="mx-3 text-gray-400 dark:text-gray-600">/</span>
+          <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">FORENSIC REPORT</span>
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -993,9 +993,9 @@ export default function ForensicReport() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white px-6 py-4">
+      <footer className="border-t border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-slate-900">
         <div className="text-center">
-          <span className="font-mono text-xs text-gray-400">END OF FORENSIC REPORT</span>
+          <span className="font-mono text-xs text-gray-400 dark:text-gray-600">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>
