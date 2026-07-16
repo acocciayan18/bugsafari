@@ -214,16 +214,16 @@ function stepLine(step: ForensicActionStep): string {
 // Ordered structured trace, shared by the per-finding block and the session appendix.
 function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   return (
-    <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600">
+    <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600 dark:text-gray-400">
       {steps.map((step) => (
-        <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0">
-          <span className="text-gray-400">#{step.stepNumber}</span>{' '}
-          <span className="font-semibold text-gray-700">{step.actionType}</span>
+        <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0 dark:border-gray-800">
+          <span className="text-gray-400 dark:text-gray-500">#{step.stepNumber}</span>{' '}
+          <span className="font-semibold text-gray-700 dark:text-gray-300">{step.actionType}</span>
           {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
           {' on '}
           <span>{stepTarget(step)}</span>
-          {typeof step.durationMs === 'number' && <span className="text-gray-400"> ({step.durationMs}ms)</span>}
-          <span className="text-gray-400"> ({formatDate(step.timestamp)})</span>
+          {typeof step.durationMs === 'number' && <span className="text-gray-400 dark:text-gray-500"> ({step.durationMs}ms)</span>}
+          <span className="text-gray-400 dark:text-gray-500"> ({formatDate(step.timestamp)})</span>
         </li>
       ))}
     </ol>
@@ -290,12 +290,12 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
   RESOLVED: {
     label: 'Resolved',
     badge: 'bg-green-600 text-white hover:bg-green-700',
-    chip: 'bg-green-100 text-green-800 border border-green-200',
+    chip: 'bg-green-100 text-green-800 border border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800',
     dot: 'bg-green-500',
-    cardBorder: 'border-green-200',
-    cardHeaderBg: 'bg-green-50 border-green-200',
-    cardTitle: 'text-green-900',
-    cardSub: 'text-green-700',
+    cardBorder: 'border-green-200 dark:border-green-800',
+    cardHeaderBg: 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800',
+    cardTitle: 'text-green-900 dark:text-green-300',
+    cardSub: 'text-green-700 dark:text-green-400',
     numberBg: 'bg-green-600',
     modalBar: 'bg-green-600',
     icon: checkIcon,
@@ -303,12 +303,12 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
   STILL_ACTIVE: {
     label: 'Still Active',
     badge: 'bg-red-600 text-white hover:bg-red-700',
-    chip: 'bg-red-100 text-red-800 border border-red-200',
+    chip: 'bg-red-100 text-red-800 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
     dot: 'bg-red-500',
-    cardBorder: 'border-red-300',
-    cardHeaderBg: 'bg-red-50 border-red-300',
-    cardTitle: 'text-red-900',
-    cardSub: 'text-red-700',
+    cardBorder: 'border-red-300 dark:border-red-800',
+    cardHeaderBg: 'bg-red-50 border-red-300 dark:bg-red-950/30 dark:border-red-800',
+    cardTitle: 'text-red-900 dark:text-red-300',
+    cardSub: 'text-red-700 dark:text-red-400',
     numberBg: 'bg-red-600',
     modalBar: 'bg-red-600',
     icon: alertIcon,
@@ -316,12 +316,12 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
   INCONCLUSIVE: {
     label: 'Inconclusive',
     badge: 'bg-amber-500 text-white hover:bg-amber-600',
-    chip: 'bg-amber-100 text-amber-800 border border-amber-200',
+    chip: 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
     dot: 'bg-amber-500',
-    cardBorder: 'border-amber-200',
-    cardHeaderBg: 'bg-amber-50 border-amber-200',
-    cardTitle: 'text-amber-900',
-    cardSub: 'text-amber-700',
+    cardBorder: 'border-amber-200 dark:border-amber-800',
+    cardHeaderBg: 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800',
+    cardTitle: 'text-amber-900 dark:text-amber-300',
+    cardSub: 'text-amber-700 dark:text-amber-400',
     numberBg: 'bg-amber-500',
     modalBar: 'bg-amber-500',
     icon: questionIcon,
@@ -330,10 +330,10 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
 
 // Base (unverified) finding theme — the existing red "confirmed bug" look.
 const BASE_CARD = {
-  cardBorder: 'border-red-200',
-  cardHeaderBg: 'bg-red-50 border-red-200',
-  cardTitle: 'text-red-900',
-  cardSub: 'text-red-700',
+  cardBorder: 'border-red-200 dark:border-red-900',
+  cardHeaderBg: 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
+  cardTitle: 'text-red-900 dark:text-red-300',
+  cardSub: 'text-red-700 dark:text-red-400',
   numberBg: 'bg-red-600',
 };
 
@@ -364,10 +364,10 @@ function VerifyFixControl({
   if (status.state === 'running') {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+        className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-800 dark:text-gray-400"
         aria-live="polite"
       >
-        <svg className="h-3.5 w-3.5 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+        <svg className="h-3.5 w-3.5 animate-spin text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
@@ -397,7 +397,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-gray-700"
     >
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
@@ -416,27 +416,27 @@ function VerifyFixControl({
 
 function ResultStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-bold text-gray-900" title={value}>{value}</div>
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-bold text-gray-900 dark:text-gray-100" title={value}>{value}</div>
     </div>
   );
 }
 
 function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
-    <li className="rounded-md border border-red-200 bg-red-50 p-3">
+    <li className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
       <div className="flex items-center gap-2">
         <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
-          <span className="font-mono text-[11px] font-semibold text-red-700">HTTP {signal.statusCode}</span>
+          <span className="font-mono text-[11px] font-semibold text-red-700 dark:text-red-400">HTTP {signal.statusCode}</span>
         )}
       </div>
-      <div className="mt-1 break-words text-xs text-gray-800">{signal.message}</div>
+      <div className="mt-1 break-words text-xs text-gray-800 dark:text-gray-200">{signal.message}</div>
       {signal.url && (
-        <div className="mt-1 truncate font-mono text-[10px] text-gray-500" title={signal.url}>{signal.url}</div>
+        <div className="mt-1 truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={signal.url}>{signal.url}</div>
       )}
     </li>
   );
@@ -465,8 +465,8 @@ function VerificationResultModal({
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto bg-white px-5 py-4">
-        <p className="text-sm leading-relaxed text-gray-800">{result.summary}</p>
+      <div className="max-h-[70vh] overflow-y-auto bg-white px-5 py-4 dark:bg-nova-dark">
+        <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
@@ -476,7 +476,7 @@ function VerificationResultModal({
 
         {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               Reproduced Signals ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -488,24 +488,24 @@ function VerificationResultModal({
         )}
 
         {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+          <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">
             The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
             {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
           </div>
         )}
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-gray-200 bg-white px-5 py-3">
+      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-gray-200 bg-white px-5 py-3 dark:border-gray-700 dark:bg-nova-dark">
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
@@ -515,7 +515,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700"
+          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
         >
           Close
         </button>
@@ -568,7 +568,7 @@ function FindingCard({
   }, [settled]);
 
   return (
-    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-white shadow-sm`}>
+    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-white shadow-sm dark:bg-slate-900`}>
       {/* Header */}
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
@@ -616,17 +616,17 @@ function FindingCard({
       {/* Message / Selector / Payload grid */}
       <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Message</div>
-          <div className="mt-0.5 text-sm text-gray-800">{bug.message || 'No details provided'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Message</div>
+          <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">{bug.message || 'No details provided'}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-xs text-gray-700" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Selector</div>
+          <div className="mt-0.5 truncate font-mono text-xs text-gray-700 dark:text-gray-300" title={bug.selector}>{bug.selector || 'N/A'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-gray-700" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+            <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payload Used</div>
+            <div className="mt-0.5 truncate font-mono text-xs text-gray-700 dark:text-gray-300" title={bug.payloadUsed}>{bug.payloadUsed}</div>
           </div>
         )}
       </div>
@@ -636,7 +636,7 @@ function FindingCard({
       <div className="px-4 pt-3">
         {bug.actionSteps && bug.actionSteps.length > 0 ? (
           <div>
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+            <div className="mb-2 text-caption font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               Reproduction Trace ({bug.actionSteps.length} steps)
             </div>
             <ActionStepList steps={bug.actionSteps} />
@@ -644,7 +644,7 @@ function FindingCard({
         ) : bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
           <ReproductionChecklist steps={bug.reproductionSteps} />
         ) : (
-          <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400">
+          <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
             No deterministic reproduction steps were recorded for this fault.
           </div>
         )}
@@ -652,7 +652,7 @@ function FindingCard({
 
       {/* Suggested fix */}
       <div className="px-4 pt-3 pb-4">
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
+        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Suggested Fix</div>
         <SuggestedFixBlock advice={bug.advice} />
       </div>
 
@@ -684,10 +684,10 @@ function FindingCard({
 
 function CleanRunCard() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-6 py-10 text-center dark:border-green-900 dark:bg-green-950/20">
       <span className="text-2xl">✅</span>
-      <div className="text-sm font-semibold text-green-800">No findings were recorded for this session</div>
-      <div className="text-xs text-green-700">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-sm font-semibold text-green-800 dark:text-green-300">No findings were recorded for this session</div>
+      <div className="text-xs text-green-700 dark:text-green-400">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
