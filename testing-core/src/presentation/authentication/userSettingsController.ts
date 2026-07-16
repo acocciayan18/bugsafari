@@ -232,7 +232,6 @@ export async function handleGetSettings(
         }
 
         // Get settings from user document or use defaults
-        // @ts-expect-error - settings is a dynamic field
         const userSettings = user.settings as UserSettings | undefined;
         const settings: UserSettings = {
             theme: userSettings?.theme || 'light',
@@ -322,7 +321,6 @@ export async function handleUpdateSettings(
             return;
         }
 
-        // @ts-expect-error - settings is a dynamic field
         const userSettings = user.settings as UserSettings | undefined;
         const settings: UserSettings = {
             theme: userSettings?.theme || 'light',

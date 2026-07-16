@@ -6,6 +6,11 @@ export interface IUser extends Document {
   password: string;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  settings: {
+    theme: 'light' | 'dark' | 'system';
+    notifications: boolean;
+    autoSave: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -33,6 +38,11 @@ const userSchema = new Schema(
     resetPasswordExpires: {
       type: Date,
       default: undefined,
+    },
+    settings: {
+      theme: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
+      notifications: { type: Boolean, default: true },
+      autoSave: { type: Boolean, default: true },
     },
   },
   {

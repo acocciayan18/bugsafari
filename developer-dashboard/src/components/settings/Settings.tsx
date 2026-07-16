@@ -6,7 +6,7 @@
 // Dark mode is driven by DarkModeContext — toggling immediately applies the
 // 'dark' class to <html> and persists via settings storage.
 
-import { useState, useEffect, memo, type ReactNode } from 'react';
+import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 import { UserIcon, LockClosedIcon, EyeIcon, EyeSlashIcon } from '../icons';
@@ -209,6 +209,16 @@ const ToggleSwitch = memo(function ToggleSwitch({
 function ApplicationSettingsSection() {
   const { settings, isSettingsLoading, updateSettings } = useUserSettings();
   const { setMode } = useDarkMode();
+  // isSettingsLoading also flips true/false around every per-toggle save, not just the
+  // initial fetch — gating the skeleton on that alone would unmount/remount this whole
+  // section on every click. Only show the skeleton before the first load ever completes.
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isSettingsLoading) {
+      hasLoadedRef.current = true;
+    }
+  }, [isSettingsLoading]);
 
   // Sync stored theme to DarkModeContext whenever settings load from backend or localStorage
   useEffect(() => {
@@ -226,7 +236,7 @@ function ApplicationSettingsSection() {
     await updateSettings({ [key]: value });
   };
 
-  if (isSettingsLoading) {
+  if (isSettingsLoading && !hasLoadedRef.current) {
     return (
       <div className="space-y-2 max-w-md">
         <div className="animate-pulse space-y-3">
