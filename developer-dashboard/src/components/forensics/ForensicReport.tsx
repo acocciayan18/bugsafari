@@ -714,7 +714,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-700">
+    <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-700 dark:bg-gray-700 dark:text-gray-300">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -727,8 +727,8 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
       onClick={onClick}
       className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
         active
-          ? 'border-gray-900 text-gray-900'
-          : 'border-transparent text-gray-500 hover:text-gray-800'
+          ? 'border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100'
+          : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
       }`}
     >
       {label}
@@ -739,7 +739,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
 
 function EmptyTab({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-8 text-center text-xs italic text-gray-400">
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-8 text-center text-xs italic text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
       {message}
     </div>
   );
@@ -748,9 +748,9 @@ function EmptyTab({ message }: { message: string }) {
 // Full network log — every request (incl. successful), mirroring the live Network tab.
 function statusTint(row: ForensicNetworkLog): { border: string; bg: string; status: string } {
   const code = row.statusCode ?? 0;
-  if (!row.ok || code >= 500) return { border: 'border-red-200', bg: 'bg-red-50', status: 'text-red-700' };
-  if (code >= 400) return { border: 'border-amber-200', bg: 'bg-amber-50', status: 'text-amber-700' };
-  return { border: 'border-gray-200', bg: 'bg-white', status: 'text-green-700' };
+  if (!row.ok || code >= 500) return { border: 'border-red-200 dark:border-red-900', bg: 'bg-red-50 dark:bg-red-950/30', status: 'text-red-700 dark:text-red-400' };
+  if (code >= 400) return { border: 'border-amber-200 dark:border-amber-900', bg: 'bg-amber-50 dark:bg-amber-950/30', status: 'text-amber-700 dark:text-amber-400' };
+  return { border: 'border-gray-200 dark:border-gray-700', bg: 'bg-white dark:bg-slate-900', status: 'text-green-700 dark:text-green-400' };
 }
 
 function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
@@ -765,14 +765,14 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
               <span className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{row.method}</span>
               <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-[10px] uppercase tracking-wide text-gray-400">{row.resourceType}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-[10px] text-gray-500">×{row.repeatCount}</span>
+                <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">×{row.repeatCount}</span>
               )}
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-gray-600" title={row.url}>{row.url}</div>
-            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-gray-800">{row.message}</div>}
+            <div className="mt-1 truncate font-mono text-[11px] text-gray-600 dark:text-gray-400" title={row.url}>{row.url}</div>
+            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-gray-800 dark:text-gray-200">{row.message}</div>}
           </li>
         );
       })}
@@ -781,13 +781,13 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
 }
 
 const CONSOLE_LEVEL_STYLES: Record<string, string> = {
-  error: 'bg-red-100 text-red-800',
-  warning: 'bg-amber-100 text-amber-800',
-  info: 'bg-blue-100 text-blue-800',
-  debug: 'bg-purple-100 text-purple-800',
-  trace: 'bg-gray-100 text-gray-600',
-  notice: 'bg-gray-100 text-gray-600',
-  log: 'bg-gray-100 text-gray-700',
+  error: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300',
+  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+  info: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
+  debug: 'bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300',
+  trace: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  notice: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  log: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
 
 // Full console log — every level, mirroring the live Console tab.
@@ -796,12 +796,12 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {rows.map((row, i) => (
-        <li key={i} className="rounded-md border border-gray-200 bg-white p-3">
+        <li key={i} className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-900">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
-            {row.url && <span className="truncate font-mono text-[10px] text-gray-400" title={row.url}>{row.url}</span>}
+            {row.url && <span className="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={row.url}>{row.url}</span>}
           </div>
-          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800">{row.message}</div>}
+          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800 dark:text-gray-200">{row.message}</div>}
           {row.stackTrace && (
             <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 font-mono text-[10px] leading-relaxed text-gray-200">{row.stackTrace}</pre>
           )}
@@ -819,18 +819,18 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const timelineText = steps.map(stepLine).join('\n');
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
+    <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-900">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
       >
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-xs text-gray-400">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
       </button>
       {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-4">
+        <div className="border-t border-gray-200 px-4 py-4 dark:border-gray-700">
           <div className="mb-3 flex justify-end">
             <CopyButton text={timelineText} label="Action Timeline" />
           </div>
@@ -959,7 +959,7 @@ export default function ForensicReport() {
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
-            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200">
+            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200 dark:border-gray-700">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
               <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
               <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
