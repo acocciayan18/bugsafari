@@ -240,7 +240,7 @@ export interface UserProfile {
 }
 
 export interface UserSettings {
-  theme: 'light' | 'dark';
+  theme: 'light' | 'dark' | 'system';
   notifications: boolean;
   autoSave: boolean;
 }
@@ -256,7 +256,7 @@ export interface ProfileUpdateData {
   email?: string;
 }
 
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 
 

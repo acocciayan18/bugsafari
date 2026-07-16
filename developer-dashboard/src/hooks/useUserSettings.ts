@@ -22,7 +22,7 @@ interface ApiResponse<T> {
 }
 
 interface SettingsResponse {
-    theme: 'light' | 'dark';
+    theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     autoSave: boolean;
 }

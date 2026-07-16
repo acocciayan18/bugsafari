@@ -13,7 +13,7 @@ export interface UserProfile {
 }
 
 export interface UserSettings {
-    theme: 'light' | 'dark';
+    theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     autoSave: boolean;
 }
@@ -282,10 +282,10 @@ export async function handleUpdateSettings(
 
         // Theme validation
         if (theme !== undefined) {
-            if (theme === 'light' || theme === 'dark') {
+            if (theme === 'light' || theme === 'dark' || theme === 'system') {
                 updateData['settings.theme'] = theme;
             } else {
-                errorResponse(res, 400, 'Theme must be "light" or "dark"');
+                errorResponse(res, 400, 'Theme must be "light", "dark", or "system"');
                 return;
             }
         }
