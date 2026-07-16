@@ -22,9 +22,9 @@ interface CoverageBand {
 
 /** Single source of truth for the 0-40 / 41-70 / 71-100 coverage color bands. */
 function getCoverageBand(percentage: number): CoverageBand {
-  if (percentage <= 40) return { fill: 'bg-red-500', track: 'bg-red-100', text: 'text-red-500' };
-  if (percentage <= 70) return { fill: 'bg-amber-500', track: 'bg-amber-100', text: 'text-amber-500' };
-  return { fill: 'bg-green-500', track: 'bg-green-100', text: 'text-green-500' };
+  if (percentage <= 40) return { fill: 'bg-red-500', track: 'bg-red-100 dark:bg-red-950/50', text: 'text-red-500 dark:text-red-400' };
+  if (percentage <= 70) return { fill: 'bg-amber-500', track: 'bg-amber-100 dark:bg-amber-950/50', text: 'text-amber-500 dark:text-amber-400' };
+  return { fill: 'bg-green-500', track: 'bg-green-100 dark:bg-green-950/50', text: 'text-green-500 dark:text-green-400' };
 }
 
 export default function CoverageProgressBar({
@@ -51,7 +51,7 @@ export default function CoverageProgressBar({
 
       {/* Percentage Label */}
       {showLabel && (
-        <span className="font-mono text-xs text-gray-600 min-w-[3ch]">
+        <span className="font-mono text-xs text-gray-600 dark:text-gray-400 min-w-[3ch]">
           {clampedPercentage}%
         </span>
       )}
