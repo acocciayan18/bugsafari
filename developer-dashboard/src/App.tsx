@@ -21,7 +21,7 @@ import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
 import ConnectionStatusOverlay from './components/common/ConnectionStatusOverlay';
-import QueueStatusBanner from './components/common/QueueStatusBanner';
+// import QueueStatusBanner from './components/common/QueueStatusBanner';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { defaultOptimizationSettings } from '../../shared/types.js';
@@ -115,11 +115,7 @@ function AuthAppContent() {
         reconnectAttempt={state.reconnectAttempt}
         isRestoring={state.isRestoring}
       />
-      <QueueStatusBanner
-        isQueued={state.isQueued}
-        position={state.queuePosition}
-        queueDepth={state.queueDepth}
-      />
+      
       <Routes>
         <Route
           path="/dashboard"

@@ -79,6 +79,8 @@ podman compose -f docker-compose.local.yml down
 # Spin the services back up with hot-reloading active
 podman compose -f docker-compose.local.yml up --build -d
 
+
+
 ## Access Points
 
 | Service | URL |
@@ -151,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after updating the bullmq queue"
-git checkout -b 7-15-Ayan-5
-git push --set-upstream origin 7-15-Ayan-5
+git commit -m "files before changing the ui of forensic report"
+git checkout -b 7-16-Ayan
+git push --set-upstream origin 7-16-Ayan
 
