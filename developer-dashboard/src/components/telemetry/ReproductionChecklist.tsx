@@ -22,15 +22,15 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase tracking-wider text-amber-900">
+        <div className="text-[11px] font-black uppercase tracking-wider text-amber-900 dark:text-amber-300">
           🧭 Reproduction Playbook
         </div>
         {steps.length > 0 && (
           <button
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium text-amber-800 transition-all hover:bg-amber-100 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium text-amber-800 transition-all hover:bg-amber-100 active:scale-95 dark:text-amber-300 dark:hover:bg-amber-900/40"
             title="Copy reproduction steps"
           >
             {copied ? 'Copied!' : 'Copy'}
@@ -42,14 +42,14 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
           {steps.map((step, idx) => (
             <li
               key={`${idx}-${step}`}
-              className="rounded border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-mono font-medium leading-relaxed text-gray-900 whitespace-pre-wrap break-words"
+              className="rounded border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-mono font-medium leading-relaxed text-gray-900 whitespace-pre-wrap break-words dark:border-amber-900 dark:bg-slate-900 dark:text-gray-100"
             >
               {step}
             </li>
           ))}
         </ol>
       ) : (
-        <div className="text-xs italic text-gray-500">No reproduction steps available.</div>
+        <div className="text-xs italic text-gray-500 dark:text-gray-400">No reproduction steps available.</div>
       )}
     </div>
   );
