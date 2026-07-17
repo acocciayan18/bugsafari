@@ -205,6 +205,14 @@ export class StabilityMonitor {
     return start ? Date.now() - start : undefined;
   }
 
+  // Wall-clock instant a request settled — the true fault time for a failed response,
+  // earlier than Date.now() once an async body read has run. Falls back to now.
+  private requestSettledAtMs(request: Request): number {
+    const start = this.requestStartTimes.get(request);
+    const duration = this.computeRequestDuration(request);
+    return start !== undefined && duration !== undefined ? start + duration : Date.now();
+  }
+
   // Record one settled request into the full per-run network log (Network tab).
   // Skips static-asset noise; never throws inside a page listener.
   private recordNetworkLog(request: Request, statusCode: number | undefined, ok: boolean, message?: string): void {
@@ -565,7 +573,7 @@ export class StabilityMonitor {
       const pendingMs = now - meta.startMs;
       if (pendingMs <= HANG_THRESHOLD_MS) continue;
       meta.swept = true;
-      void this.confirmStuckLoading(page, { trigger: 'PENDING_TIMEOUT', url: meta.url, method: meta.method, pendingMs });
+      void this.confirmStuckLoading(page, { trigger: 'PENDING_TIMEOUT', url: meta.url, method: meta.method, pendingMs, startMs: meta.startMs });
     }
   }
 
@@ -573,7 +581,7 @@ export class StabilityMonitor {
   // gate) before the finder emits. Fire-and-forget; a page nav/close mid-probe simply drops the check.
   private async confirmStuckLoading(
     page: Page,
-    trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; failureDetail?: string },
+    trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; startMs?: number; failureDetail?: string },
   ): Promise<void> {
     const key = `${trigger.trigger}::${(trigger.url || '').split('#')[0].toLowerCase()}`;
     if (this.confirming.has(key)) return;
@@ -598,7 +606,9 @@ export class StabilityMonitor {
       });
       if (!result) return;
       if (result.isNew) {
-        this.reportApiHang(page, result.defect);
+        // The stuck request's start is the true fault instant; the watchdog + confirm
+        // gap fire ~10s later, so Date.now() here would over-keep post-fault actions.
+        this.reportApiHang(page, result.defect, trigger.startMs ?? Date.now());
       } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'api-hang-recurred',
@@ -667,14 +677,14 @@ export class StabilityMonitor {
   // Report one confirmed infinite-loading fault. Direct SIGNAL emit like reportDuplicateAction —
   // the finder's two-probe persistence check self-gates, so this bypasses verifyFault and reports
   // under INFINITE_LOADING with the finder's stable, signature-derived bugId.
-  private reportApiHang(page: Page, defect: ApiHangDefect): void {
+  private reportApiHang(page: Page, defect: ApiHangDefect, faultAtMs: number): void {
     const t = this.deps.telemetry;
     const url = defect.endpoint || page.url();
     const timestamp = new Date().toISOString();
     const breadcrumbs = this.deps.getBreadcrumbs();
     const stackTrace = defect.evidence.join('\n');
 
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
     const reproductionPlaybook = reproduction.narrative;
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
@@ -886,7 +896,7 @@ export class StabilityMonitor {
       // and the stored record diverging if an action lands between the reads.
       const reproduction = ActiveScenarioTracker.flushSnapshot({
         faultUrl: this.deps.getLastKnownUrl() || page.url(),
-        faultAtMs: Date.now(),
+        faultAtMs: this.requestSettledAtMs(response.request()),
       });
       const reproductionPlaybook = reproduction.narrative;
       // Verify before reporting: the response body is scanned for NoSQL/server-error

@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, RouteTrashMetadata } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { captureNavStep } from '../../../infrastructure/monitoring/navForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import { wait } from '../rapidClicker/utils.js';
@@ -145,7 +146,7 @@ export const routeTrasher = {
       );
       if (snap.urlChangedWithoutDom) {
         inconsistencies++;
-        ActiveScenarioTracker.record(describeRouteInconsistency(snap.fromUrl, snap.toUrl));
+        ActiveScenarioTracker.observe(describeRouteInconsistency(snap.fromUrl, snap.toUrl));
       }
 
       const verdict = classifyNavStep(snap);
@@ -153,13 +154,13 @@ export const routeTrasher = {
       defensiveResponses += verdict.defensiveResponses;
       clientCrashes += verdict.clientCrashes;
       if (verdict.clientCrashes > 0) {
-        ActiveScenarioTracker.record(describeRouteTrashClientCrash(navType, verdict.clientCrashes, snap.toUrl));
+        ActiveScenarioTracker.observe(describeRouteTrashClientCrash(navType, verdict.clientCrashes, snap.toUrl));
       }
       if (verdict.serverErrors > 0) {
-        ActiveScenarioTracker.record(describeRouteTrashServerError(navType, verdict.serverErrors, snap.toUrl));
+        ActiveScenarioTracker.observe(describeRouteTrashServerError(navType, verdict.serverErrors, snap.toUrl));
       }
       if (verdict.defensiveResponses > 0) {
-        ActiveScenarioTracker.record(describeRouteTrashDefensive(navType, verdict.defensiveResponses, snap.toUrl));
+        ActiveScenarioTracker.observe(describeRouteTrashDefensive(navType, verdict.defensiveResponses, snap.toUrl));
       }
       return snap;
     };
@@ -186,7 +187,7 @@ export const routeTrasher = {
       }
       if (isWhiteScreenFailure(probe)) {
         clientCrashes++;
-        ActiveScenarioTracker.record(describeRouteTrashWhiteScreen(navType, page.url()));
+        ActiveScenarioTracker.observe(describeRouteTrashWhiteScreen(navType, page.url()));
       }
     };
 
@@ -210,6 +211,12 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_back', backSnap.toUrl);
+          ActionRecorder.recordStep({
+            actionType: 'NAVIGATION',
+            humanIdentifier: 'history back',
+            selector: targetSelector,
+            url: backSnap.toUrl,
+          });
           ActiveScenarioTracker.record(
             describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, backSnap.toUrl),
           );
@@ -225,6 +232,12 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_forward', fwdSnap.toUrl);
+          ActionRecorder.recordStep({
+            actionType: 'NAVIGATION',
+            humanIdentifier: 'history forward',
+            selector: targetSelector,
+            url: fwdSnap.toUrl,
+          });
           ActiveScenarioTracker.record(
             describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, fwdSnap.toUrl),
           );
@@ -243,7 +256,7 @@ export const routeTrasher = {
         const landed = page.url();
         returnedToOrigin = landed === originPath;
         if (!returnedToOrigin) {
-          ActiveScenarioTracker.record(describeRouteTrashDrift(landed, originPath));
+          ActiveScenarioTracker.observe(describeRouteTrashDrift(landed, originPath));
           await safeGoto(page, originPath, 5000);
         }
         finalUrl = page.url();

@@ -88,10 +88,10 @@ export function setupStabilityMonitoring(
   // Emit a confirmed UI-freeze finding. Genuine server faults (5xx / requestfailed
   // / pageerror) are owned solely by the primary domain StabilityMonitor, so this
   // detector only ever reports a sustained local browser lock-up.
-  const emitFreezeFinding = (): void => {
+  const emitFreezeFinding = (faultAtMs: number): void => {
     const timestamp = new Date().toISOString();
     const url = page.url();
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
     const reproductionPlaybook = reproduction.narrative;
 
     const faultType: FaultType = 'FREEZE';
@@ -197,7 +197,7 @@ export function setupStabilityMonitoring(
   // it a brief window to recover before declaring a sustained UI lock-up. Real
   // server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
   // /pageerror listeners, not this heartbeat.
-  const handleHeartbeatTimeout = async (): Promise<void> => {
+  const handleHeartbeatTimeout = async (faultAtMs: number): Promise<void> => {
     emitInfo('⏳ Browser thread stalled — attempting local recovery...');
     const recovered = await validatePageStability();
     if (disposed) return;
@@ -205,7 +205,7 @@ export function setupStabilityMonitoring(
     if (recovered) {
       emitInfo('✅ Browser thread recovered — resuming exploration.');
     } else {
-      emitFreezeFinding();
+      emitFreezeFinding(faultAtMs);
     }
   };
 
@@ -216,12 +216,15 @@ export function setupStabilityMonitoring(
 
     heartbeatInFlight = true;
     try {
+      // The freeze onset is when this probe was sent, not when we later escalate —
+      // anchoring the fault here trims the ~5s stall + recovery window from repro steps.
+      const probeStartedAt = Date.now();
       if (await threadResponsive()) return;
       // Rate-limit escalation so one sustained freeze doesn't spam the pipeline.
       const now = Date.now();
       if (now - lastHeartbeatAlertAt < HEARTBEAT_TIMEOUT_MS) return;
       lastHeartbeatAlertAt = now;
-      await handleHeartbeatTimeout();
+      await handleHeartbeatTimeout(probeStartedAt);
     } finally {
       heartbeatInFlight = false;
     }

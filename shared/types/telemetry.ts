@@ -20,6 +20,12 @@ export const ACCESSIBILITY_EVENT = 'accessibility' as const;
 // (no per-finding list). Tunable in one place — both packages read this const.
 export const ACCESSIBILITY_BANNER_THRESHOLD = 10;
 
+// Marker prepended to reproduction-step lines that are observed RESULTS (e.g. a
+// route mutation triggered a crash) rather than actions a human performs. Both
+// packages read this const so the renderer can split observations out of the
+// numbered "do these steps" list without brittle text matching.
+export const OBSERVATION_PREFIX = '⟦OBSERVED⟧ ';
+
 // axe-core-style impact bucket for a WCAG violation.
 export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
 

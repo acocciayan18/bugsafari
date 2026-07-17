@@ -30,7 +30,15 @@ import type {
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
-import ReproductionChecklist from '../telemetry/ReproductionChecklist';
+import ReproductionChecklist, { ObservationsBlock } from '../telemetry/ReproductionChecklist';
+import {
+  actionStepsToMarkdown,
+  chipClass,
+  chipLabel,
+  humanizeActionStep,
+  splitObservations,
+  toMarkdownChecklist,
+} from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { AttributionBadges, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
 import { Modal } from '../ui/Modal';
@@ -197,41 +205,47 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 // Steps sections.
 // ─────────────────────────────────────────────────────────────
 
-// Human-readable action target — bare "N/A" (navigation / page-level steps carry no
-// DOM selector) reads badly in a report, so map it to intent per actionType.
-function stepTarget(step: ForensicActionStep): string {
-  const s = step.selector;
-  if (step.actionType === 'navigation') return s && s !== 'N/A' ? s : 'page navigation';
-  return s && s !== 'N/A' ? s : 'page-level (no element)';
-}
-
-// One-line rendering of a step, shared by the plaintext copy paths.
-function stepLine(step: ForensicActionStep): string {
-  const payload = step.payloadText ? ` with "${step.payloadText}"` : '';
-  return `#${step.stepNumber} ${step.actionType}${payload} on ${stepTarget(step)}`;
-}
-
-// Ordered structured trace, shared by the per-finding block and the session appendix.
+// Ordered structured trace — one chip row per step (action-type chip + imperative
+// instruction + payload code chip), shared by the per-finding block and the appendix.
 function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   return (
-    <ol className="max-h-96 space-y-1 overflow-y-auto font-mono text-xs text-gray-600 dark:text-gray-400">
-      {steps.map((step) => (
-        <li key={step.stepNumber} className="border-b border-gray-100 py-1 last:border-0 dark:border-gray-800">
-          <span className="text-gray-400 dark:text-gray-500">#{step.stepNumber}</span>{' '}
-          <span className="font-semibold text-gray-700 dark:text-gray-300">{step.actionType}</span>
-          {step.payloadText ? <span> with "{step.payloadText}"</span> : null}
-          {' on '}
-          <span>{stepTarget(step)}</span>
-          {typeof step.durationMs === 'number' && <span className="text-gray-400 dark:text-gray-500"> ({step.durationMs}ms)</span>}
-          <span className="text-gray-400 dark:text-gray-500"> ({formatDate(step.timestamp)})</span>
-        </li>
-      ))}
+    <ol className="max-h-96 space-y-1.5 overflow-y-auto">
+      {steps.map((step) => {
+        const { kind, instruction } = humanizeActionStep(step);
+        return (
+          <li
+            key={step.stepNumber}
+            className="flex items-start gap-2 rounded border border-gray-200 bg-white px-2.5 py-1.5 dark:border-gray-700 dark:bg-slate-900"
+          >
+            <span className="mt-px text-[11px] font-mono text-gray-400 dark:text-gray-500">{step.stepNumber}</span>
+            <span className={`mt-px rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+              {chipLabel(kind)}
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs leading-relaxed text-gray-900 break-words dark:text-gray-100">{instruction}</div>
+              {step.payloadText && (
+                <code className="mt-1 inline-block max-w-full break-words rounded bg-red-50 px-1.5 py-0.5 font-mono text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                  {step.payloadText}
+                </code>
+              )}
+              <div className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
+                {formatDate(step.timestamp)}
+              </div>
+            </div>
+          </li>
+        );
+      })}
     </ol>
   );
 }
 
 function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
+  const { steps: narrativeSteps, observations } = splitObservations(bug.reproductionSteps ?? []);
+  const reproMarkdown = bug.actionSteps?.length
+    ? actionStepsToMarkdown(bug.actionSteps)
+    : toMarkdownChecklist(narrativeSteps, []);
   return [
     `Finding #${index}: ${bugClass}`,
     bug.message ? `Message: ${bug.message}` : '',
@@ -239,8 +253,8 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
     bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
     `Detected: ${formatDate(bug.timestamp)}`,
     bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
-    bug.actionSteps?.length ? `\nReproduction Trace:\n${bug.actionSteps.map(stepLine).join('\n')}` : '',
-    bug.reproductionSteps?.length ? `\nReproduction Steps:\n${bug.reproductionSteps.join('\n')}` : '',
+    reproMarkdown ? `\nReproduction Steps:\n${reproMarkdown}` : '',
+    observations.length ? `\nObserved:\n${observations.map((o) => `> ${o}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -632,7 +646,9 @@ function FindingCard({
       </div>
 
       {/* Reproduction steps — prefer the structured, replayable trace (same timeline
-          Verify Fix replays); fall back to the prose checklist, then the empty message. */}
+          Verify Fix replays); fall back to the prose checklist, then the empty message.
+          Observed results live in reproductionSteps, so surface them beneath the
+          structured trace too (the prose checklist splits them out on its own). */}
       <div className="px-4 pt-3">
         {bug.actionSteps && bug.actionSteps.length > 0 ? (
           <div>
@@ -640,6 +656,7 @@ function FindingCard({
               Reproduction Trace ({bug.actionSteps.length} steps)
             </div>
             <ActionStepList steps={bug.actionSteps} />
+            <ObservationsBlock observations={splitObservations(bug.reproductionSteps ?? []).observations} />
           </div>
         ) : bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
           <ReproductionChecklist steps={bug.reproductionSteps} />
@@ -816,7 +833,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
 
   if (!steps.length) return null;
 
-  const timelineText = steps.map(stepLine).join('\n');
+  const timelineText = actionStepsToMarkdown(steps);
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-900">

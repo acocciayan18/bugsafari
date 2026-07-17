@@ -123,28 +123,28 @@ const defaultLabelForType = (type: ActionType): string =>
 
 /** Constraint-stripping / form-bypass step (FormBypasser, DataFuzzer, SUBMIT records). */
 export function describeConstraintBypass(label: string): string {
-  return `Bypassed interface safeguards on input field: "${label}" by removing client constraint hooks`;
+  return `Remove client-side validation on "${label}", then submit`;
 }
 
 /** Payload-injection step (DataFuzzer, TYPE/INPUT records). Truncation lives here only. */
 export function describeInputInjection(label: string, payload?: string): string {
   const value = payload ? truncate(payload, MAX_PAYLOAD_LENGTH) : '';
-  return `Input data value "${value}" provided to input field: "${label}"`;
+  return value ? `Type "${value}" into "${label}"` : `Enter data into "${label}"`;
 }
 
 /** Single-element zero-wait concurrent burst (ButtonSpammer). */
 export function describeConcurrentBurst(outcome: BurstSummary, label: string, kind: string): string {
   return (
-    `Concurrent zero-wait burst: ${outcome.attempted} clicks on ${kind} "${label}" ` +
-    `→ ${outcome.completed}/${outcome.attempted} completed in ${outcome.durationMs}ms`
+    `Click the ${kind} "${label}" ${outcome.attempted}× rapidly, no wait ` +
+    `(${outcome.completed}/${outcome.attempted} landed, ${outcome.durationMs}ms)`
   );
 }
 
 /** Multi-sibling zero-wait concurrent burst (InteractionSimulator.concurrentClicker). */
 export function describeConcurrentBurstSiblings(outcome: BurstSummary): string {
   return (
-    `Concurrent zero-wait burst across ${outcome.attempted} sibling elements ` +
-    `→ ${outcome.completed}/${outcome.attempted} completed in ${outcome.durationMs}ms`
+    `Click ${outcome.attempted} sibling elements at once, no wait ` +
+    `(${outcome.completed}/${outcome.attempted} landed, ${outcome.durationMs}ms)`
   );
 }
 
@@ -208,12 +208,6 @@ export function describeNavigation(label: string): string {
   return `Navigate via control "${label}" to discover a new application state`;
 }
 
-/** Confirmed state transition after a traversal (hashes shortened for readability). */
-export function describeStateTransition(fromHash: string, toHash: string, label: string): string {
-  const short = (h: string): string => (h ? h.slice(0, 8) : 'unknown');
-  return `State transition via "${label}": ${short(fromHash)} → ${short(toHash)}`;
-}
-
 /** Adaptive recovery round after apparent graph exhaustion. */
 export function describeRecovery(requeued: number): string {
   return `Adaptive recovery: re-queued ${requeued} candidate path${requeued === 1 ? '' : 's'} after apparent exhaustion`;
@@ -231,7 +225,7 @@ export function describeRecovery(requeued: number): string {
 export function describeActionRecord(record: ActionRecord): string {
   const description = describeSingleAction(record);
   const repeats = record.repeatCount ?? 1;
-  return repeats > 1 ? `${description} — repeat ${repeats} times in rapid succession` : description;
+  return repeats > 1 ? `${description} (repeat ${repeats}× rapidly)` : description;
 }
 
 function describeSingleAction(record: ActionRecord): string {
@@ -241,7 +235,7 @@ function describeSingleAction(record: ActionRecord): string {
   switch (record.type) {
     case 'NAVIGATE':
     case 'NAVIGATION':
-      return `Navigate to target interface view: ${record.url}`;
+      return `Go to ${record.url}`;
 
     case 'TYPE':
     case 'INPUT':
@@ -257,15 +251,11 @@ function describeSingleAction(record: ActionRecord): string {
         : describeNetworkSabotage(label);
 
     case 'HOVER':
-      return rawLabel
-        ? `Hover interaction triggered on element: "${rawLabel}"`
-        : 'Hover interaction triggered on an unlabeled element';
+      return rawLabel ? `Hover over "${rawLabel}"` : 'Hover over an element';
 
     case 'CLICK':
     default:
-      return rawLabel
-        ? `Click interaction triggered on element: "${rawLabel}"`
-        : 'Click interaction triggered on an unlabeled element';
+      return rawLabel ? `Click "${rawLabel}"` : 'Click an element';
   }
 }
 

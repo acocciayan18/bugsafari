@@ -20,6 +20,7 @@ import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { describeCoordinateBombing } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/forensics/metadataRecorder.js';
 
@@ -71,6 +72,15 @@ export const coordinateBombing = {
     }
 
     ActiveScenarioTracker.record(describeCoordinateBombing(BOMB_COUNT, width, height));
+    // Push one representative replayable step so the finding's regression timeline
+    // is not empty of this scenario (individual grid clicks aren't element-bound).
+    ActionRecorder.recordStep({
+      actionType: 'CLICK',
+      humanIdentifier: target?.innerText?.trim() || 'viewport grid',
+      value: `Deterministic grid ×${BOMB_COUNT} (${width}x${height})`,
+      selector: target?.selector ?? 'viewport',
+      url: page.url(),
+    });
 
     // Record through the shared recorder like the other STRESS_CLICK scenarios,
     // so the live transaction/telemetry observe one consistent metadata shape.

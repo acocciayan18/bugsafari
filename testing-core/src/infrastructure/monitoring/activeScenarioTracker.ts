@@ -1,4 +1,4 @@
-import type { ReproductionSnapshot } from '../../../../shared/types.ts';
+import { OBSERVATION_PREFIX, type ReproductionSnapshot } from '../../../../shared/types.js';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
@@ -6,6 +6,8 @@ import { narrateActionRecords } from '../../domain/services/forensics/narration.
 
 // Cap the deliberate steps carried into a finding — keep those closest to the fault.
 const MAX_SCENARIO_STEPS = 12;
+// Cap observed-result lines (crashes, inconsistencies) appended after the steps.
+const MAX_SCENARIO_OBSERVATIONS = 8;
 
 // Engine-internal scenarios: BugSafari's own bookkeeping, never a target-facing
 // action a developer reproduces. They must never seed a reproduction playbook.
@@ -19,6 +21,8 @@ interface ScenarioWindow {
   scenario: string;
   targetUrl: string;
   steps: string[];
+  /** Observed RESULTS (crash, inconsistency, drift) — evidence, not human actions. */
+  observations: string[];
   openedAt: number;
 }
 
@@ -59,12 +63,13 @@ export class ActiveScenarioTracker {
     // Seed the navigation step when the rolling log has nothing yet, so the
     // playbook always opens with context even on the very first scenario.
     if (ReproductionPlaybookStore.snapshot().length === 0 && targetUrl) {
-      steps.push(`Navigate to target interface view: ${targetUrl}`);
+      steps.push(`Go to ${targetUrl}`);
     }
     ActiveScenarioTracker.active = {
       scenario,
       targetUrl,
       steps,
+      observations: [],
       openedAt: Date.now(),
     };
   }
@@ -75,6 +80,14 @@ export class ActiveScenarioTracker {
       return;
     }
     ActiveScenarioTracker.active.steps.push(description);
+  }
+
+  /** Append an observed RESULT to the active window — rendered apart from the numbered steps. */
+  public static observe(description: string): void {
+    if (!ActiveScenarioTracker.active || !description) {
+      return;
+    }
+    ActiveScenarioTracker.active.observations.push(description);
   }
 
   /** Close the active window, retaining it as the most-recently-closed window. */
@@ -135,7 +148,10 @@ export class ActiveScenarioTracker {
 
     const window = ActiveScenarioTracker.populatedWindow();
     const narrative = window
-      ? ActiveScenarioTracker.numberScenarioSteps(window.steps)
+      ? [
+          ...ActiveScenarioTracker.numberScenarioSteps(window.steps),
+          ...ActiveScenarioTracker.markObservations(window.observations),
+        ]
       : narrateActionRecords(actions);
 
     return {
@@ -152,10 +168,15 @@ export class ActiveScenarioTracker {
     return ActiveScenarioTracker.flushSnapshot(options).narrative;
   }
 
+  /** True when a window carries anything worth reporting (steps or observations). */
+  private static isPopulated(window: ScenarioWindow | null): boolean {
+    return Boolean(window && (window.steps.length || window.observations.length));
+  }
+
   /** The window whose deliberate steps should drive a fault's narrative, if any. */
   private static populatedWindow(): ScenarioWindow | null {
-    if (ActiveScenarioTracker.active?.steps.length) return ActiveScenarioTracker.active;
-    if (ActiveScenarioTracker.lastClosed?.steps.length) return ActiveScenarioTracker.lastClosed;
+    if (ActiveScenarioTracker.isPopulated(ActiveScenarioTracker.active)) return ActiveScenarioTracker.active;
+    if (ActiveScenarioTracker.isPopulated(ActiveScenarioTracker.lastClosed)) return ActiveScenarioTracker.lastClosed;
     return null;
   }
 
@@ -166,5 +187,10 @@ export class ActiveScenarioTracker {
         ? steps
         : [steps[0], ...steps.slice(steps.length - (MAX_SCENARIO_STEPS - 1))];
     return capped.map((description, index) => `Step ${index + 1}. ${description}`);
+  }
+
+  /** Prefix observed results with the shared marker; keep those closest to the fault. */
+  private static markObservations(observations: string[]): string[] {
+    return observations.slice(-MAX_SCENARIO_OBSERVATIONS).map((line) => `${OBSERVATION_PREFIX}${line}`);
   }
 }

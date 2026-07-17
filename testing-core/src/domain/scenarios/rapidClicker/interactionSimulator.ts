@@ -11,6 +11,7 @@ import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/i
 import { wait } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { describeConcurrentBurstSiblings } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
@@ -80,6 +81,14 @@ export class InteractionSimulator {
     try {
       const result = await executeConcurrentBurst(page, targetSelectors);
       recorder.record(result);
+      // One replayable step for the finding's regression timeline (mirrors ButtonSpammer).
+      ActionRecorder.recordStep({
+        actionType: 'CLICK',
+        humanIdentifier: targetSelectors[0],
+        value: `Concurrent sibling burst ×${targetSelectors.length}`,
+        selector: targetSelectors[0],
+        url: page.url(),
+      });
       ActiveScenarioTracker.record(describeConcurrentBurstSiblings(result));
     } finally {
       manager?.endTransaction();
