@@ -7,6 +7,7 @@ import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import {
   resolveElementLabel,
   humanizeElement,
@@ -434,7 +435,7 @@ export class ActionExecutor {
       execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
         await storageTamper.execute(page, target, {
           chaosManager: this.deps.fuzzManager,
-          registerFinding: (finding) => this.registerStorageFinding(finding),
+          registerFinding: (finding) => void this.registerStorageFinding(finding, page),
         });
       },
     };
@@ -612,7 +613,7 @@ export class ActionExecutor {
         } as unknown as BugContext;
         const leaks = await fuzzGuard.run(ctx);
         for (const leak of leaks) {
-          this.registerFuzzFinding(leak, payload, target.selector);
+          await this.registerFuzzFinding(leak, payload, target.selector, page);
         }
       } catch (error) {
         console.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
@@ -874,7 +875,7 @@ export class ActionExecutor {
    * it. `confirmed: true` lets the classifier promote the security verdict on hard
    * evidence (see FaultClassifier), and the payload content resolves the exact class.
    */
-  private registerFuzzFinding(finding: BugFinding, payload: string, selector: string): void {
+  private async registerFuzzFinding(finding: BugFinding, payload: string, selector: string, page: Page): Promise<void> {
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.title,
@@ -882,6 +883,7 @@ export class ActionExecutor {
       scenario: 'DataFuzzer',
       confirmed: true,
     });
+    const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
       bugId: `fuzz-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type: 'FUZZ',
@@ -890,6 +892,7 @@ export class ActionExecutor {
       payloadUsed: payload,
       advice: classification.advice,
       timestamp: new Date(),
+      stateFingerprint,
       attribution: {
         bugClass: classification.bugClass,
         cwe: classification.cwe,
@@ -911,7 +914,7 @@ export class ActionExecutor {
    * scenario's own privileged-surface evidence (see FaultClassifier), never from
    * scenario expectation alone — mirroring the fuzz-leak path.
    */
-  private registerStorageFinding(finding: StorageTamperFinding): void {
+  private async registerStorageFinding(finding: StorageTamperFinding, page: Page): Promise<void> {
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.message,
@@ -919,6 +922,8 @@ export class ActionExecutor {
       scenario: 'StorageTamper',
       confirmed: true,
     });
+    // Capture the (tampered) storage state so replay re-seeds it before the app boots.
+    const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
       bugId: `storage-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type: 'STORAGE_TAMPER',
@@ -927,6 +932,7 @@ export class ActionExecutor {
       payloadUsed: 'role=admin; isAdmin=true; JWT{alg:none,role:admin}',
       advice: classification.advice,
       timestamp: new Date(),
+      stateFingerprint,
       attribution: {
         bugClass: classification.bugClass,
         cwe: classification.cwe,

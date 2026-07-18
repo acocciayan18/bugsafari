@@ -19,7 +19,7 @@ import type { ActionRecord } from '../../../../../shared/types.ts';
  *      developer can actually get into.
  */
 
-const DEFAULT_MAX_STEPS = 12;
+const DEFAULT_MAX_STEPS = 40;
 
 export interface MinimizeOptions {
   /** URL of the page the fault fired on. */

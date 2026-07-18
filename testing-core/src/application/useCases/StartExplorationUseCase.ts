@@ -4,7 +4,7 @@ import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
-import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
@@ -32,6 +32,7 @@ export interface ClientFinding {
     reproductionActions?: ActionRecord[];
     timestamp?: string;
     attribution?: FindingAttribution;
+    stateFingerprint?: StateFingerprint;
 }
 
 interface ExecutionMetrics {
@@ -132,6 +133,7 @@ export class StartExplorationUseCase {
             case 'SUBMIT':     return 'bypass';
             case 'NETWORK':    return 'bypass';
             case 'HOVER':      return 'click';
+            case 'MACRO':      return 'macro';
             default: {
                 const _exhaustive: never = type;
                 void _exhaustive;
@@ -184,6 +186,7 @@ export class StartExplorationUseCase {
             payloadText:        record.payload,
             resultingStateHash: '',
             durationMs:         record.durationMs,
+            macro:              record.macro,
         }));
     }
 
@@ -260,6 +263,7 @@ export class StartExplorationUseCase {
                 reproductionSteps?: string[];
                 reproductionActions?: ActionRecord[];
                 attribution?: FindingAttribution;
+                stateFingerprint?: StateFingerprint;
             }) => ({
                 bugId: bug.bugId,
                 type: bug.type,
@@ -274,6 +278,7 @@ export class StartExplorationUseCase {
                 actionSteps: this.buildActionSteps(Array.isArray(bug.reproductionActions) ? bug.reproductionActions : []),
                 timestamp: bug.timestamp,
                 attribution: bug.attribution,
+                stateFingerprint: bug.stateFingerprint,
             }))
             : clientFindings.map((finding, index) => ({
                 bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
@@ -287,6 +292,7 @@ export class StartExplorationUseCase {
                 actionSteps: this.buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
                 attribution: finding.attribution,
+                stateFingerprint: finding.stateFingerprint,
             }));
 
         // Collapse duplicate findings (same fault repeated across the run) into one

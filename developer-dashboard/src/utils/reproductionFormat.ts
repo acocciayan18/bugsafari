@@ -3,7 +3,7 @@
 import { OBSERVATION_PREFIX } from '../../../shared/types.js';
 import type { ForensicActionStep } from '../types';
 
-export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'step';
+export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | 'step';
 
 // Tailwind classes for the per-step action-type chip (light + dark).
 const CHIP_CLASS: Record<StepKind, string> = {
@@ -11,6 +11,7 @@ const CHIP_CLASS: Record<StepKind, string> = {
   click: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   input: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   bypass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  macro: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   step: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 };
 
@@ -21,6 +22,7 @@ const CHIP_LABEL: Record<StepKind, string> = {
   click: 'click',
   input: 'type',
   bypass: 'bypass',
+  macro: 'replay',
   step: 'step',
 };
 
@@ -43,9 +45,14 @@ export function humanizeActionStep(step: ForensicActionStep): { kind: StepKind; 
       case 'input': return 'input';
       case 'bypass': return 'bypass';
       case 'click': return 'click';
+      case 'macro': return 'macro';
       default: return 'step';
     }
   })();
+  // A macro carries its own human summary; render it verbatim, no raw params.
+  if (kind === 'macro') {
+    return { kind, instruction: step.macro?.summary || 'Replay recorded stress-scenario burst' };
+  }
   const t = target(step.selector, kind);
   const instruction =
     kind === 'navigation' ? `Go to ${t}`

@@ -1,4 +1,4 @@
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel, type ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import { classifyFault, type FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
@@ -7,6 +7,7 @@ import type {
   VerifyFixResult,
   RegressionVerdict,
   VerifyFixProgress,
+  StateFingerprint,
 } from '../../../../../shared/types.js';
 import { FaultCollector } from './FaultCollector.js';
 import { ReplayActionRunner } from './ReplayActionRunner.js';
@@ -74,9 +75,12 @@ export class RegressionPlaybookVerifier {
         deviceScaleFactor: 1,
       });
       const page = await context.newPage();
+      // Restore the fault-time client state BEFORE the app boots so cross-page-state
+      // faults reproduce (addInitScript/addCookies must precede goto).
+      await this.restoreState(context, finding.bug.stateFingerprint, finding.targetUrl);
       const collector = new FaultCollector(page);
       collector.attach();
-      const runner = new ReplayActionRunner(page);
+      const runner = new ReplayActionRunner(page, finding.targetUrl);
 
       try {
         await page.goto(finding.targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
@@ -133,6 +137,40 @@ export class RegressionPlaybookVerifier {
       if (browser) {
         await browser.close().catch(() => undefined);
       }
+    }
+  }
+
+  /** Seed cookies + local/session storage from the finding's fingerprint before the app loads. */
+  private async restoreState(context: BrowserContext, fingerprint: StateFingerprint | undefined, targetUrl: string): Promise<void> {
+    if (!fingerprint) return;
+    try {
+      const cookies = fingerprint.cookies ?? [];
+      if (cookies.length > 0) {
+        await context.addCookies(
+          cookies.map((c) => ({
+            name: c.name,
+            value: c.value,
+            ...(c.domain ? { domain: c.domain, path: c.path ?? '/' } : { url: targetUrl }),
+          })),
+        );
+      }
+    } catch {
+      // Best-effort — a malformed cookie must not abort verification.
+    }
+
+    const local = fingerprint.localStorage ?? {};
+    const session = fingerprint.sessionStorage ?? {};
+    if (Object.keys(local).length === 0 && Object.keys(session).length === 0) return;
+    try {
+      await context.addInitScript(
+        ({ l, s }: { l: Record<string, string>; s: Record<string, string> }) => {
+          try { for (const [k, v] of Object.entries(l)) window.localStorage.setItem(k, v); } catch { /* storage blocked */ }
+          try { for (const [k, v] of Object.entries(s)) window.sessionStorage.setItem(k, v); } catch { /* storage blocked */ }
+        },
+        { l: local, s: session },
+      );
+    } catch {
+      // Best-effort — never block replay on a storage seed failure.
     }
   }
 

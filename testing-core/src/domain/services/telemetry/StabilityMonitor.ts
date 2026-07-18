@@ -1,5 +1,6 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { setupStabilityMonitoring } from '../../../infrastructure/monitoring/stabilityMonitor.js';
 import { setupBrowserConsoleListener } from '../../../infrastructure/monitoring/browserConsoleListener.js';
 import { NetworkLogStore } from '../../../infrastructure/monitoring/NetworkLogStore.js';
@@ -311,12 +312,12 @@ export class StabilityMonitor {
   // same-signature repeats into one finding with an occurrence count. Only the first
   // sighting of a signature becomes a finding; repeats emit a throttled informational
   // note so a per-render error flood cannot swamp the Errors tab or the saved history.
-  private reportRuntimeFault(
+  private async reportRuntimeFault(
     page: Page,
     source: RuntimeObservation['source'],
     rawMessage: string,
     stack?: string,
-  ): void {
+  ): Promise<void> {
     const t = this.deps.telemetry;
     const message = rawMessage || 'Unknown runtime error';
     const stackTrace = stack ?? message;
@@ -330,6 +331,8 @@ export class StabilityMonitor {
     // this fault before anything else can advance it (see the network handlers).
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
     const reproductionPlaybook = reproduction.narrative;
+    // Snapshot client state so cross-page-state faults reproduce during replay.
+    const stateFingerprint = await captureStateFingerprint(page);
 
     // A fault whose root cause is not the target app (harness/driver/browser/env) is
     // demoted to informational telemetry and never registered as a bug.
@@ -379,6 +382,8 @@ export class StabilityMonitor {
       url,
       stackTrace,
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook,
       advice: remediation,
       attribution,
@@ -419,6 +424,7 @@ export class StabilityMonitor {
       stackTrace,
       reproductionSteps: reproductionPlaybook,
       reproductionActions: reproduction.actions,
+      stateFingerprint,
       attribution,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
@@ -429,7 +435,7 @@ export class StabilityMonitor {
   public attachExceptionMonitoring(page: Page): void {
     // Uncaught JavaScript exceptions.
     page.on('pageerror', (error: Error) => {
-      this.reportRuntimeFault(page, 'EXCEPTION', error?.message ?? 'Unknown page error', error?.stack);
+      void this.reportRuntimeFault(page, 'EXCEPTION', error?.message ?? 'Unknown page error', error?.stack);
     });
 
     // Error-level console output. Network-stack console errors are skipped — they are
@@ -438,7 +444,7 @@ export class StabilityMonitor {
       if (message.type() !== 'error') return;
       const text = message.text();
       if (text.includes('net::ERR') || text.includes('ERR_')) return;
-      this.reportRuntimeFault(page, 'CONSOLE', text);
+      void this.reportRuntimeFault(page, 'CONSOLE', text);
     });
 
     // Silent unhandled promise rejections — captured in-page and forwarded through the
@@ -446,7 +452,7 @@ export class StabilityMonitor {
     // catch handles the already-bound error thrown when a page is recreated.
     page
       .exposeFunction('__bugsafariOnUnhandledRejection', (payload: { message?: string; stack?: string }) => {
-        this.reportRuntimeFault(page, 'REJECTION', payload?.message ?? 'Unhandled promise rejection', payload?.stack);
+        void this.reportRuntimeFault(page, 'REJECTION', payload?.message ?? 'Unhandled promise rejection', payload?.stack);
       })
       .catch(() => undefined);
     page
@@ -469,7 +475,7 @@ export class StabilityMonitor {
   /** Capture renderer/tab crashes (OOM / GPU fault) directly instead of only inferring them via the freeze heartbeat. */
   public attachCrashMonitoring(page: Page): void {
     page.on('crash', () => {
-      this.reportRuntimeFault(page, 'CRASH', 'Renderer process crashed (out-of-memory or GPU fault)');
+      void this.reportRuntimeFault(page, 'CRASH', 'Renderer process crashed (out-of-memory or GPU fault)');
     });
   }
 
@@ -477,7 +483,7 @@ export class StabilityMonitor {
   // knowledge-base classifier has no path to SPA_STATE_RACE_CONDITION, and the finder's
   // burst logic already self-gates, so this bypasses verifyFault and reports with the
   // finder's stable, signature-derived bugId (collapse+count keeps it one finding).
-  private reportDuplicateAction(page: Page, defect: DuplicateActionDefect): void {
+  private async reportDuplicateAction(page: Page, defect: DuplicateActionDefect): Promise<void> {
     const t = this.deps.telemetry;
     const url = defect.endpoint || page.url();
     const timestamp = new Date().toISOString();
@@ -485,6 +491,7 @@ export class StabilityMonitor {
 
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
     const reproductionPlaybook = reproduction.narrative;
+    const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
     const attribution: FindingAttribution = {
@@ -511,6 +518,8 @@ export class StabilityMonitor {
       reason: defect.message,
       url,
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
@@ -548,6 +557,7 @@ export class StabilityMonitor {
       advice: defect.advice,
       reproductionSteps: reproductionPlaybook,
       reproductionActions: reproduction.actions,
+      stateFingerprint,
       attribution,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
@@ -608,7 +618,7 @@ export class StabilityMonitor {
       if (result.isNew) {
         // The stuck request's start is the true fault instant; the watchdog + confirm
         // gap fire ~10s later, so Date.now() here would over-keep post-fault actions.
-        this.reportApiHang(page, result.defect, trigger.startMs ?? Date.now());
+        void this.reportApiHang(page, result.defect, trigger.startMs ?? Date.now());
       } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'api-hang-recurred',
@@ -677,7 +687,7 @@ export class StabilityMonitor {
   // Report one confirmed infinite-loading fault. Direct SIGNAL emit like reportDuplicateAction —
   // the finder's two-probe persistence check self-gates, so this bypasses verifyFault and reports
   // under INFINITE_LOADING with the finder's stable, signature-derived bugId.
-  private reportApiHang(page: Page, defect: ApiHangDefect, faultAtMs: number): void {
+  private async reportApiHang(page: Page, defect: ApiHangDefect, faultAtMs: number): Promise<void> {
     const t = this.deps.telemetry;
     const url = defect.endpoint || page.url();
     const timestamp = new Date().toISOString();
@@ -685,6 +695,7 @@ export class StabilityMonitor {
     const stackTrace = defect.evidence.join('\n');
 
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
+    const stateFingerprint = await captureStateFingerprint(page);
     const reproductionPlaybook = reproduction.narrative;
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
@@ -713,6 +724,8 @@ export class StabilityMonitor {
       url,
       stackTrace,
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
@@ -753,6 +766,7 @@ export class StabilityMonitor {
       stackTrace,
       reproductionSteps: reproductionPlaybook,
       reproductionActions: reproduction.actions,
+      stateFingerprint,
       attribution,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
@@ -778,7 +792,7 @@ export class StabilityMonitor {
         });
         if (!result) return;
         if (result.isNew) {
-          this.reportDuplicateAction(page, result.defect);
+          void this.reportDuplicateAction(page, result.defect);
         } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
           t.emit('ACTION', {
             actionExecuted: 'duplicate-action-recurred',
@@ -899,6 +913,7 @@ export class StabilityMonitor {
         faultAtMs: this.requestSettledAtMs(response.request()),
       });
       const reproductionPlaybook = reproduction.narrative;
+      const stateFingerprint = await captureStateFingerprint(page);
       // Verify before reporting: the response body is scanned for NoSQL/server-error
       // signatures, the 5xx escalates severity, and provenance rejects third-party /
       // environment failures so only genuine target-app backend faults are reported.
@@ -961,13 +976,14 @@ export class StabilityMonitor {
         stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
         reproductionSteps: reproductionPlaybook,
         reproductionActions: reproduction.actions,
+        stateFingerprint,
         attribution,
         timestamp: new Date(),
       });
     });
 
     // Catch network request failures (timeouts, connection errors, aborts)
-    page.on('requestfailed', (request: Request) => {
+    page.on('requestfailed', async (request: Request) => {
       const timestamp = new Date().toISOString();
       const url = request.url();
       const method = request.method();
@@ -1018,6 +1034,7 @@ export class StabilityMonitor {
         faultAtMs: Date.now(),
       });
       const reproductionPlaybook = reproduction.narrative;
+      const stateFingerprint = await captureStateFingerprint(page);
       // Verify before reporting: DNS/TLS/connection failures and third-party hosts
       // are environment artifacts, not target-app defects, and are gated out here.
       const failureDetail = `${method} ${url} - ${reason}`;
@@ -1053,6 +1070,8 @@ export class StabilityMonitor {
         url: this.deps.getLastKnownUrl() || page.url(),
         stackTrace: failureDetail,
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionActions: reproduction.actions,
+        stateFingerprint,
         reproductionPlaybook,
         advice: remediation,
         attribution,
@@ -1095,6 +1114,7 @@ export class StabilityMonitor {
         stackTrace: failureDetail,
         reproductionSteps: reproductionPlaybook,
         reproductionActions: reproduction.actions,
+        stateFingerprint,
         attribution,
         timestamp: new Date(),
       });

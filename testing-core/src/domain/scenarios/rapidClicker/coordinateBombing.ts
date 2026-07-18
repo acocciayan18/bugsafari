@@ -29,7 +29,7 @@ import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/f
  * Lays the BOMB_COUNT points on the smallest near-square grid, centring each
  * click within its cell so the spread is stable and reproducible.
  */
-function gridCoordinate(index: number, count: number, width: number, height: number): { x: number; y: number } {
+export function gridCoordinate(index: number, count: number, width: number, height: number): { x: number; y: number } {
   const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
   const rows = Math.max(1, Math.ceil(count / cols));
   const col = index % cols;
@@ -71,15 +71,21 @@ export const coordinateBombing = {
       manager.startTransaction('viewport', 'STRESS_CLICK', metadata);
     }
 
-    ActiveScenarioTracker.record(describeCoordinateBombing(BOMB_COUNT, width, height));
-    // Push one representative replayable step so the finding's regression timeline
-    // is not empty of this scenario (individual grid clicks aren't element-bound).
+    const bombingSummary = describeCoordinateBombing(BOMB_COUNT, width, height);
+    ActiveScenarioTracker.record(bombingSummary);
+    // Push a re-expandable MACRO so regression replay reconstructs the exact grid
+    // (the individual coordinate clicks aren't element-bound — a literal step-per-click
+    // can't be replayed by selector, but {count,width,height} regenerates them exactly).
     ActionRecorder.recordStep({
-      actionType: 'CLICK',
+      actionType: 'MACRO',
       humanIdentifier: target?.innerText?.trim() || 'viewport grid',
-      value: `Deterministic grid ×${BOMB_COUNT} (${width}x${height})`,
       selector: target?.selector ?? 'viewport',
       url: page.url(),
+      macro: {
+        scenario: 'CoordinateBombing',
+        params: { count: BOMB_COUNT, width, height },
+        summary: bombingSummary,
+      },
     });
 
     // Record through the shared recorder like the other STRESS_CLICK scenarios,

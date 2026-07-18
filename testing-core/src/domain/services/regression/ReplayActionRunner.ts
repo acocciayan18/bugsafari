@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
+import { expandReplayMacro } from './ReplayMacroExpander.js';
 
 // Bounded per-action wait so a vanished/renamed selector can't stall the replay.
 const ACTION_TIMEOUT_MS = 5000;
@@ -24,7 +25,7 @@ export interface ReplayOutcome {
  * so the replay always reaches the validation stage.
  */
 export class ReplayActionRunner {
-  constructor(private readonly page: Page) {}
+  constructor(private readonly page: Page, private readonly targetUrl: string) {}
 
   public async replay(step: ActionStepTrace): Promise<ReplayOutcome> {
     const base = { stepNumber: step.stepNumber, actionType: step.actionType, selector: step.selector };
@@ -40,6 +41,11 @@ export class ReplayActionRunner {
         case 'navigation':
           await this.performClick(step.selector);
           return { ...base, status: 'ok' };
+        case 'macro': {
+          if (!step.macro) return { ...base, status: 'skipped', detail: 'macro step missing descriptor' };
+          const outcome = await expandReplayMacro(this.page, step.macro, this.targetUrl);
+          return { ...base, status: outcome.expanded > 0 ? 'ok' : 'skipped', detail: outcome.detail };
+        }
         default:
           return { ...base, status: 'skipped', detail: `unknown actionType "${step.actionType}"` };
       }

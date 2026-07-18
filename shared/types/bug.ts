@@ -46,7 +46,19 @@ export interface FindingAttribution {
   corroborated?: boolean;
 }
 
-export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK';
+export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK' | 'MACRO';
+
+/**
+ * A deterministic stress-scenario burst that replays by re-expansion, not by a
+ * single literal step. Carries only the params needed to regenerate the exact
+ * action sequence during regression replay, plus a human summary for the playbook.
+ */
+export interface ReplayMacro {
+  scenario: 'CoordinateBombing' | 'RouteTrasher' | 'ConcurrentSiblingBurst';
+  params: { count?: number; width?: number; height?: number; repetitions?: number; selectors?: string[] };
+  /** Human-readable one-line summary — reused as the narration fallback. */
+  summary: string;
+}
 
 export interface ActionRecord {
   timestamp: string;
@@ -59,6 +71,19 @@ export interface ActionRecord {
   repeatCount?: number;
   /** Real execution time of the action in ms (measured in the executor). */
   durationMs?: number;
+  /** Present only on a MACRO record — the re-expandable stress-scenario descriptor. */
+  macro?: ReplayMacro;
+}
+
+/**
+ * A bounded snapshot of client-side state at fault time, restored into the fresh
+ * regression-replay browser so cross-page-state bugs reproduce. Size-capped at
+ * capture (see captureStateFingerprint); values are kept verbatim.
+ */
+export interface StateFingerprint {
+  localStorage?: Record<string, string>;
+  sessionStorage?: Record<string, string>;
+  cookies?: { name: string; value: string; domain?: string; path?: string }[];
 }
 
 /**
@@ -82,6 +107,11 @@ export interface IncidentReport {
   statusCode?: number;
   stackTrace?: string;
   steps: ActionRecord[];
+  // Minimized, replayable per-finding timeline (with any stress-scenario MACRO) —
+  // carried so a queue-mode client-transfer save preserves what Verify Fix replays.
+  reproductionActions?: ActionRecord[];
+  // Client-state snapshot at fault time, restored before regression replay.
+  stateFingerprint?: StateFingerprint;
   // Pre-generated sequential narrative steps for human reproduction
   reproductionPlaybook?: string[];
   // Per-finding remediation (buildRemediation output) — identical to the value

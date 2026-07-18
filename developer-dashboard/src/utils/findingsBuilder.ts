@@ -63,6 +63,10 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
+      // Carry the replayable timeline + fault-time state so a queue-mode save
+      // preserves what Verify Fix replays (engine memory is empty cross-process).
+      reproductionActions: inc.reproductionActions,
+      stateFingerprint: inc.stateFingerprint,
       // Prefer the knowledge-base remediation bound to this finding; fall back to
       // the local template only for legacy incidents lacking classifier advice.
       advice: inc.advice ?? generateSuggestedFix(type, inc.reason, inc.statusCode),

@@ -81,15 +81,22 @@ export class InteractionSimulator {
     try {
       const result = await executeConcurrentBurst(page, targetSelectors);
       recorder.record(result);
-      // One replayable step for the finding's regression timeline (mirrors ButtonSpammer).
+      const burstSummary = describeConcurrentBurstSiblings(result);
+      // Re-expandable MACRO carrying the resolved sibling selectors so regression
+      // replay re-fires the exact concurrent burst (not param-derivable, unlike the
+      // coordinate/route macros — the selectors must travel with the finding).
       ActionRecorder.recordStep({
-        actionType: 'CLICK',
+        actionType: 'MACRO',
         humanIdentifier: targetSelectors[0],
-        value: `Concurrent sibling burst ×${targetSelectors.length}`,
         selector: targetSelectors[0],
         url: page.url(),
+        macro: {
+          scenario: 'ConcurrentSiblingBurst',
+          params: { selectors: targetSelectors },
+          summary: burstSummary,
+        },
       });
-      ActiveScenarioTracker.record(describeConcurrentBurstSiblings(result));
+      ActiveScenarioTracker.record(burstSummary);
     } finally {
       manager?.endTransaction();
     }

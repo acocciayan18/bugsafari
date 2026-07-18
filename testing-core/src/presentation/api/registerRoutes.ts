@@ -22,6 +22,8 @@ import {
   type InfiltrationProfileId,
   type ExplorationRunConfig,
   type FindingAttribution,
+  type StateFingerprint,
+  type ActionRecord,
 } from '../../../../shared/types.js';
 
 /**
@@ -351,12 +353,20 @@ export function registerRoutes(
           reproductionSteps: Array.isArray(f.reproductionSteps)
             ? f.reproductionSteps.filter((s): s is string => typeof s === 'string')
             : undefined,
+          // Replayable per-finding timeline (with MACRO) transferred client-side so
+          // queue-mode saves preserve what Verify Fix replays.
+          reproductionActions: Array.isArray(f.reproductionActions)
+            ? (f.reproductionActions as unknown as ActionRecord[])
+            : undefined,
           timestamp: typeof f.timestamp === 'string' ? f.timestamp : undefined,
           // Carry the knowledge-base attribution through so the saved report's
           // finding cards show bugClass / scenario / CWE / step badges (Mongoose
           // strips any unknown keys against the caughtBugs.attribution sub-schema).
           attribution: f.attribution && typeof f.attribution === 'object'
             ? (f.attribution as unknown as FindingAttribution)
+            : undefined,
+          stateFingerprint: f.stateFingerprint && typeof f.stateFingerprint === 'object'
+            ? (f.stateFingerprint as unknown as StateFingerprint)
             : undefined,
         }));
       console.log(`[API] Transferred live findings count: ${clientFindings.length}`);

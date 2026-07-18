@@ -4,6 +4,7 @@ import type {
   ActionRecord,
   ActionType,
   FindingAttribution,
+  StateFingerprint,
 } from '../../../../../shared/types.ts';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { RecursiveDomParser } from '../../heuristics/domParser.js';
@@ -78,6 +79,8 @@ export interface ConfirmedBug {
   reproductionSteps?: string[];
   /** Minimized, replayable action timeline for THIS finding — the causal steps only. */
   reproductionActions?: ActionRecord[];
+  /** Bounded client-state snapshot restored before regression replay (cross-page faults). */
+  stateFingerprint?: StateFingerprint;
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
   /** True when this bug was already streamed to the Errors tab by StabilityMonitor

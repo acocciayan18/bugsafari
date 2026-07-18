@@ -1,4 +1,4 @@
-import type { ActionRecord, ActionType } from '../../../../shared/types.ts';
+import type { ActionRecord, ActionType, ReplayMacro } from '../../../../shared/types.ts';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
@@ -27,12 +27,15 @@ export interface ActionStepInput {
   
   /** CSS selector for the element */
   selector: string;
-  
+
   /** Current page URL */
   url: string;
-  
+
   /** Optional timestamp (defaults to now) */
   timestamp?: string;
+
+  /** Re-expandable stress-scenario descriptor (set only for a MACRO step). */
+  macro?: ReplayMacro;
 }
 
 /**
@@ -44,9 +47,10 @@ export class ActionRecorder {
   
   // Static instance for singleton pattern (enables static method calls)
   private static _instance: ActionRecorder | null = null;
-  private static _defaultCapacity = 20;
+  // Deep enough to hold a realistic causal chain before minimization runs (was 20).
+  private static _defaultCapacity = 60;
 
-  constructor(private readonly capacity = 20) {}
+  constructor(private readonly capacity = 60) {}
 
   /**
    * Get singleton instance of ActionRecorder.
@@ -104,6 +108,7 @@ export class ActionRecorder {
       url: step.url,
       payload: step.value,
       fallbackLabel: step.humanIdentifier,
+      macro: step.macro,
     };
 
     this.records.push(record);

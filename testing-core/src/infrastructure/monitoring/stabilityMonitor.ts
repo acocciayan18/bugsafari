@@ -1,8 +1,9 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { ActionRecord, FindingAttribution } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution, StateFingerprint } from '../../../../shared/types.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
+import { captureStateFingerprint } from './stateFingerprint.js';
 
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const HEARTBEAT_TIMEOUT_MS = 5_000;
@@ -57,6 +58,7 @@ export type BugRegistrationCallback = (bug: {
   timestamp: Date;
   reproductionSteps?: string[];
   reproductionActions?: ActionRecord[];
+  stateFingerprint?: StateFingerprint;
   attribution?: FindingAttribution;
   streamed?: boolean;
 }) => void;
@@ -88,11 +90,13 @@ export function setupStabilityMonitoring(
   // Emit a confirmed UI-freeze finding. Genuine server faults (5xx / requestfailed
   // / pageerror) are owned solely by the primary domain StabilityMonitor, so this
   // detector only ever reports a sustained local browser lock-up.
-  const emitFreezeFinding = (faultAtMs: number): void => {
+  const emitFreezeFinding = async (faultAtMs: number): Promise<void> => {
     const timestamp = new Date().toISOString();
     const url = page.url();
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
     const reproductionPlaybook = reproduction.narrative;
+    // Renderer is unresponsive during a freeze — capture cookies only (no storage evaluate).
+    const stateFingerprint = await captureStateFingerprint(page, { cookiesOnly: true });
 
     const faultType: FaultType = 'FREEZE';
     const reason = "System Lock-up Detected: The browser's Main Thread is unresponsive.";
@@ -118,6 +122,8 @@ export function setupStabilityMonitoring(
       url,
       stackTrace,
       steps: [],
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook,
       advice,
       attribution,
@@ -146,6 +152,7 @@ export function setupStabilityMonitoring(
         timestamp: new Date(),
         reproductionSteps: reproductionPlaybook,
         reproductionActions: reproduction.actions,
+        stateFingerprint,
         attribution,
         streamed: true, // already emitted to the Errors tab above — don't double-stream
       });
@@ -205,7 +212,7 @@ export function setupStabilityMonitoring(
     if (recovered) {
       emitInfo('✅ Browser thread recovered — resuming exploration.');
     } else {
-      emitFreezeFinding(faultAtMs);
+      await emitFreezeFinding(faultAtMs);
     }
   };
 

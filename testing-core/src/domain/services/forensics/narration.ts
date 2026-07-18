@@ -244,6 +244,9 @@ function describeSingleAction(record: ActionRecord): string {
     case 'SUBMIT':
       return describeConstraintBypass(label);
 
+    case 'MACRO':
+      return record.macro?.summary || rawLabel || 'Replay recorded stress-scenario burst';
+
     case 'NETWORK':
       // `fallbackLabel` carries the sabotage mode; `payload` carries the target URL.
       return record.payload

@@ -4,6 +4,7 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
+import type { ActionRecord, StateFingerprint } from '../../shared/types.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { refreshAuthToken } from '../utils/authRefresh';
 
@@ -60,6 +61,10 @@ export interface SaveFindingPayload {
   advice?: string;
   stackTrace?: string;
   reproductionSteps?: string[];
+  /** Minimized replayable timeline (with MACRO) — restores Verify Fix under queue-mode save. */
+  reproductionActions?: ActionRecord[];
+  /** Client-state snapshot restored before regression replay. */
+  stateFingerprint?: StateFingerprint;
   timestamp?: string;
   /** Deterministic knowledge-base classification + scenario/step attribution. */
   attribution?: FindingAttribution;

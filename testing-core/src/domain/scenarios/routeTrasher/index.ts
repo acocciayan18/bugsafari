@@ -116,7 +116,22 @@ export const routeTrasher = {
     const recorder = new RouteTrashMetadataRecorder(metadata);
 
     console.log(`[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`);
-    ActiveScenarioTracker.record(describeRouteTrashStart(repetitions, originPath));
+    const trashSummary = describeRouteTrashStart(repetitions, originPath);
+    ActiveScenarioTracker.record(trashSummary);
+    // One re-expandable MACRO for the finding's replay timeline. The history
+    // back/forward sequence is fully deterministic from {repetitions}; a literal
+    // per-nav step would replay as a selector click and reproduce nothing.
+    ActionRecorder.recordStep({
+      actionType: 'MACRO',
+      humanIdentifier: 'route traversal',
+      selector: targetSelector,
+      url: originPath,
+      macro: {
+        scenario: 'RouteTrasher',
+        params: { repetitions },
+        summary: trashSummary,
+      },
+    });
 
     let attempted = 0;
     let completed = 0;
@@ -211,12 +226,6 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_back', backSnap.toUrl);
-          ActionRecorder.recordStep({
-            actionType: 'NAVIGATION',
-            humanIdentifier: 'history back',
-            selector: targetSelector,
-            url: backSnap.toUrl,
-          });
           ActiveScenarioTracker.record(
             describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, backSnap.toUrl),
           );
@@ -232,12 +241,6 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_forward', fwdSnap.toUrl);
-          ActionRecorder.recordStep({
-            actionType: 'NAVIGATION',
-            humanIdentifier: 'history forward',
-            selector: targetSelector,
-            url: fwdSnap.toUrl,
-          });
           ActiveScenarioTracker.record(
             describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, fwdSnap.toUrl),
           );

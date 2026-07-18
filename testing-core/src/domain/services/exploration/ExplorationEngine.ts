@@ -23,6 +23,7 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import type { FindingRepository } from '../../repositories/FindingRepository.js';
 import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { forensicErrorRepository } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { Types, isValidObjectId } from 'mongoose';
@@ -324,6 +325,8 @@ export class ExplorationEngine {
       url: this.activePage?.url() ?? this.targetUrl,
       stackTrace: bug.stackTrace,
       steps: bug.reproductionActions ?? [],
+      reproductionActions: bug.reproductionActions ?? [],
+      stateFingerprint: bug.stateFingerprint,
       reproductionPlaybook: bug.reproductionSteps,
       advice: bug.advice,
       attribution: bug.attribution,
@@ -523,12 +526,13 @@ export class ExplorationEngine {
 
     // Turn verified navigation defects into forensic telemetry + confirmed bugs.
     // type:'NAVIGATION' auto-streams to the live Errors tab via registerConfirmedBug.
-    const reportNavigationDefects = (defects: NavigationDefect[]): void => {
+    const reportNavigationDefects = async (defects: NavigationDefect[]): Promise<void> => {
       for (const defect of defects) {
         const reproduction = ActiveScenarioTracker.flushSnapshot({
           faultUrl: defect.url || lastKnownUrl,
           faultAtMs: Date.now(),
         });
+        const stateFingerprint = this.activePage ? await captureStateFingerprint(this.activePage) : undefined;
         const attribution: FindingAttribution = {
           bugClass: defect.bugClass,
           cwe: defect.cwe,
@@ -557,6 +561,7 @@ export class ExplorationEngine {
           timestamp: new Date(),
           reproductionSteps: reproduction.narrative,
           reproductionActions: reproduction.actions,
+          stateFingerprint,
           attribution,
         });
       }
@@ -580,7 +585,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
-      onBackNavOutcome: (o) => reportNavigationDefects(navigationFinder.observeBackNav(o)),
+      onBackNavOutcome: (o) => void reportNavigationDefects(navigationFinder.observeBackNav(o)),
     });
 
     const actionExecutor = new ActionExecutor({
@@ -651,7 +656,7 @@ export class ExplorationEngine {
       // Phase 3: Track page count when navigating
       this.runtimeMetrics.pageCount++;
       emitter.gateway.emitUrlChanged(url);
-      reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
+      void reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
     };
 
     const handleRequest = (request: Request): void => {
@@ -693,7 +698,7 @@ export class ExplorationEngine {
         if (request.resourceType() !== 'document' || !request.isNavigationRequest()) return;
         if (response.frame() !== page.mainFrame()) return;
         lastMainFrameStatus = { path: normalizeRoutePath(response.url()), status: response.status() };
-        reportNavigationDefects(navigationFinder.observeRedirectHop({
+        void reportNavigationDefects(navigationFinder.observeRedirectHop({
           url: response.url(),
           route: lastMainFrameStatus.path,
           status: lastMainFrameStatus.status,

@@ -66,7 +66,7 @@ export {
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
-import type { FindingAttribution } from '../../shared/types.js';
+import type { FindingAttribution, ReplayMacro } from '../../shared/types.js';
 
 export type BrowserConsoleLevel =
   | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
@@ -115,6 +115,8 @@ export interface ForensicActionStep {
   resultingStateHash: string;
   /** Real execution time of this step in ms (measured in the engine). */
   durationMs?: number;
+  /** Present only on a 'macro' step — the re-expandable stress-scenario descriptor. */
+  macro?: ReplayMacro;
 }
 
 // Full per-run network row (every request, incl. successful) — mirrors live Network tab.

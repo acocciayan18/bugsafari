@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import type { ReplayMacro, StateFingerprint } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 
 export interface ISessionConfig {
@@ -39,6 +40,8 @@ export interface ICaughtBug {
   reproductionSteps?: string[];
   /** Minimized, replayable action timeline for THIS finding — drives per-finding regression replay. */
   actionSteps?: ActionStepTrace[];
+  /** Client-state snapshot restored before replay so cross-page-state faults reproduce. */
+  stateFingerprint?: StateFingerprint;
   /** Deterministic classification + scenario/step attribution (knowledge base) plus verification verdict. */
   attribution?: {
     bugClass: string;
@@ -59,7 +62,7 @@ export interface IForensicTrace {
   caughtBugs: ICaughtBug[];
 }
 
-export type ActionStepActionType = 'click' | 'input' | 'navigation' | 'bypass';
+export type ActionStepActionType = 'click' | 'input' | 'navigation' | 'bypass' | 'macro';
 
 export interface ActionStepTrace {
   stepNumber: number;
@@ -70,6 +73,8 @@ export interface ActionStepTrace {
   resultingStateHash: string;
   /** Real execution time of this step in ms (measured in the executor). */
   durationMs?: number;
+  /** Present only on a 'macro' step — the re-expandable stress-scenario descriptor. */
+  macro?: ReplayMacro;
 }
 
 export interface ISessionMetrics {
@@ -77,6 +82,30 @@ export interface ISessionMetrics {
   totalBugsFound: number;
   bugsByCategory: Record<string, number>;
 }
+
+// Re-expandable stress-scenario descriptor stored on a 'macro' action step.
+const MacroSchemaField = {
+  scenario: { type: String, default: '' },
+  params: {
+    count:       { type: Number, required: false, default: null },
+    width:       { type: Number, required: false, default: null },
+    height:      { type: Number, required: false, default: null },
+    repetitions: { type: Number, required: false, default: null },
+    selectors:   { type: [String], required: false, default: undefined },
+  },
+  summary: { type: String, default: '' },
+};
+
+// Bounded client-state snapshot restored before regression replay.
+const StateFingerprintSchemaField = {
+  localStorage:   { type: Schema.Types.Mixed, default: null },
+  sessionStorage: { type: Schema.Types.Mixed, default: null },
+  cookies: {
+    type: [{ name: String, value: String, domain: String, path: String }],
+    required: false,
+    default: undefined,
+  },
+};
 
 const sessionSchema = new Schema(
   {
@@ -243,11 +272,12 @@ const sessionSchema = new Schema(
             type: [{
               stepNumber:         { type: Number, required: true, min: 1 },
               timestamp:          { type: String, required: true },
-              actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass'] },
+              actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass', 'macro'] },
               selector:           { type: String, required: true, default: '' },
               payloadText:        { type: String, required: false, default: null },
               resultingStateHash: { type: String, required: false, default: '' },
               durationMs:         { type: Number, required: false, default: null },
+              macro:              { type: MacroSchemaField, required: false, default: null },
             }],
             default: [],
           },
@@ -269,6 +299,8 @@ const sessionSchema = new Schema(
             required: false,
             default: null,
           },
+          // Client-state snapshot restored before regression replay (cross-page faults).
+          stateFingerprint: { type: StateFingerprintSchemaField, required: false, default: null },
         }],
       },
       required: false,
@@ -281,18 +313,19 @@ const sessionSchema = new Schema(
         actionType: {
           type: String,
           required: true,
-          enum: ['click', 'input', 'navigation', 'bypass'],
+          enum: ['click', 'input', 'navigation', 'bypass', 'macro'],
         },
         selector:           { type: String, required: true, default: '' },
         payloadText:        { type: String, required: false, default: null },
         resultingStateHash: { type: String, required: false, default: '' },
         durationMs:         { type: Number, required: false, default: null },
+        macro:              { type: MacroSchemaField, required: false, default: null },
       }],
       required: false,
       default: [],
       validate: {
-        validator: (steps: unknown[]) => steps.length <= 20,
-        message: 'actionSteps cannot exceed the 20-step limit.',
+        validator: (steps: unknown[]) => steps.length <= 60,
+        message: 'actionSteps cannot exceed the 60-step limit.',
       },
     },
     // Distinct routes/URLs visited this run — session-global page set for history context.

@@ -5,7 +5,7 @@ import { minimizeActionRecords } from '../../domain/services/forensics/stepMinim
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 
 // Cap the deliberate steps carried into a finding — keep those closest to the fault.
-const MAX_SCENARIO_STEPS = 12;
+const MAX_SCENARIO_STEPS = 40;
 // Cap observed-result lines (crashes, inconsistencies) appended after the steps.
 const MAX_SCENARIO_OBSERVATIONS = 8;
 

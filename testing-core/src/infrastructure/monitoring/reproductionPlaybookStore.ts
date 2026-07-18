@@ -9,7 +9,8 @@ import { narrateActionRecords } from '../../domain/services/forensics/narration.
  */
 export class ReproductionPlaybookStore {
   private static actions: ActionRecord[] = [];
-  private static readonly capacity = 20;
+  // Deep enough to keep a long causal chain reachable by the minimizer (was 20).
+  private static readonly capacity = 60;
   private static resetCounter = 0;
 
   public static reset(): void {
