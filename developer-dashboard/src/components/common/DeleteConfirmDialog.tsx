@@ -43,9 +43,9 @@ export function DeleteConfirmDialog({
       <div className="p-6">
         {/* Header */}
         <div className="mb-4 flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-950/60">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--status-critical-bg)]">
             <svg
-              className="h-5 w-5 text-red-600 dark:text-red-400"
+              className="h-5 w-5 text-[var(--status-critical-fg)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -59,10 +59,10 @@ export function DeleteConfirmDialog({
             </svg>
           </div>
           <div className="flex-1">
-            <h2 id="delete-confirm-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            <h2 id="delete-confirm-title" className="text-lg font-semibold text-[var(--text-primary)]">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{message}</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">{message}</p>
           </div>
         </div>
 

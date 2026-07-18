@@ -19,9 +19,9 @@ function InfiltrationProfileSelectorImpl({
   disabled = false,
 }: InfiltrationProfileSelectorProps) {
   return (
-    <div className="w-full bg-white rounded-lg shadow-md p-3 flex flex-col gap-3">
+    <div className="w-full bg-[var(--surface-panel)] rounded-lg shadow-md p-3 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+        <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
           Infiltration Profile
         </span>
       </div>
@@ -34,7 +34,7 @@ function InfiltrationProfileSelectorImpl({
             <label
               key={option.id}
               title={option.description}
-              className={`flex items-start gap-2 rounded-md border p-2.5 transition-colors duration-200 ease-in-out ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-gray-100'} ${isSelected ? 'border-nova-blue bg-blue-50 ring-1 ring-nova-blue' : 'border-gray-200'}`}
+              className={`flex items-start gap-2 rounded-md border p-2.5 transition-colors duration-200 ease-in-out ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-[var(--surface-hover)]'} ${isSelected ? 'border-[var(--border-strong)] bg-[var(--surface-invert)]' : 'border-[var(--border-hairline)]'}`}
             >
               <input
                 type="radio"
@@ -42,11 +42,11 @@ function InfiltrationProfileSelectorImpl({
                 checked={isSelected}
                 onChange={() => !disabled && onProfileChange(option.id)}
                 disabled={disabled}
-                className="mt-0.5 h-4 w-4 border-gray-300 text-nova-blue focus:ring-nova-blue"
+                className="mt-0.5 h-5 w-5 border-[var(--border-strong)] text-[var(--surface-invert)] focus:ring-[var(--border-focus)]"
               />
               <span className="flex flex-col">
-                <span className="text-xs font-semibold text-gray-700 leading-tight">{option.label}</span>
-                <span className="text-[10px] text-gray-400 leading-tight mt-0.5">{option.description}</span>
+                <span className={`text-xs font-semibold leading-tight ${isSelected ? 'text-[var(--text-oninvert)]' : 'text-[var(--text-secondary)]'}`}>{option.label}</span>
+                <span className={`text-[10px] leading-tight mt-0.5 ${isSelected ? 'text-[var(--text-oninvert)] opacity-80' : 'text-[var(--text-tertiary)]'}`}>{option.description}</span>
               </span>
             </label>
           );

@@ -5,14 +5,17 @@ import type { ForensicActionStep } from '../types';
 
 export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | 'step';
 
-// Tailwind classes for the per-step action-type chip (light + dark).
+// Design-token classes for the per-step action-type chip — light/dark handled
+// entirely by the CSS variables, no dark: variants needed. Kinds are categorical
+// (not severity), so they share the neutral status tone; bypass is genuinely
+// risky and gets the warning tone; step (generic fallback) is the most muted.
 const CHIP_CLASS: Record<StepKind, string> = {
-  navigation: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  click: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  input: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  bypass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  macro: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-  step: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  navigation: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  click: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  input: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  bypass: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  macro: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  step: 'bg-[var(--surface-inset)] text-[var(--text-tertiary)]',
 };
 
 export const chipClass = (kind: StepKind): string => CHIP_CLASS[kind];

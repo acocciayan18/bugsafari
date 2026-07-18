@@ -37,9 +37,9 @@ export default function NetworkTabPanel({
 
   if (deduped.length === 0) {
     return (
-      <div className="text-gray-500 py-4">
-        <div className="text-gray-800 mb-2 font-bold">Network Diagnostics</div>
-        <div className="text-gray-400 italic text-xs leading-relaxed">
+      <div className="text-(--text-secondary) py-4">
+        <div className="text-(--text-primary) mb-2 font-bold">Network Diagnostics</div>
+        <div className="text-(--text-tertiary) italic text-xs leading-relaxed">
           Waiting for network activity...
         </div>
       </div>
@@ -48,7 +48,7 @@ export default function NetworkTabPanel({
 
   return (
     <div className="space-y-3 p-2">
-      <div className="text-gray-800 mb-2 font-bold">Network Diagnostics ({deduped.length})</div>
+      <div className="text-(--text-primary) mb-2 font-bold">Network Diagnostics ({deduped.length})</div>
       {deduped.map(({ event, count }, idx) => {
         const meta = event.meta;
         const statusCode = meta?.statusCode;
@@ -63,43 +63,43 @@ export default function NetworkTabPanel({
         const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
 
         const borderColor = isServerError
-          ? 'border-red-300'
+          ? 'border-[var(--status-critical-border)]'
           : isClientError
-            ? 'border-amber-300'
-            : 'border-gray-300';
+            ? 'border-[var(--status-warning-border)]'
+            : 'border-(--border-hairline)';
         const bgColor = isServerError
-          ? 'bg-red-50'
+          ? 'bg-[var(--status-critical-bg)]'
           : isClientError
-            ? 'bg-amber-50'
-            : 'bg-white';
-        const textColor = isError ? 'text-red-700' : 'text-blue-600';
+            ? 'bg-[var(--status-warning-bg)]'
+            : 'bg-[var(--surface-panel)]';
+        const textColor = isError ? 'text-[var(--status-critical-fg)]' : 'text-[var(--status-stable-fg)]';
 
         return (
           <div
             key={`network-${idx}`}
             className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
           >
-            <div className="px-3 py-2 flex items-center justify-between border-b border-gray-200">
+            <div className="px-3 py-2 flex items-center justify-between border-b border-(--border-hairline)">
               <div className="flex items-center gap-2">
                 <span className={`font-mono text-xs font-bold ${textColor}`}>
                   {method} {statusCode || 'ERR'}
                 </span>
                 {count > 1 && (
-                  <span className="text-[10px] text-gray-500">×{count}</span>
+                  <span className="text-[10px] text-(--text-secondary)">×{count}</span>
                 )}
               </div>
             </div>
-            <div className="px-3 py-2 text-xs font-mono text-gray-700 break-all">
+            <div className="px-3 py-2 text-xs font-mono text-(--text-secondary) break-all">
               {url}
             </div>
             {(message || aiDiagnostics) && (
-              <div className="px-3 py-2 text-[10px] text-gray-500 border-t border-gray-200">
+              <div className="px-3 py-2 text-[10px] text-(--text-secondary) border-t border-(--border-hairline)">
                 {message}
                 <AiDiagnosticCard ai={aiDiagnostics} />
               </div>
             )}
             {reproductionSteps.length > 0 && (
-              <div className="px-3 pb-3 border-t border-gray-200">
+              <div className="px-3 pb-3 border-t border-(--border-hairline)">
                 <ReproductionChecklist steps={reproductionSteps} />
               </div>
             )}

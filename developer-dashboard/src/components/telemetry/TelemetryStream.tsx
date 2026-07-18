@@ -39,13 +39,13 @@ export default function TelemetryStream({
   }, [events]);
 
   return (
-    <div className="w-full max-w-5xl rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_10px_40px_rgba(0,0,0,0.04)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-3 sm:px-5">
+    <div className="w-full max-w-5xl rounded-2xl border border-(--border-hairline) bg-[var(--surface-panel)] shadow-[0_10px_40px_rgba(0,0,0,0.04)]">
+      <div className="flex items-center justify-between gap-3 border-b border-(--border-hairline) px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#111827] text-xs font-bold text-white">TL</span>
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-[var(--surface-invert)] text-xs font-bold text-[var(--text-oninvert)]">TL</span>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-[#111827]">Telemetry timeline</div>
-            <div className="text-xs text-[#6B7280]">Process steps + warnings/errors</div>
+            <div className="text-sm font-semibold text-(--text-primary)">Telemetry timeline</div>
+            <div className="text-xs text-(--text-secondary)">Process steps + warnings/errors</div>
           </div>
         </div>
 
@@ -58,14 +58,14 @@ export default function TelemetryStream({
                 onClick={onPauseResume}
                 className={
                   !isConnected
-                    ? 'cursor-not-allowed rounded-lg bg-[#F3F4F6] px-3 py-1 font-semibold text-[#9CA3AF]'
-                    : 'rounded-lg bg-[#111827] px-3 py-1 font-semibold text-white hover:bg-[#2F2F2F]'
+                    ? 'cursor-not-allowed rounded-lg bg-[var(--surface-inset)] px-3 py-1 font-semibold text-(--text-disabled)'
+                    : 'rounded-lg bg-[var(--surface-invert)] px-3 py-1 font-semibold text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)] active:bg-[var(--surface-invert-active)]'
                 }
                 aria-label={isPaused ? 'Resume exploration' : 'Pause exploration'}
                 title={isPaused ? 'Resume exploration' : 'Pause exploration'}
               >
                 <span className="inline-flex items-center gap-2">
-                  {isPaused ? <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Pause className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
+                  {isPaused ? <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" /> : <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
                   {isPaused ? 'Resume' : 'Pause'}
                 </span>
               </button>
@@ -76,32 +76,32 @@ export default function TelemetryStream({
                 onClick={onStop}
                 className={
                   !isConnected
-                    ? 'cursor-not-allowed rounded-lg bg-[#F3F4F6] px-3 py-1 font-semibold text-[#9CA3AF]'
-                    : 'rounded-lg bg-[#EF4444] px-3 py-1 font-semibold text-white hover:bg-[#DC2626]'
+                    ? 'cursor-not-allowed rounded-lg bg-[var(--surface-inset)] px-3 py-1 font-semibold text-(--text-disabled)'
+                    : 'rounded-lg bg-[var(--status-critical-fg)] px-3 py-1 font-semibold text-[var(--text-oninvert)] hover:opacity-90 active:opacity-80'
                 }
                 aria-label="Stop exploration"
                 title="Stop exploration"
               >
                 <span className="inline-flex items-center gap-2">
-                  <Square className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                  <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
                 </span>
               </button>
             </>
           ) : null}
 
-          <div className="text-xs text-[#6B7280]">{events.length} events</div>
+          <div className="text-xs text-(--text-secondary)">{events.length} events</div>
         </div>
       </div>
 
       <div className="max-h-[360px] overflow-auto px-3 py-3 sm:px-5">
         {normalized.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] text-sm font-semibold text-[#111827]">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-(--border-hairline) bg-[var(--surface-inset)] text-sm font-semibold text-(--text-primary)">
               —
             </div>
-            <div className="text-sm font-medium text-[#374151]">No telemetry yet</div>
-            <div className="max-w-md text-xs leading-5 text-[#6B7280]">
+            <div className="text-sm font-medium text-(--text-primary)">No telemetry yet</div>
+            <div className="max-w-md text-xs leading-5 text-(--text-tertiary)">
               Launch a test to start streaming actions, heuristic scores, and exceptions.
             </div>
           </div>
@@ -132,7 +132,7 @@ export default function TelemetryStream({
                 return (
                   <li
                     key={`${event.timestamp}-${idx}`}
-                    className="rounded-xl border border-[#EEF2F7] bg-[#F9FAFB] px-3 py-2"
+                    className="rounded-xl border border-(--border-hairline) bg-[var(--surface-inset)] px-3 py-2"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -140,9 +140,9 @@ export default function TelemetryStream({
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.color}`}>
                             {pill.label}
                           </span>
-                          <div className="truncate text-xs font-semibold text-[#111827]">{title}</div>
+                          <div className="truncate text-xs font-semibold text-(--text-primary)">{title}</div>
                         </div>
-                        <div className="mt-1 line-clamp-2 text-[11px] text-[#6B7280]">{sub}</div>
+                        <div className="mt-1 line-clamp-2 text-[11px] text-(--text-tertiary)">{sub}</div>
                       </div>
 {/* Timestamp display removed for simplified console matching */}
                       {/* <div className="shrink-0 text-[11px] text-[#9CA3AF]">
@@ -182,7 +182,9 @@ function describeEvent(event: TelemetryEvent): DescribeResult {
     return {
       pill: {
         label: isFatal ? 'ERROR' : 'WARNING',
-        color: isFatal ? 'bg-[#EF4444] text-white' : 'bg-[#F59E0B] text-white',
+        color: isFatal
+          ? 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]'
+          : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
       },
       title: event.meta.message ? event.meta.message : 'Exception',
       sub,
@@ -191,7 +193,7 @@ function describeEvent(event: TelemetryEvent): DescribeResult {
 
   if (event.type === 'HEURISTIC_SCORE') {
     return {
-      pill: { label: 'STEP', color: 'bg-[#10A37F] text-white' },
+      pill: { label: 'STEP', color: 'bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)]' },
       title: event.meta.message ? event.meta.message : `Score update`,
       sub: event.meta.selector ? `target: ${event.meta.selector}` : event.meta.actionExecuted ?? 'heuristic',
     };
@@ -199,7 +201,7 @@ function describeEvent(event: TelemetryEvent): DescribeResult {
 
   // ACTION / default
   return {
-    pill: { label: 'STEP', color: 'bg-[#111827] text-white' },
+    pill: { label: 'STEP', color: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]' },
     title: event.meta.message ?? event.meta.actionExecuted ?? event.type,
     sub: event.meta.actionExecuted ? event.meta.actionExecuted : 'engine action',
   };

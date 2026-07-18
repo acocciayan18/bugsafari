@@ -161,13 +161,13 @@ export class ExplorationLoop {
       // TIMEBOX CHECK - CRITICAL: Must check at each iteration
       // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
       // ─────────────────────────────────────────────────────────────
-      // if (this.deps.checkTimebox()) {
-      //   return {
-      //     completed: false,
-      //     reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
-      //     outcome: 'timebox',
-      //   };
-      // }
+      if (this.deps.checkTimebox()) {
+        return {
+          completed: false,
+          reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
+          outcome: 'timebox',
+        };
+      }
 
       const pauseGate = await this.waitWhilePaused();
       if (pauseGate.kind === 'return') return pauseGate.result;

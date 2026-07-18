@@ -73,15 +73,15 @@ function formatDate(value?: string): string {
 }
 
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
-  if (status === 'CRASHED') return { text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-red-200 dark:border-red-900' };
-  if (status === 'HALTED') return { text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-900' };
-  return { text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500', bg: 'bg-green-50 dark:bg-green-950/30', border: 'border-green-200 dark:border-green-900' };
+  if (status === 'CRASHED') return { text: 'text-[var(--status-critical-fg)]', dot: 'bg-[var(--status-critical-fg)]', bg: 'bg-[var(--status-critical-bg)]', border: 'border-[var(--status-critical-border)]' };
+  if (status === 'HALTED') return { text: 'text-[var(--status-warning-fg)]', dot: 'bg-[var(--status-warning-fg)]', bg: 'bg-[var(--status-warning-bg)]', border: 'border-[var(--status-warning-border)]' };
+  return { text: 'text-[var(--status-stable-fg)]', dot: 'bg-[var(--status-stable-fg)]', bg: 'bg-[var(--status-stable-bg)]', border: 'border-[var(--status-stable-border)]' };
 }
 
 function riskTheme(score: number): string {
-  if (score >= 70) return 'text-red-600 dark:text-red-400';
-  if (score >= 40) return 'text-amber-600 dark:text-amber-400';
-  return 'text-green-600 dark:text-green-400';
+  if (score >= 70) return 'text-[var(--status-critical-fg)]';
+  if (score >= 40) return 'text-[var(--status-warning-fg)]';
+  return 'text-[var(--status-stable-fg)]';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -89,10 +89,10 @@ function riskTheme(score: number): string {
 // is the at-a-glance context every reader needs immediately).
 // ─────────────────────────────────────────────────────────────
 
-function StatBlock({ label, value, valueClassName = 'text-gray-900 dark:text-gray-100' }: { label: string; value: ReactNode; valueClassName?: string }) {
+function StatBlock({ label, value, valueClassName = 'text-[var(--text-primary)]' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-caption font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="text-caption font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{label}</div>
       <div className={`mt-0.5 text-sm font-bold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
@@ -118,8 +118,8 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
-          <div className="mt-1 truncate text-sm font-medium text-gray-700 dark:text-gray-300" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mt-1 truncate text-sm font-medium text-[var(--text-secondary)]" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
             <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
@@ -127,29 +127,29 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-gray-200/70 pt-4 sm:grid-cols-3 lg:grid-cols-6 dark:border-gray-700/70">
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[var(--border-hairline)] pt-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatBlock label="Duration" value={formatDuration(report.duration)} />
         <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
-        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'} />
+        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-[var(--status-critical-fg)]' : 'text-[var(--status-stable-fg)]'} />
         <StatBlock label="Pages" value={pagesVisited} />
         <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
         <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
       </div>
 
       {routes.length > 0 && (
-        <div className="mt-4 border-t border-gray-200/70 pt-3 dark:border-gray-700/70">
+        <div className="mt-4 border-t border-[var(--border-hairline)] pt-3">
           <button
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
-            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
           >
             <span>{showRoutes ? '▼' : '▶'}</span>
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-gray-600 dark:text-gray-400">
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-[var(--text-secondary)]">
               {routes.map((route, idx) => (
-                <li key={idx} className="truncate border-b border-gray-100 py-1 last:border-0 dark:border-gray-800" title={route}>{route}</li>
+                <li key={idx} className="truncate border-b border-[var(--border-hairline)] py-1 last:border-0" title={route}>{route}</li>
               ))}
             </ul>
           )}
@@ -169,26 +169,26 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
   if (!aiAnalysis || (!aiAnalysis.rootCause && !aiAnalysis.recommendations?.length)) return null;
 
   return (
-    <section className="rounded-lg border border-blue-100 bg-blue-50 p-5 dark:bg-blue-950/20 dark:border-blue-900">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+    <section className="rounded-lg border border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] p-5">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--status-neutral-fg)]">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+          <span className="rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--status-neutral-fg)]">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
       </div>
       {aiAnalysis.rootCause && (
-        <p className="mt-3 text-sm leading-relaxed text-gray-900 dark:text-gray-100">{aiAnalysis.rootCause}</p>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--text-primary)]">{aiAnalysis.rootCause}</p>
       )}
       {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {aiAnalysis.recommendations.map((recommendation, idx) => (
-            <li key={idx} className="flex gap-2 text-xs text-gray-700 dark:text-gray-300">
-              <span className="text-blue-500 dark:text-blue-400">→</span>
+            <li key={idx} className="flex gap-2 text-xs text-[var(--text-secondary)]">
+              <span className="text-[var(--status-neutral-fg)]">→</span>
               <span>{recommendation}</span>
             </li>
           ))}
@@ -216,20 +216,20 @@ function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
         return (
           <li
             key={step.stepNumber}
-            className="flex items-start gap-2 rounded border border-gray-200 bg-white px-2.5 py-1.5 dark:border-gray-700 dark:bg-slate-900"
+            className="flex items-start gap-2 rounded border border-[var(--border-hairline)] bg-[var(--surface-panel)] px-2.5 py-1.5"
           >
-            <span className="mt-px text-[11px] font-mono text-gray-400 dark:text-gray-500">{step.stepNumber}</span>
+            <span className="mt-px text-[11px] font-mono text-[var(--text-tertiary)]">{step.stepNumber}</span>
             <span className={`mt-px rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
               {chipLabel(kind)}
             </span>
             <div className="min-w-0">
-              <div className="text-xs leading-relaxed text-gray-900 break-words dark:text-gray-100">{instruction}</div>
+              <div className="text-xs leading-relaxed text-[var(--text-primary)] break-words">{instruction}</div>
               {step.payloadText && (
-                <code className="mt-1 inline-block max-w-full break-words rounded bg-red-50 px-1.5 py-0.5 font-mono text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                <code className="mt-1 inline-block max-w-full break-words rounded bg-[var(--status-critical-bg)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--status-critical-fg)]">
                   {step.payloadText}
                 </code>
               )}
-              <div className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+              <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
                 {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
                 {formatDate(step.timestamp)}
               </div>
@@ -298,52 +298,52 @@ interface VerdictMeta {
 const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
   RESOLVED: {
     label: 'Resolved',
-    badge: 'bg-green-600 text-white hover:bg-green-700',
-    chip: 'bg-green-100 text-green-800 border border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800',
-    dot: 'bg-green-500',
-    cardBorder: 'border-green-200 dark:border-green-800',
-    cardHeaderBg: 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800',
-    cardTitle: 'text-green-900 dark:text-green-300',
-    cardSub: 'text-green-700 dark:text-green-400',
-    numberBg: 'bg-green-600',
-    modalBar: 'bg-green-600',
+    badge: 'bg-[var(--status-stable-fg)] text-[var(--text-oninvert)] hover:opacity-90',
+    chip: 'bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)] border border-[var(--status-stable-border)]',
+    dot: 'bg-[var(--status-stable-fg)]',
+    cardBorder: 'border-[var(--status-stable-border)]',
+    cardHeaderBg: 'bg-[var(--status-stable-bg)] border-[var(--status-stable-border)]',
+    cardTitle: 'text-[var(--status-stable-fg)]',
+    cardSub: 'text-[var(--status-stable-fg)]',
+    numberBg: 'bg-[var(--status-stable-fg)]',
+    modalBar: 'bg-[var(--status-stable-fg)]',
     icon: checkIcon,
   },
   STILL_ACTIVE: {
     label: 'Still Active',
-    badge: 'bg-red-600 text-white hover:bg-red-700',
-    chip: 'bg-red-100 text-red-800 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
-    dot: 'bg-red-500',
-    cardBorder: 'border-red-300 dark:border-red-800',
-    cardHeaderBg: 'bg-red-50 border-red-300 dark:bg-red-950/30 dark:border-red-800',
-    cardTitle: 'text-red-900 dark:text-red-300',
-    cardSub: 'text-red-700 dark:text-red-400',
-    numberBg: 'bg-red-600',
-    modalBar: 'bg-red-600',
+    badge: 'bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] hover:opacity-90',
+    chip: 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)] border border-[var(--status-critical-border)]',
+    dot: 'bg-[var(--status-critical-fg)]',
+    cardBorder: 'border-[var(--status-critical-border)]',
+    cardHeaderBg: 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)]',
+    cardTitle: 'text-[var(--status-critical-fg)]',
+    cardSub: 'text-[var(--status-critical-fg)]',
+    numberBg: 'bg-[var(--status-critical-fg)]',
+    modalBar: 'bg-[var(--status-critical-fg)]',
     icon: alertIcon,
   },
   INCONCLUSIVE: {
     label: 'Inconclusive',
-    badge: 'bg-amber-500 text-white hover:bg-amber-600',
-    chip: 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
-    dot: 'bg-amber-500',
-    cardBorder: 'border-amber-200 dark:border-amber-800',
-    cardHeaderBg: 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800',
-    cardTitle: 'text-amber-900 dark:text-amber-300',
-    cardSub: 'text-amber-700 dark:text-amber-400',
-    numberBg: 'bg-amber-500',
-    modalBar: 'bg-amber-500',
+    badge: 'bg-[var(--status-warning-fg)] text-[var(--text-oninvert)] hover:opacity-90',
+    chip: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)] border border-[var(--status-warning-border)]',
+    dot: 'bg-[var(--status-warning-fg)]',
+    cardBorder: 'border-[var(--status-warning-border)]',
+    cardHeaderBg: 'bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]',
+    cardTitle: 'text-[var(--status-warning-fg)]',
+    cardSub: 'text-[var(--status-warning-fg)]',
+    numberBg: 'bg-[var(--status-warning-fg)]',
+    modalBar: 'bg-[var(--status-warning-fg)]',
     icon: questionIcon,
   },
 };
 
-// Base (unverified) finding theme — the existing red "confirmed bug" look.
+// Base (unverified) finding theme — the existing "confirmed bug" look, mapped to critical status tokens.
 const BASE_CARD = {
-  cardBorder: 'border-red-200 dark:border-red-900',
-  cardHeaderBg: 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900',
-  cardTitle: 'text-red-900 dark:text-red-300',
-  cardSub: 'text-red-700 dark:text-red-400',
-  numberBg: 'bg-red-600',
+  cardBorder: 'border-[var(--status-critical-border)]',
+  cardHeaderBg: 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)]',
+  cardTitle: 'text-[var(--status-critical-fg)]',
+  cardSub: 'text-[var(--status-critical-fg)]',
+  numberBg: 'bg-[var(--status-critical-fg)]',
 };
 
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
@@ -373,10 +373,10 @@ function VerifyFixControl({
   if (status.state === 'running') {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+        className="inline-flex items-center gap-2 rounded-md bg-[var(--surface-inset)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]"
         aria-live="polite"
       >
-        <svg className="h-3.5 w-3.5 animate-spin text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none">
+        <svg className="h-3.5 w-3.5 animate-spin text-[var(--text-tertiary)]" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
@@ -406,7 +406,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
@@ -425,27 +425,27 @@ function VerifyFixControl({
 
 function ResultStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-bold text-gray-900 dark:text-gray-100" title={value}>{value}</div>
+    <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-3 py-2">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-bold text-[var(--text-primary)]" title={value}>{value}</div>
     </div>
   );
 }
 
 function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
-    <li className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/30">
+    <li className="rounded-md border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+        <span className="rounded bg-[var(--status-critical-fg)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--text-oninvert)]">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
-          <span className="font-mono text-[11px] font-semibold text-red-700 dark:text-red-400">HTTP {signal.statusCode}</span>
+          <span className="font-mono text-[11px] font-semibold text-[var(--status-critical-fg)]">HTTP {signal.statusCode}</span>
         )}
       </div>
-      <div className="mt-1 break-words text-xs text-gray-800 dark:text-gray-200">{signal.message}</div>
+      <div className="mt-1 break-words text-xs text-[var(--text-primary)]">{signal.message}</div>
       {signal.url && (
-        <div className="mt-1 truncate font-mono text-[10px] text-gray-500 dark:text-gray-400" title={signal.url}>{signal.url}</div>
+        <div className="mt-1 truncate font-mono text-[10px] text-[var(--text-secondary)]" title={signal.url}>{signal.url}</div>
       )}
     </li>
   );
@@ -466,7 +466,7 @@ function VerificationResultModal({
   return (
     <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-lg">
       {/* Accent header keyed to the verdict tone */}
-      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-white ${meta.modalBar}`}>
+      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-[var(--text-oninvert)] ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
@@ -474,8 +474,8 @@ function VerificationResultModal({
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto bg-white px-5 py-4 dark:bg-nova-dark">
-        <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">{result.summary}</p>
+      <div className="max-h-[70vh] overflow-y-auto bg-[var(--surface-panel)] px-5 py-4">
+        <p className="text-sm leading-relaxed text-[var(--text-primary)]">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
@@ -485,7 +485,7 @@ function VerificationResultModal({
 
         {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
               Reproduced Signals ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -497,24 +497,24 @@ function VerificationResultModal({
         )}
 
         {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">
+          <div className="mt-4 rounded-md border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] p-3 text-xs text-[var(--status-stable-fg)]">
             The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <div className="mt-4 rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-fg)]">
             {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
           </div>
         )}
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-gray-200 bg-white px-5 py-3 dark:border-gray-700 dark:bg-nova-dark">
+      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-[var(--border-hairline)] bg-[var(--surface-panel)] px-5 py-3">
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
@@ -524,7 +524,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+          className="rounded-md bg-[var(--surface-invert)] px-3 py-1.5 text-xs font-semibold text-[var(--text-oninvert)] transition-colors hover:bg-[var(--surface-invert-hover)]"
         >
           Close
         </button>
@@ -577,11 +577,11 @@ function FindingCard({
   }, [settled]);
 
   return (
-    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-white shadow-sm dark:bg-slate-900`}>
+    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-[var(--surface-panel)] shadow-sm`}>
       {/* Header */}
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-white`}>
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-[var(--text-oninvert)]`}>
             {index}
           </div>
           <div className="min-w-0">
@@ -590,7 +590,7 @@ function FindingCard({
               {occurrences > 1 && (
                 <span
                   title={`This fault occurred ${occurrences} times this session`}
-                  className="inline-flex shrink-0 items-center rounded-full bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-white"
+                  className="inline-flex shrink-0 items-center rounded-full bg-[var(--surface-invert)] px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-[var(--text-oninvert)]"
                 >
                   ×{occurrences}
                 </span>
@@ -625,17 +625,17 @@ function FindingCard({
       {/* Message / Selector / Payload grid */}
       <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Message</div>
-          <div className="mt-0.5 text-sm text-gray-800 dark:text-gray-200">{bug.message || 'No details provided'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Message</div>
+          <div className="mt-0.5 text-sm text-[var(--text-primary)]">{bug.message || 'No details provided'}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-xs text-gray-700 dark:text-gray-300" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Selector</div>
+          <div className="mt-0.5 truncate font-mono text-xs text-[var(--text-secondary)]" title={bug.selector}>{bug.selector || 'N/A'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
-            <div className="text-caption font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-gray-700 dark:text-gray-300" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+            <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Payload Used</div>
+            <div className="mt-0.5 truncate font-mono text-xs text-[var(--text-secondary)]" title={bug.payloadUsed}>{bug.payloadUsed}</div>
           </div>
         )}
       </div>
@@ -647,7 +647,7 @@ function FindingCard({
       <div className="px-4 pt-3">
         {bug.actionSteps && bug.actionSteps.length > 0 ? (
           <div>
-            <div className="mb-2 text-caption font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">
               Reproduction Trace ({bug.actionSteps.length} steps)
             </div>
             <ActionStepList steps={bug.actionSteps} />
@@ -656,7 +656,7 @@ function FindingCard({
         ) : bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
           <ReproductionChecklist steps={bug.reproductionSteps} />
         ) : (
-          <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+          <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-3 text-xs italic text-[var(--text-tertiary)]">
             No deterministic reproduction steps were recorded for this fault.
           </div>
         )}
@@ -664,7 +664,7 @@ function FindingCard({
 
       {/* Suggested fix */}
       <div className="px-4 pt-3 pb-4">
-        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Suggested Fix</div>
+        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">Suggested Fix</div>
         <SuggestedFixBlock advice={bug.advice} />
       </div>
 
@@ -696,10 +696,10 @@ function FindingCard({
 
 function CleanRunCard() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-6 py-10 text-center dark:border-green-900 dark:bg-green-950/20">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] px-6 py-10 text-center">
       <span className="text-2xl">✅</span>
-      <div className="text-sm font-semibold text-green-800 dark:text-green-300">No findings were recorded for this session</div>
-      <div className="text-xs text-green-700 dark:text-green-400">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-sm font-semibold text-[var(--status-stable-fg)]">No findings were recorded for this session</div>
+      <div className="text-xs text-[var(--status-stable-fg)]">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
@@ -726,7 +726,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 font-mono text-[10px] leading-none text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+    <span className="ml-1.5 rounded-full bg-[var(--surface-inset)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--text-secondary)]">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -739,8 +739,8 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
       onClick={onClick}
       className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
         active
-          ? 'border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100'
-          : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+          ? 'border-[var(--border-strong)] text-[var(--text-primary)]'
+          : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
       }`}
     >
       {label}
@@ -751,7 +751,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
 
 function EmptyTab({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-8 text-center text-xs italic text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+    <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-4 py-8 text-center text-xs italic text-[var(--text-tertiary)]">
       {message}
     </div>
   );
@@ -760,9 +760,9 @@ function EmptyTab({ message }: { message: string }) {
 // Full network log — every request (incl. successful), mirroring the live Network tab.
 function statusTint(row: ForensicNetworkLog): { border: string; bg: string; status: string } {
   const code = row.statusCode ?? 0;
-  if (!row.ok || code >= 500) return { border: 'border-red-200 dark:border-red-900', bg: 'bg-red-50 dark:bg-red-950/30', status: 'text-red-700 dark:text-red-400' };
-  if (code >= 400) return { border: 'border-amber-200 dark:border-amber-900', bg: 'bg-amber-50 dark:bg-amber-950/30', status: 'text-amber-700 dark:text-amber-400' };
-  return { border: 'border-gray-200 dark:border-gray-700', bg: 'bg-white dark:bg-slate-900', status: 'text-green-700 dark:text-green-400' };
+  if (!row.ok || code >= 500) return { border: 'border-[var(--status-critical-border)]', bg: 'bg-[var(--status-critical-bg)]', status: 'text-[var(--status-critical-fg)]' };
+  if (code >= 400) return { border: 'border-[var(--status-warning-border)]', bg: 'bg-[var(--status-warning-bg)]', status: 'text-[var(--status-warning-fg)]' };
+  return { border: 'border-[var(--border-hairline)]', bg: 'bg-[var(--surface-panel)]', status: 'text-[var(--status-stable-fg)]' };
 }
 
 function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
@@ -774,17 +774,17 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
         return (
           <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-white">{row.method}</span>
+              <span className="rounded bg-[var(--surface-invert)] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-[var(--text-oninvert)]">{row.method}</span>
               <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">{row.resourceType}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">×{row.repeatCount}</span>
+                <span className="font-mono text-[10px] text-[var(--text-secondary)]">×{row.repeatCount}</span>
               )}
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-gray-600 dark:text-gray-400" title={row.url}>{row.url}</div>
-            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-gray-800 dark:text-gray-200">{row.message}</div>}
+            <div className="mt-1 truncate font-mono text-[11px] text-[var(--text-secondary)]" title={row.url}>{row.url}</div>
+            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-[var(--text-primary)]">{row.message}</div>}
           </li>
         );
       })}
@@ -793,13 +793,13 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
 }
 
 const CONSOLE_LEVEL_STYLES: Record<string, string> = {
-  error: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300',
-  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
-  info: 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300',
-  debug: 'bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300',
-  trace: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  notice: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  log: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  error: 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
+  warning: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  info: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  debug: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  trace: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
+  notice: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
+  log: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
 };
 
 // Full console log — every level, mirroring the live Console tab.
@@ -808,14 +808,14 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {rows.map((row, i) => (
-        <li key={i} className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-900">
+        <li key={i} className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-panel)] p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
-            {row.url && <span className="truncate font-mono text-[10px] text-gray-400 dark:text-gray-500" title={row.url}>{row.url}</span>}
+            {row.url && <span className="truncate font-mono text-[10px] text-[var(--text-tertiary)]" title={row.url}>{row.url}</span>}
           </div>
-          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-gray-800 dark:text-gray-200">{row.message}</div>}
+          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-[var(--text-primary)]">{row.message}</div>}
           {row.stackTrace && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 font-mono text-[10px] leading-relaxed text-gray-200">{row.stackTrace}</pre>
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-[var(--surface-inset)] p-2 font-mono text-[10px] leading-relaxed text-[var(--text-primary)]">{row.stackTrace}</pre>
           )}
         </li>
       ))}
@@ -831,18 +831,18 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const timelineText = actionStepsToMarkdown(steps);
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-slate-900">
+    <section className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)]">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]"
       >
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-xs text-[var(--text-tertiary)]">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
       </button>
       {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-4 dark:border-gray-700">
+        <div className="border-t border-[var(--border-hairline)] px-4 py-4">
           <div className="mb-3 flex justify-end">
             <CopyButton text={timelineText} label="Action Timeline" />
           </div>
@@ -922,10 +922,10 @@ export default function ForensicReport() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-white dark:bg-slate-900">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--surface-panel)]">
         <div className="text-center">
-          <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">Loading forensic report…</div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Fetching the latest session details from the backend.</div>
+          <div className="text-sm font-semibold text-[var(--text-secondary)]">Loading forensic report…</div>
+          <div className="mt-2 text-xs text-[var(--text-tertiary)]">Fetching the latest session details from the backend.</div>
         </div>
       </div>
     );
@@ -933,29 +933,29 @@ export default function ForensicReport() {
 
   if (error || !report) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-white px-6 dark:bg-slate-900">
+      <div className="flex h-full w-full items-center justify-center bg-[var(--surface-panel)] px-6">
         <div className="max-w-md text-center">
-          <div className="text-sm font-semibold text-red-600 dark:text-red-400">Failed to load report</div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{error || 'No report data was returned for this session.'}</div>
+          <div className="text-sm font-semibold text-[var(--status-critical-fg)]">Failed to load report</div>
+          <div className="mt-2 text-xs text-[var(--text-tertiary)]">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-gray-100 dark:bg-gray-900">
+    <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-slate-900">
+      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--surface-panel)] px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-gray-900 dark:text-gray-100">BUGSAFARI</span>
-          <span className="mx-3 text-gray-400 dark:text-gray-600">/</span>
-          <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">FORENSIC REPORT</span>
+          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">BUGSAFARI</span>
+          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
+          <span className="text-sm font-semibold text-[var(--text-secondary)]">FORENSIC REPORT</span>
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           Back to History
@@ -971,7 +971,7 @@ export default function ForensicReport() {
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
-            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-gray-200 dark:border-gray-700">
+            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-[var(--border-hairline)]">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
               <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
               <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
@@ -1005,9 +1005,9 @@ export default function ForensicReport() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-slate-900">
+      <footer className="border-t border-[var(--border-hairline)] bg-[var(--surface-panel)] px-6 py-4">
         <div className="text-center">
-          <span className="font-mono text-xs text-gray-400 dark:text-gray-600">END OF FORENSIC REPORT</span>
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>

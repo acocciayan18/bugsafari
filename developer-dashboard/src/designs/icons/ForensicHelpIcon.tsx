@@ -53,7 +53,7 @@ function AccordionSection({ title, isOpen, onToggle, children }: AccordionSectio
                 aria-expanded={isOpen}
             >
                 <span>{title}</span>
-                <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} strokeWidth={1.75} aria-hidden="true" />
             </button>
             {isOpen && <div className="px-3 pb-3">{children}</div>}
         </div>
@@ -164,7 +164,7 @@ export function ForensicHelpIcon() {
                 aria-expanded={isOpen}
                 title="Forensic Help - What does this mean?"
             >
-                <CircleHelp className="h-4 w-4 text-gray-600" strokeWidth={1.75} aria-hidden="true" />
+                <CircleHelp className="h-5 w-5 text-gray-600" strokeWidth={1.75} aria-hidden="true" />
             </button>
 
             {/* Dropdown menu */}

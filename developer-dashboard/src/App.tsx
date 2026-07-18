@@ -126,7 +126,7 @@ function AuthAppContent() {
               activeView={activeView}
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              outerClassName="flex h-screen w-screen bg-white overflow-hidden"
+              outerClassName="flex h-screen w-screen bg-[var(--surface-app)] overflow-hidden"
             >
               {/* Purified Viewport pipeline: Direct layout rendering without nested wrapper container layers */}
               <div className="flex flex-col flex-1 min-h-0">

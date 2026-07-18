@@ -182,10 +182,10 @@ export default function LiveFeed({
   }, [renderFrame, useBinaryStream]);
 
   return (
-    <div className="flex flex-col w-full h-full overflow-hidden bg-white shadow-md rounded-md border border-gray-200">
+    <div className="flex flex-col w-full h-full overflow-hidden bg-[var(--surface-panel)] shadow-md rounded-md border border-[var(--border-hairline)]">
 
       {/* BROWSER CHROME - Real browser look with traffic lights */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2 shrink-0 rounded-t-md">
+      <div className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 py-2 shrink-0 rounded-t-md">
         {/* LEFT: Browser traffic light buttons */}
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-red-400"></span>
@@ -194,21 +194,21 @@ export default function LiveFeed({
         </div>
 
         {/* CENTER: URL display */}
-        <div className="flex-1 mx-4 bg-gray-50 rounded-md px-3 py-1 text-xs text-gray-600 truncate shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex-1 mx-4 bg-[var(--surface-app)] rounded-md px-3 py-1 text-xs text-[var(--text-secondary)] truncate shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
           {displayUrl}
         </div>
 
         {/* RIGHT: Status indicator */}
         <div className="flex items-center gap-2">
           {isQueued && (
-            <span className="flex items-center gap-1.5 text-xs font-mono text-indigo-600">
-              <span className="h-2 w-2 bg-indigo-500 rounded-full animate-pulse"></span>
+            <span className="flex items-center gap-1.5 text-xs font-mono text-[var(--status-neutral-fg)]">
+              <span className="h-2 w-2 bg-[var(--status-neutral-fg)] rounded-full animate-pulse"></span>
               QUEUED
             </span>
           )}
-          
+
           {!isQueued && !isTestRunning && !useBinaryStream && (
-            <span className="text-xs text-gray-400">Ready</span>
+            <span className="text-xs text-[var(--text-tertiary)]">Ready</span>
           )}
         </div>
       </div>
@@ -216,15 +216,15 @@ export default function LiveFeed({
 {/* CANVAS CONTAINER - White Industrial */}
       <div
         ref={containerRef}
-        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-white overflow-hidden p-0 relative"
+        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--surface-panel)] overflow-hidden p-0 relative"
       >
         {/* IDLE STATE */}
         {isIdle && (
           <div
-            className="absolute flex items-center justify-center z-10 bg-white"
+            className="absolute flex items-center justify-center z-10 bg-[var(--surface-panel)]"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
               ENTER TARGET URL TO INITIATE
             </p>
           </div>
@@ -233,11 +233,11 @@ export default function LiveFeed({
         {/* QUEUED STANDBY STATE — run parked behind the worker fleet; no stream yet. */}
         {isQueued && (
           <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-white"
+            className="absolute flex flex-col items-center justify-center z-10 bg-[var(--surface-panel)]"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-r-transparent"></span>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
+            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-[var(--status-neutral-fg)] border-r-transparent"></span>
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
               QUEUED — AWAITING WORKER FLEET
             </p>
           </div>
@@ -246,15 +246,15 @@ export default function LiveFeed({
         {/* INITIALIZING STATE */}
         {isInitializingScreen && (
           <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-white"
+            className="absolute flex flex-col items-center justify-center z-10 bg-[var(--surface-panel)]"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <div className="mb-4 flex items-center justify-center gap-1">
-              <span className="h-2 w-2 bg-black animate-pulse"></span>
-              <span className="h-2 w-2 bg-black animate-pulse" style={{ animationDelay: '150ms' }}></span>
-              <span className="h-2 w-2 bg-black animate-pulse" style={{ animationDelay: '300ms' }}></span>
+              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse"></span>
+              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '150ms' }}></span>
+              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '300ms' }}></span>
             </div>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
               ESTABLISHING TELEMETRY STREAM
             </p>
           </div>
@@ -263,10 +263,10 @@ export default function LiveFeed({
         {/* COMPLETED STATE */}
         {isCompleted && (
           <div
-            className="absolute flex items-center justify-center z-10 bg-white"
+            className="absolute flex items-center justify-center z-10 bg-[var(--surface-panel)]"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-black">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
               EXPLORATION COMPLETE
             </p>
           </div>

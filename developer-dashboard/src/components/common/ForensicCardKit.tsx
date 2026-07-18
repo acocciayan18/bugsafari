@@ -34,7 +34,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-gray-100 active:scale-95 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-[var(--surface-hover)] active:scale-95 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       title={`Copy ${label || 'content'} to clipboard`}
     >
       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -66,15 +66,15 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-gray-700 hover:bg-gray-100 transition-colors text-xs font-semibold border-b border-gray-200 dark:text-gray-300 dark:hover:bg-gray-800 dark:border-gray-700"
+        className="w-full flex items-center gap-2 px-4 py-3 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors text-xs font-semibold border-b border-[var(--border-hairline)]"
       >
         <span className="text-sm">{isExpanded ? '▼' : '▶'}</span>
         <span>{title}</span>
         <span className="text-[10px] opacity-60 ml-auto">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
-        <div className={`px-4 py-3 bg-gray-100 max-h-96 overflow-y-auto border border-gray-200 border-t-0 dark:bg-gray-800 dark:border-gray-700 ${className}`}>
-          <pre className="text-xs font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:text-gray-200 dark:bg-slate-900 dark:border-gray-700">
+        <div className={`px-4 py-3 bg-[var(--surface-raised)] max-h-96 overflow-y-auto border border-[var(--border-hairline)] border-t-0 ${className}`}>
+          <pre className="text-xs font-mono whitespace-pre-wrap wrap-break-word text-[var(--text-secondary)] leading-relaxed p-3 bg-[var(--surface-panel)] rounded border border-[var(--border-hairline)] overflow-x-auto">
             {content}
           </pre>
           <div className="mt-2 flex justify-end">
@@ -125,17 +125,17 @@ export const AttributionBadges = ({ attribution }: { attribution?: FindingAttrib
 export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) => {
   if (!advice) {
     return (
-      <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+      <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3 text-xs italic text-[var(--text-tertiary)]">
         No remediation advisory generated for this fault.
       </div>
     );
   }
   return (
-    <div className="relative rounded-md border border-green-700 bg-slate-900 p-3 shadow-sm">
+    <div className="relative rounded-md border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] p-3 shadow-sm">
       <div className="absolute right-2 top-2">
         <CopyButton text={advice} label="Suggested Fix" />
       </div>
-      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-green-300">{advice}</pre>
+      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-[var(--status-stable-fg)]">{advice}</pre>
     </div>
   );
 };

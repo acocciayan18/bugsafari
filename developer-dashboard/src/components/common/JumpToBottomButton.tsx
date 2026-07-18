@@ -10,7 +10,7 @@ export default function JumpToBottomButton({ visible, onClick }: JumpToBottomBut
   return (
     <button
       onClick={onClick}
-      className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-lg hover:bg-gray-100 transition-colors dark:border-gray-600 dark:bg-nova-dark dark:text-gray-200 dark:hover:bg-gray-800"
+      className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-[var(--border-hairline)] bg-[var(--surface-invert)] px-3 py-1.5 text-xs font-semibold text-[var(--text-oninvert)] shadow-lg hover:bg-[var(--surface-invert-hover)] transition-colors"
       aria-label="Jump to newest log entry"
     >
       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

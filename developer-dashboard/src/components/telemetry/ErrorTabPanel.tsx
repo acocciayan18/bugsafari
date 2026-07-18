@@ -52,7 +52,7 @@ const OccurrenceBadge = ({ count }: { count: number }) => {
   return (
     <span
       title={`This fault occurred ${count} times this session`}
-      className="rounded-full bg-red-600 px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-white"
+      className="rounded-full bg-[var(--status-critical-fg)] px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-[var(--text-oninvert)]"
     >
       ×{count}
     </span>
@@ -70,7 +70,7 @@ const ReproductionSection = ({ steps }: { steps: string[] | undefined }) => {
     return <ReproductionChecklist steps={steps} />;
   }
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-100 p-3 text-xs italic text-gray-400">
+    <div className="rounded-md border border-(--border-hairline) bg-[var(--surface-inset)] p-3 text-xs italic text-(--text-tertiary)">
       No deterministic steps were recorded for this fault.
     </div>
   );
@@ -99,7 +99,7 @@ export default function ErrorTabPanel({
   return (
     <div className="space-y-4 p-2">
       {incidentGroups.length === 0 && reportGroups.length === 0 ? (
-        <div className="text-gray-500 italic py-4">No errors captured yet.</div>
+        <div className="text-(--text-secondary) italic py-4">No errors captured yet.</div>
       ) : (
         <>
           {/* INCIDENT CARDS */}
@@ -114,19 +114,19 @@ export default function ErrorTabPanel({
             return (
               <div
                 key={incidentKey}
-                className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-[var(--surface-panel)] border border-(--status-critical-border) rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
               >
-                <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
+                <div className="bg-[var(--status-critical-bg)] px-4 py-3 flex items-center justify-between border-b border-(--status-critical-border)">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] text-xs font-bold">
                       ⚠
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-red-900">Forensics (Incident)</span>
+                        <span className="font-bold text-sm text-(--status-critical-fg)">Forensics (Incident)</span>
                         <OccurrenceBadge count={count} />
                       </div>
-                      <div className="text-[11px] text-red-700 opacity-75">
+                      <div className="text-[11px] text-(--status-critical-fg) opacity-75">
                         {metadata.timestamp.split('T')[1]?.slice(0, 8) || 'Unknown'}
                       </div>
                     </div>
@@ -134,22 +134,22 @@ export default function ErrorTabPanel({
                   <CopyButton text={incident.reason} label="Error Message" />
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-[var(--status-critical-bg)] border-b border-(--status-critical-border)">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                    <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Type</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg) whitespace-normal break-words">{metadata.type}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                    <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Severity</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg) capitalize">{metadata.severity}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                    <div className="text-xs font-mono text-red-900">{metadata.source}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Source</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg)">{metadata.source}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                    <div className="text-xs font-mono text-red-900">#{idx}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Index</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg)">#{idx}</div>
                   </div>
                 </div>
 
@@ -163,12 +163,12 @@ export default function ErrorTabPanel({
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
                   <SuggestedFixBlock advice={incident.advice} />
                 </div>
 
-                <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-gray-700">
+                <div className="px-4 py-3 bg-[var(--surface-panel)] border-b border-(--status-critical-border) max-h-40 overflow-y-auto custom-scrollbar">
+                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-(--text-secondary)">
                     {incident.reason}
                   </div>
 
@@ -199,19 +199,19 @@ export default function ErrorTabPanel({
             return (
               <div
                 key={reportKey}
-                className="bg-white border border-red-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-[var(--surface-panel)] border border-(--status-critical-border) rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
               >
-                <div className="bg-red-50 px-4 py-3 flex items-center justify-between border-b border-red-200">
+                <div className="bg-[var(--status-critical-bg)] px-4 py-3 flex items-center justify-between border-b border-(--status-critical-border)">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] text-xs font-bold">
                       🔥
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-red-900">Console Error</span>
+                        <span className="font-bold text-sm text-(--status-critical-fg)">Console Error</span>
                         <OccurrenceBadge count={count} />
                       </div>
-                      <div className="text-[11px] text-red-700 opacity-75">
+                      <div className="text-[11px] text-(--status-critical-fg) opacity-75">
                         {report.timestamp || 'Unknown'}
                       </div>
                     </div>
@@ -219,22 +219,22 @@ export default function ErrorTabPanel({
                   <CopyButton text={report.reason} label="Error Message" />
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-red-25 border-b border-red-200">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-[var(--status-critical-bg)] border-b border-(--status-critical-border)">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Type</div>
-                    <div className="text-xs font-mono text-red-900 whitespace-normal break-words">{metadata.type}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Type</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg) whitespace-normal break-words">{metadata.type}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Severity</div>
-                    <div className="text-xs font-mono text-red-900 capitalize">{metadata.severity}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Severity</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg) capitalize">{metadata.severity}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Source</div>
-                    <div className="text-xs font-mono text-red-900">{metadata.source}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Source</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg)">{metadata.source}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold text-red-700 uppercase opacity-75">Index</div>
-                    <div className="text-xs font-mono text-red-900">#{idx}</div>
+                    <div className="text-[10px] font-semibold text-(--status-critical-fg) uppercase opacity-75">Index</div>
+                    <div className="text-xs font-mono text-(--status-critical-fg)">#{idx}</div>
                   </div>
                 </div>
 
@@ -248,12 +248,12 @@ export default function ErrorTabPanel({
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Suggested Fix</div>
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
                   <SuggestedFixBlock advice={report.advice} />
                 </div>
 
-                <div className="px-4 py-3 bg-white border-b border-red-100 max-h-40 overflow-y-auto custom-scrollbar">
-                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-gray-700">
+                <div className="px-4 py-3 bg-[var(--surface-panel)] border-b border-(--status-critical-border) max-h-40 overflow-y-auto custom-scrollbar">
+                  <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-(--text-secondary)">
                     {report.reason}
                   </div>
 

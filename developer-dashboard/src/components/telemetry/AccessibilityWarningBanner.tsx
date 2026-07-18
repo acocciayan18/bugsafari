@@ -7,24 +7,24 @@ interface AccessibilityWarningBannerProps {
 // Aggregate-only: no per-finding list, no persistence — purely a live nudge.
 export default function AccessibilityWarningBanner({ count, onDismiss }: AccessibilityWarningBannerProps) {
   return (
-    <div className="sticky top-0 z-10 mb-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm">
+    <div className="sticky top-0 z-10 mb-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 shadow-sm">
       <div className="flex items-start gap-3">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs text-white">♿</span>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--status-warning-fg)] text-xs text-[var(--text-oninvert)]">♿</span>
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-amber-900">WCAG compliance at risk</span>
-            <span className="rounded-full bg-amber-200 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-800">{count}+ issues</span>
+            <span className="text-sm font-bold text-[var(--status-warning-fg)]">WCAG compliance at risk</span>
+            <span className="rounded-full bg-[var(--status-warning-border)] px-2 py-0.5 font-mono text-[10px] font-bold text-[var(--status-warning-fg)]">{count}+ issues</span>
           </div>
-          <p className="text-xs leading-relaxed text-amber-800">
+          <p className="text-xs leading-relaxed text-(--text-primary)">
             BugSafari detected {count}+ accessibility violations. Add alt text, form labels, accessible control names, unique ids, and a document <code className="font-mono">lang</code>/<code className="font-mono">title</code> to restore compliance.
           </p>
-          <p className="text-[11px] leading-relaxed text-amber-700">
+          <p className="text-[11px] leading-relaxed text-(--text-secondary)">
             These checks run live against the real DOM, so BugSafari's WCAG audit is a reliable signal for your accessibility posture.
           </p>
         </div>
         <button
           onClick={onDismiss}
-          className="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+          className="shrink-0 rounded-md border border-[var(--status-warning-border)] bg-[var(--surface-panel)] px-2.5 py-1 text-[11px] font-semibold text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--surface-hover)]"
         >
           Dismiss
         </button>

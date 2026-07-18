@@ -177,18 +177,18 @@ function parseStepString(stepStr: string): ParsedStep | null {
 function StepRow({ step, stepStr }: { step?: ParsedStep | null; stepStr: string }) {
   if (!step) {
     // Fallback: show raw step if parsing failed
-    return <div className="font-mono text-xs text-gray-400">{stepStr}</div>;
+    return <div className="font-mono text-xs text-[var(--text-tertiary)]">{stepStr}</div>;
   }
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
       <span className="text-sm">{step.actionIcon}</span>
-      <span className="font-semibold text-blue-400">{step.actionType}</span>
-      <span className="text-gray-500">on</span>
-      <span className="font-mono text-yellow-300">{step.selector}</span>
+      <span className="font-semibold text-[var(--status-neutral-fg)]">{step.actionType}</span>
+      <span className="text-[var(--text-secondary)]">on</span>
+      <span className="font-mono text-[var(--status-warning-fg)]">{step.selector}</span>
       {step.payload && (
         <>
-          <span className="text-gray-500">with</span>
-          <span className="font-mono text-red-300 max-w-[180px] truncate" title={step.payload}>
+          <span className="text-[var(--text-secondary)]">with</span>
+          <span className="font-mono text-[var(--status-critical-fg)] max-w-[180px] truncate" title={step.payload}>
             {step.payload.length > 40 ? step.payload.slice(0, 40) + '...' : step.payload}
           </span>
         </>
@@ -520,14 +520,14 @@ const progressSegments = [0, 1, 2, 3, 4];
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-white">
-      <header className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+    <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
+      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-gray-900">
+          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
             BUGSAFARI
           </span>
-          <span className="mx-3 text-gray-400">/</span>
-          <span className="text-sm font-semibold text-gray-600">
+          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
+          <span className="text-sm font-semibold text-[var(--text-secondary)]">
             AUTONOMOUS TESTING ENGINE
           </span>
         </div>
@@ -536,11 +536,11 @@ const progressSegments = [0, 1, 2, 3, 4];
           <button
             onClick={handleRefresh}
             disabled={isLoading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50"
             title="Refresh history"
           >
             <svg
-              className={`h-5 w-5 text-gray-600 ${isLoading ? 'animate-spin' : ''}`}
+              className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -549,19 +549,19 @@ const progressSegments = [0, 1, 2, 3, 4];
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-            <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
+            <svg className="h-5 w-5 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
             </svg>
           </button>
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-gray-300 bg-gray-100">
-<div className="border-b border-gray-200 px-6 py-4">
+      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)]">
+<div className="border-b border-[var(--border-hairline)] px-6 py-4">
           <div className="flex items-center justify-between">
 <div className="flex items-center gap-4">
-              <h2 className="text-lg font-bold text-gray-900">
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">
                 SAVED EVALUATION SAFARIS
               </h2>
               {/* Select All checkbox - only show when data exists */}
@@ -581,9 +581,9 @@ const progressSegments = [0, 1, 2, 3, 4];
                           setSelectedIds(new Set(allIds));
                         }
                       }}
-                      className="h-4 w-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+                      className="h-5 w-5 rounded border-[var(--border-strong)] text-[var(--text-secondary)] focus:ring-[var(--border-focus)]"
                     />
-                    <span className="text-xs text-gray-600 font-medium">
+                    <span className="text-xs text-[var(--text-secondary)] font-medium">
                       {isAllSelected ? 'Deselect All' : 'Select All'}
                     </span>
                   </label>
@@ -592,8 +592,8 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
             <div className="flex items-center gap-6">
               <div className="relative">
-                <div className="flex h-10 w-72 items-center rounded-md bg-white px-3 py-2 shadow-sm">
-                  <svg className="mr-2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <div className="flex h-10 w-72 items-center rounded-md bg-[var(--surface-app)] px-3 py-2 shadow-sm">
+                  <svg className="mr-2 h-5 w-5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                   </svg>
                   <input
@@ -601,18 +601,18 @@ const progressSegments = [0, 1, 2, 3, 4];
                     placeholder="Search URLs..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none"
+                    className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none"
                   />
                 </div>
               </div>
-<div className="flex items-center gap-1 rounded-md bg-white p-1">
+<div className="flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as const).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setActiveFilter(filter)}
                     className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${activeFilter === filter
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
+                      : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
                       }`}
                   >
                     {filter}
@@ -625,41 +625,41 @@ const progressSegments = [0, 1, 2, 3, 4];
 
         {/* Bulk Action Toolbar */}
         {selectedCount > 0 && (
-          <div className="flex items-center gap-4 border-b border-gray-200 bg-blue-50 px-6 py-2">
-            <span className="text-sm font-medium text-blue-700">
+          <div className="flex items-center gap-4 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-6 py-2">
+            <span className="text-sm font-medium text-[var(--status-neutral-fg)]">
               {selectedCount} item{selectedCount > 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleBulkDelete}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-300 hover:bg-red-50 transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-critical-fg)] bg-[var(--surface-app)] border border-[var(--status-critical-border)] hover:bg-[var(--status-critical-bg)] transition-colors"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
                 Delete
               </button>
               <button
                 onClick={handleBulkExport}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-green-600 bg-white border border-green-300 hover:bg-green-50 transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-stable-fg)] bg-[var(--surface-app)] border border-[var(--status-stable-border)] hover:bg-[var(--status-stable-bg)] transition-colors"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
                 Export
               </button>
               <button
                 onClick={handleBulkCompare}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-purple-600 bg-white border border-purple-300 hover:bg-purple-50 transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--surface-app)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 Compare
               </button>
               <button
                 onClick={deselectAll}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] bg-[var(--surface-app)] border border-[var(--border-hairline)] hover:bg-[var(--surface-hover)] transition-colors"
               >
                 Clear Selection
               </button>
@@ -667,54 +667,54 @@ const progressSegments = [0, 1, 2, 3, 4];
           </div>
         )}
 
-        <div className="divide-y divide-gray-200">
+        <div className="divide-y divide-[var(--border-hairline)]">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-gray-600"></div>
-              <span className="text-sm text-gray-500">Loading history...</span>
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-hairline)] border-t-[var(--text-secondary)]"></div>
+              <span className="text-sm text-[var(--text-secondary)]">Loading history...</span>
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <svg className="h-12 w-12 text-[var(--status-critical-fg)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span className="text-sm font-medium text-red-600">Failed to load history</span>
-              <span className="text-xs text-gray-500">{fetchError}</span>
+              <span className="text-sm font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
+              <span className="text-xs text-[var(--text-secondary)]">{fetchError}</span>
               <button
                 onClick={() => window.location.reload()}
-                className="mt-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                className="mt-2 rounded-md border border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
               >
                 Try Again
               </button>
             </div>
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <svg className="h-12 w-12 text-[var(--text-disabled)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
-              <span className="text-sm text-gray-600 font-medium">Please log in to view history</span>
-              <span className="text-xs text-gray-500">Log in or sign up to access your saved evaluations</span>
+              <span className="text-sm text-[var(--text-secondary)] font-medium">Please log in to view history</span>
+              <span className="text-xs text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
               <button
                 onClick={() => window.location.href = '/login'}
-                className="mt-2 rounded-md bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-700"
+                className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-xs font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
               >
                 Go to Login
               </button>
             </div>
           ) : paginatedEvaluations.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <svg className="h-12 w-12 text-[var(--text-disabled)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
-              <span className="text-sm text-gray-600 font-medium">No evaluation history yet</span>
-              <span className="text-xs text-gray-500">Run your first autonomous test and save it to see results here</span>
+              <span className="text-sm text-[var(--text-secondary)] font-medium">No evaluation history yet</span>
+              <span className="text-xs text-[var(--text-secondary)]">Run your first autonomous test and save it to see results here</span>
             </div>
 ) : (
 paginatedEvaluations.map((evalItem) => {
               return (
                 <div key={evalItem.id}>
                   <div
-                    className="cursor-pointer transition-colors hover:bg-gray-100 active:bg-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-gray-400"
+                    className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--border-focus)]"
                     role="button"
                     tabIndex={0}
                     aria-label={`View forensic report for ${evalItem.targetUrl}`}
@@ -728,10 +728,10 @@ paginatedEvaluations.map((evalItem) => {
                   >
 <div className="flex items-center justify-between px-6 py-4">
 <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-[var(--text-primary)]">
                           {evalItem.targetUrl}
                         </div>
-<div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
+<div className="mt-1 flex items-center gap-4 text-xs text-[var(--text-secondary)]">
                           <span>ID: {evalItem.id}</span>
                           <span>•</span>
                           <span>{evalItem.date}</span>
@@ -751,10 +751,10 @@ paginatedEvaluations.map((evalItem) => {
 <div className="flex items-center gap-4">
                         <div
                           className={`flex h-6 items-center rounded border px-2 text-xs font-medium ${evalItem.severity === 'CRITICAL'
-                            ? 'border-red-400 text-red-600'
+                            ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
                             : evalItem.severity === 'HIGH'
-                              ? 'border-yellow-400 text-yellow-600'
-                              : 'border-green-400 text-green-600'
+                              ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
+                              : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
                             }`}
                         >
                           {evalItem.severityCount} {evalItem.severity}
@@ -771,7 +771,7 @@ paginatedEvaluations.map((evalItem) => {
                         </div>
                         <div className="flex h-6 w-6 items-center justify-center">
                           <svg
-                            className="h-4 w-4 text-gray-400"
+                            className="h-5 w-5 text-[var(--text-tertiary)]"
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -789,9 +789,9 @@ paginatedEvaluations.map((evalItem) => {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-3">
+        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] px-6 py-3">
           <div className="flex items-center">
-            <span className="font-mono text-xs text-gray-500">
+            <span className="font-mono text-xs text-[var(--text-secondary)]">
               SHOWING {showingStart}-{showingEnd} OF {displayTotalCount} SAFARIS
             </span>
           </div>
@@ -799,14 +799,14 @@ paginatedEvaluations.map((evalItem) => {
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               ‹
             </button>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded border border-gray-300 bg-white text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               ›
             </button>
@@ -819,13 +819,13 @@ paginatedEvaluations.map((evalItem) => {
           {progressSegments.map((idx) => (
             <div
               key={idx}
-              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-gray-700' : 'bg-gray-200'
+              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-[var(--surface-invert)]' : 'bg-[var(--surface-raised)]'
                 }`}
             />
           ))}
         </div>
         <div className="text-center">
-          <span className="font-mono text-xs text-gray-400">
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">
             END OF FORENSIC RECORD MANIFEST - V.8.2.19
           </span>
         </div>

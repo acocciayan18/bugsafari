@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files before we apply frontend in settings"
-git checkout -b 7-18-Ayan-2
-git push --set-upstream origin 7-18-Ayan-2
+git commit -m "files after applying dark theme in all part of system, and fixing the backend still working even tho the timer reset to 0:00"
+git checkout -b 7-18-Ayan-3
+git push --set-upstream origin 7-18-Ayan-3
 

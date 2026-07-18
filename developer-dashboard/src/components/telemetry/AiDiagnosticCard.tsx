@@ -15,16 +15,16 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
   if (!ai) return null;
 
   return (
-    <div className="mt-3 bg-slate-900 border-l-4 border-blue-500 rounded-r p-4 text-gray-200 shadow-md font-mono text-xs">
-      <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
-        <div className="flex items-center gap-1.5 text-blue-400 font-bold tracking-wider uppercase text-[10px]">
+    <div className="mt-3 bg-[var(--surface-inset)] border-l-4 border-[var(--status-neutral-border)] rounded-r p-4 text-[var(--text-primary)] shadow-md font-mono text-xs">
+      <div className="flex items-center justify-between border-b border-[var(--border-hairline)] pb-2 mb-2">
+        <div className="flex items-center gap-1.5 text-[var(--status-neutral-fg)] font-bold tracking-wider uppercase text-[10px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <span
           className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
             ai.severity === 'CRITICAL'
-              ? 'bg-red-950/80 border-red-800 text-red-400'
-              : 'bg-amber-950/80 border-amber-800 text-amber-400'
+              ? 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
+              : 'bg-[var(--status-warning-bg)] border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
           }`}
         >
           {ai.severity}
@@ -33,23 +33,23 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
 
       <div className="space-y-2 text-[11px] leading-relaxed">
         <div>
-          <span className="text-gray-400 font-bold">Vulnerability Class:</span>{' '}
-          <span className="text-white font-bold">{ai.vulnerabilityClass}</span>
+          <span className="text-[var(--text-tertiary)] font-bold">Vulnerability Class:</span>{' '}
+          <span className="text-[var(--text-primary)] font-bold">{ai.vulnerabilityClass}</span>
         </div>
         <div>
-          <span className="text-gray-400 font-bold">Standard Profile:</span>{' '}
-          <span className="text-gray-300 bg-gray-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+          <span className="text-[var(--text-tertiary)] font-bold">Standard Profile:</span>{' '}
+          <span className="text-[var(--text-secondary)] bg-[var(--surface-raised)] px-1.5 py-0.5 rounded text-[10px] font-bold">
             {ai.cwe}
           </span>
         </div>
-        <div className="text-gray-300 text-justify italic font-light mt-1">
-          <span className="text-gray-400 not-italic font-bold">Inference Deduction:</span>{' '}
+        <div className="text-[var(--text-secondary)] text-justify italic font-light mt-1">
+          <span className="text-[var(--text-tertiary)] not-italic font-bold">Inference Deduction:</span>{' '}
           {ai.explanation}
         </div>
 
         {/* Highlighted Clean Actionable Remediation Box */}
-        <div className="mt-3 p-2.5 bg-green-950/80 border border-green-800 text-green-300 rounded font-sans text-xs">
-          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-green-400 mb-1">
+        <div className="mt-3 p-2.5 bg-[var(--status-stable-bg)] border border-[var(--status-stable-border)] text-[var(--status-stable-fg)] rounded font-sans text-xs">
+          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-[var(--status-stable-fg)] mb-1">
             💡 Actionable Remediation Patch Strategy:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>
