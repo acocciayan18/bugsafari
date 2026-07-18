@@ -1064,6 +1064,16 @@ export class StabilityMonitor {
         attribution,
       });
 
+      // Transport-level failure (DNS/offline/refused/timeout — genuinely verified,
+      // non-abort) is a Network-tab row too, not just an Errors-tab exception.
+      t.emit('NETWORK', {
+        url,
+        method,
+        message: `Network Request Failed: ${reason} for ${method} ${url}`,
+        reproductionSteps: reproductionPlaybook,
+        attribution,
+      });
+
       t.gateway.emitIncidentReport({
         timestamp,
         reason: `Network Request Failed: ${reason}`,

@@ -31,15 +31,15 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3">
+    <div className="mt-3 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase tracking-wider text-[var(--status-warning-fg)]">
+        <div className="text-[11px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
           🧭 Reproduction Playbook
         </div>
         {steps.length > 0 && (
           <button
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium text-[var(--status-warning-fg)] transition-all hover:bg-[var(--surface-hover)] active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] transition-all hover:bg-[var(--surface-hover)] active:scale-95"
             title="Copy reproduction steps as Markdown"
           >
             {copied ? 'Copied!' : 'Copy'}

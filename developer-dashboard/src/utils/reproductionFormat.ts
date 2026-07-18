@@ -7,13 +7,13 @@ export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | '
 
 // Design-token classes for the per-step action-type chip — light/dark handled
 // entirely by the CSS variables, no dark: variants needed. Kinds are categorical
-// (not severity), so they share the neutral status tone; bypass is genuinely
-// risky and gets the warning tone; step (generic fallback) is the most muted.
+// (not severity), so all share the neutral status tone; bypass gets a border to
+// stand out without spending color — red is reserved for the fault itself.
 const CHIP_CLASS: Record<StepKind, string> = {
   navigation: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
   click: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
   input: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  bypass: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  bypass: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)] border border-[var(--border-strong)]',
   macro: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
   step: 'bg-[var(--surface-inset)] text-[var(--text-tertiary)]',
 };

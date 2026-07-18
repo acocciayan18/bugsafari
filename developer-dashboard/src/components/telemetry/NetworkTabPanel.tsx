@@ -10,12 +10,22 @@ interface NetworkTabPanelProps {
   events: TelemetryEvent[];
 }
 
-// Collapse NETWORK events by method+url+status (preserving first-seen order) so a
-// polled endpoint is one row with a repeat count. Shared with the tab badge so the
-// header count and the list length always match.
+// A qualifying Network-tab row: HTTP 4xx/5xx, or a transport-level failure
+// (DNS/offline/refused/timeout) which carries no statusCode at all. 2xx/3xx
+// successes are noise for this tab — they're still preserved in the raw
+// networkEvents buffer for saved-session history, just not shown live here.
+export function isActionableNetworkFailure(event: TelemetryEvent): boolean {
+  const status = event.meta?.statusCode;
+  return status === undefined || status >= 400;
+}
+
+// Collapse NETWORK failure events by method+url+status (preserving first-seen
+// order) so a polled endpoint is one row with a repeat count. Shared with the
+// tab badge so the header count and the list length always match.
 export function dedupeNetworkEvents(events: TelemetryEvent[]): { event: TelemetryEvent; count: number }[] {
   const map = new Map<string, { event: TelemetryEvent; count: number }>();
   for (const event of Array.isArray(events) ? events : []) {
+    if (!isActionableNetworkFailure(event)) continue;
     const m = event.meta;
     const key = `${m?.method ?? 'GET'}|${m?.url ?? ''}|${m?.statusCode ?? ''}`;
     const existing = map.get(key);
@@ -38,9 +48,9 @@ export default function NetworkTabPanel({
   if (deduped.length === 0) {
     return (
       <div className="text-(--text-secondary) py-4">
-        <div className="text-(--text-primary) mb-2 font-bold">Network Diagnostics</div>
+        <div className="text-(--text-primary) mb-2 font-bold">Network Failures</div>
         <div className="text-(--text-tertiary) italic text-xs leading-relaxed">
-          Waiting for network activity...
+          No network failures detected.
         </div>
       </div>
     );
@@ -48,7 +58,7 @@ export default function NetworkTabPanel({
 
   return (
     <div className="space-y-3 p-2">
-      <div className="text-(--text-primary) mb-2 font-bold">Network Diagnostics ({deduped.length})</div>
+      <div className="text-(--text-primary) mb-2 font-bold">Network Failures ({deduped.length})</div>
       {deduped.map(({ event, count }, idx) => {
         const meta = event.meta;
         const statusCode = meta?.statusCode;
@@ -58,9 +68,10 @@ export default function NetworkTabPanel({
         const aiDiagnostics = meta?.aiDiagnostics || null;
         const reproductionSteps = meta?.reproductionSteps ?? [];
 
-        const isError = statusCode && statusCode >= 400;
-        const isServerError = statusCode && statusCode >= 500;
-        const isClientError = statusCode && statusCode >= 400 && statusCode < 500;
+        // Every row here already qualified as a failure (see isActionableNetworkFailure);
+        // a missing statusCode means a transport-level failure (DNS/offline/refused/timeout).
+        const isServerError = statusCode === undefined || statusCode >= 500;
+        const isClientError = statusCode !== undefined && statusCode >= 400 && statusCode < 500;
 
         const borderColor = isServerError
           ? 'border-[var(--status-critical-border)]'
@@ -72,7 +83,7 @@ export default function NetworkTabPanel({
           : isClientError
             ? 'bg-[var(--status-warning-bg)]'
             : 'bg-[var(--surface-panel)]';
-        const textColor = isError ? 'text-[var(--status-critical-fg)]' : 'text-[var(--status-stable-fg)]';
+        const textColor = 'text-[var(--status-critical-fg)]';
 
         return (
           <div

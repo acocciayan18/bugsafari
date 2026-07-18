@@ -99,12 +99,12 @@ export const AttributionBadges = ({ attribution }: { attribution?: FindingAttrib
         <span title="Knowledge-base bug class">{attribution.bugClass}</span>
       </Badge>
       {attribution.scenario && (
-        <Badge variant="primary" className="uppercase tracking-wide">
+        <Badge variant="default" className="uppercase tracking-wide">
           <span title="Scenario that provoked the fault">{attribution.scenario}</span>
         </Badge>
       )}
       {attribution.cwe && (
-        <Badge variant="warning" className="uppercase tracking-wide">
+        <Badge variant="default" className="uppercase tracking-wide">
           <span title="MITRE CWE identifier">{attribution.cwe}</span>
         </Badge>
       )}
@@ -131,11 +131,11 @@ export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) =>
     );
   }
   return (
-    <div className="relative rounded-md border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] p-3 shadow-sm">
+    <div className="relative rounded-md border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3">
       <div className="absolute right-2 top-2">
         <CopyButton text={advice} label="Suggested Fix" />
       </div>
-      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-[var(--status-stable-fg)]">{advice}</pre>
+      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-[var(--text-primary)]">{advice}</pre>
     </div>
   );
 };

@@ -293,7 +293,7 @@ export default function ClinicalForensicsDashboard({
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
   className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
     isSessionSaved
-      ? 'border-[var(--status-success)] text-[var(--status-success)] cursor-not-allowed opacity-80'
+      ? 'border-[var(--border-default)] text-[var(--text-primary)] hover:cursor-not-allowed opacity-80'
       : 'border-[var(--border-default)] text-[var(--text-primary)] hover:cursor-pointer hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
   }`}
 >
@@ -320,7 +320,7 @@ export default function ClinicalForensicsDashboard({
               value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               disabled={isActiveSession}
-              className="w-full h-11 border border-[var(--border-strong)] rounded-lg pl-11 pr-4 text-sm font-sans bg-[var(--surface-panel)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] disabled:bg-[var(--surface-inset)] disabled:text-[var(--text-disabled)]"
+              className="w-full h-11 border border-[var(--border-strong)] rounded-lg pl-11 pr-4 text-sm font-sans bg-[var(--surface-panel)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)] disabled:bg-[var(--surface-inset)] disabled:text-[var(--text-disabled)]"
               placeholder="Enter target URL to initiate..."
             />
           </div>

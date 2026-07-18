@@ -14,17 +14,23 @@ import type { IntelligentDiagnosis } from '../../types';
 const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
   if (!ai) return null;
 
+  const isCritical = ai.severity === 'CRITICAL';
+
   return (
-    <div className="mt-3 bg-[var(--surface-inset)] border-l-4 border-[var(--status-neutral-border)] rounded-r p-4 text-[var(--text-primary)] shadow-md font-mono text-xs">
+    <div
+      className={`mt-3 bg-[var(--surface-inset)] border-l-4 rounded-r p-4 text-[var(--text-primary)] font-mono text-xs ${
+        isCritical ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-strong)]'
+      }`}
+    >
       <div className="flex items-center justify-between border-b border-[var(--border-hairline)] pb-2 mb-2">
-        <div className="flex items-center gap-1.5 text-[var(--status-neutral-fg)] font-bold tracking-wider uppercase text-[10px]">
+        <div className="flex items-center gap-1.5 text-[var(--text-secondary)] font-bold tracking-wider uppercase text-[10px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <span
           className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
-            ai.severity === 'CRITICAL'
+            isCritical
               ? 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
-              : 'bg-[var(--status-warning-bg)] border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
+              : 'bg-[var(--surface-raised)] border-[var(--border-strong)] text-[var(--text-secondary)]'
           }`}
         >
           {ai.severity}
@@ -47,9 +53,9 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
           {ai.explanation}
         </div>
 
-        {/* Highlighted Clean Actionable Remediation Box */}
-        <div className="mt-3 p-2.5 bg-[var(--status-stable-bg)] border border-[var(--status-stable-border)] text-[var(--status-stable-fg)] rounded font-sans text-xs">
-          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-[var(--status-stable-fg)] mb-1">
+        {/* Remediation box — flat neutral surface, no color spent on "good news" */}
+        <div className="mt-3 p-2.5 bg-[var(--surface-raised)] border border-[var(--border-hairline)] text-[var(--text-primary)] rounded font-sans text-xs">
+          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-[var(--text-secondary)] mb-1">
             💡 Actionable Remediation Patch Strategy:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>

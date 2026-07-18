@@ -54,82 +54,109 @@
 }
 
 :root {
-  /* Watchtower tokens — light theme is the base (no .dark class), matching app convention */
-  --surface-app: #f4f5f7;
-  --surface-panel: #ffffff;
-  --surface-raised: #ffffff;
-  --surface-inset: #eceef1;
-  --surface-hover: #e8eaee;
-  --border-hairline: #dde1e8;
-  --border-strong: #b8bfcb;
-  --border-focus: #4b5563;
+  /* ==========================================
+     WATCHTOWER COMPONENT CORE — LIGHT THEME 
+     ========================================== */
+  /* Base Surfaces: Soft industrial warm neutrals to mitigate glare strain */
+  --surface-app: #f5f5f7;       /* Off-white canvas base */
+  --surface-panel: #ffffff;     /* Flat clean panel cards */
+  --surface-raised: #ffffff;    /* Primary interaction nodes */
+  --surface-inset: #eef0f3;     /* Bounded inner code frame surfaces */
+  --surface-hover: #e4e7ec;     /* Settle interactive hover highlights */
+  
+  /* Structural Hairline Boundaries (Low-contrast clean definition) */
+  --border-hairline: #e2e8f0;   /* Muted gray border */
+  --border-strong: #cbd5e1;     /* Highly defined slate gray structural border */
+  --border-focus: #18181b;      /* Crisp industrial charcoal ring focus */
 
-  --text-primary: #14161b;
-  --text-secondary: #454b5c;
-  --text-tertiary: #767e8e;
-  --text-disabled: #b8bfcb;
+  /* Bounded B&W Typography Tree (Optimized for deep terminal reading readability) */
+  --text-primary: #18181b;      /* Bounded zinc black for readability */
+  --text-secondary: #52525b;    /* Muted graphite gray for subtitles */
+  --text-tertiary: #71717a;     /* Soft slate metadata labels */
+  --text-disabled: #a1a1aa;     /* Disarmed trace elements */
 
-  --surface-invert: #14161b;
-  --surface-invert-hover: #2a2e38;
-  --surface-invert-active: #3a3f4b;
+  /* Inverted Elements Control Group */
+  --surface-invert: #18181b;
+  --surface-invert-hover: #27272a;
+  --surface-invert-active: #3f3f46;
   --text-oninvert: #ffffff;
 
-  --status-warning-fg: #8a5a10;
-  --status-warning-bg: #fdf1db;
-  --status-warning-border: #e8b968;
-  --status-critical-fg: #b3282c;
-  --status-critical-bg: #fbe4e4;
-  --status-critical-border: #e79a9c;
-  --status-stable-fg: #1f7a4d;
-  --status-stable-bg: #e2f6ea;
-  --status-stable-border: #8fd6ac;
-  --status-neutral-fg: #454b5c;
-  --status-neutral-bg: #e9ebef;
-  --status-neutral-border: #c7cdd6;
+  /* Bounded Low-Strain System Alert Markers (Strict Single Accent Distribution) */
+  --status-warning-fg: #9a3412;     /* Warm rust amber text (uncluttered contrast) */
+  --status-warning-bg: #fff7ed;     /* Extremely soft warning amber backdrop hint */
+  --status-warning-border: #ffedd5; /* Muted amber divider */
+  
+  --status-critical-fg: #991b1b;    /* Single solid deep crimson error token */
+  --status-critical-bg: #fef2f2;    /* Soft neutral error backdrop hint */
+  --status-critical-border: #fee2e2;/* Muted crimson divider */
+  
+  /* Stable/Neutral parameters match clean gray rule guidelines */
+  --status-stable-fg: #166534;
+  --status-stable-bg: #f0fdf4;
+  --status-stable-border: #dcfce7;
+  
+  --status-neutral-fg: #52525b;
+  --status-neutral-bg: #f4f4f5;
+  --status-neutral-border: #e4e4e7;
 }
 
 .dark {
-  --wc-amber: #f0a020;
-  --wc-amber-dim: #7a5518;
-  --wc-amber-bg: #241d0e;
-  --wc-crimson: #e5484d;
-  --wc-crimson-dim: #7a2b2d;
-  --wc-crimson-bg: #26100f;
-  --wc-signal-green: #3ecf7e;
-  --wc-signal-green-dim: #1f6b45;
-  --wc-signal-green-bg: #0e2019;
+  /* ==========================================
+     WATCHTOWER COMPONENT CORE — DARK THEME 
+     ========================================== */
+  /* Secondary Structural Color Hooks */
+  --wc-amber: #f97316;
+  --wc-amber-dim: #431407;
+  --wc-amber-bg: #1c0d02;
+  
+  --wc-crimson: #ef4444;        /* Solid crimson exception accent tag */
+  --wc-crimson-dim: #450a0a;    /* Muted context line exceptions */
+  --wc-crimson-bg: #110606;     /* Pure low-contrast text canvas shield */
+  
+  --wc-signal-green: #22c55e;
+  --wc-signal-green-dim: #14532d;
+  --wc-signal-green-bg: #022c15;
 
-  --surface-app: #08090b;
-  --surface-panel: #0d0f13;
-  --surface-raised: #161920;
-  --surface-inset: #111318;
-  --surface-hover: #1d212b;
-  --border-hairline: #262b37;
-  --border-strong: #3a4150;
-  --border-focus: #9aa2b2;
+  /* Base Deep Surfaces: Pure charcoal zinc layers to neutralize display flare */
+  --surface-app: #09090b;       /* Bounded solid deep industrial dark base */
+  --surface-panel: #141416;     /* Flat layout console blocks */
+  --surface-raised: #1c1c1f;    /* Prominent log item listings */
+  --surface-inset: #111113;     /* Recessed background text rows */
+  --surface-hover: #222226;     /* Clean low-contrast interaction highlights */
+  
+  /* Hairline Slate Borders */
+  --border-hairline: #202024;   /* Minimal noise line spacer */
+  --border-strong: #2d2d34;     /* Crisp high-density edge definition */
+  --border-focus: #f4f4f5;      /* Inverted white layout lock ring */
 
-  --text-primary: #f4f5f7;
-  --text-secondary: #9aa2b2;
-  --text-tertiary: #525a6b;
-  --text-disabled: #3a4150;
+  /* Dark Theme Typography Hierarchy */
+  --text-primary: #f4f4f5;      /* Off-white text to limit optical bleeding */
+  --text-secondary: #a1a1aa;    /* Clean soft readable slate body content */
+  --text-tertiary: #52525b;     /* Muted code trace metadata indicators */
+  --text-disabled: #3f3f46;     /* Locked control items */
 
-  --surface-invert: #f4f5f7;
-  --surface-invert-hover: #e2e5eb;
-  --surface-invert-active: #c2c8d3;
-  --text-oninvert: #08090b;
+  /* Dark Theme Inverted Actions */
+  --surface-invert: #f4f4f5;
+  --surface-invert-hover: #e4e4e7;
+  --surface-invert-active: #d4d4d8;
+  --text-oninvert: #09090b;
 
-  --status-warning-fg: #f0a020;
-  --status-warning-bg: #241d0e;
-  --status-warning-border: #7a5518;
-  --status-critical-fg: #e5484d;
-  --status-critical-bg: #26100f;
-  --status-critical-border: #7a2b2d;
-  --status-stable-fg: #3ecf7e;
-  --status-stable-bg: #0e2019;
-  --status-stable-border: #1f6b45;
-  --status-neutral-fg: #9aa2b2;
-  --status-neutral-bg: #1d212b;
-  --status-neutral-border: #3a4150;
+  /* Low-Strain Alert Matrix Blocks */
+  --status-warning-fg: #fb923c;
+  --status-warning-bg: #1c0d02;
+  --status-warning-border: #431407;
+  
+  --status-critical-fg: #f87171;   /* Balanced soft screen-safe red alert accent */
+  --status-critical-bg: #1a0808;   /* Zero saturation background tone */
+  --status-critical-border: #450a0a;/* Deep bounded warning perimeter shield */
+  
+  --status-stable-fg: #4ade80;
+  --status-stable-bg: #042f1a;
+  --status-stable-border: #14532d;
+  
+  --status-neutral-fg: #a1a1aa;
+  --status-neutral-bg: #1c1c1f;
+  --status-neutral-border: #2d2d34;
 }
 
 @layer base {
