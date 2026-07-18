@@ -151,7 +151,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedPassword(true)}
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] ${passwordError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
+                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 ${passwordError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -185,7 +185,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedConfirm(true)}
                   aria-invalid={!!confirmError}
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
-                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] ${confirmError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
+                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 ${confirmError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
                   placeholder="••••••••"
                   required
                 />

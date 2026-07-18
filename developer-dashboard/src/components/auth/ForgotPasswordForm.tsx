@@ -121,7 +121,7 @@ export default function ForgotPasswordForm() {
             onChange={(e) => { setEmail(e.target.value); if (serverError) setServerError(''); }}
             onBlur={() => setTouched(true)}
             className="pl-10"
-            placeholder="you@example.com"
+            placeholder="Enter your email"
             error={emailFieldError || undefined}
             required
           />

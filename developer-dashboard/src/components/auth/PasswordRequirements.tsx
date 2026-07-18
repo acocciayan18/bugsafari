@@ -33,14 +33,21 @@ export default function PasswordRequirements({ password }: PasswordRequirementsP
   if (!password) return null;
   const c = getPasswordChecks(password);
   return (
-    <div className="rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-4" role="status" aria-live="polite">
-      <p className="text-xs font-mono font-medium tracking-[0.08em] text-(--text-primary) mb-2">SECURITY REQUIREMENTS</p>
-      <div className="space-y-1.5">
-        <RequirementRow met={c.hasMinLength} label="At least 8 characters long" />
-        <RequirementRow met={c.hasUppercase} label="Include 1 uppercase letter" />
-        <RequirementRow met={c.hasNumber} label="Include at least one number" />
-        <RequirementRow met={c.hasSymbol} label="Include 1 special character" />
-      </div>
-    </div>
+    <div
+  className="rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-4"
+  role="status"
+  aria-live="polite"
+>
+  <p className="mb-3 text-xs font-mono font-medium tracking-[0.08em] text-[var(--text-primary)]">
+    SECURITY REQUIREMENTS
+  </p>
+
+  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+    <RequirementRow met={c.hasMinLength} label="At least 8 characters long" />
+    <RequirementRow met={c.hasUppercase} label="Include 1 uppercase letter" />
+    <RequirementRow met={c.hasNumber} label="Include at least one number" />
+    <RequirementRow met={c.hasSymbol} label="Include 1 special character" />
+  </div>
+</div>
   );
 }

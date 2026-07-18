@@ -69,7 +69,7 @@ a {
 
 .lp-logo {
     font-size: 18px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0;
     color: var(--lp-text);
     line-height: 1;
@@ -87,7 +87,7 @@ a {
 .lp-nav__link {
     font-size: 16px;
     line-height: 1;
-    font-weight: 400;
+    font-weight: 500;
     color: var(--lp-muted);
     transition: color 0.2s ease-in-out;
 }
@@ -99,12 +99,12 @@ a {
 .lp-nav__link:focus-visible {
     outline: 2px solid var(--lp-primary);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 8px;
 }
 
 .lp-nav__link--active {
     color: var(--lp-primary);
-    font-weight: 700;
+    font-weight: 800;
 }
 
 .lp-utilities {
@@ -173,7 +173,7 @@ a {
     background: #DBEAFE;
     color: #1D4ED8;
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 1rem;
 }
 
@@ -203,9 +203,9 @@ a {
 .lp-page .lp-btn {
     height: 48px;
     padding: 0.75rem 1.5rem;
-    border-radius: 8px;
+    border-radius: 16px;
     border: 1px solid transparent;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 16px;
     cursor: pointer;
     transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out;
@@ -281,7 +281,7 @@ a {
 /* Hero visual */
 .lp-hero__visual {
     border: 1px solid var(--lp-border);
-    border-radius: 16px;
+    border-radius: 32px;
     background: var(--lp-surface);
     padding: 0.8rem;
     box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
@@ -289,7 +289,7 @@ a {
 
 .lp-dashboard {
     background: #0b1220;
-    border-radius: 12px;
+    border-radius: 24px;
     border: 1px solid #243146;
     min-height: 320px;
     overflow: hidden;
@@ -319,7 +319,7 @@ a {
 
 .lp-panel,
 .lp-panel--lg {
-    border-radius: 10px;
+    border-radius: 20px;
     border: 1px solid #2a3954;
     background: linear-gradient(135deg, #111f35, #0d1524);
     min-height: 82px;
@@ -358,7 +358,7 @@ a {
     min-width: 300px;
     background: var(--lp-surface);
     border: 1px solid var(--lp-border);
-    border-radius: 12px;
+    border-radius: 24px;
     padding: 1.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
     transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
@@ -372,14 +372,14 @@ a {
 .lp-feature-card__icon {
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: 16px;
     background: var(--lp-lavender);
     display: grid;
     place-items: center;
     margin-bottom: 1rem;
     font-size: 0.95rem;
     color: #1D4ED8;
-    font-weight: 700;
+    font-weight: 800;
 }
 
 .lp-feature-card h3 {
@@ -397,7 +397,7 @@ a {
 /* Deep dive */
 .lp-deep-dive {
     background: var(--lp-dark);
-    border-radius: 1rem;
+    border-radius: 2rem;
     padding: 4rem 2rem;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -437,13 +437,13 @@ a {
     position: absolute;
     left: 0;
     color: var(--lp-check);
-    font-weight: 700;
+    font-weight: 800;
 }
 
 .lp-deep-dive__visual {
     background: var(--lp-dark-soft);
     border: 1px solid #2f3a53;
-    border-radius: 14px;
+    border-radius: 28px;
     min-height: 300px;
     display: grid;
     place-items: center;

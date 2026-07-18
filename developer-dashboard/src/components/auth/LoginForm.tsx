@@ -24,15 +24,15 @@ const GithubIcon = () => (
 );
 
 export default function LoginForm({ onGuestAccess }: LoginFormProps) {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [touchedUsername, setTouchedUsername] = useState(false);
+  const [touchedEmail, setTouchedEmail] = useState(false);
   const [touchedPassword, setTouchedPassword] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const usernameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
@@ -47,7 +47,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
     navigate('/dashboard');
   };
 
-  const usernameError = (touchedUsername || submitted) && !username.trim() ? 'Username is required.' : '';
+  const emailError = (touchedEmail || submitted) && !email.trim() ? 'Email is required.' : '';
   const passwordError = (touchedPassword || submitted) && !password ? 'Password is required.' : '';
 
   const handleSubmit = async (e: FormEvent) => {
@@ -55,8 +55,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
     setSubmitted(true);
     clearAuthError();
 
-    if (!username.trim()) {
-      usernameRef.current?.focus();
+    if (!email.trim()) {
+      emailRef.current?.focus();
       return;
     }
     if (!password) {
@@ -65,7 +65,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
     }
 
     try {
-      await login({ email: username.trim(), password });
+      await login({ email: email.trim(), password });
     } catch (err) {
       console.error('[LoginForm] Login error:', err);
     }
@@ -95,16 +95,16 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
             <div className="relative">
               <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><UserIcon className="w-4 h-4" /></span>
               <Input
-                ref={usernameRef}
-                id="username"
-                label="Username"
+                ref={emailRef}
+                id="email"
+                label="Email"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onBlur={() => setTouchedUsername(true)}
-                placeholder="Enter your username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setTouchedEmail(true)}
+                placeholder="example@email.com"
                 className="pl-10 "
-                error={usernameError || undefined}
+                error={emailError || undefined}
                 required
               />
             </div>
@@ -112,7 +112,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
             <div className="relative">
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
-                <Link to="/forgot-password" className="text-sm font-medium text-(--text-primary) hover:text-(--text-primary)">Forgot password?</Link>
+                <Link to="/forgot-password" className="text-sm font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
               </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><LockClosedIcon className="w-4 h-4" /></span>
@@ -126,7 +126,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   placeholder="••••••••"
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] ${passwordError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
+                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 ${passwordError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
                   required
                 />
                 <button
@@ -141,15 +141,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
               {passwordError && <p id="password-error" className="mt-1.5 text-xs text-[var(--status-critical-fg)]">{passwordError}</p>}
             </div>
 
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-(--text-primary) pt-1">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded-[var(--radius-sm)] border-(--border-strong) text-(--text-primary) focus:ring-[var(--border-focus)]"
-              />
-              <span>Remember me for 30 days</span>
-            </label>
+           
 
             {authError && (
               <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] px-3 py-2">

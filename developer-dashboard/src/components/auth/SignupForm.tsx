@@ -99,7 +99,6 @@ export default function SignupForm() {
       eyebrow="NEW USER REGISTRATION"
       title="Create account"
       subtitle="Register credentials to start streaming evaluation safaris."
-      maxWidth="max-w-[420px]"
       statusLabel={isLoading ? 'PROVISIONING' : authError || emailError ? 'REGISTRATION FAILED' : 'AWAITING INPUT'}
       statusTone={isLoading ? 'busy' : authError || emailError ? 'error' : 'idle'}
       footer={
@@ -119,7 +118,7 @@ export default function SignupForm() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if (emailError) clearEmailError(); }}
                 onBlur={markTouched('email')}
-                placeholder="john@company.com"
+                placeholder="example@email.com"
                 className="pl-10 font-(--font-sans)"
                 error={emailErrorMessage || undefined}
                 required
@@ -196,16 +195,9 @@ export default function SignupForm() {
               {isLoading ? 'Creating account...' : 'Create Account'}
             </Button>
 
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-[var(--border-hairline)]" />
-              <span className="text-xs font-mono tracking-[0.14em] text-(--text-tertiary)">OR</span>
-              <div className="h-px flex-1 bg-[var(--border-hairline)]" />
-            </div>
+            
 
-            <Button type="button" variant="secondary" size="md" className="w-full !text-(--text-primary)">
-              <GoogleIcon />
-              <span>Sign up with Google</span>
-            </Button>
+            
           </form>
     </AuthShell>
   );

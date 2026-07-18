@@ -14,11 +14,11 @@
   --color-spark-green: #3ecf7e;
   --color-spark-red: #e5484d;
 
-  /* Radius scale — sharp, 0-4px per spec effects table */
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 4px;
+  /* Radius scale — doubled for rectangular surfaces, still excluding circles/pills */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
 
   /* Shadow scale — flat 1-line definition shadows, never soft blurred lifts */
   --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.4);
@@ -135,7 +135,24 @@
 @layer base {
   body {
     @apply bg-nova-light text-gray-900 font-sans dark:bg-nova-dark dark:text-gray-100;
+    font-weight: 500;
   }
+}
+
+.font-normal {
+  font-weight: 500;
+}
+
+.font-medium {
+  font-weight: 600;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-bold {
+  font-weight: 700;
 }
 
 @layer utilities {
@@ -170,12 +187,12 @@
 
   .custom-scrollbar::-webkit-scrollbar-track {
     background: #f1f5f9;
-    border-radius: 4px;
+    border-radius: 8px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #cbd5e1;
-    border-radius: 4px;
+    border-radius: 8px;
     border: 2px solid #f1f5f9;
   }
 

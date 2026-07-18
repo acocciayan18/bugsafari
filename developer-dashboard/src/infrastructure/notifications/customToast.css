@@ -13,7 +13,7 @@ White background, black text, colored icons per variant
   background-color: #ffffff;
   color: #000000;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   min-width: 280px;
   max-width: 400px;
@@ -51,7 +51,7 @@ White background, black text, colored icons per variant
 /* Toast message */
 .toast-custom .toast-message {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.5;
   color: #000000;
 }
@@ -66,7 +66,7 @@ White background, black text, colored icons per variant
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   color: #6b7280;
   cursor: pointer;
   flex-shrink: 0;
