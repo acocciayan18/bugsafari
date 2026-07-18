@@ -1,4 +1,5 @@
 import { createContext, useContext, useCallback, type ReactNode } from 'react';
+import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import { Toaster, toast, type ToasterProps } from 'sonner';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -26,30 +27,6 @@ export interface ToastContextValue {
 // Icons
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const CheckCircleIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const InformationCircleIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const ExclamationCircleIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const XMarkIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Custom Toast Component
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -71,9 +48,9 @@ function CustomToast({ message, variant = 'telemetry', closeToast }: CustomToast
     <div className="toast-custom">
       <div className="toast-content">
         <span className={`toast-icon ${iconColorClass}`}>
-          {variant === 'success' && <CheckCircleIcon />}
-          {variant === 'telemetry' && <InformationCircleIcon />}
-          {variant === 'error' && <ExclamationCircleIcon />}
+          {variant === 'success' && <CircleCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
+          {variant === 'telemetry' && <Info className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
+          {variant === 'error' && <CircleAlert className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
         </span>
         <span className="toast-message">{message}</span>
       </div>
@@ -84,7 +61,7 @@ function CustomToast({ message, variant = 'telemetry', closeToast }: CustomToast
           onClick={closeToast}
           aria-label="Dismiss notification"
         >
-          <XMarkIcon />
+          <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
         </button>
       )}
     </div>

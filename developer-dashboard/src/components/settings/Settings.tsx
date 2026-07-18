@@ -7,6 +7,7 @@
 // 'dark' class to <html> and persists via settings storage.
 
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
+import { LoaderCircle, Monitor, Moon, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { UserIcon, LockClosedIcon, EyeIcon, EyeSlashIcon } from '../icons';
@@ -15,16 +16,9 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { useDarkMode } from '../../context/DarkModeContext';
 import type { ThemeMode } from '../../types';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inline spinner — no external dep, reusable via copy
-// ─────────────────────────────────────────────────────────────────────────────
-
 function Spinner() {
   return (
-    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
+    <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
   );
 }
 
@@ -33,29 +27,15 @@ function Spinner() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SunIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path strokeLinecap="round" d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
-    </svg>
-  );
+  return <Sun className={className} strokeWidth={1.75} aria-hidden="true" />;
 }
 
 function MoonIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 1020.354 15.354z" />
-    </svg>
-  );
+  return <Moon className={className} strokeWidth={1.75} aria-hidden="true" />;
 }
 
 function MonitorIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="12" rx="1.5" />
-      <path strokeLinecap="round" d="M8 20h8M12 16v4" />
-    </svg>
-  );
+  return <Monitor className={className} strokeWidth={1.75} aria-hidden="true" />;
 }
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: (className: string) => ReactNode }[] = [

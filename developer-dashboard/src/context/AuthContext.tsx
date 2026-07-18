@@ -47,7 +47,8 @@ export interface AuthContextValue {
   token: string | null;
   isLoading: boolean;
   emailError: string;
-  
+  authError: string;
+
   // Computed
   isAuthenticated: boolean;
   isGuestMode: boolean;
@@ -59,6 +60,7 @@ export interface AuthContextValue {
   refreshToken: () => Promise<boolean>; // Refresh JWT token to prevent 401 errors
   logout: () => void;
   clearEmailError: () => void;
+  clearAuthError: () => void;
   
   // Navigation callback injection - allows components to provide navigate function
   setNavigate: (fn: NavigateCallback) => void;
@@ -115,6 +117,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState<string>('');
+  const [authError, setAuthError] = useState<string>('');
   const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
     return localStorage.getItem('bugsafari_guest') === 'true';
   });
@@ -177,6 +180,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   
 const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
+    setAuthError('');
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -187,7 +191,7 @@ const login = useCallback(async (credentials: LoginCredentials): Promise<boolean
 
       if (!response.ok) {
         console.error(`[AuthContext] Server returned status code: ${response.status}`);
-        toast.error(`Server connection failed (${response.status}). Please verify that your backend container is healthy on port 3000!`);
+        setAuthError(`Server connection failed (${response.status}). Please try again in a moment.`);
         setIsLoading(false);
         return false;
       }
@@ -195,8 +199,8 @@ const login = useCallback(async (credentials: LoginCredentials): Promise<boolean
       const data: AuthResponse | AuthError = await response.json();
 
       if (!response.ok) {
-        const errorMessage = (data as AuthError).error ?? 'Login failed';
-        toast.error(errorMessage, { id: 'auth-login' });
+        const errorMessage = (data as AuthError).error ?? 'Incorrect username or password. Please try again.';
+        setAuthError(errorMessage);
         console.error('[AuthContext] Login failed:', errorMessage);
         setIsLoading(false);
         return false;
@@ -207,15 +211,15 @@ const authData = data as AuthResponse;
         // CRITICAL: Update React state FIRST to prevent stale cache on immediate re-login
         setToken(authData.token);
         setUser(authData.user);
-        
+
         // Clear guest mode on successful login
         setIsGuestMode(false);
-        
+
         // Then update localStorage
         localStorage.setItem('bugsafari_token', authData.token);
         localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
         localStorage.removeItem('bugsafari_guest');
-        
+
         console.log('[AuthContext] Login successful:', authData.user.email);
 
         // Navigate to dashboard on success
@@ -225,7 +229,7 @@ const authData = data as AuthResponse;
         return true;
       }
 
-toast.error('Login failed - unexpected response', { id: 'auth-login' });
+setAuthError('Login failed - unexpected response from server.');
       console.error('[AuthContext] Login failed - unexpected response:', data);
       setIsLoading(false);
       return false;
@@ -233,13 +237,13 @@ toast.error('Login failed - unexpected response', { id: 'auth-login' });
       // Detect network errors when API gateway is unreachable
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         console.warn('[AuthContext] API gateway server on port 3000 is unreachable or hot-reloading.');
-        toast.error("Network Error: Cannot connect to BugSafari API. Ensure your backend container stack is running!");
+        setAuthError('Cannot reach the BugSafari server. Check your connection and try again.');
         setIsLoading(false);
         return false;
       }
       // Existing fallback error handling
-      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
-      toast.error(errorMessage, { id: 'auth-login' });
+      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
+      setAuthError(errorMessage);
       console.error('[AuthContext] Login error:', error);
       setIsLoading(false);
       return false;
@@ -252,6 +256,9 @@ toast.error('Login failed - unexpected response', { id: 'auth-login' });
   
   const signup = useCallback(async (credentials: SignupCredentials): Promise<boolean> => {
     setIsLoading(true);
+    setAuthError('');
+    setEmailError('');
+    let isDuplicateEmail = false;
 
     try {
 const response = await fetch('/api/auth/register', {
@@ -283,7 +290,8 @@ const response = await fetch('/api/auth/register', {
       if (!response.ok) {
         // Check for 409 Conflict (email already exists)
         if (response.status === 409) {
-          const errorMessage = (data as AuthError).error ?? 'Email already exists';
+          const errorMessage = (data as AuthError).error ?? 'An account with this email already exists.';
+          isDuplicateEmail = true;
           setEmailError(errorMessage);
           throw new Error(errorMessage);
         }
@@ -296,13 +304,15 @@ const authData = data as AuthResponse;
         // CRITICAL: Update React state FIRST to prevent stale cache
         setToken(authData.token);
         setUser(authData.user);
-        
+
         // Then update localStorage
         localStorage.setItem('bugsafari_token', authData.token);
         localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
-        
+
         console.log('[AuthContext] Signup successful:', authData.user.email);
         console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
+
+        toast.success('Account created! Redirecting to sign in...');
 
         // Graceful 2-second timeout delay for optimal user experience
         setTimeout(() => {
@@ -315,8 +325,9 @@ const authData = data as AuthResponse;
 
       throw new Error('Unexpected response from server');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server';
+      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
       console.error('[AuthContext] Signup error:', errorMessage);
+      if (!isDuplicateEmail) setAuthError(errorMessage);
       setIsLoading(false);
       return false;
     }
@@ -412,6 +423,10 @@ const refreshToken = useCallback(async (): Promise<boolean> => {
     setEmailError('');
   }, []);
 
+  const clearAuthError = useCallback(() => {
+    setAuthError('');
+  }, []);
+
 // ═══════════════════════════════════════════════════════════════════════════
   // Computed: isAuthenticated
   // ═══════════════════════════════════════════════════════════════════════════
@@ -435,7 +450,8 @@ const value: AuthContextValue = {
     token,
     isLoading,
     emailError,
-    
+    authError,
+
     // Computed
     isAuthenticated,
     isGuestMode,
@@ -447,7 +463,8 @@ const value: AuthContextValue = {
     refreshToken,
     logout,
     clearEmailError,
-    
+    clearAuthError,
+
     // Navigation callback
     setNavigate,
   };

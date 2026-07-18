@@ -21,14 +21,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-sm font-medium text-[var(--text-secondary)]">
+        <label htmlFor={inputId} className="text-sm font-medium text-(--text-primary)">
           {label}
         </label>
       )}
       <input
         ref={ref}
         id={inputId}
-        className={`w-full rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] disabled:opacity-40 disabled:cursor-not-allowed ${
+        className={`w-full rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] disabled:opacity-40 disabled:cursor-not-allowed ${
           error ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'
         } ${className}`}
         aria-invalid={!!error}
@@ -38,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       {error ? (
         <p id={`${inputId}-error`} className="text-xs text-[var(--status-critical-fg)]">{error}</p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-xs text-[var(--text-tertiary)]">{hint}</p>
+        <p id={`${inputId}-hint`} className="text-xs text-(--text-tertiary)">{hint}</p>
       ) : null}
     </div>
   );

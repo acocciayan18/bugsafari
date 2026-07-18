@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
+import { Check, LoaderCircle, Pause, Play, Square } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
@@ -240,9 +241,7 @@ export default function ClinicalForensicsDashboard({
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && (
                 <span className="flex items-center gap-2 rounded-lg bg-indigo-50 text-indigo-700 px-4 py-2 text-xs font-bold uppercase tracking-wider">
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                    <path strokeLinecap="round" d="M12 2a10 10 0 0 1 10 10" />
-                  </svg>
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   Queued — awaiting worker
                 </span>
               )}
@@ -254,9 +253,7 @@ export default function ClinicalForensicsDashboard({
                   title={transitionLabel}
                   className="flex items-center gap-2 rounded-lg bg-gray-200 text-gray-600 px-4 py-2 text-xs font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
                 >
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                    <path strokeLinecap="round" d="M12 2a10 10 0 0 1 10 10" />
-                  </svg>
+                  <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
                 </button>
               )}
@@ -265,9 +262,7 @@ export default function ClinicalForensicsDashboard({
                   onClick={onPause}
                   className="flex items-center gap-2 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6" />
-                  </svg>
+                  <Pause className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Pause
                 </button>
               )}
@@ -276,9 +271,7 @@ export default function ClinicalForensicsDashboard({
                   onClick={onResume}
                   className="flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  </svg>
+                  <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Resume
                 </button>
               )}
@@ -287,10 +280,7 @@ export default function ClinicalForensicsDashboard({
                   onClick={onStop}
                   className="flex items-center gap-2 rounded-lg bg-red-500 hover:bg-red-600 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                  </svg>
+                  <Square className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Stop
                 </button>
               )}
@@ -303,9 +293,7 @@ export default function ClinicalForensicsDashboard({
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${isSessionSaved ? 'bg-emerald-600 text-white cursor-not-allowed opacity-80' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                 >
                   {isSessionSaved && (
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
+                    <Check className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   )}
                   {isSessionSaved ? 'Saved' : 'Save Session'}
                 </button>

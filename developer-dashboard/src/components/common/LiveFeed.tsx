@@ -206,12 +206,7 @@ export default function LiveFeed({
               QUEUED
             </span>
           )}
-          {!isQueued && (isTestRunning || useBinaryStream) && (
-            <span className="flex items-center gap-1.5 text-xs font-mono text-green-600">
-              <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
-              {fps > 0 ? fps : 60} FPS
-            </span>
-          )}
+          
           {!isQueued && !isTestRunning && !useBinaryStream && (
             <span className="text-xs text-gray-400">Ready</span>
           )}

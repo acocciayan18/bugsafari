@@ -4,6 +4,8 @@
 /* Class-based dark mode (toggled by DarkModeContext via .dark on <html>) */
 @custom-variant dark (&:where(.dark, .dark *));
 
+
+
 @theme {
   --color-nova-dark: #08090b;
   --color-nova-light: #f4f5f7;
@@ -25,8 +27,8 @@
   --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.55);
 
   /* Type families */
-  --font-sans: "Poppins", sans-serif;
-  --font-mono: "Google Sans", sans-serif;
+  --font-sans: "Figtree", "Google Sans", sans-serif;
+  --font-mono: "Figtree", "Google Sans", sans-serif;
 
   /* Type scale — Watchtower spec sizes, use alongside font-weight utilities */
   --text-display: 40px;
@@ -183,7 +185,7 @@
 
   /* Terminal monospace scrolling container - tighter spacing */
   .terminal-log {
-    @apply whitespace-pre-wrap break-words leading-relaxed font-mono;
+    @apply whitespace-pre-wrap wrap-break-word leading-relaxed font-mono;
   }
 
   /* Metadata grid - responsive key-value pairs */
@@ -193,11 +195,11 @@
 
   /* Error message container with proper wrapping */
   .error-message {
-    @apply text-xs font-mono whitespace-pre-wrap break-words leading-relaxed;
+    @apply text-xs font-mono whitespace-pre-wrap wrap-break-word leading-relaxed;
   }
 
   /* Expandable code block container */
   .code-block {
-    @apply text-xs font-mono whitespace-pre-wrap break-words text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
+    @apply text-xs font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
   }
 }

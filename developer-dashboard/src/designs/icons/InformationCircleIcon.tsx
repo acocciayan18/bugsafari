@@ -1,5 +1,5 @@
-export const InformationCircleIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
+import { Info } from 'lucide-react';
+
+export const InformationCircleIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
+    <Info className={className} strokeWidth={1.75} aria-hidden="true" />
 );

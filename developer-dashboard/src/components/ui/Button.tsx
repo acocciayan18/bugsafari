@@ -13,12 +13,12 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
     'bg-[var(--surface-invert)] text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)] active:bg-[var(--surface-invert-active)]',
   secondary:
-    'bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
+    'bg-transparent text-(--text-primary) border border-(--border-strong) hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
   ghost:
-    'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
+    'bg-transparent text-(--text-primary) hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
   destructive:
     'bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] hover:opacity-90 active:opacity-80',
-  link: 'bg-transparent text-[var(--text-primary)] hover:underline underline-offset-2 h-auto p-0',
+  link: 'bg-transparent text-(--text-primary) hover:underline underline-offset-2 h-auto p-0',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

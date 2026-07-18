@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Check, TriangleAlert, CircleHelp } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
 import type {
@@ -271,19 +272,13 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
 type VerdictIcon = (className: string) => ReactNode;
 
 const checkIcon: VerdictIcon = (c) => (
-  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-  </svg>
+  <Check className={c} strokeWidth={1.75} aria-hidden="true" />
 );
 const alertIcon: VerdictIcon = (c) => (
-  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L14.7 3.86a2 2 0 00-3.4 0z" />
-  </svg>
+  <TriangleAlert className={c} strokeWidth={1.75} aria-hidden="true" />
 );
 const questionIcon: VerdictIcon = (c) => (
-  <svg className={c} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.2 9a3.8 3.8 0 017.4 1.3c0 2.5-3.8 3.2-3.8 3.2M12 17h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <CircleHelp className={c} strokeWidth={1.75} aria-hidden="true" />
 );
 
 interface VerdictMeta {

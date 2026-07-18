@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Pause, Play, Square } from 'lucide-react';
 
 import type { TelemetryEvent } from '../../types';
 
@@ -63,7 +64,10 @@ export default function TelemetryStream({
                 aria-label={isPaused ? 'Resume exploration' : 'Pause exploration'}
                 title={isPaused ? 'Resume exploration' : 'Pause exploration'}
               >
-                {isPaused ? 'Resume' : 'Pause'}
+                <span className="inline-flex items-center gap-2">
+                  {isPaused ? <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Pause className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
+                  {isPaused ? 'Resume' : 'Pause'}
+                </span>
               </button>
 
               <button
@@ -78,7 +82,10 @@ export default function TelemetryStream({
                 aria-label="Stop exploration"
                 title="Stop exploration"
               >
-                Stop
+                <span className="inline-flex items-center gap-2">
+                  <Square className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                  Stop
+                </span>
               </button>
             </>
           ) : null}
