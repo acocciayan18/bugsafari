@@ -33,7 +33,7 @@ interface RequirementRowProps {
 
 function RequirementRow({ met, label }: RequirementRowProps) {
   return (
-    <div className={`text-xs font-medium flex items-center gap-2 ${met ? 'text-green-600' : 'text-red-500'}`}>
+    <div className={`text-xs font-medium flex items-center gap-2 ${met ? 'text-[var(--status-stable-fg)]' : 'text-[var(--status-critical-fg)]'}`}>
       {met ? <CheckIcon /> : <WarningIcon className="w-4 h-4" />}
       <span>{label}</span>
     </div>
@@ -77,15 +77,16 @@ export default function SignupForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-nova-light dark:bg-nova-dark">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--surface-app)]">
       <div className="w-full max-w-[420px]">
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-md p-6">
-          <h1 className="text-center text-h2 font-semibold text-gray-900 dark:text-gray-100 mb-2">Create Account</h1>
-          <p className="text-center text-body-sm text-gray-600 dark:text-gray-400 mb-7">Start hunting bugs with BugSafari today.</p>
+        <div className="bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] p-6">
+          <p className="text-center text-xs font-mono font-medium tracking-[0.14em] text-[var(--text-tertiary)] mb-2">NEW OPERATOR REGISTRATION</p>
+          <h1 className="text-center text-h2 font-semibold text-[var(--text-primary)] mb-2">Create account</h1>
+          <p className="text-center text-body-sm text-[var(--text-secondary)] mb-7">Register credentials to start streaming evaluation safaris.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><EnvelopeIcon /></span>
+              <span className="absolute left-3 top-[38px] text-[var(--text-tertiary)] pointer-events-none"><EnvelopeIcon /></span>
               <Input
                 id="email"
                 label="Email"
@@ -99,7 +100,7 @@ export default function SignupForm() {
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-[var(--text-tertiary)] pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
               <Input
                 id="password"
                 label="Password"
@@ -114,14 +115,14 @@ export default function SignupForm() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-[var(--text-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
               >
                 {showPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
               </button>
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-[var(--text-tertiary)] pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
               <Input
                 id="confirmPassword"
                 label="Confirm Password"
@@ -136,14 +137,14 @@ export default function SignupForm() {
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-[var(--text-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
               >
                 {showConfirmPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
               </button>
             </div>
 
-            <div className="rounded-md border border-blue-100 bg-blue-50 p-4 dark:bg-blue-950/20 dark:border-blue-900">
-              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Security requirements:</p>
+            <div className="rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-4">
+              <p className="text-xs font-mono font-medium tracking-[0.08em] text-[var(--text-secondary)] mb-2">SECURITY REQUIREMENTS</p>
               <div className="space-y-1.5">
                 <RequirementRow met={hasMinLength} label="At least 8 characters long" />
                 <RequirementRow met={hasSymbol} label="Include 1 special character (@, #, $)" />
@@ -152,8 +153,8 @@ export default function SignupForm() {
             </div>
 
             {formError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:bg-red-950/40 dark:border-red-800">
-                <p className="text-sm text-red-700 dark:text-red-400">{formError}</p>
+              <div className="rounded-[var(--radius-sm)] border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] px-3 py-2">
+                <p className="text-sm text-[var(--status-critical-fg)]">{formError}</p>
               </div>
             )}
 
@@ -169,19 +170,19 @@ export default function SignupForm() {
             </Button>
 
             <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-sm text-gray-500">OR</span>
-              <div className="h-px flex-1 bg-gray-200" />
+              <div className="h-px flex-1 bg-[var(--border-hairline)]" />
+              <span className="text-xs font-mono tracking-[0.14em] text-[var(--text-tertiary)]">OR</span>
+              <div className="h-px flex-1 bg-[var(--border-hairline)]" />
             </div>
 
-            <Button type="button" variant="secondary" size="md" className="w-full !border-gray-300 !text-gray-900 dark:!text-gray-100">
+            <Button type="button" variant="secondary" size="md" className="w-full !text-[var(--text-primary)]">
               <GoogleIcon />
               <span>Sign up with Google</span>
             </Button>
           </form>
         </div>
-        <div className="mt-5 text-center text-sm text-gray-600 dark:text-gray-400">
-          Already have an account? <Link to="/login" className="text-nova-blue font-medium hover:text-blue-700">Log in</Link>
+        <div className="mt-5 text-center text-sm text-[var(--text-secondary)]">
+          Already have an account? <Link to="/login" className="text-[var(--text-primary)] font-medium hover:underline underline-offset-2">Log in</Link>
         </div>
       </div>
     </div>

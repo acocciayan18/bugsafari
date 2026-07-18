@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after changing the ui of forensic report"
-git checkout -b 7-16-Ayan-2
-git push --set-upstream origin 7-16-Ayan-2
+git commit -m "files before we apply frontend in auths"
+git checkout -b 7-18-Ayan
+git push --set-upstream origin 7-18-Ayan
 

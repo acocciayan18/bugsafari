@@ -10,20 +10,24 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-nova-blue text-white hover:bg-blue-700 active:bg-blue-800',
-  secondary: 'bg-white text-nova-blue border border-nova-blue hover:bg-blue-50 active:bg-blue-100',
-  ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 active:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-800',
-  destructive: 'bg-spark-red text-white hover:bg-red-600 active:bg-red-700',
-  link: 'bg-transparent text-nova-blue hover:underline underline-offset-2 h-auto p-0',
+  primary:
+    'bg-[var(--surface-invert)] text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)] active:bg-[var(--surface-invert-active)]',
+  secondary:
+    'bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
+  ghost:
+    'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)]',
+  destructive:
+    'bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] hover:opacity-90 active:opacity-80',
+  link: 'bg-transparent text-[var(--text-primary)] hover:underline underline-offset-2 h-auto p-0',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-sm rounded-md gap-1.5',
-  md: 'h-10 px-4 text-[15px] rounded-md gap-2',
-  lg: 'h-12 px-6 text-base rounded-md gap-2',
+  sm: 'h-8 px-3 text-sm rounded-[var(--radius-sm)] gap-1.5',
+  md: 'h-10 px-4 text-[15px] rounded-[var(--radius-sm)] gap-2',
+  lg: 'h-12 px-6 text-base rounded-[var(--radius-sm)] gap-2',
 };
 
-/** DESIGN.md Buttons — variants: primary/secondary/ghost/destructive/link, sizes: sm/md/lg. */
+/** Watchtower Buttons — sharp radius, solid-invert primary, hairline-border secondary/ghost. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'primary', size = 'md', isLoading = false, disabled, className = '', children, ...rest },
   ref
@@ -32,7 +36,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       disabled={disabled || isLoading}
-      className={`inline-flex items-center justify-center font-medium transition-colors duration-200 ease-in-out cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2 ${VARIANT_CLASSES[variant]} ${variant !== 'link' ? SIZE_CLASSES[size] : 'gap-2'} ${className}`}
+      className={`inline-flex items-center justify-center font-medium transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-app)] ${VARIANT_CLASSES[variant]} ${variant !== 'link' ? SIZE_CLASSES[size] : 'gap-2'} ${className}`}
       {...rest}
     >
       {isLoading && (

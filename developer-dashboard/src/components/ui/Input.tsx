@@ -9,7 +9,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   hint?: string;
 }
 
-/** DESIGN.md Inputs — 40/48px height, gray-300 border, Nova Blue focus, error state below field. */
+/** Watchtower Inputs — hairline border, sharp radius, focus ring uses --border-focus, error below field. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { inputSize = 'md', error, label, hint, id, className = '', ...rest },
   ref
@@ -21,24 +21,24 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-sm font-medium text-gray-700 dark:text-gray-200">
+        <label htmlFor={inputId} className="text-sm font-medium text-[var(--text-secondary)]">
           {label}
         </label>
       )}
       <input
         ref={ref}
         id={inputId}
-        className={`w-full rounded-md border px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue disabled:opacity-40 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600 ${
-          error ? 'border-spark-red' : 'border-gray-300'
+        className={`w-full rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)] disabled:opacity-40 disabled:cursor-not-allowed ${
+          error ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'
         } ${className}`}
         aria-invalid={!!error}
         aria-describedby={describedBy}
         {...rest}
       />
       {error ? (
-        <p id={`${inputId}-error`} className="text-xs text-red-600">{error}</p>
+        <p id={`${inputId}-error`} className="text-xs text-[var(--status-critical-fg)]">{error}</p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-xs text-gray-500">{hint}</p>
+        <p id={`${inputId}-hint`} className="text-xs text-[var(--text-tertiary)]">{hint}</p>
       ) : null}
     </div>
   );

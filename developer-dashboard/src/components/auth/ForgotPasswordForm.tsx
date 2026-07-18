@@ -19,6 +19,12 @@ const ArrowLeftIcon = () => (
   </svg>
 );
 
+const CheckIcon = () => (
+  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+  </svg>
+);
+
 interface ForgotPasswordResponse {
   ok?: boolean;
   message?: string;
@@ -62,27 +68,26 @@ export default function ForgotPasswordForm() {
   // Show success message after email is sent
   if (emailSent) {
     return (
-      <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--surface-app)] flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-center">
-            <div className="w-16 h-16 bg-green-100 dark:bg-green-950/60 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+          <div className="bg-[var(--surface-panel)] p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--border-hairline)] text-center">
+            <div className="w-16 h-16 bg-[var(--status-stable-bg)] border border-[var(--status-stable-border)] rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-[var(--status-stable-fg)]"><CheckIcon /></span>
             </div>
-            <h2 className="text-h4 font-bold text-gray-900 dark:text-gray-100 mb-2">Check Your Inbox</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-xs font-mono font-medium tracking-[0.14em] text-[var(--text-tertiary)] mb-2">RECOVERY DISPATCHED</p>
+            <h2 className="text-h4 font-semibold text-[var(--text-primary)] mb-2">Check your inbox</h2>
+            <p className="text-[var(--text-secondary)] mb-6">
               If an account exists with that email, a password reset link has been sent.
             </p>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-[var(--text-tertiary)] mb-6">
               In development, check the server console for the reset link.
             </p>
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-nova-blue transition-colors duration-200 ease-in-out"
+              className="inline-flex items-center text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
               <ArrowLeftIcon />
-              <span className="ml-2">Back to Sign In</span>
+              <span className="ml-2">Back to sign in</span>
             </Link>
           </div>
         </div>
@@ -91,18 +96,19 @@ export default function ForgotPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-[var(--surface-app)] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-          <h2 className="text-h4 font-bold tracking-tight text-gray-900 dark:text-gray-100 text-center mb-2">Forgot Password?</h2>
-          <p className="text-base text-gray-600 dark:text-gray-400 text-center mb-6">
+        <div className="bg-[var(--surface-panel)] p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--border-hairline)]">
+          <p className="text-center text-xs font-mono font-medium tracking-[0.14em] text-[var(--text-tertiary)] mb-2">PASSWORD RECOVERY</p>
+          <h2 className="text-h4 font-semibold text-[var(--text-primary)] text-center mb-2">Forgot password?</h2>
+          <p className="text-base text-[var(--text-secondary)] text-center mb-6">
             Enter your email and we&apos;ll send you a link to reset your password.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-gray-400 pointer-events-none">
+              <span className="absolute left-3 top-[38px] text-[var(--text-tertiary)] pointer-events-none">
                 <MailIcon />
               </span>
               <Input
@@ -127,10 +133,10 @@ export default function ForgotPasswordForm() {
           <div className="mt-6 flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-gray-500 hover:text-nova-blue transition-colors duration-200 ease-in-out"
+              className="inline-flex items-center text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
               <ArrowLeftIcon />
-              <span className="ml-2">Back to Sign In</span>
+              <span className="ml-2">Back to sign in</span>
             </Link>
           </div>
         </div>

@@ -4,12 +4,12 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
   hoverable?: boolean;
 }
 
-/** DESIGN.md Cards — white bg, gray-200 border, radius-lg, shadow-md, optional hover lift. */
+/** Watchtower Cards — hairline border, near-zero radius, one surface step up, hover only brightens border. */
 export function Card({ hoverable = false, className = '', children, ...rest }: CardProps) {
   return (
     <div
-      className={`rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:bg-nova-dark dark:border-gray-700 ${
-        hoverable ? 'transition-[box-shadow,transform] duration-200 ease-in-out hover:shadow-lg hover:-translate-y-0.5' : ''
+      className={`rounded-[var(--radius-lg)] border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-6 shadow-[var(--shadow-sm)] ${
+        hoverable ? 'transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] hover:border-[var(--border-strong)]' : ''
       } ${className}`}
       {...rest}
     >

@@ -31,6 +31,12 @@ const ArrowLeftIcon = () => (
   </svg>
 );
 
+const XCircleIcon = () => (
+  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
 interface ResetPasswordResponse {
   ok?: boolean;
   message?: string;
@@ -53,21 +59,20 @@ export default function ResetPasswordForm() {
   // Validate token presence on mount
   if (!token || !emailParam) {
     return (
-      <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-[var(--surface-app)] flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 text-center">
-            <div className="w-16 h-16 bg-red-100 dark:bg-red-950/60 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+          <div className="bg-[var(--surface-panel)] p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--border-hairline)] text-center">
+            <div className="w-16 h-16 bg-[var(--status-critical-bg)] border border-[var(--status-critical-border)] rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-[var(--status-critical-fg)]"><XCircleIcon /></span>
             </div>
-            <h2 className="text-h4 font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Reset Link</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <p className="text-xs font-mono font-medium tracking-[0.14em] text-[var(--text-tertiary)] mb-2">TOKEN REJECTED</p>
+            <h2 className="text-h4 font-semibold text-[var(--text-primary)] mb-2">Invalid reset link</h2>
+            <p className="text-[var(--text-secondary)] mb-6">
               This password reset link is invalid or has expired.
             </p>
             <Link
               to="/forgot-password"
-              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-nova-blue transition-colors duration-200 ease-in-out"
+              className="inline-flex items-center text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
               <ArrowLeftIcon />
               <span className="ml-2">Request a new reset link</span>
@@ -143,22 +148,23 @@ export default function ResetPasswordForm() {
   };
 
   return (
-    <div className="min-h-screen bg-nova-light dark:bg-nova-dark flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-[var(--surface-app)] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-          <h2 className="text-h4 font-bold tracking-tight text-gray-900 dark:text-gray-100 text-center mb-2">Reset Password</h2>
-          <p className="text-base text-gray-600 dark:text-gray-400 text-center mb-6">
+        <div className="bg-[var(--surface-panel)] p-6 rounded-[var(--radius-lg)] shadow-[var(--shadow-sm)] border border-[var(--border-hairline)]">
+          <p className="text-center text-xs font-mono font-medium tracking-[0.14em] text-[var(--text-tertiary)] mb-2">CREDENTIAL RESET</p>
+          <h2 className="text-h4 font-semibold text-[var(--text-primary)] text-center mb-2">Reset password</h2>
+          <p className="text-base text-[var(--text-secondary)] text-center mb-6">
             Enter your new password below.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
                 New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-[var(--text-tertiary)] pointer-events-none">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -166,14 +172,14 @@ export default function ResetPasswordForm() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-10 rounded-md border border-gray-300 px-4 pl-10 pr-10 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  className="w-full h-10 rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)]"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -183,11 +189,11 @@ export default function ResetPasswordForm() {
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
                 Confirm New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-[var(--text-tertiary)] pointer-events-none">
                   <LockClosedIcon />
                 </div>
                 <input
@@ -195,14 +201,14 @@ export default function ResetPasswordForm() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full h-10 rounded-md border border-gray-300 px-4 pl-10 pr-10 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-200 ease-in-out focus:outline-none focus:border-nova-blue focus:ring-2 focus:ring-nova-blue dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600"
+                  className="w-full h-10 rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-1 focus:ring-[var(--border-focus)]"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue rounded-md"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   {showConfirmPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -212,25 +218,25 @@ export default function ResetPasswordForm() {
 
             {/* Error Message */}
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md dark:bg-red-950/40 dark:border-red-800">
-                <p className="text-sm text-red-700 dark:text-red-400">{formError}</p>
+              <div className="p-3 bg-[var(--status-critical-bg)] border border-[var(--status-critical-border)] rounded-[var(--radius-sm)]">
+                <p className="text-sm text-[var(--status-critical-fg)]">{formError}</p>
               </div>
             )}
 
             {/* Password Requirements */}
-            <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md">
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">Password must contain:</p>
-              <ul className="text-xs text-gray-500 space-y-1">
-                <li className={password.length >= 8 ? 'text-green-600' : ''}>
+            <div className="p-3 bg-[var(--surface-inset)] border border-[var(--border-hairline)] rounded-[var(--radius-sm)]">
+              <p className="text-xs text-[var(--text-secondary)] mb-2 font-medium">Password must contain:</p>
+              <ul className="text-xs text-[var(--text-tertiary)] space-y-1">
+                <li className={password.length >= 8 ? 'text-[var(--status-stable-fg)]' : ''}>
                   {password.length >= 8 ? '✓' : '○'} At least 8 characters
                 </li>
-                <li className={/[A-Z]/.test(password) ? 'text-green-600' : ''}>
+                <li className={/[A-Z]/.test(password) ? 'text-[var(--status-stable-fg)]' : ''}>
                   {/[A-Z]/.test(password) ? '✓' : '○'} One uppercase letter (A-Z)
                 </li>
-                <li className={/[0-9]/.test(password) ? 'text-green-600' : ''}>
+                <li className={/[0-9]/.test(password) ? 'text-[var(--status-stable-fg)]' : ''}>
                   {/[0-9]/.test(password) ? '✓' : '○'} One number (0-9)
                 </li>
-                <li className={/[^A-Za-z0-9]/.test(password) ? 'text-green-600' : ''}>
+                <li className={/[^A-Za-z0-9]/.test(password) ? 'text-[var(--status-stable-fg)]' : ''}>
                   {/[^A-Za-z0-9]/.test(password) ? '✓' : '○'} One special character
                 </li>
               </ul>
@@ -246,10 +252,10 @@ export default function ResetPasswordForm() {
           <div className="mt-6 flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-gray-500 hover:text-nova-blue transition-colors duration-200 ease-in-out"
+              className="inline-flex items-center text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
               <ArrowLeftIcon />
-              <span className="ml-2">Back to Sign In</span>
+              <span className="ml-2">Back to sign in</span>
             </Link>
           </div>
         </div>

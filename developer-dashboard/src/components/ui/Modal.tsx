@@ -13,7 +13,7 @@ interface ModalProps {
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
- * DESIGN.md Modal chrome — radius-lg, shadow-xl, backdrop blur, portal-rendered.
+ * Watchtower Modal chrome — sharp radius, hairline border, solid backdrop (no blur/alpha), portal-rendered.
  * Handles Escape-to-close, focus trap, and focus restore so callers only own their content.
  */
 export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 'max-w-md', closeOnBackdrop = true }: ModalProps) {
@@ -67,7 +67,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--surface-app)] p-4 animate-fade-in"
       onMouseDown={handleBackdropMouseDown}
     >
       <div
@@ -75,7 +75,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`w-full ${maxWidthClassName} rounded-lg bg-white shadow-xl dark:bg-nova-dark dark:border dark:border-gray-700`}
+        className={`w-full ${maxWidthClassName} rounded-[var(--radius-lg)] border border-[var(--border-hairline)] bg-[var(--surface-panel)] shadow-[var(--shadow-xl)]`}
       >
         {children}
       </div>
