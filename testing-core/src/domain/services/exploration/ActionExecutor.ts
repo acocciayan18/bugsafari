@@ -4,7 +4,7 @@ import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper } from '../../scenarios/index.js';
 import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
-import { classifyInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
+import { classifyInputElement, benignValueFor } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
@@ -93,7 +93,7 @@ export class ActionExecutor {
       if (this.deps.gate.isEnabled('dataFuzzing')) {
         await this.executeInputFuzzing(page, target, 'fuzz');
       } else if (this.deps.gate.isEnabled('exploratory')) {
-        await this.executeInputFuzzing(page, target, 'exploratory');
+        await this.executeExploratoryInput(page, target);
       }
       // No input strategy enabled → leave the field untouched.
       return;
@@ -654,6 +654,46 @@ export class ActionExecutor {
     } finally {
       // 6) Close the unified forensic event so it never leaks into the next element.
       this.deps.fuzzManager.closeTransaction();
+      ActiveScenarioTracker.end();
+    }
+  }
+
+  /**
+   * Benign exploratory input: fill a field with a VALID value and submit, to
+   * progress through forms WITHOUT injecting attack payloads. Unlike the DataFuzzer
+   * this strips no constraints, opens no FUZZ transaction, runs no escalation or
+   * fuzzGuard, and attributes to an 'Exploratory' window — so the label is truthful
+   * and a non-fuzz profile never secretly attacks the target.
+   */
+  private async executeExploratoryInput(page: Page, target: InteractiveElement): Promise<void> {
+    const t = this.deps.telemetry;
+    const label = resolveElementLabel(target);
+    const value = benignValueFor(classifyInputElement(target));
+
+    ActiveScenarioTracker.begin('Exploratory', page.url() ?? this.deps.getTargetOrigin());
+    try {
+      await this.injectPayload(page, target.selector, value);
+      ActiveScenarioTracker.record(describeInputInjection(label, value));
+      this.deps.recordActionTrace(
+        {
+          timestamp: new Date().toISOString(),
+          selector: target.selector,
+          action: 'exploratory-input',
+          payload: value,
+          score: Number(target.riskScore.toFixed(4)),
+        },
+        { actionType: 'INPUT', humanIdentifier: label, value },
+      );
+      const submissionMethod = await triggerFormSubmission(page, target.selector);
+      this.deps.formFuzz.recordAttempt(target.formKey ?? '');
+      t.emit('ACTION', {
+        actionExecuted: 'exploratory-input',
+        selector: target.selector,
+        message: `🧭 Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
+      });
+    } catch (error) {
+      console.warn('[ActionExecutor] Exploratory input failed:', error);
+    } finally {
       ActiveScenarioTracker.end();
     }
   }

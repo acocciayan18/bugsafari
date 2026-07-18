@@ -97,7 +97,9 @@ async (job) => {
       // Bind the run to the SAME runId the client received at enqueue, so the
       // worker's telemetry room (run:${runId}) matches the room the dashboard joined.
       console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runId=${payload.runId} target=${engineUrl}`);
-      await useCase.execute(engineUrl, undefined, undefined, payload.runId);
+      // Honor the operator's infiltration-profile gate carried on the job payload;
+      // undefined would make ScenarioGate default to all testing types.
+      await useCase.execute(engineUrl, undefined, payload.selectedScenarios, payload.runId);
       console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
     },
     {

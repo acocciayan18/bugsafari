@@ -9,6 +9,14 @@ export type NavigationDefectKind =
 
 export type NavigationBugClass = 'STRUCTURAL_NAVIGATION_LOGIC' | 'ROUTE_MUTATION_FAILURE';
 
+/** One navigation hop in a defect's causal chain (route oscillation / redirect loop). */
+export interface NavHop {
+  url?: string;
+  route: string;
+  status?: number;
+  timestampMs: number;
+}
+
 /** A verified navigation defect, ready for telemetry + confirmed-bug registration. */
 export interface NavigationDefect {
   kind: NavigationDefectKind;
@@ -22,6 +30,8 @@ export interface NavigationDefect {
   route: string;
   statusCode?: number;
   evidence: string[];
+  /** The structured navigation chain that formed the defect — anchors the repro trace. */
+  hops?: NavHop[];
   advice: string;
   corroborated: boolean;
 }
@@ -190,6 +200,12 @@ export class BrokenNavigationFinder {
     const sightings = this.redirectWindow.filter((hop) => hop.route === h.route).length;
     if (sightings < REDIRECT_CYCLE_SIGHTINGS) return [];
     const chain = this.redirectWindow.map((hop) => `${hop.route} (${hop.status})`).join(' → ');
+    const hops: NavHop[] = this.redirectWindow.map((hop) => ({
+      url: hop.url,
+      route: hop.route,
+      status: hop.status,
+      timestampMs: hop.timestampMs,
+    }));
     this.redirectWindow.forEach((hop) => this.suppressedLoopRoutes.add(hop.route));
     this.redirectWindow = [];
     return this.emitOnce({
@@ -204,6 +220,7 @@ export class BrokenNavigationFinder {
       route: h.route,
       statusCode: h.status,
       evidence: [`HTTP redirect chain: ${chain}`],
+      hops,
       advice: this.buildAdvice('Bound the redirect chain and break the cycle in the router/server redirect rules.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
@@ -224,6 +241,7 @@ export class BrokenNavigationFinder {
     const distinct = new Set(this.urlWindow.map((e) => e.route)).size;
     if (sightings < OSCILLATION_SIGHTINGS || distinct < 2) return [];
     const chain = this.urlWindow.map((e) => e.route).join(' → ');
+    const hops: NavHop[] = this.urlWindow.map((e) => ({ route: e.route, timestampMs: e.timestampMs }));
     this.urlWindow.forEach((e) => this.suppressedLoopRoutes.add(e.route));
     this.urlWindow = [];
     return this.emitOnce({
@@ -237,6 +255,7 @@ export class BrokenNavigationFinder {
       url: c.url,
       route,
       evidence: [`Rapid route oscillation: ${chain}`],
+      hops,
       advice: this.buildAdvice('Guard the router redirect/guard logic against mutually-redirecting routes.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });

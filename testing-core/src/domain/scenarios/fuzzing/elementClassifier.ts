@@ -309,6 +309,30 @@ export function classifyInputElement(element: unknown): FieldCategory {
 }
 
 /**
+ * A benign, VALID value for a field category — used by the exploratory baseline to
+ * fill inputs and progress through forms WITHOUT injecting attack payloads (unlike
+ * the DataFuzzer, whose vectors are hostile even at level 0).
+ */
+export function benignValueFor(category: FieldCategory): string {
+  switch (category) {
+    case 'EMAIL':
+      return 'user@example.com';
+    case 'NUMERIC':
+      return '42';
+    case 'DATE':
+      return '2020-01-01';
+    case 'DATABASE_AUTH':
+      return 'testuser';
+    case 'JSON':
+      return '{"ok":true}';
+    case 'TEXT_SEARCH':
+    case 'CHAOS_FALLBACK':
+    default:
+      return 'sample';
+  }
+}
+
+/**
  * Type guard to verify if a category is a specific type.
  * @param category The category to check
  * @param expected The expected category type

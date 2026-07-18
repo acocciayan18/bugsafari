@@ -206,6 +206,12 @@ export function registerRoutes(
       return;
     }
 
+    // Resolve the operator-selected Unified Infiltration Profile into gated scenario
+    // categories BEFORE the queue branch, so a distributed run carries the same gate
+    // as a synchronous one (otherwise the worker defaults to all testing types).
+    const selectedScenarios = parseSelectedScenarios(request.body);
+    console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
+
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
@@ -217,6 +223,7 @@ export function registerRoutes(
         const enqueued = await taskQueue.addSafariTask({
           targetUrl,
           requestedBy: request.userId ?? undefined,
+          selectedScenarios,
         });
         console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName})`);
         // runId lets the client join run:${runId} for bridged worker telemetry;
@@ -251,11 +258,7 @@ export function registerRoutes(
     const optimizationSettings = request.body?.optimization;
     console.log(`[API] Optimization settings:`, optimizationSettings);
 
-    // Interpret the operator-selected Unified Infiltration Profile into the gated
-    // scenario categories for this session. NetworkSaboteur is gated by the
-    // 'navigation' testing type like every other scenario.
-    const selectedScenarios = parseSelectedScenarios(request.body);
-    console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
+    // (selectedScenarios resolved above, before the queue branch.)
 
     // Route the target for the active RUN_ENVIRONMENT before launch: bridge
     // loopback in DOCKER_LOCAL, or reject an unreachable private address in

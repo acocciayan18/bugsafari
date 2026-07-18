@@ -69,6 +69,8 @@ export interface ActionStepTrace {
   timestamp: string;
   actionType: ActionStepActionType;
   selector: string;
+  /** Human-readable element label (text/aria/name/id) — shown instead of the raw selector. */
+  label?: string;
   payloadText?: string;
   resultingStateHash: string;
   /** Real execution time of this step in ms (measured in the executor). */

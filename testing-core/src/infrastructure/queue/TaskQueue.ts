@@ -1,5 +1,6 @@
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { randomUUID } from 'node:crypto';
+import type { TestingTypeId } from '../../../../shared/types.js';
 
 export const SAFARI_TASK_QUEUE_NAME = 'safari-tasks';
 
@@ -14,6 +15,9 @@ export interface SafariTaskPayload {
   // and the client subscribes to the same id, so bridged live events line up.
   runId: string;
   sessionId?: string;
+  // Resolved infiltration-profile scenario gate — carried so the worker runs the
+  // selected testing types instead of defaulting to all of them.
+  selectedScenarios?: TestingTypeId[];
   createdAt: string;
 }
 
@@ -21,6 +25,7 @@ export interface EnqueueSafariTaskInput {
   targetUrl: string;
   requestedBy?: string;
   runId?: string;
+  selectedScenarios?: TestingTypeId[];
 }
 
 export interface EnqueuedSafariTask {
@@ -68,6 +73,7 @@ export class TaskQueue {
       targetUrl,
       requestedBy: input.requestedBy,
       runId,
+      selectedScenarios: input.selectedScenarios,
       createdAt: new Date().toISOString(),
     });
 

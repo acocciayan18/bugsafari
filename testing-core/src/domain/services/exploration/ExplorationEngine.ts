@@ -24,6 +24,7 @@ import type { FindingRepository } from '../../repositories/FindingRepository.js'
 import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
+import { narrateActionRecords } from '../forensics/narration.js';
 import { forensicErrorRepository } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { Types, isValidObjectId } from 'mongoose';
@@ -532,12 +533,25 @@ export class ExplorationEngine {
           faultUrl: defect.url || lastKnownUrl,
           faultAtMs: Date.now(),
         });
+        // Anchor the trace to the navigation hops that formed the defect (the actual
+        // route chain), not the generic rolling buffer of unrelated fuzz/stress steps.
+        const hopActions: ActionRecord[] | null = defect.hops?.length
+          ? defect.hops.map((h) => ({
+              timestamp: new Date(h.timestampMs).toISOString(),
+              type: 'NAVIGATION',
+              selector: h.route || h.url || '',
+              url: h.url || h.route || '',
+              payload: h.status ? `HTTP ${h.status}` : undefined,
+            }))
+          : null;
+        const reproductionActions = hopActions ?? reproduction.actions;
+        const reproductionSteps = hopActions ? narrateActionRecords(hopActions) : reproduction.narrative;
         const stateFingerprint = this.activePage ? await captureStateFingerprint(this.activePage) : undefined;
         const attribution: FindingAttribution = {
           bugClass: defect.bugClass,
           cwe: defect.cwe,
           ...resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName()),
-          stepIndex: reproduction.actions.length,
+          stepIndex: reproductionActions.length,
           confidence: 'SIGNAL',
           corroborated: defect.corroborated,
         };
@@ -547,7 +561,7 @@ export class ExplorationEngine {
           url: defect.url,
           statusCode: defect.statusCode,
           severity: defect.severity === 'HIGH' ? 'CRITICAL' : 'WARNING',
-          reproductionSteps: reproduction.narrative,
+          reproductionSteps,
           attribution,
         });
         emitter.emitMilestone(`🧭 Navigation defect: ${defect.message}`);
@@ -559,8 +573,8 @@ export class ExplorationEngine {
           payloadUsed: '',
           advice: defect.advice,
           timestamp: new Date(),
-          reproductionSteps: reproduction.narrative,
-          reproductionActions: reproduction.actions,
+          reproductionSteps,
+          reproductionActions,
           stateFingerprint,
           attribution,
         });

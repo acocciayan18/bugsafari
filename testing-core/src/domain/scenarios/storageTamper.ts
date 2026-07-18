@@ -29,7 +29,6 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StorageTamperMetadata } from '../chaos/index.js';
-import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../services/forensics/narration.js';
 
@@ -370,16 +369,10 @@ export const storageTamper = {
           evidence,
         });
       }
-
-      ActionRecorder.recordStep({
-        actionType: 'INPUT',
-        humanIdentifier: target?.innerText?.trim() || label,
-        value:
-          `Forge client auth-state (role=admin${result.jwtForged ? ', alg=none JWT' : ''}) then reload — ` +
-          `privileged markers ${before}→${after} (${verdict}).`,
-        selector,
-        url: page.url(),
-      });
+      // No ActionRecorder step here: a storage forge is not a typed input, has no
+      // literal replay path (reproduced via the finding's stateFingerprint restore),
+      // and recording it as INPUT polluted unrelated findings' minimized traces.
+      // The GAINED-only ActiveScenarioTracker.record above carries the human step.
     } catch (error) {
       metadata.resultingState = 'error';
       console.error(
