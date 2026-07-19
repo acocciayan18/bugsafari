@@ -7,6 +7,7 @@
 // paths — keep working unchanged.
 
 export * from './types/telemetry.js';
+export * from './types/console.js';
 export * from './types/bug.js';
 export * from './types/forensicLogs.js';
 export * from './types/testingType.js';

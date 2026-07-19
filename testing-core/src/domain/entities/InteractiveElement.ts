@@ -25,6 +25,9 @@ export interface InteractiveElement {
   inActiveLayer?: boolean;
   // Close/dismiss control (postponed until the layer is otherwise explored)
   isDismiss?: boolean;
+  // Resolved anchor href ('' for non-anchors) — lets ranking demote real route
+  // transitions below untriggered in-page controls without a live probe.
+  href?: string;
   // Value-independent signature of the field's owning <form> ('' if form-less),
   // keying the per-form fuzz cap so payload mutation can't mint a fresh form.
   formKey?: string;

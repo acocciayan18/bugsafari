@@ -39,7 +39,9 @@ check('gain-less revisits saturate at maxVisits; a coverage gain resets the coun
   assert.equal(r.isSaturated('S'), true);
 });
 
-check('repeat actuations saturate at maxInteractions; distinct triggers do not', () => {
+check('repeat actuations saturate at the relative churn cap; distinct triggers do not', () => {
+  // Interaction cap scales with discovered-control count: max(maxInteractions, discovered).
+  // Here discovered=4 > maxInteractions=3, so the effective churn bound is 4.
   const r = new StateClusterRegistry({ maxVisits: 0, maxInteractions: 3 });
   r.observe('S', '/p', ['a', 'b', 'c', 'd'], 1);
   r.markTriggered('S', 'a', 1);
@@ -48,8 +50,9 @@ check('repeat actuations saturate at maxInteractions; distinct triggers do not',
   assert.equal(r.isSaturated('S'), false);
   r.markTriggered('S', 'a', 4); // repeat 1
   r.markTriggered('S', 'a', 5); // repeat 2
+  r.markTriggered('S', 'a', 6); // repeat 3 — still below the relative cap of 4
   assert.equal(r.isSaturated('S'), false);
-  r.markTriggered('S', 'a', 6); // repeat 3 → saturated (churn bound)
+  r.markTriggered('S', 'a', 7); // repeat 4 → saturated (churn bound = discovered count)
   assert.equal(r.isSaturated('S'), true);
 });
 

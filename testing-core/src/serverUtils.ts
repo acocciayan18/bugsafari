@@ -5,6 +5,8 @@
  * maintaining a clean separation of concerns as defined in the system architecture.
  */
 
+import { normalizeTargetUrl } from '../../shared/url.js';
+
 // Docker/Podman bridge alias that resolves to the host machine from inside a container.
 const DEFAULT_HOST_BRIDGE = 'host.docker.internal';
 
@@ -113,28 +115,7 @@ export function parseTargetUrl(body: unknown): string | null {
     return null;
   }
 
-  const candidate = (body as Record<string, unknown>).url;
-
-  if (typeof candidate !== 'string' || !candidate.trim()) {
-    return null;
-  }
-
-  const trimmed = candidate.trim();
-  // Enforce protocol to ensure Playwright can resolve the address correctly
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-
-  try {
-    const url = new URL(withProtocol);
-
-    // Limit the engine to standard web protocols to prevent protocol-injection attacks
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return null;
-    }
-
-    return url.toString();
-  } catch {
-    return null;
-  }
+  return normalizeTargetUrl((body as Record<string, unknown>).url);
 }
 
 /**

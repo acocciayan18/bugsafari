@@ -4,7 +4,7 @@ import type { IncidentReport, ForensicCrashReport } from '../../types';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import ReproductionChecklist from './ReproductionChecklist';
 import AiDiagnosticCard from './AiDiagnosticCard';
-import { AttributionBadges as AttributionBadgesBase, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
+import { AttributionBadges as AttributionBadgesBase, CopyButton, ExpandableCodeBlock, SeverityBadge, SuggestedFixBlock } from '../common/ForensicCardKit';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -84,6 +84,35 @@ const ReproductionSection = ({ steps }: { steps: string[] | undefined }) => {
   );
 };
 
+/** Original source frames resolved from the target's source maps (best-effort). */
+const ResolvedFrames = ({ resolved }: { resolved: string | undefined }) => {
+  if (!resolved) return null;
+  return (
+    <div className="px-4 pt-3">
+      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">Original source (via source maps)</div>
+      <pre className="rounded-md border border-(--border-hairline) bg-[var(--surface-inset)] p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
+        {resolved}
+      </pre>
+    </div>
+  );
+};
+
+/** Visual evidence of the viewport captured at the fault instant (base64 JPEG). */
+const FaultScreenshot = ({ screenshot }: { screenshot: string | undefined }) => {
+  if (!screenshot) return null;
+  return (
+    <div className="px-4 pt-3">
+      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">Screenshot at fault</div>
+      <img
+        src={`data:image/jpeg;base64,${screenshot}`}
+        alt="Viewport at the moment the fault was captured"
+        className="w-full rounded-md border border-(--border-hairline)"
+        loading="lazy"
+      />
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT: ErrorTabPanel
 // ─────────────────────────────────────────────────────────────
@@ -132,6 +161,7 @@ export default function ErrorTabPanel({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-(--status-critical-fg)">Forensics (Incident)</span>
+                        <SeverityBadge severity={incident.severity} />
                         <OccurrenceBadge count={count} />
                       </div>
                       <div className="text-[11px] text-(--text-tertiary)">
@@ -144,7 +174,7 @@ export default function ErrorTabPanel({
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-[var(--surface-inset)] border-b border-(--border-hairline)">
                   <MetaCell label="Type" value={metadata.type} />
-                  <MetaCell label="Severity" value={metadata.severity} />
+                  <MetaCell label="Severity" value={incident.severity ?? metadata.severity} />
                   <MetaCell label="Source" value={metadata.source} />
                   <MetaCell label="Index" value={`#${idx}`} />
                 </div>
@@ -156,6 +186,9 @@ export default function ErrorTabPanel({
                 <div className="px-4 pt-3">
                   <ReproductionSection steps={incident.reproductionPlaybook} />
                 </div>
+
+                {/* 📸 Visual evidence captured at the fault instant */}
+                <FaultScreenshot screenshot={incident.screenshot} />
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
@@ -171,6 +204,8 @@ export default function ErrorTabPanel({
                   {/* 🧠 Optional AI enrichment (CWE/severity) when present — additive */}
                   <AiDiagnosticCard ai={aiDiagnostics} />
                 </div>
+
+                <ResolvedFrames resolved={incident.resolvedStackTrace} />
 
                 {incident.stackTrace && (
                   <ExpandableCodeBlock
@@ -205,6 +240,7 @@ export default function ErrorTabPanel({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-(--status-critical-fg)">Console Error</span>
+                        <SeverityBadge severity={report.severity} />
                         <OccurrenceBadge count={count} />
                       </div>
                       <div className="text-[11px] text-(--text-tertiary)">
@@ -217,7 +253,7 @@ export default function ErrorTabPanel({
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-[var(--surface-inset)] border-b border-(--border-hairline)">
                   <MetaCell label="Type" value={metadata.type} />
-                  <MetaCell label="Severity" value={metadata.severity} />
+                  <MetaCell label="Severity" value={report.severity ?? metadata.severity} />
                   <MetaCell label="Source" value={metadata.source} />
                   <MetaCell label="Index" value={`#${idx}`} />
                 </div>
@@ -229,6 +265,9 @@ export default function ErrorTabPanel({
                 <div className="px-4 pt-3">
                   <ReproductionSection steps={report.reproductionPlaybook} />
                 </div>
+
+                {/* 📸 Visual evidence captured at the fault instant */}
+                <FaultScreenshot screenshot={report.screenshot} />
 
                 {/* 🛠 Suggested Fix — bound directly to this finding's remediation */}
                 <div className="px-4 pt-3">
@@ -243,6 +282,8 @@ export default function ErrorTabPanel({
 
                   <AiDiagnosticCard ai={aiDiagnostics} />
                 </div>
+
+                <ResolvedFrames resolved={report.resolvedStackTrace} />
 
                 {report.stackTrace && (
                   <ExpandableCodeBlock

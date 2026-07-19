@@ -4,7 +4,7 @@ import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper } from '../../scenarios/index.js';
 import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
-import { classifyInputElement, benignValueFor } from '../../scenarios/fuzzing/elementClassifier.js';
+import { classifyInputElement, benignValueFor, isSensitiveInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
@@ -92,10 +92,11 @@ export class ActionExecutor {
       }
       if (this.deps.gate.isEnabled('dataFuzzing')) {
         await this.executeInputFuzzing(page, target, 'fuzz');
-      } else if (this.deps.gate.isEnabled('exploratory')) {
+      } else {
+        // Any non-fuzz profile still exercises the field with a benign value+submit
+        // so inputs are never silently skipped (they drive validation/API/state).
         await this.executeExploratoryInput(page, target);
       }
-      // No input strategy enabled → leave the field untouched.
       return;
     }
 
@@ -112,8 +113,14 @@ export class ActionExecutor {
       return;
     }
 
-    // INERT controls (file/hidden inputs) cannot be safely driven — clicking a
-    // file input opens a blocking native chooser. Skip without interaction.
+    // FILE inputs — exercise upload validation/API by setting a synthetic in-memory
+    // file directly (no blocking native chooser).
+    if (scope === 'file') {
+      await this.actuateFileInput(page, target);
+      return;
+    }
+
+    // INERT controls (hidden inputs) cannot be safely driven. Skip without interaction.
     if (scope === 'inert') {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'inert-control-skipped',
@@ -172,19 +179,30 @@ export class ActionExecutor {
   private async navigateTarget(page: Page, target: InteractiveElement): Promise<void> {
     const label = resolveElementLabel(target);
     this.deps.telemetry.emitMilestone(describeNavigation(label));
-    this.deps.recordActionTrace(
-      {
-        timestamp: new Date().toISOString(),
-        selector: target.selector,
-        action: 'navigate',
-        score: Number(target.riskScore.toFixed(4)),
-      },
-      {
-        actionType: 'CLICK',
-        humanIdentifier: label,
-      },
-    );
-    await this.safeButtonSpammer(page, target);
+    // Record AFTER the click so the step carries its observed outcome: the URL it
+    // was clicked on plus where it navigated (if anywhere). An empty outcome clause
+    // otherwise leaves every click looking inert in the reproduction playbook.
+    const beforeUrl = page.url();
+    try {
+      await this.safeButtonSpammer(page, target);
+    } finally {
+      const afterUrl = page.url();
+      const outcome = afterUrl && afterUrl !== beforeUrl ? { navigatedTo: afterUrl } : undefined;
+      this.deps.recordActionTrace(
+        {
+          timestamp: new Date().toISOString(),
+          selector: target.selector,
+          action: 'navigate',
+          score: Number(target.riskScore.toFixed(4)),
+        },
+        {
+          actionType: 'CLICK',
+          humanIdentifier: label,
+          url: beforeUrl,
+          outcome,
+        },
+      );
+    }
   }
 
   /**
@@ -325,6 +343,56 @@ export class ActionExecutor {
       message: selected
         ? `🔽 Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
         : `Dropdown "${label}" had no selectable option.`,
+    });
+  }
+
+  /**
+   * Actuate a file input as a form-progression control. Sets a small synthetic
+   * in-memory file (no native chooser), fires input/change, then commits via the
+   * owning form so upload validation / backend handling is exercised. Strips
+   * disabled/accept constraints first so the file is accepted regardless of gates.
+   */
+  private async actuateFileInput(page: Page, target: InteractiveElement): Promise<void> {
+    const label = resolveElementLabel(target);
+    await page
+      .evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLInputElement | null;
+        if (!el) return;
+        el.removeAttribute('disabled');
+        el.disabled = false;
+        el.removeAttribute('accept');
+      }, target.selector)
+      .catch(() => undefined);
+
+    let attached = false;
+    try {
+      await page.setInputFiles(
+        target.selector,
+        { name: 'bugsafari-upload.txt', mimeType: 'text/plain', buffer: Buffer.from('BugSafari synthetic upload payload') },
+        { timeout: 2000 },
+      );
+      attached = true;
+    } catch (error) {
+      console.warn('[ActionExecutor] File input actuation failed:', error);
+    }
+
+    if (attached) {
+      await this.fillEmptyFormSiblings(page, target.selector);
+      await triggerFormSubmission(page, target.selector);
+      this.deps.formFuzz.recordAttempt(target.formKey ?? '');
+    }
+
+    this.deps.recordActionTrace(
+      { timestamp: new Date().toISOString(), selector: target.selector, action: 'file-upload', score: Number(target.riskScore.toFixed(4)) },
+      { actionType: 'CLICK', humanIdentifier: label },
+    );
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'form-control-actuated',
+      selector: target.selector,
+      message: attached
+        ? `📎 Attached synthetic file to "${label}" and submitted to exercise upload validation.`
+        : `File input "${label}" could not be actuated.`,
     });
   }
 
@@ -525,6 +593,8 @@ export class ActionExecutor {
     // for this exact field (0 on first encounter), then synthesize that level's
     // deterministic, replayable payload.
     const category = classifyInputElement(target);
+    // Auth/financial/identifier fields: mask the value in narration, keep it verbatim for replay.
+    const redactValue = category === 'DATABASE_AUTH' || isSensitiveInputElement(target);
     const level = this.deps.escalationTracker.getLevel(target.selector, category);
     const synth = synthesizeEscalatedPayload(category, level, deriveFuzzSeed(target.selector, category));
     const payload = synth.value;
@@ -542,6 +612,7 @@ export class ActionExecutor {
         actionType: 'TYPE',
         humanIdentifier: label,
         value: payload,
+        redactValue,
       },
     );
 
@@ -572,11 +643,13 @@ export class ActionExecutor {
           // Target-scoped strip so THIS field's pattern/minlength/required and its
           // form's novalidate are removed before injection + submit (was stripping
           // only the first form element, leaving the real target's gates intact).
-          await stripConstraintsSilently(page, target.selector);
-          ActiveScenarioTracker.record(describeConstraintBypass(label));
+          const strip = await stripConstraintsSilently(page, target.selector);
+          ActiveScenarioTracker.record(
+            describeConstraintBypass(label, strip.strippedAttributes, strip.affectedCount),
+          );
 
           await this.injectPayload(page, target.selector, payload);
-          ActiveScenarioTracker.record(describeInputInjection(label, payload));
+          ActiveScenarioTracker.record(describeInputInjection(label, payload, redactValue));
 
           await this.fillEmptyFormSiblings(page, target.selector);
           const submissionMethod = await triggerFormSubmission(page, target.selector);
@@ -669,11 +742,14 @@ export class ActionExecutor {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
     const value = benignValueFor(classifyInputElement(target));
+    // Mask even synthetic values on sensitive fields so the playbook never prints
+    // anything that reads as a real credential/identifier.
+    const redactValue = isSensitiveInputElement(target);
 
     ActiveScenarioTracker.begin('Exploratory', page.url() ?? this.deps.getTargetOrigin());
     try {
       await this.injectPayload(page, target.selector, value);
-      ActiveScenarioTracker.record(describeInputInjection(label, value));
+      ActiveScenarioTracker.record(describeInputInjection(label, value, redactValue));
       this.deps.recordActionTrace(
         {
           timestamp: new Date().toISOString(),
@@ -682,7 +758,7 @@ export class ActionExecutor {
           payload: value,
           score: Number(target.riskScore.toFixed(4)),
         },
-        { actionType: 'INPUT', humanIdentifier: label, value },
+        { actionType: 'INPUT', humanIdentifier: label, value, redactValue },
       );
       const submissionMethod = await triggerFormSubmission(page, target.selector);
       this.deps.formFuzz.recordAttempt(target.formKey ?? '');

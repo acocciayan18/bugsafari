@@ -1,4 +1,4 @@
-import type { ActionRecord, ActionType, ReplayMacro } from '../../../../shared/types.ts';
+import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from '../../../../shared/types.ts';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
@@ -36,6 +36,18 @@ export interface ActionStepInput {
 
   /** Re-expandable stress-scenario descriptor (set only for a MACRO step). */
   macro?: ReplayMacro;
+
+  /** Validation attributes stripped by a bypass/SUBMIT step. */
+  strippedAttributes?: string[];
+
+  /** Count of elements a bypass step affected. */
+  affectedCount?: number;
+
+  /** Observed result of the action (navigation, HTTP status, DOM change). */
+  outcome?: ActionOutcome;
+
+  /** True ⇒ narration masks the value (auth/password fields); replay keeps it verbatim. */
+  redactValue?: boolean;
 }
 
 /**
@@ -108,7 +120,12 @@ export class ActionRecorder {
       url: step.url,
       payload: step.value,
       fallbackLabel: step.humanIdentifier,
+      elementLabel: step.humanIdentifier,
       macro: step.macro,
+      strippedAttributes: step.strippedAttributes,
+      affectedCount: step.affectedCount,
+      outcome: step.outcome,
+      redactValue: step.redactValue,
     };
 
     this.records.push(record);

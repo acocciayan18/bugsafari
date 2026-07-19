@@ -47,8 +47,8 @@ check('submit/button/reset/image inputs are clickable, not fuzz targets', () => 
   }
 });
 
-check('file/hidden inputs are inert (skipped)', () => {
-  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'file' }), 'inert');
+check('file inputs are driven; hidden inputs are inert (skipped)', () => {
+  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'file' }), 'file');
   assert.equal(classifyInteractionScope({ tagName: 'input', type: 'hidden' }), 'inert');
 });
 

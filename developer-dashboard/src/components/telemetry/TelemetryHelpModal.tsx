@@ -1,6 +1,6 @@
 // TelemetryHelpModal.tsx - anchored popover explaining each telemetry tab
 import { useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Globe, HelpCircle, Terminal } from 'lucide-react';
+import { Activity, AlertTriangle, Network, HelpCircle, Terminal } from 'lucide-react';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 
 type HelpTabId = 'telemetry' | 'errors' | 'network' | 'console';
@@ -37,7 +37,7 @@ const TOPICS: HelpTopic[] = [
   {
     id: 'network',
     label: 'Network',
-    icon: Globe,
+    icon: Network,
     what: 'Every HTTP request/response the target app makes while being tested.',
     collects: ['Request method, URL, and status code', 'Failed or slow requests', 'API calls triggered by fuzzed input'],
     why: 'Surfaces backend and API issues — failed calls, wrong status codes, broken integrations — that UI testing alone would miss.',

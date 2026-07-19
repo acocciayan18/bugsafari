@@ -31,6 +31,7 @@ export default function ConnectionStatusOverlay({
         variant: 'error',
         message: 'Connection to BugSafari lost. Attempting to restore…',
         duration: Infinity,
+        onDismiss: () => { backendId.current = undefined; },
       });
     } else if (!backendDown && backendId.current) {
       dismissToast(backendId.current);
@@ -46,6 +47,7 @@ export default function ConnectionStatusOverlay({
         variant: 'telemetry',
         message: `Reconnecting to BugSafari${reconnectAttempt > 0 ? ` — attempt ${reconnectAttempt}` : '…'}`,
         duration: Infinity,
+        onDismiss: () => { reconnectId.current = undefined; },
       });
     } else if (reconnectId.current) {
       dismissToast(reconnectId.current);
@@ -61,6 +63,7 @@ export default function ConnectionStatusOverlay({
           variant: 'telemetry',
           message: 'Restoring your active session…',
           duration: Infinity,
+          onDismiss: () => { restoreId.current = undefined; },
         });
       }
     } else if (restoreId.current) {

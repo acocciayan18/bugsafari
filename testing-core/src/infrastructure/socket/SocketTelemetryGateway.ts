@@ -10,7 +10,7 @@ export interface RoomEmitter {
 }
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -81,6 +81,7 @@ export class SocketTelemetryGateway implements TelemetryGateway {
       // full copy, not a degraded one missing the playbook/fix.
       reproductionPlaybook: report.reproductionPlaybook,
       advice: report.advice,
+      screenshot: report.screenshot,
     });
   }
 
@@ -96,9 +97,10 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     this.channel().emit(ACCESSIBILITY_EVENT, finding);
   }
 
-  // Live-only: browser console is transient telemetry (not a saved finding), so it
-  // streams to attached clients without buffering for reconnect replay.
+  // Buffered like the other channels so a reconnect/restore replays the Console tab
+  // instead of losing every row captured before the drop.
   public emitBrowserConsole(message: BrowserConsoleMessage): void {
+    this.recorder?.record('browser-console', message);
     this.channel().emit('browser-console', message);
   }
 }

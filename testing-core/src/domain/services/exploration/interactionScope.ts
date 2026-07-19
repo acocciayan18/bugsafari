@@ -10,13 +10,14 @@
  *      · `toggle`    — checkbox / radio (must be checked, not typed into)
  *      · `dropdown`  — <select> (must pick a real option, not receive a payload)
  *      · `clickable` — buttons, submit/reset/image inputs, anchors, role=button…
- *      · `inert`     — file/hidden inputs that cannot be safely driven and are skipped
+ *      · `file`      — file inputs, driven via setInputFiles with a synthetic file
+ *      · `inert`     — hidden inputs that cannot be safely driven and are skipped
  *
  * Pure and deterministic: no DOM, no side effects — trivially unit-testable and
  * reused identically wherever an element must be dispatched to its handler.
  */
 
-export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'clickable' | 'inert';
+export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'file' | 'clickable' | 'inert';
 
 /** input[type=…] values that are clicked, never typed into. */
 const CLICKABLE_INPUT_TYPES = new Set(['submit', 'button', 'reset', 'image']);
@@ -24,8 +25,8 @@ const CLICKABLE_INPUT_TYPES = new Set(['submit', 'button', 'reset', 'image']);
 /** input[type=…] values that are toggled (checked), never typed into. */
 const TOGGLE_INPUT_TYPES = new Set(['checkbox', 'radio']);
 
-/** input[type=…] values that cannot be safely actuated (native chooser / not interactive). */
-const INERT_INPUT_TYPES = new Set(['file', 'hidden']);
+/** input[type=…] values that cannot be safely actuated (not interactive). */
+const INERT_INPUT_TYPES = new Set(['hidden']);
 
 /** Minimal element shape needed to route an element to its interaction handler. */
 export interface ScopeClassifiable {
@@ -49,6 +50,7 @@ export function classifyInteractionScope(element: ScopeClassifiable): Interactio
   if (tag === 'input') {
     if (TOGGLE_INPUT_TYPES.has(type)) return 'toggle';
     if (CLICKABLE_INPUT_TYPES.has(type)) return 'clickable';
+    if (type === 'file') return 'file';
     if (INERT_INPUT_TYPES.has(type)) return 'inert';
     return 'attack-vector';
   }

@@ -58,6 +58,7 @@ export class RecursiveDomParser {
       inActiveLayer: element.inActiveLayer,
       isDismiss: element.isDismiss,
       formKey: element.formKey,
+      href: element.href,
     }));
   }
 
@@ -415,7 +416,7 @@ const isDisabled = (element) => {
       // screen. Strong ARIA/dialog roots are trusted outright; class-hook roots
       // (modal/popup/drawer…) must be stacked (fixed/absolute + z-index) so static
       // in-flow sidebars/navs aren't mistaken for a transient overlay.
-      const LAYER_TRIGGER_RE = /(menu|sidebar|popup|pop-up|modal|dropdown|drop-down|accordion|drawer|popover|offcanvas|hamburger|collaps|expand|disclosure|show[\\s-]?more|see[\\s-]?more|view[\\s-]?more)/i;
+      const LAYER_TRIGGER_RE = /(menu|sidebar|popup|pop-up|modal|dropdown|drop-down|accordion|drawer|popover|offcanvas|hamburger|collaps|expand|disclosure|\\btab(s|list)?\\b|segmented|show[\\s-]?more|see[\\s-]?more|view[\\s-]?more)/i;
       const DISMISS_RE = /(^|[^a-z])(close|dismiss|cancel)([^a-z]|$)/i;
       const isVisibleBox = (el) => {
         const r = getSafeBoundingRect(el);

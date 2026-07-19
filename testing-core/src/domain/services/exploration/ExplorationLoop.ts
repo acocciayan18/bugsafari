@@ -49,6 +49,15 @@ const LAYER_TRIGGER_SCORE_BOOST = 15;
 // off-screen/lazy controls before the page is declared fully explored.
 const MAX_FRONTIER_SCROLLS = 6;
 
+// Route-transition demotion: an untriggered anchor that navigates off the current
+// view is sunk below every untriggered in-page control so forms/buttons/dropdowns
+// are exhausted before a route change. Demotion, not removal — still selectable
+// once the in-page frontier is spent.
+const NAV_EDGE_DEMOTION = 300;
+
+// href schemes that are not real route transitions (in-page / non-navigational).
+const NON_NAV_HREF_RE = /^\s*(#|javascript:|mailto:|tel:|sms:|$)/i;
+
 type LoopResult = RunResult;
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
 
@@ -81,6 +90,9 @@ interface RunContext {
   // Structural shells already announced as Fully Explored — bounds the saturation
   // skip milestone to once per page instead of once per redundant landing.
   saturatedLogged: Set<string>;
+  // URLs already scrolled for lazy/off-screen content on their FIRST landing, so
+  // the first-visit reveal fires once per URL instead of every step parked on it.
+  firstVisitRevealed: Set<string>;
 }
 
 /** Per-step DOM/graph fingerprint computed once per iteration for a VALID state. */
@@ -147,6 +159,7 @@ export class ExplorationLoop {
       deadEndUrls: new Set<string>(),
       lastStepUrl: '',
       saturatedLogged: new Set<string>(),
+      firstVisitRevealed: new Set<string>(),
     };
 
     for (let step = 1; ; step++) {
@@ -200,13 +213,19 @@ export class ExplorationLoop {
 
         await this.maybeSabotageNetwork(page, ctx);
 
-        // On genuinely RETURNING to a seen URL (not while parked on one), surface
-        // lazy-loaded / infinite-scroll / IntersectionObserver content BEFORE
-        // parsing so newly rendered controls are discovered instead of leaving the
-        // page with a hidden frontier.
+        // Surface lazy-loaded / infinite-scroll / IntersectionObserver content
+        // BEFORE parsing, so newly rendered controls are discovered instead of
+        // leaving the page with a hidden frontier. Fires when the URL changed since
+        // last step AND either we are RETURNING to a seen URL, or this is the FIRST
+        // landing on it (revealed once per URL) — so below-fold controls on a fresh
+        // long page are found before the engine can navigate away.
         const stepUrl = page.url();
-        if (stepUrl !== ctx.lastStepUrl && this.deps.visitedUrls.has(stepUrl)) {
-          await this.revealLazyContent(page);
+        if (stepUrl !== ctx.lastStepUrl) {
+          const revisiting = this.deps.visitedUrls.has(stepUrl);
+          if (revisiting || !ctx.firstVisitRevealed.has(stepUrl)) {
+            ctx.firstVisitRevealed.add(stepUrl);
+            await this.revealLazyContent(page);
+          }
         }
         ctx.lastStepUrl = stepUrl;
 
@@ -413,22 +432,35 @@ export class ExplorationLoop {
    * caught by the per-iteration health gate on the next step.
    */
   private async revealLazyContent(page: Page): Promise<void> {
-    const MAX_REVEAL_SCROLLS = 4;
+    const MAX_REVEAL_SCROLLS = 8;
     try {
-      let lastHeight = 0;
+      // Step one viewport at a time (not straight to the bottom) so virtualized /
+      // windowed lists — whose scrollHeight is a fixed spacer and whose rows swap
+      // in/out — still surface fresh controls. Stop when a step neither advances the
+      // scroll position NOR changes the interactive-control count (progress signal
+      // that survives a constant scrollHeight), or the document end is reached.
+      let lastSig = -1;
       for (let i = 0; i < MAX_REVEAL_SCROLLS; i++) {
-        const height = await page.evaluate(() => {
-          window.scrollTo(0, document.body.scrollHeight);
-          return document.body.scrollHeight;
+        const probe = await page.evaluate(() => {
+          const before = window.scrollY;
+          window.scrollBy(0, window.innerHeight);
+          const interactiveCount = document.querySelectorAll(
+            'button, input:not([type="hidden"]), textarea, select, a[href], [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])',
+          ).length;
+          const atBottom =
+            window.scrollY === before ||
+            window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+          return { interactiveCount, scrollY: window.scrollY, atBottom };
         });
         await settle(page);
-        if (height === lastHeight) break; // page stopped growing — nothing new to reveal
-        lastHeight = height;
+        const sig = probe.interactiveCount * 100000 + probe.scrollY;
+        if (probe.atBottom && sig === lastSig) break; // no advance and no new controls — done
+        lastSig = sig;
       }
       // Restore the viewport so parsing/coordinate capture starts from the top.
       await page.evaluate(() => window.scrollTo(0, 0));
       await settle(page);
-      this.deps.telemetry.emitMilestone('🔄 Revisit: scrolled to reveal lazy-loaded content before re-parsing.');
+      this.deps.telemetry.emitMilestone('🔄 Scrolled to reveal lazy-loaded / off-screen content before re-parsing.');
     } catch {
       // Detached/closed/navigated page — handled by ensurePageHealth next step.
     }
@@ -602,7 +634,28 @@ export class ExplorationLoop {
       )
       .sort((left, right) => right.riskScore - left.riskScore);
 
-    // Deep Semantic Data Attack prioritization: when the data-fuzzing gate is
+    // Premature-navigation guard: while any untriggered NON-navigational control
+    // remains on this view, demote every untriggered route-changing anchor below
+    // them so in-page interactions (inputs, buttons, dropdowns, toggles) are
+    // exhausted before the engine follows a link off the page. Demotion, not
+    // removal — a link still wins once the in-page frontier is spent.
+    const isNavEdge = (el: InteractiveElement): boolean =>
+      el.tagName.toLowerCase() === 'a' && !!el.href && !NON_NAV_HREF_RE.test(el.href);
+    const hasUntriggeredInPageControl = ranked.some(
+      (el) => !isNavEdge(el) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector),
+    );
+    if (hasUntriggeredInPageControl) {
+      ranked = ranked
+        .map((element) =>
+          isNavEdge(element) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector)
+            ? { ...element, riskScore: element.riskScore - NAV_EDGE_DEMOTION }
+            : element,
+        )
+        .sort((left, right) => right.riskScore - left.riskScore);
+    }
+
+    // Deep Semantic Data Attack prioritization: when an input-actuating profile
+    // (data-fuzzing or exploratory) is
     // active, fuzzable attack vectors must be selected BEFORE any navigation
     // control, otherwise high-keyword buttons (login=82, checkout, pay…) win the
     // best-first pick and the engine clicks submit on an empty form — inputs are
@@ -615,7 +668,7 @@ export class ExplorationLoop {
     // forever (each payload mutates the input value → a fresh graph node → the boost
     // would otherwise re-lift it). Gated — the scorer/perceptron stay
     // profile-agnostic; only data-attack runs shift.
-    if (this.deps.gate.isEnabled('dataFuzzing')) {
+    if (this.deps.gate.isEnabled('dataFuzzing') || this.deps.gate.isEnabled('exploratory')) {
       const isFreshAttackVector = (element: InteractiveElement): boolean =>
         attackTargetBoost(element) > 0 &&
         !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector) &&

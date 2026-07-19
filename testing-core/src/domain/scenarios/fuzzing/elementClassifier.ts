@@ -125,6 +125,27 @@ const DATABASE_AUTH_TOKENS = new Set([
   'reset',
 ]);
 
+// Sensitive-value tokens beyond the auth set: financial + government identifiers
+// whose narrated value must be masked even when the field classifies as NUMERIC/TEXT.
+const SENSITIVE_VALUE_TOKENS = new Set([
+  'password', 'passwd', 'pass', 'pwd', 'secret', 'token', 'otp', 'pin', 'cvv', 'cvc',
+  'card', 'cardnumber', 'creditcard', 'ccnumber', 'cc-number', 'iban', 'routing',
+  'accountnumber', 'account-number', 'ssn', 'social', 'sin', 'nino', 'passport',
+  'taxid', 'tin', 'securitycode', 'apikey', 'api-key', 'privatekey', 'private-key',
+]);
+
+/**
+ * Whether a field's narrated value must be masked in reproduction steps regardless
+ * of its fuzz category — auth, financial, or government-identifier inputs. Replay
+ * still keeps the verbatim value; only the human-readable playbook is redacted.
+ */
+export function isSensitiveInputElement(element: unknown): boolean {
+  const identifiers = getElementIdentifiers(element as Partial<ClassifiableElement>);
+  const type = (element as Partial<ClassifiableElement>)?.type?.toLowerCase() ?? '';
+  if (type === 'password') return true;
+  return containsToken(identifiers, SENSITIVE_VALUE_TOKENS);
+}
+
 /**
  * Token sets for EMAIL classification.
  * Matches email address fields.

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { X } from 'lucide-react';
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -40,9 +41,8 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
           className="flex h-8 w-8 items-center justify-center rounded-md text-(--text-secondary) hover:bg-[var(--surface-hover)] transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
           aria-label="Close"
         >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          
+          <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
 

@@ -11,6 +11,7 @@ import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
 import { deleteRecord as deleteSafariRecord, exportRecord, fetchSessionHistory } from '../../services/historyService';
 import { toast } from 'sonner';
+import { ChartColumn, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Lock, RefreshCcw, Search, Trash, Trash2, TriangleAlert, Upload } from 'lucide-react';
 
 // Types matching the saved safari document from backend
 export interface SafariMetrics {
@@ -539,20 +540,11 @@ const progressSegments = [0, 1, 2, 3, 4];
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50"
             title="Refresh history"
           >
-            <svg
-              className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCcw className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
-            <svg className="h-5 w-5 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-            </svg>
+            
+            <CircleQuestionMark className="h-5 w-5 text-[var(--text-secondary)]" />
           </button>
         </div>
       </header>
@@ -593,9 +585,8 @@ const progressSegments = [0, 1, 2, 3, 4];
             <div className="flex items-center gap-6">
               <div className="relative">
                 <div className="flex h-10 w-72 items-center rounded-md bg-[var(--surface-app)] px-3 py-2 shadow-sm">
-                  <svg className="mr-2 h-5 w-5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                  </svg>
+                
+                  <Search className="absolute left-3 h-5 w-5 text-[var(--text-tertiary)]" />
                   <input
                     type="text"
                     placeholder="Search URLs..."
@@ -634,27 +625,22 @@ const progressSegments = [0, 1, 2, 3, 4];
                 onClick={handleBulkDelete}
                 className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-critical-fg)] bg-[var(--surface-app)] border border-[var(--status-critical-border)] hover:bg-[var(--status-critical-bg)] transition-colors"
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+               
+                <Trash2 className="h-4 w-4" />
                 Delete
               </button>
               <button
                 onClick={handleBulkExport}
                 className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-stable-fg)] bg-[var(--surface-app)] border border-[var(--status-stable-border)] hover:bg-[var(--status-stable-bg)] transition-colors"
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
+               <Upload className="h-4 w-4" />
                 Export
               </button>
               <button
                 onClick={handleBulkCompare}
                 className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--surface-app)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
+                <ChartColumnBig className="h-4 w-4" />
                 Compare
               </button>
               <button
@@ -675,9 +661,8 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-[var(--status-critical-fg)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+             
+             <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
               <span className="text-sm font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
               <span className="text-xs text-[var(--text-secondary)]">{fetchError}</span>
               <button
@@ -689,9 +674,7 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-[var(--text-disabled)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
+              <Lock className="h-12 w-12 text-[var(--text-secondary)]" />
               <span className="text-sm text-[var(--text-secondary)] font-medium">Please log in to view history</span>
               <span className="text-xs text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
               <button
@@ -703,9 +686,7 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
           ) : paginatedEvaluations.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <svg className="h-12 w-12 text-[var(--text-disabled)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
+              <ClipboardCheck className="h-12 w-12 text-[var(--text-secondary)]" />
               <span className="text-sm text-[var(--text-secondary)] font-medium">No evaluation history yet</span>
               <span className="text-xs text-[var(--text-secondary)]">Run your first autonomous test and save it to see results here</span>
             </div>
@@ -770,15 +751,7 @@ paginatedEvaluations.map((evalItem) => {
                           />
                         </div>
                         <div className="flex h-6 w-6 items-center justify-center">
-                          <svg
-                            className="h-5 w-5 text-[var(--text-tertiary)]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
+                          <ChevronRight className="h-4 w-4 text-[var(--text-secondary)]" />
                         </div>
                       </div>
                     </div>

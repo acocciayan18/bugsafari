@@ -117,6 +117,14 @@ export interface ForensicActionStep {
   durationMs?: number;
   /** Present only on a 'macro' step — the re-expandable stress-scenario descriptor. */
   macro?: ReplayMacro;
+  /** Human-readable element label, preferred over the raw selector in step text. */
+  elementLabel?: string;
+  /** Validation attributes stripped on a bypass step (required, maxlength, pattern, …). */
+  strippedAttributes?: string[];
+  /** Count of elements a bypass step affected. */
+  affectedCount?: number;
+  /** True ⇒ mask the payload value in step text (auth/password fields). */
+  redactValue?: boolean;
 }
 
 // Full per-run network row (every request, incl. successful) — mirrors live Network tab.
@@ -173,8 +181,12 @@ export interface ForensicCaughtBug {
   payloadUsed: string;
   advice: string;
   timestamp: string;
+  /** Backend-classified severity (CRITICAL/HIGH/MEDIUM/LOW/INFO). */
+  severity?: string;
   /** Full stack trace captured live, preserved verbatim into history. */
   stackTrace?: string;
+  /** Top frames resolved to original source via the target's source maps (best-effort). */
+  resolvedStackTrace?: string;
   /** Per-finding, human-actionable numbered replication checklist. */
   reproductionSteps?: string[];
   /** Per-finding minimized, replayable action trace — the same timeline Verify Fix replays. */

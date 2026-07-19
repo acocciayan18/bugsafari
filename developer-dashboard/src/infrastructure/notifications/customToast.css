@@ -3,6 +3,27 @@ Custom Toast Styles
 White background, black text, colored icons per variant
 ══════════════════════════════════════════════════════════════════════════════ */
 
+/* Palette follows the app theme via the `dark` class on <html> */
+:root {
+  --toast-surface: #ffffff;
+  --toast-text: #000000;
+  --toast-border-color: #e5e7eb;
+  --toast-dismiss-fg: #6b7280;
+  --toast-dismiss-hover-bg: #f3f4f6;
+  --toast-dismiss-hover-fg: #000000;
+  --toast-dismiss-active-bg: #e5e7eb;
+}
+
+html.dark {
+  --toast-surface: #18181b;
+  --toast-text: #fafafa;
+  --toast-border-color: #3f3f46;
+  --toast-dismiss-fg: #a1a1aa;
+  --toast-dismiss-hover-bg: #27272a;
+  --toast-dismiss-hover-fg: #fafafa;
+  --toast-dismiss-active-bg: #3f3f46;
+}
+
 /* Toast container */
 .toast-custom {
   display: flex;
@@ -10,9 +31,9 @@ White background, black text, colored icons per variant
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background-color: #ffffff;
-  color: #000000;
-  border: 1px solid #e5e7eb;
+  background-color: var(--toast-surface);
+  color: var(--toast-text);
+  border: 1px solid var(--toast-border-color);
   border-radius: 16px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   min-width: 280px;
@@ -41,7 +62,7 @@ White background, black text, colored icons per variant
 }
 
 .toast-custom .toast-icon.text-black {
-  color: #000000;
+  color: var(--toast-text);
 }
 
 .toast-custom .toast-icon.text-red-500 {
@@ -53,7 +74,7 @@ White background, black text, colored icons per variant
   font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
-  color: #000000;
+  color: var(--toast-text);
 }
 
 /* Dismiss button */
@@ -67,15 +88,15 @@ White background, black text, colored icons per variant
   background: transparent;
   border: none;
   border-radius: 8px;
-  color: #6b7280;
+  color: var(--toast-dismiss-fg);
   cursor: pointer;
   flex-shrink: 0;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .toast-custom .toast-dismiss-btn:hover {
-  background-color: #f3f4f6;
-  color: #000000;
+  background-color: var(--toast-dismiss-hover-bg);
+  color: var(--toast-dismiss-hover-fg);
 }
 
 .toast-custom .toast-dismiss-btn:focus {
@@ -84,7 +105,7 @@ White background, black text, colored icons per variant
 }
 
 .toast-custom .toast-dismiss-btn:active {
-  background-color: #e5e7eb;
+  background-color: var(--toast-dismiss-active-bg);
 }
 
 /* Toast container for sonner - ensure proper positioning */

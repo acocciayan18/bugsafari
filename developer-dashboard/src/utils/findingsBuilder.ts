@@ -72,6 +72,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       advice: inc.advice ?? generateSuggestedFix(type, inc.reason, inc.statusCode),
       timestamp: inc.timestamp,
       attribution: inc.attribution,
+      severity: inc.severity,
     };
   });
 
@@ -95,6 +96,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       advice: rep.advice ?? generateSuggestedFix(type, rep.reason, rep.statusCode),
       timestamp: rep.timestamp,
       attribution: rep.attribution,
+      severity: rep.severity,
     };
   });
 

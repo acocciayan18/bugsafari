@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import { Toaster, toast, type ToasterProps } from 'sonner';
 
@@ -12,6 +12,9 @@ export interface ToastOptions {
   variant?: ToastVariant;
   message: string;
   duration?: number;
+  // Fired whichever way the toast goes away (✕, swipe, timeout) so callers can
+  // release the id they are holding.
+  onDismiss?: () => void;
 }
 
 export interface ToastContextValue {
@@ -34,10 +37,10 @@ export interface ToastContextValue {
 interface CustomToastProps {
   message: string;
   variant?: ToastVariant;
-  closeToast?: () => void | string | number;
+  onClose: () => void;
 }
 
-function CustomToast({ message, variant = 'telemetry', closeToast }: CustomToastProps) {
+function CustomToast({ message, variant = 'telemetry', onClose }: CustomToastProps) {
   const iconColorClass = {
     success: 'text-green-500',
     telemetry: 'text-black',
@@ -54,16 +57,14 @@ function CustomToast({ message, variant = 'telemetry', closeToast }: CustomToast
         </span>
         <span className="toast-message">{message}</span>
       </div>
-      {closeToast && (
-        <button
-          type="button"
-          className="toast-dismiss-btn"
-          onClick={closeToast}
-          aria-label="Dismiss notification"
-        >
-          <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
-        </button>
-      )}
+      <button
+        type="button"
+        className="toast-dismiss-btn"
+        onClick={onClose}
+        aria-label="Dismiss notification"
+      >
+        <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -91,30 +92,42 @@ interface ToastProviderProps {
   toasterProps?: Partial<ToasterProps>;
 }
 
+// ToastProvider mounts above DarkModeProvider, so it reads the resolved theme off
+// the `dark` class DarkModeProvider writes to <html> instead of via context.
+function subscribeToHtmlClass(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  return () => observer.disconnect();
+}
+
+function readHtmlTheme(): 'light' | 'dark' {
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+}
+
+function useHtmlTheme(): 'light' | 'dark' {
+  return useSyncExternalStore(subscribeToHtmlClass, readHtmlTheme, readHtmlTheme);
+}
+
 export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
+  const theme = useHtmlTheme();
+
   const showToast = useCallback((options: ToastOptions): string | undefined => {
-    const { variant = 'telemetry', message, duration = 3000 } = options;
+    const { variant = 'telemetry', message, duration = 3000, onDismiss } = options;
 
-    const baseStyle = {
-      color: '#000000',
-    };
+    // sonner hands the render callback the toast id, not a close handler — the ✕
+    // must dismiss by that id.
+    const toastId = toast.custom(
+      (id) => (
+        <CustomToast
+          message={message}
+          variant={variant}
+          onClose={() => toast.dismiss(id)}
+        />
+      ),
+      { duration, onDismiss, onAutoClose: onDismiss },
+    );
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toastId = toast.custom((closeToast: any) => (
-      <CustomToast 
-        message={message} 
-        variant={variant} 
-        closeToast={closeToast} 
-      />
-    ), {
-      duration,
-      style: baseStyle,
-      // Limit max 3 toasts on screen
-      // @ts-expect-error - sonner v2 limit option
-      limit: 3,
-    });
-
-    return toastId ? String(toastId) : undefined;
+    return toastId !== undefined ? String(toastId) : undefined;
   }, []);
 
 const dismissToast = useCallback((id: string) => {
@@ -150,21 +163,19 @@ const dismissToast = useCallback((id: string) => {
     });
   }, [showToast]);
 
-  const contextValue: ToastContextValue = {
-    showToast,
-    dismissToast,
-    dismissAll,
-    success,
-    error,
-    telemetry,
-  };
+  const contextValue = useMemo<ToastContextValue>(
+    () => ({ showToast, dismissToast, dismissAll, success, error, telemetry }),
+    [showToast, dismissToast, dismissAll, success, error, telemetry],
+  );
 
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
       <Toaster
         position="top-center"
-        theme="light"
+        theme={theme}
+        closeButton
+        visibleToasts={3}
         {...toasterProps}
       />
     </ToastContext.Provider>

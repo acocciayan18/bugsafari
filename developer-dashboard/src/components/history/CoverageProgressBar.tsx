@@ -7,6 +7,8 @@
 // - 71-100% = Green (good coverage)
 // Features smooth CSS transitions and animated fill
 
+import { ChartColumnBig } from "lucide-react";
+
 interface CoverageProgressBarProps {
   percentage: number;
   showLabel?: boolean;
@@ -81,9 +83,7 @@ export function CoverageDisplay({ percentage }: { percentage: number }) {
 
       {/* Percentage with icon */}
       <div className={`flex items-center gap-1 ${band.text}`}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
+       <ChartColumnBig className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
         <span className="text-xs font-semibold">{clampedPercentage}%</span>
       </div>
     </div>

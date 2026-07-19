@@ -20,9 +20,10 @@ import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heurist
 import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
-import type { FindingAttribution } from '../../../../../shared/types.js';
+import type { FaultSeverity, FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import { VerificationPipeline, type VerificationCandidate } from '../verification/index.js';
+import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
 
 // Infinite-loading watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
 // hang candidate; CONFIRM_MS is the persistence gap between the two DOM probes; the rest bound cost.
@@ -62,11 +63,11 @@ export function sanitizeException(error: Error | string): { message: string; sta
 
   // Remove file paths that expose server internals
   // Windows paths
-  stackTrace = stackTrace.replace(/C:\\Users\\[^\\]+\\/g, '[REDACTED_PATH]/g');
-  stackTrace = stackTrace.replace(/C:\/[^\/]+\//g, '[REDACTED_PATH]/g');
+  stackTrace = stackTrace.replace(/C:\\Users\\[^\\]+\\/g, '[REDACTED_PATH]/');
+  stackTrace = stackTrace.replace(/C:\/[^\/]+\//g, '[REDACTED_PATH]/');
   // Unix/Linux paths
-  stackTrace = stackTrace.replace(/\/home\/[^\/]+\//g, '[REDACTED_PATH]/g');
-  stackTrace = stackTrace.replace(/\/Users\/[^\/]+\//g, '[REDACTED_PATH]/g');
+  stackTrace = stackTrace.replace(/\/home\/[^\/]+\//g, '[REDACTED_PATH]/');
+  stackTrace = stackTrace.replace(/\/Users\/[^\/]+\//g, '[REDACTED_PATH]/');
 
   // Remove Node.js internal paths
   stackTrace = stackTrace.replace(/node:[/\\][^\n]*/g, '[NODE_INTERNAL]');
@@ -82,8 +83,9 @@ export function sanitizeException(error: Error | string): { message: string; sta
   // Remove anonymous function details (anonymous at position ...)
   stackTrace = stackTrace.replace(/anonymous at .+/g, '[anonymous function]');
 
-  // Remove line/column numbers that could hint at codebase structure
-  stackTrace = stackTrace.replace(/:(\d+):(\d+)/g, ':[LINE]:[COL]');
+  // Line/column numbers are kept: these frames are the TARGET app's own browser
+  // stack (pageerror runs in the page), so :line:col points a developer straight at
+  // the failing source. Only server-internal paths/env are redacted (above).
 
   // Extract just the error type name if present (e.g., "TypeError:", "ReferenceError:")
   const errorTypeMatch = stackTrace.match(/^([A-Za-z]+Error):/);
@@ -191,6 +193,8 @@ export class StabilityMonitor {
   private watchdogTimer?: ReturnType<typeof setInterval>;
   // Wall-clock start per request, for duration when Playwright timing is unavailable.
   private readonly requestStartTimes = new WeakMap<Request, number>();
+  // One source-map resolver per page so its decoded-map cache survives across faults.
+  private readonly resolvers = new WeakMap<Page, SourceMapResolver>();
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
 
@@ -295,6 +299,29 @@ export class StabilityMonitor {
     };
   }
 
+  // Lazily create + reuse the per-page source-map resolver (cache persists per page).
+  private getResolver(page: Page): SourceMapResolver {
+    let resolver = this.resolvers.get(page);
+    if (!resolver) {
+      resolver = new SourceMapResolver(page);
+      this.resolvers.set(page, resolver);
+    }
+    return resolver;
+  }
+
+  // Grab a bounded JPEG of the viewport at fault time for visual evidence. Never
+  // throws (a closed/navigating page just yields no screenshot) and is size-bounded
+  // by JPEG quality; the result rides the live report + reconnect replay only.
+  private async captureFaultScreenshot(page: Page): Promise<string | undefined> {
+    try {
+      if (page.isClosed()) return undefined;
+      const buffer = await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
+      return buffer.toString('base64');
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Auto-dismiss native dialogs so they never block exploration. */
   public attachDialogAutoDismiss(page: Page): void {
     const t = this.deps.telemetry;
@@ -317,6 +344,7 @@ export class StabilityMonitor {
     source: RuntimeObservation['source'],
     rawMessage: string,
     stack?: string,
+    faultAtMs: number = Date.now(),
   ): Promise<void> {
     const t = this.deps.telemetry;
     const message = rawMessage || 'Unknown runtime error';
@@ -328,8 +356,9 @@ export class StabilityMonitor {
     const forensicType = source === 'CONSOLE' ? ForensicErrorType.CONSOLE_ERROR : ForensicErrorType.JS_EXCEPTION;
 
     // Freeze the rolling buffer and minimize it to the steps causally required to reach
-    // this fault before anything else can advance it (see the network handlers).
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
+    // this fault before anything else can advance it (see the network handlers). faultAtMs
+    // is the true in-page instant for rejections (async event → node hook adds latency).
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
     const reproductionPlaybook = reproduction.narrative;
     // Snapshot client state so cross-page-state faults reproduce during replay.
     const stateFingerprint = await captureStateFingerprint(page);
@@ -351,7 +380,7 @@ export class StabilityMonitor {
     }
 
     // Classify into a subtype + student-friendly remediation and dedup by signature.
-    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack, url, timestampMs: Date.now() });
+    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack, url, timestampMs: faultAtMs });
 
     // Collapse: a repeat of an already-reported signature never re-registers a bug.
     // Surface it as a throttled informational note so the recurrence stays visible.
@@ -368,6 +397,11 @@ export class StabilityMonitor {
     this.deps.setFreeze();
     const remediation = finding.studentAdvice;
     const reason = finding.message;
+    // Visual evidence of the viewport at the fault instant (live/replay only).
+    const screenshot = await this.captureFaultScreenshot(page);
+    // Best-effort source-map resolution of the raw stack's top frames (undefined
+    // when the target ships no reachable maps).
+    const resolvedStackTrace = await this.getResolver(page).resolve(stack);
 
     t.emit('EXCEPTION', {
       message: `🔴 ${finding.message}`,
@@ -375,6 +409,8 @@ export class StabilityMonitor {
       reproductionSteps: reproductionPlaybook,
       attribution,
     });
+
+    const faultSeverity = severity as FaultSeverity;
 
     t.gateway.emitIncidentReport({
       timestamp,
@@ -387,6 +423,9 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: remediation,
       attribution,
+      screenshot,
+      severity: faultSeverity,
+      resolvedStackTrace,
     });
 
     t.gateway.emitForensicReport({
@@ -398,6 +437,9 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: remediation,
       attribution,
+      screenshot,
+      severity: faultSeverity,
+      resolvedStackTrace,
     });
 
     // Persist to forensic_errors so saved history mirrors the live Errors tab.
@@ -422,10 +464,12 @@ export class StabilityMonitor {
       payloadUsed: source,
       advice: remediation,
       stackTrace,
+      resolvedStackTrace,
       reproductionSteps: reproductionPlaybook,
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
+      severity: faultSeverity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -451,8 +495,11 @@ export class StabilityMonitor {
     // same pipeline. The exposed binding + init script are re-installed per page; the
     // catch handles the already-bound error thrown when a page is recreated.
     page
-      .exposeFunction('__bugsafariOnUnhandledRejection', (payload: { message?: string; stack?: string }) => {
-        void this.reportRuntimeFault(page, 'REJECTION', payload?.message ?? 'Unhandled promise rejection', payload?.stack);
+      .exposeFunction('__bugsafariOnUnhandledRejection', (payload: { message?: string; stack?: string; at?: number }) => {
+        // Prefer the in-page capture instant so the causal snapshot isn't skewed by
+        // the async event → node-hook delivery latency. Both clocks are this machine's.
+        const at = typeof payload?.at === 'number' && Number.isFinite(payload.at) ? payload.at : Date.now();
+        void this.reportRuntimeFault(page, 'REJECTION', payload?.message ?? 'Unhandled promise rejection', payload?.stack, at);
       })
       .catch(() => undefined);
     page
@@ -463,13 +510,28 @@ export class StabilityMonitor {
             const message = reason?.message ? String(reason.message) : String(reason ?? 'Unhandled promise rejection');
             const stack = reason?.stack ? String(reason.stack) : undefined;
             const hook = (window as unknown as { __bugsafariOnUnhandledRejection?: (p: unknown) => void }).__bugsafariOnUnhandledRejection;
-            hook?.({ message, stack });
+            hook?.({ message, stack, at: Date.now() });
           } catch {
             // never let the reporter hook throw inside the page
           }
         });
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * Attach fault + console capture to a secondary page the target opened itself
+   * (window.open / target=_blank popup). These pages are NOT driven by the
+   * explorer, but their uncaught exceptions, rejections, crashes, and console
+   * output must still surface as findings — otherwise an error on an app-opened
+   * tab is invisible. Network monitoring is deliberately excluded (its watchdog is
+   * single-page-scoped on the main run page).
+   */
+  public async attachSecondaryPage(page: Page): Promise<void> {
+    this.attachDialogAutoDismiss(page);
+    this.attachExceptionMonitoring(page);
+    this.attachCrashMonitoring(page);
+    await setupBrowserConsoleListener(page, this.deps.telemetry.gateway);
   }
 
   /** Capture renderer/tab crashes (OOM / GPU fault) directly instead of only inferring them via the freeze heartbeat. */
@@ -523,6 +585,7 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
     });
 
     t.gateway.emitForensicReport({
@@ -533,6 +596,7 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
     });
 
     this.deps.persistForensicError({
@@ -559,6 +623,7 @@ export class StabilityMonitor {
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -729,6 +794,7 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
     });
 
     t.gateway.emitForensicReport({
@@ -740,6 +806,7 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: defect.advice,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
     });
 
     this.deps.persistForensicError({
@@ -768,6 +835,7 @@ export class StabilityMonitor {
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
+      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -978,6 +1046,7 @@ export class StabilityMonitor {
         reproductionActions: reproduction.actions,
         stateFingerprint,
         attribution,
+        severity: severity as FaultSeverity,
         timestamp: new Date(),
       });
     });
@@ -1085,6 +1154,7 @@ export class StabilityMonitor {
         reproductionPlaybook,
         advice: remediation,
         attribution,
+        severity: severity as FaultSeverity,
       });
 
       t.gateway.emitForensicReport({
@@ -1096,6 +1166,7 @@ export class StabilityMonitor {
         reproductionPlaybook,
         advice: remediation,
         attribution,
+        severity: severity as FaultSeverity,
       });
 
       // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
@@ -1126,6 +1197,7 @@ export class StabilityMonitor {
         reproductionActions: reproduction.actions,
         stateFingerprint,
         attribution,
+        severity: severity as FaultSeverity,
         timestamp: new Date(),
       });
     });

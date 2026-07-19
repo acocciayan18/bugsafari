@@ -5,6 +5,7 @@ import type { OptimizationSettings, TestingTypeId } from '../../../../shared/typ
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
+import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
@@ -33,6 +34,7 @@ export interface ClientFinding {
     timestamp?: string;
     attribution?: FindingAttribution;
     stateFingerprint?: StateFingerprint;
+    severity?: string;
 }
 
 interface ExecutionMetrics {
@@ -190,26 +192,22 @@ export class StartExplorationUseCase {
         }));
     }
 
-    // Signature that treats volatile tokens (urls, hex ids, digits) as equal so a
-    // fault repeated with slightly different message text collapses to one finding.
-    private normalizeFaultSignature(type: string, message: string, selector: string): string {
-        const norm = (message ?? '')
-            .toLowerCase()
-            .replace(/https?:\/\/\S+/g, '#url')
-            .replace(/0x[0-9a-f]+/g, '#hex')
-            .replace(/\d+/g, '#n')
-            .replace(/\s+/g, ' ')
-            .trim();
-        return `${type}||${norm}||${selector ?? ''}`;
+    // Signature built on the SHARED normalization (shared/faultSignature) so the
+    // save-time dedup collapses exactly what the live dashboard collapsed — same
+    // volatile-token masking, same stack-frame disambiguation. `type` + `selector`
+    // stay in the key as the backend's coarse discriminators (network vs exception,
+    // element identity) since caught bugs carry no url/statusCode.
+    private normalizeFaultSignature(type: string, message: string, selector: string, stackTrace?: string): string {
+        return `${type}||${buildFaultSignature({ reason: message, stackTrace })}||${selector ?? ''}`;
     }
 
     // Collapse duplicate findings, keeping the first as representative and counting repeats.
-    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string }>(
+    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string; stackTrace?: string }>(
         bugs: T[],
     ): Array<T & { occurrences: number }> {
         const groups = new Map<string, T & { occurrences: number }>();
         for (const bug of bugs) {
-            const key = this.normalizeFaultSignature(bug.type, bug.message, bug.selector);
+            const key = this.normalizeFaultSignature(bug.type, bug.message, bug.selector, bug.stackTrace);
             const existing = groups.get(key);
             if (existing) existing.occurrences += 1;
             else groups.set(key, { ...bug, occurrences: 1 });
@@ -264,6 +262,8 @@ export class StartExplorationUseCase {
                 reproductionActions?: ActionRecord[];
                 attribution?: FindingAttribution;
                 stateFingerprint?: StateFingerprint;
+                severity?: string;
+                resolvedStackTrace?: string;
             }) => ({
                 bugId: bug.bugId,
                 type: bug.type,
@@ -272,6 +272,7 @@ export class StartExplorationUseCase {
                 payloadUsed: bug.payloadUsed,
                 advice: bug.advice,
                 stackTrace: bug.stackTrace ?? '',
+                resolvedStackTrace: bug.resolvedStackTrace ?? '',
                 reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
                 // Per-finding minimized, replayable timeline (empty ⇒ verifier falls
                 // back to the session-global actionSteps below).
@@ -279,6 +280,7 @@ export class StartExplorationUseCase {
                 timestamp: bug.timestamp,
                 attribution: bug.attribution,
                 stateFingerprint: bug.stateFingerprint,
+                severity: bug.severity,
             }))
             : clientFindings.map((finding, index) => ({
                 bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
@@ -293,6 +295,7 @@ export class StartExplorationUseCase {
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
                 attribution: finding.attribution,
                 stateFingerprint: finding.stateFingerprint,
+                severity: finding.severity,
             }));
 
         // Collapse duplicate findings (same fault repeated across the run) into one

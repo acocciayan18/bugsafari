@@ -48,6 +48,9 @@ export interface FindingAttribution {
 
 export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK' | 'MACRO';
 
+/** Backend-classified severity of a fault — mirrors the persisted ForensicErrorSeverity scale. */
+export type FaultSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+
 /**
  * A deterministic stress-scenario burst that replays by re-expansion, not by a
  * single literal step. Carries only the params needed to regenerate the exact
@@ -60,6 +63,16 @@ export interface ReplayMacro {
   summary: string;
 }
 
+/** What actually happened after an action ran — appended to the step as an outcome clause. */
+export interface ActionOutcome {
+  /** Absolute URL the action navigated to, if it caused a navigation. */
+  navigatedTo?: string;
+  /** Backend status code observed for the action's request, if any. */
+  httpStatus?: number;
+  /** True when the action measurably changed the DOM/app state. */
+  domChanged?: boolean;
+}
+
 export interface ActionRecord {
   timestamp: string;
   type: ActionType;
@@ -67,12 +80,22 @@ export interface ActionRecord {
   url: string;
   payload?: string;
   fallbackLabel?: string;
+  /** Human-readable element label resolved at record time (preferred over fallbackLabel). */
+  elementLabel?: string;
   /** Consecutive identical repeats collapsed into this record (>1 ⇒ "repeat N times"). */
   repeatCount?: number;
   /** Real execution time of the action in ms (measured in the executor). */
   durationMs?: number;
   /** Present only on a MACRO record — the re-expandable stress-scenario descriptor. */
   macro?: ReplayMacro;
+  /** Validation attributes stripped on a SUBMIT/bypass step (required, maxlength, pattern, …). */
+  strippedAttributes?: string[];
+  /** Count of elements a bypass step affected (target + siblings + form). */
+  affectedCount?: number;
+  /** Observed result of the action, rendered as an outcome clause on the step. */
+  outcome?: ActionOutcome;
+  /** True ⇒ narration masks the payload value (auth/password fields); replay keeps it verbatim. */
+  redactValue?: boolean;
 }
 
 /**
@@ -122,6 +145,15 @@ export interface IncidentReport {
   attribution?: FindingAttribution;
   // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
   occurrences?: number;
+  // Base64 JPEG (no data: prefix) of the viewport at the fault instant. Live/replay
+  // only — deliberately NOT persisted to Mongo to avoid session-document bloat.
+  screenshot?: string;
+  // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
+  // severity badge instead of a hard-coded string.
+  severity?: FaultSeverity;
+  // Top stack frames resolved through the target's source maps to original
+  // file:line:col — best-effort (absent when no usable map was reachable).
+  resolvedStackTrace?: string;
 }
 
 export interface ForensicCrashReport {
@@ -139,4 +171,13 @@ export interface ForensicCrashReport {
   attribution?: FindingAttribution;
   // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
   occurrences?: number;
+  // Base64 JPEG (no data: prefix) of the viewport at the fault instant. Live/replay
+  // only — deliberately NOT persisted to Mongo to avoid session-document bloat.
+  screenshot?: string;
+  // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
+  // severity badge instead of a hard-coded string.
+  severity?: FaultSeverity;
+  // Top stack frames resolved through the target's source maps to original
+  // file:line:col — best-effort (absent when no usable map was reachable).
+  resolvedStackTrace?: string;
 }

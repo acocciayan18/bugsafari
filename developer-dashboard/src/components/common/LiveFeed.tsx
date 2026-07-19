@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
 import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
+import { normalizeTargetUrl } from '../../../../shared/url.js';
 
 interface LiveFeedProps {
   frame: string | null;
@@ -36,7 +37,9 @@ export default function LiveFeed({
   isInitializing = false,
   liveFrame = null
 }: LiveFeedProps) {
-  const displayUrl = currentUrl || targetUrl || '';
+  // Show the address the engine actually resolves to, not the raw typed input.
+  const rawUrl = currentUrl || targetUrl || '';
+  const displayUrl = normalizeTargetUrl(rawUrl) ?? rawUrl;
   const isSecureUrl = displayUrl.startsWith('https://');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);

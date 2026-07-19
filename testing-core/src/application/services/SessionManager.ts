@@ -3,6 +3,7 @@ import { Types, isValidObjectId } from 'mongoose';
 import type {
   AccessibilityFinding,
   ActiveSessionSnapshot,
+  BrowserConsoleMessage,
   ForensicCrashReport,
   IncidentReport,
   RunLifecycleStatus,
@@ -16,6 +17,7 @@ import { SessionModel } from '../../infrastructure/database/models/SessionModel.
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
 import { TargetHealthMonitor } from './TargetHealthMonitor.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.js';
 
 /** Minimal control surface the manager needs from the live browser engine. */
@@ -53,6 +55,7 @@ const HEALTH_CRASH_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEAL
 const HEALTH_MONITOR_ENABLED = process.env.BUGSAFARI_TARGET_HEALTH_MONITOR?.trim().toLowerCase() === 'on';
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
+const CONSOLE_BUFFER_CAP = 200;
 
 function readPositiveInt(raw: string | undefined, fallback: number): number {
   const n = raw ? Number(raw) : NaN;
@@ -80,6 +83,7 @@ interface ActiveRun {
   reports: ForensicCrashReport[];
   incidents: IncidentReport[];
   accessibility: AccessibilityFinding[];
+  browserConsole: BrowserConsoleMessage[];
   lastFrame: string | null;
 }
 
@@ -153,6 +157,7 @@ export class SessionManager implements TelemetryRecorder {
       reports: [],
       incidents: [],
       accessibility: [],
+      browserConsole: [],
       lastFrame: null,
     };
 
@@ -223,6 +228,9 @@ export class SessionManager implements TelemetryRecorder {
         break;
       case 'accessibility':
         pushCapped(run.accessibility, payload as AccessibilityFinding, REPORT_BUFFER_CAP);
+        break;
+      case 'browser-console':
+        pushCapped(run.browserConsole, payload as BrowserConsoleMessage, CONSOLE_BUFFER_CAP);
         break;
     }
   }
@@ -324,6 +332,7 @@ export class SessionManager implements TelemetryRecorder {
       reports: [...run.reports],
       incidents: [...run.incidents],
       accessibility: [...run.accessibility],
+      browserConsole: [...run.browserConsole],
       lastFrame: run.lastFrame,
     };
   }
@@ -434,9 +443,14 @@ export class SessionManager implements TelemetryRecorder {
     const timestamp = new Date().toISOString();
     const reason = `Critical Server Crash: target ${run.targetUrl} unreachable after ${failures} verification probes.`;
 
-    // Snapshot the rolling 20-action buffer as breadcrumbs + narrative playbook so
-    // the operator can reproduce whatever action preceded the outage.
+    // Snapshot the rolling buffer as technical breadcrumbs, and derive the human
+    // playbook from the CAUSALLY-MINIMIZED timeline (drop BugSafari's wandering,
+    // anchor to the faulting page) rather than dumping the whole raw buffer.
     const lastActions = ReproductionPlaybookStore.snapshot();
+    const reproduction = ActiveScenarioTracker.flushSnapshot({
+      faultUrl: run.currentUrl || run.targetUrl,
+      faultAtMs: Date.now(),
+    });
     const crashReport: ForensicCrashReport = {
       timestamp,
       reason,
@@ -447,7 +461,7 @@ export class SessionManager implements TelemetryRecorder {
         action: a.type,
         payload: a.payload,
       })),
-      reproductionPlaybook: ReproductionPlaybookStore.getNarrativeSteps(),
+      reproductionPlaybook: reproduction.narrative,
       advice: 'Backend/main document stopped responding. Check server logs, process health, and container status for a crash or OOM at the timestamp above.',
     };
 

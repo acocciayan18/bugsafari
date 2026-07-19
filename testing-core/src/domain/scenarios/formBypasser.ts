@@ -70,6 +70,8 @@ export interface ConstraintStripResult {
   selector: string;
   affectedCount: number;
   affectedSelectors: string[];
+  /** Distinct validation attribute/property names actually removed (for reproduction steps). */
+  strippedAttributes: string[];
 }
 
 /**
@@ -119,8 +121,9 @@ export async function stripConstraintsSilently(
           }
         }
 
-        // Track all affected elements for reporting
+        // Track all affected elements + the distinct attribute names removed.
         const affectedElements: string[] = [];
+        const removedAttrs = new Set<string>();
 
         for (const el of candidates) {
           let modified = false;
@@ -129,6 +132,7 @@ export async function stripConstraintsSilently(
           for (const attr of attrs) {
             if (el.hasAttribute(attr)) {
               el.removeAttribute(attr);
+              removedAttrs.add(attr);
               modified = true;
             }
           }
@@ -137,6 +141,7 @@ export async function stripConstraintsSilently(
           for (const attr of extendedAttrs) {
             if (el.hasAttribute(attr)) {
               el.removeAttribute(attr);
+              removedAttrs.add(attr);
               modified = true;
             }
           }
@@ -145,11 +150,13 @@ export async function stripConstraintsSilently(
           if (el instanceof HTMLButtonElement) {
             el.disabled = false;
             el.removeAttribute('disabled');
+            removedAttrs.add('disabled');
             modified = true;
           } else if (el instanceof HTMLInputElement) {
             if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') {
               el.disabled = false;
               el.removeAttribute('disabled');
+              removedAttrs.add('disabled');
               modified = true;
             }
 
@@ -164,6 +171,7 @@ export async function stripConstraintsSilently(
             if (OVERRIDE_TYPES.includes(el.type)) {
               try {
                 el.type = 'text';
+                removedAttrs.add('input-type-lock');
                 modified = true;
               } catch {
                 // Some engines lock `type` once the element is live — non-fatal.
@@ -171,10 +179,12 @@ export async function stripConstraintsSilently(
             }
 
             // Remove any maxlength cap for giant payloads
+            if (el.hasAttribute('maxlength')) removedAttrs.add('maxlength');
             el.removeAttribute('maxlength');
             el.maxLength = maxLen;
             modified = true;
           } else if (el instanceof HTMLTextAreaElement) {
+            if (el.hasAttribute('maxlength')) removedAttrs.add('maxlength');
             el.removeAttribute('maxlength');
             el.maxLength = maxLen;
             modified = true;
@@ -182,6 +192,7 @@ export async function stripConstraintsSilently(
 
           // Remove readOnly property-level lock where applicable
           if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+            if (el.readOnly) removedAttrs.add('readonly');
             el.readOnly = false;
             modified = true;
           }
@@ -204,6 +215,7 @@ export async function stripConstraintsSilently(
           // Handle form-level constraints
           const form = el.closest('form');
           if (form) {
+            if (form.hasAttribute('novalidate')) removedAttrs.add('novalidate');
             form.removeAttribute('novalidate');
             (form as HTMLFormElement).noValidate = false;
             modified = true;
@@ -230,6 +242,7 @@ export async function stripConstraintsSilently(
           selector: chosen,
           affectedCount: affectedElements.length,
           affectedSelectors: affectedElements.slice(0, 10), // Limit to 10 for reporting
+          strippedAttributes: Array.from(removedAttrs),
         });
       },
       {
@@ -246,7 +259,7 @@ export async function stripConstraintsSilently(
     } else {
       console.error(`[FormBypasser] Silent constraint strip failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    return { selector, affectedCount: 0, affectedSelectors: [] };
+    return { selector, affectedCount: 0, affectedSelectors: [], strippedAttributes: [] };
   }
 }
 
@@ -279,15 +292,18 @@ export const formBypasser: StressScenario = {
 
       // Record to ActionBuffer for reproduction playbook
       const pageUrl = page.url();
+      const bypassLabel = target ? resolveElementLabel(target) : 'input field';
       ActionRecorder.recordStep({
         actionType: 'SUBMIT',
-        humanIdentifier: result.selector,
-        value: `Stripped constraints from ${result.affectedCount} elements`,
+        humanIdentifier: bypassLabel,
         selector: result.selector,
         url: pageUrl,
+        strippedAttributes: result.strippedAttributes,
+        affectedCount: result.affectedCount,
       });
-      const bypassLabel = target ? resolveElementLabel(target) : 'input field';
-      ActiveScenarioTracker.record(describeConstraintBypass(bypassLabel));
+      ActiveScenarioTracker.record(
+        describeConstraintBypass(bypassLabel, result.strippedAttributes, result.affectedCount),
+      );
 
       // Emit detailed telemetry
       console.log(

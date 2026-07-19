@@ -68,6 +68,8 @@ export interface SaveFindingPayload {
   timestamp?: string;
   /** Deterministic knowledge-base classification + scenario/step attribution. */
   attribution?: FindingAttribution;
+  /** Backend-classified severity carried from the live fault. */
+  severity?: string;
 }
 
 export async function saveSessionToHistory(

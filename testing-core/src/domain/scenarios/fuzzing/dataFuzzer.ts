@@ -263,9 +263,12 @@ export const dataFuzzer: StressScenario = {
     const constraints = await readInputConstraints(page, selector);
     const boundary = deriveBoundaryPayload(category, constraints);
 
-    // Narrate the constraint bypass once; the actual strip runs immediately
-    // before every injection (below) to defeat SPA re-renders that re-add them.
-    ActiveScenarioTracker.record(describeConstraintBypass(fuzzLabel));
+    // Auth/password fields: mask the injected value in narration, keep it for replay.
+    const redactValue = category === 'DATABASE_AUTH';
+    // The constraint bypass is narrated once, from the FIRST real strip result
+    // (below) so the step names the exact attributes removed; the strip itself
+    // re-runs before every injection to defeat SPA re-renders that re-add them.
+    let bypassNarrated = false;
 
     // ── Adaptive escalation loop ─────────────────────────────────────────────
     // Inject the standard payload first; only if it produces NO meaningful
@@ -301,12 +304,26 @@ export const dataFuzzer: StressScenario = {
         { selector, category, strategy: synth.strategy, escalationLevel: level, payload },
         async () => {
           // Constraint bypass IMMEDIATELY before injection (comprehensive + silent).
-          await stripConstraintsSilently(page, selector);
+          const strip = await stripConstraintsSilently(page, selector);
+          if (!bypassNarrated) {
+            ActiveScenarioTracker.record(
+              describeConstraintBypass(fuzzLabel, strip.strippedAttributes, strip.affectedCount),
+            );
+            ActionRecorder.recordStep({
+              actionType: 'SUBMIT',
+              humanIdentifier: fuzzLabel,
+              selector,
+              url: page.url(),
+              strippedAttributes: strip.strippedAttributes,
+              affectedCount: strip.affectedCount,
+            });
+            bypassNarrated = true;
+          }
           const injected = await injectPayload(page, selector, tagName, payload);
           if (!injected) {
             console.warn(`[StressScenario:DataFuzzer] Injection reported failure for '${selector}' at L${level}`);
           }
-          ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload));
+          ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload, redactValue));
           // Structured reproduction buffer: record the fuzz injection as a TYPE
           // step so the idle-fallback playbook mirrors the live scenario window.
           ActionRecorder.recordStep({
@@ -315,6 +332,7 @@ export const dataFuzzer: StressScenario = {
             value: payload,
             selector,
             url: page.url(),
+            redactValue,
           });
           const submissionMethod = await triggerFormSubmission(page, selector);
           console.log(`[StressScenario:DataFuzzer] Submit via "${submissionMethod}" (L${level})`);

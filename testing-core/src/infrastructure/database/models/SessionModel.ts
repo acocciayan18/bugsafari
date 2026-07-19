@@ -34,8 +34,12 @@ export interface ICaughtBug {
   payloadUsed: string;
   advice: string;
   timestamp: Date;
+  /** Backend-classified severity (CRITICAL/HIGH/MEDIUM/LOW/INFO) — drives the report badge. */
+  severity?: string;
   /** Full stack trace captured live — preserved verbatim, never truncated. */
   stackTrace?: string;
+  /** Top frames resolved to original source via the target's source maps (best-effort). */
+  resolvedStackTrace?: string;
   /** Per-finding human-actionable replication checklist (sequentially numbered upstream). */
   reproductionSteps?: string[];
   /** Minimized, replayable action timeline for THIS finding — drives per-finding regression replay. */
@@ -263,10 +267,12 @@ const sessionSchema = new Schema(
           occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },
           advice: { type: String, default: '' },
+          severity: { type: String, default: null },
           timestamp: { type: Date, default: Date.now },
           // Full stack trace + per-finding checklist — stored uncompressed for
           // exact parity with the live Error Tab.
           stackTrace: { type: String, default: '' },
+          resolvedStackTrace: { type: String, default: '' },
           reproductionSteps: { type: [String], default: [] },
           // Minimized replayable timeline for THIS finding — the causal steps only,
           // consumed per-finding by the regression verifier.

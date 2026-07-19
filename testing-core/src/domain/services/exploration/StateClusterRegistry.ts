@@ -89,8 +89,11 @@ export class StateClusterRegistry {
     if (!cluster) return false;
     if (cluster.discovered.size > 0 && cluster.triggered.size >= cluster.discovered.size) return true;
     if (this.saturation.maxVisits > 0 && cluster.visitsSinceGain >= this.saturation.maxVisits) return true;
-    if (this.saturation.maxInteractions > 0 && cluster.redundantActuations >= this.saturation.maxInteractions) {
-      return true;
+    // Interaction cap scales with the control count so a dense page is not marked
+    // Fully Explored by churn while many controls are still untriggered.
+    if (this.saturation.maxInteractions > 0) {
+      const interactionCap = Math.max(this.saturation.maxInteractions, cluster.discovered.size);
+      if (cluster.redundantActuations >= interactionCap) return true;
     }
     return false;
   }

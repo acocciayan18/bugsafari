@@ -1,18 +1,6 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 
-export type BrowserConsoleLevel =
-  | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
-
-export interface BrowserConsoleMessage {
-  timestamp: string;
-  level: BrowserConsoleLevel;
-  type: string;
-  message: string;
-  url?: string;
-  line?: number;
-  column?: number;
-  stackTrace?: string;
-}
+export type { BrowserConsoleLevel, BrowserConsoleMessage };
 
 export interface TelemetryGateway {
   emitTelemetry(event: TelemetryEvent): void;

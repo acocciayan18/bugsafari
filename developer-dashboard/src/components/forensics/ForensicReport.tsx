@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { fetchForensicReport } from '../../services/historyService';
 import type {
@@ -41,7 +41,7 @@ import {
   toMarkdownChecklist,
 } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
-import { AttributionBadges, CopyButton, ExpandableCodeBlock, SuggestedFixBlock } from '../common/ForensicCardKit';
+import { AttributionBadges, CopyButton, ExpandableCodeBlock, SeverityBadge, SuggestedFixBlock } from '../common/ForensicCardKit';
 import { Modal } from '../ui/Modal';
 import {
   useRegressionVerifier,
@@ -171,9 +171,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
   return (
     <section className="rounded-lg border border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] p-5">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--status-neutral-fg)]">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
+        <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
           <span className="rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--status-neutral-fg)]">
@@ -212,7 +210,7 @@ function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   return (
     <ol className="max-h-96 space-y-1.5 overflow-y-auto">
       {steps.map((step) => {
-        const { kind, instruction } = humanizeActionStep(step);
+        const { kind, instruction, payloadDisplay } = humanizeActionStep(step);
         return (
           <li
             key={step.stepNumber}
@@ -224,9 +222,9 @@ function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             </span>
             <div className="min-w-0">
               <div className="text-xs leading-relaxed text-[var(--text-primary)] break-words">{instruction}</div>
-              {step.payloadText && (
+              {payloadDisplay && (
                 <code className="mt-1 inline-block max-w-full break-words rounded bg-[var(--status-critical-bg)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--status-critical-fg)]">
-                  {step.payloadText}
+                  {payloadDisplay}
                 </code>
               )}
               <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
@@ -376,10 +374,7 @@ function VerifyFixControl({
         className="inline-flex items-center gap-2 rounded-md bg-[var(--surface-inset)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]"
         aria-live="polite"
       >
-        <svg className="h-3.5 w-3.5 animate-spin text-[var(--text-tertiary)]" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-        </svg>
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
         {phaseLabel(status)}
       </span>
     );
@@ -408,9 +403,7 @@ function VerifyFixControl({
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
       className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
-      </svg>
+      <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
     </button>
   );
@@ -516,9 +509,8 @@ function VerificationResultModal({
           onClick={onReverify}
           className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M20 12a8 8 0 11-2.3-5.6M20 4v4h-4" />
-          </svg>
+          
+          <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           Re-verify
         </button>
         <button
@@ -587,6 +579,7 @@ function FindingCard({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{bugClass}</span>
+              <SeverityBadge severity={bug.severity} />
               {occurrences > 1 && (
                 <span
                   title={`This fault occurred ${occurrences} times this session`}
@@ -668,6 +661,16 @@ function FindingCard({
         <SuggestedFixBlock advice={bug.advice} />
       </div>
 
+      {/* Original source frames resolved from the target's source maps (best-effort) */}
+      {bug.resolvedStackTrace && (
+        <div className="px-4 pt-3">
+          <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">Original source (via source maps)</div>
+          <pre className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]">
+            {bug.resolvedStackTrace}
+          </pre>
+        </div>
+      )}
+
       {/* Stack trace — kept as a disclosure since it's verbose/noisy evidence, not primary narrative */}
       {bug.stackTrace && (
         <ExpandableCodeBlock
@@ -726,7 +729,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-[var(--surface-inset)] px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--text-secondary)]">
+    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--text-secondary)]">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -955,10 +958,8 @@ export default function ForensicReport() {
           onClick={() => window.history.back()}
           className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
         >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back to History
+         <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+         Back to History
         </button>
       </header>
 

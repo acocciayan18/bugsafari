@@ -6,6 +6,7 @@
 
 import type { AccessibilityFinding, TelemetryEvent } from './telemetry.js';
 import type { ForensicCrashReport, IncidentReport } from './bug.js';
+import type { BrowserConsoleMessage } from './console.js';
 
 /** Live lifecycle of the single active run — superset of the DB SessionStatus. */
 export type RunLifecycleStatus =
@@ -43,6 +44,8 @@ export interface ActiveSessionSnapshot {
   incidents: IncidentReport[];
   /** WCAG findings replayed on the dedicated accessibility channel. */
   accessibility: AccessibilityFinding[];
+  /** Recent target-page console/pageerror rows, so a reconnect restores the Console tab. */
+  browserConsole: BrowserConsoleMessage[];
   /** Latest base64 JPEG frame (no data: prefix); only the newest is retained. */
   lastFrame: string | null;
   /** Distributed-queue context (BUGSAFARI_USE_QUEUE only) — lets a restored client re-subscribe to its job. */

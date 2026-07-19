@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
 import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
+import { normalizeTargetUrl } from '../../../../shared/url.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
@@ -12,7 +13,9 @@ import { useAuth } from '../../context/AuthContext';
 export type TestSessionStatus = 'IDLE' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
 
 // Single capped console buffer — badge count and rendered logs share this bound.
-const CONSOLE_BUFFER_CAP = 50;
+// Matches the backend replay buffer (SessionManager CONSOLE_BUFFER_CAP) so a
+// reconnect restores the same window the operator was watching.
+const CONSOLE_BUFFER_CAP = 200;
 
 export interface DashboardState {
   isConnected: boolean;
@@ -281,7 +284,10 @@ return () => {
       // restored session holds one entry per fault (newest-first) with counts.
       setReports(snapshot.reports.reduce<ForensicCrashReport[]>((buf, r) => collapseFaultIntoBuffer(buf, r), []));
       setIncidents(snapshot.incidents.reduce<IncidentReport[]>((buf, i) => collapseFaultIntoBuffer(buf, i), []));
-      setCurrentUrl(snapshot.currentUrl || snapshot.targetUrl);
+      // Restore the Console tab from the snapshot's replay buffer (newest CAP rows)
+      // instead of dropping it — a reconnect/restore keeps the captured logs.
+      setBrowserConsole((snapshot.browserConsole ?? []).slice(-CONSOLE_BUFFER_CAP));
+      setCurrentUrl(normalizeTargetUrl(snapshot.currentUrl || snapshot.targetUrl) ?? snapshot.targetUrl);
 
       setSessionTimeMs(snapshot.timeboxMs);
       setElapsedTimeMs(snapshot.elapsedTimeMs);
@@ -567,7 +573,13 @@ return () => {
   }, [gateway]);
 
 const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> => {
-    if (!targetUrl.trim()) return;
+    // Resolve to the exact address the engine will navigate to, so the UI never
+    // shows a bare host while Playwright tests the https:// form.
+    const resolvedUrl = normalizeTargetUrl(targetUrl);
+    if (!resolvedUrl) {
+      toast.error('Enter a valid http(s) URL to start a session.');
+      return;
+    }
 
     // Reflect the timebox actually being sent to the backend for this run,
     // rather than always assuming the default.
@@ -588,7 +600,9 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     setAccessibilityBannerDismissed(false);
     setReports([]);
     setIncidents([]);
-    setCurrentUrl(targetUrl);
+    // Console buffer is per-run; a new session must never inherit prior logs.
+    setBrowserConsole([]);
+    setCurrentUrl(resolvedUrl);
     setRemainingTimeMs(resolvedTimeboxMs);
     setElapsedTimeMs(0);
     // Reset session completion states to prevent UI state leak
@@ -607,7 +621,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     toast.dismiss(STATUS_TOAST_ID);
 
 try {
-      const { runId, jobId, queued, resumed } = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      const { runId, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, optimizationSettings ?? defaultOptimizationSettings, infiltration);
       // Persist the server-issued run token so a refresh / reconnect re-attaches.
       try {
         if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);

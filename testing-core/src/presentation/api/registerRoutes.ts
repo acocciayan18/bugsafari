@@ -488,6 +488,7 @@ export function registerRoutes(
           stateFingerprint: f.stateFingerprint && typeof f.stateFingerprint === 'object'
             ? (f.stateFingerprint as unknown as StateFingerprint)
             : undefined,
+          severity: typeof f.severity === 'string' ? f.severity : undefined,
         }));
       console.log(`[API] Transferred live findings count: ${clientFindings.length}`);
 

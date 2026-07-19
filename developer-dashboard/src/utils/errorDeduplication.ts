@@ -10,29 +10,15 @@
 // live view, the engine count, and the stored history stay 1:1.
 
 import type { IncidentReport, ForensicCrashReport } from '../types';
-
-function normalizeSignature(reason: string | undefined): string {
-  return (reason ?? '').trim().toLowerCase();
-}
-
-// First non-empty stack line — distinguishes two faults that share a message/URL
-// but originate at different call sites (so they are never wrongly merged).
-function stackTop(stackTrace: string | undefined): string {
-  if (!stackTrace) return '';
-  for (const line of stackTrace.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed) return trimmed.toLowerCase();
-  }
-  return '';
-}
+import { buildFaultSignature } from '../../../shared/faultSignature.js';
 
 /**
  * Stable fault identity: message signature + URL + originating stack frame +
  * status code. Both emissions of one fault share this key regardless of timestamp
  * skew; two distinct faults never collide just because their messages match. The
- * SINGLE identity used by dedup, ingest-collapse, and display grouping so the
- * three can never disagree (stack disambiguates JS faults, status disambiguates
- * network faults).
+ * SINGLE identity used by dedup, ingest-collapse, and display grouping — and the
+ * SAME normalization the backend applies at save time (shared/faultSignature), so
+ * the live occurrence count and the persisted history count can never disagree.
  */
 function faultKey(
   reason: string | undefined,
@@ -40,7 +26,7 @@ function faultKey(
   stackTrace: string | undefined,
   statusCode: number | undefined,
 ): string {
-  return `${normalizeSignature(reason)}|${(url ?? '').trim().toLowerCase()}|${stackTop(stackTrace)}|${statusCode ?? ''}`;
+  return buildFaultSignature({ reason, url, stackTrace, statusCode });
 }
 
 /**

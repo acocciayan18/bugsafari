@@ -1,8 +1,10 @@
 import type { Page } from 'playwright';
 import type {
   ActionBreadcrumb,
+  ActionOutcome,
   ActionRecord,
   ActionType,
+  FaultSeverity,
   FindingAttribution,
   StateFingerprint,
 } from '../../../../../shared/types.ts';
@@ -75,6 +77,8 @@ export interface ConfirmedBug {
   timestamp: Date;
   /** Full sanitized stack trace — preserved so distinct exceptions never collapse. */
   stackTrace?: string;
+  /** Top frames resolved to original source via the target's source maps (best-effort). */
+  resolvedStackTrace?: string;
   /** Per-finding sequentially-numbered replication checklist (narrative of {@link reproductionActions}). */
   reproductionSteps?: string[];
   /** Minimized, replayable action timeline for THIS finding — the causal steps only. */
@@ -83,6 +87,8 @@ export interface ConfirmedBug {
   stateFingerprint?: StateFingerprint;
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
+  /** Backend-classified severity — surfaced as the saved report's severity badge. */
+  severity?: FaultSeverity;
   /** True when this bug was already streamed to the Errors tab by StabilityMonitor
    *  (raw JS/console exceptions). Arsenal-discovered bugs leave it falsy so
    *  registerConfirmedBug bridges them to the live Errors tab. */
@@ -117,10 +123,18 @@ export interface ForensicErrorParams {
  * Records a raw action breadcrumb plus an optional clean, human-descriptive
  * record into the canonical reproduction playbook. Owned by ExplorationEngine.
  */
-export type RecordActionTrace = (
-  trace: ActionBreadcrumb,
-  clean?: { actionType: ActionType; humanIdentifier?: string; value?: string; url?: string },
-) => void;
+export interface CleanActionStep {
+  actionType: ActionType;
+  humanIdentifier?: string;
+  value?: string;
+  url?: string;
+  strippedAttributes?: string[];
+  affectedCount?: number;
+  outcome?: ActionOutcome;
+  redactValue?: boolean;
+}
+
+export type RecordActionTrace = (trace: ActionBreadcrumb, clean?: CleanActionStep) => void;
 
 // ─────────────────────────────────────────────────────────────
 // Per-module dependency contracts (constructed once per run by the engine)

@@ -49,7 +49,7 @@ import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import { NetworkFailureCascadeTracker } from './NetworkFailureCascadeTracker.js';
 import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
-import type { ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
+import type { CleanActionStep, ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCHES (Addressing Critical Vulnerabilities)
@@ -588,7 +588,7 @@ export class ExplorationEngine {
       breadcrumbsToActionRecords: (b) => this.breadcrumbsToActionRecords(b),
       persistForensicError: (params) => { this.asyncTasks.track(this.persistForensicError(params)); },
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
-      setFreeze: () => { this.freezeActionTraceRecording = true; },
+      setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
@@ -723,6 +723,15 @@ export class ExplorationEngine {
       }
     };
 
+    // Wire fault + console capture onto an app-opened tab/popup, then arm the same
+    // handler on it so a popup-of-a-popup is covered too. Errors on these pages are
+    // otherwise invisible (the explorer never drives them).
+    const attachSecondaryPage = (popup: Page): void => {
+      popup.on('popup', attachSecondaryPage);
+      void stabilityMonitor.attachSecondaryPage(popup).catch(() => undefined);
+      emitter.emitMilestone(`🪟 Monitoring app-opened tab: ${popup.url() || 'about:blank'}`);
+    };
+
     const attachPageListeners = (p: Page): void => {
       stabilityMonitor.attachDialogAutoDismiss(p);
       stabilityMonitor.attachExceptionMonitoring(p);
@@ -731,6 +740,8 @@ export class ExplorationEngine {
       p.on('response', handleResponse);
       stabilityMonitor.attachNetworkMonitoring(p);
       p.on('framenavigated', handleFramenavigated);
+      // Capture faults on any tab the target opens from this page.
+      p.on('popup', attachSecondaryPage);
     };
 
     // 🏁 Safari Initialized (milestone)
@@ -872,7 +883,7 @@ export class ExplorationEngine {
         noteActedTarget: (t) => { this.lastActedTarget = t; this.lastActedAtMs = Date.now(); this.networkRewardsThisAction = 0; },
         getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
-        setFreeze: () => { this.freezeActionTraceRecording = true; },
+        setFreeze: () => this.freezeRecording(),
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         strictUrlLock: this.strictUrlLock,
@@ -976,12 +987,17 @@ export class ExplorationEngine {
     }
   }
 
+  // Freeze at crash time: stop the engine's own trace recording AND the global
+  // playbook buffer, so post-fault scenario writes (which bypass recordActionTrace
+  // by pushing to ReproductionPlaybookStore directly) can't overwrite the causal chain.
+  private freezeRecording(): void {
+    this.freezeActionTraceRecording = true;
+    ReproductionPlaybookStore.freeze();
+  }
+
   // Records an executed action into the in-memory breadcrumb + reproduction buffers only.
   // High-frequency action traces are WebSocket/in-memory telemetry — never persisted to Mongo.
-  private recordActionTrace(
-    trace: ActionBreadcrumb,
-    clean?: { actionType: ActionType; humanIdentifier?: string; value?: string; url?: string },
-  ): void {
+  private recordActionTrace(trace: ActionBreadcrumb, clean?: CleanActionStep): void {
     if (this.freezeActionTraceRecording) {
       return;
     }
@@ -1003,7 +1019,12 @@ export class ExplorationEngine {
       url: clean?.url ?? this.activePage?.url() ?? this.targetOrigin ?? 'unknown',
       payload: clean?.value ?? trace.payload,
       fallbackLabel: clean?.humanIdentifier,
+      elementLabel: clean?.humanIdentifier,
       durationMs,
+      strippedAttributes: clean?.strippedAttributes,
+      affectedCount: clean?.affectedCount,
+      outcome: clean?.outcome,
+      redactValue: clean?.redactValue,
     };
     ReproductionPlaybookStore.push(actionRecord);
   }

@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import type { FindingAttribution } from '../../types';
 import { Badge } from '../ui/Badge';
+import { Copy } from 'lucide-react';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
   try {
@@ -37,9 +38,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-[var(--surface-hover)] active:scale-95 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       title={`Copy ${label || 'content'} to clipboard`}
     >
-      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-      </svg>
+      <Copy className="h-3.5 w-3.5" />
       <span className="text-xs">{copied ? 'Copied!' : 'Copy'}</span>
     </button>
   );
@@ -83,6 +82,30 @@ export const ExpandableCodeBlock = ({
         </div>
       )}
     </div>
+  );
+};
+
+// Severity → badge tone + label. Unknown/absent severity renders nothing so older
+// records (and non-classified faults) stay clean rather than showing a wrong badge.
+const SEVERITY_STYLES: Record<string, { cls: string; label: string }> = {
+  CRITICAL: { cls: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)] bg-[var(--status-critical-bg)]/30', label: 'Critical' },
+  HIGH: { cls: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)] bg-[var(--status-critical-bg)]/20', label: 'High' },
+  MEDIUM: { cls: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)]/25', label: 'Medium' },
+  LOW: { cls: 'border-[var(--status-neutral-border)] text-[var(--status-neutral-fg)] bg-[var(--status-neutral-bg)]/25', label: 'Low' },
+  INFO: { cls: 'border-(--border-hairline) text-(--text-tertiary)', label: 'Info' },
+};
+
+/** Backend-classified severity badge, shared by the live Errors tab and saved report. */
+export const SeverityBadge = ({ severity }: { severity?: string }) => {
+  const style = severity ? SEVERITY_STYLES[severity.toUpperCase()] : undefined;
+  if (!style) return null;
+  return (
+    <span
+      title={`Backend-classified severity: ${style.label}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.cls}`}
+    >
+      {style.label}
+    </span>
   );
 };
 

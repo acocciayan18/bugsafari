@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Check, Bug, LoaderCircle, Pause, Play, Square, Radio, AlertTriangle, Network, Terminal } from 'lucide-react';
+import { Check, Bug, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, Menu, ChevronDown, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
@@ -173,13 +173,11 @@ export default function ClinicalForensicsDashboard({
                 disabled={isActiveSession}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border-strong)] text-xs font-semibold text-[var(--text-secondary)] bg-[var(--surface-raised)] group-hover:bg-[var(--surface-hover)] transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <svg className="h-3.5 w-3.5 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
-                </svg>
+                
+                <Menu className="h-3.5 w-3.5 text-[var(--text-tertiary)]" strokeWidth={1.75} aria-hidden="true" />
                 <span>{currentProfileName}</span>
-                <svg className="ml-1 h-4 w-4 text-[var(--text-tertiary)] transform transition-transform duration-200 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
+                
+                <ChevronDown className="ml-1 h-4 w-4 text-[var(--text-tertiary)] transform transition-transform duration-200 group-hover:rotate-180" strokeWidth={1.75} aria-hidden="true" />
               </button>
 
               {/* Floating Dropdown via Hover */}
@@ -311,9 +309,8 @@ export default function ClinicalForensicsDashboard({
         <div className="flex items-center gap-3 w-full">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[var(--text-tertiary)]">
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-              </svg>
+              
+              <Globe className="absolute h-5 w-5 text-[var(--text-tertiary)]" strokeWidth={1.75} aria-hidden="true" />
             </span>
             <input
               type="text"
@@ -391,14 +388,14 @@ export default function ClinicalForensicsDashboard({
                 onClick={() => setActiveTab('telemetry')}
                 className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
-                <Radio className="h-3.5 w-3.5" />
+                <Activity className="h-3.5 w-3.5" />
                 telemetry
               </button>
               <button
                 onClick={() => setActiveTab('errors')}
                 className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
-                <AlertTriangle className="h-3.5 w-3.5" />
+                <TriangleAlert className="h-3.5 w-3.5" />
                 errors
                 <TabCount count={errorCount} />
               </button>
