@@ -99,6 +99,11 @@ export class TaskQueue {
     };
   }
 
+  // Authoritative BullMQ state of one job — drives recovery + initial pushes.
+  public async getJobState(jobId: string): Promise<string> {
+    return this.queue.getJobState(jobId);
+  }
+
   public async close(): Promise<void> {
     await this.queue.close();
   }

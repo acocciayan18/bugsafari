@@ -8,6 +8,7 @@ import { sessionManager } from '../../application/services/SessionManager.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
 import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
+import { RunRegistry } from '../queue/RunRegistry.js';
 import { resolveEngineTargetUrl } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
@@ -63,6 +64,11 @@ export async function createSafariWorker(
   );
   await controlSubscriber.start();
 
+  // Registry: this worker publishes a throttled replay snapshot of its live run
+  // so the API process can rebuild a refreshed client's dashboard cross-process.
+  const runRegistry = new RunRegistry(redisUrl);
+  const SNAPSHOT_INTERVAL_MS = 2_000;
+
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
     // ponytail: SessionManager is a process-wide singleton (one active run), so this
@@ -97,9 +103,39 @@ async (job) => {
       // Bind the run to the SAME runId the client received at enqueue, so the
       // worker's telemetry room (run:${runId}) matches the room the dashboard joined.
       console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runId=${payload.runId} target=${engineUrl}`);
-      // Honor the operator's infiltration-profile gate carried on the job payload;
-      // undefined would make ScenarioGate default to all testing types.
-      await useCase.execute(engineUrl, undefined, payload.selectedScenarios, payload.runId);
+      // Throttled snapshot publishing: mirrors the live SessionManager replay
+      // buffer into Redis so /api/session/active can serve it from the API process.
+      const snapshotTimer = setInterval(() => {
+        const snapshot = sessionManager.getActiveSnapshot();
+        if (snapshot && snapshot.runId === payload.runId) {
+          void runRegistry.writeSnapshot(payload.runId, { ...snapshot, jobId: String(job.id ?? '') })
+            .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
+        }
+      }, SNAPSHOT_INTERVAL_MS);
+      let succeeded = false;
+      try {
+        // Honor the operator's infiltration-profile gate carried on the job payload;
+        // undefined would make ScenarioGate default to all testing types.
+        await useCase.execute(engineUrl, undefined, payload.selectedScenarios, payload.runId);
+        succeeded = true;
+      } finally {
+        clearInterval(snapshotTimer);
+        // Only settle the registry when the run is truly over — a failure BullMQ
+        // will retry must stay resumable/deduplicated.
+        const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+        if (succeeded || isFinalAttempt) {
+          const terminal = sessionManager.getLastTerminalSnapshot();
+          if (terminal && terminal.runId === payload.runId) {
+            // Publish the final state (10 min TTL) so a post-completion refresh
+            // restores the finished dashboard instead of resetting to IDLE.
+            await runRegistry.writeSnapshot(payload.runId, { ...terminal, jobId: String(job.id ?? '') }, 600)
+              .catch((error) => console.error('[SafariWorker] terminal snapshot publish failed:', error instanceof Error ? error.message : error));
+          } else {
+            await runRegistry.clear(payload.runId, payload.requestedBy ?? null)
+              .catch((error) => console.error('[SafariWorker] registry cleanup failed:', error instanceof Error ? error.message : error));
+          }
+        }
+      }
       console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
     },
     {
@@ -140,6 +176,7 @@ async (job) => {
     async close(): Promise<void> {
       await worker.close();
       await controlSubscriber.close();
+      await runRegistry.close();
       await publisher.close();
     },
   };

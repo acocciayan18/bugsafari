@@ -10,6 +10,7 @@ import type { ForensicCrashReport, IncidentReport } from './bug.js';
 /** Live lifecycle of the single active run — superset of the DB SessionStatus. */
 export type RunLifecycleStatus =
   | 'IDLE'          // no active run
+  | 'QUEUED'        // job waiting in the distributed queue; no engine yet
   | 'RUNNING'       // engine executing, owner attached
   | 'PAUSING'       // pause requested; awaiting in-flight tasks to settle (transient)
   | 'PAUSED'        // paused by operator
@@ -44,6 +45,10 @@ export interface ActiveSessionSnapshot {
   accessibility: AccessibilityFinding[];
   /** Latest base64 JPEG frame (no data: prefix); only the newest is retained. */
   lastFrame: string | null;
+  /** Distributed-queue context (BUGSAFARI_USE_QUEUE only) — lets a restored client re-subscribe to its job. */
+  jobId?: string | null;
+  queuePosition?: number | null;
+  queueDepth?: number;
 }
 
 /** Client → server attach request presented on every (re)connection. */

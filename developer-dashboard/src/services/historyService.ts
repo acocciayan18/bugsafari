@@ -4,7 +4,7 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
-import type { ActionRecord, StateFingerprint } from '../../shared/types.js';
+import type { ActionRecord, StateFingerprint } from '../../../shared/types.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { refreshAuthToken } from '../utils/authRefresh';
 

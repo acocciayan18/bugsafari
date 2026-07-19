@@ -3,14 +3,14 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Check, Bug, LoaderCircle, Pause, Play, Square } from 'lucide-react';
+import { Check, Bug, LoaderCircle, Pause, Play, Square, Radio, AlertTriangle, Network, Terminal } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import SessionTimer from '../common/SessionTimer';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
-import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard } from '../telemetry';
+import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
 import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
@@ -177,7 +177,7 @@ export default function ClinicalForensicsDashboard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
                 </svg>
                 <span>{currentProfileName}</span>
-                <svg className="ml-1 h-3 w-3 text-[var(--text-tertiary)] transform transition-transform duration-200 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <svg className="ml-1 h-4 w-4 text-[var(--text-tertiary)] transform transition-transform duration-200 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -195,7 +195,7 @@ export default function ClinicalForensicsDashboard({
                       className={`w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--surface-hover)] ${selectedProfile === profile.id ? 'bg-[var(--surface-inset)]' : ''}`}
                     >
                       <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selectedProfile === profile.id ? 'border-[var(--border-focus)] text-[var(--text-primary)]' : 'border-[var(--border-strong)]'}`}>
-                        {selectedProfile === profile.id && <span className="h-2 w-2 rounded-full bg-[var(--surface-invert)]" />}
+                        {selectedProfile === profile.id && <span className="h-3 w-3 rounded-full bg-[var(--surface-invert)]" />}
                       </span>
                       <div className="flex flex-col min-w-0">
                         <span className={`text-xs font-semibold leading-tight font-sans ${selectedProfile === profile.id ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
@@ -389,32 +389,38 @@ export default function ClinicalForensicsDashboard({
             <div className="flex overflow-visible">
               <button
                 onClick={() => setActiveTab('telemetry')}
-                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
-                telemetry live-feed
+                <Radio className="h-3.5 w-3.5" />
+                telemetry
               </button>
               <button
                 onClick={() => setActiveTab('errors')}
-                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
+                <AlertTriangle className="h-3.5 w-3.5" />
                 errors
                 <TabCount count={errorCount} />
               </button>
               <button
                 onClick={() => setActiveTab('network')}
-                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
+                <Network className="h-3.5 w-3.5" />
                 network
                 <TabCount count={dedupeNetworkEvents(networkEvents).length} />
               </button>
               <button
                 onClick={() => setActiveTab('console')}
-                className={`border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               >
+                <Terminal className="h-3.5 w-3.5" />
                 console
                 <TabCount count={browserConsole.length} />
               </button>
             </div>
+
+            <TelemetryHelpModal activeTab={activeTab} />
           </div>
 
           {/* Core Logs Output Viewer Container */}
@@ -448,7 +454,7 @@ export default function ClinicalForensicsDashboard({
                       ))}
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-[var(--text-secondary)]">
-                          <span className="h-2 w-2 rounded-full bg-[var(--surface-invert)] animate-ping"></span>
+                          <span className="h-3 w-3 rounded-full bg-[var(--surface-invert)] animate-ping"></span>
                           <span className="font-mono text-xs">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>

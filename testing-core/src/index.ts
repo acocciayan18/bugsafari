@@ -19,6 +19,7 @@ import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
 import { TelemetryBridgeSubscriber } from './infrastructure/queue/telemetryBridge.js';
 import { ControlBridgePublisher } from './infrastructure/queue/controlBridge.js';
+import { RunRegistry } from './infrastructure/queue/RunRegistry.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -100,6 +101,7 @@ const taskQueue = process.env.BUGSAFARI_USE_QUEUE === '1' ? new TaskQueue() : un
 let queueStatusBroadcaster: QueueStatusBroadcaster | undefined;
 let telemetryBridge: TelemetryBridgeSubscriber | undefined;
 let controlPublisher: ControlBridgePublisher | undefined;
+let runRegistry: RunRegistry | undefined;
 if (taskQueue) {
   console.log('[BugSafari] ⚑ BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
   telemetryBridge = new TelemetryBridgeSubscriber(io);
@@ -108,6 +110,9 @@ if (taskQueue) {
   await queueStatusBroadcaster.start();
   // Reverse control channel: dashboard pause/resume/stop → worker run.
   controlPublisher = new ControlBridgePublisher();
+  // Redis run index + worker snapshots: lets a refreshed client rediscover and
+  // resume its queued/active run even though it executes in a worker process.
+  runRegistry = new RunRegistry();
 }
 
 // Register socket handlers now that optional queue support is resolved.
@@ -115,7 +120,7 @@ registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher ? { broadc
 
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
-registerRoutes(app, useCase, port, findingRepository, taskQueue);
+registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry);
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
 });
@@ -137,6 +142,7 @@ const shutdown = async (signal: string): Promise<void> => {
     await queueStatusBroadcaster?.close();
     await telemetryBridge?.close();
     await controlPublisher?.close();
+    await runRegistry?.close();
     await taskQueue?.close();
   } catch (err) {
     console.error('[BugSafari] Error during shutdown:', err);

@@ -38,9 +38,15 @@ export class QueueStatusBroadcaster {
   public async pushInitial(emit: (update: QueueUpdate) => void, jobId: string): Promise<void> {
     const { order, queueDepth, activeCount } = await this.queue.positions();
     const index = order.indexOf(jobId);
-    emit(index >= 0
-      ? { jobId, state: 'waiting', position: index + 1, queueDepth, activeCount }
-      : { jobId, state: 'active', position: null, queueDepth, activeCount });
+    if (index >= 0) {
+      emit({ jobId, state: 'waiting', position: index + 1, queueDepth, activeCount });
+      return;
+    }
+    // Not waiting: report the job's TRUE BullMQ state so a re-subscribed client
+    // never treats a completed/failed job as active.
+    const state = await this.queue.getJobState(jobId).catch(() => 'unknown');
+    const mapped: QueueJobState = state === 'active' ? 'active' : state === 'failed' ? 'failed' : 'completed';
+    emit({ jobId, state: mapped, position: null, queueDepth, activeCount });
   }
 
   private async onLifecycle(jobId: string, state: QueueJobState, message?: string): Promise<void> {

@@ -1,0 +1,100 @@
+import { Redis } from 'ioredis';
+import type { ActiveSessionSnapshot } from '../../../../shared/types.js';
+
+// Registry entries outlive the job's removeOnComplete window (1h) with margin.
+const ENTRY_TTL_SECONDS = 2 * 60 * 60;
+// Snapshot is refreshed every ~2s by the worker; expiry means the worker died.
+const SNAPSHOT_TTL_SECONDS = 60;
+
+/** Cross-process record of one enqueued/active run, keyed in Redis. */
+export interface RunRegistryEntry {
+  runId: string;
+  jobId: string;
+  userId: string | null;
+  targetUrl: string;
+  timeboxMs: number;
+  createdAt: string;
+}
+
+/**
+ * Redis-backed single source of truth for distributed-run recovery: maps a
+ * runId (and, for authenticated operators, a userId) to its BullMQ job, and
+ * holds the worker's throttled live snapshot so the API process can rebuild a
+ * refreshed client's dashboard for a run executing in another process.
+ */
+export class RunRegistry {
+  private readonly redis: Redis;
+
+  constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
+    this.redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  }
+
+  private runKey(runId: string): string {
+    return `safari:run:index:${runId}`;
+  }
+
+  private ownerKey(userId: string): string {
+    return `safari:run:owner:${userId}`;
+  }
+
+  private snapshotKey(runId: string): string {
+    return `safari:run:snapshot:${runId}`;
+  }
+
+  /** Record a freshly-enqueued run (API side, at enqueue time). */
+  public async register(entry: RunRegistryEntry): Promise<void> {
+    const multi = this.redis.multi();
+    multi.set(this.runKey(entry.runId), JSON.stringify(entry), 'EX', ENTRY_TTL_SECONDS);
+    if (entry.userId) {
+      multi.set(this.ownerKey(entry.userId), entry.runId, 'EX', ENTRY_TTL_SECONDS);
+    }
+    await multi.exec();
+  }
+
+  public async findByRunId(runId: string): Promise<RunRegistryEntry | null> {
+    const raw = await this.redis.get(this.runKey(runId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as RunRegistryEntry;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Resolve an authenticated operator's live run, if any. */
+  public async findByOwner(userId: string): Promise<RunRegistryEntry | null> {
+    const runId = await this.redis.get(this.ownerKey(userId));
+    return runId ? this.findByRunId(runId) : null;
+  }
+
+  /** Drop every key for a finished/stale run (worker on completion, API on stale hit). */
+  public async clear(runId: string, userId: string | null): Promise<void> {
+    const keys = [this.runKey(runId), this.snapshotKey(runId)];
+    // Only clear the owner pointer if it still points at THIS run — a newer run
+    // by the same user must not lose its index to a late-finishing old job.
+    if (userId) {
+      const current = await this.redis.get(this.ownerKey(userId));
+      if (current === runId) keys.push(this.ownerKey(userId));
+    }
+    await this.redis.del(...keys);
+  }
+
+  /** Worker-side write of the replay snapshot (throttled live, or final-state with a longer TTL). */
+  public async writeSnapshot(runId: string, snapshot: ActiveSessionSnapshot, ttlSeconds = SNAPSHOT_TTL_SECONDS): Promise<void> {
+    await this.redis.set(this.snapshotKey(runId), JSON.stringify(snapshot), 'EX', ttlSeconds);
+  }
+
+  public async readSnapshot(runId: string): Promise<ActiveSessionSnapshot | null> {
+    const raw = await this.redis.get(this.snapshotKey(runId));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as ActiveSessionSnapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  public async close(): Promise<void> {
+    await this.redis.quit();
+  }
+}

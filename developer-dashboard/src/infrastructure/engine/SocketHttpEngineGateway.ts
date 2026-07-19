@@ -34,6 +34,11 @@ export class SocketHttpEngineGateway implements EngineGateway {
     return this.http.fetchActiveSession(this.runId);
   }
 
+  /** Re-join a restored distributed run's queue + run rooms after a refresh. */
+  public restoreQueueSubscription(jobId: string, runId: string | null): void {
+    this.connection.subscribeQueue(jobId, runId);
+  }
+
   // ── Socket lifecycle ──────────────────────────────────────────
   public connect(): void {
     this.connection.connect();
@@ -45,12 +50,14 @@ export class SocketHttpEngineGateway implements EngineGateway {
 
   // ── HTTP/REST routines ────────────────────────────────────────
   public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult> {
-    const result = await this.http.startTest(targetUrl, optimizationSettings, infiltration);
+    // Present the owned run token so the server resumes an existing session
+    // (dedupe) instead of launching a duplicate.
+    const result = await this.http.startTest(targetUrl, optimizationSettings, infiltration, this.runId);
     // Persist the token so the socket re-attaches to THIS run on reconnect.
     this.setRunId(result.runId);
-    if (result.queued && result.jobId) {
-      // Distributed run: track its place in line + join the future run room now so
-      // bridged worker telemetry reaches us the instant the job goes active.
+    if (result.jobId) {
+      // Distributed run (fresh or resumed): track its place in line + join the run
+      // room now so bridged worker telemetry reaches us the instant it's active.
       this.connection.subscribeQueue(result.jobId, result.runId);
     } else if (result.runId) {
       // Synchronous run: the socket is typically already connected, so join the

@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after applying network and error tab update frontend"
-git checkout -b 7-18-Ayan-4
-git push --set-upstream origin 7-18-Ayan-4
+git commit -m "files after correcting the bull mq queue"
+git checkout -b 7-19-Ayan
+git push --set-upstream origin 7-19-Ayan
 

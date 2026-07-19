@@ -76,7 +76,7 @@ export default function TelemetryLogStream({
         </div>
       ))}
       <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-        <span className="h-2 w-2 rounded-full bg-[var(--status-neutral-fg)] animate-ping"></span>
+        <span className="h-3 w-3 rounded-full bg-[var(--status-neutral-fg)] animate-ping"></span>
         <span className="font-mono text-xs">
           {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
         </span>

@@ -3,6 +3,7 @@
 // Dark container for canvas streaming
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
 import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
 
 interface LiveFeedProps {
@@ -36,6 +37,7 @@ export default function LiveFeed({
   liveFrame = null
 }: LiveFeedProps) {
   const displayUrl = currentUrl || targetUrl || '';
+  const isSecureUrl = displayUrl.startsWith('https://');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LiveFeedRenderer | null>(null);
@@ -184,25 +186,30 @@ export default function LiveFeed({
   return (
     <div className="flex flex-col w-full h-full overflow-hidden bg-[var(--surface-panel)] shadow-md rounded-md border border-[var(--border-hairline)]">
 
-      {/* BROWSER CHROME - Real browser look with traffic lights */}
-      <div className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 py-2 shrink-0 rounded-t-md">
-        {/* LEFT: Browser traffic light buttons */}
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-red-400"></span>
-          <span className="h-3 w-3 rounded-full bg-yellow-400"></span>
-          <span className="h-3 w-3 rounded-full bg-green-400"></span>
+      {/* BROWSER CHROME - decorative toolbar, no interaction */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 py-2 shrink-0 rounded-t-md">
+        {/* LEFT: nav controls (decorative) */}
+        <div className="flex items-center gap-1 text-[var(--text-tertiary)]">
+          <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowLeft size={14} /></span>
+          <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowRight size={14} /></span>
+          <span className="p-1 opacity-70 cursor-default" aria-hidden="true"><RotateCw size={13} /></span>
         </div>
 
-        {/* CENTER: URL display */}
-        <div className="flex-1 mx-4 bg-[var(--surface-app)] rounded-md px-3 py-1 text-xs text-[var(--text-secondary)] truncate shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
-          {displayUrl}
+        {/* CENTER: URL bar */}
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-[var(--surface-panel)] rounded-full px-3 py-1 text-xs text-[var(--text-secondary)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-[var(--border-hairline)]">
+          {isSecureUrl ? (
+            <Lock size={11} className="shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+          ) : (
+            <Globe size={11} className="shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+          )}
+          <span className="truncate font-mono">{displayUrl || 'about:blank'}</span>
         </div>
 
-        {/* RIGHT: Status indicator */}
-        <div className="flex items-center gap-2">
+        {/* RIGHT: status + three-dot menu (decorative) */}
+        <div className="flex items-center gap-2 shrink-0">
           {isQueued && (
             <span className="flex items-center gap-1.5 text-xs font-mono text-[var(--status-neutral-fg)]">
-              <span className="h-2 w-2 bg-[var(--status-neutral-fg)] rounded-full animate-pulse"></span>
+              <span className="h-3 w-3 bg-[var(--status-neutral-fg)] rounded-full animate-pulse"></span>
               QUEUED
             </span>
           )}
@@ -210,6 +217,10 @@ export default function LiveFeed({
           {!isQueued && !isTestRunning && !useBinaryStream && (
             <span className="text-xs text-[var(--text-tertiary)]">Ready</span>
           )}
+
+          <span className="p-1 opacity-70 cursor-default text-[var(--text-tertiary)]" aria-hidden="true">
+            <MoreVertical size={14} />
+          </span>
         </div>
       </div>
 
@@ -250,9 +261,9 @@ export default function LiveFeed({
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <div className="mb-4 flex items-center justify-center gap-1">
-              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse"></span>
-              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '150ms' }}></span>
-              <span className="h-2 w-2 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '300ms' }}></span>
+              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse"></span>
+              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '150ms' }}></span>
+              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '300ms' }}></span>
             </div>
             <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
               ESTABLISHING TELEMETRY STREAM

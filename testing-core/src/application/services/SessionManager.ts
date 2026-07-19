@@ -93,6 +93,9 @@ interface ActiveRun {
 export class SessionManager implements TelemetryRecorder {
   private gateway: SocketTelemetryGateway | null = null;
   private run: ActiveRun | null = null;
+  // Final snapshot of the most recently ended run, kept until the next run
+  // begins so a refresh restores the completed/stopped state instead of IDLE.
+  private lastTerminal: { snapshot: ActiveSessionSnapshot; userId: string | null } | null = null;
 
   /** Wire the manager to the shared telemetry gateway (room-scoped emitter). */
   public initialize(gateway: SocketTelemetryGateway): void {
@@ -153,6 +156,9 @@ export class SessionManager implements TelemetryRecorder {
       lastFrame: null,
     };
 
+    // A fresh run supersedes any previously retained final state.
+    this.lastTerminal = null;
+
     // Scope the wire to this run's room and start buffering for replay.
     this.gateway?.setRoom(room);
     this.gateway?.setRecorder(this);
@@ -172,6 +178,8 @@ export class SessionManager implements TelemetryRecorder {
     const status: RunLifecycleStatus = this.run.crashTerminated ? 'CRASH_COMPLETED' : finalStatus;
     this.run.status = status;
     void this.persistStatus(status);
+    // Retain the final state so a post-completion refresh can restore it.
+    this.lastTerminal = { snapshot: this.buildSnapshot(this.run), userId: this.run.userId };
     this.teardownRun();
     console.log(`[SessionManager] Run ${runId} ended (${status})`);
   }
@@ -277,11 +285,28 @@ export class SessionManager implements TelemetryRecorder {
     return run.userId !== null && userId !== null && userId === run.userId;
   }
 
+  /** Unscoped snapshot of the active run — worker-side Redis publishing only. */
+  public getActiveSnapshot(): ActiveSessionSnapshot | null {
+    return this.run ? this.buildSnapshot(this.run) : null;
+  }
+
+  /** Terminal snapshot of the last ended run — worker-side Redis publishing only. */
+  public getLastTerminalSnapshot(): ActiveSessionSnapshot | null {
+    return this.lastTerminal?.snapshot ?? null;
+  }
+
   /** HTTP snapshot for restore-on-load, scoped to the requester's ownership. */
   public getSnapshotFor(userId: string | null, runId: string | undefined): ActiveSessionSnapshot | null {
     const run = this.run;
-    if (!run || !this.isOwner(run, runId, userId)) return null;
-    return this.buildSnapshot(run);
+    if (run) {
+      return this.isOwner(run, runId, userId) ? this.buildSnapshot(run) : null;
+    }
+    // No live run: offer the retained final state to its owner (token or identity).
+    const terminal = this.lastTerminal;
+    if (!terminal) return null;
+    const ownsByToken = typeof runId === 'string' && runId === terminal.snapshot.runId;
+    const ownsByIdentity = terminal.userId !== null && userId !== null && userId === terminal.userId;
+    return ownsByToken || ownsByIdentity ? terminal.snapshot : null;
   }
 
   private buildSnapshot(run: ActiveRun): ActiveSessionSnapshot {

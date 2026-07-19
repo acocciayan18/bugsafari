@@ -57,10 +57,19 @@ export interface DashboardState {
 // localStorage key for the server-issued run token — lets a guest survive a full
 // page refresh (authed users are additionally matched by identity server-side).
 const RUN_ID_STORAGE_KEY = 'bugsafari:runId';
+// jobId of an enqueued distributed run — needed to rejoin the queue-position
+// stream and run room after a refresh (SESSION_ATTACH can't cross processes).
+const JOB_ID_STORAGE_KEY = 'bugsafari:jobId';
+
+// Single shared toast slot for session-status messages — reusing one id means a
+// newer status replaces the previous one in place, so only one is ever visible.
+const STATUS_TOAST_ID = 'session-status';
 
 // Map the backend run lifecycle onto the dashboard's visibility status.
 function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
   switch (status) {
+    case 'QUEUED':
+      return 'QUEUED';
     case 'RUNNING':
     case 'INTERRUPTED':   // engine still alive inside the grace window
       return 'ACTIVE';
@@ -83,8 +92,8 @@ function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus {
 
 // A run is still live (config controls stay locked) for these lifecycle states.
 function lifecycleIsLive(status: RunLifecycleStatus): boolean {
-  return status === 'RUNNING' || status === 'PAUSING' || status === 'PAUSED'
-    || status === 'STOPPING' || status === 'INTERRUPTED';
+  return status === 'QUEUED' || status === 'RUNNING' || status === 'PAUSING'
+    || status === 'PAUSED' || status === 'STOPPING' || status === 'INTERRUPTED';
 }
 
 const ENGINE_TERMINAL_ACTIONS = new Set([
@@ -173,6 +182,15 @@ const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
   // Ref to track current gateway instance - prevents stale closure in timeout
   const gatewayRef = useRef(gateway);
   gatewayRef.current = gateway;
+
+  // Fresh timebox for handlers registered once inside the [gateway] effect.
+  const sessionTimeMsRef = useRef(sessionTimeMs);
+  sessionTimeMsRef.current = sessionTimeMs;
+  // Snapshot hydration entry point, exposed to startTest for the resume path.
+  const hydrateRef = useRef<(snapshot: ActiveSessionSnapshot) => void>(() => undefined);
+  // Monotonic queue phase for the current job — rejects stale/out-of-order
+  // 'waiting' pushes that race in after the worker already picked the job up.
+  const queuePhaseRef = useRef<'idle' | 'waiting' | 'active' | 'done'>('idle');
 
   // Ref to track if timeout cleanup has already been dispatched
   const timeoutCleanupDispatchedRef = useRef(false);
@@ -278,6 +296,23 @@ return () => {
       setHasRunCompleted(!live);
       setIsLaunching(false);
 
+      // Distributed-run recovery: restore queue standby state and rejoin the
+      // queue-position + run rooms (the only cross-process room-join path).
+      const queued = snapshot.status === 'QUEUED';
+      // The backend snapshot is authoritative — align the queue-phase guard and
+      // clear any queued toast that no longer matches the real worker state.
+      queuePhaseRef.current = queued ? 'waiting' : (live ? 'active' : 'done');
+      if (!queued) toast.dismiss(STATUS_TOAST_ID);
+      setIsQueued(queued);
+      setQueuePosition(queued ? snapshot.queuePosition ?? null : null);
+      setQueueDepth(queued ? snapshot.queueDepth ?? 0 : 0);
+      if (snapshot.jobId && live) {
+        gateway.restoreQueueSubscription(snapshot.jobId, snapshot.runId);
+        try {
+          window.localStorage.setItem(JOB_ID_STORAGE_KEY, snapshot.jobId);
+        } catch { /* storage unavailable */ }
+      }
+
       const frame = snapshot.lastFrame ? `data:image/jpeg;base64,${snapshot.lastFrame}` : null;
       // Only clear the launch spinner/watchdog once we actually have a frame —
       // a snapshot taken right at run-start (no frame yet) must not disable the
@@ -312,6 +347,8 @@ return () => {
       setReconnectAttempt(attempt);
     });
 
+    hydrateRef.current = hydrateFromSnapshot;
+
     gateway.onSessionSnapshot((snapshot) => {
       hydrateFromSnapshot(snapshot);
     });
@@ -321,6 +358,11 @@ return () => {
     // activation: QUEUED freezes the UI in standby; only 'active' promotes to RUNNING.
     gateway.onQueueUpdate((update) => {
       if (update.state === 'waiting') {
+        // Out-of-order guard: a stale position broadcast racing in after the
+        // worker already picked the job up (or it finished) must not resurrect
+        // the queued state/toast — BullMQ's forward-only lifecycle is authoritative.
+        if (queuePhaseRef.current === 'active' || queuePhaseRef.current === 'done') return;
+        queuePhaseRef.current = 'waiting';
         setIsQueued(true);
         setQueuePosition(update.position);
         setQueueDepth(update.queueDepth);
@@ -329,23 +371,38 @@ return () => {
         setIsTestRunning(true);
         setStatus('QUEUED');
         setIsInitializing(false);
+        // Sticky until the worker picks up; the shared id makes repeated waiting
+        // pushes update this toast in place instead of stacking duplicates.
+        toast('Session queued — waiting for an available worker. Execution starts automatically.', { id: STATUS_TOAST_ID, duration: Infinity });
         return;
       }
       if (update.state === 'active') {
         // Worker picked up the run → RUNNING: leave standby, start the stopwatch,
         // let telemetry/live feeds activate, and arm the launch watchdog. Runtime
         // metrics were reset at launch and stayed frozen through QUEUED, so they
-        // begin accruing only now.
+        // begin accruing only now. The dashboard state itself signals execution —
+        // just drop the queued toast, no extra notification.
+        queuePhaseRef.current = 'active';
+        toast.dismiss(STATUS_TOAST_ID);
         setIsQueued(false);
         setQueuePosition(null);
         setStatus('ACTIVE');
         setIsInitializing(true);
-        toast.success('Worker acquired — exploration is now running.');
+        // Anchor the countdown to the moment execution actually begins (not the
+        // enqueue moment) so queued wait time is never counted as run time.
+        runStartWallClockRef.current = Date.now();
+        runDeadlineRef.current = Date.now() + sessionTimeMsRef.current;
+        pausedRemainingRef.current = 0;
         return;
       }
       // completed → the run's own IDLE telemetry resets the UI; failed → surface it.
+      queuePhaseRef.current = 'done';
+      toast.dismiss(STATUS_TOAST_ID);
       setIsQueued(false);
       setQueuePosition(null);
+      try {
+        window.localStorage.removeItem(JOB_ID_STORAGE_KEY);
+      } catch { /* storage unavailable */ }
       if (update.state === 'failed') {
         setIsInitializing(false);
         setIsThinking(false);
@@ -439,12 +496,16 @@ return () => {
         setQueuePosition(null);
         setStatus('IDLE');
         setLiveFrame(null);
+        // Run settled — no queue message may outlive it.
+        queuePhaseRef.current = 'done';
+        toast.dismiss(STATUS_TOAST_ID);
         // The run is over — drop the persisted run token so a future refresh
         // doesn't try to re-attach to a finished run.
         setIsReconnecting(false);
         gateway.setRunId(null);
         try {
           window.localStorage.removeItem(RUN_ID_STORAGE_KEY);
+          window.localStorage.removeItem(JOB_ID_STORAGE_KEY);
         } catch { /* storage unavailable */ }
         // Safety net: the backend always emits IDLE in its finally block, even on a
         // fatal crash that sent no terminal action. If a run had started, mark it
@@ -541,21 +602,36 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     runStartWallClockRef.current = Date.now();
     runDeadlineRef.current = Date.now() + resolvedTimeboxMs;
     pausedRemainingRef.current = 0;
+    // Fresh submission opens a new queue lifecycle for the phase guard.
+    queuePhaseRef.current = 'idle';
+    toast.dismiss(STATUS_TOAST_ID);
 
 try {
-      const { runId, queued } = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      const { runId, jobId, queued, resumed } = await gateway.startTest(targetUrl.trim(), optimizationSettings ?? defaultOptimizationSettings, infiltration);
       // Persist the server-issued run token so a refresh / reconnect re-attaches.
       try {
         if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
+        if (jobId) window.localStorage.setItem(JOB_ID_STORAGE_KEY, jobId);
       } catch { /* storage unavailable */ }
       setIsLaunching(false);
+
+      // The server matched an existing session we own — reconnect to it instead
+      // of treating this as a fresh launch: hydrate from its authoritative snapshot.
+      if (resumed) {
+        toast('Reconnected to your existing session — resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
+        setIsInitializing(false);
+        const snapshot = await gateway.fetchActiveSession();
+        if (snapshot) hydrateRef.current(snapshot);
+        return;
+      }
       // Queued runs haven't launched an engine yet: drop into QUEUED standby and
       // disarm the 30s no-frame watchdog until a worker picks the job up
-      // (onQueueUpdate 'active' promotes to RUNNING and re-arms it).
+      // (onQueueUpdate 'active' promotes to RUNNING and re-arms it). The queued
+      // toast is NOT shown here — the backend's queue-update push (pushInitial
+      // fires on subscribe) is the single source of truth for it.
       if (queued) {
         setStatus('QUEUED');
         setIsInitializing(false);
-        toast('Session queued — waiting for an available worker. Execution starts automatically.');
       }
     } catch (error) {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing

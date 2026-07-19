@@ -20,6 +20,8 @@ export interface StartTestResult {
   runId: string | null;
   jobId: string | null;
   queued: boolean;
+  /** Server matched the request to a session the client already owns — reconnect, don't relaunch. */
+  resumed?: boolean;
 }
 
 export interface EngineGateway {
@@ -44,6 +46,8 @@ export interface EngineGateway {
   setRunId(runId: string | null): void;
   /** Ask the backend whether the requester owns an active run; null if none. */
   fetchActiveSession(): Promise<ActiveSessionSnapshot | null>;
+  /** Re-join a restored distributed run's queue-position + run rooms (post-refresh). */
+  restoreQueueSubscription(jobId: string, runId: string | null): void;
   /** Launch a run; resolves with the run token and (when queued) its jobId. */
   startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult>;
   saveSession(targetUrl: string): Promise<void>;

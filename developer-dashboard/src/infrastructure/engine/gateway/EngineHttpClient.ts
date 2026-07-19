@@ -37,19 +37,24 @@ export class EngineHttpClient {
     return fetch(url, { ...init, headers: this.getAuthHeaders() });
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, knownRunId?: string | null): Promise<StartTestResult> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
     console.log(`[Gateway] Infiltration Profile:`, infiltration);
 
     try {
-      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig } = { url: targetUrl };
+      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig; knownRunId?: string } = { url: targetUrl };
       if (optimizationSettings) {
         requestBody.optimization = optimizationSettings;
       }
       if (infiltration) {
         requestBody.infiltration = infiltration;
+      }
+      // Run token from a prior launch — lets the server resume an owned session
+      // (dedupe) instead of starting a duplicate.
+      if (knownRunId) {
+        requestBody.knownRunId = knownRunId;
       }
 
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/start-test`, {
@@ -70,12 +75,13 @@ export class EngineHttpClient {
       // Capture the server-issued run token so a later refresh / reconnect can
       // prove ownership and re-attach. A queued (202) response additionally carries
       // the jobId used to track the run's place in the worker-fleet line.
-      const data = (await response.json().catch(() => ({}))) as { runId?: string; jobId?: string; queued?: boolean };
+      const data = (await response.json().catch(() => ({}))) as { runId?: string; jobId?: string; queued?: boolean; resumed?: boolean };
       const runId = typeof data.runId === 'string' ? data.runId : null;
       const jobId = typeof data.jobId === 'string' ? data.jobId : null;
       const queued = data.queued === true;
-      console.log(`[Gateway] ✅ Safari launch accepted (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
-      return { runId, jobId, queued };
+      const resumed = data.resumed === true;
+      console.log(`[Gateway] ✅ Safari launch ${resumed ? 'RESUMED existing session' : 'accepted'} (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
+      return { runId, jobId, queued, resumed };
     } catch (error) {
       if (error instanceof TypeError) {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {

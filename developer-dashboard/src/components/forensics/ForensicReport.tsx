@@ -115,7 +115,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${theme.dot}`} />
+            <span className={`h-3 w-3 rounded-full ${theme.dot}`} />
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
           <div className="mt-1 truncate text-sm font-medium text-[var(--text-secondary)]" title={report.url}>{report.url || 'N/A'}</div>

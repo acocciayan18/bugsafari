@@ -3,6 +3,7 @@ import type { ParsedQs } from 'qs';
 import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
+import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
@@ -148,7 +149,33 @@ export function registerRoutes(
   // if BUGSAFARI_USE_QUEUE=1), /api/start-test enqueues the run for the Safari
   // worker fleet instead of executing it in-process. Undefined => sync default.
   taskQueue?: TaskQueue,
+  // Redis-backed run index/snapshots for distributed recovery; present iff taskQueue is.
+  runRegistry?: RunRegistry,
 ): void {
+  // BullMQ states meaning "still waiting for a worker".
+  const WAITING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children']);
+  // Lifecycle states in which the run is still live (controls stay bound to it).
+  const LIVE_LIFECYCLES = new Set(['QUEUED', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
+
+  // Minimal QUEUED snapshot for a job still in line (no engine, no buffers yet).
+  const queuedSnapshot = (entry: RunRegistryEntry, position: number | null, queueDepth: number) => ({
+    runId: entry.runId,
+    jobId: entry.jobId,
+    ownerType: entry.userId ? 'authenticated' as const : 'guest' as const,
+    targetUrl: entry.targetUrl,
+    currentUrl: entry.targetUrl,
+    status: 'QUEUED' as const,
+    startedAt: entry.createdAt,
+    elapsedTimeMs: 0,
+    timeboxMs: entry.timeboxMs,
+    telemetry: [],
+    reports: [],
+    incidents: [],
+    accessibility: [],
+    lastFrame: null,
+    queuePosition: position,
+    queueDepth,
+  });
 // Health check - public
   app.get('/api/health', (_request: Request, response: Response) => {
     response.json({ status: "healthy" });
@@ -212,6 +239,13 @@ export function registerRoutes(
     const selectedScenarios = parseSelectedScenarios(request.body);
     console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
 
+    // Run token the client already holds from a previous launch (localStorage) —
+    // possession proves ownership, letting a refreshed client (incl. guests)
+    // resume its live run instead of double-submitting.
+    const knownRunId = typeof request.body?.knownRunId === 'string' && request.body.knownRunId
+      ? (request.body.knownRunId as string)
+      : undefined;
+
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
@@ -220,10 +254,38 @@ export function registerRoutes(
     // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
     if (taskQueue) {
       try {
+        // Duplicate-submission guard: if this requester already owns a queued or
+        // running job, hand back its identifiers so the client resumes it.
+        if (runRegistry) {
+          const existing = request.userId
+            ? await runRegistry.findByOwner(request.userId)
+            : (knownRunId ? await runRegistry.findByRunId(knownRunId) : null);
+          if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
+            const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
+            if (state === 'active' || WAITING_STATES.has(state)) {
+              console.log(`[API] ♻️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
+              response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runId: existing.runId, queued: state !== 'active' });
+              return;
+            }
+            await runRegistry.clear(existing.runId, existing.userId);
+          }
+        }
+
         const enqueued = await taskQueue.addSafariTask({
           targetUrl,
           requestedBy: request.userId ?? undefined,
           selectedScenarios,
+        });
+        const timeboxMs = typeof request.body?.optimization?.['execution-timebox-ms'] === 'number'
+          ? request.body.optimization['execution-timebox-ms'] as number
+          : 600_000;
+        await runRegistry?.register({
+          runId: enqueued.runId,
+          jobId: enqueued.id,
+          userId: request.userId ?? null,
+          targetUrl,
+          timeboxMs,
+          createdAt: new Date().toISOString(),
         });
         console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName})`);
         // runId lets the client join run:${runId} for bridged worker telemetry;
@@ -241,6 +303,14 @@ export function registerRoutes(
     // concurrent requests can't both pass this check before either marks the
     // use case active (see StartExplorationUseCase.tryActivate() for why).
     if (!useCase.tryActivate()) {
+      // If the busy run belongs to THIS requester, resume it instead of erroring —
+      // a refreshed client that re-submits reconnects to its own live session.
+      const owned = sessionManager.getSnapshotFor(request.userId ?? null, knownRunId);
+      if (owned && LIVE_LIFECYCLES.has(owned.status)) {
+        console.log(`[API] ♻️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
+        response.json({ accepted: true, resumed: true, url: owned.targetUrl, runId: owned.runId, queued: false });
+        return;
+      }
       console.warn(`[API] ❌ Safari already running - rejecting request`);
       response.status(429).json({ error: 'A BugSafari run is already active.' });
       return;
@@ -293,10 +363,57 @@ export function registerRoutes(
   // if so, gets the full replay snapshot to rebuild the live dashboard. Uses the
   // same optionalAuth as start-test — authed users are matched by identity, guests
   // by the runId they present. Returns { snapshot: null } when nothing is owned.
-  app.get('/api/session/active', optionalAuth, (request: AuthRequest, response: Response): void => {
+  app.get('/api/session/active', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const runId = extractStringParam(request.query.runId);
-    const snapshot = sessionManager.getSnapshotFor(request.userId ?? null, runId);
-    response.json({ snapshot });
+    const local = sessionManager.getSnapshotFor(request.userId ?? null, runId);
+    if (local || !taskQueue || !runRegistry) {
+      response.json({ snapshot: local });
+      return;
+    }
+
+    // Distributed mode: the run (if any) lives in a worker process — resolve it
+    // through the Redis registry, with BullMQ as the authority on job state.
+    try {
+      const entry = runId
+        ? await runRegistry.findByRunId(runId)
+        : (request.userId ? await runRegistry.findByOwner(request.userId) : null);
+      if (!entry || (entry.userId && request.userId && entry.userId !== request.userId)) {
+        response.json({ snapshot: null });
+        return;
+      }
+
+      const state = await taskQueue.getJobState(entry.jobId).catch(() => 'unknown');
+      if (WAITING_STATES.has(state)) {
+        const { order, queueDepth } = await taskQueue.positions();
+        const index = order.indexOf(entry.jobId);
+        response.json({ snapshot: queuedSnapshot(entry, index >= 0 ? index + 1 : null, queueDepth) });
+        return;
+      }
+      if (state === 'active') {
+        // Worker publishes a throttled replay snapshot to Redis; fall back to a
+        // minimal RUNNING shell if the run just started and none exists yet.
+        const workerSnapshot = await runRegistry.readSnapshot(entry.runId);
+        const snapshot = workerSnapshot
+          ? { ...workerSnapshot, jobId: entry.jobId }
+          : { ...queuedSnapshot(entry, null, 0), status: 'RUNNING' as const };
+        response.json({ snapshot });
+        return;
+      }
+
+      // Job finished/failed/vanished: serve the worker-published FINAL state if
+      // one exists (post-completion refresh restores the finished dashboard);
+      // otherwise the entry is stale — clean it up.
+      const finalSnapshot = await runRegistry.readSnapshot(entry.runId);
+      if (finalSnapshot && !LIVE_LIFECYCLES.has(finalSnapshot.status)) {
+        response.json({ snapshot: { ...finalSnapshot, jobId: entry.jobId } });
+        return;
+      }
+      await runRegistry.clear(entry.runId, entry.userId);
+      response.json({ snapshot: null });
+    } catch (error) {
+      console.error('[API] /api/session/active distributed lookup failed:', error instanceof Error ? error.message : error);
+      response.json({ snapshot: null });
+    }
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)
