@@ -172,7 +172,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-[10px] font-semibold uppercase text-(--status-neutral-fg)">
+          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-[11px] font-semibold uppercase text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
@@ -404,7 +404,7 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
       </div>
       <div className="mt-1 break-words text-[13px] text-(--text-primary)">{signal.message}</div>
       {signal.url && (
-        <div className="mt-1 truncate font-mono text-[10px] text-(--text-secondary)" title={signal.url}>{signal.url}</div>
+        <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={signal.url}>{signal.url}</div>
       )}
     </li>
   );
@@ -444,7 +444,7 @@ function VerificationResultModal({
 
         {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-secondary)">
               Reproduced Signals ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -552,13 +552,13 @@ function FindingCard({
               {occurrences > 1 && (
                 <span
                   title={`This fault occurred ${occurrences} times this session`}
-                  className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-(--text-oninvert)"
+                  className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold leading-none text-(--text-oninvert)"
                 >
                   ×{occurrences}
                 </span>
               )}
               {verdictMeta && (
-                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
+                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
                   {verdictMeta.label}
                 </span>
@@ -655,7 +655,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[10px] leading-none text-(--text-secondary)">
+    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[11px] leading-none text-(--text-secondary)">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -703,13 +703,13 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
         return (
           <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-(--text-oninvert)">{row.method}</span>
+              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase text-(--text-oninvert)">{row.method}</span>
               <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-[10px] uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
+                <span className="font-mono text-[11px] uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-[10px] text-(--text-secondary)">×{row.repeatCount}</span>
+                <span className="font-mono text-[11px] text-(--text-secondary)">×{row.repeatCount}</span>
               )}
             </div>
             <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={row.url}>{row.url}</div>
@@ -739,12 +739,12 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
       {rows.map((row, i) => (
         <li key={i} className="rounded-md border border-(--border-hairline) bg-(--surface-panel) p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
-            {row.url && <span className="truncate font-mono text-[10px] text-(--text-tertiary)" title={row.url}>{row.url}</span>}
+            <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
+            {row.url && <span className="truncate font-mono text-[11px] text-(--text-tertiary)" title={row.url}>{row.url}</span>}
           </div>
           {row.message && <div className="mt-1 break-words font-mono text-[11px] text-(--text-primary)">{row.message}</div>}
           {row.stackTrace && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-[10px] leading-relaxed text-(--text-primary)">{row.stackTrace}</pre>
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-[11px] leading-relaxed text-(--text-primary)">{row.stackTrace}</pre>
           )}
         </li>
       ))}

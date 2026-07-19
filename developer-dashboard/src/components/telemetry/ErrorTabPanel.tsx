@@ -34,7 +34,7 @@ const OccurrenceBadge = ({ count }: { count: number }) => {
   return (
     <span
       title={`This fault occurred ${count} times this session`}
-      className="rounded-full border border-(--status-critical-border) px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-(--status-critical-fg)"
+      className="rounded-full border border-(--status-critical-border) px-1.5 py-0.5 font-mono text-[11px] font-bold leading-none text-(--status-critical-fg)"
     >
       ×{count}
     </span>
@@ -44,7 +44,7 @@ const OccurrenceBadge = ({ count }: { count: number }) => {
 /** Metadata cell for the flat key/value grid — muted label, plain value. */
 const MetaCell = ({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) => (
   <div className="min-w-0">
-    <div className="text-[10px] font-semibold text-(--text-tertiary) uppercase tracking-wide">{label}</div>
+    <div className="text-[11px] font-semibold text-(--text-tertiary) uppercase tracking-wide">{label}</div>
     <div className={`text-[13px] ${mono ? 'font-mono' : ''} text-(--text-secondary) whitespace-normal break-words`}>{value}</div>
   </div>
 );

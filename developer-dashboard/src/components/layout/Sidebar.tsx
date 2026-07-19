@@ -69,7 +69,7 @@ export default function Sidebar({
             BUGSAFARI
           </h1>
           {/* TERMINAL ACCESS - Inter, Medium, 10px */}
-          <p className="mt-0.5 font-sans font-medium text-[10px] text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
+          <p className="mt-0.5 font-sans font-medium text-[11px] text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
             TERMINAL ACCESS
           </p>
         </div>

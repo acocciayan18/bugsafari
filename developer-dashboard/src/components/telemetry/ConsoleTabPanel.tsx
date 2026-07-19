@@ -52,15 +52,15 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
   }, [browserConsole]);
 
   return (
-    <div className="-m-4">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 px-2 py-1.5 bg-(--surface-panel) border-b border-(--border-hairline)">
+    <div className="-mx-4 -mt-4">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1.5 px-3 py-2 mb-1 bg-(--surface-panel) border-b border-(--border-hairline)">
         {FILTERS.map((level) => (
           <button
             key={level}
             type="button"
             onClick={() => setFilter(level)}
             aria-pressed={filter === level}
-            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-colors ${
+            className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide transition-colors ${
               filter === level
                 ? 'bg-(--surface-inset) text-(--text-primary)'
                 : 'text-(--text-tertiary) hover:text-(--text-secondary)'

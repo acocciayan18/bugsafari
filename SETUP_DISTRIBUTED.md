@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after Complete Missing Core Features and Integrate Dormant Detection Modules"
-git checkout -b 7-20-Ayan-4
-git push --set-upstream origin 7-20-Ayan-4
+git commit -m "files after fixing the frontend of testing config"
+git checkout -b 7-20-Ayan-5
+git push --set-upstream origin 7-20-Ayan-5
 

@@ -8,6 +8,7 @@ interface ModalProps {
   children: ReactNode;
   maxWidthClassName?: string;
   closeOnBackdrop?: boolean;
+  backdropClassName?: string;
 }
 
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -16,9 +17,24 @@ const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:
  * Watchtower Modal chrome — sharp radius, hairline border, solid backdrop (no blur/alpha), portal-rendered.
  * Handles Escape-to-close, focus trap, and focus restore so callers only own their content.
  */
-export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 'max-w-md', closeOnBackdrop = true }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  titleId,
+  children,
+  maxWidthClassName = 'max-w-md',
+  closeOnBackdrop = true,
+  backdropClassName = 'bg-(--surface-app)',
+}: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  // Callers pass inline arrows, so onClose changes identity on every parent render.
+  // Reading it through a ref keeps the focus effect keyed to isOpen alone — otherwise
+  // each re-render (e.g. typing into a field) re-runs it and steals focus back.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -29,7 +45,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel) return;
@@ -55,7 +71,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
       document.removeEventListener('keydown', handleKeyDown);
       previouslyFocused.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -67,7 +83,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-(--surface-app) p-4 animate-fade-in"
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-in ${backdropClassName}`}
       onMouseDown={handleBackdropMouseDown}
     >
       <div
@@ -75,7 +91,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`w-full ${maxWidthClassName} rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl)`}
+        className={`w-full ${maxWidthClassName} animate-fade-in rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl)`}
       >
         {children}
       </div>

@@ -96,7 +96,7 @@ export default function NetworkTabPanel({
                   {method} {statusCode || 'ERR'}
                 </span>
                 {count > 1 && (
-                  <span className="text-[10px] text-(--text-secondary)">×{count}</span>
+                  <span className="text-[11px] text-(--text-secondary)">×{count}</span>
                 )}
               </div>
             </div>
@@ -104,7 +104,7 @@ export default function NetworkTabPanel({
               {url}
             </div>
             {(message || aiDiagnostics) && (
-              <div className="px-3 py-2 text-[10px] text-(--text-secondary) border-t border-(--border-hairline)">
+              <div className="px-3 py-2 text-[11px] text-(--text-secondary) border-t border-(--border-hairline)">
                 {message}
                 <AiDiagnosticCard ai={aiDiagnostics} />
               </div>

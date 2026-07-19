@@ -34,7 +34,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             className="flex items-start gap-2 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
           >
             <span className="mt-px text-[11px] font-mono text-(--text-tertiary)">{step.stepNumber}</span>
-            <span className={`mt-px rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+            <span className={`mt-px rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
               {chipLabel(kind)}
             </span>
             <div className="min-w-0">
@@ -44,7 +44,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
                   {payloadDisplay}
                 </code>
               )}
-              <div className="mt-0.5 text-[10px] text-(--text-tertiary)">
+              <div className="mt-0.5 text-[11px] text-(--text-tertiary)">
                 {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
                 {formatStepTime(step.timestamp)}
               </div>

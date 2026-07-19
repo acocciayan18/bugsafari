@@ -39,7 +39,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
         {steps.length > 0 && (
           <button
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium text-(--text-secondary) transition-all hover:bg-(--surface-hover) active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium text-(--text-secondary) transition-all hover:bg-(--surface-hover) active:scale-95"
             title="Copy reproduction steps as Markdown"
           >
             {copied ? 'Copied!' : 'Copy'}
@@ -56,7 +56,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
                 className="flex items-start gap-2 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
               >
                 <span className="mt-px text-[11px] font-mono text-(--text-tertiary)">{idx + 1}</span>
-                <span className={`mt-px rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+                <span className={`mt-px rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
                   {chipLabel(kind)}
                 </span>
                 <span className="text-[13px] leading-relaxed text-(--text-primary) break-words">{step}</span>
@@ -80,7 +80,7 @@ export function ObservationsBlock({ observations }: { observations: string[] }) 
   if (observations.length === 0) return null;
   return (
     <div className="mt-2">
-      <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-(--status-critical-fg)">
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-(--status-critical-fg)">
         Observed result
       </div>
       <ul className="space-y-1">

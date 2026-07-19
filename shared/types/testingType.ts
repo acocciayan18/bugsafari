@@ -200,7 +200,7 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {
     id: 'AUTH_STATE_SUBVERSION',
     label: 'Auth-State Subversion',
-    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/sessionStorage/JWT) and checks whether privileged UI unlocks without server authorization.',
+    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/ sessionStorage/ JWT) and checks whether privileged UI unlocks without server authorization.',
     testingTypes: ['authState'],
   },
   // CUSTOM_STRATEGY_PROFILE retired — BugSafari runs only automated profiles.

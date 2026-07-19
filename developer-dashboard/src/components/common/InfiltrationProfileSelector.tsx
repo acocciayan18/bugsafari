@@ -19,15 +19,13 @@ function InfiltrationProfileSelectorImpl({
   disabled = false,
 }: InfiltrationProfileSelectorProps) {
   return (
-    <div className="w-full bg-(--surface-panel) rounded-lg shadow-md p-3 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-(--text-secondary) uppercase tracking-wider">
-          Infiltration Profile
-        </span>
-      </div>
+    <div className="w-full flex flex-col gap-2">
+      <span className="text-[11px] font-bold text-(--text-tertiary) uppercase tracking-wider font-sans">
+        Infiltration Matrix
+      </span>
 
       {/* Profile cards — single-choice radio group, responsive grid. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2" role="radiogroup" aria-label="Infiltration Profile">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2" role="radiogroup" aria-label="Infiltration Matrix">
         {INFILTRATION_PROFILE_CATALOG.map((option) => {
           const isSelected = option.id === profile;
           return (
@@ -46,7 +44,7 @@ function InfiltrationProfileSelectorImpl({
               />
               <span className="flex flex-col">
                 <span className={`text-[13px] font-semibold leading-tight ${isSelected ? 'text-(--text-oninvert)' : 'text-(--text-secondary)'}`}>{option.label}</span>
-                <span className={`text-[10px] leading-tight mt-0.5 ${isSelected ? 'text-(--text-oninvert) opacity-80' : 'text-(--text-tertiary)'}`}>{option.description}</span>
+                <span className={`text-[11px] leading-tight mt-0.5 ${isSelected ? 'text-(--text-oninvert) opacity-80' : 'text-(--text-tertiary)'}`}>{option.description}</span>
               </span>
             </label>
           );

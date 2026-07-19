@@ -23,7 +23,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
       }`}
     >
       <div className="flex items-center justify-between border-b border-(--border-hairline) pb-2 mb-2">
-        <div className="flex items-center gap-1.5 text-(--text-secondary) font-bold tracking-wider uppercase text-[10px]">
+        <div className="flex items-center gap-1.5 text-(--text-secondary) font-bold tracking-wider uppercase text-[11px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <span
@@ -44,7 +44,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
         </div>
         <div>
           <span className="text-(--text-tertiary) font-bold">Standard Profile:</span>{' '}
-          <span className="text-(--text-secondary) bg-(--surface-raised) px-1.5 py-0.5 rounded text-[10px] font-bold">
+          <span className="text-(--text-secondary) bg-(--surface-raised) px-1.5 py-0.5 rounded text-[11px] font-bold">
             {ai.cwe}
           </span>
         </div>
@@ -55,7 +55,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
         <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px]">
-          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-(--text-secondary) mb-1">
+          <span className="font-mono text-[11px] font-black uppercase tracking-wider block text-(--text-secondary) mb-1">
             💡 Actionable Remediation Patch Strategy:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>

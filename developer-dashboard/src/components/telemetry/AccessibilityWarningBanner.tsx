@@ -17,7 +17,7 @@ export default function AccessibilityWarningBanner({ count, onDismiss }: Accessi
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-(--status-warning-fg)">WCAG compliance at risk</span>
-            <span className="rounded-full bg-(--status-warning-border) px-2 py-0.5 font-mono text-[10px] font-bold text-(--status-warning-fg)">{count}+ issues</span>
+            <span className="rounded-full bg-(--status-warning-border) px-2 py-0.5 font-mono text-[11px] font-bold text-(--status-warning-fg)">{count}+ issues</span>
           </div>
           <p className="text-[13px] leading-relaxed text-(--text-primary)">
             BugSafari detected {count}+ accessibility violations. Add alt text, form labels, accessible control names, unique ids, and a document <code className="font-mono">lang</code>/<code className="font-mono">title</code> to restore compliance.

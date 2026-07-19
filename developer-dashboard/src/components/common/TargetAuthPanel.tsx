@@ -64,7 +64,7 @@ interface TargetAuthPanelProps {
 
 const FIELD_CLASS =
   'w-full h-9 border border-(--border-strong) rounded-lg px-3 text-[13px] font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
-const LABEL_CLASS = 'block text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
+const LABEL_CLASS = 'block text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
 
 export default function TargetAuthPanel({ draft, onChange, disabled = false }: TargetAuthPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -85,20 +85,20 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           checked={draft.enabled}
           disabled={disabled}
           onChange={(e) => set('enabled', e.target.checked)}
-          className="rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-3.5 w-3.5"
+          className="rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
         />
         <KeyRound className="h-4 w-4 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <span className="text-[11px] font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
           Authenticate into target
         </span>
-        <span className="text-[10px] text-(--text-tertiary) font-sans normal-case tracking-normal">
+        <span className="text-[11px] text-(--text-tertiary) font-sans normal-case tracking-normal">
           Explore past the login page
         </span>
       </label>
 
       {draft.enabled && (
         <div className="border-t border-(--border-hairline) px-4 py-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={LABEL_CLASS} htmlFor="target-auth-username">Username / Email</label>
               <input
@@ -127,8 +127,8 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             </div>
           </div>
 
-          <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-(--text-tertiary) font-sans">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-(--text-tertiary) font-sans">
+            <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
             <span>
               Used once for this run and held in memory only — never saved to your history, reports,
               logs, or the job queue. Re-enter them for each run. Use a dedicated test account.
@@ -136,7 +136,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           </p>
 
           {incomplete && (
-            <p className="text-[10px] font-semibold text-(--status-critical-fg) font-sans">
+            <p className="text-[11px] font-semibold text-(--status-critical-fg) font-sans">
               Both a username and a password are required to authenticate.
             </p>
           )}
@@ -144,10 +144,10 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           <button
             type="button"
             onClick={() => setShowAdvanced((prev) => !prev)}
-            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary) hover:text-(--text-secondary) transition-colors font-sans"
+            className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary) hover:text-(--text-secondary) transition-colors font-sans"
           >
             <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
               strokeWidth={1.75}
               aria-hidden="true"
             />
@@ -156,11 +156,11 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
 
           {showAdvanced && (
             <div className="space-y-3 pt-1">
-              <p className="text-[10px] text-(--text-tertiary) font-sans leading-relaxed">
+              <p className="text-[11px] text-(--text-tertiary) font-sans leading-relaxed">
                 Leave blank to auto-detect the login form. Set these when the form is multi-step or
                 built from custom components, where detection cannot find the fields.
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL_CLASS} htmlFor="target-auth-login-url">Login page URL</label>
                   <input

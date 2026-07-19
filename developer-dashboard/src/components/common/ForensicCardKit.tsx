@@ -69,7 +69,7 @@ export const ExpandableCodeBlock = ({
       >
         <span className="text-sm">{isExpanded ? '▼' : '▶'}</span>
         <span>{title}</span>
-        <span className="text-[10px] opacity-60 ml-auto">Click to {isExpanded ? 'collapse' : 'expand'}</span>
+        <span className="text-[11px] opacity-60 ml-auto">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
         <div className={`px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
@@ -102,7 +102,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   return (
     <span
       title={`Backend-classified severity: ${style.label}`}
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${style.cls}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${style.cls}`}
     >
       {style.label}
     </span>

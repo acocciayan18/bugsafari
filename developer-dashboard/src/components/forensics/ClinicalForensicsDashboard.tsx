@@ -3,14 +3,15 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Check, Bug, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, Menu, ChevronDown, Globe } from 'lucide-react';
+import { Check, Bug, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
-import TargetAuthPanel, {
+import {
   emptyTargetAuthDraft,
   isTargetAuthIncomplete,
   toTargetAuthConfig,
   type TargetAuthDraft,
 } from '../common/TargetAuthPanel';
+import TestingConfigModal from '../common/TestingConfigModal';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import SessionTimer from '../common/SessionTimer';
@@ -26,7 +27,7 @@ type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-(--status-neutral-bg) px-1.5 py-0.5 font-mono text-[10px] leading-none text-(--status-neutral-fg)">
+    <span className="ml-1.5 rounded-full bg-(--status-neutral-bg) px-1.5 py-0.5 font-mono text-[11px] leading-none text-(--status-neutral-fg)">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -100,6 +101,7 @@ export default function ClinicalForensicsDashboard({
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   // ─────────────────────────────────────────────────────────────
   // TELEMETRY SCROLL & UTILITIES
@@ -161,11 +163,21 @@ export default function ClinicalForensicsDashboard({
   // Backend settling in-flight tasks — lock every control until it confirms completion.
   const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
 
-  const profiles = INFILTRATION_PROFILE_CATALOG.map((p) => ({
-    id: p.id, name: p.label, desc: p.description,
-  }));
+  const currentProfileName =
+    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === selectedProfile)?.label ?? 'Chaos Infiltration';
 
-  const currentProfileName = profiles.find(p => p.id === selectedProfile)?.name || 'Chaos Infiltration';
+  // Trigger-button digest so the collapsed settings stay discoverable at a glance.
+  const configSummary = [
+    currentProfileName,
+    strictBoundary ? 'Locked' : null,
+    authDraft.enabled ? 'Auth on' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  // A launched run freezes its settings — collapse the dialog rather than leaving
+  // a stale editable copy open over a live session.
+  const showConfigModal = isConfigOpen && !isActiveSession;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--surface-app)">
@@ -180,60 +192,26 @@ export default function ClinicalForensicsDashboard({
               COMMAND CENTER
             </h2>
 
-            {/* Hover Trigger Container for Dropdown */}
-            <div className="relative group py-2">
-              <button
-                disabled={isActiveSession}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) group-hover:bg-(--surface-hover) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                
-                <Menu className="h-3.5 w-3.5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
-                <span>{currentProfileName}</span>
-                
-                <ChevronDown className="ml-1 h-4 w-4 text-(--text-tertiary) transform transition-transform duration-200 group-hover:rotate-180" strokeWidth={1.75} aria-hidden="true" />
-              </button>
-
-              {/* Floating Dropdown via Hover */}
-              {!isActiveSession && (
-                <div className="hidden absolute left-0 mt-1 w-72 bg-(--surface-panel) rounded-xl shadow-xl border border-(--border-hairline) py-2 z-50 group-hover:block animate-in fade-in slide-in-from-top-1 duration-100">
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary) border-b border-(--border-hairline) mb-1 font-sans">
-                    Select Infiltration Matrix
-                  </div>
-                  {profiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      onClick={() => setSelectedProfile(profile.id)}
-                      className={`w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-(--surface-hover) ${selectedProfile === profile.id ? 'bg-(--surface-inset)' : ''}`}
-                    >
-                      <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selectedProfile === profile.id ? 'border-(--border-focus) text-(--text-primary)' : 'border-(--border-strong)'}`}>
-                        {selectedProfile === profile.id && <span className="h-3 w-3 rounded-full bg-(--surface-invert)" />}
-                      </span>
-                      <div className="flex flex-col min-w-0">
-                        <span className={`text-[13px] font-semibold leading-tight font-sans ${selectedProfile === profile.id ? 'text-(--text-primary)' : 'text-(--text-secondary)'}`}>
-                          {profile.name}
-                        </span>
-                        <span className="text-[10px] text-(--text-tertiary) truncate mt-0.5 font-sans">
-                          {profile.desc}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-
-                  <div className="mt-2 pt-2 border-t border-(--border-hairline) px-3 pb-1">
-                    <label htmlFor="strict-lock-hover" className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        id="strict-lock-hover"
-                        type="checkbox"
-                        checked={strictBoundary}
-                        onChange={(e) => setStrictBoundary(e.target.checked)}
-                        className="rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-3.5 w-3.5"
-                      />
-                      <span className="text-[10px] font-bold tracking-wider text-(--text-secondary) uppercase font-sans">Strict Boundary Lock</span>
-                    </label>
-                  </div>
-                </div>
+            {/* Single entry point for every pre-launch setting — locked mid-run, since
+                the engine reads them once at launch and cannot re-apply them live. */}
+            <button
+              onClick={() => setIsConfigOpen(true)}
+              disabled={isActiveSession}
+              aria-haspopup="dialog"
+              aria-expanded={showConfigModal}
+              title={isActiveSession ? 'Configuration is locked while a run is in progress' : 'Open testing configuration'}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
+              <span>Configuration</span>
+              <span className="text-(--border-strong)" aria-hidden="true">|</span>
+              <span className="text-[11px] font-normal text-(--text-tertiary) font-sans">{configSummary}</span>
+              {/* Launch is blocked on incomplete credentials — surface it on the trigger,
+                  otherwise the cause is hidden behind a closed dialog. */}
+              {authIncomplete && !isActiveSession && (
+                <span className="h-1.5 w-1.5 rounded-full bg-(--status-critical-fg)" aria-label="Configuration incomplete" />
               )}
-            </div>
+            </button>
           </div>
 
           {/* Session controls and Timer management */}
@@ -357,9 +335,20 @@ export default function ClinicalForensicsDashboard({
           </button>
         </div>
 
-        {/* Optional target-app login — ephemeral, cleared on launch. */}
-        <TargetAuthPanel draft={authDraft} onChange={setAuthDraft} disabled={isActiveSession} />
       </div>
+
+      {/* Edits write through to this component's state, so nothing is lost on close. */}
+      <TestingConfigModal
+        isOpen={showConfigModal}
+        onClose={() => setIsConfigOpen(false)}
+        profile={selectedProfile}
+        onProfileChange={setSelectedProfile}
+        strictBoundary={strictBoundary}
+        onStrictBoundaryChange={setStrictBoundary}
+        authDraft={authDraft}
+        onAuthDraftChange={setAuthDraft}
+      />
+
 
       {/* ═══════════════════════════════════════════════════════════════
           MAIN WORKSPACE LAYOUT PANELS (55% / 45%)
@@ -387,7 +376,7 @@ export default function ClinicalForensicsDashboard({
           <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border ${testStatus === 'ACTIVE'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${testStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
                 : testStatus === 'PAUSED'
                   ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'
