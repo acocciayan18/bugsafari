@@ -1,4 +1,4 @@
-import type { BrowserConsoleMessage, EngineGateway, StartTestResult } from '../../application/ports/EngineGateway';
+import type { BrowserConsoleMessage, EngineGateway, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
 import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
@@ -100,8 +100,19 @@ export class SocketHttpEngineGateway implements EngineGateway {
       return this.connection.stopViaSocket();
     }
 
-    // Fallback to HTTP POST if socket not connected
-    return this.http.stopViaHttp(this.runId);
+    // Fallback to HTTP POST if socket not connected. Best-effort by design: the
+    // backend may already be stopped, so the outcome is logged, not thrown.
+    await this.http.stopRun(this.runId);
+  }
+
+  /**
+   * Cancel a run that hasn't been picked up by a worker yet. Always HTTP — the
+   * socket control channel only reaches a run that is already executing, so a
+   * queued job can only be removed through the queue-aware stop endpoint.
+   */
+  public cancelQueuedRun(): Promise<StopRunResult> {
+    console.log('[Gateway] 🚫 cancelQueuedRun called for runId:', this.runId);
+    return this.http.stopRun(this.runId);
   }
 
   // ── Server→client subscriber registration ─────────────────────

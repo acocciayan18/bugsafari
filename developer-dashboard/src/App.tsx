@@ -166,7 +166,7 @@ function AuthAppContent() {
         />
         <Route
           path="/history"
-          element={
+          element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
@@ -177,7 +177,7 @@ function AuthAppContent() {
             >
               <SavedEvaluationSafaris />
             </SidebarLayout>
-          }
+          )}
         />
         <Route
           path="/settings"
@@ -196,7 +196,7 @@ function AuthAppContent() {
         />
         <Route
           path="/history/forensic-report/:sessionId"
-          element={
+          element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
             <SidebarLayout
               user={user}
               isAuthenticated={isAuthenticated}
@@ -207,7 +207,7 @@ function AuthAppContent() {
             >
               <ForensicReport />
             </SidebarLayout>
-          }
+          )}
         />
         <Route
           path="*"

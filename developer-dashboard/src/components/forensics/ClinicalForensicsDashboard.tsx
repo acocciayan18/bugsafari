@@ -274,6 +274,17 @@ export default function ClinicalForensicsDashboard({
                   Resume
                 </button>
               )}
+              {/* Queued runs hold no engine — the only control that applies is
+                  removing the job from the queue before a worker claims it. */}
+              {isQueued && !transitionLabel && onStop && (
+                <button
+                  onClick={onStop}
+                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                >
+                  <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  Cancel Queued Run
+                </button>
+              )}
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}

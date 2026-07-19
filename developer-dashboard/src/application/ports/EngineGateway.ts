@@ -24,6 +24,20 @@ export interface StartTestResult {
   resumed?: boolean;
 }
 
+/** Outcome of POST /api/safari/stop — `ok` is the backend's real verdict, never assumed. */
+export interface StopRunResult {
+  ok: boolean;
+  /** A still-waiting queued job was removed before any worker claimed it. */
+  cancelled?: boolean;
+  /** A running engine received the stop and is unwinding. */
+  stopping?: boolean;
+  stopped?: boolean;
+  alreadyStopped?: boolean;
+  jobId?: string;
+  message?: string;
+  error?: string;
+}
+
 export interface EngineGateway {
   connect(): void;
   disconnect(): void;
@@ -54,4 +68,6 @@ export interface EngineGateway {
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */
   forceStop(): Promise<void>;
+  /** Cancel a run that is still QUEUED (removes the BullMQ job before pickup). */
+  cancelQueuedRun(): Promise<StopRunResult>;
 }

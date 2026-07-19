@@ -4,6 +4,8 @@ import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
+import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
+import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { validateObjectIdParams, readObjectIdParam } from '../middleware/validateObjectId.js';
@@ -153,6 +155,11 @@ export function registerRoutes(
   taskQueue?: TaskQueue,
   // Redis-backed run index/snapshots for distributed recovery; present iff taskQueue is.
   runRegistry?: RunRegistry,
+  // Reverse control channel to the worker fleet — lets the HTTP stop path reach a
+  // run already executing out-of-process (socket-less fallback).
+  controlPublisher?: ControlBridgePublisher,
+  // Terminal queue push for a cancelled job (BullMQ emits none for a removal).
+  queueBroadcaster?: QueueStatusBroadcaster,
 ): void {
   // BullMQ states meaning "still waiting for a worker".
   const WAITING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children']);
@@ -183,44 +190,100 @@ export function registerRoutes(
     response.json({ status: "healthy" });
   });
 
-  // Explicit Safari stop endpoint - for cleanup on timeout or emergency stop.
+  // Explicit Safari stop endpoint — cancels a QUEUED job or terminates a RUNNING
+  // one, in either the distributed (worker fleet) or synchronous topology.
   // Uses the same optionalAuth as /api/start-test (guests may still stop a run),
-  // but scopes the stop to the session's own owner: the requester must match
-  // whichever userId (or guest/null) actually started the active run, so an
-  // unrelated authenticated user can't kill someone else's in-progress session.
+  // but scopes the stop to the session's own owner: possession of the server-issued
+  // runId, or a matching authenticated identity, so an unrelated caller can't kill
+  // someone else's session. `ok` reflects the ACTUAL outcome — a failed stop never
+  // reports success, so the dashboard can trust it before resetting its own state.
   app.post('/api/safari/stop', writeLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] 🔴 POST /api/safari/stop received - explicit cleanup request');
+    const knownRunId = typeof request.body?.runId === 'string' && request.body.runId ? request.body.runId : undefined;
+    const userId = request.userId ?? null;
+    console.log(`[API] 🔴 POST /api/safari/stop received (runId=${knownRunId ?? 'n/a'})`);
+
+    // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
+    if (taskQueue && runRegistry && knownRunId) {
+      try {
+        const entry = await runRegistry.findByRunId(knownRunId);
+        // A guest entry is possession-proven (its userId is null); an authenticated
+        // one demands the matching identity.
+        if (entry && entry.userId && entry.userId !== userId) {
+          console.warn('[API] ❌ Stop rejected: requester does not own the queued run');
+          response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
+          return;
+        }
+
+        if (entry) {
+          const state = await taskQueue.getJobState(entry.jobId).catch(() => 'unknown');
+
+          if (WAITING_STATES.has(state)) {
+            const { removed, state: observed } = await taskQueue.cancelQueuedJob(entry.jobId);
+            if (!removed && observed === 'active') {
+              // Raced a worker between the state read and the removal — fall through
+              // to the running path rather than reporting a cancel that didn't happen.
+              controlPublisher?.publish('stop', entry.runId);
+              response.json({ ok: true, stopping: true, message: 'Run started before cancellation; stop dispatched to the worker.' });
+              return;
+            }
+            if (!removed) {
+              console.error(`[API] ❌ Could not remove queued job ${entry.jobId} (state=${observed})`);
+              response.status(409).json({ ok: false, error: 'The queued session could not be cancelled. Please retry.' });
+              return;
+            }
+            await runRegistry.clear(entry.runId, entry.userId);
+            await queueBroadcaster?.broadcastCancelled(entry.jobId).catch(() => undefined);
+            console.log(`[API] ✅ Queued job ${entry.jobId} cancelled before pickup`);
+            response.json({ ok: true, cancelled: true, jobId: entry.jobId, message: 'Queued session cancelled.' });
+            return;
+          }
+
+          if (state === 'active') {
+            if (!controlPublisher) {
+              response.status(503).json({ ok: false, error: 'Stop channel to the worker fleet is unavailable.' });
+              return;
+            }
+            controlPublisher.publish('stop', entry.runId);
+            console.log(`[API] ⏹ Stop bridged to worker for run ${entry.runId}`);
+            response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
+            return;
+          }
+
+          // Terminal/vanished job — clean the stale index and report it idempotently.
+          await runRegistry.clear(entry.runId, entry.userId);
+          response.json({ ok: true, alreadyStopped: true, message: 'This session had already finished.' });
+          return;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[API] ❌ Distributed stop failed:', message);
+        response.status(502).json({ ok: false, error: 'Could not reach the run queue to stop this session.' });
+        return;
+      }
+    }
+
+    // ── Synchronous topology: the engine runs in this process.
+    const activeEngine = sessionManager.getActiveEngine();
+    if (!activeEngine) {
+      console.log('[API] No active engine to stop - already IDLE');
+      response.json({ ok: true, alreadyStopped: true, message: 'No active session to stop.' });
+      return;
+    }
+
+    if (!sessionManager.ownsActiveRun(userId, knownRunId)) {
+      console.warn('[API] ❌ Stop rejected: requester does not own the active session');
+      response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
+      return;
+    }
 
     try {
-      const activeEngine = sessionManager.getActiveEngine();
-
-      if (!activeEngine) {
-        console.log('[API] No active engine to stop - already IDLE');
-        response.json({ ok: true, message: 'No active session to stop' });
-        return;
-      }
-
-      // Ownership via the same rule the socket/attach paths use: possession of the
-      // server-issued runId, or a matching authenticated identity. A plain
-      // null-vs-null userId comparison would let ANY anonymous caller stop ANY
-      // guest run, since every guest previously presented as `null`.
-      const knownRunId = typeof request.body?.runId === 'string' ? request.body.runId : undefined;
-      if (!sessionManager.ownsActiveRun(request.userId ?? null, knownRunId)) {
-        console.warn('[API] ❌ Stop rejected: requester does not own the active session');
-        response.status(403).json({ error: 'You do not have permission to stop this session.' });
-        return;
-      }
-
-      console.log('[API] Stopping active engine...');
       await sessionManager.stopByOperator();
-
       console.log('[API] ✅ Engine stopped successfully via HTTP endpoint');
-      response.json({ ok: true, message: 'Safari session stopped' });
+      response.json({ ok: true, stopped: true, message: 'Safari session stopped.' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error stopping engine:', errorMessage);
-      // Return success even on error - engine may already be stopped
-      response.json({ ok: true, message: 'Stop attempted' });
+      response.status(500).json({ ok: false, error: `Failed to stop the session: ${errorMessage}` });
     }
   });
 

@@ -91,18 +91,21 @@ export default function Sidebar({
               </span>
             </button>
           </li>
-          <li>
-            <button
-              onClick={() => navigate('/history')}
-              className={navItemClass(activeView === 'history', isCollapsed)}
-              title={isCollapsed ? 'Forensic History' : undefined}
-            >
-              <History className="h-5 w-5 shrink-0 text-current" />
-              <span className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'w-auto'}`}>
-                Forensic History
-              </span>
-            </button>
-          </li>
+          {/* Guests persist nothing, so forensic history has no content for them. */}
+          {isLoggedIn && (
+            <li>
+              <button
+                onClick={() => navigate('/history')}
+                className={navItemClass(activeView === 'history', isCollapsed)}
+                title={isCollapsed ? 'Forensic History' : undefined}
+              >
+                <History className="h-5 w-5 shrink-0 text-current" />
+                <span className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'w-auto'}`}>
+                  Forensic History
+                </span>
+              </button>
+            </li>
+          )}
           <li>
             <button
               onClick={() => navigate('/settings')}

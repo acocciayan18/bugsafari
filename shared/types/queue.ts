@@ -9,7 +9,7 @@ export const QUEUE_SUBSCRIBE_EVENT = 'queue-subscribe' as const;
 export const QUEUE_UPDATE_EVENT = 'queue-update' as const;
 
 /** Lifecycle of a queued Safari job as surfaced to the dashboard. */
-export type QueueJobState = 'waiting' | 'active' | 'completed' | 'failed';
+export type QueueJobState = 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled';
 
 /** Client → server: join the update stream for an enqueued job + its future run room. */
 export interface QueueSubscribeRequest {

@@ -194,6 +194,8 @@ const [remainingTimeMs, setRemainingTimeMs] = useState<number>(sessionTimeMs);
   // Monotonic queue phase for the current job — rejects stale/out-of-order
   // 'waiting' pushes that race in after the worker already picked the job up.
   const queuePhaseRef = useRef<'idle' | 'waiting' | 'active' | 'done'>('idle');
+  // Guards the queued-cancel request against double clicks on the Cancel button.
+  const cancelInFlightRef = useRef(false);
 
   // Ref to track if timeout cleanup has already been dispatched
   const timeoutCleanupDispatchedRef = useRef(false);
@@ -409,6 +411,19 @@ return () => {
       try {
         window.localStorage.removeItem(JOB_ID_STORAGE_KEY);
       } catch { /* storage unavailable */ }
+      if (update.state === 'cancelled') {
+        // The job was removed before any worker ran it, so no engine telemetry
+        // will ever arrive to reset the UI — do it here. Also covers the sibling
+        // tab that didn't issue the cancel.
+        setIsInitializing(false);
+        setIsThinking(false);
+        setIsLaunching(false);
+        setIsTestRunning(false);
+        setQueueDepth(0);
+        setStatus('IDLE');
+        runStartedRef.current = false;
+        return;
+      }
       if (update.state === 'failed') {
         setIsInitializing(false);
         setIsThinking(false);
@@ -671,7 +686,56 @@ try {
     }
   };
 
-  const stopTest = () => {
+  // Return the dashboard to a launchable IDLE state after a queued run was
+  // cancelled — no engine ever started, so there is nothing to save or replay.
+  const resetAfterCancel = () => {
+    queuePhaseRef.current = 'done';
+    toast.dismiss(STATUS_TOAST_ID);
+    setIsQueued(false);
+    setQueuePosition(null);
+    setQueueDepth(0);
+    setIsTestRunning(false);
+    setIsLaunching(false);
+    setIsInitializing(false);
+    setIsThinking(false);
+    setStatus('IDLE');
+    runStartedRef.current = false;
+    gateway.setRunId(null);
+    try {
+      window.localStorage.removeItem(RUN_ID_STORAGE_KEY);
+      window.localStorage.removeItem(JOB_ID_STORAGE_KEY);
+    } catch { /* storage unavailable */ }
+  };
+
+  const stopTest = async (): Promise<void> => {
+    // A QUEUED run holds no engine — the socket stop channel would reach nothing.
+    // Cancel the BullMQ job instead, and only reset the UI once the backend
+    // confirms the removal, so the dashboard never diverges from the queue.
+    if (status === 'QUEUED') {
+      if (cancelInFlightRef.current) return;
+      cancelInFlightRef.current = true;
+      let result;
+      try {
+        result = await gateway.cancelQueuedRun();
+      } finally {
+        cancelInFlightRef.current = false;
+      }
+      if (!result.ok) {
+        toast.error(result.error ?? 'Could not cancel the queued session.');
+        return;
+      }
+      resetAfterCancel();
+      toast.success(result.cancelled ? 'Queued session cancelled.' : (result.message ?? 'Session stopped.'));
+      setTelemetry((prev) => [
+        ...prev,
+        {
+          timestamp: new Date().toISOString(),
+          type: 'ACTION',
+          meta: { message: 'Queued session cancelled before execution.' },
+        },
+      ]);
+      return;
+    }
     if (status === 'ACTIVE' || status === 'PAUSED') {
       (gateway as any).stopTest();
     }

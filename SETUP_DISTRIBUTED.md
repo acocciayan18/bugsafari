@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after improving the Security gaps (highest priority)"
-git checkout -b 7-20-Ayan
-git push --set-upstream origin 7-20-Ayan
+git commit -m "files after improving the guest mode, queue job cancel and so on"
+git checkout -b 7-20-Ayan-1
+git push --set-upstream origin 7-20-Ayan-1
 

@@ -25,13 +25,16 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
-  const { login, isLoading, authError, clearAuthError, setNavigate: setAuthNavigate } = useAuth();
+  const { login, continueAsGuest, isLoading, authError, clearAuthError, setNavigate: setAuthNavigate } = useAuth();
 
   useEffect(() => {
     setAuthNavigate(navigate);
   }, [navigate, setAuthNavigate]);
 
+  // Guest mode must be enabled through the context (React state + storage flag)
+  // before navigating — navigating alone leaves the guards seeing a dead session.
   const handleGuestClick = () => {
+    continueAsGuest();
     if (onGuestAccess) onGuestAccess();
     navigate('/dashboard');
   };

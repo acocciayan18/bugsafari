@@ -4,7 +4,6 @@ import LoginForm from '../components/auth/LoginForm';
 import SignupForm from '../components/auth/SignupForm';
 import GradientBlinds from './GradientBlinds';
 import { useTheme, PALETTES, type ColorPalette } from './ThemeContext';
-import { useAuth } from '../context/AuthContext';
 import { ArrowLeft } from 'lucide-react';
 
 // Generate gradient colors based on theme palette
@@ -20,18 +19,8 @@ export default function SlidingAuthForm() {
     const { theme, colorPalette } = useTheme();
     const overlayRef = useRef<HTMLDivElement>(null);
     
-    // Use auth context for guest access - handled internally now
-    const { login } = useAuth();
-
     const handleBack = () => {
         navigate('/');
-    };
-
-    // Guest access handled via context directly in LoginForm
-    const handleGuestAccess = () => {
-        // Set guest mode in localStorage and navigate
-        localStorage.setItem('bugsafari_guest', 'true');
-        navigate('/dashboard');
     };
 
     const handleToggle = () => {
@@ -75,7 +64,7 @@ export default function SlidingAuthForm() {
                             }`}
                     >
                         <div className="w-full max-w-md mx-auto">
-                            <LoginForm onGuestAccess={handleGuestAccess} />
+                            <LoginForm />
                         </div>
                     </div>
 

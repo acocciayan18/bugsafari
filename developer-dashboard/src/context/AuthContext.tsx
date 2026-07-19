@@ -65,6 +65,7 @@ export interface AuthContextValue {
   // Actions
   login: (credentials: LoginCredentials) => Promise<boolean>;
   signup: (credentials: SignupCredentials) => Promise<boolean>;
+  continueAsGuest: () => void;
   refreshToken: () => Promise<boolean>; // Refresh JWT token to prevent 401 errors
   logout: () => void;
   clearEmailError: () => void;
@@ -353,7 +354,28 @@ const authData = data as AuthResponse;
     }
   }, [navigateTo]);
 
-// ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GUEST MODE
+  // Writing the flag to localStorage alone is not enough — the 'storage' event
+  // never fires in the tab that made the change, so isGuestMode must be set on
+  // React state here or the route guards still see a logged-out session and
+  // bounce straight back to /login.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const continueAsGuest = useCallback(() => {
+    // A guest session must never inherit a stale identity: clear any leftover
+    // tokens so requests go out unauthenticated and the backend treats the run
+    // as a guest run (no persistence, no history).
+    clearSession();
+    setToken(null);
+    setUser(null);
+    localStorage.setItem('bugsafari_guest', 'true');
+    setIsGuestMode(true);
+    console.log('[AuthContext] Guest mode enabled');
+    navigateTo('/dashboard');
+  }, [navigateTo]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // LOGOUT FUNCTION
   // ═══════════════════════════════════════════════════════════════════════════
   
@@ -489,6 +511,7 @@ const value: AuthContextValue = {
     // Actions
     login,
     signup,
+    continueAsGuest,
     refreshToken,
     logout,
     clearEmailError,

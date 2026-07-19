@@ -1,5 +1,5 @@
 import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
-import type { StartTestResult } from '../../../application/ports/EngineGateway';
+import type { StartTestResult, StopRunResult } from '../../../application/ports/EngineGateway';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
 
@@ -148,11 +148,11 @@ export class EngineHttpClient {
   }
 
   /**
-   * HTTP fallback for forceStop, used when the socket is not connected.
-   * Swallows errors — the backend may already be stopped.
+   * POST /api/safari/stop — cancels a queued job or terminates a running one.
+   * The backend reports the real outcome, so the result is surfaced verbatim
+   * instead of being assumed successful.
    */
-  public async stopViaHttp(runId?: string | null): Promise<void> {
-    console.log('[Gateway] Socket not connected, falling back to HTTP stop...');
+  public async stopRun(runId?: string | null): Promise<StopRunResult> {
     try {
       // The run token proves ownership server-side — required for guest runs,
       // which carry no authenticated identity to match against.
@@ -162,14 +162,18 @@ export class EngineHttpClient {
         body: JSON.stringify({ runId: runId ?? null }),
       });
 
-      if (response.ok) {
-        console.log('[Gateway] ✅ HTTP stop successful');
-      } else {
-        console.warn('[Gateway] HTTP stop returned non-OK:', response.status);
+      const data = (await response.json().catch(() => ({}))) as Partial<StopRunResult>;
+      if (!response.ok || data.ok !== true) {
+        const error = data.error ?? `Server returned ${response.status}`;
+        console.warn('[Gateway] Stop rejected by server:', error);
+        return { ok: false, error };
       }
+      console.log(`[Gateway] ✅ Stop accepted (${data.cancelled ? 'queued job cancelled' : 'run terminating'})`);
+      return { ...data, ok: true };
     } catch (httpError) {
-      console.error('[Gateway] HTTP stop failed:', httpError);
-      // Swallow error - backend may already be stopped
+      const error = httpError instanceof Error ? httpError.message : String(httpError);
+      console.error('[Gateway] HTTP stop failed:', error);
+      return { ok: false, error };
     }
   }
 }

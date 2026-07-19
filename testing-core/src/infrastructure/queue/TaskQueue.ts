@@ -104,6 +104,25 @@ export class TaskQueue {
     return this.queue.getJobState(jobId);
   }
 
+  // Cancel a job that no worker has claimed yet. BullMQ refuses to remove a
+  // locked (active) job, so the caller must fall back to the control bridge for
+  // those. Reports the state observed so the API can answer accurately.
+  public async cancelQueuedJob(jobId: string): Promise<{ removed: boolean; state: string }> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return { removed: false, state: 'unknown' };
+
+    const state = await job.getState();
+    if (state === 'active') return { removed: false, state };
+
+    try {
+      await job.remove();
+      return { removed: true, state };
+    } catch (error) {
+      console.warn(`[TaskQueue] cancel of job ${jobId} (${state}) failed:`, error instanceof Error ? error.message : error);
+      return { removed: false, state };
+    }
+  }
+
   public async close(): Promise<void> {
     await this.queue.close();
   }

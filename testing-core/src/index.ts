@@ -11,6 +11,7 @@ import { StartExplorationUseCase } from './application/useCases/StartExploration
 import { registerRoutes } from './presentation/api/registerRoutes.js';
 import { registerAuthRoutes } from './presentation/authentication/authController.js';
 import { registerUserSettingsRoutes } from './presentation/authentication/userSettingsController.js';
+import { registerSupportRoutes } from './presentation/api/supportController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
@@ -98,7 +99,8 @@ registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher && runRegi
 
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
-registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry);
+registerSupportRoutes(app);
+registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry, controlPublisher, queueStatusBroadcaster);
 
 // Terminal middleware — must stay last so every route's next(err) and every
 // unmatched /api path resolves to sanitized JSON instead of an HTML stack trace.

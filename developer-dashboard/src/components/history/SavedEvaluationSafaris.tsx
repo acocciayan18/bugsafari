@@ -11,7 +11,8 @@ import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
 import { deleteRecord as deleteSafariRecord, exportRecord, fetchSessionHistory } from '../../services/historyService';
 import { toast } from 'sonner';
-import { ChartColumn, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Lock, RefreshCcw, Search, Trash, Trash2, TriangleAlert, Upload } from 'lucide-react';
+import SessionComparisonModal from './SessionComparisonModal';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChartColumn, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Lock, RefreshCcw, Search, Trash, Trash2, TriangleAlert, Upload } from 'lucide-react';
 
 // Types matching the saved safari document from backend
 export interface SafariMetrics {
@@ -50,6 +51,8 @@ export interface EvaluationSafari {
   id: string;
   targetUrl: string;
   date: string;
+  /** Epoch ms of the run's start — the sortable truth behind the display `date`. */
+  startedAtMs: number;
   steps: number;
   coverage: number;
   severity: 'CRITICAL' | 'HIGH' | 'CLEAR';
@@ -67,6 +70,12 @@ function determineSeverity(bugCount: number): 'CRITICAL' | 'HIGH' | 'CLEAR' {
   if (bugCount >= 3) return 'CRITICAL';
   if (bugCount >= 1) return 'HIGH';
   return 'CLEAR';
+}
+
+// Epoch ms for sorting; 0 for an absent/unparsable timestamp so it sinks to the end.
+function toEpochMs(dateStr: string): number {
+  const parsed = Date.parse(dateStr);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 // Helper to format date
@@ -87,6 +96,7 @@ function transformToEvaluations(docs: SavedSafariDocument[]): EvaluationSafari[]
       id: doc._id,
       targetUrl: doc.targetUrl,
       date: formatDate(doc.executionDate),
+      startedAtMs: toEpochMs(doc.executionDate),
       steps: metrics.totalActions,
       coverage: 0,
       severity: determineSeverity(metrics.totalBugsFound),
@@ -111,6 +121,7 @@ function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): Evalua
     id: session.id,
     targetUrl: session.targetUrl,
     date: formatDate(session.startedAt),
+    startedAtMs: toEpochMs(session.startedAt),
     steps: session.actionTraceCount,
     coverage: session.coveragePercentage ?? 0,
     severity: determineSeverity(session.findingCount),
@@ -138,6 +149,16 @@ interface SortConfig {
 // Sort priority maps
 const SEVERITY_ORDER: Record<string, number> = { CRITICAL: 3, HIGH: 2, CLEAR: 1 };
 const STATUS_ORDER: Record<string, number> = { COMPLETED: 3, CRASHED: 2, HALTED: 1 };
+
+const SORT_FIELD_LABELS: Record<SortField, string> = {
+  date: 'Date',
+  coverage: 'Coverage',
+  severity: 'Severity',
+  status: 'Status',
+};
+
+// Upper bound on side-by-side comparison columns before the table stops being readable.
+const MAX_COMPARE = 4;
 
 const ARROW = '\u203A';
 
@@ -205,6 +226,7 @@ const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'date', direction: 'desc' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const ITEMS_PER_PAGE = 10;
 
 // Bulk delete dialog state (for multi-delete)
@@ -376,9 +398,11 @@ const filteredEvaluations = useMemo(() => {
 
       switch (field) {
         case 'date':
-          aVal = a.date;
-          bVal = b.date;
-          return multiplier * aVal.localeCompare(bVal);
+          // Sort on the underlying timestamp, never the formatted label —
+          // "DEC 01, 2025" sorts before "JAN 02, 2026" alphabetically, which is wrong.
+          aVal = a.startedAtMs;
+          bVal = b.startedAtMs;
+          return multiplier * (aVal - bVal);
         case 'coverage':
           aVal = a.coverage;
           bVal = b.coverage;
@@ -511,13 +535,19 @@ const progressSegments = [0, 1, 2, 3, 4];
     }
   };
 
+  // Comparison is only meaningful between 2+ runs, and more than 4 columns stops
+  // being readable — bound it here rather than rendering an unusable table.
   const handleBulkCompare = () => {
-    console.log('[SavedEvaluations] Compare requested for:', selectedCount, 'items');
     const idsToCompare = Array.from(selectedIds);
-    if (idsToCompare.length > 0) {
-      toast.info(`Comparing ${idsToCompare.length} records - opening first record`);
-      navigate(`/history/forensic-report/${idsToCompare[0]}`);
+    if (idsToCompare.length < 2) {
+      toast.info('Select at least two safaris to compare.');
+      return;
     }
+    if (idsToCompare.length > MAX_COMPARE) {
+      toast.info(`Compare supports up to ${MAX_COMPARE} safaris at a time.`);
+      return;
+    }
+    setCompareIds(idsToCompare);
   };
 
   return (
@@ -614,6 +644,32 @@ const progressSegments = [0, 1, 2, 3, 4];
     />
   </div>
 </div>
+              {/* Sort controls — field picker + direction toggle */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="history-sort-field" className="text-[13px] font-medium text-[var(--text-secondary)]">
+                  Sort by
+                </label>
+                <select
+                  id="history-sort-field"
+                  value={sortConfig.field}
+                  onChange={(e) => setSortConfig((prev) => ({ ...prev, field: e.target.value as SortField }))}
+                  className="h-8 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
+                >
+                  {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((field) => (
+                    <option key={field} value={field}>{SORT_FIELD_LABELS[field]}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                  className="flex h-8 items-center gap-1 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                  title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
+                  aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
+                >
+                  {sortConfig.direction === 'asc'
+                    ? <ArrowUpNarrowWide className="h-4 w-4" />
+                    : <ArrowDownWideNarrow className="h-4 w-4" />}
+                </button>
+              </div>
 <div className="flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as const).map((filter) => (
                   <button
@@ -842,6 +898,13 @@ paginatedEvaluations.map((evalItem) => {
         message={`Are you sure you want to delete ${bulkDeleteDialogState.count} evaluation record${bulkDeleteDialogState.count > 1 ? 's' : ''}? This action cannot be undone.`}
         confirmLabel="Delete All"
         isLoading={bulkDeleteDialogState.isDeleting}
+      />
+
+      {/* Side-by-side session comparison */}
+      <SessionComparisonModal
+        isOpen={compareIds.length > 0}
+        onClose={() => setCompareIds([])}
+        sessionIds={compareIds}
       />
     </div>
   );

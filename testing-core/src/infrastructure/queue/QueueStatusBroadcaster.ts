@@ -49,6 +49,13 @@ export class QueueStatusBroadcaster {
     emit({ jobId, state: mapped, position: null, queueDepth, activeCount });
   }
 
+  // Operator cancelled a still-waiting job: BullMQ emits no event for a removed
+  // job, so the cancel path publishes the terminal push itself — every tab
+  // tracking that job leaves the queued state at once.
+  public async broadcastCancelled(jobId: string, message = 'Queued session cancelled by the operator.'): Promise<void> {
+    await this.onLifecycle(jobId, 'cancelled', message);
+  }
+
   private async onLifecycle(jobId: string, state: QueueJobState, message?: string): Promise<void> {
     const { queueDepth, activeCount } = await this.queue.positions();
     this.emit(jobId, { jobId, state, position: null, queueDepth, activeCount, message });
