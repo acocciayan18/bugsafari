@@ -1,5 +1,5 @@
 import type { TelemetryGateway } from './TelemetryGateway.js';
-import type { OptimizationSettings, defaultOptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, defaultOptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
 
 export interface BrowserEngineConfig {
@@ -7,7 +7,8 @@ export interface BrowserEngineConfig {
 }
 
 export interface BrowserEngine {
-  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<RunResult>;
+  /** `targetAuth` is ephemeral: in-memory for this run only, never persisted or logged. */
+  run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string, targetAuth?: TargetAuthConfig): Promise<RunResult>;
   pause?(): void;
   resume?(): void;
   stop?(): Promise<void> | void;

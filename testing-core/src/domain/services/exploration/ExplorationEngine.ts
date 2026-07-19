@@ -14,8 +14,11 @@ import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenario
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
-import { setChaosManagerAccessor as setStructuralProbeAccessor } from '../../../bugs/finders/structuralProbe.js';
-import { setChaosManagerAccessor as setConcurrentStressAccessor } from '../../../bugs/finders/concurrentStress.js';
+import {
+  BUG_FINDERS,
+  setStructuralProbeAccessor,
+  setConcurrentStressAccessor,
+} from '../../../bugs/finders/index.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
@@ -36,11 +39,13 @@ import type { PathfinderMode } from '../DIrectedPathFinder.js';
 
 import { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
+import { scrubCredentials } from '../telemetry/credentialScrub.js';
 import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
+import { BugFinderRunner } from './BugFinderRunner.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { AsyncTaskTracker } from './AsyncTaskTracker.js';
 import { EscalationTracker } from './EscalationTracker.js';
@@ -61,6 +66,11 @@ import type { CleanActionStep, ConfirmedBug, ForensicErrorParams, RunResult, Run
  * Task 3A: Patch Memory Leaks
  */
 const MAX_CONFIRMED_BUGS = 500;
+
+// Steps between sweeps of 'cadenced' finders — matches the network-sabotage cadence.
+const BUG_FINDER_CADENCE = 10;
+// Per-run ceiling on finder-produced findings, so a chatty finder can't dominate the ledger.
+const BUG_FINDER_BUDGET = 25;
 
 // Causal attribution bounds for async network-signal rewards: a click's own
 // xhr/fetch fires within a beat and only a few times, so signals outside this
@@ -114,6 +124,8 @@ export class ExplorationEngine {
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
+  /** Set once the run authenticates into the target — guards against self-logout. */
+  private authenticatedRun = false;
   // Timestamp + counter bounding causal network-signal attribution to the current action.
   private lastActedAtMs = 0;
   private networkRewardsThisAction = 0;
@@ -257,17 +269,13 @@ export class ExplorationEngine {
     // in StabilityMonitor, so no callbacks are needed here).
     this.fuzzManager = new ChaosTransactionManager();
 
-    // Expose this run's transaction manager to the route-mutation finder so it can
-    // read live ROUTE_TRASH metadata. NOTE: the bugs/ finder registry currently has
-    // no runner, so structuralProbe stays dormant until one is added — live failure
-    // capture during thrashing already flows through StabilityMonitor regardless.
+    // Expose this run's transaction manager to the chaos-gated finders so they can
+    // read live ROUTE_TRASH / STRESS_CLICK / FUZZ metadata. These are module-level
+    // singletons, which is only safe because one process runs one exploration at a
+    // time; converting them to constructor injection needs BugFinder to become a
+    // factory, so it is deliberately left as follow-up work.
     setStructuralProbeAccessor(this.fuzzManager);
-    // Same wiring for the concurrent-stress guard so it can read live STRESS_CLICK
-    // metadata. Same dormant-runner caveat applies; StabilityMonitor handles live
-    // capture during the burst regardless.
     setConcurrentStressAccessor(this.fuzzManager);
-    // Same wiring for the data-fuzz guard so it can read live FUZZ metadata. Same
-    // dormant-runner caveat; StabilityMonitor handles live capture regardless.
     setFuzzGuardAccessor(this.fuzzManager);
   }
 
@@ -275,12 +283,42 @@ export class ExplorationEngine {
     return this.confirmedBugsMemory;
   }
 
+  /**
+   * Note in the reproduction playbook that this run started authenticated, without
+   * recording any credential. The step carries NO `value`, so there is nothing for
+   * the regression replayer to type back and nothing to persist — which is exactly
+   * why the login is a marker rather than a real recorded action.
+   */
+  public recordAuthenticationMarker(): void {
+    this.authenticatedRun = true;
+    this.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: '(login form)',
+        action: 'authenticate',
+      },
+      {
+        actionType: 'INPUT',
+        humanIdentifier: 'the target application login form (authenticated before exploration began)',
+        redactValue: true,
+      },
+    );
+  }
+
   // Distinct routes/URLs visited this run — the session-global page set for history metadata.
   public getVisitedRoutes(): string[] {
     return [...this.visitedUrls];
   }
 
-  public registerConfirmedBug(bug: ConfirmedBug): void {
+  public registerConfirmedBug(incoming: ConfirmedBug): void {
+    // Scrub before the ledger, so both the persisted finding and the Errors-tab
+    // stream are covered by a single transform.
+    const bug: ConfirmedBug = {
+      ...incoming,
+      message: scrubCredentials(incoming.message),
+      payloadUsed: scrubCredentials(incoming.payloadUsed),
+      advice: scrubCredentials(incoming.advice),
+    };
     // IDENTITY-ONLY dedup. Content-based dedup (type+message+selector+payload)
     // catastrophically collapsed distinct error INSTANCES — e.g. 15 HTTP 500s to
     // the same endpoint share an identical signature and were merged into 1,
@@ -861,6 +899,15 @@ export class ExplorationEngine {
         (bug) => this.registerConfirmedBug(bug),
       );
 
+      const bugFinderRunner = new BugFinderRunner({
+        finders: BUG_FINDERS,
+        gate: this.gate,
+        telemetry: emitter,
+        registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
+        cadence: BUG_FINDER_CADENCE,
+        findingBudget: BUG_FINDER_BUDGET,
+      });
+
       // Delegate the incremental step-by-step exploration to ExplorationLoop.
       const loop = new ExplorationLoop({
         parser: this.parser,
@@ -902,6 +949,8 @@ export class ExplorationEngine {
         reportNavigationDefects,
         hadNetworkActivitySinceAction: () => this.networkRewardsThisAction > 0,
         registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
+        bugFinderRunner,
+        sessionGuardActive: this.authenticatedRun,
       });
 
       return await loop.execute(page, maxSteps);

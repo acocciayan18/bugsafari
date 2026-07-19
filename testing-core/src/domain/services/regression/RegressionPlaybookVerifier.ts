@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel, type ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import { classifyFault, type FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
@@ -91,6 +91,21 @@ export class RegressionPlaybookVerifier {
 
       await page.waitForTimeout(PER_STEP_SETTLE_MS);
 
+      // Auth wall: credentials are ephemeral, so a finding from an authenticated run
+      // replays against a login page days later. Every step would miss its selector,
+      // no fault would surface, and the bug would be declared RESOLVED — a false
+      // negative. Refuse to guess instead.
+      if (await this.isBlockedByLogin(page, finding.targetUrl)) {
+        return this.inconclusive(
+          sessionId,
+          bugId,
+          originalBugClass,
+          0,
+          startedAt,
+          'Target requires authentication; the replay never reached the recorded surface.',
+        );
+      }
+
       const totalSteps = finding.actionSteps.length;
       let stepsReplayed = 0;
       emit('replaying', stepsReplayed, totalSteps);
@@ -171,6 +186,30 @@ export class RegressionPlaybookVerifier {
       );
     } catch {
       // Best-effort — never block replay on a storage seed failure.
+    }
+  }
+
+  /**
+   * True when the replay landed on a login wall instead of the recorded surface: a
+   * visible password field on a path the finding was not recorded against. The path
+   * comparison matters — a finding captured ON the login page is legitimately
+   * replayable and must not be refused.
+   */
+  private async isBlockedByLogin(page: Page, recordedUrl: string): Promise<boolean> {
+    const hasPasswordField = await page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('input[type="password"]')).some((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }),
+      )
+      .catch(() => false);
+    if (!hasPasswordField) return false;
+
+    try {
+      return new URL(page.url()).pathname !== new URL(recordedUrl).pathname;
+    } catch {
+      return false;
     }
   }
 

@@ -1,7 +1,7 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
-import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
@@ -443,11 +443,11 @@ export class StartExplorationUseCase {
     // Wraps the run in a private RNG scope so concurrent runs cannot interleave
     // draws from the scenario PRNG. The engine seeds inside its constructor, so
     // the scope must enclose construction, not just the exploration loop.
-    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string): Promise<void> {
-        return withScenarioRandomScope(() => this.executeInScope(targetUrl, optimizationSettings, selectedScenarios, runId));
+    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig): Promise<void> {
+        return withScenarioRandomScope(() => this.executeInScope(targetUrl, optimizationSettings, selectedScenarios, runId, targetAuth));
     }
 
-    private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string): Promise<void> {
+    private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
@@ -527,7 +527,7 @@ try {
             // Phase 3: Execute engine with engine-managed timebox (FIXED: uses accumulative active time tracking)
             // The engine now tracks elapsedActiveTimeMs internally and only counts time when NOT paused.
             // This prevents timebox from expiring during pause state.
-            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios, this.currentUserId ?? undefined);
+            const result = await this.browserEngine.run(targetUrl, this.telemetry, this.optimizationSettings, selectedScenarios, this.currentUserId ?? undefined, targetAuth);
 
             // Capture the engine's auto-created session id now, before it's
             // needed by a later, independent manualSaveToHistory() call.

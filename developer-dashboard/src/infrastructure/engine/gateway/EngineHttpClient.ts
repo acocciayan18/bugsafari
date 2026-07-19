@@ -1,4 +1,4 @@
-import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, ExplorationRunConfig } from '../../../types';
+import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, TargetAuthConfig, ExplorationRunConfig } from '../../../types';
 import type { StartTestResult, StopRunResult } from '../../../application/ports/EngineGateway';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
@@ -37,19 +37,24 @@ export class EngineHttpClient {
     return fetch(url, { ...init, headers: this.getAuthHeaders() });
   }
 
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, knownRunId?: string | null): Promise<StartTestResult> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, knownRunId?: string | null, targetAuth?: TargetAuthConfig): Promise<StartTestResult> {
     console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
     console.log(`[Gateway] Infiltration Profile:`, infiltration);
+    // Presence only — the credential object itself must never be logged.
+    console.log(`[Gateway] Target authentication: ${targetAuth ? 'supplied' : 'none'}`);
 
     try {
-      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig; knownRunId?: string } = { url: targetUrl };
+      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig; knownRunId?: string; targetAuth?: TargetAuthConfig } = { url: targetUrl };
       if (optimizationSettings) {
         requestBody.optimization = optimizationSettings;
       }
       if (infiltration) {
         requestBody.infiltration = infiltration;
+      }
+      if (targetAuth) {
+        requestBody.targetAuth = targetAuth;
       }
       // Run token from a prior launch — lets the server resume an owned session
       // (dedupe) instead of starting a duplicate.

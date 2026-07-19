@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { BrowserConsoleMessage, EngineGateway } from '../ports/EngineGateway';
-import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, RunLifecycleStatus, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import { saveSessionToHistory } from '../../services/historyService';
@@ -587,7 +587,7 @@ return () => {
     };
   }, [gateway]);
 
-const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<void> => {
+const startTest = async (targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<void> => {
     // Resolve to the exact address the engine will navigate to, so the UI never
     // shows a bare host while Playwright tests the https:// form.
     const resolvedUrl = normalizeTargetUrl(targetUrl);
@@ -636,7 +636,7 @@ const startTest = async (targetUrl: string, optimizationSettings?: OptimizationS
     toast.dismiss(STATUS_TOAST_ID);
 
 try {
-      const { runId, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, optimizationSettings ?? defaultOptimizationSettings, infiltration);
+      const { runId, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, optimizationSettings ?? defaultOptimizationSettings, infiltration, targetAuth);
       // Persist the server-issued run token so a refresh / reconnect re-attaches.
       try {
         if (runId) window.localStorage.setItem(RUN_ID_STORAGE_KEY, runId);
@@ -666,7 +666,13 @@ try {
       // CRITICAL: Reset isInitializing to prevent orphaned timeout from firing
       setIsInitializing(false);
       setIsThinking(false);
-      const message = error instanceof Error ? error.message : String(error);
+      const raw = error instanceof Error ? error.message : String(error);
+      // The backend refuses authenticated runs on the distributed path so credentials
+      // never reach Redis. Surface that as guidance, not an opaque HTTP failure.
+      const message = raw.includes('AUTH_UNSUPPORTED_ON_QUEUE')
+        ? 'Authenticated runs execute in-process only and cannot be queued. Retry without credentials, or run with the queue disabled.'
+        : raw;
+      if (raw.includes('AUTH_UNSUPPORTED_ON_QUEUE')) toast.error(message, { id: STATUS_TOAST_ID });
       setTelemetry((prev) => [...prev, { timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message: `Launch failed: ${message}` } }]);
       setIsLaunching(false);
       setIsTestRunning(false);

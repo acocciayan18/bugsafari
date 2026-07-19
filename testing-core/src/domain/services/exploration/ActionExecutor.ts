@@ -676,14 +676,16 @@ export class ActionExecutor {
       // open: fuzzGuard reports a finding ONLY when the injected payload actually
       // reflected unescaped or executed (reflection oracle) — never on tag presence.
       try {
-        const ctx = {
+        // stateHash is intentionally empty: this path is payload-correlated, not
+        // state-correlated — the finding's identity derives from payload + selector.
+        const ctx: BugContext = {
           page,
-          targetUrl: page.url(),
+          targetUrl: this.deps.getTargetOrigin(),
           step: level,
           stateHash: '',
           crashHalted: false,
-          element: undefined,
-        } as unknown as BugContext;
+          element: target,
+        };
         const leaks = await fuzzGuard.run(ctx);
         for (const leak of leaks) {
           await this.registerFuzzFinding(leak, payload, target.selector, page);

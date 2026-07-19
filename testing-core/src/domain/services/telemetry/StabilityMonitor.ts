@@ -15,6 +15,7 @@ import {
   INPUT_BLOCK_SELECTORS,
   type FaultType,
 } from '../../../bugs/knowledgeBase/index.js';
+import { scrubCredentials } from './credentialScrub.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
@@ -95,9 +96,11 @@ export function sanitizeException(error: Error | string): { message: string; sta
   const errorTypeMatch = stackTrace.match(/^([A-Za-z]+Error):/);
   const errorType = errorTypeMatch ? errorTypeMatch[1] : 'Error';
 
+  // Last transform: strip any target-app credential the page echoed back into the
+  // error before this reaches telemetry or storage.
   return {
-    message: `${errorType}: ${message}`,
-    stackTrace,
+    message: scrubCredentials(`${errorType}: ${message}`),
+    stackTrace: scrubCredentials(stackTrace),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
 import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
+import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 
 /** Room-capable event sink. Socket.IO's Server satisfies it, as does the worker's
  *  Redis publisher — so the same gateway drives either transport unchanged. */
@@ -43,8 +44,13 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   }
 
   public emitTelemetry(event: TelemetryEvent): void {
-    this.recorder?.record('telemetry', event);
-    this.channel().emit('telemetry', event);
+    // Last line of defense: a target app can echo a submitted credential into an
+    // error message that a content scan then lifts into telemetry.
+    const safe = event.meta?.message
+      ? { ...event, meta: { ...event.meta, message: scrubCredentials(event.meta.message) } }
+      : event;
+    this.recorder?.record('telemetry', safe);
+    this.channel().emit('telemetry', safe);
   }
 
   public emitUrlChanged(url: string): void {

@@ -28,6 +28,7 @@ import {
   resolveInfiltrationProfile,
   type TestingTypeId,
   type InfiltrationProfileId,
+  type TargetAuthConfig,
   type ExplorationRunConfig,
   type FindingAttribution,
   type StateFingerprint,
@@ -54,6 +55,32 @@ function parseSelectedScenarios(body: unknown): TestingTypeId[] {
     ? (raw!.customScenarios as TestingTypeId[])
     : undefined;
   return resolveInfiltrationProfile({ profile, customScenarios });
+}
+
+/**
+ * Extract ephemeral target-app credentials from the request body.
+ *
+ * Both username and password are required — a partial credential can only produce a
+ * failed login. Never log the returned object: it is the one value in the request
+ * that must not reach a log line, a database, or the job queue.
+ */
+function parseTargetAuth(body: unknown): TargetAuthConfig | undefined {
+  const raw = (body as { targetAuth?: unknown })?.targetAuth as Partial<TargetAuthConfig> | undefined;
+  if (!raw || typeof raw.username !== 'string' || typeof raw.password !== 'string') return undefined;
+  if (!raw.username || !raw.password) return undefined;
+
+  const optionalString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+  return {
+    username: raw.username,
+    password: raw.password,
+    loginUrl: optionalString(raw.loginUrl),
+    usernameSelector: optionalString(raw.usernameSelector),
+    passwordSelector: optionalString(raw.passwordSelector),
+    submitSelector: optionalString(raw.submitSelector),
+    successIndicator: optionalString(raw.successIndicator),
+  };
 }
 
 // ──────────────────────────────────────────────���──────────────────────────────
@@ -304,6 +331,9 @@ export function registerRoutes(
       ? (request.body.knownRunId as string)
       : undefined;
 
+    // Ephemeral target-app credentials. Never logged here or anywhere downstream.
+    const targetAuth = parseTargetAuth(request.body);
+
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
@@ -311,6 +341,17 @@ export function registerRoutes(
     // to the worker (resolveEngineTargetUrl runs there against the browser's own
     // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
     if (taskQueue) {
+      // Credentials must never enter the job queue: BullMQ retains failed jobs in
+      // Redis for 24h in plaintext. Authenticated runs are in-process only. Never
+      // silently downgrade to an unauthenticated queued run — that would report a
+      // clean result for an app whose authenticated surface was never tested.
+      if (targetAuth) {
+        response.status(400).json({
+          error: 'AUTH_UNSUPPORTED_ON_QUEUE',
+          message: 'Authenticated runs execute in-process only. Credentials are never written to the job queue.',
+        });
+        return;
+      }
       try {
         // Duplicate-submission guard: if this requester already owns a queued or
         // running job, hand back its identifiers so the client resumes it.
@@ -414,7 +455,7 @@ export function registerRoutes(
     // Operator sees their original URL; the engine dials the routed one.
     response.json({ accepted: true, url: targetUrl, runId });
     console.log(`[API] 🚀 Starting safari in background...`);
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId);
+    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId, targetAuth);
   });
 
   // Restore-on-load: a returning client asks whether it owns an active run and,

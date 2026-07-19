@@ -4,7 +4,13 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Check, Bug, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, Menu, ChevronDown, Globe } from 'lucide-react';
-import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage } from '../../types';
+import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
+import TargetAuthPanel, {
+  emptyTargetAuthDraft,
+  isTargetAuthIncomplete,
+  toTargetAuthConfig,
+  type TargetAuthDraft,
+} from '../common/TargetAuthPanel';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import LiveFeed from '../common/LiveFeed';
 import SessionTimer from '../common/SessionTimer';
@@ -54,7 +60,7 @@ interface ClinicalForensicsDashboardProps {
   onStop?: () => void;
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
-  onStartInitialization?: (url: string, profile: InfiltrationProfileId, strictBoundary: boolean) => void;
+  onStartInitialization?: (url: string, profile: InfiltrationProfileId, strictBoundary: boolean, targetAuth?: TargetAuthConfig) => void;
   children?: ReactNode;
 }
 
@@ -93,6 +99,7 @@ export default function ClinicalForensicsDashboard({
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
+  const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
 
   // ─────────────────────────────────────────────────────────────
   // TELEMETRY SCROLL & UTILITIES
@@ -134,9 +141,15 @@ export default function ClinicalForensicsDashboard({
   const showAccessibilityBanner = accessibilityCount >= ACCESSIBILITY_BANNER_THRESHOLD && !accessibilityBannerDismissed;
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
+  const authIncomplete = isTargetAuthIncomplete(authDraft);
+
   const handleInitialize = () => {
-    if (onStartInitialization) {
-      onStartInitialization(urlInput, selectedProfile, strictBoundary);
+    if (!onStartInitialization || authIncomplete) return;
+    onStartInitialization(urlInput, selectedProfile, strictBoundary, toTargetAuthConfig(authDraft));
+    // Drop the credentials from component state the moment they are handed off —
+    // they are ephemeral per run, so nothing should survive in the form.
+    if (authDraft.enabled) {
+      setAuthDraft({ ...authDraft, username: '', password: '' });
     }
   };
 
@@ -335,13 +348,17 @@ export default function ClinicalForensicsDashboard({
 
           <button
             onClick={handleInitialize}
-            disabled={isActiveSession}
-            className="flex h-11 hover:cursor-pointer items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert)"
+            disabled={isActiveSession || authIncomplete}
+            title={authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
+            className="flex h-11 hover:cursor-pointer items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
             <Bug className="h-5 w-5" />
             <span>Start Testing</span>
           </button>
         </div>
+
+        {/* Optional target-app login — ephemeral, cleared on launch. */}
+        <TargetAuthPanel draft={authDraft} onChange={setAuthDraft} disabled={isActiveSession} />
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════

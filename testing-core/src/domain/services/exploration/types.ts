@@ -31,6 +31,7 @@ import type {
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ActionExecutor } from './ActionExecutor.js';
 import type { StateRestorer } from './StateRestorer.js';
+import type { BugFinderRunner } from './BugFinderRunner.js';
 import type { StateClusterRegistry } from './StateClusterRegistry.js';
 import type { EscalationTracker } from './EscalationTracker.js';
 import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
@@ -258,6 +259,10 @@ export interface ExplorationLoopDeps {
   hadNetworkActivitySinceAction(): boolean;
   /** Sink for confirmed findings (shared with StabilityMonitor) — a11y violations land here too. */
   registerConfirmedBug(bug: ConfirmedBug): void;
+  /** Post-action sweep of the bugs/finders registry (gated, isolated, budgeted). */
+  bugFinderRunner: BugFinderRunner;
+  /** True when the run authenticated into the target — demotes session-exit controls. */
+  sessionGuardActive: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────

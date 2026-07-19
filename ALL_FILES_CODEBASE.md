@@ -197,9 +197,8 @@ A self-contained pre-auth landing-page and themed sliding-auth surface, distinct
 - `testing-core/src/bugs/finders/fuzzGuard.ts` - Detects unsafe input handling (XSS/injection/crash signals) surfaced by fuzz payload injection.
 - `testing-core/src/bugs/finders/noSqlInjection.ts` - Detects NoSQL-injection-like response and behavior patterns.
 - `testing-core/src/bugs/finders/reflectionOracle.ts` - Confirms genuine XSS execution (not mere tag-presence) via a per-injection nonce witness that only flips when an injected script sink actually fires.
-- `testing-core/src/bugs/finders/runtimeStability.ts` - Detects crashes, exceptions, and runtime stability degradation.
-- `testing-core/src/bugs/finders/spaRaceConditions.ts` - Detects SPA timing/race/navigation hazards.
-- `testing-core/src/bugs/finders/structuralNavigation.ts` - Detects structural navigation drift (redirect loops, dead ends) using centralized signal patterns.
+- `testing-core/src/bugs/finders/index.ts` - Registry of finders executed by BugFinderRunner, plus the chaos-manager accessor re-exports.
+- `testing-core/src/bugs/finders/spaRaceConditions.ts` - Fires a concurrent event burst and reports only on post-burst damage (client crash or stuck loading state).
 - `testing-core/src/bugs/finders/structuralProbe.ts` - Detects structural probing faults tied to the active chaos transaction.
 
 ### `testing-core/src/bugs/knowledgeBase/` - Centralized Forensic Knowledge Base

@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -49,10 +49,10 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
 
   // ── HTTP/REST routines ────────────────────────────────────────
-  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult> {
+  public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<StartTestResult> {
     // Present the owned run token so the server resumes an existing session
     // (dedupe) instead of launching a duplicate.
-    const result = await this.http.startTest(targetUrl, optimizationSettings, infiltration, this.runId);
+    const result = await this.http.startTest(targetUrl, optimizationSettings, infiltration, this.runId, targetAuth);
     // Persist the token so the socket re-attaches to THIS run on reconnect.
     this.setRunId(result.runId);
     if (result.jobId) {

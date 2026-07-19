@@ -26,6 +26,8 @@ export type {
   TestingTypeId,
   TestingTypeOption,
   ExplorationRunConfig,
+  // Ephemeral target-app credentials (never persisted client- or server-side)
+  TargetAuthConfig,
   // Unified Infiltration Profiles (operator-facing preset layer)
   InfiltrationProfileId,
   InfiltrationProfileOption,

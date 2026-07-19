@@ -1,11 +1,13 @@
 import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
 import { installReflectionOracle } from '../../bugs/finders/reflectionOracle.js';
+import { TargetAuthenticator } from './TargetAuthenticator.js';
+import { setScrubValues, clearScrubValues } from '../../domain/services/telemetry/credentialScrub.js';
 
 /**
  * Browser and system information captured at launch
@@ -111,7 +113,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
-  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string): Promise<RunResult> {
+  public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string, targetAuth?: TargetAuthConfig): Promise<RunResult> {
     // Fresh run: any cancellation tag belongs to a previous run and must not
     // leak forward and swallow a genuine failure in this one.
     this.cancelledDuringRun = false;
@@ -243,6 +245,25 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         return { completed: false, reason: 'Session terminated by user', outcome: 'user-stopped' };
       }
       
+      // 🔐 Authenticate into the target BEFORE exploration, so the engine's own
+      // navigation lands on an authenticated session. Runs after the reflection
+      // oracle is installed (it must precede every navigation, login included) and
+      // before live-frame capture starts, so no frame can catch a filled password.
+      if (targetAuth) {
+        setScrubValues([targetAuth.username, targetAuth.password]);
+        const auth = await new TargetAuthenticator().authenticate(this.activePage, targetAuth, targetUrl);
+        if (auth.status !== 'authenticated') {
+          // Deliberately NOT continuing unauthenticated: the engine would explore the
+          // login page, find nothing, and report a clean run — a silently wrong result.
+          return {
+            completed: false,
+            reason: `Target authentication failed: ${auth.reason}. No exploration performed.`,
+            outcome: 'graceful-shutdown',
+          };
+        }
+        this.activeEngine.recordAuthenticationMarker();
+      }
+
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
     } catch (err: unknown) {
@@ -268,6 +289,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     } finally {
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       this.capturedVisitedRoutes = this.activeEngine?.getVisitedRoutes() ?? this.capturedVisitedRoutes;
+      clearScrubValues();
       await this.cleanupResources();
       this.activeEngine = null;
     }

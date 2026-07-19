@@ -14,7 +14,7 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import { describeRecovery, humanizeElement } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, settle } from './types.js';
-import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
+import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST, isSessionExitControl } from './interactionScope.js';
 import type { ExplorationLoopDeps, RunResult } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { isNovelStructuralState } from './noveltyScoring.js';
@@ -54,6 +54,12 @@ const MAX_FRONTIER_SCROLLS = 6;
 // are exhausted before a route change. Demotion, not removal — still selectable
 // once the in-page frontier is spent.
 const NAV_EDGE_DEMOTION = 300;
+
+// Session-exit demotion, applied only to authenticated runs. Larger than every other
+// demotion so logout is genuinely last-resort: clicking it early deauthenticates the
+// engine and wastes the rest of the run on a login page. Demotion, not removal — it
+// stays reachable once the whole authenticated frontier is spent.
+const SESSION_EXIT_DEMOTION = 2000;
 
 // href schemes that are not real route transitions (in-page / non-navigational).
 const NON_NAV_HREF_RE = /^\s*(#|javascript:|mailto:|tel:|sms:|$)/i;
@@ -331,6 +337,10 @@ export class ExplorationLoop {
           landedInvalid,
           actionThrew,
         });
+
+        // 🐛 Finder sweep on the DOM the interaction actually produced — before
+        // applyTraversalOutcome, which may restore the parent and destroy it.
+        await this.runBugFinders(page, step, fingerprint.currentHash, target);
 
         await this.applyTraversalOutcome(
           page,
@@ -634,6 +644,19 @@ export class ExplorationLoop {
       )
       .sort((left, right) => right.riskScore - left.riskScore);
 
+    // Session preservation: on an authenticated run, sink logout/sign-out controls
+    // beneath everything else so the engine explores the authenticated surface
+    // instead of ending its own session within the first few steps.
+    if (this.deps.sessionGuardActive) {
+      ranked = ranked
+        .map((element) =>
+          isSessionExitControl(element)
+            ? { ...element, riskScore: element.riskScore - SESSION_EXIT_DEMOTION }
+            : element,
+        )
+        .sort((left, right) => right.riskScore - left.riskScore);
+    }
+
     // Premature-navigation guard: while any untriggered NON-navigational control
     // remains on this view, demote every untriggered route-changing anchor below
     // them so in-page interactions (inputs, buttons, dropdowns, toggles) are
@@ -901,6 +924,32 @@ export class ExplorationLoop {
       console.warn(
         '[ExplorationLoop] Navigation observation failed:',
         navErr instanceof Error ? navErr.message : String(navErr),
+      );
+    }
+  }
+
+  /** Post-action bug-finder sweep (never derails the loop). */
+  private async runBugFinders(
+    page: Page,
+    step: number,
+    stateHash: string,
+    target: InteractiveElement,
+  ): Promise<void> {
+    try {
+      await this.deps.bugFinderRunner.sweep({
+        page,
+        targetUrl: this.deps.getTargetOrigin(),
+        step,
+        stateHash,
+        // Always false: an operator-requested stop is not a crash, and finders treat
+        // crashHalted as evidence of a catastrophic failure.
+        crashHalted: false,
+        element: target,
+      });
+    } catch (finderErr) {
+      console.warn(
+        '[ExplorationLoop] Bug-finder sweep failed:',
+        finderErr instanceof Error ? finderErr.message : String(finderErr),
       );
     }
   }

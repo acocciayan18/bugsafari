@@ -1,7 +1,6 @@
 import type { Page } from 'playwright';
-import type { ScoredElement } from '../domain/services/RiskScorer.js';
-import type { ActionBuffer } from '../infrastructure/monitoring/actionBuffer.js';
-import type { TelemetryHub } from '../infrastructure/monitoring/socketServer.js';
+import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
+import type { TestingTypeId } from '../../../shared/types.js';
 
 export type BugClass =
   | 'INPUT_SANITIZATION_FAILURE'
@@ -41,17 +40,23 @@ export interface BugFinding {
 
 export interface BugContext {
   page: Page;
-  hub: TelemetryHub;
-  actionBuffer: ActionBuffer;
   targetUrl: string;
   step: number;
   stateHash: string;
   crashHalted: boolean;
-  element?: ScoredElement;
+  element?: InteractiveElement;
 }
 
 export interface BugFinder {
   readonly bugClass: BugClass;
+
+  // 'transactional' finders run on every applicable step (they gate themselves on a
+  // short-lived chaos transaction); 'cadenced' (the default) do real page work and
+  // are sampled on the runner's sweep cadence.
+  readonly frequency?: 'transactional' | 'cadenced';
+
+  // Operator-selected testing type that must be enabled for this finder. Omitted = always.
+  readonly testingType?: TestingTypeId;
 
   isApplicable(ctx: Omit<BugContext, 'crashHalted'>): Promise<boolean> | boolean;
 

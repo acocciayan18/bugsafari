@@ -61,15 +61,15 @@ const FRAME_RECONCILIATION_PATTERNS = [
 ];
 
 /**
- * Main thread hang indicators
+ * Main thread hang indicators.
+ * Deliberately narrow: generic words like "blocked"/"frozen" appear in ordinary
+ * product copy and produced a CRITICAL false positive on any page containing them.
  */
 const MAIN_THREAD_HANG_PATTERNS = [
   /main thread/i,
-  /unresponsive/i,
-  /frozen/i,
-  /blocked/i,
   /not responding/i,
-  /event loop/i,
+  /event loop (?:blocked|stalled|lag)/i,
+  /long task/i,
 ];
 
 /**
@@ -125,26 +125,49 @@ function detectFrameReconciliationErrors(stabilityData: StabilityData): boolean 
   return false;
 }
 
+// Dev-server / framework error overlays. Reconciliation and hang errors surface here;
+// scanning whole-page HTML instead matched ordinary product copy and fired constantly.
+const ERROR_OVERLAY_SELECTORS = [
+  '[data-nextjs-dialog]',
+  '#webpack-dev-server-client-overlay',
+  '.react-error-overlay',
+  'vite-error-overlay',
+  '[role="alert"]',
+];
+
+const OVERLAY_TEXT_CAP = 2000;
+
 /**
  * Gathers real stability signals from the live page.
- * Reconciliation/hang errors surface in the DOM (framework error overlays), so
- * we scan actual page content instead of feeding the DOM state-hash as a fake
- * exception message (which could never match the detection patterns).
+ * Only framework error-overlay text is treated as an exception message — never the
+ * full document, and never the crash flag echoed back as a second lockup signal.
  * @param ctx The bug context
  * @returns StabilityData representation
  */
 export async function gatherStabilityData(ctx: BugContext): Promise<StabilityData> {
-  let pageText = '';
+  let overlayText = '';
   try {
-    pageText = await ctx.page.content();
+    overlayText = await ctx.page.evaluate(
+      ([selectors, cap]: [string[], number]) => {
+        for (const selector of selectors) {
+          const node = document.querySelector(selector);
+          const text = node?.textContent?.trim();
+          if (text) return text.slice(0, cap);
+        }
+        return '';
+      },
+      [ERROR_OVERLAY_SELECTORS, OVERLAY_TEXT_CAP] as [string[], number],
+    );
   } catch {
     // Page may be closed/unresponsive mid-stress — fall back to crash flags only.
   }
   return {
     hasUnhandledJsException: ctx.crashHalted,
-    hasMainThreadLockup: ctx.crashHalted,
+    // Derived from page evidence only. Mirroring crashHalted here made every crash
+    // report twice: once as a hang, once from the crashHalted branch in run().
+    hasMainThreadLockup: false,
     hasServerCollapse: false,
-    exceptionDetails: pageText ? { message: pageText, stackTrace: '' } : undefined,
+    exceptionDetails: overlayText ? { message: overlayText, stackTrace: '' } : undefined,
   };
 }
 
@@ -154,6 +177,8 @@ export async function gatherStabilityData(ctx: BugContext): Promise<StabilityDat
  */
 export const concurrentStressGuard: BugFinder = {
   bugClass: 'RUNTIME_STABILITY_EXCEPTION',
+  frequency: 'transactional',
+  testingType: 'concurrency',
 
   /**
    * Determines if concurrentStressGuard should run based on context

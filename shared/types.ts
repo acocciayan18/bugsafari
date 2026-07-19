@@ -11,6 +11,7 @@ export * from './types/console.js';
 export * from './types/bug.js';
 export * from './types/forensicLogs.js';
 export * from './types/testingType.js';
+export * from './types/auth.js';
 export * from './types/regression.js';
 export * from './types/session.js';
 export * from './types/verification.js';

@@ -148,7 +148,7 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 
 **FR-5.4 Accessibility audit [P]** — `AccessibilityAuditor` runs a static WCAG 2.1 scan once per structural shell, deduped on `(rule, selector)`, capped at 300 findings, halting entirely at the banner threshold. **Partial:** findings are WebSocket-only and are aggregated to a count in the dashboard — individual findings are discarded and never persisted.
 
-**FR-5.5 Finder registry [X]** — `bugs/finders/noSqlInjection`, `runtimeStability`, `spaRaceConditions`, and `structuralNavigation` have no runner and are never invoked; `structuralProbe` and `concurrentStress` accessors are wired but dormant. Only `reflectionOracle` and `fuzzGuard` from this tree are live.
+**FR-5.5 Finder registry [✓]** — `bugs/finders/index.ts` exports `BUG_FINDERS`; `BugFinderRunner` executes it as a post-action phase in `ExplorationLoop`, gated by the operator's testing type, then each finder's `isApplicable()`, then a sweep cadence for finders that drive the page. Per-finder try/catch quarantines a throwing finder for the rest of the run, and a per-run finding budget bounds the worst case. Deterministic `bugId` derivation (class + title + selector + stateHash + route) makes `registerConfirmedBug`'s identity dedup suppress re-reports of the same defect across sweeps. Live: `structuralProbe`, `concurrentStress`, `noSqlInjection`, `spaRaceConditions`, plus `fuzzGuard` and `reflectionOracle` inline on the payload-correlated fuzz path. `runtimeStability` and `structuralNavigation` were deleted as redundant (`StabilityMonitor` and `BrokenNavigationFinder` cover them).
 
 ---
 
@@ -392,7 +392,7 @@ Not currently implemented. Ordered by leverage against the existing architecture
 ### Tier 3 — Exploration power
 - **RFR-11 Cross-run coverage memory.** Persist per-URL saturated cluster hashes and unexplored frontier edges, then seed the next run to resume where the last one stopped. The `StateClusterRegistry` and `GraphStore` already model exactly this; only persistence is missing — and it converts repeated 10-minute runs into cumulative coverage.
 - **RFR-12 Run-over-run regression diff.** Compare a new run's findings against the previous run for the same URL and label each NEW / PERSISTING / FIXED. `buildFaultSignature` already gives a stable key.
-- **RFR-13 Wire the dormant finder registry.** Add the missing runner so `structuralNavigation`, `spaRaceConditions`, `noSqlInjection`, and `structuralProbe` execute — or delete them. Four detector families are currently paid for and unused.
+- **RFR-13 Wire the dormant finder registry. [DONE]** `BugFinderRunner` now executes the registry; `runtimeStability` and `structuralNavigation` were deleted as redundant. See FR-5.5.
 
 ### Tier 4 — Usability & control
 - **RFR-16 Advanced run configuration.** Expose timebox, max steps, per-scenario toggles, viewport, and allowed-domain list. `OptimizationSettings` already carries most of these; the UI simply does not surface them.

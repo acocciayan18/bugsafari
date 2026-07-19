@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export type BrowserConsoleLevel =
   | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
@@ -62,8 +62,9 @@ export interface EngineGateway {
   fetchActiveSession(): Promise<ActiveSessionSnapshot | null>;
   /** Re-join a restored distributed run's queue-position + run rooms (post-refresh). */
   restoreQueueSubscription(jobId: string, runId: string | null): void;
-  /** Launch a run; resolves with the run token and (when queued) its jobId. */
-  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig): Promise<StartTestResult>;
+  /** Launch a run; resolves with the run token and (when queued) its jobId.
+   *  `targetAuth` is ephemeral — it is sent once and never stored anywhere. */
+  startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<StartTestResult>;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */

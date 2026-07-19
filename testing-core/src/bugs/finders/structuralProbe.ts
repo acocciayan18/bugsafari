@@ -135,12 +135,14 @@ async function detectQueryMutations(page: BugContext['page']): Promise<string[]>
  */
 export const structuralProbeFinder: BugFinder = {
   bugClass: 'ROUTE_MUTATION_FAILURE',
+  frequency: 'transactional',
+  testingType: 'navigation',
 
   /**
    * Determines if structuralProbe should run based on context
    * Returns true if there's an active ROUTE_TRASH transaction
    */
-  async isApplicable(ctx: Omit<BugContext, 'crashHalted'>): Promise<boolean> {
+  async isApplicable(_ctx: Omit<BugContext, 'crashHalted'>): Promise<boolean> {
     if (!chaosManagerAccessor) {
       return false;
     }
