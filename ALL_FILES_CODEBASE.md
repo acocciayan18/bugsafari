@@ -223,8 +223,6 @@ A self-contained pre-auth landing-page and themed sliding-auth surface, distinct
 ### `testing-core/src/domain/heuristics/`
 
 - `testing-core/src/domain/heuristics/domParser.ts` - Recursive DOM parser producing actionable interaction candidates, with depth limits and visibility/overlay/anti-weight-expansion filtering.
-- `testing-core/src/domain/heuristics/MemoryLeakDetector.ts` - Tracks heap/DOM-node growth trends to flag likely client-side memory leaks.
-- `testing-core/src/domain/heuristics/VisualRegressionDetector.ts` - Flags catastrophic layout/visual shifts between captured frames.
 - `testing-core/src/domain/heuristics/AccessibilityAuditor.ts` - Bounded-ledger DOM accessibility scan (unlabeled controls, contrast, ARIA) with dedup accounting.
 
 ### `testing-core/src/domain/scenarios/`
@@ -353,7 +351,6 @@ A self-contained pre-auth landing-page and themed sliding-auth surface, distinct
 - `testing-core/src/infrastructure/monitoring/exceptionCatcher.ts` - Captures runtime exceptions and anomaly context.
 - `testing-core/src/infrastructure/monitoring/fuzzForensics.ts` - `FuzzForensicLog`: captures late API/console responses in the settle window after a fuzz injection.
 - `testing-core/src/infrastructure/monitoring/navForensics.ts` - `NavForensicLog`: captures late API/console responses in the settle window after a navigation.
-- `testing-core/src/infrastructure/monitoring/MemoryProfiler.ts` - Samples heap/DOM-node metrics feeding `MemoryLeakDetector`.
 - `testing-core/src/infrastructure/monitoring/reproductionPlaybookStore.ts` - Stores reproducible action sequences for bug validation.
 - `testing-core/src/infrastructure/monitoring/serverReachability.ts` (+`.test.ts`) - Isolated Node HTTP reachability probe (never runs on the browser thread); single source of truth for "is the target actually down."
 - `testing-core/src/infrastructure/monitoring/socketServer.ts` - `TelemetryHub`: socket transport hub for live telemetry streaming.

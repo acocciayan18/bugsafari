@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after improving the guest mode, queue job cancel and so on"
-git checkout -b 7-20-Ayan-1
-git push --set-upstream origin 7-20-Ayan-1
+git commit -m "files after removing the MemoryProfiler, MemoryLeakDetector and VisualRegressionDetector"
+git checkout -b 7-20-Ayan-2
+git push --set-upstream origin 7-20-Ayan-2
 

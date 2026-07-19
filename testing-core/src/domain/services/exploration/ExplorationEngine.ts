@@ -6,7 +6,6 @@ import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, In
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
-import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
@@ -84,7 +83,6 @@ export class ExplorationEngine {
   // so they never false-trip cyclic-loop detection. The same instance is shared
   // with StateRestorer so post-click verification stays identity-consistent.
   private readonly hashManager = new DomHasher({ urlAware: true });
-  private readonly visualRegressionDetector = new VisualRegressionDetector();
   // Static WCAG auditor — scans each novel structural shell once, read-only.
   private readonly accessibilityAuditor = new AccessibilityAuditor();
   private readonly simulator = new InteractionSimulator();

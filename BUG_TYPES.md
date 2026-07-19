@@ -136,13 +136,6 @@ Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, ded
 
 ---
 
-## Partial / Planned Capabilities
-
-Implemented but **not currently wired into the exploration loop** — no findings are produced today:
-
-- **Memory leak detection** (`MemoryLeakDetector.ts`) — per-DOM-state heap history with monotonic-growth analysis (>3 MB across ≥3 visits). Complete and tested, but the engine never feeds it heap samples.
-- **Visual regression detection** (`VisualRegressionDetector.ts`) — SSIM screenshot comparison with a 0.85 catastrophic-shift threshold for silent CSS breakage, layout collapse, and z-index overlap. Instantiated by the engine but `compareFrames` is never called.
-
 ## Potential Future Detection Capabilities
 
 Gaps the current implementation does not cover:

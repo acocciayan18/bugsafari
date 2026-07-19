@@ -83,8 +83,6 @@ export interface TelemetryMeta {
   blockedUrl?: string;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
-  ssimScore?: number;
-  visualRegressionType?: 'CSS_BREAKAGE' | 'Z_INDEX_OVERLAP' | 'RENDER_FAILURE';
   // 🧠 Optional parameter allowing the React client state logic to read inference mappings
   aiDiagnostics?: IntelligentDiagnosis;
   // Deterministic classification + scenario/step attribution for a fault event.

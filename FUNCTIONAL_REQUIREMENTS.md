@@ -195,7 +195,7 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 
 **FR-7.8 Live frames** — 33 ms JPEG quality-35 screencast loop; only the newest frame is buffered for late attach.
 
-**FR-7.9 / FR-7.10** — No `recordVideo` or `context.tracing` calls exist. `MemoryProfiler` and `MemoryLeakDetector` are fully implemented but have zero call sites.
+**FR-7.9 / FR-7.10** — No `recordVideo` or `context.tracing` calls exist.
 
 ---
 
@@ -347,29 +347,27 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 19. **Source-map resolution is runtime-fault-only**, so other findings show minified frames.
 20. **No DOM snapshot is ever serialized** — only state hashes and storage fingerprints.
 21. **Accessibility findings are never persisted** — only an aggregate count reaches the UI, and nothing reaches the report.
-22. **`MemoryProfiler` and `MemoryLeakDetector` are dead code** — no memory-leak detection runs.
-23. **`VisualRegressionDetector` is instantiated but never called**, and its `bufferToImageData` parses PNG only while every screenshot is JPEG — even if wired it would always fall through to "match".
 
 ### Scale & data-lifecycle gaps
-24. **No pagination anywhere.** Every list is limit-only — no skip, cursor, or total count.
-25. **No TTL or retention policy.** Auto-tracked (unsaved) sessions accumulate forever, are never listed, and are never purged.
-26. **N+1 query in `listSessionHistory`** — one `countDocuments` per session, up to 200 per request.
-27. **Missing compound index** `{userId: 1, startedAt: -1}` for the exact history query shape; and `forensic_errors` indexes a `timestamp` field that does not exist on the schema.
-28. **`console_logs` / `network_logs` store `timestamp` as a String**, so their sorts are lexicographic.
-29. **Worker concurrency > 1 is incorrect** because `SessionManager` is a process-wide singleton — the constraint is documented but unenforced.
-30. **`seededRandom` uses one global PRNG stream** — not safe for concurrent in-process runs.
+22. **No pagination anywhere.** Every list is limit-only — no skip, cursor, or total count.
+23. **No TTL or retention policy.** Auto-tracked (unsaved) sessions accumulate forever, are never listed, and are never purged.
+24. **N+1 query in `listSessionHistory`** — one `countDocuments` per session, up to 200 per request.
+25. **Missing compound index** `{userId: 1, startedAt: -1}` for the exact history query shape; and `forensic_errors` indexes a `timestamp` field that does not exist on the schema.
+26. **`console_logs` / `network_logs` store `timestamp` as a String**, so their sorts are lexicographic.
+27. **Worker concurrency > 1 is incorrect** because `SessionManager` is a process-wide singleton — the constraint is documented but unenforced.
+28. **`seededRandom` uses one global PRNG stream** — not safe for concurrent in-process runs.
 
 ### Feature gaps
-31. **No authentication support for target apps.** There is no credentials field, so any application behind a login wall can only be explored to its login page.
-32. **No timebox or step-budget control in the UI.** Duration is hardcoded to 10 minutes.
-33. **No per-scenario toggles** — only the five bundled profiles.
-34. **No PDF / CSV / Markdown file export** (FR-12.4).
-35. **`bugs/finders/` registry has no runner** — four finder modules are entirely unreachable (FR-5.5).
-36. **RouteTrasher is disabled engine-wide** despite ~690 lines of live scenario code (FR-4.8).
-37. **`VerificationCandidate.reproduced` is never set in-run**, so its ±0.15 confidence branch is unreachable.
-38. **Landing page is non-functional** — every nav link, CTA, and footer link except "Try BugSafari" is a dead `href="#"`.
-39. **Notifications and Auto-Save settings have no consumers** (FR-14.2, FR-14.3).
-40. **~14 dashboard components are dead code** (`HelpMenuIcon`, `InfiltrationProfileSelector`, `TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set).
+29. **No authentication support for target apps.** There is no credentials field, so any application behind a login wall can only be explored to its login page.
+30. **No timebox or step-budget control in the UI.** Duration is hardcoded to 10 minutes.
+31. **No per-scenario toggles** — only the five bundled profiles.
+32. **No PDF / CSV / Markdown file export** (FR-12.4).
+33. **`bugs/finders/` registry has no runner** — four finder modules are entirely unreachable (FR-5.5).
+34. **RouteTrasher is disabled engine-wide** despite ~690 lines of live scenario code (FR-4.8).
+35. **`VerificationCandidate.reproduced` is never set in-run**, so its ±0.15 confidence branch is unreachable.
+36. **Landing page is non-functional** — every nav link, CTA, and footer link except "Try BugSafari" is a dead `href="#"`.
+37. **Notifications and Auto-Save settings have no consumers** (FR-14.2, FR-14.3).
+38. **~14 dashboard components are dead code** (`HelpMenuIcon`, `InfiltrationProfileSelector`, `TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set).
 
 ---
 
@@ -395,8 +393,6 @@ Not currently implemented. Ordered by leverage against the existing architecture
 - **RFR-11 Cross-run coverage memory.** Persist per-URL saturated cluster hashes and unexplored frontier edges, then seed the next run to resume where the last one stopped. The `StateClusterRegistry` and `GraphStore` already model exactly this; only persistence is missing — and it converts repeated 10-minute runs into cumulative coverage.
 - **RFR-12 Run-over-run regression diff.** Compare a new run's findings against the previous run for the same URL and label each NEW / PERSISTING / FIXED. `buildFaultSignature` already gives a stable key.
 - **RFR-13 Wire the dormant finder registry.** Add the missing runner so `structuralNavigation`, `spaRaceConditions`, `noSqlInjection`, and `structuralProbe` execute — or delete them. Four detector families are currently paid for and unused.
-- **RFR-14 Visual regression.** Fix `bufferToImageData` to accept JPEG and call `compareFrames` on revisited states to catch layout and rendering regressions that DOM hashing is blind to by design.
-- **RFR-15 Memory-leak detection.** Wire the existing `MemoryProfiler` and `MemoryLeakDetector` — sample the heap on each state revisit and report monotonic growth as a `BOUNDARY_STRESS_FAILURE`.
 
 ### Tier 4 — Usability & control
 - **RFR-16 Advanced run configuration.** Expose timebox, max steps, per-scenario toggles, viewport, and allowed-domain list. `OptimizationSettings` already carries most of these; the UI simply does not surface them.
@@ -406,7 +402,7 @@ Not currently implemented. Ordered by leverage against the existing architecture
 - **RFR-20 Run comparison view.** Make the existing "Compare" button real — a side-by-side diff of findings, coverage, and visited routes for two selected runs.
 
 ### Tier 5 — Scale
-- **RFR-21 Cursor pagination + retention policy.** Address limitations 24–25: cursor-based history paging, plus a TTL on unsaved sessions (e.g. 7 days) so auto-tracked rows do not grow without bound.
+- **RFR-21 Cursor pagination + retention policy.** Address limitations 22–23: cursor-based history paging, plus a TTL on unsaved sessions (e.g. 7 days) so auto-tracked rows do not grow without bound.
 - **RFR-22 Multi-worker correctness.** Make `SessionManager` and `seededRandom` run-scoped rather than process-scoped so worker concurrency above 1 becomes safe, then raise the default.
 - **RFR-23 Queue cancellation.** Remove waiting jobs on stop, and make `/api/safari/stop` report honestly in queue mode.
 - **RFR-24 Team workspaces.** Shared runs, roles, and per-project history — the current model is strictly single-user.
