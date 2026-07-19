@@ -18,11 +18,13 @@ import {
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
+import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FaultSeverity, FindingAttribution } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
-import { VerificationPipeline, type VerificationCandidate } from '../verification/index.js';
+import { VerificationPipeline, detectSoftFailBody, isBodyReadableResourceType, type VerificationCandidate } from '../verification/index.js';
+import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
 import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
 
 // Infinite-loading watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
@@ -31,6 +33,8 @@ const MAX_PENDING = 300;
 const WATCHDOG_TICK_MS = 1000;
 const HANG_THRESHOLD_MS = 8000;
 const CONFIRM_MS = 2500;
+// Re-probe policy for a still-pending request — see hangSweep for the rationale.
+const SWEEP_POLICY: SweepPolicy = { thresholdMs: HANG_THRESHOLD_MS, reSweepBaseMs: 10000, maxSweeps: 3 };
 
 // Only meaningful traffic (API + navigation) is logged/emitted — static asset
 // noise (images/fonts/stylesheets) is excluded from both the live tab and store.
@@ -192,7 +196,7 @@ export class StabilityMonitor {
   // Infinite-loading detector + the impure edges that feed it: an in-flight fetch/XHR registry,
   // the watchdog interval sweeping it, and a per-endpoint guard against concurrent confirmations.
   private readonly apiHangFinder = new ApiHangFinder();
-  private readonly pending = new Map<Request, { url: string; method: string; startMs: number; swept: boolean }>();
+  private readonly pending = new Map<Request, { url: string; method: string; startMs: number; sweeps: number; nextSweepAtMs: number }>();
   private readonly confirming = new Set<string>();
   private watchdogTimer?: ReturnType<typeof setInterval>;
   // Wall-clock start per request, for duration when Playwright timing is unavailable.
@@ -201,6 +205,26 @@ export class StabilityMonitor {
   private readonly resolvers = new WeakMap<Page, SourceMapResolver>();
 
   constructor(private readonly deps: StabilityMonitorDeps) {}
+
+  // Origin of the app under test; never throws, an unavailable origin degrades provenance
+  // to UNKNOWN (host-dependent transport failures then stay environment-attributed).
+  private safeTargetOrigin(): string | undefined {
+    try {
+      return this.deps.getTargetOrigin() || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // One-line description of the interaction that triggered a request, for forensic evidence.
+  private triggeringActionFor(atMs: number): string | undefined {
+    try {
+      const ctx = this.deps.getInteractionContext(atMs);
+      return ctx ? `${ctx.label || 'element'} (${ctx.selector})` : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   // Wall-clock duration of a settled request; prefers Playwright's precise timing.
   private computeRequestDuration(request: Request): number | undefined {
@@ -280,6 +304,7 @@ export class StabilityMonitor {
       url: opts?.url,
       content: opts?.content,
       evidence: opts?.evidence,
+      targetOrigin: this.safeTargetOrigin(),
     });
 
     const attribution: FindingAttribution = {
@@ -701,21 +726,48 @@ export class StabilityMonitor {
     const rt = request.resourceType();
     if (rt !== 'xhr' && rt !== 'fetch') return;
     if (this.pending.size >= MAX_PENDING) {
-      const oldest = this.pending.keys().next().value as Request | undefined;
-      if (oldest) this.pending.delete(oldest);
+      // Evict the request with the least detection value left: one whose sweep budget is
+      // exhausted, else one already probed. The oldest never-probed request is the
+      // strongest hang candidate, so plain insertion-order eviction discarded exactly
+      // what we hunt — it is only the last resort.
+      let exhausted: Request | undefined;
+      let probed: Request | undefined;
+      for (const [req, meta] of this.pending) {
+        if (meta.sweeps >= SWEEP_POLICY.maxSweeps) {
+          exhausted = req;
+          break;
+        }
+        if (!probed && meta.sweeps > 0) probed = req;
+      }
+      this.pending.delete(exhausted ?? probed ?? (this.pending.keys().next().value as Request));
     }
-    this.pending.set(request, { url: request.url(), method: request.method(), startMs: Date.now(), swept: false });
+    const startMs = Date.now();
+    this.pending.set(request, {
+      url: request.url(),
+      method: request.method(),
+      startMs,
+      ...initialSweepState(startMs, SWEEP_POLICY),
+    });
   }
 
-  // Watchdog tick: arm an infinite-loading check for any fetch/XHR pending past the threshold.
+  // Watchdog tick: arm an infinite-loading check for any fetch/XHR pending past its next
+  // sweep deadline. A request is re-probed on a widening backoff rather than once, because
+  // a spinner frequently renders only after the first probe (the app swaps in its loading
+  // state late, or a retry layer re-arms it) — a single 8s check silently missed those.
+  // ApiHangFinder dedupes by endpoint+trigger, so re-probes bump an occurrence count
+  // instead of emitting duplicate findings.
   private sweepPending(page: Page): void {
     const now = Date.now();
     for (const [, meta] of this.pending) {
-      if (meta.swept) continue;
-      const pendingMs = now - meta.startMs;
-      if (pendingMs <= HANG_THRESHOLD_MS) continue;
-      meta.swept = true;
-      void this.confirmStuckLoading(page, { trigger: 'PENDING_TIMEOUT', url: meta.url, method: meta.method, pendingMs, startMs: meta.startMs });
+      if (!isSweepDue(meta, now, SWEEP_POLICY)) continue;
+      Object.assign(meta, advanceSweep(meta, now, SWEEP_POLICY));
+      void this.confirmStuckLoading(page, {
+        trigger: 'PENDING_TIMEOUT',
+        url: meta.url,
+        method: meta.method,
+        pendingMs: now - meta.startMs,
+        startMs: meta.startMs,
+      });
     }
   }
 
@@ -985,17 +1037,20 @@ export class StabilityMonitor {
       // masked backend failure. Only the body of an otherwise-successful response
       // is read (a 4xx/5xx is classified by status alone, as before).
       let softFailBody = false;
+      let softFailEvidence = '';
       let bodyContent = '';
-      if (status < 400) {
+      // Only API traffic is body-scanned: reading every 2xx (bundles, documents,
+      // media) cost a full buffer per response and risked matching source text.
+      if (status < 400 && isBodyReadableResourceType(resourceType)) {
         try {
           bodyContent = await response.text().catch(() => '');
-          const bodyLower = bodyContent.toLowerCase();
-          const hasErrorFlag = bodyLower.includes('"error"') && (bodyLower.includes('true') || bodyLower.includes(':true'));
-          const hasStatusFail = bodyLower.includes('"status"') && (bodyLower.includes('"fail"') || bodyLower.includes(':"fail"'));
+          const verdict = detectSoftFailBody(bodyContent);
           // Also match server-error signatures (stack traces, "internal server
           // error", SQL/exception text) leaking into a 2xx body — folded in from
           // the former background monitor so that coverage isn't lost by dedup.
-          softFailBody = hasErrorFlag || hasStatusFail || matchesCategory('SERVER_ERROR', bodyContent);
+          const serverSignature = bodyContent.length <= MAX_SOFT_FAIL_BODY_BYTES && matchesCategory('SERVER_ERROR', bodyContent);
+          softFailBody = verdict.softFail || serverSignature;
+          softFailEvidence = verdict.matched ?? (serverSignature ? 'server-error signature in body' : '');
         } catch {
           // Ignore body parse errors
         }
@@ -1068,11 +1123,26 @@ export class StabilityMonitor {
       // Phase 3: Track failed requests count (only genuine target-app failures).
       this.deps.onApiFailure();
 
+      // Forensic dossier: everything a developer needs to act without re-running the
+      // safari — the exact call, how long it took, why it failed, and what provoked it.
+      const durationMs = this.computeRequestDuration(response.request());
+      const triggeringAction = this.triggeringActionFor(this.requestSettledAtMs(response.request()));
+      const forensicDetail = [
+        `Request: ${method} ${url}`,
+        `Status: HTTP ${status} (${softFailBody ? 'masked failure in a 2xx body' : verdict.reason})`,
+        durationMs !== undefined ? `Response time: ${durationMs}ms` : undefined,
+        `Failure reason: ${softFailEvidence || verdict.reason}`,
+        triggeringAction ? `Triggering action: ${triggeringAction}` : undefined,
+        bodyContent ? `Response body (truncated): ${bodyContent.slice(0, 500)}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
       t.emit('NETWORK', {
         statusCode: status,
         url,
         method,
-        durationMs: this.computeRequestDuration(response.request()),
+        durationMs,
         message: `Network ${status} ${method} ${url}`,
         reproductionSteps: reproductionPlaybook,
         attribution,
@@ -1082,13 +1152,14 @@ export class StabilityMonitor {
       this.deps.persistForensicError({
         type: ForensicErrorType.API_FAILURE,
         severity,
-        message: `API Failure: HTTP ${status} ${method} ${url}`,
-        stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+        message: `API Failure: HTTP ${status} ${method} ${url}${durationMs !== undefined ? ` (${durationMs}ms)` : ''}`,
+        stackTrace: forensicDetail,
         url: this.deps.getLastKnownUrl() || page.url(),
         endpoint: url,
         method,
         statusCode: status,
         responseText: bodyContent.slice(0, 500),
+        action: triggeringAction,
         bugClass: attribution.bugClass,
         scenario: attribution.scenario,
         cwe: attribution.cwe,
@@ -1104,7 +1175,7 @@ export class StabilityMonitor {
         selector: '',
         payloadUsed: method,
         advice: remediation,
-        stackTrace: `HTTP ${status} response from ${url}${bodyContent ? ` - Body: ${bodyContent.slice(0, 500)}` : ''}`,
+        stackTrace: forensicDetail,
         reproductionSteps: reproductionPlaybook,
         reproductionActions: reproduction.actions,
         stateFingerprint,
@@ -1168,9 +1239,20 @@ export class StabilityMonitor {
       });
       const reproductionPlaybook = reproduction.narrative;
       const stateFingerprint = await captureStateFingerprint(page);
-      // Verify before reporting: DNS/TLS/connection failures and third-party hosts
-      // are environment artifacts, not target-app defects, and are gated out here.
-      const failureDetail = `${method} ${url} - ${reason}`;
+      // Verify before reporting: DNS/TLS and third-party-host failures are environment
+      // artifacts and are gated out here, while a refusal/reset/timeout against the
+      // app's OWN backend is attributed to the target app and reported.
+      const failedDurationMs = this.computeRequestDuration(request);
+      const triggeringAction = this.triggeringActionFor(Date.now());
+      const failureDetail = [
+        `Request: ${method} ${url}`,
+        'Status: no response (transport-level failure)',
+        failedDurationMs !== undefined ? `Time to failure: ${failedDurationMs}ms` : undefined,
+        `Failure reason: ${reason}`,
+        triggeringAction ? `Triggering action: ${triggeringAction}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n');
       const verdict = this.verifyFault('NETWORK', `Network Request Failed: ${reason}`, {
         url,
         content: failureDetail,
@@ -1202,6 +1284,7 @@ export class StabilityMonitor {
       t.emit('NETWORK', {
         url,
         method,
+        durationMs: failedDurationMs,
         message: `Network Request Failed: ${reason} for ${method} ${url}`,
         reproductionSteps: reproductionPlaybook,
         attribution,
@@ -1242,6 +1325,7 @@ export class StabilityMonitor {
         url: this.deps.getLastKnownUrl() || page.url(),
         endpoint: url,
         method,
+        action: triggeringAction,
         bugClass: attribution.bugClass,
         scenario: attribution.scenario,
         cwe: attribution.cwe,

@@ -65,6 +65,9 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
 interface ActiveRun {
   runId: string;
   userId: string | null;
+  // Tenant key that is unique even for guests, so two anonymous operators are
+  // never treated as the same principal by a null===null comparison.
+  ownerKey: string;
   ownerType: SessionOwnerType;
   targetUrl: string;
   currentUrl: string;
@@ -123,6 +126,16 @@ export class SessionManager implements TelemetryRecorder {
     return this.run?.userId ?? null;
   }
 
+  /** Unique tenant key of the active run (guests included), or null. */
+  public getActiveOwnerKey(): string | null {
+    return this.run?.ownerKey ?? null;
+  }
+
+  /** Public ownership probe for HTTP callers (stop endpoint). */
+  public ownsActiveRun(userId: string | null, runId: string | undefined): boolean {
+    return this.run ? this.isOwner(this.run, runId, userId) : false;
+  }
+
   // ── Run lifecycle ────────────────────────────────────────────────────────
 
   public beginRun(params: BeginRunParams): void {
@@ -140,6 +153,7 @@ export class SessionManager implements TelemetryRecorder {
     this.run = {
       runId: params.runId,
       userId: params.userId,
+      ownerKey: guestOwnerKey(params.userId, params.runId),
       ownerType: params.userId ? 'authenticated' : 'guest',
       targetUrl: params.targetUrl,
       currentUrl: params.targetUrl,
@@ -545,6 +559,12 @@ const LIFECYCLE_TO_DB_STATUS: Partial<Record<RunLifecycleStatus, SessionStatus>>
   // reaches its own completeSession), so the manager persists the terminal state.
   CRASH_COMPLETED: SessionStatus.CRASHED,
 };
+
+// A guest has no persistent identity, so its tenant key is derived from the
+// unguessable server-issued run token — unique per run, never null.
+export function guestOwnerKey(userId: string | null, runId: string): string {
+  return userId ?? `guest:${runId}`;
+}
 
 function pushCapped<T>(buffer: T[], item: T, cap: number): void {
   buffer.push(item);

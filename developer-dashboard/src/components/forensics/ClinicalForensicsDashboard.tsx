@@ -171,7 +171,7 @@ export default function ClinicalForensicsDashboard({
             <div className="relative group py-2">
               <button
                 disabled={isActiveSession}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-(--border-strong) text-xs font-semibold text-(--text-secondary) bg-(--surface-raised) group-hover:bg-(--surface-hover) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) group-hover:bg-(--surface-hover) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 
                 <Menu className="h-3.5 w-3.5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
@@ -196,7 +196,7 @@ export default function ClinicalForensicsDashboard({
                         {selectedProfile === profile.id && <span className="h-3 w-3 rounded-full bg-(--surface-invert)" />}
                       </span>
                       <div className="flex flex-col min-w-0">
-                        <span className={`text-xs font-semibold leading-tight font-sans ${selectedProfile === profile.id ? 'text-(--text-primary)' : 'text-(--text-secondary)'}`}>
+                        <span className={`text-[13px] font-semibold leading-tight font-sans ${selectedProfile === profile.id ? 'text-(--text-primary)' : 'text-(--text-secondary)'}`}>
                           {profile.name}
                         </span>
                         <span className="text-[10px] text-(--text-tertiary) truncate mt-0.5 font-sans">
@@ -239,7 +239,7 @@ export default function ClinicalForensicsDashboard({
               )}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && (
-                <span className="flex items-center gap-2 rounded-lg bg-(--status-neutral-bg) text-(--status-neutral-fg) px-4 py-2 text-xs font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-2 rounded-lg bg-(--status-neutral-bg) text-(--status-neutral-fg) px-4 py-2 text-[13px] font-bold uppercase tracking-wider">
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   Queued — awaiting worker
                 </span>
@@ -250,7 +250,7 @@ export default function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-4 py-2 text-xs font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-4 py-2 text-[13px] font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -259,7 +259,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause
@@ -268,7 +268,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -277,7 +277,7 @@ export default function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -289,7 +289,7 @@ export default function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors ${
+  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors ${
     isSessionSaved
       ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -325,7 +325,7 @@ export default function ClinicalForensicsDashboard({
           <button
             onClick={handleInitialize}
             disabled={isActiveSession}
-            className="flex h-11 hover:cursor-pointer items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-xs font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert)"
+            className="flex h-11 hover:cursor-pointer items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert)"
           >
             <Bug className="h-5 w-5" />
             <span>Start Testing</span>
@@ -358,7 +358,7 @@ export default function ClinicalForensicsDashboard({
           {/* Internal Telemetry System Action Status Notification Strip */}
           <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-4 py-2">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-(--text-secondary)">Status:</span>
+              <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border ${testStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
                 : testStatus === 'PAUSED'
@@ -386,14 +386,14 @@ export default function ClinicalForensicsDashboard({
             <div className="flex overflow-visible">
               <button
                 onClick={() => setActiveTab('telemetry')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Activity className="h-3.5 w-3.5" />
                 telemetry
               </button>
               <button
                 onClick={() => setActiveTab('errors')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <TriangleAlert className="h-3.5 w-3.5" />
                 errors
@@ -401,7 +401,7 @@ export default function ClinicalForensicsDashboard({
               </button>
               <button
                 onClick={() => setActiveTab('network')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Network className="h-3.5 w-3.5" />
                 network
@@ -409,7 +409,7 @@ export default function ClinicalForensicsDashboard({
               </button>
               <button
                 onClick={() => setActiveTab('console')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Terminal className="h-3.5 w-3.5" />
                 console
@@ -424,7 +424,7 @@ export default function ClinicalForensicsDashboard({
           <div className="relative flex-1 overflow-hidden">
             <div
               ref={logContainerRef}
-              className="h-full overflow-y-auto overflow-x-hidden bg-(--surface-panel) p-4 font-mono text-xs border border-(--border-hairline) border-t-0"
+              className="h-full overflow-y-auto overflow-x-hidden bg-(--surface-panel) p-4 font-mono text-[13px] border border-(--border-hairline) border-t-0"
               style={{ scrollBehavior: 'smooth' }}
             >
               {activeTab === 'telemetry' && (
@@ -452,7 +452,7 @@ export default function ClinicalForensicsDashboard({
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
                           <span className="h-3 w-3 rounded-full bg-(--surface-invert) animate-ping"></span>
-                          <span className="font-mono text-xs">
+                          <span className="font-mono text-[13px]">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>
                         </div>

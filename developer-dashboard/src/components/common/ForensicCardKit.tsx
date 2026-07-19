@@ -35,11 +35,11 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[13px] font-medium transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={`Copy ${label || 'content'} to clipboard`}
     >
       <Copy className="h-3.5 w-3.5" />
-      <span className="text-xs">{copied ? 'Copied!' : 'Copy'}</span>
+      <span className="text-[13px]">{copied ? 'Copied!' : 'Copy'}</span>
     </button>
   );
 };
@@ -65,7 +65,7 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-xs font-semibold border-b border-(--border-hairline)"
+        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
       >
         <span className="text-sm">{isExpanded ? '▼' : '▶'}</span>
         <span>{title}</span>
@@ -73,7 +73,7 @@ export const ExpandableCodeBlock = ({
       </button>
       {isExpanded && (
         <div className={`px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
-          <pre className="text-xs font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
+          <pre className="text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>
           <div className="mt-2 flex justify-end">
@@ -159,7 +159,7 @@ export const AttributionBadges = ({ attribution }: { attribution?: FindingAttrib
 export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) => {
   if (!advice) {
     return (
-      <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-xs italic text-(--text-tertiary)">
+      <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-[13px] italic text-(--text-tertiary)">
         No remediation advisory generated for this fault.
       </div>
     );
@@ -169,7 +169,7 @@ export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) =>
       <div className="absolute right-2 top-2">
         <CopyButton text={advice} label="Suggested Fix" />
       </div>
-      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-(--text-primary)">{advice}</pre>
+      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-[13px] leading-relaxed text-(--text-primary)">{advice}</pre>
     </div>
   );
 };

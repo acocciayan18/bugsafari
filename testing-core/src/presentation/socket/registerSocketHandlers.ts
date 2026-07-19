@@ -18,12 +18,15 @@ import { RegressionPlaybookVerifier } from '../../domain/services/regression/Reg
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { queueRoom, type QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
+import type { RunRegistry } from '../../infrastructure/queue/RunRegistry.js';
 
 /** Optional distributed-queue wiring, present only when BUGSAFARI_USE_QUEUE=1. */
 export interface QueueSocketSupport {
   broadcaster: QueueStatusBroadcaster;
   // Bridges operator run-controls to the worker running the run out-of-process.
   controlPublisher: ControlBridgePublisher;
+  // Redis run index — the authority on who owns a runId across processes.
+  runRegistry: RunRegistry;
 }
 
 // Single shared verifier; each verify() call owns its own isolated browser session.
@@ -59,19 +62,38 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] dashboard connected ${socket.id}`);
 
+    // Queue-mode ownership. A null/unknown runId must NEVER reach the control
+    // bridge: the worker treats runId===null as "apply to my local run", so an
+    // unscoped publish would pause/stop every run in the fleet from any anonymous
+    // socket. The runId must resolve to a live registry entry, and an authenticated
+    // owner's run may only be driven by that same identity (possession of the
+    // unguessable token remains the guest path).
+    const ownsQueuedRun = async (runId: string | null): Promise<boolean> => {
+      if (!runId || !queueSupport) return false;
+      const entry = await queueSupport.runRegistry.findByRunId(runId).catch(() => null);
+      if (!entry) return false;
+      if (!entry.userId) return true;
+      return entry.userId === socketUserId(socket);
+    };
+
     // Distributed queue: a client that enqueued a run subscribes with its jobId +
-    // runId. Possession of the UUID runId is proof of ownership (same trust model
-    // as SESSION_ATTACH), so we join it to the queue-position room AND the future
-    // run room — bridged worker telemetry lands there once the job goes active.
-    socket.on(QUEUE_SUBSCRIBE_EVENT, (payload: unknown) => {
+    // runId, joining the queue-position room and — once ownership of the runId is
+    // confirmed — the run room where bridged worker telemetry lands.
+    socket.on(QUEUE_SUBSCRIBE_EVENT, async (payload: unknown) => {
       const request = (payload ?? {}) as QueueSubscribeRequest;
       const jobId = typeof request.jobId === 'string' ? request.jobId.trim() : '';
       if (!jobId || !queueSupport) return;
 
       void socket.join(queueRoom(jobId));
-      if (typeof request.runId === 'string' && request.runId) {
-        void socket.join(`run:${request.runId}`);
-        socket.data.runId = request.runId;
+      // The run room streams that run's telemetry — bind it only to a runId this
+      // socket actually owns, so a bogus/foreign id can't be used to eavesdrop or
+      // to seed socket.data.runId for a later control command.
+      const runId = typeof request.runId === 'string' && request.runId ? request.runId : null;
+      if (runId && (await ownsQueuedRun(runId))) {
+        void socket.join(`run:${runId}`);
+        socket.data.runId = runId;
+      } else if (runId) {
+        console.warn(`[Socket] ❌ queue-subscribe rejected run binding: ${socket.id} does not own run ${runId}`);
       }
       // Send the current place in line immediately, without waiting for the next
       // queue transition to fire a broadcast.
@@ -103,23 +125,42 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     const controlPublisher = queueSupport?.controlPublisher ?? null;
     const socketRunId = (): string | null => (typeof socket.data.runId === 'string' ? socket.data.runId : null);
 
-    socket.on('pause-test', () => {
-      console.log('[Socket] Session PAUSED manually');
-      if (controlPublisher) controlPublisher.publish('pause', socketRunId());
-      else void sessionManager.pauseByOperator();
-    });
+    // In-process controls act on the single active run, so they must be scoped to
+    // its owner — otherwise any connected socket could pause or kill a run it does
+    // not own. Mirrors the ownership check on POST /api/safari/stop; the queue
+    // branch enforces the equivalent via ownsQueuedRun.
+    const ownsActiveRun = (): boolean => {
+      const activeRunId = sessionManager.getActiveRunId();
+      if (!activeRunId) return false;
+      // Possession of the run token proves ownership (same trust model as
+      // SESSION_ATTACH) — the dashboard socket carries no JWT. A matching
+      // authenticated identity is accepted as the alternative proof.
+      if (socketRunId() === activeRunId) return true;
+      const activeUserId = sessionManager.getActiveUserId();
+      return activeUserId !== null && activeUserId === socketUserId(socket);
+    };
 
-    socket.on('resume-test', () => {
-      console.log('[Socket] Session RESUMED manually');
-      if (controlPublisher) controlPublisher.publish('resume', socketRunId());
-      else sessionManager.resumeByOperator();
-    });
+    const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void): Promise<void> => {
+      if (controlPublisher) {
+        const runId = socketRunId();
+        if (!(await ownsQueuedRun(runId))) {
+          console.warn(`[Socket] ❌ ${label} rejected: ${socket.id} does not own run ${runId ?? '(none)'}`);
+          return;
+        }
+        controlPublisher.publish(command, runId);
+        return;
+      }
+      if (!ownsActiveRun()) {
+        console.warn(`[Socket] ❌ ${label} rejected: ${socket.id} does not own the active run`);
+        return;
+      }
+      console.log(`[Socket] Session ${label} manually`);
+      run();
+    };
 
-    socket.on('stop-test', () => {
-      console.log('[Socket] Session STOPPED manually');
-      if (controlPublisher) controlPublisher.publish('stop', socketRunId());
-      else void sessionManager.stopByOperator();
-    });
+    socket.on('pause-test', () => void applyControl('PAUSED', 'pause', () => void sessionManager.pauseByOperator()));
+    socket.on('resume-test', () => void applyControl('RESUMED', 'resume', () => sessionManager.resumeByOperator()));
+    socket.on('stop-test', () => void applyControl('STOPPED', 'stop', () => void sessionManager.stopByOperator()));
 
     // Automated Regression Verification: replay a saved finding's recorded timeline
     // and report RESOLVED / STILL_ACTIVE. Uses an ack callback so the result is

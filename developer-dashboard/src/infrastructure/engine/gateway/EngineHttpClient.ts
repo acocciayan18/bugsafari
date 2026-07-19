@@ -151,12 +151,15 @@ export class EngineHttpClient {
    * HTTP fallback for forceStop, used when the socket is not connected.
    * Swallows errors — the backend may already be stopped.
    */
-  public async stopViaHttp(): Promise<void> {
+  public async stopViaHttp(runId?: string | null): Promise<void> {
     console.log('[Gateway] Socket not connected, falling back to HTTP stop...');
     try {
+      // The run token proves ownership server-side — required for guest runs,
+      // which carry no authenticated identity to match against.
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/safari/stop`, {
         method: 'POST',
-        headers: this.getAuthHeaders(),
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: runId ?? null }),
       });
 
       if (response.ok) {

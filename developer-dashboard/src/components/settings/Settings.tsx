@@ -58,7 +58,7 @@ function SettingsCard({ icon, title, description, children }: {
         </div>
         <div>
           <h3 className="text-sm font-semibold text-(--text-primary)">{title}</h3>
-          <p className="text-xs text-(--text-secondary)">{description}</p>
+          <p className="text-[13px] text-(--text-secondary)">{description}</p>
         </div>
       </header>
       <div className="flex-1 px-5 py-5">{children}</div>
@@ -89,7 +89,7 @@ function ThemeModeControl({ mode, onChange }: { mode: ThemeMode; onChange: (mode
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(opt.mode)}
-            className={`flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
+            className={`flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
               selected
                 ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
                 : 'border-(--border-hairline) text-(--text-secondary) hover:bg-(--surface-hover)'
@@ -162,7 +162,7 @@ function PasswordInputField({
             : <Eye className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         </button>
       </div>
-      {error && <p className="mt-1 text-xs text-(--status-critical-fg)">{error}</p>}
+      {error && <p className="mt-1 text-[13px] text-(--status-critical-fg)">{error}</p>}
     </div>
   );
 }
@@ -188,7 +188,7 @@ const ToggleSwitch = memo(function ToggleSwitch({
         <div>
           <span className="text-sm font-medium text-(--text-secondary)">{label}</span>
           {description && (
-            <p className="text-xs text-(--text-secondary) mt-0.5">{description}</p>
+            <p className="text-[13px] text-(--text-secondary) mt-0.5">{description}</p>
           )}
         </div>
       </div>
@@ -268,8 +268,8 @@ function ApplicationSettingsSection() {
   return (
     <div className="space-y-5">
       <div>
-        <span className="text-xs font-semibold text-(--text-secondary) uppercase tracking-wider">Theme</span>
-        <p className="mt-0.5 mb-2 text-xs text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
+        <span className="text-[13px] font-semibold text-(--text-secondary) uppercase tracking-wider">Theme</span>
+        <p className="mt-0.5 mb-2 text-[13px] text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
         <ThemeModeControl mode={settings.theme} onChange={handleThemeSelect} />
       </div>
 
@@ -521,7 +521,7 @@ function AccountSection() {
           <p className="truncate text-sm font-medium text-(--text-primary)">
             {displayName || user?.email || 'User'}
           </p>
-          <p className="truncate text-xs text-(--text-secondary)">{user?.email}</p>
+          <p className="truncate text-[13px] text-(--text-secondary)">{user?.email}</p>
         </div>
       </div>
 
@@ -529,22 +529,22 @@ function AccountSection() {
         <div className="flex items-center gap-3 px-3 py-2.5">
           <User className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-(--text-secondary)">Display Name</dt>
+            <dt className="text-[13px] text-(--text-secondary)">Display Name</dt>
             <dd className="truncate text-sm text-(--text-primary)">{displayName || '—'}</dd>
           </div>
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
           <Mail className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-(--text-secondary)">Email</dt>
+            <dt className="text-[13px] text-(--text-secondary)">Email</dt>
             <dd className="truncate text-sm text-(--text-primary)">{user?.email || '—'}</dd>
           </div>
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
           <Hash className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-(--text-secondary)">User ID</dt>
-            <dd className="truncate font-mono text-xs text-(--text-secondary)">{user?.id || '—'}</dd>
+            <dt className="text-[13px] text-(--text-secondary)">User ID</dt>
+            <dd className="truncate font-mono text-[13px] text-(--text-secondary)">{user?.id || '—'}</dd>
           </div>
         </div>
       </dl>
@@ -611,7 +611,7 @@ export default function Settings() {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-inset)">
                 <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
               </div>
-              <span className="text-xs text-(--text-secondary) hidden md:inline">{user.email}</span>
+              <span className="text-[13px] text-(--text-secondary) hidden md:inline">{user.email}</span>
             </div>
           )}
         </div>
@@ -661,7 +661,7 @@ export default function Settings() {
           <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
         </div>
         <div className="text-center">
-          <span className="font-mono text-xs text-gray-400 dark:text-gray-500">
+          <span className="font-mono text-[13px] text-gray-400 dark:text-gray-500">
             SETTINGS PANEL - V.8.3.1
           </span>
         </div>

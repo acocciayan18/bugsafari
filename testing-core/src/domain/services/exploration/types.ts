@@ -164,6 +164,8 @@ export interface StabilityMonitorDeps {
   recordNetworkFailure(): void;
   /** Interaction the engine was executing at `atMs`, correlating a request to its triggering control. */
   getInteractionContext(atMs: number): InteractionContext | null;
+  /** Origin of the app under test — provenance uses it to separate first- from third-party failures. */
+  getTargetOrigin(): string;
 }
 
 export interface StateRestorerDeps {

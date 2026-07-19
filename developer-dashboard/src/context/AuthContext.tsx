@@ -1,7 +1,14 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { toast } from 'sonner';
 import { isTokenExpired } from '../utils/tokenUtils';
-import { refreshAuthToken, onTokenRefreshed } from '../utils/authRefresh';
+import {
+  refreshAuthToken,
+  onTokenRefreshed,
+  onSessionRevoked,
+  persistSession,
+  clearSession,
+  getRefreshToken,
+} from '../utils/authRefresh';
 
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
 
@@ -27,6 +34,7 @@ export interface SignupCredentials {
 interface AuthResponse {
   ok?: boolean;
   token: string;
+  refreshToken: string;
   user: AuthUser;
   error?: string;
 }
@@ -86,13 +94,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // SINGLE SOURCE OF TRUTH: All auth state managed here
   // ═══════════════════════════════════════════════════════════════════════════
   
-// Initialize state with SYNCHRONOUS validation - prevents 401 race condition
+// Initialize state synchronously. An expired ACCESS token is no longer fatal —
+  // the session survives as long as a refresh token is present, so the stored
+  // identity is kept and the mount effect below rotates for a fresh pair.
   const [user, setUser] = useState<AuthUser | null>(() => {
     const storedToken = localStorage.getItem('bugsafari_token');
-    if (storedToken && isTokenExpired(storedToken)) {
-      // Token already expired, don't restore user
-      return null;
-    }
+    if (storedToken && isTokenExpired(storedToken) && !getRefreshToken()) return null;
     const storedUser = localStorage.getItem('bugsafari_user');
     if (storedUser) {
       try {
@@ -106,11 +113,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [token, setToken] = useState<string | null>(() => {
     const storedToken = localStorage.getItem('bugsafari_token');
-    // CRITICAL: Validate token expiration synchronously during initialization
-    if (storedToken && isTokenExpired(storedToken)) {
-      console.warn('[AuthContext] Token expired or invalid, clearing session');
-      localStorage.removeItem('bugsafari_token');
-      localStorage.removeItem('bugsafari_user');
+    if (storedToken && isTokenExpired(storedToken) && !getRefreshToken()) {
+      console.warn('[AuthContext] Access token expired with no refresh token, clearing session');
+      clearSession();
       return null;
     }
     return storedToken;
@@ -132,28 +137,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const storedUser = localStorage.getItem('bugsafari_user');
     const storedToken = localStorage.getItem('bugsafari_token');
-    if (storedUser && storedToken) {
-      // SECURITY: Validate token expiration on initialization
-      if (isTokenExpired(storedToken)) {
-        console.warn('[AuthContext] Token expired or invalid, clearing session');
-        localStorage.removeItem('bugsafari_token');
-        localStorage.removeItem('bugsafari_user');
-        setToken(null);
-        setUser(null);
-        return;
-      }
-      try {
-        setUser(JSON.parse(storedUser));
-        setToken(storedToken);
-      } catch {
-        // Invalid stored user, clear token
-        localStorage.removeItem('bugsafari_token');
-        localStorage.removeItem('bugsafari_user');
-        setToken(null);
-        setUser(null);
-      }
+    if (!storedUser || !storedToken) return;
+
+    // Access token past its short TTL: rotate rather than drop the session. A
+    // rejected rotation clears storage and fires SESSION_REVOKED (handled below).
+    if (isTokenExpired(storedToken)) {
+      void refreshAuthToken();
+      return;
+    }
+
+    try {
+      setUser(JSON.parse(storedUser));
+      setToken(storedToken);
+    } catch {
+      clearSession();
+      setToken(null);
+      setUser(null);
     }
   }, []);
+
+  // Proactive renewal: rotate a few minutes before the access token lapses so
+  // in-flight requests and socket handshakes never carry a dead token.
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(() => {
+      const current = localStorage.getItem('bugsafari_token');
+      if (current && isTokenExpired(current, 5 * 60)) void refreshAuthToken();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  // Hard termination (refresh rejected, or the server burned the token family
+  // after detecting replay) — drop to logged-out and send the operator to login.
+  useEffect(() => onSessionRevoked((reason) => {
+    setToken(null);
+    setUser(null);
+    if (reason === 'SESSION_REVOKED') {
+      toast.error('Your session was ended for security reasons. Please sign in again.');
+    }
+  }), []);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Helper: Call navigate if available
@@ -207,7 +229,7 @@ const login = useCallback(async (credentials: LoginCredentials): Promise<boolean
       }
 
 const authData = data as AuthResponse;
-      if (authData.token && authData.user) {
+      if (authData.token && authData.refreshToken && authData.user) {
         // CRITICAL: Update React state FIRST to prevent stale cache on immediate re-login
         setToken(authData.token);
         setUser(authData.user);
@@ -216,8 +238,7 @@ const authData = data as AuthResponse;
         setIsGuestMode(false);
 
         // Then update localStorage
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
+        persistSession(authData.token, authData.refreshToken, authData.user);
         localStorage.removeItem('bugsafari_guest');
 
         console.log('[AuthContext] Login successful:', authData.user.email);
@@ -300,14 +321,13 @@ const response = await fetch('/api/auth/register', {
       }
 
 const authData = data as AuthResponse;
-      if (authData.token && authData.user) {
+      if (authData.token && authData.refreshToken && authData.user) {
         // CRITICAL: Update React state FIRST to prevent stale cache
         setToken(authData.token);
         setUser(authData.user);
 
         // Then update localStorage
-        localStorage.setItem('bugsafari_token', authData.token);
-        localStorage.setItem('bugsafari_user', JSON.stringify(authData.user));
+        persistSession(authData.token, authData.refreshToken, authData.user);
 
         console.log('[AuthContext] Signup successful:', authData.user.email);
         console.log("✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.");
@@ -338,16 +358,25 @@ const authData = data as AuthResponse;
   // ═══════════════════════════════════════════════════════════════════════════
   
 const logout = useCallback(() => {
+    // Revoke server-side first (fire-and-forget) so the refresh token can't be
+    // replayed after the client forgets it; the local teardown never waits on it.
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      void fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => undefined);
+    }
+
     // CRITICAL: Reset React state FIRST to prevent stale cache on immediate re-login
     setToken(null);
     setUser(null);
     setIsGuestMode(false);
-    
-    // Then clear localStorage
-    localStorage.removeItem('bugsafari_token');
-    localStorage.removeItem('bugsafari_user');
+
+    clearSession();
     localStorage.removeItem('bugsafari_guest');
-    
+
     toast.info('Signed out successfully');
     console.log('[AuthContext] User logged out');
   }, []);
@@ -357,18 +386,17 @@ const logout = useCallback(() => {
   // ═══════════════════════════════════════════════════════════════════════════
   
 const refreshToken = useCallback(async (): Promise<boolean> => {
-    const currentToken = token || localStorage.getItem('bugsafari_token');
-    const result = await refreshAuthToken(currentToken);
+    const result = await refreshAuthToken();
     if (!result) {
-      console.warn('[AuthContext] Token refresh failed or no token available');
+      console.warn('[AuthContext] Token refresh failed or no refresh token available');
       return false;
     }
 
     setToken(result.token);
     setUser(result.user);
-    console.log('[AuthContext] Token refreshed successfully');
+    console.log('[AuthContext] Token rotated successfully');
     return true;
-  }, [token]);
+  }, []);
 
   // Sync refreshes triggered by non-hook modules (historyService, EngineHttpClient)
   // that called refreshAuthToken() directly instead of through this context.
@@ -382,9 +410,8 @@ const refreshToken = useCallback(async (): Promise<boolean> => {
   // change - that tab already updated its own state directly.
   useEffect(() => {
     function handleStorage(event: StorageEvent): void {
-      if (event.key !== 'bugsafari_token' && event.key !== 'bugsafari_user' && event.key !== 'bugsafari_guest') {
-        return;
-      }
+      const watched = ['bugsafari_token', 'bugsafari_refresh', 'bugsafari_user', 'bugsafari_guest'];
+      if (!watched.includes(event.key ?? '')) return;
 
       const storedToken = localStorage.getItem('bugsafari_token');
       const storedUser = localStorage.getItem('bugsafari_user');
@@ -396,7 +423,9 @@ const refreshToken = useCallback(async (): Promise<boolean> => {
         return;
       }
 
-      if (isTokenExpired(storedToken)) {
+      // An expired access token in another tab is recoverable while that tab
+      // still holds a refresh token — don't tear this tab's session down for it.
+      if (isTokenExpired(storedToken) && !getRefreshToken()) {
         setToken(null);
         setUser(null);
         return;

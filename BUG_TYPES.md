@@ -1,0 +1,156 @@
+# BugSafari — Detectable Bug Types
+
+What BugSafari actually detects today, derived from the shipped implementation (`testing-core/src/domain/heuristics`, `domain/services/telemetry`, `domain/services/verification`, `bugs/knowledgeBase`, `domain/scenarios`).
+
+Every candidate fault passes a **verification pipeline** before it becomes a finding:
+
+1. **Classification** — matched against the canonical `BUG_CATALOG` (bug class, CWE, severity, remediation).
+2. **Provenance gate** (`faultOrigin.ts`) — faults rooted in BugSafari, Playwright, the browser/extensions, or DNS/TLS/offline conditions are demoted to informational telemetry. Only `TARGET_APP` faults become bugs.
+3. **Evidence scoring** — message, stack trace, status code, reproduction steps, and cross-channel corroboration produce a confidence score (`CONFIRMED` / `SIGNAL` / `INFERRED`).
+4. **Deduplication** — signature-derived stable bug ids collapse repeats into one finding with an occurrence count.
+
+---
+
+## 1. JavaScript Runtime Errors
+
+Source: `RuntimeStabilityFinder.ts`, `StabilityMonitor.attachExceptionMonitoring`. Captured from `pageerror`, error-level `console`, in-page `unhandledrejection`, and renderer `crash` events — including on popups the app opens itself.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Undefined property access | Field read on an `undefined` value | `TypeError: Cannot read properties of undefined (reading 'name')` | `pageerror` message pattern match |
+| Null property access | Field read on `null`, usually a failed `querySelector` | `Cannot read properties of null (reading 'value')` | Message pattern match |
+| Non-iterable iteration | Looping a non-array | `TypeError: users is not iterable` | Message pattern match |
+| Reference error | Name not in scope — typo, missing import | `ReferenceError: handleSubmit is not defined` | Message pattern match |
+| Call of a non-function | Invoking a non-callable value | `TypeError: onClose is not a function` | Message pattern match |
+| Infinite recursion / stack overflow | Unbounded recursion or a render loop | `RangeError: Maximum call stack size exceeded` | Message pattern match |
+| Out-of-range value | Invalid array length / range violation | `RangeError: Invalid array length` | Message pattern match |
+| Malformed script / syntax error | Unparseable JS or JSON | `SyntaxError: Unexpected token '<' in JSON` | Message pattern match |
+| Code-split chunk failure | Lazy bundle failed to download | `ChunkLoadError: Loading chunk 12 failed` | Message pattern match |
+| Unhandled promise rejection | Rejected promise with no `.catch` | Silent failed `await fetch(...)` | In-page `unhandledrejection` hook |
+| Renderer crash | Tab process died (OOM / GPU fault) | White tab, "Aw, snap" | Playwright `crash` event |
+| Console errors | Error-level console output not covered above | `console.error('Failed to hydrate')` | `console` listener (network-stack errors excluded) |
+
+Each finding carries a plain-language explanation, remediation from `BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION`, a screenshot, source-map-resolved stack frames when available, and a minimized reproduction playbook.
+
+## 2. Network & Backend Failures
+
+Source: `StabilityMonitor.attachNetworkMonitoring`, `routeTrashClassifier.ts`, `softFailBody.ts`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Server error (5xx) | Backend failed to handle the request | `HTTP 500 POST /api/orders` | `response` listener + status tiering |
+| Soft-fail body masked as success | 2xx whose body flags an error | `200 OK` with `{"error":"internal server error"}` | Body scan of xhr/fetch 2xx for error/server-error signatures |
+| Transport-level failure | Request never got a response, against the app's own backend | `net::ERR_CONNECTION_REFUSED`, `ERR_TIMED_OUT` | `requestfailed` + first-party host attribution |
+| Cascading network failure | Burst of failures in a short window | 5+ failed requests within 2s | `NetworkFailureCascadeTracker` rolling window |
+
+Deliberately **not** findings: 4xx defensive responses (400/401/403/404/409/422/429…) handled gracefully, static-asset 404s, and aborts from operator stop or stress scenarios. These surface as informational Network-tab telemetry only.
+
+## 3. Unhandled API Failure / Infinite Loading
+
+Source: `ApiHangFinder.ts` + the watchdog in `StabilityMonitor`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Infinite loading / API hang | A request failed or never resolved and the UI never left its loading state | Spinner stays forever after a dropped `GET /api/profile` | fetch/XHR pending past 8s (or 5xx, or transport failure) arms a two-probe DOM check for visible spinners / skeletons / `aria-busy` / `role=progressbar` / "Loading…" text and disabled inputs; the indicator must survive both probes (2.5s apart), re-swept on backoff up to 3× |
+
+## 4. Duplicate Actions / State Races
+
+Source: `DuplicateActionFinder.ts`, `asyncStateRacer.ts`, `rapidClicker/*`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Duplicate submission (double-submit) | Identical state-changing request repeated with no client guard | Two `POST /api/checkout` with the same payload 120ms apart, both `201` | Two-phase: in-flight overlap (or ≤1.5s grace) on identical method+URL+canonicalized body, then judged on the settled responses |
+| Guarded duplicate | Same, but the backend rejected the repeat | Second `POST` returns `409 Conflict` | Same, verdict `GUARDED` — reported at low severity |
+| SPA state race / teardown race | Concurrent interactions desynchronize state | Click burst mid-async leaves stale UI or throws | `ButtonSpammer` / `CoordinateBombing` / `AsyncStateRacer` provoke; faults caught by the runtime + duplicate finders and marked corroborated |
+
+Retries after a failure, distinct idempotency keys, and repeats rejected with a non-guard 4xx are filtered out.
+
+## 5. Navigation & Routing Defects
+
+Source: `BrokenNavigationFinder.ts`, `routeTrasher/*`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Dead interaction | Nav-intent control that changes nothing | `<a href="/settings">` that never navigates | 2 consecutive no-ops (DOM + URL + network unchanged), or a statically-declared destination that is never reached |
+| Broken route | Interaction navigated to a hard HTTP error | Clicking a link lands on `HTTP 404 /reports/old` | Main-frame document status ≥400 attributed to the last interaction |
+| Redirect loop (HTTP) | 3xx chain revisits the same route | `/login → /home → /login` | Same route seen 3× within a 4s redirect window |
+| Redirect loop (SPA) | Rapid client-side route oscillation | Router guard bouncing A→B→A | Same route 3× across ≥2 distinct routes within 1.5s gaps; engine-initiated navigations suppressed |
+| Back-navigation state loss | `history.back()` lands on the wrong route | Back from a modal exits to `/` instead of the list | Expected vs. landed route mismatch, twice for the same pair |
+| Malformed route mutation | Query/history mutation breaks resolution | `?page=undefined`, `%3D` artifacts, white screen | `RouteTrasher` mutation + `isWhiteScreenFailure` render probe + status/console tiering |
+
+## 6. UI Stability
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Main-thread lock-up (UI freeze) | Browser main thread unresponsive | Infinite `while` loop in a handler | 2s heartbeat `page.evaluate`; 5s timeout, then 3 bounded recovery re-probes before a `RUNTIME_UI_FREEZE` finding |
+
+## 7. Input Validation & Security
+
+Source: `formBypasser.ts`, `fuzzing/*`, `fuzzGuard.ts`, `reflectionOracle.ts`, `storageTamper.ts`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Client-side constraint bypass | Validation enforced only in the browser | Stripping `required`/`maxlength`/`disabled` still submits | `FormBypasser` removes constraint attributes and submits; a 2xx commit means the server did not re-validate |
+| Reflected XSS | Injected payload reaches an executable context | `<img src=x onerror=...>` echoed unescaped or fires | Execution oracle (nonce + `alert`/`confirm`/`prompt` witnesses) plus raw-reflection check; HTML-encoded echoes are correctly **not** flagged |
+| NoSQL injection | Query operators survive into the datastore | `{"$ne":""}` yields `MongoError`/BSON errors | Post-injection console + ≥400 response bodies scanned for `NOSQL_ERROR` signatures |
+| Server instability from fuzzing | Injection destabilizes the backend | Stack trace or `fatal error` in DOM/response after a payload | `SERVER_ERROR` + `CLIENT_CRASH` signature scan of error containers and URL |
+| Security information leak | Internal detail exposed to the client | Stack trace, SQL text, or secret in an error response | Body/message signature match, `CWE-200` |
+| Client-trusted auth state (broken access control) | Privileged UI unlocked from forged client state | `role=admin` in localStorage, or a JWT re-minted with `alg:none`, reveals an admin panel | `StorageTamper` forges auth-shaped storage/cookie/JWT values, reloads, and asserts a **strict positive delta** of privileged markers; original state is restored afterward |
+
+Fuzz payload strategies by classified field type: numeric boundary, XSS vectors, SQL/NoSQL injection, email, date, JSON, and a chaos fallback — escalated in intensity by `payloadEscalator`.
+
+## 8. Accessibility (WCAG 2.1)
+
+Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, deduplicated by (rule, selector), capped at 300 per run.
+
+| Rule | WCAG | Impact | Example |
+|---|---|---|---|
+| `image-alt` | 1.1.1 | serious | `<img>` with no `alt` attribute |
+| `form-label` | 4.1.2 | critical | Input with no `<label for>`, wrapping label, or `aria-label` |
+| `control-name` | 4.1.2 | serious | Icon-only button with no accessible name |
+| `tabindex-positive` | 2.4.3 | moderate | `tabindex="3"` breaking focus order |
+| `duplicate-id` | 4.1.1 | minor | Same `id` used twice, breaking `label[for]`/`aria-*` |
+| `html-lang` | 3.1.1 | serious | `<html>` with no `lang` |
+| `document-title` | 2.4.2 | serious | Empty or missing `<title>` |
+
+---
+
+## Examples of Bugs BugSafari Can Find
+
+- `TypeError: Cannot read properties of undefined (reading 'map')` after an API returns an empty payload.
+- `ReferenceError: analytics is not defined` from a missing import in a lazily-rendered view.
+- An unhandled promise rejection from a `fetch` with no `.catch`, silent in the UI.
+- `HTTP 500` on `POST /api/orders` under a fuzzed quantity field.
+- A `200 OK` response whose body is `{"error":"Internal Server Error"}` — a failure masked as success.
+- A spinner that never resolves after the backend drops a request, with no error or retry state.
+- Two identical `POST /api/payments` fired 90ms apart by a double-clicked button, both succeeding.
+- A "View details" link that statically points at `/orders/42` but never navigates.
+- A router guard loop bouncing `/login ⇄ /dashboard` three times in under two seconds.
+- Back navigation landing on `/` instead of the previously visited list route.
+- A frozen tab from an unbounded loop in a click handler.
+- A form that submits successfully after `required` and `maxlength` are stripped in the DOM.
+- `<img src=x onerror=alert(1)>` reflected unescaped into a search results page.
+- A `MongoError` leaked to the client after `{"$ne":""}` is submitted to a login field.
+- An admin dashboard rendered purely because `role` was flipped to `admin` in localStorage.
+- Form inputs with no programmatic label, invisible to screen readers.
+
+---
+
+## Partial / Planned Capabilities
+
+Implemented but **not currently wired into the exploration loop** — no findings are produced today:
+
+- **Memory leak detection** (`MemoryLeakDetector.ts`) — per-DOM-state heap history with monotonic-growth analysis (>3 MB across ≥3 visits). Complete and tested, but the engine never feeds it heap samples.
+- **Visual regression detection** (`VisualRegressionDetector.ts`) — SSIM screenshot comparison with a 0.85 catastrophic-shift threshold for silent CSS breakage, layout collapse, and z-index overlap. Instantiated by the engine but `compareFrames` is never called.
+
+## Potential Future Detection Capabilities
+
+Gaps the current implementation does not cover:
+
+- **Data integrity / persistence oracles** — no assertion that a submitted value survives a reload or is rendered back correctly.
+- **Business-logic validation** — invalid values accepted (negative quantities, past dates, out-of-order workflows) are only found if they crash or 5xx.
+- **Performance budgets** — response times are recorded but never thresholded into findings; no CLS/LCP/long-task detection.
+- **Contrast and keyboard-navigation a11y** — the auditor covers structural WCAG rules only; no color-contrast ratio or focus-trap checks.
+- **Cross-browser / responsive-viewport differences** — runs on a single browser and viewport.
+- **Authentication flow depth** — storage tampering is covered; session expiry, refresh-token rotation, and CSRF are not.
+- **Third-party backend correlation** — server-side logs are never joined with client-observed failures.

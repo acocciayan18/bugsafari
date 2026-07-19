@@ -18,7 +18,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
 
   return (
     <div
-      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-4 text-(--text-primary) font-mono text-xs ${
+      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-4 text-(--text-primary) font-mono text-[13px] ${
         isCritical ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'
       }`}
     >
@@ -54,7 +54,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
         </div>
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
-        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-xs">
+        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px]">
           <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-(--text-secondary) mb-1">
             💡 Actionable Remediation Patch Strategy:
           </span>

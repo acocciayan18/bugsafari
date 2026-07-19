@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { AUTH_CONFIG } from './authConfig.js';
+import { issueTokenPair } from './refreshTokenService.js';
 import { sanitizeString } from './authValidation.js';
 
 /**
@@ -31,12 +30,10 @@ export async function handleLogin(
     const trimmedEmail = sanitizedEmail.trim().toLowerCase();
 
     console.log(`[Auth] Login attempt for: "${trimmedEmail}"`);
-    console.log(`[Auth] Password length: ${sanitizedPassword?.length}`);
 
     try {
       // Find user by email
       const user = await UserModel.findOne({ email: trimmedEmail });
-      console.log(`[Auth] User found:`, user ? `yes (id: ${user._id})` : 'no');
 
       // EXPLICIT VALIDATION GUARD: Ensure user document exists before proceeding
       // This prevents any bypass where user could be null/undefined
@@ -67,12 +64,8 @@ export async function handleLogin(
         return;
       }
 
-      // Generate JWT token
-      const token = jwt.sign(
-        { userId: user._id.toString(), email: trimmedEmail },
-        AUTH_CONFIG.JWT_SECRET,
-        { expiresIn: AUTH_CONFIG.JWT_EXPIRES_IN } as jwt.SignOptions,
-      );
+      // Short-lived access token plus a rotating refresh token in a new family.
+      const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
 
       console.log(`[Auth] User logged in: ${trimmedEmail}`);
 
@@ -82,7 +75,9 @@ export async function handleLogin(
           id: user._id.toString(),
           email: trimmedEmail,
         },
-        token,
+        token: tokens.token,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
       });
     } catch (dbError) {
       console.error('[Auth] Database error during login:', dbError);

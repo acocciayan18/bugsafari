@@ -42,10 +42,10 @@ export default function TelemetryStream({
     <div className="w-full max-w-5xl rounded-2xl border border-(--border-hairline) bg-(--surface-panel) shadow-[0_10px_40px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between gap-3 border-b border-(--border-hairline) px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-(--surface-invert) text-xs font-bold text-(--text-oninvert)">TL</span>
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-(--surface-invert) text-[13px] font-bold text-(--text-oninvert)">TL</span>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-(--text-primary)">Telemetry timeline</div>
-            <div className="text-xs text-(--text-secondary)">Process steps + warnings/errors</div>
+            <div className="text-[13px] text-(--text-secondary)">Process steps + warnings/errors</div>
           </div>
         </div>
 
@@ -90,7 +90,7 @@ export default function TelemetryStream({
             </>
           ) : null}
 
-          <div className="text-xs text-(--text-secondary)">{events.length} events</div>
+          <div className="text-[13px] text-(--text-secondary)">{events.length} events</div>
         </div>
       </div>
 
@@ -101,7 +101,7 @@ export default function TelemetryStream({
               —
             </div>
             <div className="text-sm font-medium text-(--text-primary)">No telemetry yet</div>
-            <div className="max-w-md text-xs leading-5 text-(--text-tertiary)">
+            <div className="max-w-md text-[13px] leading-5 text-(--text-tertiary)">
               Launch a test to start streaming actions, heuristic scores, and exceptions.
             </div>
           </div>
@@ -140,7 +140,7 @@ export default function TelemetryStream({
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pill.color}`}>
                             {pill.label}
                           </span>
-                          <div className="truncate text-xs font-semibold text-(--text-primary)">{title}</div>
+                          <div className="truncate text-[13px] font-semibold text-(--text-primary)">{title}</div>
                         </div>
                         <div className="mt-1 line-clamp-2 text-[11px] text-(--text-tertiary)">{sub}</div>
                       </div>

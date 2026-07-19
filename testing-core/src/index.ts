@@ -13,7 +13,8 @@ import { registerAuthRoutes } from './presentation/authentication/authController
 import { registerUserSettingsRoutes } from './presentation/authentication/userSettingsController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
-import { connectDatabase, disconnectDatabase, getConnectionState, ensureConnected } from './infrastructure/database/mongooseClient.js';
+import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
+import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
@@ -24,6 +25,9 @@ import { RunRegistry } from './infrastructure/queue/RunRegistry.js';
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
 const app = express();
+// Rate limits key on req.ip, so the proxy hop count must be declared explicitly —
+// a blanket `true` would let a client forge X-Forwarded-For and evade its budget.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
 // INTENTIONAL wildcard CORS: BugSafari authenticates purely via a JWT Bearer
 // token read from the Authorization header (see authMiddleware.ts) — there is
 // no cookie-based session, so the browser never auto-attaches ambient
@@ -46,32 +50,6 @@ const io = new Server(httpServer, {
 
 // Socket handlers are registered after the queue is built (below) so the
 // distributed queue-subscribe handler can be wired when BUGSAFARI_USE_QUEUE=1.
-
-// Debug endpoint to verify database collections
-app.get('/api/debug/db', async (req, res) => {
-  try {
-    const { isConnected, error } = getConnectionState();
-    if (!isConnected || error) {
-      res.json({ status: 'disconnected', error: error?.message, collections: [] });
-      return;
-    }
-    const mongoose = await import('mongoose');
-    const db = mongoose.default.connection.db;
-    if (!db) {
-      res.json({ status: 'connected', dbName: mongoose.default.connection.name, collections: [], message: 'Database object not initialized' });
-      return;
-    }
-
-    const collections = await db.listCollections().toArray() as Array<{ name: string }>;
-    res.json({
-      status: 'connected',
-      dbName: mongoose.default.connection.name,
-      collections: collections.map(c => c.name)
-    });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
 
 const telemetryGateway = new SocketTelemetryGateway(io);
 // Wire the centralized session/reconnection manager to the shared telemetry
@@ -116,11 +94,17 @@ if (taskQueue) {
 }
 
 // Register socket handlers now that optional queue support is resolved.
-registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher ? { broadcaster: queueStatusBroadcaster, controlPublisher } : undefined);
+registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher && runRegistry ? { broadcaster: queueStatusBroadcaster, controlPublisher, runRegistry } : undefined);
 
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
 registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry);
+
+// Terminal middleware — must stay last so every route's next(err) and every
+// unmatched /api path resolves to sanitized JSON instead of an HTML stack trace.
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
 });

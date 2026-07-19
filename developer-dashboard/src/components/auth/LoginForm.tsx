@@ -127,7 +127,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {passwordError && <p id="password-error" className="mt-1.5 text-xs text-(--status-critical-fg)">{passwordError}</p>}
+              {passwordError && <p id="password-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
            

@@ -34,6 +34,8 @@ export interface VerificationCandidate {
   };
   /** Result of an out-of-band reproduction pass, when one has already run. */
   reproduced?: boolean;
+  /** Origin of the app under test — lets provenance separate first- from third-party failures. */
+  targetOrigin?: string;
 }
 
 export interface VerificationOutcome extends VerificationVerdict {
@@ -96,6 +98,7 @@ export class VerificationPipeline {
       message: candidate.message,
       url: candidate.url,
       statusCode: candidate.statusCode,
+      targetOrigin: candidate.targetOrigin,
     });
 
     const signature = `${candidate.faultType}|${normalizeMessage(candidate.message)}|${candidate.statusCode ?? ''}`;

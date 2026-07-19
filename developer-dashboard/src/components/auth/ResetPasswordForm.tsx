@@ -164,7 +164,7 @@ export default function ResetPasswordForm() {
                   {showPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {passwordError && <p id="password-error" className="mt-1.5 text-xs text-(--status-critical-fg)">{passwordError}</p>}
+              {passwordError && <p id="password-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
             {/* Confirm Password Field */}
@@ -198,7 +198,7 @@ export default function ResetPasswordForm() {
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-xs text-(--status-critical-fg)">{confirmError}</p>}
+              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{confirmError}</p>}
             </div>
 
             {/* Password Requirements */}

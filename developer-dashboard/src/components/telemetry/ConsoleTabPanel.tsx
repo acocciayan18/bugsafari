@@ -76,7 +76,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
       </div>
 
       {visible.length === 0 ? (
-        <div className="text-(--text-tertiary) italic text-xs py-4 px-3">
+        <div className="text-(--text-tertiary) italic text-[13px] py-4 px-3">
           {browserConsole.length === 0 ? 'No browser console logs captured yet.' : `No ${filter} logs in this session.`}
         </div>
       ) : (

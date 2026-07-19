@@ -6,6 +6,8 @@ import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
+import { validateObjectIdParams, readObjectIdParam } from '../middleware/validateObjectId.js';
+import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { randomUUID } from 'node:crypto';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
@@ -186,7 +188,7 @@ export function registerRoutes(
   // but scopes the stop to the session's own owner: the requester must match
   // whichever userId (or guest/null) actually started the active run, so an
   // unrelated authenticated user can't kill someone else's in-progress session.
-  app.post('/api/safari/stop', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.post('/api/safari/stop', writeLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] 🔴 POST /api/safari/stop received - explicit cleanup request');
 
     try {
@@ -198,9 +200,12 @@ export function registerRoutes(
         return;
       }
 
-      const activeUserId = sessionManager.getActiveUserId();
-      const requesterId = request.userId ?? null;
-      if (activeUserId !== requesterId) {
+      // Ownership via the same rule the socket/attach paths use: possession of the
+      // server-issued runId, or a matching authenticated identity. A plain
+      // null-vs-null userId comparison would let ANY anonymous caller stop ANY
+      // guest run, since every guest previously presented as `null`.
+      const knownRunId = typeof request.body?.runId === 'string' ? request.body.runId : undefined;
+      if (!sessionManager.ownsActiveRun(request.userId ?? null, knownRunId)) {
         console.warn('[API] ❌ Stop rejected: requester does not own the active session');
         response.status(403).json({ error: 'You do not have permission to stop this session.' });
         return;
@@ -215,15 +220,14 @@ export function registerRoutes(
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error stopping engine:', errorMessage);
       // Return success even on error - engine may already be stopped
-      response.json({ ok: true, message: 'Stop attempted', error: errorMessage });
+      response.json({ ok: true, message: 'Stop attempted' });
     }
   });
 
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
-  app.post('/api/start-test', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.post('/api/start-test', startTestLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log(`[API] 📥 POST /api/start-test received`);
-    console.log(`[API] Request body:`, JSON.stringify(request.body));
     console.log(`[API] Auth user: ${request.userId ?? 'guest'}`);
 
     const targetUrl = parseTargetUrl(request.body);
@@ -294,7 +298,7 @@ export function registerRoutes(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[API] ❌ Failed to enqueue safari job:', message);
-        response.status(502).json({ error: `Failed to enqueue run on the worker fleet: ${message}` });
+        response.status(502).json({ error: 'Failed to enqueue the run on the worker fleet.' });
       }
       return;
     }
@@ -363,7 +367,7 @@ export function registerRoutes(
   // if so, gets the full replay snapshot to rebuild the live dashboard. Uses the
   // same optionalAuth as start-test — authed users are matched by identity, guests
   // by the runId they present. Returns { snapshot: null } when nothing is owned.
-  app.get('/api/session/active', optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/session/active', readLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const runId = extractStringParam(request.query.runId);
     const local = sessionManager.getSnapshotFor(request.userId ?? null, runId);
     if (local || !taskQueue || !runRegistry) {
@@ -377,7 +381,11 @@ export function registerRoutes(
       const entry = runId
         ? await runRegistry.findByRunId(runId)
         : (request.userId ? await runRegistry.findByOwner(request.userId) : null);
-      if (!entry || (entry.userId && request.userId && entry.userId !== request.userId)) {
+      // An authenticated run demands a matching identity. Previously the check
+      // was skipped whenever the CALLER was anonymous, so presenting the runId
+      // with no token returned another user's live snapshot. Guest-owned entries
+      // stay possession-proven (entry.userId is null).
+      if (!entry || (entry.userId && entry.userId !== (request.userId ?? null))) {
         response.json({ snapshot: null });
         return;
       }
@@ -417,9 +425,8 @@ export function registerRoutes(
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)
-  app.post('/api/history/save-session', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.post('/api/history/save-session', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/history/save-session called');
-    console.log('[API] Request body:', JSON.stringify(request.body));
     console.log('[API] Auth user:', request.userId ?? 'none');
     console.log('[API] Is guest:', request.isGuest);
 
@@ -506,7 +513,7 @@ export function registerRoutes(
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);
-        response.status(500).json({ error: result.message });
+        response.status(500).json({ error: 'Failed to save the session.' });
         return;
       }
 
@@ -515,13 +522,12 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
       response.status(201).json({ ok: true, message: result.message, ownerType });
     } catch (error) {
       console.error('[API] Error saving session:', error);
-      const message = error instanceof Error ? error.message : String(error);
-      response.status(500).json({ error: message });
+      response.status(500).json({ error: 'Failed to save the session.' });
     }
   });
 
 // Session history - REQUIRES authentication (returns only user's sessions)
-  app.get('/api/history/sessions', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/history/sessions', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/sessions called with query:', request.query);
     console.log('[API] Auth user:', request.userId ?? 'none');
     console.log('[API] Is guest:', request.isGuest);
@@ -564,18 +570,15 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
       response.json({ sessions: safeSessions });
     } catch (error) {
       // Comprehensive error handling with explicit log message
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/history/sessions:', error);
-      console.error('[API] Error stack:', error instanceof Error ? error.stack : 'no stack');
-      response.status(500).json({ error: `Failed to fetch session history: ${errorMessage}`, sessions: [] });
+      response.status(500).json({ error: 'Failed to fetch session history.', sessions: [] });
     }
   });
 
 // Safari run history - requires authentication
   // UPDATED: Query sessions collection instead of savedsafaris for unified history
-  app.get('/api/history', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/history', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history called');
-    console.log('[API] Auth header:', request.headers.authorization?.substring(0, 30) + '...');
     console.log('[API] Authenticated user:', request.userId ?? 'none');
     console.log('[API] Auth email:', request.userEmail ?? 'none');
 
@@ -608,14 +611,13 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
       // Return documents sorted by startedAt: -1 (newest first)
       response.json(sessions);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/history:', error);
-      response.status(500).json({ error: `Failed to fetch safari history: ${errorMessage}` });
+      response.status(500).json({ error: 'Failed to fetch safari history.' });
     }
   });
 
 // Delete a session by ID (using sessions collection)
-  app.delete('/api/history/:id', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.delete('/api/history/:id', writeLimiter, requireAuth, validateObjectIdParams('id'), async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] DELETE /api/history/:id called');
     console.log('[API] Record ID:', request.params.id);
     console.log('[API] Authenticated user:', request.userId ?? 'none');
@@ -652,14 +654,13 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
       console.log('[API] Record deleted successfully:', recordId);
       response.json({ ok: true, message: 'Record deleted successfully.' });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in DELETE /api/history/:id:', error);
-      response.status(500).json({ error: `Failed to delete record: ${errorMessage}` });
+      response.status(500).json({ error: 'Failed to delete the record.' });
     }
   });
 
 // Export a session record as JSON (using sessions collection)
-  app.get('/api/history/export/:id', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/history/export/:id', readLimiter, requireAuth, validateObjectIdParams('id'), async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/export/:id called');
     console.log('[API] Record ID to export:', request.params.id);
     console.log('[API] Authenticated user:', request.userId ?? 'none');
@@ -698,24 +699,15 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
       response.setHeader('Content-Disposition', `attachment; filename="safari-${recordId}.json"`);
       response.json(record);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in GET /api/history/export/:id:', error);
-      response.status(500).json({ error: `Failed to export record: ${errorMessage}` });
+      response.status(500).json({ error: 'Failed to export the record.' });
     }
-  });
-
-// Forensic Screenshots API - Now returns empty array (screenshots disabled for storage optimization)
-  app.get('/api/forensic/screenshots', async (_request: Request, response: Response): Promise<void> => {
-    console.log('[API] GET /api/forensic/screenshots called - screenshots disabled');
-
-    // Return empty screenshots array - screenshot capture has been removed
-    response.json({ screenshots: [] });
   });
 
   // 🧠 Phase 5: Forensic Analysis API - Get analysis for a test run
   // requireAuth + tenant scoping: forensic analyses expose rootCause/riskScore/recommendations,
   // so a run's analysis is readable only by the user who owns that run's session.
-  app.get('/api/forensic/analysis', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/forensic/analysis', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/forensic/analysis called with query:', request.query);
 
     try {
@@ -790,16 +782,15 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
         },
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/forensic/analysis:', error);
-      response.status(500).json({ error: `Failed to fetch analysis: ${errorMessage}`, analysis: null });
+      response.status(500).json({ error: 'Failed to fetch the analysis.', analysis: null });
     }
   });
 
   // 🧠 Phase 5: Trigger forensic analysis generation
   // requireAuth + ownership: analyzeRun() is compute-heavy and reads a run's session/errors,
   // so only the session owner may trigger it (prevents anonymous DoS + foreign-session reads).
-  app.post('/api/forensic/analyze', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.post('/api/forensic/analyze', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] POST /api/forensic/analyze called');
 
     try {
@@ -854,26 +845,19 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
         message: result.exists ? 'Analysis already exists (returned cached)' : 'Analysis generated successfully',
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/forensic/analyze:', error);
-      response.status(500).json({ error: `Failed to generate analysis: ${errorMessage}`, analysis: null });
+      response.status(500).json({ error: 'Failed to generate the analysis.', analysis: null });
     }
   });
 
 
 
   // 📊 Complete Forensic Report API - Get comprehensive report for a session
-  app.get('/api/forensic/report/:sessionId', requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/forensic/report/:sessionId called with params:', request.params);
+  app.get('/api/forensic/report/:sessionId', readLimiter, requireAuth, validateObjectIdParams('sessionId'), async (request: AuthRequest, response: Response): Promise<void> => {
+    console.log('[API] GET /api/forensic/report/:sessionId called');
 
     try {
-      // FIXED: Safely extract sessionId from params - can be string|string[]
-      const sessionId = extractStringParam(request.params.sessionId);
-      if (!sessionId) {
-        response.status(400).json({ error: 'Invalid session ID format.' });
-        return;
-      }
-
+      const sessionId = readObjectIdParam(request, 'sessionId');
       const userId = request.userId;
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
@@ -1058,9 +1042,8 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
       console.log('[API] Returning complete forensic report for session:', sessionId);
       response.json({ report });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[API] Error in /api/forensic/report:', error);
-      response.status(500).json({ error: `Failed to fetch report: ${errorMessage}`, report: null });
+      response.status(500).json({ error: 'Failed to fetch the report.', report: null });
     }
   });
 }

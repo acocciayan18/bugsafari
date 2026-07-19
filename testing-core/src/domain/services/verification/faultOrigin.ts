@@ -16,6 +16,8 @@ export interface OriginInput {
   message: string;
   url?: string;
   statusCode?: number;
+  /** Origin of the app under test. Enables first-party vs third-party transport attribution. */
+  targetOrigin?: string;
 }
 
 export interface OriginVerdict {
@@ -46,14 +48,14 @@ const PLAYWRIGHT_MARKERS = [
 ];
 
 // Cancellations — the request was aborted (operator stop, superseded navigation).
-const ABORT_MARKERS = [
-  'net::err_aborted',
-  'err_aborted',
-  'request cancelled',
-  'request canceled',
-  'aborted',
-  'canceled',
-  'cancelled',
+// Anchored to net-error tokens / explicit request phrasing: a bare "cancelled" also
+// appears in legitimate app errors ("Payment cancelled by gateway"), which must not
+// be silently attributed to the harness.
+const ABORT_PATTERNS = [
+  /net::err_aborted/,
+  /\berr_aborted\b/,
+  /\brequest (?:was )?(?:cancell?ed|aborted)\b/,
+  /\b(?:operation|action|navigation) (?:was )?(?:cancell?ed|aborted)\b/,
 ];
 
 // Browser / devtools / extension noise. Benign engine chatter, not app defects.
@@ -67,24 +69,60 @@ const EXTENSION_URL_PREFIXES = ['chrome-extension://', 'moz-extension://', 'safa
 
 // Transport / environment failures. The network or host is unreachable/misconfigured;
 // the application's own code is not at fault.
-const NETWORK_ENV_MARKERS = [
+// Environmental regardless of which host they hit: no network, broken DNS,
+// misconfigured TLS/proxy. Never the application's own code.
+const ENVIRONMENT_TRANSPORT_MARKERS = [
   'err_name_not_resolved',
+  'err_name_resolution_failed',
   'err_internet_disconnected',
-  'err_connection_refused',
-  'err_connection_reset',
-  'err_connection_timed_out',
-  'err_connection_closed',
   'err_network_changed',
   'err_address_unreachable',
-  'err_timed_out',
   'err_cert_',
   'err_ssl_',
   'err_proxy_connection_failed',
-  'dns',
+];
+
+// Transport failures whose meaning depends on WHO failed. Against a third-party host
+// they are environment noise; against the app's own backend they ARE the defect — the
+// server crashed, hung past its timeout, or dropped the connection. Suppressing these
+// unconditionally hid the most severe class of API failure.
+const HOST_DEPENDENT_TRANSPORT_MARKERS = [
+  'err_connection_refused',
+  'err_connection_reset',
+  'err_connection_closed',
+  'err_connection_aborted',
+  'err_connection_failed',
+  'err_connection_timed_out',
+  'err_timed_out',
+  'err_empty_response',
+  'err_response_headers_truncated',
+  'err_http2_protocol_error',
 ];
 
 function includesAny(haystack: string, needles: readonly string[]): boolean {
   return needles.some((n) => haystack.includes(n));
+}
+
+function matchesAny(haystack: string, patterns: readonly RegExp[]): boolean {
+  return patterns.some((p) => p.test(haystack));
+}
+
+// Registrable-ish host key (last two labels) so api.example.com === example.com.
+function hostKey(raw: string | undefined): string {
+  if (!raw) return '';
+  try {
+    return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase().split('.').slice(-2).join('.');
+  } catch {
+    return '';
+  }
+}
+
+// Relationship between the failing URL and the app under test.
+function relationship(url: string | undefined, targetOrigin: string | undefined): 'FIRST_PARTY' | 'THIRD_PARTY' | 'UNKNOWN' {
+  const a = hostKey(url);
+  const b = hostKey(targetOrigin);
+  if (!a || !b) return 'UNKNOWN';
+  return a === b ? 'FIRST_PARTY' : 'THIRD_PARTY';
 }
 
 /**
@@ -108,15 +146,33 @@ export function classifyFaultOrigin(input: OriginInput): OriginVerdict {
     return { origin: 'BROWSER_EXTENSION', isTargetApp: false, reason: 'Benign browser/devtools console noise.' };
   }
 
-  if (includesAny(text, PLAYWRIGHT_MARKERS)) {
+  // Driver prose ("waiting for locator", "navigation timeout") is produced by Playwright's
+  // own API, never by a network event. Applying it to NETWORK faults suppressed genuine
+  // backend timeouts whose reason string merely contains the word "timeout".
+  if (input.faultType !== 'NETWORK' && includesAny(text, PLAYWRIGHT_MARKERS)) {
     return { origin: 'PLAYWRIGHT', isTargetApp: false, reason: 'Automation-driver artifact (closed/timed-out/aborted).' };
   }
-  if (includesAny(text, ABORT_MARKERS)) {
+  if (matchesAny(text, ABORT_PATTERNS)) {
     return { origin: 'PLAYWRIGHT', isTargetApp: false, reason: 'Request aborted/cancelled by the harness, not the app.' };
   }
 
-  if (includesAny(text, NETWORK_ENV_MARKERS)) {
-    return { origin: 'NETWORK_ENV', isTargetApp: false, reason: 'Transport/environment failure (DNS/TLS/connection).' };
+  if (includesAny(text, ENVIRONMENT_TRANSPORT_MARKERS)) {
+    return { origin: 'NETWORK_ENV', isTargetApp: false, reason: 'Transport/environment failure (DNS/TLS/proxy).' };
+  }
+
+  const party = relationship(input.url, input.targetOrigin);
+
+  // Host-dependent transport failure: first-party ⇒ the backend itself is down or hung,
+  // which is the defect. Third-party/unattributable ⇒ environment.
+  if (includesAny(text, HOST_DEPENDENT_TRANSPORT_MARKERS)) {
+    return party === 'FIRST_PARTY'
+      ? { origin: 'TARGET_APP', isTargetApp: true, reason: "The application's own backend refused, reset, or timed out the request." }
+      : { origin: 'NETWORK_ENV', isTargetApp: false, reason: 'Transport failure against a third-party host.' };
+  }
+
+  // A third-party endpoint returning an error is that vendor's fault, not the app's.
+  if (input.faultType === 'NETWORK' && party === 'THIRD_PARTY') {
+    return { origin: 'NETWORK_ENV', isTargetApp: false, reason: 'Failure originated from a third-party host, not the application under test.' };
   }
 
   return { origin: 'TARGET_APP', isTargetApp: true, reason: 'Attributed to the application under test.' };

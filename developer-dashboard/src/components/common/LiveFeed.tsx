@@ -199,7 +199,7 @@ export default function LiveFeed({
         </div>
 
         {/* CENTER: URL bar */}
-        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-(--surface-panel) rounded-full px-3 py-1 text-xs text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline)">
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-(--surface-panel) rounded-full px-3 py-1 text-[13px] text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline)">
           {isSecureUrl ? (
             <Lock size={11} className="shrink-0 text-(--text-tertiary)" aria-hidden="true" />
           ) : (
@@ -211,14 +211,14 @@ export default function LiveFeed({
         {/* RIGHT: status + three-dot menu (decorative) */}
         <div className="flex items-center gap-2 shrink-0">
           {isQueued && (
-            <span className="flex items-center gap-1.5 text-xs font-mono text-(--status-neutral-fg)">
+            <span className="flex items-center gap-1.5 text-[13px] font-mono text-(--status-neutral-fg)">
               <span className="h-3 w-3 bg-(--status-neutral-fg) rounded-full animate-pulse"></span>
               QUEUED
             </span>
           )}
 
           {!isQueued && !isTestRunning && !useBinaryStream && (
-            <span className="text-xs text-(--text-tertiary)">Ready</span>
+            <span className="text-[13px] text-(--text-tertiary)">Ready</span>
           )}
 
           <span className="p-1 opacity-70 cursor-default text-(--text-tertiary)" aria-hidden="true">

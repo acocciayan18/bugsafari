@@ -64,11 +64,19 @@ if (isProduction && JWT_SECRET.includes('dev') && JWT_SECRET.includes('fallback'
   );
 }
 
+// Access tokens are short-lived because they are stateless and cannot be revoked;
+// durability of a session comes from the rotating refresh token instead.
+const ACCESS_TOKEN_TTL = process.env.JWT_EXPIRES_IN ?? '30m';
+const ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_MS ?? 7 * 24 * 60 * 60 * 1000);
+
 // Configuration object - immutable in production
 // JWT_SECRET is guaranteed to be defined after validation - use non-null assertion
 export const AUTH_CONFIG = {
   JWT_SECRET: JWT_SECRET!, // Non-null assertion: validated above
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN ?? '7d',
+  ACCESS_TOKEN_TTL,
+  ACCESS_TOKEN_TTL_MS,
+  REFRESH_TOKEN_TTL_MS,
   isProduction,
   isDevelopment,
 } as const;

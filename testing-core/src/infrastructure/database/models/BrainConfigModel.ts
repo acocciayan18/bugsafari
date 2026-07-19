@@ -8,6 +8,13 @@ const brainConfigSchema = new Schema(
       required: [true, 'Session ID is required'],
       index: true,
     },
+    // Denormalized owner so warm-start only ever reloads the tenant's OWN brain.
+    userId: {
+      type: Types.ObjectId,
+      ref: 'User',
+      required: [true, 'User ID is required'],
+      index: true,
+    },
     // Denormalized target URL so a run can load the latest brain for the same site (warm-start).
     targetUrl: {
       type: String,
@@ -50,10 +57,11 @@ const brainConfigSchema = new Schema(
 );
 
 brainConfigSchema.index({ sessionId: 1, capturedAt: -1 });
-brainConfigSchema.index({ targetUrl: 1, capturedAt: -1 });
+brainConfigSchema.index({ userId: 1, targetUrl: 1, capturedAt: -1 });
 
 export interface IBrainConfig extends Document {
   sessionId: Types.ObjectId;
+  userId: Types.ObjectId;
   targetUrl: string;
   capturedAt: Date;
   source: 'start' | 'runtime' | 'finish' | 'crash';

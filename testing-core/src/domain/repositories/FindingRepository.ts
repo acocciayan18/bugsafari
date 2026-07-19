@@ -6,6 +6,7 @@ export interface CreateSessionInput {
 
 export interface SaveBrainConfigInput {
   sessionId: string;
+  userId: string;
   targetUrl: string;
   weights: Record<string, number>;
   bias: number;
@@ -34,18 +35,24 @@ export interface SessionHistoryRecord {
   pagesVisited?: number;
 }
 
+/**
+ * Every mutation and brain read below takes the owning userId and MUST scope its
+ * query by it — session documents and learned brains are tenant-private, so an id
+ * alone is never sufficient authority to read or modify one.
+ */
 export interface FindingRepository {
   createSession(input: CreateSessionInput): Promise<string>;
-  markSessionCompleted(sessionId: string, finishedAt: string): Promise<void>;
-  markSessionCrashed(sessionId: string, finishedAt: string, reason: string): Promise<void>;
+  markSessionCompleted(sessionId: string, userId: string, finishedAt: string): Promise<void>;
+  markSessionCrashed(sessionId: string, userId: string, finishedAt: string, reason: string): Promise<void>;
   saveBrainConfig(input: SaveBrainConfigInput): Promise<string>;
   /**
-   * Load the most recently captured brain (weights + bias) for a target URL,
-   * used to warm-start the perceptron when re-testing the same site. Null if none.
+   * Load the most recently captured brain (weights + bias) this user captured for
+   * a target URL, to warm-start the perceptron when re-testing the same site.
+   * Scoped to the owner so learned models never cross accounts. Null if none.
    */
-  loadLatestBrainConfig(targetUrl: string): Promise<BrainState | null>;
-  markSessionSaved(sessionId: string): Promise<void>;
-markLatestSessionSaved(targetUrl?: string): Promise<string | null>;
+  loadLatestBrainConfig(targetUrl: string, userId: string): Promise<BrainState | null>;
+  markSessionSaved(sessionId: string, userId: string): Promise<void>;
+  markLatestSessionSaved(userId: string, targetUrl?: string): Promise<string | null>;
   /**
    * List session history with optional userId filtering for multi-tenancy.
    * @param limit - Maximum number of sessions to return (default 50)

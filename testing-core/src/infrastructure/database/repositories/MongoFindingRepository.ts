@@ -43,12 +43,14 @@ public async createSession(input: CreateSessionInput): Promise<string> {
 
   public async markSessionCompleted(
     sessionId: string,
+    userId: string,
     finishedAt: string,
   ): Promise<void> {
     const objectId = toObjectId(sessionId);
-    if (!objectId) return;
+    const ownerId = toObjectId(userId);
+    if (!objectId || !ownerId) return;
     await SessionModel.updateOne(
-      { _id: objectId },
+      { _id: objectId, userId: ownerId },
       {
         $set: {
           status: SessionStatus.COMPLETED,
@@ -60,13 +62,15 @@ public async createSession(input: CreateSessionInput): Promise<string> {
 
   public async markSessionCrashed(
     sessionId: string,
+    userId: string,
     finishedAt: string,
     reason: string,
   ): Promise<void> {
     const objectId = toObjectId(sessionId);
-    if (!objectId) return;
+    const ownerId = toObjectId(userId);
+    if (!objectId || !ownerId) return;
     await SessionModel.updateOne(
-      { _id: objectId },
+      { _id: objectId, userId: ownerId },
       {
         $set: {
           status: SessionStatus.CRASHED,
@@ -82,9 +86,14 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     if (!objectId) {
       throw new Error(`Invalid session ID: ${input.sessionId}`);
     }
+    const ownerId = toObjectId(input.userId);
+    if (!ownerId) {
+      throw new Error('saveBrainConfig requires a valid authenticated userId');
+    }
 
     const brain = await BrainConfigModel.create({
       sessionId: objectId,
+      userId: ownerId,
       targetUrl: input.targetUrl,
       source: input.source,
       bias: input.bias,
@@ -92,16 +101,19 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     });
 
     await SessionModel.updateOne(
-      { _id: objectId },
+      { _id: objectId, userId: ownerId },
       { $inc: { brainSnapshotCount: 1 } },
     );
     return brain._id.toString();
   }
 
-  public async loadLatestBrainConfig(targetUrl: string): Promise<BrainState | null> {
-    if (!targetUrl) return null;
+  public async loadLatestBrainConfig(targetUrl: string, userId: string): Promise<BrainState | null> {
+    const ownerId = toObjectId(userId);
+    if (!targetUrl || !ownerId) return null;
     try {
-      const doc = await BrainConfigModel.findOne({ targetUrl })
+      // Scoped to the owner: a brain trained on another tenant's run must never
+      // seed this run's perceptron.
+      const doc = await BrainConfigModel.findOne({ targetUrl, userId: ownerId })
         .sort({ capturedAt: -1 })
         .lean()
         .exec();
@@ -120,16 +132,18 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     }
   }
 
-  public async markSessionSaved(sessionId: string): Promise<void> {
+  public async markSessionSaved(sessionId: string, userId: string): Promise<void> {
     const objectId = toObjectId(sessionId);
-    if (!objectId) return;
+    const ownerId = toObjectId(userId);
+    if (!objectId || !ownerId) return;
     await SessionModel.updateOne(
-      { _id: objectId },
+      { _id: objectId, userId: ownerId },
       { $set: { savedManually: true } },
     );
   }
 
   public async markLatestSessionSaved(
+    userId: string,
     targetUrl?: string,
   ): Promise<string | null> {
     console.log(
@@ -137,8 +151,18 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       targetUrl,
     );
 
+    const ownerId = toObjectId(userId);
+    if (!ownerId) {
+      console.warn("[Repository] markLatestSessionSaved requires a valid userId");
+      return null;
+    }
+
     try {
-      const filter = targetUrl ? { targetUrl } : {};
+      // Owner-scoped: without userId this picked the newest session for the URL
+      // across ALL tenants and flipped a stranger's run into their history.
+      const filter: Record<string, unknown> = targetUrl
+        ? { targetUrl, userId: ownerId }
+        : { userId: ownerId };
       console.log("[Repository] Query filter:", JSON.stringify(filter));
 
       const latest = await SessionModel.findOne(filter)
@@ -162,7 +186,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       const sessionId = latest._id.toString();
       console.log("[Repository] Marking session as saved:", sessionId);
 
-      await this.markSessionSaved(sessionId);
+      await this.markSessionSaved(sessionId, userId);
       console.log("[Repository] Session marked as saved successfully");
 
       return sessionId;

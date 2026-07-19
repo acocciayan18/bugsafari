@@ -45,7 +45,7 @@ function InfiltrationProfileSelectorImpl({
                 className="mt-0.5 h-5 w-5 border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus)"
               />
               <span className="flex flex-col">
-                <span className={`text-xs font-semibold leading-tight ${isSelected ? 'text-(--text-oninvert)' : 'text-(--text-secondary)'}`}>{option.label}</span>
+                <span className={`text-[13px] font-semibold leading-tight ${isSelected ? 'text-(--text-oninvert)' : 'text-(--text-secondary)'}`}>{option.label}</span>
                 <span className={`text-[10px] leading-tight mt-0.5 ${isSelected ? 'text-(--text-oninvert) opacity-80' : 'text-(--text-tertiary)'}`}>{option.description}</span>
               </span>
             </label>

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
+import { revokeAllForUser } from './refreshTokenService.js';
 
 // Email transporter configuration
 // Using environment variables for SMTP settings
@@ -197,15 +198,9 @@ export async function handleForgotPassword(
       user.resetPasswordExpires = resetExpires;
       await user.save();
 
-      // In development, log the reset link to console
-      // In production, this would send an actual email
-      const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}&email=${encodeURIComponent(trimmedEmail)}`;
-
-      console.log(`\n========================================`);
-      console.log(`[FORGOT PASSWORD] Reset link for: ${trimmedEmail}`);
+      // The plaintext token leaves the server only via the reset email.
+      console.log(`[FORGOT PASSWORD] Reset requested for: ${trimmedEmail} (expires in 1 hour)`);
       await sendPasswordResetEmail(trimmedEmail, resetToken);
-      console.log(`⏰ Expires in: 1 hour`);
-      console.log(`========================================\n`);
 
       response.json({
         ok: true,
@@ -219,9 +214,8 @@ export async function handleForgotPassword(
         message: 'If an account exists with that email, a password reset link has been sent.',
       });
     }
-  } catch (err: any) {
-    console.error('[Auth] Forgot password error:', err.message, err.stack);
-    response.status(500).json({ error: 'Failed to process password reset request' });
+  } catch (err) {
+    next(err);
   }
 }
 
@@ -297,14 +291,17 @@ export async function handleResetPassword(
 
     await user.save();
 
-    console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail}`);
+    // A password change must terminate every session established with the old
+    // one. Outstanding access tokens remain valid until their short TTL lapses.
+    const revoked = await revokeAllForUser(user._id.toString(), 'password-reset');
+
+    console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail} (${revoked} session(s) revoked)`);
 
     response.json({
       ok: true,
       message: 'Password has been reset successfully. You can now log in with your new password.',
     });
-  } catch (err: any) {
-    console.error('[Auth] Reset password error:', err.message, err.stack);
-    response.status(500).json({ error: 'Failed to reset password' });
+  } catch (err) {
+    next(err);
   }
 }

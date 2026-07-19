@@ -34,7 +34,7 @@ export default function AuthShell({
            
 
             <div className="p-6">
-              <p className="text-center text-xs font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
+              <p className="text-center text-[13px] font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
               <h1 className="text-center text-h2 leading-tight font-semibold text-(--text-primary) mb-2">{title}</h1>
               {subtitle && <p className="text-center text-body-sm text-(--text-primary) mb-6">{subtitle}</p>}
 

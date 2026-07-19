@@ -101,7 +101,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
     }
 
     // Fallback to HTTP POST if socket not connected
-    return this.http.stopViaHttp();
+    return this.http.stopViaHttp(this.runId);
   }
 
   // ── Server→client subscriber registration ─────────────────────

@@ -184,7 +184,7 @@ export function HelpMenuIcon() {
           {/* Menu Header */}
           <div className="border-b border-(--border-hairline) px-4 py-3">
             <h3 className="text-sm font-semibold text-(--text-primary)">Help & Support</h3>
-            <p className="text-xs text-(--text-secondary)">BugSafari v8.2.19</p>
+            <p className="text-[13px] text-(--text-secondary)">BugSafari v8.2.19</p>
           </div>
 
           {/* Definitions - with accordions */}
@@ -195,25 +195,25 @@ export function HelpMenuIcon() {
           >
             <div className="space-y-3 mt-2">
               <div>
-                <p className="text-xs font-medium text-(--text-primary)">What is a Safari?</p>
-                <p className="text-xs text-(--text-secondary) mt-1">
+                <p className="text-[13px] font-medium text-(--text-primary)">What is a Safari?</p>
+                <p className="text-[13px] text-(--text-secondary) mt-1">
                   A Safari is an autonomous test execution that explores and analyzes a target web application to discover potential bugs, vulnerabilities, and issues.
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-(--text-primary)">Severity Levels</p>
+                <p className="text-[13px] font-medium text-(--text-primary)">Severity Levels</p>
                 <div className="mt-2 space-y-2">
                   {severityLevels.map((sev) => (
                     <div key={sev.level} className={`rounded-md p-2 ${sev.bg}`}>
-                      <p className={`text-xs font-semibold ${sev.color}`}>{sev.level}</p>
-                      <p className="text-xs text-(--text-secondary) mt-0.5">{sev.description}</p>
+                      <p className={`text-[13px] font-semibold ${sev.color}`}>{sev.level}</p>
+                      <p className="text-[13px] text-(--text-secondary) mt-0.5">{sev.description}</p>
                     </div>
                   ))}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-(--text-primary)">Coverage Metric</p>
-                <p className="text-xs text-(--text-secondary) mt-1">
+                <p className="text-[13px] font-medium text-(--text-primary)">Coverage Metric</p>
+                <p className="text-[13px] text-(--text-secondary) mt-1">
                   Coverage percentage represents the proportion of discovered application surfaces explored during testing.
                 </p>
               </div>
@@ -239,8 +239,8 @@ export function HelpMenuIcon() {
                     <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
                   </svg>
                   <div>
-                    <p className="text-xs font-medium text-(--text-primary)">{link.title}</p>
-                    <p className="text-xs text-(--text-secondary)">{link.description}</p>
+                    <p className="text-[13px] font-medium text-(--text-primary)">{link.title}</p>
+                    <p className="text-[13px] text-(--text-secondary)">{link.description}</p>
                   </div>
                   <svg className="h-4 w-4 text-(--text-disabled) mt-0.5 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -310,7 +310,7 @@ export function HelpMenuIcon() {
 
           {/* Menu Footer */}
           <div className="border-t border-(--border-hairline) mt-2 pt-2 px-4">
-            <p className="text-xs text-(--text-disabled)">Press ESC to close</p>
+            <p className="text-[13px] text-(--text-disabled)">Press ESC to close</p>
           </div>
         </div>
       )}

@@ -239,11 +239,11 @@
 
   /* Error message container with proper wrapping */
   .error-message {
-    @apply text-xs font-mono whitespace-pre-wrap wrap-break-word leading-relaxed;
+    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word leading-relaxed;
   }
 
   /* Expandable code block container */
   .code-block {
-    @apply text-xs font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
+    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
   }
 }

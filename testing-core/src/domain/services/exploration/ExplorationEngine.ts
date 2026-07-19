@@ -602,6 +602,7 @@ export class ExplorationEngine {
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
+      getTargetOrigin: () => this.targetOrigin,
     });
 
     const stateRestorer = new StateRestorer({
@@ -982,15 +983,17 @@ export class ExplorationEngine {
   }
 
   private async completeSession(): Promise<void> {
-    if (!this.findingRepo || !this.sessionId) {
+    // The owner is part of the update filter, so a session can only ever be
+    // settled by the tenant that created it.
+    if (!this.findingRepo || !this.sessionId || !this.userId) {
       return;
     }
 
     try {
       if (this.freezeActionTraceRecording) {
-        await this.findingRepo.markSessionCrashed(this.sessionId, new Date().toISOString(), 'Unhandled exception detected');
+        await this.findingRepo.markSessionCrashed(this.sessionId, this.userId, new Date().toISOString(), 'Unhandled exception detected');
       } else {
-        await this.findingRepo.markSessionCompleted(this.sessionId, new Date().toISOString());
+        await this.findingRepo.markSessionCompleted(this.sessionId, this.userId, new Date().toISOString());
       }
     } catch (error) {
       console.error('[ExplorationEngine] Failed to complete Safari session:', error);
@@ -1056,7 +1059,7 @@ export class ExplorationEngine {
   }
 
   private async persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void> {
-    if (!this.findingRepo || !this.sessionId) {
+    if (!this.findingRepo || !this.sessionId || !this.userId) {
       return;
     }
 
@@ -1072,6 +1075,7 @@ export class ExplorationEngine {
     try {
       await this.findingRepo.saveBrainConfig({
         sessionId: this.sessionId,
+        userId: this.userId,
         targetUrl: this.targetUrl,
         source,
         bias: brainState.bias,
@@ -1084,9 +1088,11 @@ export class ExplorationEngine {
 
   // Load the latest persisted brain for this URL (if any) and seed the scorer. Never throws.
   private async warmStartBrain(targetUrl: string, emitter: TelemetryEmitter): Promise<void> {
-    if (!this.findingRepo) return;
+    // No owner (guest run) means no private brain to restore — start cold rather
+    // than inheriting whatever another tenant last learned about this URL.
+    if (!this.findingRepo || !this.userId) return;
     try {
-      const prior = await this.findingRepo.loadLatestBrainConfig(targetUrl);
+      const prior = await this.findingRepo.loadLatestBrainConfig(targetUrl, this.userId);
       if (prior && Object.keys(prior.weights).length > 0) {
         this.scorer.importBrainState(prior);
         console.log(`[ExplorationEngine] Warm-started brain for ${targetUrl} (bias=${prior.bias.toFixed(3)})`);

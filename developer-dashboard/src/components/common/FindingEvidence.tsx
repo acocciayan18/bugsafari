@@ -38,7 +38,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
               {chipLabel(kind)}
             </span>
             <div className="min-w-0">
-              <div className="text-xs leading-relaxed text-(--text-primary) break-words">{instruction}</div>
+              <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
               {payloadDisplay && (
                 <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-[11px] text-(--status-critical-fg)">
                   {payloadDisplay}
@@ -75,7 +75,7 @@ function Reproduction({ view }: { view: FindingView }) {
     return <ReproductionChecklist steps={view.reproductionSteps} />;
   }
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-xs italic text-(--text-tertiary)">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-[13px] italic text-(--text-tertiary)">
       No deterministic reproduction steps were recorded for this fault.
     </div>
   );

@@ -2,6 +2,9 @@ import type { Express, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import type { AuthRequest } from './authMiddleware.js';
 import { requireAuth } from './authMiddleware.js';
+import { validatePasswordComplexity } from './authValidation.js';
+import { revokeAllForUser } from './refreshTokenService.js';
+import { writeLimiter, readLimiter, resetPasswordLimiter } from '../middleware/rateLimiter.js';
 
 /**
  * User Settings Types
@@ -171,16 +174,19 @@ export async function handleChangePassword(
             return;
         }
 
-        // Verify current password
+        // Verify current password. 403, not 401 — the caller IS authenticated, and
+        // a 401 here reads to the client as an expired session and forces a logout.
         const isValidPassword = await user.comparePassword(currentPassword);
         if (!isValidPassword) {
-            errorResponse(res, 401, 'Current password is incorrect');
+            errorResponse(res, 403, 'Current password is incorrect');
             return;
         }
 
-        // Validate new password strength
-        if (newPassword.length < 8) {
-            errorResponse(res, 400, 'Password must be at least 8 characters');
+        // Same complexity floor as signup and reset — a change path must not be
+        // the weakest way to set a password.
+        const complexityError = validatePasswordComplexity(newPassword);
+        if (complexityError) {
+            errorResponse(res, 400, complexityError);
             return;
         }
 
@@ -188,7 +194,14 @@ export async function handleChangePassword(
         user.password = newPassword;
         await user.save();
 
-        jsonResponse(res, 200, { message: 'Password changed successfully' });
+        // Changing the password terminates every session it established.
+        const revoked = await revokeAllForUser(userId, 'password-change');
+        console.log(`[Settings] Password changed for ${userId} (${revoked} session(s) revoked)`);
+
+        jsonResponse(res, 200, {
+            message: 'Password changed successfully. Please sign in again.',
+            sessionsRevoked: true,
+        });
     } catch (error) {
         console.error('[Settings] Error changing password:', error);
         next(error);
@@ -340,15 +353,16 @@ export async function handleUpdateSettings(
  */
 export function registerUserSettingsRoutes(app: Express): void {
     // User profile routes
-    app.get('/api/users/profile', requireAuth, handleGetProfile);
-    app.put('/api/users/profile', requireAuth, handleUpdateProfile);
+    app.get('/api/users/profile', readLimiter, requireAuth, handleGetProfile);
+    app.put('/api/users/profile', writeLimiter, requireAuth, handleUpdateProfile);
 
-    // Password change route
-    app.put('/api/users/password', requireAuth, handleChangePassword);
+    // Password change verifies currentPassword, so it gets the tight auth budget
+    // rather than the general write budget.
+    app.put('/api/users/password', resetPasswordLimiter, requireAuth, handleChangePassword);
 
     // Settings routes
-    app.get('/api/settings', requireAuth, handleGetSettings);
-    app.put('/api/settings', requireAuth, handleUpdateSettings);
+    app.get('/api/settings', readLimiter, requireAuth, handleGetSettings);
+    app.put('/api/settings', writeLimiter, requireAuth, handleUpdateSettings);
 
     console.log('[API] Registered user settings routes:');
     console.log('  GET  /api/users/profile');

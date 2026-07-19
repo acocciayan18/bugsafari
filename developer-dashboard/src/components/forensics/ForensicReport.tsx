@@ -117,7 +117,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
           <div className="mt-1 truncate text-sm font-medium text-(--text-secondary)" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-tertiary)">
+          <div className="mt-0.5 flex items-center gap-2 text-[13px] text-(--text-tertiary)">
             <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
@@ -168,7 +168,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 
   return (
     <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-(--status-neutral-fg)">
+      <div className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-(--status-neutral-fg)">
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
@@ -183,7 +183,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
       {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {aiAnalysis.recommendations.map((recommendation, idx) => (
-            <li key={idx} className="flex gap-2 text-xs text-(--text-secondary)">
+            <li key={idx} className="flex gap-2 text-[13px] text-(--text-secondary)">
               <span className="text-(--status-neutral-fg)">→</span>
               <span>{recommendation}</span>
             </li>
@@ -386,7 +386,7 @@ function ResultStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
       <div className="text-[9px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-bold text-(--text-primary)" title={value}>{value}</div>
+      <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={value}>{value}</div>
     </div>
   );
 }
@@ -402,7 +402,7 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
           <span className="font-mono text-[11px] font-semibold text-(--status-critical-fg)">HTTP {signal.statusCode}</span>
         )}
       </div>
-      <div className="mt-1 break-words text-xs text-(--text-primary)">{signal.message}</div>
+      <div className="mt-1 break-words text-[13px] text-(--text-primary)">{signal.message}</div>
       {signal.url && (
         <div className="mt-1 truncate font-mono text-[10px] text-(--text-secondary)" title={signal.url}>{signal.url}</div>
       )}
@@ -456,13 +456,13 @@ function VerificationResultModal({
         )}
 
         {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-md border border-(--status-stable-border) bg-(--status-stable-bg) p-3 text-xs text-(--status-stable-fg)">
+          <div className="mt-4 rounded-md border border-(--status-stable-border) bg-(--status-stable-bg) p-3 text-[13px] text-(--status-stable-fg)">
             The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-xs text-(--status-warning-fg)">
+          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
             {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
           </div>
         )}
@@ -473,7 +473,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
           
           <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -482,7 +482,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-(--surface-invert) px-3 py-1.5 text-xs font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
+          className="rounded-md bg-(--surface-invert) px-3 py-1.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           Close
         </button>
@@ -542,7 +542,7 @@ function FindingCard({
       {/* Header */}
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-(--text-oninvert)`}>
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-[13px] font-bold text-(--text-oninvert)`}>
             {index}
           </div>
           <div className="min-w-0">
@@ -592,12 +592,12 @@ function FindingCard({
         </div>
         <div className="min-w-0">
           <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-xs text-(--text-secondary)" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={bug.selector}>{bug.selector || 'N/A'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
             <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-(--text-secondary)" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+            <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={bug.payloadUsed}>{bug.payloadUsed}</div>
           </div>
         )}
       </div>
@@ -628,7 +628,7 @@ function CleanRunCard() {
     <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
       <span className="text-2xl">✅</span>
       <div className="text-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
-      <div className="text-xs text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
@@ -666,7 +666,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+      className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
         active
           ? 'border-(--border-strong) text-(--text-primary)'
           : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
@@ -680,7 +680,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
 
 function EmptyTab({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-xs italic text-(--text-tertiary)">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-[13px] italic text-(--text-tertiary)">
       {message}
     </div>
   );
@@ -713,7 +713,7 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
               )}
             </div>
             <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={row.url}>{row.url}</div>
-            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-(--text-primary)">{row.message}</div>}
+            {row.message && !row.ok && <div className="mt-1 break-words text-[13px] text-(--text-primary)">{row.message}</div>}
           </li>
         );
       })}
@@ -765,10 +765,10 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
-        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary)">
+        <span className="text-[13px] font-semibold uppercase tracking-wider text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-xs text-(--text-tertiary)">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
       </button>
       {isOpen && (
         <div className="border-t border-(--border-hairline) px-4 py-4">
@@ -854,7 +854,7 @@ export default function ForensicReport() {
       <div className="flex h-full w-full items-center justify-center bg-(--surface-panel)">
         <div className="text-center">
           <div className="text-sm font-semibold text-(--text-secondary)">Loading forensic report…</div>
-          <div className="mt-2 text-xs text-(--text-tertiary)">Fetching the latest session details from the backend.</div>
+          <div className="mt-2 text-[13px] text-(--text-tertiary)">Fetching the latest session details from the backend.</div>
         </div>
       </div>
     );
@@ -865,7 +865,7 @@ export default function ForensicReport() {
       <div className="flex h-full w-full items-center justify-center bg-(--surface-panel) px-6">
         <div className="max-w-md text-center">
           <div className="text-sm font-semibold text-(--status-critical-fg)">Failed to load report</div>
-          <div className="mt-2 text-xs text-(--text-tertiary)">{error || 'No report data was returned for this session.'}</div>
+          <div className="mt-2 text-[13px] text-(--text-tertiary)">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
     );
@@ -882,7 +882,7 @@ export default function ForensicReport() {
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
          Back to History
@@ -934,7 +934,7 @@ export default function ForensicReport() {
       {/* Footer */}
       <footer className="border-t border-(--border-hairline) bg-(--surface-panel) px-6 py-4">
         <div className="text-center">
-          <span className="font-mono text-xs text-(--text-tertiary)">END OF FORENSIC REPORT</span>
+          <span className="font-mono text-[13px] text-(--text-tertiary)">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>

@@ -49,7 +49,7 @@ export default function NetworkTabPanel({
     return (
       <div className="text-(--text-secondary) py-4">
         <div className="text-(--text-primary) mb-2 font-bold">Network Failures</div>
-        <div className="text-(--text-tertiary) italic text-xs leading-relaxed">
+        <div className="text-(--text-tertiary) italic text-[13px] leading-relaxed">
           No network failures detected.
         </div>
       </div>
@@ -92,7 +92,7 @@ export default function NetworkTabPanel({
           >
             <div className="px-3 py-2 flex items-center justify-between border-b border-(--border-hairline)">
               <div className="flex items-center gap-2">
-                <span className={`font-mono text-xs font-bold ${textColor}`}>
+                <span className={`font-mono text-[13px] font-bold ${textColor}`}>
                   {method} {statusCode || 'ERR'}
                 </span>
                 {count > 1 && (
@@ -100,7 +100,7 @@ export default function NetworkTabPanel({
                 )}
               </div>
             </div>
-            <div className="px-3 py-2 text-xs font-mono text-(--text-secondary) break-all">
+            <div className="px-3 py-2 text-[13px] font-mono text-(--text-secondary) break-all">
               {url}
             </div>
             {(message || aiDiagnostics) && (

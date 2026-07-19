@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import type { UserProfile, UserSettings, ProfileUpdateData } from '../types';
 import { loadGuestSettings, saveGuestSettings, clearGuestSettings } from '../utils/settingsStorage';
 import { buildAuthHeaders } from '../utils/authHeaders';
+import { clearSession } from '../utils/authRefresh';
 
 // Empty string → Vite proxy routes /api/* to backend (matches AuthContext.tsx behaviour)
 const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? '';
@@ -241,7 +242,12 @@ export function useUserSettings() {
             }
 
             setPasswordSuccess(true);
-            toast.success('Password changed successfully');
+            // The server revoked every session established with the old password,
+            // so the stored refresh token is already dead — drop it rather than
+            // letting the next rotation fail as a "revoked session" alarm.
+            clearSession();
+            toast.success('Password changed. Please sign in again.');
+            window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
             return true;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to change password';

@@ -19,25 +19,15 @@ export function decodeTokenExpiration(token: string): { exp: number } | null {
   }
 }
 
+const DEFAULT_BUFFER_SECONDS = 120;
+
 /**
- * True when the token is missing an `exp` claim or sits within the 2-minute
- * refresh buffer. The buffer prevents unnecessary refresh attempts while the
- * token still has meaningful remaining time.
+ * True when the token is missing an `exp` claim or falls within `bufferSeconds`
+ * of expiry. The buffer prevents a request from racing the expiry boundary; pass
+ * a larger value to drive proactive renewal ahead of time.
  */
-export function isTokenExpired(token: string): boolean {
+export function isTokenExpired(token: string, bufferSeconds: number = DEFAULT_BUFFER_SECONDS): boolean {
   const payload = decodeTokenExpiration(token);
-  if (!payload || !payload.exp) {
-    console.log('[tokenUtils] Invalid token payload (no exp claim)');
-    return true;
-  }
-  // FIX: Increased buffer from 30 seconds to 120 seconds (2 minutes)
-  // This prevents unnecessary token refresh attempts when token still has valid remaining time
-  const timeRemainingMs = (payload.exp * 1000) - Date.now();
-  const isExpired = timeRemainingMs < 120000; // 2 minute buffer
-  if (isExpired) {
-    console.log(`[tokenUtils] Token expired or near expiry. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  } else {
-    console.log(`[tokenUtils] Token valid. Time remaining: ${Math.round(timeRemainingMs/1000)}s`);
-  }
-  return isExpired;
+  if (!payload || !payload.exp) return true;
+  return (payload.exp * 1000) - Date.now() < bufferSeconds * 1000;
 }

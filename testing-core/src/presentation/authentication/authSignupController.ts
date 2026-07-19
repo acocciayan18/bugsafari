@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { AUTH_CONFIG } from './authConfig.js';
+import { issueTokenPair } from './refreshTokenService.js';
 import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
 
 /**
@@ -65,12 +64,7 @@ export async function handleSignup(
         password: trimmedPassword,
       });
 
-      // Generate JWT token
-      const token = jwt.sign(
-        { userId: newUser._id.toString(), email: trimmedEmail },
-        AUTH_CONFIG.JWT_SECRET,
-        { expiresIn: AUTH_CONFIG.JWT_EXPIRES_IN } as jwt.SignOptions,
-      );
+      const tokens = await issueTokenPair(newUser._id.toString(), trimmedEmail);
 
       console.log(`[Auth] New user registered: ${trimmedEmail}`);
 
@@ -80,15 +74,19 @@ export async function handleSignup(
           id: newUser._id.toString(),
           email: trimmedEmail,
         },
-        token,
+        token: tokens.token,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
       });
-    } catch (dbError: any) {
-      // Log internals server-side only; never leak DB/error detail to the client.
-      console.error('❌ [BACKEND SIGNUP CRASH]:', dbError.message, dbError.stack);
-      response.status(500).json({ error: 'Registration database fault' });
+    } catch (dbError) {
+      // Duplicate key from the unique email index races the existence check above.
+      if ((dbError as { code?: number }).code === 11000) {
+        response.status(409).json({ error: 'An account with this email already exists' });
+        return;
+      }
+      next(dbError);
     }
-  } catch (err: any) {
-    console.error('❌ [BACKEND SIGNUP CRASH]:', err.message, err.stack);
-    response.status(500).json({ error: 'Registration failed' });
+  } catch (err) {
+    next(err);
   }
 }

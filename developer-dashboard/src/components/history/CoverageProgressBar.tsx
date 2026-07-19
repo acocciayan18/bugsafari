@@ -53,7 +53,7 @@ export default function CoverageProgressBar({
 
       {/* Percentage Label */}
       {showLabel && (
-        <span className="font-mono text-xs text-(--text-secondary) min-w-[3ch]">
+        <span className="font-mono text-[13px] text-(--text-secondary) min-w-[3ch]">
           {clampedPercentage}%
         </span>
       )}
@@ -84,7 +84,7 @@ export function CoverageDisplay({ percentage }: { percentage: number }) {
       {/* Percentage with icon */}
       <div className={`flex items-center gap-1 ${band.text}`}>
        <ChartColumnBig className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-        <span className="text-xs font-semibold">{clampedPercentage}%</span>
+        <span className="text-[13px] font-semibold">{clampedPercentage}%</span>
       </div>
     </div>
   );

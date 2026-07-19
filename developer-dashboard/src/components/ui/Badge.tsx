@@ -20,7 +20,7 @@ interface BadgeProps {
 /** Watchtower Badges — status/severity pill, mono type, pill radius (sole exception to sharp radii). */
 export function Badge({ variant = 'default', children, className = '', title }: BadgeProps) {
   return (
-    <span title={title} className={`inline-flex items-center gap-1 rounded-(--radius-pill,999px) px-2 py-0.5 text-xs font-mono font-medium tracking-[0.08em] whitespace-nowrap ${VARIANT_CLASSES[variant]} ${className}`}>
+    <span title={title} className={`inline-flex items-center gap-1 rounded-(--radius-pill,999px) px-2 py-0.5 text-[13px] font-mono font-medium tracking-[0.08em] whitespace-nowrap ${VARIANT_CLASSES[variant]} ${className}`}>
       {children}
     </span>
   );

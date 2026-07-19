@@ -1,11 +1,18 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { AUTH_CONFIG, verifyTokenSync } from './authConfig.js';
+import { rotateRefreshToken, revokeToken, type RotationFailure } from './refreshTokenService.js';
+
+// A failed rotation always reads the same to the client — distinguishing "unknown
+// token" from "replayed token" would tell an attacker which of their values landed.
+const GENERIC_FAILURE = 'Session expired. Please log in again.';
+
+function statusFor(reason: RotationFailure): number {
+  return reason === 'MALFORMED' ? 400 : 401;
+}
 
 /**
  * POST /api/auth/refresh
- * Refresh an existing JWT token - extends session without requiring password
- * Uses the existing token to verify user identity, issues new token with same expiration
+ * Exchange a refresh token for a new access/refresh pair. The presented token is
+ * revoked on use; replaying a revoked one burns the entire rotation family.
  */
 export async function handleTokenRefresh(
   request: Request,
@@ -13,45 +20,52 @@ export async function handleTokenRefresh(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const authHeader = request.headers.authorization;
+    const presented = (request.body as { refreshToken?: unknown } | undefined)?.refreshToken;
+    const result = await rotateRefreshToken(presented);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      response.status(401).json({
-        error: 'Authentication required. Present valid token to refresh.',
+    if (!result.ok) {
+      console.warn(`[Auth] Refresh rejected: ${result.reason}`);
+      response.status(statusFor(result.reason)).json({
+        error: GENERIC_FAILURE,
+        code: result.reason === 'REUSE_DETECTED' ? 'SESSION_REVOKED' : 'REFRESH_INVALID',
       });
       return;
     }
 
-    const oldToken = authHeader.substring(7);
-
-    // Verify the existing token
-    const decoded = verifyTokenSync(oldToken);
-    if (!decoded) {
-      response.status(401).json({
-        error: 'Invalid or expired token. Please log in again.',
-      });
+    const { UserModel } = await import('../../infrastructure/database/models/UserModel.js');
+    const user = await UserModel.findById(result.userId).select('email');
+    if (!user) {
+      response.status(401).json({ error: GENERIC_FAILURE, code: 'REFRESH_INVALID' });
       return;
     }
 
-    // Generate new JWT token with same user info
-    const newToken = jwt.sign(
-      { userId: decoded.userId, email: decoded.email },
-      AUTH_CONFIG.JWT_SECRET,
-      { expiresIn: AUTH_CONFIG.JWT_EXPIRES_IN } as jwt.SignOptions,
-    );
-
-    console.log(`[Auth] Token refreshed for user: ${decoded.email}`);
-
+    console.log(`[Auth] Token rotated for user: ${user.email}`);
     response.json({
       ok: true,
-      token: newToken,
-      user: {
-        id: decoded.userId,
-        email: decoded.email,
-      },
+      token: result.tokens.token,
+      refreshToken: result.tokens.refreshToken,
+      expiresIn: result.tokens.expiresIn,
+      user: { id: result.userId, email: user.email },
     });
   } catch (err) {
-    console.error('[Auth] Token refresh error:', err);
-    response.status(500).json({ error: 'Failed to refresh token' });
+    next(err);
+  }
+}
+
+/**
+ * POST /api/auth/logout
+ * Revoke the presented refresh token. Always answers 200 so a stale or absent
+ * token can't be probed for validity.
+ */
+export async function handleLogout(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await revokeToken((request.body as { refreshToken?: unknown } | undefined)?.refreshToken, 'logout');
+    response.json({ ok: true });
+  } catch (err) {
+    next(err);
   }
 }

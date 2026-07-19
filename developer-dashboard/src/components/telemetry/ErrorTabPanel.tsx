@@ -45,7 +45,7 @@ const OccurrenceBadge = ({ count }: { count: number }) => {
 const MetaCell = ({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) => (
   <div className="min-w-0">
     <div className="text-[10px] font-semibold text-(--text-tertiary) uppercase tracking-wide">{label}</div>
-    <div className={`text-xs ${mono ? 'font-mono' : ''} text-(--text-secondary) whitespace-normal break-words`}>{value}</div>
+    <div className={`text-[13px] ${mono ? 'font-mono' : ''} text-(--text-secondary) whitespace-normal break-words`}>{value}</div>
   </div>
 );
 
@@ -73,7 +73,7 @@ function LiveFindingCard({
     <div className="bg-(--surface-panel) border border-(--border-hairline) border-l-4 border-l-(--status-critical-fg) rounded-lg overflow-hidden">
       <div className="px-4 py-3 flex items-center justify-between border-b border-(--border-hairline)">
         <div className="flex items-center gap-3">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-xs font-bold">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-[13px] font-bold">
             {icon}
           </div>
           <div className="min-w-0">
@@ -100,7 +100,7 @@ function LiveFindingCard({
       <AttributionBadges attribution={view.attribution} />
 
       <div className="px-4 py-3 bg-(--surface-panel) border-b border-(--border-hairline) max-h-40 overflow-y-auto custom-scrollbar">
-        <div className="text-xs font-mono whitespace-pre-wrap break-words leading-relaxed text-(--text-secondary)">
+        <div className="text-[13px] font-mono whitespace-pre-wrap break-words leading-relaxed text-(--text-secondary)">
           {view.message}
         </div>
         <AiDiagnosticCard ai={aiDiagnostics} />
