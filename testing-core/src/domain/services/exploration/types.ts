@@ -18,6 +18,7 @@ import type { ChaosTransactionManager } from '../../chaos/ChaosTransactionManage
 import type { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
+import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import type {
   BackNavObservation,
   BrokenNavigationFinder,
@@ -161,6 +162,8 @@ export interface StabilityMonitorDeps {
   onApiFailure(): void;
   /** Record one raw network failure (>=400 response or non-aborted requestfailed) into the run-scoped cascade tracker, ahead of any reportability filtering. */
   recordNetworkFailure(): void;
+  /** Interaction the engine was executing at `atMs`, correlating a request to its triggering control. */
+  getInteractionContext(atMs: number): InteractionContext | null;
 }
 
 export interface StateRestorerDeps {

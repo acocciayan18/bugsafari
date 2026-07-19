@@ -74,16 +74,16 @@ export default function NetworkTabPanel({
         const isClientError = statusCode !== undefined && statusCode >= 400 && statusCode < 500;
 
         const borderColor = isServerError
-          ? 'border-[var(--status-critical-border)]'
+          ? 'border-(--status-critical-border)'
           : isClientError
-            ? 'border-[var(--status-warning-border)]'
+            ? 'border-(--status-warning-border)'
             : 'border-(--border-hairline)';
         const bgColor = isServerError
-          ? 'bg-[var(--status-critical-bg)]'
+          ? 'bg-(--status-critical-bg)'
           : isClientError
-            ? 'bg-[var(--status-warning-bg)]'
-            : 'bg-[var(--surface-panel)]';
-        const textColor = 'text-[var(--status-critical-fg)]';
+            ? 'bg-(--status-warning-bg)'
+            : 'bg-(--surface-panel)';
+        const textColor = 'text-(--status-critical-fg)';
 
         return (
           <div

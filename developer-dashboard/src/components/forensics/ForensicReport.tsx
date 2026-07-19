@@ -31,17 +31,15 @@ import type {
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
-import ReproductionChecklist, { ObservationsBlock } from '../telemetry/ReproductionChecklist';
 import {
   actionStepsToMarkdown,
-  chipClass,
-  chipLabel,
-  humanizeActionStep,
   splitObservations,
   toMarkdownChecklist,
 } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
-import { AttributionBadges, CopyButton, ExpandableCodeBlock, SeverityBadge, SuggestedFixBlock } from '../common/ForensicCardKit';
+import { AttributionBadges, CopyButton, SeverityBadge } from '../common/ForensicCardKit';
+import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
+import { caughtBugToFindingView } from '../../utils/findingView';
 import { Modal } from '../ui/Modal';
 import {
   useRegressionVerifier,
@@ -73,15 +71,15 @@ function formatDate(value?: string): string {
 }
 
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
-  if (status === 'CRASHED') return { text: 'text-[var(--status-critical-fg)]', dot: 'bg-[var(--status-critical-fg)]', bg: 'bg-[var(--status-critical-bg)]', border: 'border-[var(--status-critical-border)]' };
-  if (status === 'HALTED') return { text: 'text-[var(--status-warning-fg)]', dot: 'bg-[var(--status-warning-fg)]', bg: 'bg-[var(--status-warning-bg)]', border: 'border-[var(--status-warning-border)]' };
-  return { text: 'text-[var(--status-stable-fg)]', dot: 'bg-[var(--status-stable-fg)]', bg: 'bg-[var(--status-stable-bg)]', border: 'border-[var(--status-stable-border)]' };
+  if (status === 'CRASHED') return { text: 'text-(--status-critical-fg)', dot: 'bg-(--status-critical-fg)', bg: 'bg-(--status-critical-bg)', border: 'border-(--status-critical-border)' };
+  if (status === 'HALTED') return { text: 'text-(--status-warning-fg)', dot: 'bg-(--status-warning-fg)', bg: 'bg-(--status-warning-bg)', border: 'border-(--status-warning-border)' };
+  return { text: 'text-(--status-stable-fg)', dot: 'bg-(--status-stable-fg)', bg: 'bg-(--status-stable-bg)', border: 'border-(--status-stable-border)' };
 }
 
 function riskTheme(score: number): string {
-  if (score >= 70) return 'text-[var(--status-critical-fg)]';
-  if (score >= 40) return 'text-[var(--status-warning-fg)]';
-  return 'text-[var(--status-stable-fg)]';
+  if (score >= 70) return 'text-(--status-critical-fg)';
+  if (score >= 40) return 'text-(--status-warning-fg)';
+  return 'text-(--status-stable-fg)';
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -89,10 +87,10 @@ function riskTheme(score: number): string {
 // is the at-a-glance context every reader needs immediately).
 // ─────────────────────────────────────────────────────────────
 
-function StatBlock({ label, value, valueClassName = 'text-[var(--text-primary)]' }: { label: string; value: ReactNode; valueClassName?: string }) {
+function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-caption font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{label}</div>
+      <div className="text-caption font-semibold uppercase tracking-wider text-(--text-secondary)">{label}</div>
       <div className={`mt-0.5 text-sm font-bold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
@@ -118,8 +116,8 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span className={`h-3 w-3 rounded-full ${theme.dot}`} />
             <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
           </div>
-          <div className="mt-1 truncate text-sm font-medium text-[var(--text-secondary)]" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+          <div className="mt-1 truncate text-sm font-medium text-(--text-secondary)" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-(--text-tertiary)">
             <span>Run {sessionId}</span>
             <span>•</span>
             <span>Started {formatDate(report.date)}</span>
@@ -127,29 +125,29 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-[var(--border-hairline)] pt-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-(--border-hairline) pt-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatBlock label="Duration" value={formatDuration(report.duration)} />
         <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
-        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-[var(--status-critical-fg)]' : 'text-[var(--status-stable-fg)]'} />
+        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-(--status-critical-fg)' : 'text-(--status-stable-fg)'} />
         <StatBlock label="Pages" value={pagesVisited} />
         <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
         <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
       </div>
 
       {routes.length > 0 && (
-        <div className="mt-4 border-t border-[var(--border-hairline)] pt-3">
+        <div className="mt-4 border-t border-(--border-hairline) pt-3">
           <button
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
-            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-(--text-secondary) transition-colors hover:text-(--text-primary)"
           >
             <span>{showRoutes ? '▼' : '▶'}</span>
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-[var(--text-secondary)]">
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-(--text-secondary)">
               {routes.map((route, idx) => (
-                <li key={idx} className="truncate border-b border-[var(--border-hairline)] py-1 last:border-0" title={route}>{route}</li>
+                <li key={idx} className="truncate border-b border-(--border-hairline) py-1 last:border-0" title={route}>{route}</li>
               ))}
             </ul>
           )}
@@ -169,24 +167,24 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
   if (!aiAnalysis || (!aiAnalysis.rootCause && !aiAnalysis.recommendations?.length)) return null;
 
   return (
-    <section className="rounded-lg border border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] p-5">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--status-neutral-fg)]">
+    <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-(--status-neutral-fg)">
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--status-neutral-fg)]">
+          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-[10px] font-semibold uppercase text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
       </div>
       {aiAnalysis.rootCause && (
-        <p className="mt-3 text-sm leading-relaxed text-[var(--text-primary)]">{aiAnalysis.rootCause}</p>
+        <p className="mt-3 text-sm leading-relaxed text-(--text-primary)">{aiAnalysis.rootCause}</p>
       )}
       {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {aiAnalysis.recommendations.map((recommendation, idx) => (
-            <li key={idx} className="flex gap-2 text-xs text-[var(--text-secondary)]">
-              <span className="text-[var(--status-neutral-fg)]">→</span>
+            <li key={idx} className="flex gap-2 text-xs text-(--text-secondary)">
+              <span className="text-(--status-neutral-fg)">→</span>
               <span>{recommendation}</span>
             </li>
           ))}
@@ -204,40 +202,8 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 // Steps sections.
 // ─────────────────────────────────────────────────────────────
 
-// Ordered structured trace — one chip row per step (action-type chip + imperative
-// instruction + payload code chip), shared by the per-finding block and the appendix.
-function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
-  return (
-    <ol className="max-h-96 space-y-1.5 overflow-y-auto">
-      {steps.map((step) => {
-        const { kind, instruction, payloadDisplay } = humanizeActionStep(step);
-        return (
-          <li
-            key={step.stepNumber}
-            className="flex items-start gap-2 rounded border border-[var(--border-hairline)] bg-[var(--surface-panel)] px-2.5 py-1.5"
-          >
-            <span className="mt-px text-[11px] font-mono text-[var(--text-tertiary)]">{step.stepNumber}</span>
-            <span className={`mt-px rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
-              {chipLabel(kind)}
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs leading-relaxed text-[var(--text-primary)] break-words">{instruction}</div>
-              {payloadDisplay && (
-                <code className="mt-1 inline-block max-w-full break-words rounded bg-[var(--status-critical-bg)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--status-critical-fg)]">
-                  {payloadDisplay}
-                </code>
-              )}
-              <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
-                {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
-                {formatDate(step.timestamp)}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
+// ActionStepList (the structured, per-step trace) is shared with the live Errors
+// tab via ../common/FindingEvidence — imported above, reused here in the appendix.
 
 function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
@@ -296,52 +262,52 @@ interface VerdictMeta {
 const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
   RESOLVED: {
     label: 'Resolved',
-    badge: 'bg-[var(--status-stable-fg)] text-[var(--text-oninvert)] hover:opacity-90',
-    chip: 'bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)] border border-[var(--status-stable-border)]',
-    dot: 'bg-[var(--status-stable-fg)]',
-    cardBorder: 'border-[var(--status-stable-border)]',
-    cardHeaderBg: 'bg-[var(--status-stable-bg)] border-[var(--status-stable-border)]',
-    cardTitle: 'text-[var(--status-stable-fg)]',
-    cardSub: 'text-[var(--status-stable-fg)]',
-    numberBg: 'bg-[var(--status-stable-fg)]',
-    modalBar: 'bg-[var(--status-stable-fg)]',
+    badge: 'bg-(--status-stable-fg) text-(--text-oninvert) hover:opacity-90',
+    chip: 'bg-(--status-stable-bg) text-(--status-stable-fg) border border-(--status-stable-border)',
+    dot: 'bg-(--status-stable-fg)',
+    cardBorder: 'border-(--status-stable-border)',
+    cardHeaderBg: 'bg-(--status-stable-bg) border-(--status-stable-border)',
+    cardTitle: 'text-(--status-stable-fg)',
+    cardSub: 'text-(--status-stable-fg)',
+    numberBg: 'bg-(--status-stable-fg)',
+    modalBar: 'bg-(--status-stable-fg)',
     icon: checkIcon,
   },
   STILL_ACTIVE: {
     label: 'Still Active',
-    badge: 'bg-[var(--status-critical-fg)] text-[var(--text-oninvert)] hover:opacity-90',
-    chip: 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)] border border-[var(--status-critical-border)]',
-    dot: 'bg-[var(--status-critical-fg)]',
-    cardBorder: 'border-[var(--status-critical-border)]',
-    cardHeaderBg: 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)]',
-    cardTitle: 'text-[var(--status-critical-fg)]',
-    cardSub: 'text-[var(--status-critical-fg)]',
-    numberBg: 'bg-[var(--status-critical-fg)]',
-    modalBar: 'bg-[var(--status-critical-fg)]',
+    badge: 'bg-(--status-critical-fg) text-(--text-oninvert) hover:opacity-90',
+    chip: 'bg-(--status-critical-bg) text-(--status-critical-fg) border border-(--status-critical-border)',
+    dot: 'bg-(--status-critical-fg)',
+    cardBorder: 'border-(--status-critical-border)',
+    cardHeaderBg: 'bg-(--status-critical-bg) border-(--status-critical-border)',
+    cardTitle: 'text-(--status-critical-fg)',
+    cardSub: 'text-(--status-critical-fg)',
+    numberBg: 'bg-(--status-critical-fg)',
+    modalBar: 'bg-(--status-critical-fg)',
     icon: alertIcon,
   },
   INCONCLUSIVE: {
     label: 'Inconclusive',
-    badge: 'bg-[var(--status-warning-fg)] text-[var(--text-oninvert)] hover:opacity-90',
-    chip: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)] border border-[var(--status-warning-border)]',
-    dot: 'bg-[var(--status-warning-fg)]',
-    cardBorder: 'border-[var(--status-warning-border)]',
-    cardHeaderBg: 'bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]',
-    cardTitle: 'text-[var(--status-warning-fg)]',
-    cardSub: 'text-[var(--status-warning-fg)]',
-    numberBg: 'bg-[var(--status-warning-fg)]',
-    modalBar: 'bg-[var(--status-warning-fg)]',
+    badge: 'bg-(--status-warning-fg) text-(--text-oninvert) hover:opacity-90',
+    chip: 'bg-(--status-warning-bg) text-(--status-warning-fg) border border-(--status-warning-border)',
+    dot: 'bg-(--status-warning-fg)',
+    cardBorder: 'border-(--status-warning-border)',
+    cardHeaderBg: 'bg-(--status-warning-bg) border-(--status-warning-border)',
+    cardTitle: 'text-(--status-warning-fg)',
+    cardSub: 'text-(--status-warning-fg)',
+    numberBg: 'bg-(--status-warning-fg)',
+    modalBar: 'bg-(--status-warning-fg)',
     icon: questionIcon,
   },
 };
 
 // Base (unverified) finding theme — the existing "confirmed bug" look, mapped to critical status tokens.
 const BASE_CARD = {
-  cardBorder: 'border-[var(--status-critical-border)]',
-  cardHeaderBg: 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)]',
-  cardTitle: 'text-[var(--status-critical-fg)]',
-  cardSub: 'text-[var(--status-critical-fg)]',
-  numberBg: 'bg-[var(--status-critical-fg)]',
+  cardBorder: 'border-(--status-critical-border)',
+  cardHeaderBg: 'bg-(--status-critical-bg) border-(--status-critical-border)',
+  cardTitle: 'text-(--status-critical-fg)',
+  cardSub: 'text-(--status-critical-fg)',
+  numberBg: 'bg-(--status-critical-fg)',
 };
 
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
@@ -371,7 +337,7 @@ function VerifyFixControl({
   if (status.state === 'running') {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-md bg-[var(--surface-inset)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]"
+        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary)"
         aria-live="polite"
       >
         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -401,7 +367,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
@@ -418,27 +384,27 @@ function VerifyFixControl({
 
 function ResultStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-bold text-[var(--text-primary)]" title={value}>{value}</div>
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</div>
+      <div className="mt-0.5 truncate text-xs font-bold text-(--text-primary)" title={value}>{value}</div>
     </div>
   );
 }
 
 function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
-    <li className="rounded-md border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3">
+    <li className="rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-[var(--status-critical-fg)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--text-oninvert)]">
+        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
-          <span className="font-mono text-[11px] font-semibold text-[var(--status-critical-fg)]">HTTP {signal.statusCode}</span>
+          <span className="font-mono text-[11px] font-semibold text-(--status-critical-fg)">HTTP {signal.statusCode}</span>
         )}
       </div>
-      <div className="mt-1 break-words text-xs text-[var(--text-primary)]">{signal.message}</div>
+      <div className="mt-1 break-words text-xs text-(--text-primary)">{signal.message}</div>
       {signal.url && (
-        <div className="mt-1 truncate font-mono text-[10px] text-[var(--text-secondary)]" title={signal.url}>{signal.url}</div>
+        <div className="mt-1 truncate font-mono text-[10px] text-(--text-secondary)" title={signal.url}>{signal.url}</div>
       )}
     </li>
   );
@@ -459,7 +425,7 @@ function VerificationResultModal({
   return (
     <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-lg">
       {/* Accent header keyed to the verdict tone */}
-      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-[var(--text-oninvert)] ${meta.modalBar}`}>
+      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-(--text-oninvert) ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
@@ -467,8 +433,8 @@ function VerificationResultModal({
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto bg-[var(--surface-panel)] px-5 py-4">
-        <p className="text-sm leading-relaxed text-[var(--text-primary)]">{result.summary}</p>
+      <div className="max-h-[70vh] overflow-y-auto bg-(--surface-panel) px-5 py-4">
+        <p className="text-sm leading-relaxed text-(--text-primary)">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
@@ -478,7 +444,7 @@ function VerificationResultModal({
 
         {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-secondary)">
               Reproduced Signals ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -490,24 +456,24 @@ function VerificationResultModal({
         )}
 
         {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-md border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] p-3 text-xs text-[var(--status-stable-fg)]">
+          <div className="mt-4 rounded-md border border-(--status-stable-border) bg-(--status-stable-bg) p-3 text-xs text-(--status-stable-fg)">
             The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-md border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-fg)]">
+          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-xs text-(--status-warning-fg)">
             {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
           </div>
         )}
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-[var(--border-hairline)] bg-[var(--surface-panel)] px-5 py-3">
+      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-(--border-hairline) bg-(--surface-panel) px-5 py-3">
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
+          className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
           
           <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -516,7 +482,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-[var(--surface-invert)] px-3 py-1.5 text-xs font-semibold text-[var(--text-oninvert)] transition-colors hover:bg-[var(--surface-invert-hover)]"
+          className="rounded-md bg-(--surface-invert) px-3 py-1.5 text-xs font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           Close
         </button>
@@ -540,10 +506,13 @@ function FindingCard({
   status: VerifyStatus;
   onVerify: (request: VerifyFixRequest) => void;
 }) {
-  const [stackExpanded, setStackExpanded] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
+  // Normalized view — the shared <FindingEvidence> renders the reproduction /
+  // screenshot / resolved-frames / suggested-fix / stack sections identically to
+  // the live Errors tab.
+  const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
 
   // A verifiable finding needs both a persisted session id and a stable bugId.
   const canVerify = Boolean(sessionId) && Boolean(bug.bugId);
@@ -569,11 +538,11 @@ function FindingCard({
   }, [settled]);
 
   return (
-    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-[var(--surface-panel)] shadow-sm`}>
+    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
       {/* Header */}
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-[var(--text-oninvert)]`}>
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-xs font-bold text-(--text-oninvert)`}>
             {index}
           </div>
           <div className="min-w-0">
@@ -583,7 +552,7 @@ function FindingCard({
               {occurrences > 1 && (
                 <span
                   title={`This fault occurred ${occurrences} times this session`}
-                  className="inline-flex shrink-0 items-center rounded-full bg-[var(--surface-invert)] px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-[var(--text-oninvert)]"
+                  className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none text-(--text-oninvert)"
                 >
                   ×{occurrences}
                 </span>
@@ -618,69 +587,26 @@ function FindingCard({
       {/* Message / Selector / Payload grid */}
       <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Message</div>
-          <div className="mt-0.5 text-sm text-[var(--text-primary)]">{bug.message || 'No details provided'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Message</div>
+          <div className="mt-0.5 text-sm text-(--text-primary)">{bug.message || 'No details provided'}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-xs text-[var(--text-secondary)]" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
+          <div className="mt-0.5 truncate font-mono text-xs text-(--text-secondary)" title={bug.selector}>{bug.selector || 'N/A'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
-            <div className="text-caption font-semibold uppercase tracking-wide text-[var(--text-secondary)]">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-xs text-[var(--text-secondary)]" title={bug.payloadUsed}>{bug.payloadUsed}</div>
+            <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Payload Used</div>
+            <div className="mt-0.5 truncate font-mono text-xs text-(--text-secondary)" title={bug.payloadUsed}>{bug.payloadUsed}</div>
           </div>
         )}
       </div>
 
-      {/* Reproduction steps — prefer the structured, replayable trace (same timeline
-          Verify Fix replays); fall back to the prose checklist, then the empty message.
-          Observed results live in reproductionSteps, so surface them beneath the
-          structured trace too (the prose checklist splits them out on its own). */}
-      <div className="px-4 pt-3">
-        {bug.actionSteps && bug.actionSteps.length > 0 ? (
-          <div>
-            <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-              Reproduction Trace ({bug.actionSteps.length} steps)
-            </div>
-            <ActionStepList steps={bug.actionSteps} />
-            <ObservationsBlock observations={splitObservations(bug.reproductionSteps ?? []).observations} />
-          </div>
-        ) : bug.reproductionSteps && bug.reproductionSteps.length > 0 ? (
-          <ReproductionChecklist steps={bug.reproductionSteps} />
-        ) : (
-          <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-3 text-xs italic text-[var(--text-tertiary)]">
-            No deterministic reproduction steps were recorded for this fault.
-          </div>
-        )}
+      {/* Shared evidence: reproduction, screenshot, resolved source frames, suggested
+          fix, and stack trace — rendered identically to the live Errors tab. */}
+      <div className="pb-2">
+        <FindingEvidence view={view} />
       </div>
-
-      {/* Suggested fix */}
-      <div className="px-4 pt-3 pb-4">
-        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">Suggested Fix</div>
-        <SuggestedFixBlock advice={bug.advice} />
-      </div>
-
-      {/* Original source frames resolved from the target's source maps (best-effort) */}
-      {bug.resolvedStackTrace && (
-        <div className="px-4 pt-3">
-          <div className="mb-2 text-caption font-bold uppercase tracking-wider text-[var(--text-secondary)]">Original source (via source maps)</div>
-          <pre className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]">
-            {bug.resolvedStackTrace}
-          </pre>
-        </div>
-      )}
-
-      {/* Stack trace — kept as a disclosure since it's verbose/noisy evidence, not primary narrative */}
-      {bug.stackTrace && (
-        <ExpandableCodeBlock
-          title="Stack Trace"
-          content={bug.stackTrace}
-          isExpanded={stackExpanded}
-          onToggle={() => setStackExpanded((prev) => !prev)}
-          className="max-h-96"
-        />
-      )}
 
       {/* Dedicated verification outcome surface (auto-opens on completion) */}
       {settled && showResult && (
@@ -699,10 +625,10 @@ function FindingCard({
 
 function CleanRunCard() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
       <span className="text-2xl">✅</span>
-      <div className="text-sm font-semibold text-[var(--status-stable-fg)]">No findings were recorded for this session</div>
-      <div className="text-xs text-[var(--status-stable-fg)]">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
+      <div className="text-xs text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
@@ -729,7 +655,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--text-secondary)]">
+    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[10px] leading-none text-(--text-secondary)">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -742,8 +668,8 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
       onClick={onClick}
       className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
         active
-          ? 'border-[var(--border-strong)] text-[var(--text-primary)]'
-          : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          ? 'border-(--border-strong) text-(--text-primary)'
+          : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
       }`}
     >
       {label}
@@ -754,7 +680,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
 
 function EmptyTab({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-4 py-8 text-center text-xs italic text-[var(--text-tertiary)]">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-xs italic text-(--text-tertiary)">
       {message}
     </div>
   );
@@ -763,9 +689,9 @@ function EmptyTab({ message }: { message: string }) {
 // Full network log — every request (incl. successful), mirroring the live Network tab.
 function statusTint(row: ForensicNetworkLog): { border: string; bg: string; status: string } {
   const code = row.statusCode ?? 0;
-  if (!row.ok || code >= 500) return { border: 'border-[var(--status-critical-border)]', bg: 'bg-[var(--status-critical-bg)]', status: 'text-[var(--status-critical-fg)]' };
-  if (code >= 400) return { border: 'border-[var(--status-warning-border)]', bg: 'bg-[var(--status-warning-bg)]', status: 'text-[var(--status-warning-fg)]' };
-  return { border: 'border-[var(--border-hairline)]', bg: 'bg-[var(--surface-panel)]', status: 'text-[var(--status-stable-fg)]' };
+  if (!row.ok || code >= 500) return { border: 'border-(--status-critical-border)', bg: 'bg-(--status-critical-bg)', status: 'text-(--status-critical-fg)' };
+  if (code >= 400) return { border: 'border-(--status-warning-border)', bg: 'bg-(--status-warning-bg)', status: 'text-(--status-warning-fg)' };
+  return { border: 'border-(--border-hairline)', bg: 'bg-(--surface-panel)', status: 'text-(--status-stable-fg)' };
 }
 
 function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
@@ -777,17 +703,17 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
         return (
           <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-[var(--surface-invert)] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-[var(--text-oninvert)]">{row.method}</span>
+              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-(--text-oninvert)">{row.method}</span>
               <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">{row.resourceType}</span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-[10px] text-[var(--text-secondary)]">×{row.repeatCount}</span>
+                <span className="font-mono text-[10px] text-(--text-secondary)">×{row.repeatCount}</span>
               )}
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-[var(--text-secondary)]" title={row.url}>{row.url}</div>
-            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-[var(--text-primary)]">{row.message}</div>}
+            <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={row.url}>{row.url}</div>
+            {row.message && !row.ok && <div className="mt-1 break-words text-xs text-(--text-primary)">{row.message}</div>}
           </li>
         );
       })}
@@ -796,13 +722,13 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
 }
 
 const CONSOLE_LEVEL_STYLES: Record<string, string> = {
-  error: 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
-  warning: 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
-  info: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  debug: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  trace: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
-  notice: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
-  log: 'bg-[var(--surface-inset)] text-[var(--text-secondary)]',
+  error: 'bg-(--status-critical-bg) text-(--status-critical-fg)',
+  warning: 'bg-(--status-warning-bg) text-(--status-warning-fg)',
+  info: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  debug: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  trace: 'bg-(--surface-inset) text-(--text-secondary)',
+  notice: 'bg-(--surface-inset) text-(--text-secondary)',
+  log: 'bg-(--surface-inset) text-(--text-secondary)',
 };
 
 // Full console log — every level, mirroring the live Console tab.
@@ -811,14 +737,14 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {rows.map((row, i) => (
-        <li key={i} className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-panel)] p-3">
+        <li key={i} className="rounded-md border border-(--border-hairline) bg-(--surface-panel) p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
-            {row.url && <span className="truncate font-mono text-[10px] text-[var(--text-tertiary)]" title={row.url}>{row.url}</span>}
+            {row.url && <span className="truncate font-mono text-[10px] text-(--text-tertiary)" title={row.url}>{row.url}</span>}
           </div>
-          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-[var(--text-primary)]">{row.message}</div>}
+          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-(--text-primary)">{row.message}</div>}
           {row.stackTrace && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-[var(--surface-inset)] p-2 font-mono text-[10px] leading-relaxed text-[var(--text-primary)]">{row.stackTrace}</pre>
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-[10px] leading-relaxed text-(--text-primary)">{row.stackTrace}</pre>
           )}
         </li>
       ))}
@@ -834,18 +760,18 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const timelineText = actionStepsToMarkdown(steps);
 
   return (
-    <section className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)]">
+    <section className="rounded-lg border border-(--border-hairline) bg-(--surface-panel)">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+        <span className="text-xs font-semibold uppercase tracking-wider text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-xs text-[var(--text-tertiary)]">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-xs text-(--text-tertiary)">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
       </button>
       {isOpen && (
-        <div className="border-t border-[var(--border-hairline)] px-4 py-4">
+        <div className="border-t border-(--border-hairline) px-4 py-4">
           <div className="mb-3 flex justify-end">
             <CopyButton text={timelineText} label="Action Timeline" />
           </div>
@@ -925,10 +851,10 @@ export default function ForensicReport() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--surface-panel)]">
+      <div className="flex h-full w-full items-center justify-center bg-(--surface-panel)">
         <div className="text-center">
-          <div className="text-sm font-semibold text-[var(--text-secondary)]">Loading forensic report…</div>
-          <div className="mt-2 text-xs text-[var(--text-tertiary)]">Fetching the latest session details from the backend.</div>
+          <div className="text-sm font-semibold text-(--text-secondary)">Loading forensic report…</div>
+          <div className="mt-2 text-xs text-(--text-tertiary)">Fetching the latest session details from the backend.</div>
         </div>
       </div>
     );
@@ -936,27 +862,27 @@ export default function ForensicReport() {
 
   if (error || !report) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--surface-panel)] px-6">
+      <div className="flex h-full w-full items-center justify-center bg-(--surface-panel) px-6">
         <div className="max-w-md text-center">
-          <div className="text-sm font-semibold text-[var(--status-critical-fg)]">Failed to load report</div>
-          <div className="mt-2 text-xs text-[var(--text-tertiary)]">{error || 'No report data was returned for this session.'}</div>
+          <div className="text-sm font-semibold text-(--status-critical-fg)">Failed to load report</div>
+          <div className="mt-2 text-xs text-(--text-tertiary)">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
+    <div className="flex h-full w-full flex-col bg-(--surface-app)">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-[var(--surface-panel)] px-6 py-4">
+      <header className="flex items-center justify-between border-b border-(--border-hairline) bg-(--surface-panel) px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">BUGSAFARI</span>
-          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="text-sm font-semibold text-[var(--text-secondary)]">FORENSIC REPORT</span>
+          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="mx-3 text-(--text-tertiary)">/</span>
+          <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
+          className="flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
          Back to History
@@ -972,7 +898,7 @@ export default function ForensicReport() {
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
-            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-[var(--border-hairline)]">
+            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-(--border-hairline)">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
               <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
               <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
@@ -1006,9 +932,9 @@ export default function ForensicReport() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--border-hairline)] bg-[var(--surface-panel)] px-6 py-4">
+      <footer className="border-t border-(--border-hairline) bg-(--surface-panel) px-6 py-4">
         <div className="text-center">
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">END OF FORENSIC REPORT</span>
+          <span className="font-mono text-xs text-(--text-tertiary)">END OF FORENSIC REPORT</span>
         </div>
       </footer>
     </div>

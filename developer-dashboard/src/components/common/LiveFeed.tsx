@@ -187,23 +187,23 @@ export default function LiveFeed({
   }, [renderFrame, useBinaryStream]);
 
   return (
-    <div className="flex flex-col w-full h-full overflow-hidden bg-[var(--surface-panel)] shadow-md rounded-md border border-[var(--border-hairline)]">
+    <div className="flex flex-col w-full h-full overflow-hidden bg-(--surface-panel) shadow-md rounded-md border border-(--border-hairline)">
 
       {/* BROWSER CHROME - decorative toolbar, no interaction */}
-      <div className="flex items-center gap-2 border-b border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 py-2 shrink-0 rounded-t-md">
+      <div className="flex items-center gap-2 border-b border-(--border-hairline) bg-(--surface-app) px-3 py-2 shrink-0 rounded-t-md">
         {/* LEFT: nav controls (decorative) */}
-        <div className="flex items-center gap-1 text-[var(--text-tertiary)]">
+        <div className="flex items-center gap-1 text-(--text-tertiary)">
           <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowLeft size={14} /></span>
           <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowRight size={14} /></span>
           <span className="p-1 opacity-70 cursor-default" aria-hidden="true"><RotateCw size={13} /></span>
         </div>
 
         {/* CENTER: URL bar */}
-        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-[var(--surface-panel)] rounded-full px-3 py-1 text-xs text-[var(--text-secondary)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-[var(--border-hairline)]">
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-(--surface-panel) rounded-full px-3 py-1 text-xs text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline)">
           {isSecureUrl ? (
-            <Lock size={11} className="shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+            <Lock size={11} className="shrink-0 text-(--text-tertiary)" aria-hidden="true" />
           ) : (
-            <Globe size={11} className="shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+            <Globe size={11} className="shrink-0 text-(--text-tertiary)" aria-hidden="true" />
           )}
           <span className="truncate font-mono">{displayUrl || 'about:blank'}</span>
         </div>
@@ -211,17 +211,17 @@ export default function LiveFeed({
         {/* RIGHT: status + three-dot menu (decorative) */}
         <div className="flex items-center gap-2 shrink-0">
           {isQueued && (
-            <span className="flex items-center gap-1.5 text-xs font-mono text-[var(--status-neutral-fg)]">
-              <span className="h-3 w-3 bg-[var(--status-neutral-fg)] rounded-full animate-pulse"></span>
+            <span className="flex items-center gap-1.5 text-xs font-mono text-(--status-neutral-fg)">
+              <span className="h-3 w-3 bg-(--status-neutral-fg) rounded-full animate-pulse"></span>
               QUEUED
             </span>
           )}
 
           {!isQueued && !isTestRunning && !useBinaryStream && (
-            <span className="text-xs text-[var(--text-tertiary)]">Ready</span>
+            <span className="text-xs text-(--text-tertiary)">Ready</span>
           )}
 
-          <span className="p-1 opacity-70 cursor-default text-[var(--text-tertiary)]" aria-hidden="true">
+          <span className="p-1 opacity-70 cursor-default text-(--text-tertiary)" aria-hidden="true">
             <MoreVertical size={14} />
           </span>
         </div>
@@ -230,15 +230,15 @@ export default function LiveFeed({
 {/* CANVAS CONTAINER - White Industrial */}
       <div
         ref={containerRef}
-        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-[var(--surface-panel)] overflow-hidden p-0 relative"
+        className="flex flex-col items-center justify-center flex-1 min-h-0 bg-(--surface-panel) overflow-hidden p-0 relative"
       >
         {/* IDLE STATE */}
         {isIdle && (
           <div
-            className="absolute flex items-center justify-center z-10 bg-[var(--surface-panel)]"
+            className="absolute flex items-center justify-center z-10 bg-(--surface-panel)"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
               ENTER TARGET URL TO INITIATE
             </p>
           </div>
@@ -247,11 +247,11 @@ export default function LiveFeed({
         {/* QUEUED STANDBY STATE — run parked behind the worker fleet; no stream yet. */}
         {isQueued && (
           <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-[var(--surface-panel)]"
+            className="absolute flex flex-col items-center justify-center z-10 bg-(--surface-panel)"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-[var(--status-neutral-fg)] border-r-transparent"></span>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
+            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-(--status-neutral-fg) border-r-transparent"></span>
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
               QUEUED — AWAITING WORKER FLEET
             </p>
           </div>
@@ -260,15 +260,15 @@ export default function LiveFeed({
         {/* INITIALIZING STATE */}
         {isInitializingScreen && (
           <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-[var(--surface-panel)]"
+            className="absolute flex flex-col items-center justify-center z-10 bg-(--surface-panel)"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <div className="mb-4 flex items-center justify-center gap-1">
-              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse"></span>
-              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '150ms' }}></span>
-              <span className="h-3 w-3 bg-[var(--text-primary)] animate-pulse" style={{ animationDelay: '300ms' }}></span>
+              <span className="h-3 w-3 bg-(--text-primary) animate-pulse"></span>
+              <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '150ms' }}></span>
+              <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '300ms' }}></span>
             </div>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
               ESTABLISHING TELEMETRY STREAM
             </p>
           </div>
@@ -277,10 +277,10 @@ export default function LiveFeed({
         {/* COMPLETED STATE */}
         {isCompleted && (
           <div
-            className="absolute flex items-center justify-center z-10 bg-[var(--surface-panel)]"
+            className="absolute flex items-center justify-center z-10 bg-(--surface-panel)"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-[var(--text-primary)]">
+            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
               EXPLORATION COMPLETE
             </p>
           </div>

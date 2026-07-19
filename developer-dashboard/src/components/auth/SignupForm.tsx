@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, AlertCircle } from 'lucide-react';
+import { Mail, AlertCircle,  Lock, Eye, EyeOff, } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { LockClosedIcon, EyeIcon, EyeSlashIcon } from '../icons';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
@@ -119,7 +118,7 @@ export default function SignupForm() {
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-[18px] h-[18px]" /></span>
               <Input
                 ref={passwordRef}
                 id="password"
@@ -137,14 +136,14 @@ export default function SignupForm() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
               >
-                {showPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
+                {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
               </button>
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><LockClosedIcon className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-[18px] h-[18px]" /></span>
               <Input
                 ref={confirmPasswordRef}
                 id="confirmPassword"
@@ -162,18 +161,18 @@ export default function SignupForm() {
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
+                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
               >
-                {showConfirmPassword ? <EyeSlashIcon className="w-[18px] h-[18px]" /> : <EyeIcon className="w-[18px] h-[18px]" />}
+                {showConfirmPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
               </button>
             </div>
 
             <PasswordRequirements password={password} />
 
             {(authError || emailError) && (
-              <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] px-3 py-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--status-critical-fg)]" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm text-[var(--status-critical-fg)]" role="alert">{authError || emailError}</p>
+              <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
+                <p className="text-sm text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
               </div>
             )}
 

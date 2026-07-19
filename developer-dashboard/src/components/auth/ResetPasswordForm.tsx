@@ -43,8 +43,8 @@ export default function ResetPasswordForm() {
         statusTone="error"
       >
         <div className="text-center">
-          <div className="w-16 h-16 bg-[var(--status-critical-bg)] border border-[var(--status-critical-border)] rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-[var(--status-critical-fg)]"><CircleX className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          <div className="w-16 h-16 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-(--status-critical-fg)"><CircleX className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
           </div>
           <p className="text-(--text-primary) mb-6">
             This password reset link is invalid or has expired.
@@ -151,20 +151,20 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedPassword(true)}
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 ${passwordError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {passwordError && <p id="password-error" className="mt-1.5 text-xs text-[var(--status-critical-fg)]">{passwordError}</p>}
+              {passwordError && <p id="password-error" className="mt-1.5 text-xs text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
             {/* Confirm Password Field */}
@@ -185,20 +185,20 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedConfirm(true)}
                   aria-invalid={!!confirmError}
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
-                  className={`w-full h-10 rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 ${confirmError ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] rounded-[var(--radius-sm)]"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-xs text-[var(--status-critical-fg)]">{confirmError}</p>}
+              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-xs text-(--status-critical-fg)">{confirmError}</p>}
             </div>
 
             {/* Password Requirements */}
@@ -206,9 +206,9 @@ export default function ResetPasswordForm() {
 
             {/* Server Error */}
             {serverError && (
-              <div className="flex items-start gap-2 p-3 bg-[var(--status-critical-bg)] border border-[var(--status-critical-border)] rounded-[var(--radius-sm)]">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--status-critical-fg)]" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm text-[var(--status-critical-fg)]" role="alert">{serverError}</p>
+              <div className="flex items-start gap-2 p-3 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-(--radius-sm)">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
+                <p className="text-sm text-(--status-critical-fg)" role="alert">{serverError}</p>
               </div>
             )}
 

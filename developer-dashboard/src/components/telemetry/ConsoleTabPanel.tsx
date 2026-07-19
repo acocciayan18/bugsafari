@@ -4,10 +4,10 @@ import { CopyButton } from '../common/ForensicCardKit';
 
 // Per-level accent so severity reads at a glance in a dense list.
 const LEVEL_STYLES: Record<BrowserConsoleLevel, string> = {
-  error: 'text-[var(--status-critical-fg)]',
-  warning: 'text-[var(--status-warning-fg)]',
-  info: 'text-[var(--status-neutral-fg)]',
-  notice: 'text-[var(--status-stable-fg)]',
+  error: 'text-(--status-critical-fg)',
+  warning: 'text-(--status-warning-fg)',
+  info: 'text-(--status-neutral-fg)',
+  notice: 'text-(--status-stable-fg)',
   debug: 'text-(--text-secondary)',
   trace: 'text-(--text-tertiary)',
   log: 'text-(--text-tertiary)',
@@ -15,8 +15,8 @@ const LEVEL_STYLES: Record<BrowserConsoleLevel, string> = {
 
 // Error and warning rows get a tinted gutter so they stay findable while scrolling.
 const ROW_ACCENTS: Partial<Record<BrowserConsoleLevel, string>> = {
-  error: 'border-l-2 border-l-[var(--status-critical-fg)] bg-[var(--status-critical-bg)]/25',
-  warning: 'border-l-2 border-l-[var(--status-warning-fg)] bg-[var(--status-warning-bg)]/25',
+  error: 'border-l-2 border-l-(--status-critical-fg) bg-(--status-critical-bg)/25',
+  warning: 'border-l-2 border-l-(--status-warning-fg) bg-(--status-warning-bg)/25',
 };
 
 const FILTERS = ['all', 'error', 'warning', 'info', 'debug', 'log'] as const;
@@ -53,7 +53,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
 
   return (
     <div className="-m-4">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 px-2 py-1.5 bg-[var(--surface-panel)] border-b border-(--border-hairline)">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 px-2 py-1.5 bg-(--surface-panel) border-b border-(--border-hairline)">
         {FILTERS.map((level) => (
           <button
             key={level}
@@ -62,7 +62,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
             aria-pressed={filter === level}
             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-colors ${
               filter === level
-                ? 'bg-[var(--surface-inset)] text-(--text-primary)'
+                ? 'bg-(--surface-inset) text-(--text-primary)'
                 : 'text-(--text-tertiary) hover:text-(--text-secondary)'
             }`}
           >
@@ -84,7 +84,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
           {visible.map((log, idx) => (
             <div
               key={`${log.timestamp}-${idx}`}
-              className={`group grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-2 px-2 py-0.5 border-b border-(--border-hairline)/40 hover:bg-[var(--surface-hover)] ${ROW_ACCENTS[log.level] ?? ''}`}
+              className={`group grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-2 px-2 py-0.5 border-b border-(--border-hairline)/40 hover:bg-(--surface-hover) ${ROW_ACCENTS[log.level] ?? ''}`}
             >
               <span className="text-(--text-tertiary) tabular-nums">{formatTime(log.timestamp)}</span>
               <span className={`uppercase font-bold w-14 shrink-0 ${LEVEL_STYLES[log.level] ?? LEVEL_STYLES.log}`}>

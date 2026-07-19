@@ -3,69 +3,179 @@ import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 // State-changing verbs only; reads (GET/HEAD/OPTIONS) can repeat safely and are ignored.
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-// A duplicate is two identical requests inside this burst window; wider gaps are intentional re-submits.
-const WINDOW_MS = 1200;
-const MAX_SIGNATURES = 500;
+// Primary oracle is in-flight overlap. A repeat issued AFTER the first settled is only a
+// candidate inside this grace window; beyond it the operator intent is a fresh submission.
+const SETTLED_GRACE_MS = 1500;
+
+// Statuses proving the backend rejected the repeat — the client guard is still missing,
+// but no duplicate record was committed, so the finding is informational.
+const GUARD_STATUSES = new Set([409, 425, 429]);
+
+// Headers a well-behaved client sends to make a retry safe; a differing value means
+// two genuinely distinct operations, an identical value means the server can dedupe.
+const IDEMPOTENCY_HEADERS = ['idempotency-key', 'x-idempotency-key', 'x-request-id', 'x-correlation-id'];
+
+const MAX_TRACKED = 400;
 const MAX_REPORTED = 100;
+
+// The interaction the correlator attributed this request to, if any.
+export interface InteractionContext {
+  selector: string;
+  label: string;
+  actedAtMs: number;
+}
 
 // One observed outbound request, fed by StabilityMonitor's request listener.
 export interface RequestObservation {
+  requestId: string;
   method: string;
   url: string;
   body?: string;
+  headers?: Record<string, string>;
   raceScenarioActive: boolean;
+  timestampMs: number;
+  interaction?: InteractionContext;
+}
+
+// One settled request — status absent means a transport failure or abort.
+export interface RequestSettlement {
+  requestId: string;
+  status?: number;
+  failed?: boolean;
   timestampMs: number;
 }
 
-// A confirmed duplicate state-changing request (missing debounce / disable-on-submit guard).
+// How strongly the pair was judged to be an unguarded double-submit.
+export type DuplicateVerdict = 'CONFIRMED_DUPLICATE' | 'SUSPECTED' | 'GUARDED';
+
+// A duplicate state-changing request that survived retry/idempotency/rejection filtering.
 export interface DuplicateActionDefect {
   bugId: string;
   bugClass: 'SPA_STATE_RACE_CONDITION';
-  severity: 'HIGH';
+  verdict: DuplicateVerdict;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  faultConfidence: 'CONFIRMED' | 'SIGNAL' | 'INFERRED';
+  confidenceScore: number;
   cwe: string;
   message: string;
   endpoint: string;
   method: string;
+  selector: string;
+  elementLabel: string;
   evidence: string[];
+  reproductionHint: string[];
   advice: string;
   occurrence: number;
   corroborated: boolean;
-  withinMs: number;
+  overlapped: boolean;
+  intervalMs: number;
+  firstStatus?: number;
+  secondStatus?: number;
+  idempotencyKey?: string;
 }
 
-// Passive double-submit detector. Pure and event-fed: holds no Playwright references,
-// never throws, timestamps + scenario flag injected by the caller. Collapses an identical
-// method+endpoint+payload burst into one finding with an occurrence count so a repeat
-// storm never floods the ledger.
+interface TrackedRequest {
+  id: string;
+  signature: string;
+  method: string;
+  url: string;
+  startedAtMs: number;
+  settledAtMs?: number;
+  status?: number;
+  failed?: boolean;
+  idempotencyKey?: string;
+  interaction?: InteractionContext;
+  raceScenarioActive: boolean;
+}
+
+// Ranks a verdict so a later settlement can upgrade a pair but never downgrade it.
+const VERDICT_RANK: Record<DuplicateVerdict, number> = { GUARDED: 1, SUSPECTED: 2, CONFIRMED_DUPLICATE: 3 };
+
+/**
+ * Two-phase double-submit detector. Pure and event-fed: holds no Playwright references,
+ * never throws, all timestamps and correlation injected by the caller.
+ *
+ * Phase 1 (observeRequest) opens a candidate when an identical state-changing request
+ * is issued while the first is still in flight, or within a short grace window after it
+ * settled. Phase 2 (observeSettlement) judges the candidate against the observed
+ * responses so retries, idempotent submissions, and backend-rejected repeats are
+ * separated from genuine duplicate commits.
+ */
 export class DuplicateActionFinder {
-  private readonly windows = new Map<string, number[]>();
+  private readonly byId = new Map<string, TrackedRequest>();
+  private readonly latestBySignature = new Map<string, string>();
+  private readonly candidateBySecond = new Map<string, string>();
+  private readonly candidateByFirst = new Map<string, string>();
+  private readonly judged = new Map<string, DuplicateVerdict>();
   private readonly reported = new Map<string, number>();
   private observations = 0;
 
-  // Observe one request. Returns null for non-state-changing methods or when no burst
-  // (2+ identical within the window) has formed. First burst crossing → isNew:true;
-  // further identical hits in-window → isNew:false with occurrence incremented.
-  public observeRequest(o: RequestObservation): { defect: DuplicateActionDefect; isNew: boolean } | null {
+  // Phase 1. Track the request and open a duplicate candidate when it repeats one that
+  // is still in flight (or only just settled). Never reports on its own — a candidate is
+  // judged once the responses are known.
+  public observeRequest(o: RequestObservation): void {
     const method = (o.method ?? '').toString().toUpperCase();
-    if (!STATE_CHANGING.has(method)) return null;
+    if (!STATE_CHANGING.has(method)) return;
     this.observations += 1;
 
     const signature = this.signatureFor(method, o.url ?? '', o.body);
-    const stamps = this.recordStamp(signature, o.timestampMs);
-    if (stamps.length < 2) return null;
+    const record: TrackedRequest = {
+      id: o.requestId,
+      signature,
+      method,
+      url: o.url ?? '',
+      startedAtMs: o.timestampMs,
+      idempotencyKey: this.idempotencyKeyOf(o.headers),
+      interaction: o.interaction,
+      raceScenarioActive: o.raceScenarioActive,
+    };
+    this.track(record);
 
-    const bugId = this.bugIdFor(method, signature);
-    const alreadyReported = this.reported.has(bugId);
-    if (!alreadyReported && this.reported.size >= MAX_REPORTED) return null;
+    const priorId = this.latestBySignature.get(signature);
+    if (!priorId && this.latestBySignature.size >= MAX_TRACKED) {
+      const oldest = this.latestBySignature.keys().next().value as string | undefined;
+      if (oldest) this.latestBySignature.delete(oldest);
+    }
+    this.latestBySignature.set(signature, record.id);
+    if (!priorId) return;
+    const prior = this.byId.get(priorId);
+    if (!prior) return;
 
-    const occurrence = stamps.length;
-    this.reported.set(bugId, occurrence);
-    const withinMs = stamps[stamps.length - 1] - stamps[0];
-    const defect = this.build(bugId, method, o, signature, occurrence, withinMs);
-    return { defect, isNew: !alreadyReported };
+    // Overlap is the strong oracle; a settled predecessor only qualifies inside the grace window.
+    const overlapped = prior.settledAtMs === undefined;
+    if (!overlapped && o.timestampMs - prior.settledAtMs! > SETTLED_GRACE_MS) return;
+
+    // Distinct idempotency keys mean the client intended two separate operations.
+    if (prior.idempotencyKey && record.idempotencyKey && prior.idempotencyKey !== record.idempotencyKey) return;
+
+    this.candidateBySecond.set(record.id, prior.id);
+    this.candidateByFirst.set(prior.id, record.id);
   }
 
-  // Distinct duplicate-action defects seen this run.
+  // Phase 2. Settle a request and judge any candidate it completes. Returns a defect the
+  // first time a pair is judged reportable, and again only when a later settlement
+  // upgrades the verdict (occurrence carries the running repeat count).
+  public observeSettlement(s: RequestSettlement): { defect: DuplicateActionDefect; isNew: boolean } | null {
+    const record = this.byId.get(s.requestId);
+    if (!record) return null;
+    record.settledAtMs = s.timestampMs;
+    record.status = s.status;
+    record.failed = s.failed === true || s.status === undefined;
+
+    const asSecond = this.candidateBySecond.get(record.id);
+    if (asSecond) {
+      const first = this.byId.get(asSecond);
+      if (first) return this.judge(first, record);
+    }
+    const asFirst = this.candidateByFirst.get(record.id);
+    if (asFirst) {
+      const second = this.byId.get(asFirst);
+      if (second?.settledAtMs !== undefined) return this.judge(record, second);
+    }
+    return null;
+  }
+
+  // Distinct duplicate-action defects reported this run.
   public totalFound(): number {
     return this.reported.size;
   }
@@ -75,73 +185,254 @@ export class DuplicateActionFinder {
     return this.observations;
   }
 
-  // Append a timestamp to the signature's window, dropping entries older than WINDOW_MS.
-  private recordStamp(signature: string, timestampMs: number): number[] {
-    const isNewKey = !this.windows.has(signature);
-    if (isNewKey && this.windows.size >= MAX_SIGNATURES) {
-      const oldest = this.windows.keys().next().value as string | undefined;
-      if (oldest) this.windows.delete(oldest);
-    }
-    const cutoff = timestampMs - WINDOW_MS;
-    const stamps = (this.windows.get(signature) ?? []).filter((t) => t >= cutoff);
-    stamps.push(timestampMs);
-    this.windows.set(signature, stamps);
-    return stamps;
-  }
+  // Classify a settled (or half-settled) pair and build the defect if it is reportable.
+  private judge(first: TrackedRequest, second: TrackedRequest): { defect: DuplicateActionDefect; isNew: boolean } | null {
+    // A repeat that followed an outright failure is a retry, not a double-submit.
+    const firstFailed = first.failed === true || (first.status !== undefined && first.status >= 500);
+    if (firstFailed && first.settledAtMs !== undefined && first.settledAtMs <= second.startedAtMs) return null;
 
-  private signatureFor(method: string, url: string, body?: string): string {
-    return `${method} ${this.normalizeUrl(url)}::${this.hash(body ?? '')}`;
-  }
+    // A rejected repeat that was not the app's own dedupe guard committed nothing.
+    if (second.status !== undefined && second.status >= 400 && !GUARD_STATUSES.has(second.status)) return null;
 
-  // Strip the fragment and volatile noise (cache-buster query values, long digit runs)
-  // so a timestamped duplicate still collapses, while keeping the path + meaningful query.
-  private normalizeUrl(url: string): string {
-    return (url || '')
-      .split('#')[0]
-      .replace(/([?&](?:_|t|ts|cb|rnd|rand|cache|cachebust)=)[^&]*/gi, '$1#')
-      .replace(/\b\d{6,}\b/g, '#')
-      .toLowerCase();
-  }
+    const overlapped = first.settledAtMs === undefined || first.settledAtMs > second.startedAtMs;
+    const bothCommitted = this.isSuccess(first.status) && this.isSuccess(second.status);
+    const verdict: DuplicateVerdict = second.status !== undefined && GUARD_STATUSES.has(second.status)
+      ? 'GUARDED'
+      : bothCommitted
+        ? 'CONFIRMED_DUPLICATE'
+        : 'SUSPECTED';
 
-  private bugIdFor(method: string, signature: string): string {
-    return `dup-action-${method.toLowerCase()}-${this.hash(signature)}`;
+    const previous = this.judged.get(second.id);
+    if (previous && VERDICT_RANK[previous] >= VERDICT_RANK[verdict]) return null;
+    this.judged.set(second.id, verdict);
+
+    const bugId = this.bugIdFor(second.method, second.signature);
+    const alreadyReported = this.reported.has(bugId);
+    if (!alreadyReported && this.reported.size >= MAX_REPORTED) return null;
+
+    // Occurrence counts duplicate REQUESTS, so a re-judgement that merely upgrades an
+    // already-counted pair (the first response arriving late) must not inflate it.
+    const occurrence = previous ? this.reported.get(bugId)! : (this.reported.get(bugId) ?? 1) + 1;
+    this.reported.set(bugId, occurrence);
+    return { defect: this.build(bugId, first, second, verdict, overlapped, occurrence), isNew: !alreadyReported };
   }
 
   private build(
     bugId: string,
-    method: string,
-    o: RequestObservation,
-    signature: string,
+    first: TrackedRequest,
+    second: TrackedRequest,
+    verdict: DuplicateVerdict,
+    overlapped: boolean,
     occurrence: number,
-    withinMs: number,
   ): DuplicateActionDefect {
-    const endpoint = o.url ?? '';
-    const evidence = [
-      `Duplicate ${method} ${endpoint}`,
-      `${occurrence} identical requests within ${withinMs}ms`,
-      `Payload signature: ${signature.split('::')[1] ?? '(none)'}`,
-      'No client-side debounce/disable-on-submit guard fired before the repeat request',
-    ];
-    if (o.raceScenarioActive) evidence.push('Corroborated by an active concurrency/rapid-click stress probe');
-    const def = BUG_CATALOG.SPA_STATE_RACE_CONDITION;
+    const intervalMs = Math.max(0, second.startedAtMs - first.startedAtMs);
+    const corroborated = first.raceScenarioActive || second.raceScenarioActive;
+    const interaction = second.interaction ?? first.interaction;
+    const confidenceScore = this.scoreOf({ verdict, overlapped, corroborated, interaction, idempotent: !!second.idempotencyKey });
+    const severity = verdict === 'CONFIRMED_DUPLICATE' ? 'HIGH' : verdict === 'SUSPECTED' ? 'MEDIUM' : 'LOW';
+    const faultConfidence = confidenceScore >= 0.75 ? 'CONFIRMED' : confidenceScore >= 0.5 ? 'SIGNAL' : 'INFERRED';
+    const endpoint = second.url;
+    const label = interaction?.label || 'the control';
+
     return {
       bugId,
       bugClass: 'SPA_STATE_RACE_CONDITION',
-      severity: 'HIGH',
-      cwe: def.cwe,
-      message: `[Duplicate action / double-submit] ${method} ${endpoint} — ${occurrence} identical requests within ${withinMs}ms`,
+      verdict,
+      severity,
+      faultConfidence,
+      confidenceScore,
+      cwe: BUG_CATALOG.SPA_STATE_RACE_CONDITION.cwe,
+      message: this.messageFor(verdict, second.method, endpoint, intervalMs, overlapped),
       endpoint,
-      method,
-      evidence,
-      advice: this.buildAdvice(),
+      method: second.method,
+      selector: interaction?.selector ?? '',
+      elementLabel: label,
+      evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, interaction),
+      reproductionHint: this.reproductionFor(first, second, verdict, intervalMs, label),
+      advice: this.adviceFor(verdict),
       occurrence,
-      corroborated: o.raceScenarioActive,
-      withinMs,
+      corroborated,
+      overlapped,
+      intervalMs,
+      firstStatus: first.status,
+      secondStatus: second.status,
+      idempotencyKey: second.idempotencyKey,
     };
   }
 
-  private buildAdvice(): string {
-    return `The control fired the same state-changing request twice with no debounce or disable-on-submit guard.\n${BUG_CATALOG.SPA_STATE_RACE_CONDITION.remediation}`;
+  // Weighted evidence score — each term is an independent signal that the repeat was unguarded.
+  private scoreOf(f: {
+    verdict: DuplicateVerdict;
+    overlapped: boolean;
+    corroborated: boolean;
+    interaction?: InteractionContext;
+    idempotent: boolean;
+  }): number {
+    let score = 0.2;
+    if (f.overlapped) score += 0.35;
+    if (f.verdict === 'CONFIRMED_DUPLICATE') score += 0.3;
+    if (f.verdict === 'GUARDED') score -= 0.1;
+    if (!f.idempotent) score += 0.15;
+    if (f.corroborated) score += 0.1;
+    if (f.interaction) score += 0.1;
+    return Math.round(Math.min(1, Math.max(0, score)) * 100) / 100;
+  }
+
+  private messageFor(verdict: DuplicateVerdict, method: string, endpoint: string, intervalMs: number, overlapped: boolean): string {
+    const timing = overlapped ? `re-issued ${intervalMs}ms later while the first was still in flight` : `re-issued ${intervalMs}ms later`;
+    if (verdict === 'GUARDED') {
+      return `[Duplicate action / no client guard] ${method} ${endpoint} — ${timing}; the backend rejected the repeat`;
+    }
+    if (verdict === 'CONFIRMED_DUPLICATE') {
+      return `[Duplicate action / double-submit] ${method} ${endpoint} — ${timing} and both requests succeeded`;
+    }
+    return `[Duplicate action / suspected double-submit] ${method} ${endpoint} — ${timing}`;
+  }
+
+  private evidenceFor(
+    first: TrackedRequest,
+    second: TrackedRequest,
+    verdict: DuplicateVerdict,
+    overlapped: boolean,
+    intervalMs: number,
+    occurrence: number,
+    confidenceScore: number,
+    interaction?: InteractionContext,
+  ): string[] {
+    const evidence = [
+      `Request 1: ${first.method} ${first.url} at t+0ms → ${this.describeOutcome(first)}`,
+      `Request 2: ${second.method} ${second.url} at t+${intervalMs}ms → ${this.describeOutcome(second)}`,
+      `Identical method, endpoint and payload signature (${second.signature.split('::')[1] ?? 'none'})`,
+      overlapped
+        ? 'The repeat was issued while the first request was still in flight — no disable-on-submit or in-flight guard fired'
+        : `The repeat was issued ${intervalMs}ms after the first settled — inside the debounce window a guarded control would cover`,
+    ];
+    if (interaction) {
+      evidence.push(`Triggering control: ${interaction.label} (${interaction.selector})`);
+    }
+    if (second.idempotencyKey) {
+      evidence.push(`Both requests carried the same idempotency key (${second.idempotencyKey}) — the backend can dedupe, the client still cannot`);
+    } else {
+      evidence.push('Neither request carried an idempotency key — the backend has no way to collapse the repeat');
+    }
+    if (verdict === 'GUARDED') {
+      evidence.push(`The backend rejected the repeat with HTTP ${second.status} — no duplicate record was committed`);
+    }
+    if (verdict === 'CONFIRMED_DUPLICATE') {
+      evidence.push('Both requests returned success — the action was committed twice');
+    }
+    if (first.raceScenarioActive || second.raceScenarioActive) {
+      evidence.push('Corroborated by an active concurrency/rapid-click stress probe');
+    }
+    evidence.push(`Occurrence ${occurrence} this run; confidence ${confidenceScore.toFixed(2)}`);
+    return evidence;
+  }
+
+  // Deterministic steps to reproduce, derived from the correlated causal pair.
+  private reproductionFor(
+    first: TrackedRequest,
+    second: TrackedRequest,
+    verdict: DuplicateVerdict,
+    intervalMs: number,
+    label: string,
+  ): string[] {
+    const steps = [
+      `Open ${this.pathOf(second.url)} and bring ${label} into view`,
+      `Activate ${label} once — the app issues ${first.method} ${this.pathOf(first.url)}`,
+      `Activate ${label} again ${intervalMs}ms later, before the first request settles`,
+      `Observe a second ${second.method} ${this.pathOf(second.url)} with an identical payload`,
+    ];
+    steps.push(
+      verdict === 'GUARDED'
+        ? `Observe the backend reject it with HTTP ${second.status} — the control was never disabled between activations`
+        : verdict === 'CONFIRMED_DUPLICATE'
+          ? `Observe both requests return success (${this.describeOutcome(first)}, ${this.describeOutcome(second)}) — the operation is committed twice`
+          : 'Observe the repeat reach the backend with no client-side guard in between',
+    );
+    return steps;
+  }
+
+  private adviceFor(verdict: DuplicateVerdict): string {
+    const lead = verdict === 'GUARDED'
+      ? 'The control fired the same state-changing request twice with no client guard; only the backend prevented a duplicate commit.'
+      : 'The control fired the same state-changing request twice with no debounce or disable-on-submit guard.';
+    return `${lead}\n${BUG_CATALOG.SPA_STATE_RACE_CONDITION.remediation}`;
+  }
+
+  private describeOutcome(r: TrackedRequest): string {
+    if (r.settledAtMs === undefined) return 'still in flight';
+    if (r.failed && r.status === undefined) return 'transport failure';
+    return `HTTP ${r.status}`;
+  }
+
+  private isSuccess(status?: number): boolean {
+    return status !== undefined && status >= 200 && status < 400;
+  }
+
+  private pathOf(url: string): string {
+    const withoutOrigin = url.replace(/^[a-z]+:\/\/[^/]+/i, '');
+    return withoutOrigin || url;
+  }
+
+  private idempotencyKeyOf(headers?: Record<string, string>): string | undefined {
+    if (!headers) return undefined;
+    for (const [name, value] of Object.entries(headers)) {
+      if (IDEMPOTENCY_HEADERS.includes(name.toLowerCase()) && value) return value;
+    }
+    return undefined;
+  }
+
+  // Bound the tracked-request map so a long run can never grow without limit.
+  private track(record: TrackedRequest): void {
+    if (this.byId.size >= MAX_TRACKED) {
+      const oldest = this.byId.keys().next().value as string | undefined;
+      if (oldest) {
+        this.byId.delete(oldest);
+        this.candidateBySecond.delete(oldest);
+        this.candidateByFirst.delete(oldest);
+        this.judged.delete(oldest);
+      }
+    }
+    this.byId.set(record.id, record);
+  }
+
+  private signatureFor(method: string, url: string, body?: string): string {
+    return `${method} ${this.normalizeUrl(url)}::${this.hash(this.canonicalizeBody(body))}`;
+  }
+
+  // Strip the fragment and cache-buster query values so a timestamped repeat still
+  // collapses. Resource identifiers in the path are preserved verbatim — masking them
+  // would merge two distinct records into one false duplicate.
+  private normalizeUrl(url: string): string {
+    return (url || '')
+      .split('#')[0]
+      .replace(/([?&](?:_|t|ts|cb|rnd|rand|cache|cachebust)=)[^&]*/gi, '$1#');
+  }
+
+  // Order-insensitive JSON canonicalization so a re-serialized identical payload matches.
+  private canonicalizeBody(body?: string): string {
+    if (!body) return '';
+    try {
+      return JSON.stringify(this.sortKeys(JSON.parse(body)));
+    } catch {
+      return body;
+    }
+  }
+
+  private sortKeys(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map((v) => this.sortKeys(v));
+    if (value && typeof value === 'object') {
+      const source = value as Record<string, unknown>;
+      return Object.keys(source).sort().reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = this.sortKeys(source[key]);
+        return acc;
+      }, {});
+    }
+    return value;
+  }
+
+  private bugIdFor(method: string, signature: string): string {
+    return `dup-action-${method.toLowerCase()}-${this.hash(signature)}`;
   }
 
   // djb2 — stable, cheap, no crypto dependency.

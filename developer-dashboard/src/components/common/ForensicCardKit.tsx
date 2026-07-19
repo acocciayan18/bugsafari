@@ -35,7 +35,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-[var(--surface-hover)] active:scale-95 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={`Copy ${label || 'content'} to clipboard`}
     >
       <Copy className="h-3.5 w-3.5" />
@@ -65,15 +65,15 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors text-xs font-semibold border-b border-[var(--border-hairline)]"
+        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-xs font-semibold border-b border-(--border-hairline)"
       >
         <span className="text-sm">{isExpanded ? '▼' : '▶'}</span>
         <span>{title}</span>
         <span className="text-[10px] opacity-60 ml-auto">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
-        <div className={`px-4 py-3 bg-[var(--surface-raised)] max-h-96 overflow-y-auto border border-[var(--border-hairline)] border-t-0 ${className}`}>
-          <pre className="text-xs font-mono whitespace-pre-wrap wrap-break-word text-[var(--text-secondary)] leading-relaxed p-3 bg-[var(--surface-panel)] rounded border border-[var(--border-hairline)] overflow-x-auto">
+        <div className={`px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
+          <pre className="text-xs font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>
           <div className="mt-2 flex justify-end">
@@ -88,10 +88,10 @@ export const ExpandableCodeBlock = ({
 // Severity → badge tone + label. Unknown/absent severity renders nothing so older
 // records (and non-classified faults) stay clean rather than showing a wrong badge.
 const SEVERITY_STYLES: Record<string, { cls: string; label: string }> = {
-  CRITICAL: { cls: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)] bg-[var(--status-critical-bg)]/30', label: 'Critical' },
-  HIGH: { cls: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)] bg-[var(--status-critical-bg)]/20', label: 'High' },
-  MEDIUM: { cls: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)]/25', label: 'Medium' },
-  LOW: { cls: 'border-[var(--status-neutral-border)] text-[var(--status-neutral-fg)] bg-[var(--status-neutral-bg)]/25', label: 'Low' },
+  CRITICAL: { cls: 'border-(--status-critical-border) text-(--status-critical-fg) bg-(--status-critical-bg)/30', label: 'Critical' },
+  HIGH: { cls: 'border-(--status-critical-border) text-(--status-critical-fg) bg-(--status-critical-bg)/20', label: 'High' },
+  MEDIUM: { cls: 'border-(--status-warning-border) text-(--status-warning-fg) bg-(--status-warning-bg)/25', label: 'Medium' },
+  LOW: { cls: 'border-(--status-neutral-border) text-(--status-neutral-fg) bg-(--status-neutral-bg)/25', label: 'Low' },
   INFO: { cls: 'border-(--border-hairline) text-(--text-tertiary)', label: 'Info' },
 };
 
@@ -136,6 +136,17 @@ export const AttributionBadges = ({ attribution }: { attribution?: FindingAttrib
           Step {attribution.stepIndex}
         </Badge>
       )}
+      {attribution.verificationStatus && (
+        <Badge
+          variant={attribution.verificationStatus === 'CONFIRMED' ? 'danger' : 'default'}
+          className="uppercase tracking-wide"
+        >
+          <span title="Terminal state of the finding-verification pipeline">
+            {attribution.verificationStatus.replace(/_/g, ' ')}
+            {typeof attribution.confidenceScore === 'number' && ` ${Math.round(attribution.confidenceScore * 100)}%`}
+          </span>
+        </Badge>
+      )}
     </div>
   );
 };
@@ -148,17 +159,17 @@ export const AttributionBadges = ({ attribution }: { attribution?: FindingAttrib
 export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) => {
   if (!advice) {
     return (
-      <div className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3 text-xs italic text-[var(--text-tertiary)]">
+      <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-xs italic text-(--text-tertiary)">
         No remediation advisory generated for this fault.
       </div>
     );
   }
   return (
-    <div className="relative rounded-md border border-[var(--border-hairline)] bg-[var(--surface-raised)] p-3">
+    <div className="relative rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
       <div className="absolute right-2 top-2">
         <CopyButton text={advice} label="Suggested Fix" />
       </div>
-      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-[var(--text-primary)]">{advice}</pre>
+      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-xs leading-relaxed text-(--text-primary)">{advice}</pre>
     </div>
   );
 };

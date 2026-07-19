@@ -44,14 +44,14 @@ export function DeleteConfirmDialog({
       <div className="p-6">
         {/* Header */}
         <div className="mb-4 flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--status-critical-bg)]">
-            <Trash2 className="h-5 w-5 text-[var(--status-critical-fg)]" aria-hidden="true" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--status-critical-bg)">
+            <Trash2 className="h-5 w-5 text-(--status-critical-fg)" aria-hidden="true" />
           </div>
           <div className="flex-1">
-            <h2 id="delete-confirm-title" className="text-lg font-semibold text-[var(--text-primary)]">
+            <h2 id="delete-confirm-title" className="text-lg font-semibold text-(--text-primary)">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">{message}</p>
+            <p className="mt-1 text-sm text-(--text-secondary)">{message}</p>
           </div>
         </div>
 

@@ -182,8 +182,12 @@ export class StabilityMonitor {
   // Fine-grained runtime-error classifier + collapse-count dedup (one per run).
   private readonly runtimeFinder = new RuntimeStabilityFinder();
 
-  // Passive double-submit detector: collapses identical state-changing request bursts (one per run).
+  // Two-phase double-submit detector: opens candidates on overlapping identical requests,
+  // judges them once the responses settle (one per run).
   private readonly duplicateFinder = new DuplicateActionFinder();
+  // Stable id per Playwright Request so the finder can pair a request with its settlement.
+  private readonly requestIds = new WeakMap<Request, string>();
+  private requestIdSeq = 0;
 
   // Infinite-loading detector + the impure edges that feed it: an in-flight fetch/XHR registry,
   // the watchdog interval sweeping it, and a per-endpoint guard against concurrent confirmations.
@@ -541,28 +545,74 @@ export class StabilityMonitor {
     });
   }
 
-  // Report one confirmed duplicate state-changing request. Direct SIGNAL emit — the
-  // knowledge-base classifier has no path to SPA_STATE_RACE_CONDITION, and the finder's
-  // burst logic already self-gates, so this bypasses verifyFault and reports with the
-  // finder's stable, signature-derived bugId (collapse+count keeps it one finding).
-  private async reportDuplicateAction(page: Page, defect: DuplicateActionDefect): Promise<void> {
+  // Stable per-request id, allocated lazily so only requests we actually observe cost one.
+  private requestIdFor(request: Request): string {
+    const existing = this.requestIds.get(request);
+    if (existing) return existing;
+    this.requestIdSeq += 1;
+    const id = `req-${this.requestIdSeq}`;
+    this.requestIds.set(request, id);
+    return id;
+  }
+
+  // Request headers are needed for idempotency-key detection; Playwright can throw once
+  // the request is detached, so failure degrades to "no headers" rather than a lost settlement.
+  private safeHeaders(request: Request): Record<string, string> | undefined {
+    try {
+      return request.headers();
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Feed one settled request to the duplicate finder and report whatever verdict it produces.
+  private settleDuplicateCandidate(page: Page, request: Request, status: number | undefined, failed: boolean): void {
+    try {
+      // Lookup-only: a request the duplicate finder never saw has no id and nothing to settle.
+      const requestId = this.requestIds.get(request);
+      if (!requestId) return;
+      const result = this.duplicateFinder.observeSettlement({
+        requestId,
+        status,
+        failed,
+        timestampMs: Date.now(),
+      });
+      if (result) void this.reportDuplicateAction(page, result.defect, result.isNew);
+    } catch {
+      // never let the reporter hook throw inside a page listener
+    }
+  }
+
+  // Report one judged duplicate state-changing request. Direct emit — the knowledge-base
+  // classifier has no path to SPA_STATE_RACE_CONDITION, and the finder's two-phase
+  // response validation already self-gates, so this bypasses verifyFault and reports with
+  // the finder's stable, signature-derived bugId. A recurrence re-registers under the same
+  // bugId so the persisted record carries the final occurrence count and verdict.
+  private async reportDuplicateAction(page: Page, defect: DuplicateActionDefect, isNew: boolean): Promise<void> {
     const t = this.deps.telemetry;
     const url = defect.endpoint || page.url();
     const timestamp = new Date().toISOString();
     const breadcrumbs = this.deps.getBreadcrumbs();
+    const stackTrace = defect.evidence.join('\n');
 
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
-    const reproductionPlaybook = reproduction.narrative;
+    // The finder's causal pair is the authoritative reproduction; the scenario narrative
+    // is appended as the surrounding context that led up to it.
+    const reproductionPlaybook = [...defect.reproductionHint, ...reproduction.narrative];
     const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
+    const severity = SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity;
     const attribution: FindingAttribution = {
       bugClass: defect.bugClass,
       cwe: defect.cwe,
       scenario: scenario.scenario,
       testingType: scenario.testingType,
       stepIndex: reproduction.actions.length,
-      confidence: 'SIGNAL',
+      origin: 'TARGET_APP',
+      confidence: defect.faultConfidence,
+      confidenceScore: defect.confidenceScore,
+      verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
       corroborated: defect.corroborated,
     };
 
@@ -570,60 +620,77 @@ export class StabilityMonitor {
       url,
       method: defect.method,
       message: `🟠 ${defect.message}`,
-      severity: 'WARNING',
+      severity: defect.verdict === 'GUARDED' ? 'INFO' : 'WARNING',
       attribution,
     });
-    t.emitMilestone(`🔁 Duplicate action: ${defect.method} ${url}`);
 
-    t.gateway.emitIncidentReport({
-      timestamp,
-      reason: defect.message,
-      url,
-      steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-      reproductionActions: reproduction.actions,
-      stateFingerprint,
-      reproductionPlaybook,
-      advice: defect.advice,
-      attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
-    });
+    // A recurrence is already a known finding — refresh the ledger, but keep the live
+    // feed quiet beyond a periodic heartbeat so a burst can never flood it.
+    if (!isNew) {
+      if (defect.occurrence === 3 || defect.occurrence % 25 === 0) {
+        t.emit('ACTION', {
+          actionExecuted: 'duplicate-action-recurred',
+          message: `🔁 ${defect.message} — recurred ${defect.occurrence}× this run`,
+        });
+      }
+    } else {
+      t.emitMilestone(`🔁 Duplicate action: ${defect.method} ${url}`);
 
-    t.gateway.emitForensicReport({
-      timestamp,
-      reason: defect.message,
-      url,
-      breadcrumbs,
-      reproductionPlaybook,
-      advice: defect.advice,
-      attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
-    });
+      t.gateway.emitIncidentReport({
+        timestamp,
+        reason: defect.message,
+        url,
+        stackTrace,
+        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
+        reproductionActions: reproduction.actions,
+        stateFingerprint,
+        reproductionPlaybook,
+        advice: defect.advice,
+        attribution,
+        severity,
+      });
 
-    this.deps.persistForensicError({
-      type: ForensicErrorType.API_FAILURE,
-      severity: SEVERITY_TO_FORENSIC[defect.severity],
-      message: `🟠 ${defect.message}`,
-      url,
-      endpoint: url,
-      method: defect.method,
-      bugClass: defect.bugClass,
-      scenario: attribution.scenario,
-      cwe: defect.cwe,
-    });
+      t.gateway.emitForensicReport({
+        timestamp,
+        reason: defect.message,
+        url,
+        stackTrace,
+        breadcrumbs,
+        reproductionPlaybook,
+        advice: defect.advice,
+        attribution,
+        severity,
+      });
+
+      this.deps.persistForensicError({
+        type: ForensicErrorType.INTERACTION_FAILURE,
+        severity: SEVERITY_TO_FORENSIC[defect.severity],
+        message: `🟠 ${defect.message}`,
+        stackTrace,
+        url,
+        endpoint: url,
+        method: defect.method,
+        statusCode: defect.secondStatus,
+        bugClass: defect.bugClass,
+        scenario: attribution.scenario,
+        cwe: defect.cwe,
+      });
+    }
 
     // type is deliberately not NETWORK/ACCESSIBILITY so registerConfirmedBug streams it to the Errors tab.
     this.deps.registerConfirmedBug({
       bugId: defect.bugId,
       type: 'DUPLICATE_ACTION',
       message: defect.message,
-      selector: '',
+      selector: defect.selector,
       payloadUsed: defect.method,
       advice: defect.advice,
+      stackTrace,
       reproductionSteps: reproductionPlaybook,
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      severity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -849,24 +916,19 @@ export class StabilityMonitor {
     // endpoint+payload inside a tight window means no debounce/disable-on-submit guard fired.
     page.on('request', (request: Request) => {
       try {
-        this.requestStartTimes.set(request, Date.now());
+        const startedAt = Date.now();
+        this.requestStartTimes.set(request, startedAt);
         this.trackPending(request);
-        const result = this.duplicateFinder.observeRequest({
+        this.duplicateFinder.observeRequest({
+          requestId: this.requestIdFor(request),
           method: request.method(),
           url: request.url(),
           body: request.postData() ?? undefined,
+          headers: this.safeHeaders(request),
           raceScenarioActive: isRaceScenarioActive(),
-          timestampMs: Date.now(),
+          timestampMs: startedAt,
+          interaction: this.deps.getInteractionContext(startedAt) ?? undefined,
         });
-        if (!result) return;
-        if (result.isNew) {
-          void this.reportDuplicateAction(page, result.defect);
-        } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
-          t.emit('ACTION', {
-            actionExecuted: 'duplicate-action-recurred',
-            message: `🔁 ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
-          });
-        }
       } catch {
         // never let the reporter hook throw inside a page listener
       }
@@ -900,6 +962,7 @@ export class StabilityMonitor {
 
       // Settle the request in the hang registry; a 5xx fetch/XHR also arms an infinite-loading check.
       this.pending.delete(response.request());
+      this.settleDuplicateCandidate(page, response.request(), status, false);
       if (status >= 500 && (resourceType === 'xhr' || resourceType === 'fetch')) {
         void this.confirmStuckLoading(page, { trigger: 'SERVER_ERROR', url, method, status });
       }
@@ -1062,6 +1125,7 @@ export class StabilityMonitor {
 
       // Settle the request in the hang registry regardless of how the failure is classified below.
       this.pending.delete(request);
+      this.settleDuplicateCandidate(page, request, undefined, true);
 
       // NEW: Filter out false-positive ERR_ABORTED errors from user session cancellation
       // When users cancel a Safari session, unresolved HTTP requests are forcefully cancelled

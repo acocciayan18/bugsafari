@@ -9,6 +9,7 @@ import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { VisualRegressionDetector } from '../../heuristics/VisualRegressionDetector.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
+import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import type { NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
@@ -24,7 +25,7 @@ import type { FindingRepository } from '../../repositories/FindingRepository.js'
 import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
-import { narrateActionRecords } from '../forensics/narration.js';
+import { narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
 import { forensicErrorRepository } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { Types, isValidObjectId } from 'mongoose';
@@ -288,9 +289,17 @@ export class ExplorationEngine {
     // losing 14 findings before they ever reached the database. Every distinct
     // registration carries a unique bugId, so we only skip a literal re-push of
     // the exact same id. This retains all 15 instances for full telemetry parity.
-    const isDuplicate = this.confirmedBugsMemory.some(
+    const existingIndex = this.confirmedBugsMemory.findIndex(
       existing => existing.bugId === bug.bugId
     );
+    const isDuplicate = existingIndex >= 0;
+
+    // A collapse-counting finder (duplicate-action) re-registers the SAME bugId as its
+    // evidence sharpens. Refresh the stored record in place so the persisted finding
+    // carries the final verdict/occurrence instead of the first, weakest observation.
+    if (isDuplicate) {
+      this.confirmedBugsMemory[existingIndex] = { ...this.confirmedBugsMemory[existingIndex], ...bug };
+    }
 
     if (!isDuplicate) {
       this.confirmedBugsMemory.push(bug);
@@ -592,6 +601,7 @@ export class ExplorationEngine {
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
+      getInteractionContext: (atMs) => this.interactionContextAt(atMs),
     });
 
     const stateRestorer = new StateRestorer({
@@ -993,6 +1003,22 @@ export class ExplorationEngine {
   private freezeRecording(): void {
     this.freezeActionTraceRecording = true;
     ReproductionPlaybookStore.freeze();
+  }
+
+  // Resolve which control the engine was actuating at `atMs`, so a request observed by
+  // StabilityMonitor can be attributed to its triggering interaction. Bounded by the same
+  // causal window used for network reward attribution — outside it, background SPA chatter
+  // would be misattributed to an unrelated element.
+  private interactionContextAt(atMs: number): InteractionContext | null {
+    const target = this.lastActedTarget;
+    if (!target || this.lastActedAtMs <= 0) return null;
+    const sinceActionMs = atMs - this.lastActedAtMs;
+    if (sinceActionMs < 0 || sinceActionMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
+    return {
+      selector: target.selector,
+      label: resolveElementLabel(target),
+      actedAtMs: this.lastActedAtMs,
+    };
   }
 
   // Records an executed action into the in-memory breadcrumb + reproduction buffers only.

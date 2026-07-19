@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after improving the javascript runtime error"
-git checkout -b 7-19-Ayan-1
-git push --set-upstream origin 7-19-Ayan-1
+git commit -m "files after improving the the duplication error testing"
+git checkout -b 7-19-Ayan-2
+git push --set-upstream origin 7-19-Ayan-2
 

@@ -27,7 +27,7 @@ export default function SidebarLayout({
   isCollapsed,
   onToggleCollapse,
   children,
-  outerClassName = 'flex h-screen w-screen bg-[var(--surface-app)]',
+  outerClassName = 'flex h-screen w-screen bg-(--surface-app)',
   contentClassName,
 }: SidebarLayoutProps) {
   return (

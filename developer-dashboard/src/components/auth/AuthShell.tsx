@@ -30,7 +30,7 @@ export default function AuthShell({
         <div className="relative">
           {/* Corner reticle — signature HUD frame */}
          
-          <div className="bg-(--surface-panel) border border-(--border-hairline) rounded-(--radius-lg) shadow-[var(--shadow-sm)]">
+          <div className="bg-(--surface-panel) border border-(--border-hairline) rounded-(--radius-lg) shadow-(--shadow-sm)">
            
 
             <div className="p-6">

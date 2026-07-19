@@ -87,48 +87,48 @@ export function RowActionMenu({
         className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${
           disabled || isLoading
             ? 'cursor-not-allowed opacity-40'
-            : 'hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2'
+            : 'hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2'
         }`}
         aria-label={recordId ? `Actions for record ${recordId.slice(-8)}` : 'Record actions menu'}
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
         {isLoading ? (
-          <LoaderCircle className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" aria-hidden="true" />
+          <LoaderCircle className="h-5 w-5 animate-spin text-(--text-tertiary)" aria-hidden="true" />
         ) : (
-          <EllipsisVertical className="h-5 w-5 text-[var(--text-secondary)] hover:cursor-pointer" aria-hidden="true" />
+          <EllipsisVertical className="h-5 w-5 text-(--text-secondary) hover:cursor-pointer" aria-hidden="true" />
         )}
       </button>
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-1 shadow-lg" role="menu">
+        <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-(--border-hairline) bg-(--surface-panel) py-1 shadow-lg" role="menu">
           <button
             onClick={() => handleItemClick(onViewReport)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
             role="menuitem"
           >
             
-            <Scroll className="h-4 w-4 text-[var(--text-secondary)]" aria-hidden="true" />
+            <Scroll className="h-4 w-4 text-(--text-secondary)" aria-hidden="true" />
             View Report
           </button>
           <button
             onClick={() => handleItemClick(onExportRecord)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
             role="menuitem"
           >
-            <Download className="h-4 w-4 text-[var(--text-secondary)]" aria-hidden="true" />
+            <Download className="h-4 w-4 text-(--text-secondary)" aria-hidden="true" />
             Export Record
           </button>
           <button
             onClick={() => handleItemClick(onDeleteRecord)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-[var(--status-critical-fg)] hover:bg-[var(--status-critical-bg)] disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
             role="menuitem"
           >
-            <Trash2 className="h-4 w-4 text-[var(--status-critical-fg)]" aria-hidden="true" />
+            <Trash2 className="h-4 w-4 text-(--status-critical-fg)" aria-hidden="true" />
             Delete Record
           </button>
         </div>

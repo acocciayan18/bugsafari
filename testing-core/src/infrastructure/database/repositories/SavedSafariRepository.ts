@@ -20,6 +20,9 @@ const VALID_BUG_TYPES = new Set([
   'RUNTIME_UI_FREEZE',
   'SESSION_SYNC_FAULT',
   'NETWORK',
+  'DUPLICATE_ACTION',
+  'INFINITE_LOADING',
+  'NAVIGATION',
 ]) as Set<string>;
 
 /**

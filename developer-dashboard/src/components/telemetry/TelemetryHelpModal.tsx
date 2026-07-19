@@ -86,7 +86,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         title="What do these tabs show?"
-        className="mr-3 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+        className="mr-3 grid h-6 w-6 shrink-0 place-items-center rounded-full text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary)"
       >
         <HelpCircle className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
       </button>
@@ -95,9 +95,9 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         <div
           role="dialog"
           aria-label="Telemetry panel guide"
-          className="animate-in fade-in slide-in-from-top-1 absolute right-2 top-full z-50 mt-2 mb-4 max-h-[calc(100vh-6rem)] w-[min(24rem,calc(100vw-3rem))] origin-top-right overflow-y-auto rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-panel)] shadow-xl duration-150"
+          className="animate-in fade-in slide-in-from-top-1 absolute right-2 top-full z-50 mt-2 mb-4 max-h-[calc(100vh-6rem)] w-[min(24rem,calc(100vw-3rem))] origin-top-right overflow-y-auto rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl duration-150"
         >
-          <div className="flex gap-1 border-b border-[var(--border-hairline)] px-2 pt-2" role="tablist">
+          <div className="flex gap-1 border-b border-(--border-hairline) px-2 pt-2" role="tablist">
             {TOPICS.map((topic) => {
               const TopicIcon = topic.icon;
               const isActive = topic.id === activeId;
@@ -107,8 +107,8 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
                   onClick={() => setActiveId(topic.id)}
                   className={`flex items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
                     isActive
-                      ? 'border-[var(--text-primary)] text-[var(--text-primary)]'
-                      : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                      ? 'border-(--text-primary) text-(--text-primary)'
+                      : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
                   }`}
                   role="tab"
                   aria-selected={isActive}
@@ -122,18 +122,18 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
 
           <div key={active.id} className="animate-fade-in space-y-3 px-4 py-3.5" role="tabpanel">
             <div className="flex items-start gap-2.5">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--surface-inset)] text-[var(--text-primary)]">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-(--surface-inset) text-(--text-primary)">
                 <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
               </span>
-              <p className="text-body-sm leading-5 text-[var(--text-secondary)]">{active.what}</p>
+              <p className="text-body-sm leading-5 text-(--text-secondary)">{active.what}</p>
             </div>
 
             <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">What it collects</div>
+              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">What it collects</div>
               <ul className="mt-1 space-y-1">
                 {active.collects.map((item) => (
-                  <li key={item} className="flex gap-2 text-body-sm text-[var(--text-secondary)]">
-                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--text-tertiary)]" />
+                  <li key={item} className="flex gap-2 text-body-sm text-(--text-secondary)">
+                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-(--text-tertiary)" />
                     {item}
                   </li>
                 ))}
@@ -141,15 +141,15 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
             </div>
 
             <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">Why it's useful</div>
-              <p className="mt-1 text-body-sm leading-5 text-[var(--text-secondary)]">{active.why}</p>
+              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Why it's useful</div>
+              <p className="mt-1 text-body-sm leading-5 text-(--text-secondary)">{active.why}</p>
             </div>
 
             <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">Example events</div>
+              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Example events</div>
               <ul className="mt-1 space-y-1">
                 {active.examples.map((item) => (
-                  <li key={item} className="rounded-md bg-[var(--surface-inset)] px-2 py-1 font-mono text-caption text-[var(--text-secondary)]">
+                  <li key={item} className="rounded-md bg-(--surface-inset) px-2 py-1 font-mono text-caption text-(--text-secondary)">
                     {item}
                   </li>
                 ))}
@@ -157,8 +157,8 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
             </div>
           </div>
 
-          <div className="border-t border-[var(--border-hairline)] px-4 py-1.5">
-            <p className="text-caption text-[var(--text-disabled)]">Press ESC to close</p>
+          <div className="border-t border-(--border-hairline) px-4 py-1.5">
+            <p className="text-caption text-(--text-disabled)">Press ESC to close</p>
           </div>
         </div>
       )}

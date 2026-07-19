@@ -20,12 +20,12 @@ export type { StepKind };
 // (not severity), so all share the neutral status tone; bypass gets a border to
 // stand out without spending color — red is reserved for the fault itself.
 const CHIP_CLASS: Record<StepKind, string> = {
-  navigation: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  click: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  input: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  bypass: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)] border border-[var(--border-strong)]',
-  macro: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-  step: 'bg-[var(--surface-inset)] text-[var(--text-tertiary)]',
+  navigation: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  click: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  input: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  bypass: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
+  macro: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  step: 'bg-(--surface-inset) text-(--text-tertiary)',
 };
 
 export const chipClass = (kind: StepKind): string => CHIP_CLASS[kind];

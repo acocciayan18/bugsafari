@@ -17,7 +17,7 @@ export function isPasswordValid(password: string): boolean {
 
 function RequirementRow({ met, label }: { met: boolean; label: string }) {
   return (
-    <div className={`text-xs font-medium flex items-center gap-2 ${met ? 'text-[var(--status-stable-fg)]' : 'text-[var(--status-critical-fg)]'}`}>
+    <div className={`text-xs font-medium flex items-center gap-2 ${met ? 'text-(--status-stable-fg)' : 'text-(--status-critical-fg)'}`}>
       {met ? <Check className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /> : <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />}
       <span>{label}</span>
     </div>
@@ -34,11 +34,11 @@ export default function PasswordRequirements({ password }: PasswordRequirementsP
   const c = getPasswordChecks(password);
   return (
     <div
-  className="rounded-[var(--radius-sm)] border border-[var(--border-hairline)] bg-[var(--surface-inset)] p-4"
+  className="rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) p-4"
   role="status"
   aria-live="polite"
 >
-  <p className="mb-3 text-xs font-mono font-medium tracking-[0.08em] text-[var(--text-primary)]">
+  <p className="mb-3 text-xs font-mono font-medium tracking-[0.08em] text-(--text-primary)">
     SECURITY REQUIREMENTS
   </p>
 

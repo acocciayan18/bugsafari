@@ -18,19 +18,19 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
 
   return (
     <div
-      className={`mt-3 bg-[var(--surface-inset)] border-l-4 rounded-r p-4 text-[var(--text-primary)] font-mono text-xs ${
-        isCritical ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-strong)]'
+      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-4 text-(--text-primary) font-mono text-xs ${
+        isCritical ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'
       }`}
     >
-      <div className="flex items-center justify-between border-b border-[var(--border-hairline)] pb-2 mb-2">
-        <div className="flex items-center gap-1.5 text-[var(--text-secondary)] font-bold tracking-wider uppercase text-[10px]">
+      <div className="flex items-center justify-between border-b border-(--border-hairline) pb-2 mb-2">
+        <div className="flex items-center gap-1.5 text-(--text-secondary) font-bold tracking-wider uppercase text-[10px]">
           <span>🧠 BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <span
           className={`px-1.5 py-0.5 rounded text-[9px] font-black tracking-widest uppercase border ${
             isCritical
-              ? 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
-              : 'bg-[var(--surface-raised)] border-[var(--border-strong)] text-[var(--text-secondary)]'
+              ? 'bg-(--status-critical-bg) border-(--status-critical-border) text-(--status-critical-fg)'
+              : 'bg-(--surface-raised) border-(--border-strong) text-(--text-secondary)'
           }`}
         >
           {ai.severity}
@@ -39,23 +39,23 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
 
       <div className="space-y-2 text-[11px] leading-relaxed">
         <div>
-          <span className="text-[var(--text-tertiary)] font-bold">Vulnerability Class:</span>{' '}
-          <span className="text-[var(--text-primary)] font-bold">{ai.vulnerabilityClass}</span>
+          <span className="text-(--text-tertiary) font-bold">Vulnerability Class:</span>{' '}
+          <span className="text-(--text-primary) font-bold">{ai.vulnerabilityClass}</span>
         </div>
         <div>
-          <span className="text-[var(--text-tertiary)] font-bold">Standard Profile:</span>{' '}
-          <span className="text-[var(--text-secondary)] bg-[var(--surface-raised)] px-1.5 py-0.5 rounded text-[10px] font-bold">
+          <span className="text-(--text-tertiary) font-bold">Standard Profile:</span>{' '}
+          <span className="text-(--text-secondary) bg-(--surface-raised) px-1.5 py-0.5 rounded text-[10px] font-bold">
             {ai.cwe}
           </span>
         </div>
-        <div className="text-[var(--text-secondary)] text-justify italic font-light mt-1">
-          <span className="text-[var(--text-tertiary)] not-italic font-bold">Inference Deduction:</span>{' '}
+        <div className="text-(--text-secondary) text-justify italic font-light mt-1">
+          <span className="text-(--text-tertiary) not-italic font-bold">Inference Deduction:</span>{' '}
           {ai.explanation}
         </div>
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
-        <div className="mt-3 p-2.5 bg-[var(--surface-raised)] border border-[var(--border-hairline)] text-[var(--text-primary)] rounded font-sans text-xs">
-          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-[var(--text-secondary)] mb-1">
+        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-xs">
+          <span className="font-mono text-[10px] font-black uppercase tracking-wider block text-(--text-secondary) mb-1">
             💡 Actionable Remediation Patch Strategy:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>

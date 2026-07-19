@@ -77,8 +77,8 @@ export default function ForgotPasswordForm() {
         statusTone="success"
       >
         <div className="text-center">
-          <div className="w-16 h-16 bg-[var(--status-stable-bg)] border border-[var(--status-stable-border)] rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-[var(--status-stable-fg)]"><Check className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          <div className="w-16 h-16 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-(--status-stable-fg)"><Check className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
           </div>
           <p className="text-(--text-primary) mb-6">
             If an account exists with that email, a password reset link has been sent.
@@ -129,9 +129,9 @@ export default function ForgotPasswordForm() {
 
         {/* Server Error */}
         {serverError && (
-          <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] px-3 py-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[var(--status-critical-fg)]" strokeWidth={1.75} aria-hidden="true" />
-            <p className="text-sm text-[var(--status-critical-fg)]" role="alert">{serverError}</p>
+          <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
+            <p className="text-sm text-(--status-critical-fg)" role="alert">{serverError}</p>
           </div>
         )}
 

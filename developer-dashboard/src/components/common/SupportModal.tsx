@@ -32,13 +32,13 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} titleId="support-modal-title">
       {/* Modal Header */}
-      <div className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3">
+      <div className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3">
         <h3 id="support-modal-title" className="text-sm font-semibold text-(--text-primary)">
           {TITLES[mode]}
         </h3>
         <button
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-(--text-secondary) hover:bg-[var(--surface-hover)] transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           aria-label="Close"
         >
           
@@ -66,13 +66,13 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
             rows={4}
-            className="w-full rounded-md border border-[var(--border-strong)] px-4 py-3 text-base text-(--text-primary) bg-[var(--surface-panel)] placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--border-focus)] resize-none"
+            className="w-full rounded-md border border-(--border-strong) px-4 py-3 text-base text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-none"
           />
         </div>
       </div>
 
       {/* Modal Footer */}
-      <div className="flex justify-end gap-2 border-t border-[var(--border-hairline)] px-4 py-3">
+      <div className="flex justify-end gap-2 border-t border-(--border-hairline) px-4 py-3">
         <Button variant="ghost" size="sm" onClick={onClose}>
           Cancel
         </Button>

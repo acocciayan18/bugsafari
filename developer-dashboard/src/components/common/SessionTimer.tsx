@@ -85,7 +85,7 @@ function CompactTimer({
 
     return (
         <div className="flex items-center gap-2">
-            <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-[var(--status-critical-fg)] animate-pulse' : 'text-[var(--text-secondary)]'}`}>
+            <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`}>
                 {formattedTime}
             </div>
         </div>
@@ -129,12 +129,12 @@ function FullTimer({
     };
 
     return (
-        <div className="flex flex-col items-center gap-3 p-4 bg-[var(--surface-panel)] rounded-lg shadow-md border border-[var(--border-hairline)]">
+        <div className="flex flex-col items-center gap-3 p-4 bg-(--surface-panel) rounded-lg shadow-md border border-(--border-hairline)">
             {/* Status Badge */}
-            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${propIsPaused ? 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]' :
-                    timeRemaining <= 0 ? 'bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]' :
-                        propIsRunning ? 'bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)]' :
-                            'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]'
+            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
+                    timeRemaining <= 0 ? 'bg-(--status-critical-bg) text-(--status-critical-fg)' :
+                        propIsRunning ? 'bg-(--status-stable-bg) text-(--status-stable-fg)' :
+                            'bg-(--status-neutral-bg) text-(--status-neutral-fg)'
                 }`}>
                 {getStatusText()}
             </div>
@@ -174,14 +174,14 @@ function FullTimer({
                     >
                         {formattedTime}
                     </span>
-                    <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wider">
+                    <span className="text-xs text-(--text-tertiary) uppercase tracking-wider">
                         remaining
                     </span>
                 </div>
             </div>
 
             {/* Progress Bar (horizontal) */}
-            <div className="w-full h-2 bg-[var(--surface-raised)] rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-(--surface-raised) rounded-full overflow-hidden">
                 <div
                     className={`h-full transition-all duration-1000 ${isUrgent ? 'animate-pulse' : ''}`}
                     style={{
@@ -192,7 +192,7 @@ function FullTimer({
             </div>
 
             {/* Time Info */}
-            <div className="flex justify-between w-full text-xs text-[var(--text-secondary)]">
+            <div className="flex justify-between w-full text-xs text-(--text-secondary)">
                 <span>Elapsed: {Math.floor((initialTimeMs - timeRemaining) / 1000)}s</span>
                 <span>Total: {initialTimeMs / 1000}s</span>
             </div>

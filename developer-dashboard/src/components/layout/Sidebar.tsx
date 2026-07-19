@@ -26,10 +26,10 @@ interface SidebarProps {
 
 /** Shared classes for a nav item — 3px left border reserves space so active/inactive don't shift layout. */
 function navItemClass(isActive: boolean, isCollapsed: boolean) {
-  const base = 'flex w-full items-center gap-2.5 border-l-[3px] px-3 py-2.5 text-sm font-medium transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2';
+  const base = 'flex w-full items-center gap-2.5 border-l-[3px] hover:cursor-pointer px-3 py-2.5 text-sm font-medium transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2';
   const state = isActive
-    ? 'border-[var(--surface-invert)] bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-    : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]';
+    ? 'border-(--surface-invert) bg-(--surface-invert) text-(--text-oninvert)'
+    : 'border-transparent text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)';
   const layout = isCollapsed ? 'justify-center px-2' : '';
   return `${base} ${state} ${layout}`;
 }
@@ -47,14 +47,14 @@ export default function Sidebar({
 
   return (
     <section
-      className={`${sidebarWidth} shrink-0 flex flex-col border-r border-[var(--border-hairline)] bg-[var(--surface-panel)] transition-[width] duration-200 ease-in-out overflow-hidden`}
+      className={`${sidebarWidth} shrink-0 flex flex-col border-r border-(--border-hairline) bg-(--surface-panel) transition-[width] duration-200 ease-in-out overflow-hidden`}
     >
       {/* Header */}
-      <div className={`h-14 shrink-0 border-b border-[var(--border-hairline)] flex items-center transition-[padding] duration-200 ${isCollapsed ? 'px-1.5 justify-center' : 'px-3 gap-2.5'}`}>
+      <div className={`h-14 shrink-0 border-b border-(--border-hairline) flex items-center transition-[padding] duration-200 ${isCollapsed ? 'px-1.5 justify-center' : 'px-3 gap-2.5'}`}>
         <button
           onClick={onToggleCollapse}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--text-secondary) hover:cursor-pointer hover:text-(--text-primary) transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           {isCollapsed ? (
             <Menu className="h-5 w-5 shrink-0 text-current"/>
@@ -65,11 +65,11 @@ export default function Sidebar({
 
         {/* BUGSAFARI Branding - Inter, Bold, 20px */}
         <div className={`overflow-hidden transition-all duration-200 ${isCollapsed ? 'w-0 h-0' : 'w-auto h-auto flex-1'}`}>
-          <h1 className="font-sans font-bold text-[18px] uppercase tracking-wider text-[var(--text-primary)] whitespace-nowrap leading-none">
+          <h1 className="font-sans font-bold text-[18px] uppercase tracking-wider text-(--text-primary) whitespace-nowrap leading-none">
             BUGSAFARI
           </h1>
           {/* TERMINAL ACCESS - Inter, Medium, 10px */}
-          <p className="mt-0.5 font-sans font-medium text-[10px] text-[var(--text-secondary)] whitespace-nowrap leading-none tracking-wider">
+          <p className="mt-0.5 font-sans font-medium text-[10px] text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
             TERMINAL ACCESS
           </p>
         </div>
@@ -119,16 +119,16 @@ export default function Sidebar({
       </nav>
 
       {/* Footer - User Profile Card */}
-      <div className={`border-t border-[var(--border-hairline)] transition-[padding] duration-200 ${isCollapsed ? 'p-1.5' : 'p-2'}`}>
+      <div className={`border-t border-(--border-hairline) transition-[padding] duration-200 ${isCollapsed ? 'p-1.5' : 'p-2'}`}>
         {isLoggedIn && user ? (
           <div>
-            <div className={`flex items-center rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-raised)] transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-2.5 p-2.5'}`}>
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-invert)] text-sm font-bold text-[var(--text-oninvert)]">
+            <div className={`flex items-center rounded-lg border border-(--border-hairline) bg-(--surface-raised) transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-2.5 p-2.5'}`}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--surface-invert) text-sm font-bold text-(--text-oninvert)">
                 {(displayName || user.email).charAt(0).toUpperCase()}
               </div>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1 min-w-0'}`}>
                 {/* Admin/User Name: Inter, Bold, Size 12px */}
-                <div className="font-sans font-bold text-[11px] text-[var(--text-primary)] truncate">
+                <div className="font-sans font-bold text-[11px] text-(--text-primary) truncate">
                   {displayName || 'ADMIN_01'}
                 </div>
               </div>
@@ -136,9 +136,9 @@ export default function Sidebar({
           </div>
         ) : (
           <div>
-            <div className={`flex items-center rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-raised)] transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-2.5 p-2.5'}`}>
+            <div className={`flex items-center rounded-lg border border-(--border-hairline) bg-(--surface-raised) transition-all duration-200 ${isCollapsed ? 'p-1.5 justify-center' : 'gap-2.5 p-2.5'}`}>
               <div className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isCollapsed ? 'w-0' : 'flex-1'}`}>
-                <div className="font-sans font-bold text-[11px] text-[var(--text-primary)]">
+                <div className="font-sans font-bold text-[11px] text-(--text-primary)">
                   Guest User
                 </div>
               </div>

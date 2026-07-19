@@ -28,15 +28,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         ref={ref}
         id={inputId}
-        className={`w-full rounded-[var(--radius-sm)] border bg-[var(--surface-panel)] px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-[var(--border-focus)] focus:ring-0 disabled:opacity-40 disabled:cursor-not-allowed ${
-          error ? 'border-[var(--status-critical-fg)]' : 'border-[var(--border-hairline)]'
+        className={`w-full rounded-(--radius-sm) border bg-(--surface-panel) px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+          error ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'
         } ${className}`}
         aria-invalid={!!error}
         aria-describedby={describedBy}
         {...rest}
       />
       {error ? (
-        <p id={`${inputId}-error`} className="text-xs text-[var(--status-critical-fg)]">{error}</p>
+        <p id={`${inputId}-error`} className="text-xs text-(--status-critical-fg)">{error}</p>
       ) : hint ? (
         <p id={`${inputId}-hint`} className="text-xs text-(--text-tertiary)">{hint}</p>
       ) : null}

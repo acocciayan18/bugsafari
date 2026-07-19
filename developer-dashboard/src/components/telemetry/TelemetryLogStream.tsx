@@ -62,9 +62,9 @@ export default function TelemetryLogStream({
             className={`leading-relaxed whitespace-pre-wrap break-words ${logObj.rawText.includes('[SYSTEM]')
               ? 'text-(--text-secondary)'
               : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                ? 'text-[var(--status-critical-fg)] font-semibold'
+                ? 'text-(--status-critical-fg) font-semibold'
                 : logObj.rawText.includes('[NETWORK]')
-                  ? 'text-[var(--status-neutral-fg)]'
+                  ? 'text-(--status-neutral-fg)'
                   : 'text-(--text-primary)'
               }`}
           >
@@ -76,7 +76,7 @@ export default function TelemetryLogStream({
         </div>
       ))}
       <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-        <span className="h-3 w-3 rounded-full bg-[var(--status-neutral-fg)] animate-ping"></span>
+        <span className="h-3 w-3 rounded-full bg-(--status-neutral-fg) animate-ping"></span>
         <span className="font-mono text-xs">
           {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
         </span>

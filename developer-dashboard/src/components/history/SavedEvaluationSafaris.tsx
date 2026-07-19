@@ -178,18 +178,18 @@ function parseStepString(stepStr: string): ParsedStep | null {
 function StepRow({ step, stepStr }: { step?: ParsedStep | null; stepStr: string }) {
   if (!step) {
     // Fallback: show raw step if parsing failed
-    return <div className="font-mono text-xs text-[var(--text-tertiary)]">{stepStr}</div>;
+    return <div className="font-mono text-xs text-(--text-tertiary)">{stepStr}</div>;
   }
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
       <span className="text-sm">{step.actionIcon}</span>
-      <span className="font-semibold text-[var(--status-neutral-fg)]">{step.actionType}</span>
-      <span className="text-[var(--text-secondary)]">on</span>
-      <span className="font-mono text-[var(--status-warning-fg)]">{step.selector}</span>
+      <span className="font-semibold text-(--status-neutral-fg)">{step.actionType}</span>
+      <span className="text-(--text-secondary)">on</span>
+      <span className="font-mono text-(--status-warning-fg)">{step.selector}</span>
       {step.payload && (
         <>
-          <span className="text-[var(--text-secondary)]">with</span>
-          <span className="font-mono text-[var(--status-critical-fg)] max-w-[180px] truncate" title={step.payload}>
+          <span className="text-(--text-secondary)">with</span>
+          <span className="font-mono text-(--status-critical-fg) max-w-[180px] truncate" title={step.payload}>
             {step.payload.length > 40 ? step.payload.slice(0, 40) + '...' : step.payload}
           </span>
         </>
@@ -521,14 +521,14 @@ const progressSegments = [0, 1, 2, 3, 4];
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-6 py-4">
+    <div className="flex h-full w-full flex-col bg-(--surface-app)">
+      <header className="flex items-center justify-between border-b border-(--border-hairline) px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
+          <span className="text-sm font-bold tracking-wide text-(--text-primary)">
             BUGSAFARI
           </span>
-          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="text-sm font-semibold text-[var(--text-secondary)]">
+          <span className="mx-3 text-(--text-tertiary)">/</span>
+          <span className="text-sm font-semibold text-(--text-secondary)">
             AUTONOMOUS TESTING ENGINE
           </span>
         </div>
@@ -537,23 +537,23 @@ const progressSegments = [0, 1, 2, 3, 4];
           <button
             onClick={handleRefresh}
             disabled={isLoading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors disabled:opacity-50"
             title="Refresh history"
           >
-            <RefreshCcw className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCcw className={`h-5 w-5 text-(--text-secondary) ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors">
             
-            <CircleQuestionMark className="h-5 w-5 text-[var(--text-secondary)]" />
+            <CircleQuestionMark className="h-5 w-5 text-(--text-secondary)" />
           </button>
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)]">
-<div className="border-b border-[var(--border-hairline)] px-6 py-4">
+      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-panel)">
+<div className="border-b border-(--border-hairline) px-6 py-4">
           <div className="flex items-center justify-between">
 <div className="flex items-center gap-4">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
+              <h2 className="text-lg font-bold text-(--text-primary)">
                 SAVED EVALUATION SAFARIS
               </h2>
               {/* Select All checkbox - only show when data exists */}
@@ -573,9 +573,9 @@ const progressSegments = [0, 1, 2, 3, 4];
                           setSelectedIds(new Set(allIds));
                         }
                       }}
-                      className="h-5 w-5 rounded border-[var(--border-strong)] text-[var(--text-secondary)] focus:ring-[var(--border-focus)]"
+                      className="h-5 w-5 rounded border-(--border-strong) text-(--text-secondary) focus:ring-(--border-focus)"
                     />
-                    <span className="text-xs text-[var(--text-secondary)] font-medium">
+                    <span className="text-xs text-(--text-secondary) font-medium">
                       {isAllSelected ? 'Deselect All' : 'Select All'}
                     </span>
                   </label>
@@ -584,26 +584,26 @@ const progressSegments = [0, 1, 2, 3, 4];
             </div>
             <div className="flex items-center gap-6">
               <div className="relative">
-                <div className="flex h-10 w-72 items-center rounded-md bg-[var(--surface-app)] px-3 py-2 shadow-sm">
+                <div className="flex h-10 w-72 items-center rounded-md bg-(--surface-app) px-3 py-2 shadow-sm">
                 
-                  <Search className="absolute left-3 h-5 w-5 text-[var(--text-tertiary)]" />
+                  <Search className="absolute left-3 h-5 w-5 text-(--text-tertiary)" />
                   <input
                     type="text"
                     placeholder="Search URLs..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none"
+                    className="flex-1 bg-transparent text-sm text-(--text-primary) placeholder-(--text-tertiary) focus:outline-none"
                   />
                 </div>
               </div>
-<div className="flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
+<div className="flex items-center gap-1 rounded-md bg-(--surface-app) p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as const).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setActiveFilter(filter)}
                     className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${activeFilter === filter
-                      ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-                      : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                      ? 'bg-(--surface-invert) text-(--text-oninvert)'
+                      : 'bg-(--surface-raised) text-(--text-secondary) hover:bg-(--surface-hover)'
                       }`}
                   >
                     {filter}
@@ -616,14 +616,14 @@ const progressSegments = [0, 1, 2, 3, 4];
 
         {/* Bulk Action Toolbar */}
         {selectedCount > 0 && (
-          <div className="flex items-center gap-4 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-6 py-2">
-            <span className="text-sm font-medium text-[var(--status-neutral-fg)]">
+          <div className="flex items-center gap-4 border-b border-(--border-hairline) bg-(--status-neutral-bg) px-6 py-2">
+            <span className="text-sm font-medium text-(--status-neutral-fg)">
               {selectedCount} item{selectedCount > 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleBulkDelete}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-critical-fg)] bg-[var(--surface-app)] border border-[var(--status-critical-border)] hover:bg-[var(--status-critical-bg)] transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-(--status-critical-fg) bg-(--surface-app) border border-(--status-critical-border) hover:bg-(--status-critical-bg) transition-colors"
               >
                
                 <Trash2 className="h-4 w-4" />
@@ -631,21 +631,21 @@ const progressSegments = [0, 1, 2, 3, 4];
               </button>
               <button
                 onClick={handleBulkExport}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--status-stable-fg)] bg-[var(--surface-app)] border border-[var(--status-stable-border)] hover:bg-[var(--status-stable-bg)] transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-(--status-stable-fg) bg-(--surface-app) border border-(--status-stable-border) hover:bg-(--status-stable-bg) transition-colors"
               >
                <Upload className="h-4 w-4" />
                 Export
               </button>
               <button
                 onClick={handleBulkCompare}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--surface-app)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-(--text-primary) bg-(--surface-app) border border-(--border-strong) hover:bg-(--surface-hover) transition-colors"
               >
                 <ChartColumnBig className="h-4 w-4" />
                 Compare
               </button>
               <button
                 onClick={deselectAll}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] bg-[var(--surface-app)] border border-[var(--border-hairline)] hover:bg-[var(--surface-hover)] transition-colors"
+                className="flex items-center gap-1 rounded px-3 py-1.5 text-xs font-medium text-(--text-secondary) bg-(--surface-app) border border-(--border-hairline) hover:bg-(--surface-hover) transition-colors"
               >
                 Clear Selection
               </button>
@@ -653,49 +653,49 @@ const progressSegments = [0, 1, 2, 3, 4];
           </div>
         )}
 
-        <div className="divide-y divide-[var(--border-hairline)]">
+        <div className="divide-y divide-(--border-hairline)">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-hairline)] border-t-[var(--text-secondary)]"></div>
-              <span className="text-sm text-[var(--text-secondary)]">Loading history...</span>
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--border-hairline) border-t-(--text-secondary)"></div>
+              <span className="text-sm text-(--text-secondary)">Loading history...</span>
             </div>
           ) : fetchError ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
              
-             <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
-              <span className="text-sm font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
-              <span className="text-xs text-[var(--text-secondary)]">{fetchError}</span>
+             <TriangleAlert className="h-12 w-12 text-(--status-critical-fg)" />
+              <span className="text-sm font-medium text-(--status-critical-fg)">Failed to load history</span>
+              <span className="text-xs text-(--text-secondary)">{fetchError}</span>
               <button
                 onClick={() => window.location.reload()}
-                className="mt-2 rounded-md border border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                className="mt-2 rounded-md border border-(--border-strong) bg-(--surface-app) px-4 py-2 text-xs font-medium text-(--text-primary) hover:bg-(--surface-hover)"
               >
                 Try Again
               </button>
             </div>
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <Lock className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-sm text-[var(--text-secondary)] font-medium">Please log in to view history</span>
-              <span className="text-xs text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
+              <Lock className="h-12 w-12 text-(--text-secondary)" />
+              <span className="text-sm text-(--text-secondary) font-medium">Please log in to view history</span>
+              <span className="text-xs text-(--text-secondary)">Log in or sign up to access your saved evaluations</span>
               <button
                 onClick={() => window.location.href = '/login'}
-                className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-xs font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
+                className="mt-2 rounded-md bg-(--surface-invert) px-4 py-2 text-xs font-medium text-(--text-oninvert) hover:bg-(--surface-invert-hover)"
               >
                 Go to Login
               </button>
             </div>
           ) : paginatedEvaluations.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <ClipboardCheck className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-sm text-[var(--text-secondary)] font-medium">No evaluation history yet</span>
-              <span className="text-xs text-[var(--text-secondary)]">Run your first autonomous test and save it to see results here</span>
+              <ClipboardCheck className="h-12 w-12 text-(--text-secondary)" />
+              <span className="text-sm text-(--text-secondary) font-medium">No evaluation history yet</span>
+              <span className="text-xs text-(--text-secondary)">Run your first autonomous test and save it to see results here</span>
             </div>
 ) : (
 paginatedEvaluations.map((evalItem) => {
               return (
                 <div key={evalItem.id}>
                   <div
-                    className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--border-focus)]"
+                    className="cursor-pointer transition-colors hover:bg-(--surface-hover) active:bg-(--surface-inset) bg-(--surface-panel) focus:outline-none focus:ring-2 focus:ring-inset focus:ring-(--border-focus)"
                     role="button"
                     tabIndex={0}
                     aria-label={`View forensic report for ${evalItem.targetUrl}`}
@@ -709,10 +709,10 @@ paginatedEvaluations.map((evalItem) => {
                   >
 <div className="flex items-center justify-between px-6 py-4">
 <div className="flex-1">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">
+                        <div className="text-sm font-medium text-(--text-primary)">
                           {evalItem.targetUrl}
                         </div>
-<div className="mt-1 flex items-center gap-4 text-xs text-[var(--text-secondary)]">
+<div className="mt-1 flex items-center gap-4 text-xs text-(--text-secondary)">
                           <span>ID: {evalItem.id}</span>
                           <span>•</span>
                           <span>{evalItem.date}</span>
@@ -732,10 +732,10 @@ paginatedEvaluations.map((evalItem) => {
 <div className="flex items-center gap-4">
                         <div
                           className={`flex h-6 items-center rounded border px-2 text-xs font-medium ${evalItem.severity === 'CRITICAL'
-                            ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
+                            ? 'border-(--status-critical-border) text-(--status-critical-fg)'
                             : evalItem.severity === 'HIGH'
-                              ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
-                              : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
+                              ? 'border-(--status-warning-border) text-(--status-warning-fg)'
+                              : 'border-(--status-stable-border) text-(--status-stable-fg)'
                             }`}
                         >
                           {evalItem.severityCount} {evalItem.severity}
@@ -751,7 +751,7 @@ paginatedEvaluations.map((evalItem) => {
                           />
                         </div>
                         <div className="flex h-6 w-6 items-center justify-center">
-                          <ChevronRight className="h-4 w-4 text-[var(--text-secondary)]" />
+                          <ChevronRight className="h-4 w-4 text-(--text-secondary)" />
                         </div>
                       </div>
                     </div>
@@ -762,9 +762,9 @@ paginatedEvaluations.map((evalItem) => {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] px-6 py-3">
+        <div className="flex items-center justify-between border-t border-(--border-hairline) px-6 py-3">
           <div className="flex items-center">
-            <span className="font-mono text-xs text-[var(--text-secondary)]">
+            <span className="font-mono text-xs text-(--text-secondary)">
               SHOWING {showingStart}-{showingEnd} OF {displayTotalCount} SAFARIS
             </span>
           </div>
@@ -772,14 +772,14 @@ paginatedEvaluations.map((evalItem) => {
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-xs text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-50 disabled:cursor-not-allowed"
             >
               ‹
             </button>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-xs text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-50 disabled:cursor-not-allowed"
             >
               ›
             </button>
@@ -792,13 +792,13 @@ paginatedEvaluations.map((evalItem) => {
           {progressSegments.map((idx) => (
             <div
               key={idx}
-              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-[var(--surface-invert)]' : 'bg-[var(--surface-raised)]'
+              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-(--surface-invert)' : 'bg-(--surface-raised)'
                 }`}
             />
           ))}
         </div>
         <div className="text-center">
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">
+          <span className="font-mono text-xs text-(--text-tertiary)">
             END OF FORENSIC RECORD MANIFEST - V.8.2.19
           </span>
         </div>

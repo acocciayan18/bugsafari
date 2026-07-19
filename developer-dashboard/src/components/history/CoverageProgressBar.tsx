@@ -24,9 +24,9 @@ interface CoverageBand {
 
 /** Single source of truth for the 0-40 / 41-70 / 71-100 coverage color bands. */
 function getCoverageBand(percentage: number): CoverageBand {
-  if (percentage <= 40) return { fill: 'bg-[var(--status-critical-fg)]', track: 'bg-[var(--status-critical-bg)]', text: 'text-[var(--status-critical-fg)]' };
-  if (percentage <= 70) return { fill: 'bg-[var(--status-warning-fg)]', track: 'bg-[var(--status-warning-bg)]', text: 'text-[var(--status-warning-fg)]' };
-  return { fill: 'bg-[var(--status-stable-fg)]', track: 'bg-[var(--status-stable-bg)]', text: 'text-[var(--status-stable-fg)]' };
+  if (percentage <= 40) return { fill: 'bg-(--status-critical-fg)', track: 'bg-(--status-critical-bg)', text: 'text-(--status-critical-fg)' };
+  if (percentage <= 70) return { fill: 'bg-(--status-warning-fg)', track: 'bg-(--status-warning-bg)', text: 'text-(--status-warning-fg)' };
+  return { fill: 'bg-(--status-stable-fg)', track: 'bg-(--status-stable-bg)', text: 'text-(--status-stable-fg)' };
 }
 
 export default function CoverageProgressBar({

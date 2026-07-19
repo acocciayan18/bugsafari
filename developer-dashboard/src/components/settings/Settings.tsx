@@ -51,14 +51,14 @@ function SettingsCard({ icon, title, description, children }: {
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-panel)] shadow-sm">
-      <header className="flex items-start gap-3 border-b border-[var(--border-hairline)] px-5 py-4">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--surface-invert)] text-[var(--text-oninvert)]">
+    <section className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
+      <header className="flex items-start gap-3 border-b border-(--border-hairline) px-5 py-4">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
           {icon}
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
-          <p className="text-xs text-[var(--text-secondary)]">{description}</p>
+          <h3 className="text-sm font-semibold text-(--text-primary)">{title}</h3>
+          <p className="text-xs text-(--text-secondary)">{description}</p>
         </div>
       </header>
       <div className="flex-1 px-5 py-5">{children}</div>
@@ -89,10 +89,10 @@ function ThemeModeControl({ mode, onChange }: { mode: ThemeMode; onChange: (mode
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(opt.mode)}
-            className={`flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-app)] ${
+            className={`flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
               selected
-                ? 'border-[var(--border-strong)] bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-                : 'border-[var(--border-hairline)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
+                : 'border-(--border-hairline) text-(--text-secondary) hover:bg-(--surface-hover)'
             }`}
           >
             {opt.icon}
@@ -131,11 +131,11 @@ function PasswordInputField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+      <label htmlFor={id} className="block text-sm font-medium text-(--text-secondary) mb-2">
         {label}
       </label>
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-[var(--text-tertiary)]">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-(--text-tertiary)">
           <Lock className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
         </div>
         <input
@@ -143,10 +143,10 @@ function PasswordInputField({
           type={showPassword ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border bg-[var(--surface-inset)] px-4 py-3 pl-10 pr-10 text-sm text-[var(--text-primary)] placeholder-[var(--text-disabled)] focus:bg-[var(--surface-panel)] focus:outline-none transition-colors ${
+          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-3 pl-10 pr-10 text-sm text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
             error
-              ? 'border-[var(--status-critical-border)] focus:border-[var(--status-critical-fg)]'
-              : 'border-[var(--border-hairline)] focus:border-[var(--border-strong)]'
+              ? 'border-(--status-critical-border) focus:border-(--status-critical-fg)'
+              : 'border-(--border-hairline) focus:border-(--border-strong)'
           }`}
           placeholder={placeholder || '••••••••'}
           autoComplete={autoComplete}
@@ -154,7 +154,7 @@ function PasswordInputField({
         />
         <button
           type="button"
-          className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] focus:outline-none"
+          className="absolute inset-y-0 right-0 pr-3 flex items-center text-(--text-tertiary) hover:text-(--text-secondary) focus:outline-none"
           onClick={onTogglePassword}
         >
           {showPassword
@@ -162,7 +162,7 @@ function PasswordInputField({
             : <Eye className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         </button>
       </div>
-      {error && <p className="mt-1 text-xs text-[var(--status-critical-fg)]">{error}</p>}
+      {error && <p className="mt-1 text-xs text-(--status-critical-fg)">{error}</p>}
     </div>
   );
 }
@@ -184,11 +184,11 @@ const ToggleSwitch = memo(function ToggleSwitch({
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div className="flex items-start gap-3">
-        {icon && <div className="mt-0.5 text-[var(--text-tertiary)]">{icon}</div>}
+        {icon && <div className="mt-0.5 text-(--text-tertiary)">{icon}</div>}
         <div>
-          <span className="text-sm font-medium text-[var(--text-secondary)]">{label}</span>
+          <span className="text-sm font-medium text-(--text-secondary)">{label}</span>
           {description && (
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">{description}</p>
+            <p className="text-xs text-(--text-secondary) mt-0.5">{description}</p>
           )}
         </div>
       </div>
@@ -204,13 +204,13 @@ const ToggleSwitch = memo(function ToggleSwitch({
             onChange(!checked);
           }
         }}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] focus:ring-offset-2 focus:ring-offset-[var(--surface-app)] ${
-          checked ? 'bg-[var(--surface-invert)]' : 'bg-[var(--surface-inset)]'
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-(--border-focus) focus:ring-offset-2 focus:ring-offset-(--surface-app) ${
+          checked ? 'bg-(--surface-invert)' : 'bg-(--surface-inset)'
         }`}
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[var(--surface-panel)] shadow ring-0 transition duration-200 ease-in-out ${
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-(--surface-panel) shadow ring-0 transition duration-200 ease-in-out ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
@@ -258,9 +258,9 @@ function ApplicationSettingsSection() {
   if (isSettingsLoading && !hasLoadedRef.current) {
     return (
       <div className="animate-pulse space-y-3">
-        <div className="h-8 bg-[var(--surface-inset)] rounded"></div>
-        <div className="h-8 bg-[var(--surface-inset)] rounded"></div>
-        <div className="h-8 bg-[var(--surface-inset)] rounded"></div>
+        <div className="h-8 bg-(--surface-inset) rounded"></div>
+        <div className="h-8 bg-(--surface-inset) rounded"></div>
+        <div className="h-8 bg-(--surface-inset) rounded"></div>
       </div>
     );
   }
@@ -268,12 +268,12 @@ function ApplicationSettingsSection() {
   return (
     <div className="space-y-5">
       <div>
-        <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Theme</span>
-        <p className="mt-0.5 mb-2 text-xs text-[var(--text-secondary)]">Choose how BugSafari looks on this device.</p>
+        <span className="text-xs font-semibold text-(--text-secondary) uppercase tracking-wider">Theme</span>
+        <p className="mt-0.5 mb-2 text-xs text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
         <ThemeModeControl mode={settings.theme} onChange={handleThemeSelect} />
       </div>
 
-      <div className="border-t border-[var(--border-hairline)] pt-3 divide-y divide-[var(--border-hairline)]">
+      <div className="border-t border-(--border-hairline) pt-3 divide-y divide-(--border-hairline)">
         <ToggleSwitch
           checked={settings.notifications}
           onChange={(checked) => handleBooleanToggle('notifications', checked)}
@@ -378,7 +378,7 @@ function SecuritySettingsSection() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-strong)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           <KeyRound className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Change Password
@@ -431,15 +431,15 @@ function SecuritySettingsSection() {
             />
 
             {successMessage && (
-              <div className="p-3 bg-[var(--status-stable-bg)] border border-[var(--status-stable-border)] rounded-lg">
-                <p className="text-sm text-[var(--status-stable-fg)]">{successMessage}</p>
+              <div className="p-3 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-lg">
+                <p className="text-sm text-(--status-stable-fg)">{successMessage}</p>
               </div>
             )}
 
             {/* Backend password errors — e.g. "current password incorrect" */}
             {passwordError && (
-              <div className="p-3 bg-[var(--status-critical-bg)] border border-[var(--status-critical-border)] rounded-lg">
-                <p className="text-sm text-[var(--status-critical-fg)]">{passwordError}</p>
+              <div className="p-3 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-lg">
+                <p className="text-sm text-(--status-critical-fg)">{passwordError}</p>
               </div>
             )}
 
@@ -447,7 +447,7 @@ function SecuritySettingsSection() {
               <button
                 type="submit"
                 disabled={isPasswordChanging}
-                className="flex-1 rounded-lg bg-[var(--surface-invert)] px-4 py-3 text-sm font-semibold text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)] active:bg-[var(--surface-invert-active)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-3 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 {isPasswordChanging ? (
                   <span className="flex items-center justify-center gap-2">
@@ -462,7 +462,7 @@ function SecuritySettingsSection() {
                 type="button"
                 onClick={handleCancel}
                 disabled={isPasswordChanging}
-                className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border-strong)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 <X className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 Cancel
@@ -504,9 +504,9 @@ function AccountSection() {
   if (isProfileLoading) {
     return (
       <div className="animate-pulse space-y-3">
-        <div className="h-4 bg-[var(--surface-inset)] rounded w-3/4"></div>
-        <div className="h-4 bg-[var(--surface-inset)] rounded w-1/2"></div>
-        <div className="h-20 bg-[var(--surface-inset)] rounded"></div>
+        <div className="h-4 bg-(--surface-inset) rounded w-3/4"></div>
+        <div className="h-4 bg-(--surface-inset) rounded w-1/2"></div>
+        <div className="h-20 bg-(--surface-inset) rounded"></div>
       </div>
     );
   }
@@ -514,55 +514,55 @@ function AccountSection() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[var(--surface-inset)]">
-          <User className="h-5 w-5 text-[var(--text-secondary)]" strokeWidth={ICON_STROKE} aria-hidden="true" />
+        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
+          <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+          <p className="truncate text-sm font-medium text-(--text-primary)">
             {displayName || user?.email || 'User'}
           </p>
-          <p className="truncate text-xs text-[var(--text-secondary)]">{user?.email}</p>
+          <p className="truncate text-xs text-(--text-secondary)">{user?.email}</p>
         </div>
       </div>
 
-      <dl className="divide-y divide-[var(--border-hairline)] rounded-lg border border-[var(--border-hairline)]">
+      <dl className="divide-y divide-(--border-hairline) rounded-lg border border-(--border-hairline)">
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <User className="h-5 w-5 flex-shrink-0 text-[var(--text-tertiary)]" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <User className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-[var(--text-secondary)]">Display Name</dt>
-            <dd className="truncate text-sm text-[var(--text-primary)]">{displayName || '—'}</dd>
+            <dt className="text-xs text-(--text-secondary)">Display Name</dt>
+            <dd className="truncate text-sm text-(--text-primary)">{displayName || '—'}</dd>
           </div>
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <Mail className="h-5 w-5 flex-shrink-0 text-[var(--text-tertiary)]" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <Mail className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-[var(--text-secondary)]">Email</dt>
-            <dd className="truncate text-sm text-[var(--text-primary)]">{user?.email || '—'}</dd>
+            <dt className="text-xs text-(--text-secondary)">Email</dt>
+            <dd className="truncate text-sm text-(--text-primary)">{user?.email || '—'}</dd>
           </div>
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <Hash className="h-5 w-5 flex-shrink-0 text-[var(--text-tertiary)]" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <Hash className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <dt className="text-xs text-[var(--text-secondary)]">User ID</dt>
-            <dd className="truncate font-mono text-xs text-[var(--text-secondary)]">{user?.id || '—'}</dd>
+            <dt className="text-xs text-(--text-secondary)">User ID</dt>
+            <dd className="truncate font-mono text-xs text-(--text-secondary)">{user?.id || '—'}</dd>
           </div>
         </div>
       </dl>
 
-      <div className="pt-4 border-t border-[var(--border-hairline)]">
+      <div className="pt-4 border-t border-(--border-hairline)">
         {showLogoutConfirm ? (
           <div className="space-y-3">
-            <p className="text-sm text-[var(--text-secondary)]">Are you sure you want to sign out?</p>
+            <p className="text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
             <div className="flex gap-3">
               <button
                 onClick={handleLogout}
-                className="rounded-lg bg-[var(--status-critical-fg)] px-4 py-2 text-sm font-semibold text-[var(--text-oninvert)] hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+                className="rounded-lg bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Yes, Sign Out
               </button>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-lg border border-[var(--border-strong)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2"
+                className="rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
@@ -571,7 +571,7 @@ function AccountSection() {
         ) : (
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] px-4 py-2 text-sm font-semibold text-[var(--status-critical-fg)] hover:opacity-90 transition-colors"
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-sm font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Sign Out
@@ -598,29 +598,29 @@ export default function Settings() {
   }, [isAuthenticated]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--surface-panel)]">
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-6 py-4">
+    <div className="flex h-full w-full flex-col bg-(--surface-panel)">
+      <header className="flex items-center justify-between border-b border-(--border-hairline) px-6 py-4">
         <div className="flex items-center">
-          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">BUGSAFARI</span>
-          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="text-sm font-semibold text-[var(--text-secondary)]">SETTINGS</span>
+          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="mx-3 text-(--text-tertiary)">/</span>
+          <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
         <div className="flex items-center gap-4">
           {user && (
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--surface-inset)]">
-                <User className="h-5 w-5 text-[var(--text-secondary)]" strokeWidth={ICON_STROKE} aria-hidden="true" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-inset)">
+                <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
               </div>
-              <span className="text-xs text-[var(--text-secondary)] hidden md:inline">{user.email}</span>
+              <span className="text-xs text-(--text-secondary) hidden md:inline">{user.email}</span>
             </div>
           )}
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-app)]">
-        <div className="border-b border-[var(--border-hairline)] px-6 py-4">
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">SETTINGS</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app)">
+        <div className="border-b border-(--border-hairline) px-6 py-4">
+          <h2 className="text-lg font-bold text-(--text-primary)">SETTINGS</h2>
+          <p className="mt-1 text-sm text-(--text-secondary)">
             Manage your account preferences and application configuration
           </p>
         </div>

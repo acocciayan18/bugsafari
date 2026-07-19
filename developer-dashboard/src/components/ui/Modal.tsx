@@ -67,7 +67,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--surface-app)] p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-(--surface-app) p-4 animate-fade-in"
       onMouseDown={handleBackdropMouseDown}
     >
       <div
@@ -75,7 +75,7 @@ export function Modal({ isOpen, onClose, titleId, children, maxWidthClassName = 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`w-full ${maxWidthClassName} rounded-[var(--radius-lg)] border border-[var(--border-hairline)] bg-[var(--surface-panel)] shadow-[var(--shadow-xl)]`}
+        className={`w-full ${maxWidthClassName} rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl)`}
       >
         {children}
       </div>

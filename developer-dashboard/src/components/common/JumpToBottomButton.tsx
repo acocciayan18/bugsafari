@@ -13,7 +13,7 @@ export default function JumpToBottomButton({ visible, onClick }: JumpToBottomBut
   return (
     <button
       onClick={onClick}
-      className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-[var(--border-hairline)] bg-[var(--surface-invert)] px-3 py-1.5 text-xs font-semibold text-[var(--text-oninvert)] shadow-lg hover:bg-[var(--surface-invert-hover)] transition-colors"
+      className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full border border-(--border-hairline) bg-(--surface-invert) px-3 py-1.5 text-xs font-semibold text-(--text-oninvert) shadow-lg hover:bg-(--surface-invert-hover) transition-colors"
       aria-label="Jump to newest log entry"
     >
       
