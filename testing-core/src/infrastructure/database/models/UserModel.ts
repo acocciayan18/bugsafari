@@ -51,8 +51,7 @@ const userSchema = new Schema(
   },
 );
 
-// Index for efficient email lookups
-userSchema.index({ email: 1 });
+// No explicit email index — `unique: true` on the field already creates one.
 
 /**
  * Pre-save hook for automatic password hashing

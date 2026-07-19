@@ -15,6 +15,7 @@ import { registerSupportRoutes } from './presentation/api/supportController.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
+import { reapExpiredSessionChildren } from './infrastructure/database/retentionReaper.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
@@ -111,6 +112,28 @@ httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
 });
 
+// Periodic orphan sweep. The TTL index expires abandoned sessions but MongoDB
+// does not cascade, so their forensic children need reclaiming. Opt-in via env
+// so only one process in a deployment runs it.
+const REAP_INTERVAL_MS = 60 * 60 * 1000;
+let reaperTimer: NodeJS.Timeout | undefined;
+
+if (dbReady && process.env.BUGSAFARI_ENABLE_RETENTION_REAPER === 'true') {
+  const runReaper = (): void => {
+    reapExpiredSessionChildren()
+      .then((totals) => {
+        const removed = Object.values(totals).reduce((sum, count) => sum + count, 0);
+        if (removed > 0) console.log('[BugSafari] Retention reaper removed orphans:', totals);
+      })
+      .catch((error: unknown) => console.error('[BugSafari] Retention reaper failed:', error));
+  };
+
+  reaperTimer = setInterval(runReaper, REAP_INTERVAL_MS);
+  reaperTimer.unref();
+  runReaper();
+  console.log(`[BugSafari] Retention reaper enabled (every ${REAP_INTERVAL_MS / 60000} min)`);
+}
+
 httpServer.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
     console.error(`[BugSafari] Port ${port} is already in use. Stop the existing process or set BUGSAFARI_PORT.`);
@@ -123,6 +146,7 @@ httpServer.on('error', (error: NodeJS.ErrnoException) => {
 const shutdown = async (signal: string): Promise<void> => {
   console.log(`[BugSafari] Received ${signal}, shutting down gracefully...`);
   try {
+    if (reaperTimer) clearInterval(reaperTimer);
     await disconnectDatabase();
     console.log('[BugSafari] Database disconnected');
     await queueStatusBroadcaster?.close();

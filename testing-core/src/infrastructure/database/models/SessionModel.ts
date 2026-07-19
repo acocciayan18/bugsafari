@@ -120,7 +120,6 @@ const sessionSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'userId is required — every session must belong to an authenticated user.'],
-      index: true,
     },
     targetUrl: {
       type: String,
@@ -149,7 +148,6 @@ const sessionSchema = new Schema(
       type: Boolean,
       required: true,
       default: false,
-      index: true,
     },
     endedReason: {
       type: String,
@@ -224,7 +222,6 @@ const sessionSchema = new Schema(
     executionDate: {
       type: Date,
       default: () => new Date(),
-      index: true,
     },
     timeElapsed: {
       type: Number,
@@ -352,9 +349,36 @@ const sessionSchema = new Schema(
   },
 );
 
-// Indexes for efficient querying
+// Indexes for efficient querying. The userId compounds cover single-field userId
+// lookups by prefix, so no standalone userId/savedManually/executionDate index.
+sessionSchema.index({ userId: 1, savedManually: 1, startedAt: -1 });
+sessionSchema.index({ userId: 1, startedAt: -1 });
 sessionSchema.index({ status: 1, startedAt: -1 });
 sessionSchema.index({ targetUrl: 1 });
+
+// Retention: abandoned (never explicitly saved) sessions expire automatically.
+// The partial filter means flipping savedManually to true drops the doc out of
+// the index, so saved history is never expired. Child forensic docs are swept
+// separately by retentionReaper — a TTL delete does not cascade.
+const DEFAULT_UNSAVED_SESSION_TTL_SECONDS = 86_400;
+const MIN_UNSAVED_SESSION_TTL_SECONDS = 300;
+
+function readUnsavedSessionTtlSeconds(): number {
+  const parsed = Number.parseInt(process.env.BUGSAFARI_UNSAVED_SESSION_TTL_SECONDS ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_UNSAVED_SESSION_TTL_SECONDS;
+  return Math.max(MIN_UNSAVED_SESSION_TTL_SECONDS, parsed);
+}
+
+export const UNSAVED_SESSION_TTL_SECONDS = readUnsavedSessionTtlSeconds();
+
+sessionSchema.index(
+  { startedAt: 1 },
+  {
+    name: 'unsaved_sessions_ttl',
+    expireAfterSeconds: UNSAVED_SESSION_TTL_SECONDS,
+    partialFilterExpression: { savedManually: false },
+  },
+);
 
 export interface ISession extends Document {
   userId: Types.ObjectId;

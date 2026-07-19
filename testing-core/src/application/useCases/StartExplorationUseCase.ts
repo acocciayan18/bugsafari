@@ -11,6 +11,7 @@ import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
+import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 
 interface RunState {
     active: boolean;
@@ -439,7 +440,14 @@ export class StartExplorationUseCase {
         }
     }
 
+    // Wraps the run in a private RNG scope so concurrent runs cannot interleave
+    // draws from the scenario PRNG. The engine seeds inside its constructor, so
+    // the scope must enclose construction, not just the exploration loop.
     public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string): Promise<void> {
+        return withScenarioRandomScope(() => this.executeInScope(targetUrl, optimizationSettings, selectedScenarios, runId));
+    }
+
+    private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);

@@ -1,3 +1,5 @@
+import type { PaginationParams } from '../../../../shared/types.js';
+
 export interface CreateSessionInput {
   targetUrl: string;
   startedAt: string;
@@ -54,9 +56,12 @@ export interface FindingRepository {
   markSessionSaved(sessionId: string, userId: string): Promise<void>;
   markLatestSessionSaved(userId: string, targetUrl?: string): Promise<string | null>;
   /**
-   * List session history with optional userId filtering for multi-tenancy.
-   * @param limit - Maximum number of sessions to return (default 50)
-   * @param userId - Optional userId to filter sessions (if provided, returns only user's sessions)
+   * One page of saved session history, scoped to a tenant.
+   * @param params - page/pageSize/skip; callers clamp via parsePagination
+   * @param userId - owner filter; anything else (guest, malformed) yields an empty page
    */
-  listSessionHistory(limit?: number, userId?: string): Promise<SessionHistoryRecord[]>;
+  listSessionHistory(
+    params: PaginationParams,
+    userId?: string,
+  ): Promise<{ items: SessionHistoryRecord[]; total: number }>;
 }

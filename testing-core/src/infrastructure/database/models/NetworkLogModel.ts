@@ -10,7 +10,7 @@ const networkLogSchema = new Schema(
       required: [true, 'Forensic run ID is required'],
       index: true,
     },
-    timestamp: { type: String, required: true },
+    timestamp: { type: Date, required: true },
     method: { type: String, required: true, default: 'GET' },
     url: { type: String, required: true },
     statusCode: { type: Number, required: false, default: null },
@@ -30,7 +30,7 @@ networkLogSchema.index({ forensicRunId: 1, timestamp: 1 });
 
 export interface INetworkLog extends Document {
   forensicRunId: Types.ObjectId;
-  timestamp: string;
+  timestamp: Date;
   method: string;
   url: string;
   statusCode?: number;

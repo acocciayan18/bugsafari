@@ -134,7 +134,9 @@ const forensicErrorSchema = new Schema(
 // Compound indexes for efficient querying
 forensicErrorSchema.index({ forensicRunId: 1, type: 1 });
 forensicErrorSchema.index({ forensicRunId: 1, severity: 1 });
-forensicErrorSchema.index({ forensicRunId: 1, timestamp: -1 });
+// createdAt, not timestamp — the schema has no timestamp path, and the repository
+// reads sort by createdAt descending.
+forensicErrorSchema.index({ forensicRunId: 1, createdAt: -1 });
 forensicErrorSchema.index({ forensicRunId: 1, bugClass: 1 });
 
 export interface IForensicError extends Document {

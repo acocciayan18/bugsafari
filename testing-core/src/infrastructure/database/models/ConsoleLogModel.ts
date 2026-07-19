@@ -9,7 +9,7 @@ const consoleLogSchema = new Schema(
       required: [true, 'Forensic run ID is required'],
       index: true,
     },
-    timestamp: { type: String, required: true },
+    timestamp: { type: Date, required: true },
     level: {
       type: String,
       required: true,
@@ -33,7 +33,7 @@ consoleLogSchema.index({ forensicRunId: 1, timestamp: 1 });
 
 export interface IConsoleLog extends Document {
   forensicRunId: Types.ObjectId;
-  timestamp: string;
+  timestamp: Date;
   level: 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
   type: string;
   message: string;

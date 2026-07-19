@@ -6,6 +6,7 @@ import type {
   SaveBrainConfigInput,
   SessionHistoryRecord,
 } from "../../../domain/repositories/FindingRepository.js";
+import type { PaginationParams } from "../../../../../shared/types.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
@@ -196,115 +197,83 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     }
   }
 
-public async listSessionHistory(limit = 50, userId?: string): Promise<SessionHistoryRecord[]> {
-    console.log("[Repository] listSessionHistory called with limit:", limit, "userId:", userId ?? "none");
+public async listSessionHistory(
+    params: PaginationParams,
+    userId?: string,
+  ): Promise<{ items: SessionHistoryRecord[]; total: number }> {
+    const empty = { items: [] as SessionHistoryRecord[], total: 0 };
+
+    // Multi-tenancy: guests and malformed ids see nothing. Only sessions the
+    // operator explicitly saved are "history" — auto-tracked runs (created the
+    // instant a run starts, for forensic correlation) stay invisible until the
+    // Save button flips this flag.
+    if (!userId || !isValidObjectId(userId)) return empty;
 
     try {
-      // Build filter based on userId for multi-tenancy. Only sessions the
-      // operator explicitly saved are "history" — auto-tracked runs (created
-      // the instant a run starts, for forensic correlation) stay invisible
-      // until the Save button flips this flag.
-      const filter: Record<string, unknown> = { savedManually: true };
+      const filter = { userId: new Types.ObjectId(userId), savedManually: true };
 
-      // CRITICAL: If userId provided, filter by userId for data isolation
-      // If no userId (shouldn't happen with requireAuth but handle safely), return empty array
-      if (userId && isValidObjectId(userId)) {
-        filter.userId = new Types.ObjectId(userId);
-        console.log("[Repository] Filtering sessions by userId:", userId);
-      } else if (userId) {
-        // Invalid userId provided - return empty array (safety check)
-        console.log("[Repository] Invalid userId, returning empty array");
-        return [];
-      }
-      // No userId = return empty for guests (multi-tenancy: guests see nothing)
-      // This should be caught by requireAuth but handle edge cases
-      else {
-        console.log("[Repository] No userId provided, returning empty array");
-        return [];
+      // Projection matters as much as the limit here: without it every row drags
+      // its full forensicTrace.caughtBugs array (stack traces) into memory.
+      const [total, sessions] = await Promise.all([
+        SessionModel.countDocuments(filter),
+        SessionModel.find(filter)
+          .sort({ startedAt: -1 })
+          .skip(params.skip)
+          .limit(params.pageSize)
+          .select(
+            '_id targetUrl status startedAt finishedAt endedReason savedManually findingCount actionTraceCount stats',
+          )
+          .lean(),
+      ]);
+
+      if (!Array.isArray(sessions) || sessions.length === 0) {
+        return { items: [], total };
       }
 
-      // Wrap in try/catch to handle database errors gracefully
-      const sessions = await SessionModel.find(filter)
-        .sort({ startedAt: -1 })
-        .limit(Math.max(1, Math.min(limit, 200)))
-        .lean();
-
-      // Falsy/empty safe check - ensure sessions is an array before processing
-      if (!Array.isArray(sessions)) {
-        console.warn(
-          "[Repository] listSessionHistory: sessions is not an array, returning empty array",
-        );
-        return [];
+      // One grouped count for the whole page, replacing one countDocuments per row.
+      const brainSnapshotCounts = new Map<string, number>();
+      try {
+        const grouped = await BrainConfigModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+          { $match: { sessionId: { $in: sessions.map((session) => session._id) } } },
+          { $group: { _id: '$sessionId', count: { $sum: 1 } } },
+        ]);
+        for (const entry of grouped) {
+          brainSnapshotCounts.set(entry._id.toString(), entry.count);
+        }
+      } catch (countError) {
+        console.error('[Repository] Brain snapshot count aggregation failed:', countError);
       }
 
-      if (sessions.length === 0) {
-        console.log(
-          "[Repository] listSessionHistory: no sessions found in database (blank DB)",
-        );
-        return [];
-      }
+      const items: SessionHistoryRecord[] = sessions.map((session) => {
+        const id = session._id?.toString() ?? '';
+        return {
+          id,
+          targetUrl: session.targetUrl ?? '',
+          status:
+            session.status === SessionStatus.CRASHED
+              ? 'Crashed'
+              : session.status === SessionStatus.COMPLETED
+                ? 'Completed'
+                : 'Running',
+          startedAt: session.startedAt?.toISOString() ?? new Date().toISOString(),
+          finishedAt: session.finishedAt ? session.finishedAt.toISOString() : undefined,
+          endedReason: session.endedReason ?? undefined,
+          savedManually: Boolean(session.savedManually),
+          findingCount: session.findingCount ?? 0,
+          actionTraceCount: session.actionTraceCount ?? 0,
+          brainSnapshots: brainSnapshotCounts.get(id) ?? 0,
+          runtimeMs: session.stats?.runtimeMs,
+          coveragePercentage: session.stats?.coveragePercentage,
+          maxActions: session.stats?.maxActions,
+          pagesVisited: session.stats?.pagesVisited,
+        };
+      });
 
-      console.log("[Repository] Found sessions count:", sessions.length);
-
-      return await Promise.all(
-        sessions.map(async (session) => {
-          try {
-            // Safely count brain snapshots with error handling
-            const brainSnapshots = await BrainConfigModel.countDocuments({
-              sessionId: session._id,
-            }).catch(() => 0);
-
-            return {
-              id: session._id?.toString() ?? "",
-              targetUrl: session.targetUrl ?? "",
-              status:
-                session.status === SessionStatus.CRASHED
-                  ? "Crashed"
-                  : session.status === SessionStatus.COMPLETED
-                    ? "Completed"
-                    : "Running",
-              startedAt:
-                session.startedAt?.toISOString() ?? new Date().toISOString(),
-              finishedAt: session.finishedAt
-                ? session.finishedAt.toISOString()
-                : undefined,
-              endedReason: session.endedReason ?? undefined,
-              savedManually: Boolean(session.savedManually),
-              findingCount: session.findingCount ?? 0,
-              actionTraceCount: session.actionTraceCount ?? 0,
-              brainSnapshots,
-              runtimeMs: session.stats?.runtimeMs,
-              coveragePercentage: session.stats?.coveragePercentage,
-              maxActions: session.stats?.maxActions,
-              pagesVisited: session.stats?.pagesVisited,
-            };
-          } catch (mapError) {
-            console.error("[Repository] Error mapping session:", mapError);
-            // Return a safe default session record instead of failing
-            return {
-              id: session._id?.toString() ?? "unknown",
-              targetUrl: session.targetUrl ?? "",
-              status: "Running",
-              startedAt: new Date().toISOString(),
-              savedManually: false,
-              findingCount: 0,
-              actionTraceCount: 0,
-              brainSnapshots: 0,
-            };
-          }
-        }),
-      );
+      return { items, total };
     } catch (error) {
-      // Comprehensive error handling with explicit log message
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error("[Repository] Error in listSessionHistory:", error);
-      console.error(
-        "[Repository] Error stack:",
-        error instanceof Error ? error.stack : "no stack",
-      );
-      // Return empty array instead of throwing - lets the dashboard load even with DB issues
-      return [];
+      // Return an empty page rather than throwing — the dashboard still loads.
+      console.error('[Repository] Error in listSessionHistory:', error);
+      return empty;
     }
   }
 

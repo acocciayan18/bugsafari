@@ -15,3 +15,4 @@ export * from './types/regression.js';
 export * from './types/session.js';
 export * from './types/verification.js';
 export * from './types/queue.js';
+export * from './types/pagination.js';

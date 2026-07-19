@@ -16,6 +16,25 @@ export interface SafariWorkerRuntime {
   close(): Promise<void>;
 }
 
+/**
+ * CONCURRENCY_BLOCKERS — why this is pinned to 1.
+ *
+ * Run state that is still process-wide, not per-job. Each must become per-run
+ * before MAX_SAFE_WORKER_CONCURRENCY can be raised:
+ *   1. sessionManager singleton (services/SessionManager.ts) — beginRun() tears
+ *      down any live run and repoints the shared telemetry room.
+ *   2. Six static forensic stores reset per-run in StartExplorationUseCase:
+ *      ReproductionPlaybookStore, FuzzForensicLog, NavForensicLog,
+ *      NetworkLogStore, ConsoleLogStore, and ActionRecorder (monitoring/actionBuffer.ts).
+ *      A second job starting wipes the first job's in-flight buffers.
+ *   3. Module globals: chaosManagerInstance (scenarios/fuzzing/dataFuzzer.ts) and
+ *      chaosManagerAccessor (bugs/finders/{fuzzGuard,concurrentStress,structuralProbe}.ts).
+ *
+ * Resolved: the scenario PRNG is now AsyncLocalStorage-scoped per run
+ * (domain/scenarios/seededRandom.ts), so it is no longer a blocker.
+ */
+const MAX_SAFE_WORKER_CONCURRENCY = 1;
+
 function readWorkerConcurrency(): number {
   const rawValue = process.env.BUGSAFARI_WORKER_CONCURRENCY ?? '1';
   const parsed = Number.parseInt(rawValue, 10);
@@ -24,7 +43,15 @@ function readWorkerConcurrency(): number {
     return 1;
   }
 
-  return parsed;
+  if (parsed > MAX_SAFE_WORKER_CONCURRENCY) {
+    console.warn(
+      `[SafariWorker] BUGSAFARI_WORKER_CONCURRENCY=${parsed} requested but clamped to ` +
+        `${MAX_SAFE_WORKER_CONCURRENCY}. Shared in-process run state is not yet isolated — ` +
+        `see CONCURRENCY_BLOCKERS in this file before raising the cap.`,
+    );
+  }
+
+  return Math.min(parsed, MAX_SAFE_WORKER_CONCURRENCY);
 }
 
 function validatePayload(job: Job<SafariTaskPayload>): SafariTaskPayload {
@@ -71,9 +98,7 @@ export async function createSafariWorker(
 
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
-    // ponytail: SessionManager is a process-wide singleton (one active run), so this
-    // handler is only correct at BUGSAFARI_WORKER_CONCURRENCY=1; >1 would let two
-    // jobs clobber the shared run/room. Per-run manager instances if concurrency matters.
+    // Correct only at concurrency 1 — see CONCURRENCY_BLOCKERS above.
 async (job) => {
       const payload = validatePayload(job);
       const browserEngine = new PlaywrightBrowserEngine(findingRepository);

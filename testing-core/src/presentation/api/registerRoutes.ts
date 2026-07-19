@@ -20,6 +20,9 @@ import { networkLogRepository } from '../../infrastructure/database/repositories
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { Types } from 'mongoose';
+import { extractStringParam, extractIntParam } from './queryParams.js';
+import { parsePagination, buildPage, isPaginatedRequest } from './pagination.js';
+import { deleteSessionCascade } from '../../infrastructure/database/retentionReaper.js';
 import {
   INFILTRATION_PROFILE_CATALOG,
   resolveInfiltrationProfile,
@@ -30,6 +33,9 @@ import {
   type StateFingerprint,
   type ActionRecord,
 } from '../../../../shared/types.js';
+
+// Ceiling on the "recent sessions" window used to scope ownership lookups.
+const RECENT_SESSION_LOOKUP_LIMIT = 500;
 
 /**
  * Interpret the client-supplied Unified Infiltration Profile into the concrete
@@ -54,21 +60,6 @@ function parseSelectedScenarios(body: unknown): TestingTypeId[] {
 // Safe Parameter Extraction Utilities
 // Addresses: string|string[] type issues from Express req.query/req.params
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Safely extract a single string from Express params/query.
- * Express can return string|ParsedQs|string[] when multiple values exist.
- */
-function extractStringParam(value: string | ParsedQs | (string | ParsedQs)[] | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (Array.isArray(value)) {
-    // Handle array of strings or ParsedQs
-    const first = value[0];
-    return typeof first === 'string' ? first : undefined;
-  }
-  // Handle single value
-  return typeof value === 'string' ? value : undefined;
-}
 
 /**
  * Safely extract and validate ObjectId from string parameter.
@@ -615,22 +606,16 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
         return;
       }
 
-      // FIXED: Safely extract limit parameter - Express can return string|string[]
-      const rawLimit = extractStringParam(request.query.limit);
-      const limitVal = rawLimit ? Number(rawLimit) : 50;
-      const limit = Number.isFinite(limitVal) ? Math.max(1, Math.min(limitVal, 200)) : 50;
-      console.log('[API] Querying session history with limit:', limit, 'for userId:', request.userId);
+      // Legacy ?limit= maps onto pageSize so pre-pagination clients keep working.
+      const params = parsePagination(request.query, extractIntParam(request.query.limit));
 
       // CRITICAL: Pass userId to filter only this user's sessions
-      const sessions = await findingRepo.listSessionHistory(limit, request.userId);
-      console.log('[API] Raw sessions from repository:', sessions?.length ?? 0);
+      const { items, total } = await findingRepo.listSessionHistory(params, request.userId);
+      const page = buildPage(items, total, params);
 
-      // Falsy/empty safe check - ensure sessions is an array before returning
-      const safeSessions = Array.isArray(sessions) ? sessions : [];
-      console.log('[API] Returning safe sessions count:', safeSessions.length);
-
-      // Return only authenticated user's sessions
-      response.json({ sessions: safeSessions });
+      // Dual envelope: `sessions` keeps existing clients working, the paginated
+      // fields let new ones page. Both are always present.
+      response.json({ sessions: page.items, ...page });
     } catch (error) {
       // Comprehensive error handling with explicit log message
       console.error('[API] Error in /api/history/sessions:', error);
@@ -653,26 +638,29 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
         return;
       }
 
-      console.log('[API] Fetching session history for userId:', userId);
-      
       // Query sessions collection by userId (unified history). Only manually
       // saved sessions count as "history" — auto-tracked runs stay invisible
       // until the operator explicitly clicks Save.
-      const { SessionModel } = await import('../../infrastructure/database/models/SessionModel.js');
-      const { Types } = await import('mongoose');
+      const params = parsePagination(request.query);
+      const filter = { userId: new Types.ObjectId(userId), savedManually: true };
 
-      const sessions = await SessionModel.find({ userId: new Types.ObjectId(userId), savedManually: true })
+      // forensicTrace.caughtBugs carries full stack traces and dominates the
+      // payload, so it ships only when explicitly requested.
+      const includeBugs = extractStringParam(request.query.include) === 'bugs';
+      const query = SessionModel.find(filter)
         .sort({ startedAt: -1 })
-        .lean();
-      
-      console.log('[API] Sessions raw retrieved count:', sessions?.length ?? 0);
+        .skip(params.skip)
+        .limit(params.pageSize);
 
-      if (sessions && sessions.length > 0) {
-        console.log('[API] First document sample:', JSON.stringify(sessions[0]).substring(0, 200));
-      }
+      const [total, sessions] = await Promise.all([
+        SessionModel.countDocuments(filter),
+        (includeBugs ? query : query.select('-forensicTrace.caughtBugs')).lean(),
+      ]);
 
-      // Return documents sorted by startedAt: -1 (newest first)
-      response.json(sessions);
+      const page = buildPage(sessions, total, params);
+
+      // Legacy shape is a bare array; the envelope ships only when asked for.
+      response.json(isPaginatedRequest(request.query) ? page : page.items);
     } catch (error) {
       console.error('[API] Error in /api/history:', error);
       response.status(500).json({ error: 'Failed to fetch safari history.' });
@@ -714,7 +702,15 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
         return;
       }
 
-      console.log('[API] Record deleted successfully:', recordId);
+      // Ownership was proven by the deleteOne filter above, so the cascade is safe.
+      // Without it the run's forensic errors, telemetry, logs and brain configs
+      // would linger forever with no parent session.
+      const cascaded = await deleteSessionCascade(new Types.ObjectId(recordId)).catch((error: unknown) => {
+        console.error('[API] Cascade delete failed for session', recordId, error);
+        return null;
+      });
+
+      console.log('[API] Record deleted successfully:', recordId, 'cascade:', cascaded ?? 'failed');
       response.json({ ok: true, message: 'Record deleted successfully.' });
     } catch (error) {
       console.error('[API] Error in DELETE /api/history/:id:', error);
@@ -783,7 +779,14 @@ console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', owne
 
       if (!sessionId) {
         // No session id → latest analysis among THIS user's own sessions only.
-        const ownSessions = await SessionModel.find({ userId: new Types.ObjectId(userId) }).select('_id').lean();
+        // Bounded to the most recent sessions: an unbounded fetch built an $in
+        // that grew with the account's entire history. Trade-off: an analysis
+        // attached to a session older than this window is not surfaced here.
+        const ownSessions = await SessionModel.find({ userId: new Types.ObjectId(userId) })
+          .sort({ startedAt: -1 })
+          .limit(RECENT_SESSION_LOOKUP_LIMIT)
+          .select('_id')
+          .lean();
         const latest = await forensicAnalysisRepository.findLatestForRuns(ownSessions.map((s) => s._id));
         if (!latest) {
           response.json({ analysis: null, message: 'No analysis available yet. Run a test first.' });
@@ -960,8 +963,15 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         actionSteps: sessionDoc.actionSteps ?? [],
       };
 
-      // Fetch errors
-      const errors = await forensicErrorRepository.findByRunId(sessionId).catch(() => []);
+      // Five independent per-run reads — issued together, not serially.
+      const [errors, networkLog, consoleLog, telemetry, analysis] = await Promise.all([
+        forensicErrorRepository.findByRunId(sessionId).catch(() => []),
+        networkLogRepository.findByRunId(sessionId).catch(() => []),
+        consoleLogRepository.findByRunId(sessionId).catch(() => []),
+        forensicTelemetryRepository.findLatestByForensicRunId(sessionId).catch(() => null),
+        forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
+      ]);
+
       const formattedErrors = errors.map(e => ({
         id: e._id?.toString(),
         type: e.type,
@@ -985,9 +995,9 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
       }));
 
       // Full per-run network + console logs — mirror the live dashboard tabs.
-      const networkLog = await networkLogRepository.findByRunId(sessionId).catch(() => []);
+      // timestamp is a Date column; the wire contract stays an ISO string.
       const formattedNetworkLog = networkLog.map(n => ({
-        timestamp: n.timestamp,
+        timestamp: n.timestamp?.toISOString(),
         method: n.method,
         url: n.url,
         statusCode: n.statusCode,
@@ -997,9 +1007,8 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         message: n.message,
         repeatCount: n.repeatCount,
       }));
-      const consoleLog = await consoleLogRepository.findByRunId(sessionId).catch(() => []);
       const formattedConsoleLog = consoleLog.map(c => ({
-        timestamp: c.timestamp,
+        timestamp: c.timestamp?.toISOString(),
         level: c.level,
         type: c.type,
         message: c.message,
@@ -1012,30 +1021,26 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
 // Screenshots removed - return empty array
       const formattedScreenshots: never[] = [];
 
-      // Fetch telemetry
-      const telemetry = await forensicTelemetryRepository.findByForensicRunId(sessionId).catch(() => []);
-      const formattedTelemetry = telemetry.length > 0 ? {
-        browser: telemetry[0].browser,
-        browserVersion: telemetry[0].browserVersion,
-        browserEngine: telemetry[0].browserEngine,
-        operatingSystem: telemetry[0].operatingSystem,
-        platform: telemetry[0].platform,
-        screenResolution: telemetry[0].screenResolution,
-        viewportWidth: telemetry[0].viewportWidth,
-        viewportHeight: telemetry[0].viewportHeight,
-        memoryUsage: telemetry[0].memoryUsage,
-        cpuUsage: telemetry[0].cpuUsage,
-        executionDuration: telemetry[0].executionDuration,
-        requestsCount: telemetry[0].requestsCount,
-        pageCount: telemetry[0].pageCount,
-        interactionCount: telemetry[0].interactionCount,
-        failureCount: telemetry[0].failureCount,
-        loadTimes: telemetry[0].loadTimes,
-        timestamp: telemetry[0].timestamp?.toISOString(),
+      const formattedTelemetry = telemetry ? {
+        browser: telemetry.browser,
+        browserVersion: telemetry.browserVersion,
+        browserEngine: telemetry.browserEngine,
+        operatingSystem: telemetry.operatingSystem,
+        platform: telemetry.platform,
+        screenResolution: telemetry.screenResolution,
+        viewportWidth: telemetry.viewportWidth,
+        viewportHeight: telemetry.viewportHeight,
+        memoryUsage: telemetry.memoryUsage,
+        cpuUsage: telemetry.cpuUsage,
+        executionDuration: telemetry.executionDuration,
+        requestsCount: telemetry.requestsCount,
+        pageCount: telemetry.pageCount,
+        interactionCount: telemetry.interactionCount,
+        failureCount: telemetry.failureCount,
+        loadTimes: telemetry.loadTimes,
+        timestamp: telemetry.timestamp?.toISOString(),
       } : null;
 
-      // Fetch AI analysis
-      const analysis = await forensicAnalysisRepository.findByRunId(sessionId).catch(() => null);
       const formattedAnalysis = analysis ? {
         id: analysis._id?.toString(),
         rootCause: analysis.rootCause,

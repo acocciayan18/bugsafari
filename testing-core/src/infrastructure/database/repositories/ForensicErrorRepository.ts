@@ -5,6 +5,7 @@ import {
   ForensicErrorType,
   ForensicErrorSeverity,
 } from '../models/ForensicErrorModel.js';
+import { MAX_FORENSIC_ROWS } from '../queryLimits.js';
 
 export interface CreateForensicErrorParams {
   forensicRunId: string | Types.ObjectId;
@@ -83,6 +84,8 @@ export class ForensicErrorRepository {
       forensicRunId: new Types.ObjectId(forensicRunId),
     })
       .sort({ createdAt: -1 })
+      .limit(MAX_FORENSIC_ROWS)
+      .lean<IForensicError[]>()
       .exec();
   }
 
@@ -98,6 +101,8 @@ export class ForensicErrorRepository {
       type,
     })
       .sort({ createdAt: -1 })
+      .limit(MAX_FORENSIC_ROWS)
+      .lean<IForensicError[]>()
       .exec();
   }
 
@@ -113,6 +118,8 @@ export class ForensicErrorRepository {
       severity,
     })
       .sort({ createdAt: -1 })
+      .limit(MAX_FORENSIC_ROWS)
+      .lean<IForensicError[]>()
       .exec();
   }
 
