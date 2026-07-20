@@ -69,7 +69,6 @@ Generated from the current repository tree on July 12, 2026.
 - `developer-dashboard/src/components/common/ForensicCardKit.tsx` - Shared building blocks (copy button, expandable code block, attribution badges, suggested-fix block) used by both the live Errors Tab and the saved Forensic Report.
 - `developer-dashboard/src/components/common/RowActionMenu.tsx` - Three-dot action dropdown for forensic history records.
 - `developer-dashboard/src/components/common/DeleteConfirmDialog.tsx` - Confirmation modal for destructive delete actions.
-- `developer-dashboard/src/components/common/HelpMenuIcon.tsx` - Help/support menu with severity-level docs and quick links.
 - `developer-dashboard/src/components/common/SupportModal.tsx` - Support-ticket collection modal (subject + description).
 
 ### `developer-dashboard/src/components/forensics/`

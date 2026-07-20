@@ -1,27 +1,31 @@
 import type { UserSettings } from '../types';
+import { readCachedThemeMode } from '../stores/themeStore';
 
 const GUEST_SETTINGS_KEY = 'bugsafari_guest_settings';
 
-const DEFAULT_SETTINGS: UserSettings = {
-    theme: 'light',
+const DEFAULT_SETTINGS: Omit<UserSettings, 'theme'> = {
     notifications: true,
     autoSave: true,
 };
 
+// Theme falls back to the dedicated cache rather than a hardcoded 'light', so
+// loading guest settings can never stomp a theme the user already chose.
 export function loadGuestSettings(): UserSettings {
+    const theme = readCachedThemeMode();
+
     try {
         const raw = localStorage.getItem(GUEST_SETTINGS_KEY);
-        if (!raw) return { ...DEFAULT_SETTINGS };
+        if (!raw) return { ...DEFAULT_SETTINGS, theme };
 
         const parsed = JSON.parse(raw);
 
         return {
-            theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system' ? parsed.theme : DEFAULT_SETTINGS.theme,
+            theme,
             notifications: typeof parsed.notifications === 'boolean' ? parsed.notifications : DEFAULT_SETTINGS.notifications,
             autoSave: typeof parsed.autoSave === 'boolean' ? parsed.autoSave : DEFAULT_SETTINGS.autoSave,
         };
     } catch {
-        return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, theme };
     }
 }
 
@@ -31,8 +35,4 @@ export function saveGuestSettings(s: UserSettings): void {
     } catch {
         console.warn('[settingsStorage] Failed to save guest settings to localStorage');
     }
-}
-
-export function clearGuestSettings(): void {
-    localStorage.removeItem(GUEST_SETTINGS_KEY);
 }

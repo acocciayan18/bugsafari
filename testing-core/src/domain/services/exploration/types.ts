@@ -6,7 +6,9 @@ import type {
   ActionType,
   FaultSeverity,
   FindingAttribution,
+  RunTerminationOutcome,
   StateFingerprint,
+  StopReason,
 } from '../../../../../shared/types.ts';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { RecursiveDomParser } from '../../heuristics/domParser.js';
@@ -52,14 +54,7 @@ export interface RuntimeMetrics {
   failureCount: number;
 }
 
-/** Why a run ended — separates expected termination from genuine engine failures. */
-export type RunTerminationOutcome =
-  | 'completed'          // exploration budget/graph exhausted normally
-  | 'boundary-saturated'  // configured scope (URL lock / partial profile) fully explored — NOT the whole app graph
-  | 'user-stopped'        // operator hit stop, or the browser/context closed as a result
-  | 'timebox'             // configured time limit reached
-  | 'graceful-shutdown'   // controlled bail-out (e.g. unrecoverable page state) — not a thrown exception
-  | 'exception';          // genuine unhandled engine/Playwright/infrastructure failure
+export type { RunTerminationOutcome, StopReason };
 
 /** Terminal result of a run — `outcome` is the single source of truth for exception classification. */
 export interface RunResult {
@@ -222,6 +217,9 @@ export interface ExplorationLoopDeps {
   telemetry: TelemetryEmitter;
   runtimeMetrics: RuntimeMetrics;
   isStopRequested(): boolean;
+  /** Who triggered the stop, or null when no stop was requested. Distinguishes an
+   *  operator stop from a crash/disconnect/shutdown teardown that closed the browser. */
+  getStopReason(): StopReason | null;
   isPaused(): boolean;
   /** Returns true when the timebox is exceeded (caller should exit the loop). */
   checkTimebox(): boolean;

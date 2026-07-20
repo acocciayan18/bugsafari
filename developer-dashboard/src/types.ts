@@ -44,6 +44,9 @@ export type {
   SessionAttachAck,
   RunLifecycleStatus,
   SessionOwnerType,
+  // How and why a run ended
+  RunTerminationOutcome,
+  StopReason,
   // Redis execution queue
   QueueUpdate,
   QueueSubscribeRequest,
@@ -65,10 +68,13 @@ export {
   ACCESSIBILITY_BANNER_THRESHOLD,
   QUEUE_SUBSCRIBE_EVENT,
   QUEUE_UPDATE_EVENT,
+  TERMINATION_COPY,
+  describeTermination,
+  isCleanTermination,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
-import type { FindingAttribution, ReplayMacro } from '../../shared/types.js';
+import type { FindingAttribution, ReplayMacro, RunTerminationOutcome } from '../../shared/types.js';
 
 export type BrowserConsoleLevel =
   | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
@@ -87,10 +93,12 @@ export interface BrowserConsoleMessage {
 export interface SessionHistoryEntry {
   id: string;
   targetUrl: string;
-  status: 'Running' | 'Completed' | 'Crashed';
+  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
   startedAt: string;
   finishedAt?: string;
   endedReason?: string;
+  /** Precise termination taxonomy. Absent on sessions saved before it was tracked. */
+  outcome?: RunTerminationOutcome;
   savedManually: boolean;
   findingCount: number;
   actionTraceCount: number;
@@ -202,6 +210,9 @@ export interface ForensicReportResponse {
   url: string;
   date: string;
   status: 'COMPLETED' | 'CRASHED' | 'HALTED' | string;
+  /** Precise termination taxonomy; absent on reports predating it. */
+  outcome?: RunTerminationOutcome;
+  endedReason?: string;
   coverage: number;
   duration: number; // milliseconds
   riskScore: number;

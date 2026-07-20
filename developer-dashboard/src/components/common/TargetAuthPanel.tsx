@@ -63,8 +63,8 @@ interface TargetAuthPanelProps {
 }
 
 const FIELD_CLASS =
-  'w-full h-9 border border-(--border-strong) rounded-lg px-3 text-[13px] font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
-const LABEL_CLASS = 'block text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
+  'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
+const LABEL_CLASS = 'block text-[12px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
 
 export default function TargetAuthPanel({ draft, onChange, disabled = false }: TargetAuthPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -85,7 +85,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           checked={draft.enabled}
           disabled={disabled}
           onChange={(e) => set('enabled', e.target.checked)}
-          className="rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
+          className="rounded border-(--border-strong) hover:cursor-pointer text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
         />
         <KeyRound className="h-4 w-4 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <span className="text-[11px] font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
@@ -109,7 +109,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                 disabled={disabled}
                 onChange={(e) => set('username', e.target.value)}
                 className={FIELD_CLASS}
-                placeholder="tester@example.com"
+                placeholder="example@email.com"
               />
             </div>
             <div>

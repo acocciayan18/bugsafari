@@ -70,6 +70,9 @@ export interface ExceptionDetails {
 export interface TelemetryMeta {
   selector?: string;
   actionExecuted?: string;
+  /** Set on the terminal `engine-stopped` event so the UI classifies the ending
+   *  without parsing its message. */
+  terminationOutcome?: import('./termination.js').RunTerminationOutcome;
   statusCode?: number;
   status?: number;
   url?: string;

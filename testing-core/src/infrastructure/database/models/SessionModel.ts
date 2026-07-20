@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import type { ReplayMacro, StateFingerprint } from '../../../../../shared/types.js';
+import type { ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 
 export interface ISessionConfig {
@@ -154,6 +154,13 @@ const sessionSchema = new Schema(
       required: false,
       default: null,
       maxlength: [1500, 'Ended reason cannot exceed 1500 characters'],
+    },
+    // Precise termination taxonomy behind the coarse `status`. Optional so
+    // sessions written before it existed still load and render.
+    outcome: {
+      type: String,
+      required: false,
+      default: null,
     },
     findingCount: {
       type: Number,
@@ -388,6 +395,7 @@ export interface ISession extends Document {
   finishedAt?: Date;
   savedManually: boolean;
   endedReason?: string;
+  outcome?: RunTerminationOutcome;
   findingCount: number;
   actionTraceCount: number;
   brainSnapshotCount: number;

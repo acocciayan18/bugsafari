@@ -1,6 +1,7 @@
-import { createContext, useContext, useCallback, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
+import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { Toaster, toast, type ToasterProps } from 'sonner';
+import { useThemeStore } from '../../stores/themeStore';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Toast Types
@@ -27,34 +28,20 @@ export interface ToastContextValue {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Icons
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════════════════
 // Custom Toast Component
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface CustomToastProps {
   message: string;
-  variant?: ToastVariant;
   onClose: () => void;
 }
 
-function CustomToast({ message, variant = 'telemetry', onClose }: CustomToastProps) {
-  const iconColorClass = {
-    success: 'text-green-500',
-    telemetry: 'text-black',
-    error: 'text-red-500',
-  }[variant];
-
+// The sonner wrapper already carries `.toast-custom` from TOAST_OPTIONS — rendering
+// another shell here would nest a second border inside it.
+function CustomToast({ message, onClose }: CustomToastProps) {
   return (
-    <div className="toast-custom">
+    <>
       <div className="toast-content">
-        <span className={`toast-icon ${iconColorClass}`}>
-          {variant === 'success' && <CircleCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
-          {variant === 'telemetry' && <Info className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
-          {variant === 'error' && <CircleAlert className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
-        </span>
         <span className="toast-message">{message}</span>
       </div>
       <button
@@ -65,7 +52,7 @@ function CustomToast({ message, variant = 'telemetry', onClose }: CustomToastPro
       >
         <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
       </button>
-    </div>
+    </>
   );
 }
 
@@ -87,44 +74,47 @@ export function useToast() {
 // Toast Provider Component
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Built-in toast.success/error/info/promise calls render through the same shell as
+// CustomToast: no leading icon, one surface, ✕ on the right.
+const HIDDEN_TOAST_ICONS: ToasterProps['icons'] = {
+  success: null,
+  error: null,
+  info: null,
+  warning: null,
+  loading: null,
+};
+
+const TOAST_OPTIONS: ToasterProps['toastOptions'] = {
+  unstyled: true,
+  classNames: {
+    toast: 'toast-custom',
+    content: 'toast-content',
+    title: 'toast-message',
+    description: 'toast-description',
+    closeButton: 'toast-dismiss-btn',
+  },
+};
+
 interface ToastProviderProps {
   children: ReactNode;
   toasterProps?: Partial<ToasterProps>;
 }
 
-// ToastProvider mounts above DarkModeProvider, so it reads the resolved theme off
-// the `dark` class DarkModeProvider writes to <html> instead of via context.
-function subscribeToHtmlClass(onChange: () => void): () => void {
-  const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  return () => observer.disconnect();
-}
-
-function readHtmlTheme(): 'light' | 'dark' {
-  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-}
-
-function useHtmlTheme(): 'light' | 'dark' {
-  return useSyncExternalStore(subscribeToHtmlClass, readHtmlTheme, readHtmlTheme);
-}
-
 export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
-  const theme = useHtmlTheme();
+  // Store is readable regardless of provider order, so mounting above App is fine.
+  const theme = useThemeStore((s) => (s.isDark ? 'dark' : 'light'));
 
   const showToast = useCallback((options: ToastOptions): string | undefined => {
-    const { variant = 'telemetry', message, duration = 3000, onDismiss } = options;
+    // Variant no longer changes the visuals — every toast shares one shell; it only
+    // buys errors a longer read.
+    const { variant = 'telemetry', message, onDismiss } = options;
+    const duration = options.duration ?? (variant === 'error' ? 5000 : 2000);
 
     // sonner hands the render callback the toast id, not a close handler — the ✕
     // must dismiss by that id.
     const toastId = toast.custom(
-      (id) => (
-        <CustomToast
-          message={message}
-          variant={variant}
-          onClose={() => toast.dismiss(id)}
-        />
-      ),
-      { duration, onDismiss, onAutoClose: onDismiss },
+      (id) => <CustomToast message={message} onClose={() => toast.dismiss(id)} />,
+      { duration, onDismiss, onAutoClose: onDismiss, unstyled: true, className: 'toast-custom' },
     );
 
     return toastId !== undefined ? String(toastId) : undefined;
@@ -150,7 +140,6 @@ const dismissToast = useCallback((id: string) => {
     return showToast({
       variant: 'error',
       message,
-      duration: options?.duration ?? 6000,
       ...options,
     });
   }, [showToast]);
@@ -176,6 +165,8 @@ const dismissToast = useCallback((id: string) => {
         theme={theme}
         closeButton
         visibleToasts={3}
+        icons={HIDDEN_TOAST_ICONS}
+        toastOptions={TOAST_OPTIONS}
         {...toasterProps}
       />
     </ToastContext.Provider>

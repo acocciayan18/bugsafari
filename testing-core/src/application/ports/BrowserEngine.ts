@@ -1,5 +1,5 @@
 import type { TelemetryGateway } from './TelemetryGateway.js';
-import type { OptimizationSettings, defaultOptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, defaultOptimizationSettings, StopReason, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
 
 export interface BrowserEngineConfig {
@@ -11,7 +11,8 @@ export interface BrowserEngine {
   run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string, targetAuth?: TargetAuthConfig): Promise<RunResult>;
   pause?(): void;
   resume?(): void;
-  stop?(): Promise<void> | void;
+  /** `reason` names the trigger so the terminal outcome is attributed to its real cause. */
+  stop?(reason?: StopReason): Promise<void> | void;
   /** Flush in-flight fire-and-forget telemetry/DB writes; the Pause/Stop settlement barrier. */
   settlePendingTasks?(): Promise<void>;
   /** Get the accumulated active execution time in milliseconds. Only counts time when NOT paused. */

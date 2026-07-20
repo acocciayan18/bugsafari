@@ -22,4 +22,11 @@ export enum SessionStatus {
   // window (INTERRUPTED), or grace expired and the run was torn down (DISCONNECTED).
   INTERRUPTED = 'Interrupted',
   DISCONNECTED = 'Disconnected',
+  // Termination taxonomy: an operator stop, a time-budget expiry, an early
+  // controlled bail-out, and a run whose operator never came back are each
+  // distinct from a clean Completed and from a Crashed engine failure.
+  STOPPED = 'Stopped',
+  TIMED_OUT = 'TimedOut',
+  HALTED = 'Halted',
+  ABANDONED = 'Abandoned',
 }

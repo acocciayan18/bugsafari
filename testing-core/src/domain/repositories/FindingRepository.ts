@@ -1,4 +1,4 @@
-import type { PaginationParams } from '../../../../shared/types.js';
+import type { PaginationParams, RunTerminationOutcome } from '../../../../shared/types.js';
 
 export interface CreateSessionInput {
   targetUrl: string;
@@ -23,10 +23,12 @@ export interface BrainState {
 export interface SessionHistoryRecord {
   id: string;
   targetUrl: string;
-  status: 'Running' | 'Completed' | 'Crashed';
+  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
   startedAt: string;
   finishedAt?: string;
   endedReason?: string;
+  /** Precise termination taxonomy. Absent on sessions recorded before it was tracked. */
+  outcome?: RunTerminationOutcome;
   savedManually: boolean;
   findingCount: number;
   actionTraceCount: number;
@@ -44,8 +46,18 @@ export interface SessionHistoryRecord {
  */
 export interface FindingRepository {
   createSession(input: CreateSessionInput): Promise<string>;
-  markSessionCompleted(sessionId: string, userId: string, finishedAt: string): Promise<void>;
-  markSessionCrashed(sessionId: string, userId: string, finishedAt: string, reason: string): Promise<void>;
+  /**
+   * Settle a session with its real termination outcome. Derives the coarse status
+   * from `outcome` and records both the outcome and its operator-facing reason, so
+   * history can tell a user stop from a timebox, crash, or abandonment.
+   */
+  markSessionTerminated(
+    sessionId: string,
+    userId: string,
+    finishedAt: string,
+    outcome: RunTerminationOutcome,
+    reason: string,
+  ): Promise<void>;
   saveBrainConfig(input: SaveBrainConfigInput): Promise<string>;
   /**
    * Load the most recently captured brain (weights + bias) this user captured for

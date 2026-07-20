@@ -7,6 +7,7 @@
 import type { AccessibilityFinding, TelemetryEvent } from './telemetry.js';
 import type { ForensicCrashReport, IncidentReport } from './bug.js';
 import type { BrowserConsoleMessage } from './console.js';
+import type { RunTerminationOutcome } from './termination.js';
 
 /** Live lifecycle of the single active run — superset of the DB SessionStatus. */
 export type RunLifecycleStatus =
@@ -25,6 +26,7 @@ export type RunLifecycleStatus =
 /** Whether the active run belongs to an authenticated operator or a guest. */
 export type SessionOwnerType = 'authenticated' | 'guest';
 
+
 // ── Socket event names (shared so client/server can never drift) ──────────────
 export const SESSION_ATTACH_EVENT = 'session-attach' as const;
 export const SESSION_SNAPSHOT_EVENT = 'session-snapshot' as const;
@@ -36,6 +38,11 @@ export interface ActiveSessionSnapshot {
   targetUrl: string;
   currentUrl: string;
   status: RunLifecycleStatus;
+  /** Why a terminal run ended. Null while live. Authoritative for restore — the
+   *  telemetry replay buffer is capped and can evict the terminal event. */
+  terminationOutcome: RunTerminationOutcome | null;
+  /** Engine-supplied detail behind {@link terminationOutcome}. */
+  terminationReason: string | null;
   startedAt: string;
   elapsedTimeMs: number;
   timeboxMs: number;

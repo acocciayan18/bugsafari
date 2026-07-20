@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
 import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
+import type { RunTerminationOutcome } from '../../types';
+import { TERMINATION_COPY } from '../../types';
 
 interface LiveFeedProps {
   frame: string | null;
@@ -19,6 +21,8 @@ interface LiveFeedProps {
   hasRunCompleted?: boolean;
   isInitializing?: boolean;
   liveFrame?: string | null;
+  /** Why the run ended — drives the terminal overlay copy. */
+  terminationOutcome?: RunTerminationOutcome | null;
 }
 
 // Native viewport resolution for canvas rendering
@@ -35,8 +39,10 @@ export default function LiveFeed({
   binaryWsUrl = 'ws://localhost:8765',
   hasRunCompleted = false,
   isInitializing = false,
-  liveFrame = null
+  liveFrame = null,
+  terminationOutcome = null
 }: LiveFeedProps) {
+  const terminationCopy = terminationOutcome ? TERMINATION_COPY[terminationOutcome] : null;
   // Show the address the engine actually resolves to, not the raw typed input.
   const rawUrl = currentUrl || targetUrl || '';
   const displayUrl = normalizeTargetUrl(rawUrl) ?? rawUrl;
@@ -277,11 +283,14 @@ export default function LiveFeed({
         {/* COMPLETED STATE */}
         {isCompleted && (
           <div
-            className="absolute flex items-center justify-center z-10 bg-(--surface-panel)"
+            className="absolute flex flex-col items-center justify-center gap-2 z-10 bg-(--surface-panel) px-6 text-center"
             style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
           >
             <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
-              EXPLORATION COMPLETE
+              {terminationCopy?.label ?? 'Exploration Complete'}
+            </p>
+            <p className="max-w-md text-[13px] text-(--text-secondary)">
+              {terminationCopy?.detail ?? 'Exploration finished.'}
             </p>
           </div>
         )}

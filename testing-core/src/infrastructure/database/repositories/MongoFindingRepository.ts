@@ -6,7 +6,7 @@ import type {
   SaveBrainConfigInput,
   SessionHistoryRecord,
 } from "../../../domain/repositories/FindingRepository.js";
-import type { PaginationParams } from "../../../../../shared/types.js";
+import type { PaginationParams, RunTerminationOutcome } from "../../../../../shared/types.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
@@ -17,6 +17,30 @@ function toObjectId(id: string): Types.ObjectId | null {
   }
   return new Types.ObjectId(id);
 }
+
+// Coarse persisted status per termination outcome. `boundary-saturated` is a clean
+// finish; `graceful-shutdown` is an early bail-out, distinct from an engine crash.
+const OUTCOME_STATUS: Record<RunTerminationOutcome, SessionStatus> = {
+  completed: SessionStatus.COMPLETED,
+  'boundary-saturated': SessionStatus.COMPLETED,
+  'user-stopped': SessionStatus.STOPPED,
+  timebox: SessionStatus.TIMED_OUT,
+  'graceful-shutdown': SessionStatus.HALTED,
+  'target-crash': SessionStatus.CRASHED,
+  abandoned: SessionStatus.ABANDONED,
+  exception: SessionStatus.CRASHED,
+};
+
+// Persisted status → history record status. Non-terminal lifecycle states
+// (Running/Paused/Interrupted/Disconnected) fall through to 'Running'.
+const HISTORY_STATUS: Partial<Record<SessionStatus, SessionHistoryRecord['status']>> = {
+  [SessionStatus.COMPLETED]: 'Completed',
+  [SessionStatus.CRASHED]: 'Crashed',
+  [SessionStatus.STOPPED]: 'Stopped',
+  [SessionStatus.TIMED_OUT]: 'TimedOut',
+  [SessionStatus.HALTED]: 'Halted',
+  [SessionStatus.ABANDONED]: 'Abandoned',
+};
 
 
 export class MongoFindingRepository implements FindingRepository {
@@ -42,29 +66,11 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     return session._id.toString();
   }
 
-  public async markSessionCompleted(
+  public async markSessionTerminated(
     sessionId: string,
     userId: string,
     finishedAt: string,
-  ): Promise<void> {
-    const objectId = toObjectId(sessionId);
-    const ownerId = toObjectId(userId);
-    if (!objectId || !ownerId) return;
-    await SessionModel.updateOne(
-      { _id: objectId, userId: ownerId },
-      {
-        $set: {
-          status: SessionStatus.COMPLETED,
-          finishedAt: new Date(finishedAt),
-        },
-      },
-    );
-  }
-
-  public async markSessionCrashed(
-    sessionId: string,
-    userId: string,
-    finishedAt: string,
+    outcome: RunTerminationOutcome,
     reason: string,
   ): Promise<void> {
     const objectId = toObjectId(sessionId);
@@ -74,7 +80,8 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       { _id: objectId, userId: ownerId },
       {
         $set: {
-          status: SessionStatus.CRASHED,
+          status: OUTCOME_STATUS[outcome] ?? SessionStatus.CRASHED,
+          outcome,
           finishedAt: new Date(finishedAt),
           endedReason: reason.slice(0, 1500),
         },
@@ -221,7 +228,7 @@ public async listSessionHistory(
           .skip(params.skip)
           .limit(params.pageSize)
           .select(
-            '_id targetUrl status startedAt finishedAt endedReason savedManually findingCount actionTraceCount stats',
+            '_id targetUrl status outcome startedAt finishedAt endedReason savedManually findingCount actionTraceCount stats',
           )
           .lean(),
       ]);
@@ -249,12 +256,8 @@ public async listSessionHistory(
         return {
           id,
           targetUrl: session.targetUrl ?? '',
-          status:
-            session.status === SessionStatus.CRASHED
-              ? 'Crashed'
-              : session.status === SessionStatus.COMPLETED
-                ? 'Completed'
-                : 'Running',
+          status: HISTORY_STATUS[session.status] ?? 'Running',
+          outcome: session.outcome ?? undefined,
           startedAt: session.startedAt?.toISOString() ?? new Date().toISOString(),
           finishedAt: session.finishedAt ? session.finishedAt.toISOString() : undefined,
           endedReason: session.endedReason ?? undefined,

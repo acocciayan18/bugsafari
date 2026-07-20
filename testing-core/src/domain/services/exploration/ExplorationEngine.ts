@@ -1,6 +1,6 @@
 import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import { defaultOptimizationSettings } from '../../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.ts';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
@@ -54,7 +54,7 @@ import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import { NetworkFailureCascadeTracker } from './NetworkFailureCascadeTracker.js';
 import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
-import type { CleanActionStep, ConfirmedBug, ForensicErrorParams, RunResult, RuntimeMetrics } from './types.js';
+import type { CleanActionStep, ConfirmedBug, ForensicErrorParams, RunResult, RunTerminationOutcome, RuntimeMetrics, StopReason } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCHES (Addressing Critical Vulnerabilities)
@@ -151,6 +151,9 @@ export class ExplorationEngine {
 
   private isPaused = false;
   private isStopRequested = false;
+  // Why stop() was called. Null while running — a browser-closed error observed with
+  // no reason recorded is a genuine fault, never an operator stop.
+  private stopReason: StopReason | null = null;
 
   // Tracks fire-and-forget DB/telemetry writes so Pause/Stop can flush them before
   // the lifecycle settles (graceful settlement barrier).
@@ -412,9 +415,18 @@ export class ExplorationEngine {
     return this.lastSessionId;
   }
 
-  public stop() {
+  // `reason` names the trigger so the loop can attribute the resulting teardown
+  // accurately. First reason wins — a later internal shutdown must not overwrite
+  // the target-crash or operator intent that caused it.
+  public stop(reason: StopReason = 'operator') {
+    this.stopReason ??= reason;
     this.isStopRequested = true;
     this.isPaused = false;
+  }
+
+  /** Trigger that requested the stop, or null when none was requested. */
+  public getStopReason(): StopReason | null {
+    return this.stopReason;
   }
 
   // Settlement barrier: await every in-flight fire-and-forget write so Pause/Stop
@@ -549,6 +561,9 @@ export class ExplorationEngine {
     this.networkFailureCascade.reset();
     this.lastBrainSnapshotStep = 0;
     this.activePage = page;
+    // Fresh run: a stop reason from a previous run must never leak forward.
+    this.stopReason = null;
+    this.isStopRequested = false;
 
     // Last navigated URL — shared via closure with the stability monitor and loop.
     let lastKnownUrl = '';
@@ -852,6 +867,10 @@ export class ExplorationEngine {
       },
     });
 
+    // Captured so the finally block can settle the session with the real outcome
+    // instead of the old crashed/completed binary. Null means the loop threw.
+    let runResult: RunResult | null = null;
+
     try {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
       emitter.emitSystemStatus(`Navigating to ${targetUrl}...`);
@@ -928,6 +947,7 @@ export class ExplorationEngine {
         telemetry: emitter,
         runtimeMetrics: this.runtimeMetrics,
         isStopRequested: () => this.isStopRequested,
+        getStopReason: () => this.stopReason,
         isPaused: () => this.isPaused,
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         getTimeboxMs: () => this.timeboxMs,
@@ -953,7 +973,8 @@ export class ExplorationEngine {
         sessionGuardActive: this.authenticatedRun,
       });
 
-      return await loop.execute(page, maxSteps);
+      runResult = await loop.execute(page, maxSteps);
+      return runResult;
     } finally {
       // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
@@ -1003,7 +1024,7 @@ export class ExplorationEngine {
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }
-      await this.completeSession();
+      await this.completeSession(runResult);
       this.sessionId = null;
       this.activePage = null;
       this.activeGateway = null;
@@ -1029,22 +1050,33 @@ export class ExplorationEngine {
     }
   }
 
-  private async completeSession(): Promise<void> {
+  private async completeSession(result: RunResult | null): Promise<void> {
     // The owner is part of the update filter, so a session can only ever be
     // settled by the tenant that created it.
     if (!this.findingRepo || !this.sessionId || !this.userId) {
       return;
     }
 
+    const { outcome, reason } = this.resolveTermination(result);
     try {
-      if (this.freezeActionTraceRecording) {
-        await this.findingRepo.markSessionCrashed(this.sessionId, this.userId, new Date().toISOString(), 'Unhandled exception detected');
-      } else {
-        await this.findingRepo.markSessionCompleted(this.sessionId, this.userId, new Date().toISOString());
-      }
+      await this.findingRepo.markSessionTerminated(this.sessionId, this.userId, new Date().toISOString(), outcome, reason);
     } catch (error) {
       console.error('[ExplorationEngine] Failed to complete Safari session:', error);
     }
+  }
+
+  // A loop that returned carries its own verdict. A null result means run() unwound
+  // through a throw — attribute it to the recorded stop trigger when one exists,
+  // otherwise it is a genuine unhandled failure.
+  private resolveTermination(result: RunResult | null): { outcome: RunTerminationOutcome; reason: string } {
+    if (result) return { outcome: result.outcome, reason: result.reason };
+    if (this.stopReason) {
+      return {
+        outcome: STOP_REASON_OUTCOME[this.stopReason],
+        reason: STOP_REASON_DETAIL[this.stopReason],
+      };
+    }
+    return { outcome: 'exception', reason: 'Unhandled exception detected' };
   }
 
   // Freeze at crash time: stop the engine's own trace recording AND the global

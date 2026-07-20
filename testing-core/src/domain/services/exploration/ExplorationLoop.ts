@@ -1,5 +1,11 @@
 import type { Page } from 'playwright';
-import { ALL_TESTING_TYPE_IDS, ACCESSIBILITY_BANNER_THRESHOLD } from '../../../../../shared/types.js';
+import {
+  ALL_TESTING_TYPE_IDS,
+  ACCESSIBILITY_BANNER_THRESHOLD,
+  STOP_REASON_DETAIL,
+  STOP_REASON_OUTCOME,
+  describeTermination,
+} from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { normalizeRoutePath } from '../../../ml/domHasher.js';
 import type { CompoundStateHash } from '../../../ml/domHasher.js';
@@ -172,8 +178,7 @@ export class ExplorationLoop {
       if (this.checkBudgetGate(step, ctx) === 'break') break;
 
       if (this.deps.isStopRequested()) {
-        telemetry.emitMilestone(`Safari session manually stopped by user.`);
-        return { completed: false, reason: 'Safari session manually stopped by user.', outcome: 'user-stopped' };
+        return this.stopResult();
       }
 
       // ─────────────────────────────────────────────────────────────
@@ -181,11 +186,9 @@ export class ExplorationLoop {
       // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
       // ─────────────────────────────────────────────────────────────
       if (this.deps.checkTimebox()) {
-        return {
-          completed: false,
-          reason: `Timebox of ${this.deps.getTimeboxMs()}ms (${this.deps.getTimeboxMs() / 60000}min) exceeded - active execution time only`,
-          outcome: 'timebox',
-        };
+        const reason = `Time budget of ${this.deps.getTimeboxMs() / 60000} min of active execution reached — exploration ended automatically.`;
+        telemetry.emitMilestone(describeTermination('timebox', reason));
+        return { completed: false, reason, outcome: 'timebox' };
       }
 
       const pauseGate = await this.waitWhilePaused();
@@ -403,11 +406,7 @@ export class ExplorationLoop {
   private async waitWhilePaused(): Promise<StepGate> {
     while (this.deps.isPaused()) {
       if (this.deps.isStopRequested()) {
-        this.deps.telemetry.emitMilestone(`Safari session manually stopped by user.`);
-        return {
-          kind: 'return',
-          result: { completed: false, reason: 'Safari session manually stopped by user.', outcome: 'user-stopped' },
-        };
+        return { kind: 'return', result: this.stopResult() };
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -1576,17 +1575,28 @@ export class ExplorationLoop {
     });
   }
 
+  // Terminal result for a requested stop, attributed to whoever requested it.
+  // An unattributed stop can only be an internal shutdown, never operator intent.
+  private stopResult(): LoopResult {
+    const trigger = this.deps.getStopReason() ?? 'internal-shutdown';
+    const outcome = STOP_REASON_OUTCOME[trigger];
+    const reason = STOP_REASON_DETAIL[trigger];
+    this.deps.telemetry.emitMilestone(describeTermination(outcome));
+    return { completed: false, reason, outcome };
+  }
+
   private async handleIterationError(
     err: unknown,
     page: Page,
     runtimeCrashReason: string | null,
     serverCrashReason: string | null,
   ): Promise<LoopResult> {
-    // Check if this is a browser/context closed error - this happens when operator
-    // manually stops the test. Treat it as graceful shutdown, not fatal exception.
-    if (isBrowserClosedError(err)) {
-      this.deps.telemetry.emitMilestone('ℹ️ Session gracefully stopped by operator');
-      return { completed: false, reason: 'Session gracefully stopped by operator', outcome: 'user-stopped' };
+    // A browser/context-closed error is only expected when something actually asked
+    // the engine to stop — the teardown that follows stop() closes the browser out
+    // from under the in-flight action. With no stop recorded, the browser died on its
+    // own, which is a genuine fault and must NOT be reported as an operator stop.
+    if (isBrowserClosedError(err) && this.deps.isStopRequested()) {
+      return this.stopResult();
     }
 
     // Phase 3: Track failure count on exception

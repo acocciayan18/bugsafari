@@ -70,24 +70,21 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
             {counts[level] ? <span className="ml-1 opacity-60">{counts[level]}</span> : null}
           </button>
         ))}
-        <div className="ml-auto">
-          <CopyButton text={JSON.stringify(browserConsole, null, 2)} label="All logs" />
-        </div>
       </div>
 
       {visible.length === 0 ? (
-        <div className="text-(--text-tertiary) italic text-[13px] py-4 px-3">
+        <div className="text-(--text-tertiary) italic text-[13px] py-6 px-3">
           {browserConsole.length === 0 ? 'No browser console logs captured yet.' : `No ${filter} logs in this session.`}
         </div>
       ) : (
-        <div className="leading-5">
+        <div className="leading-5 pb-6">
           {visible.map((log, idx) => (
             <div
               key={`${log.timestamp}-${idx}`}
-              className={`group grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-2 px-2 py-0.5 border-b border-(--border-hairline)/40 hover:bg-(--surface-hover) ${ROW_ACCENTS[log.level] ?? ''}`}
+              className={`group grid grid-cols-[7.5rem_3.5rem_1fr_auto] items-baseline gap-x-3 px-3 py-1 border-b border-(--border-hairline)/40 hover:bg-(--surface-hover) ${ROW_ACCENTS[log.level] ?? ''}`}
             >
-              <span className="text-(--text-tertiary) tabular-nums">{formatTime(log.timestamp)}</span>
-              <span className={`uppercase font-bold w-14 shrink-0 ${LEVEL_STYLES[log.level] ?? LEVEL_STYLES.log}`}>
+              <span className="text-(--text-tertiary) tabular-nums whitespace-nowrap">{formatTime(log.timestamp)}</span>
+              <span className={`uppercase font-bold truncate ${LEVEL_STYLES[log.level] ?? LEVEL_STYLES.log}`}>
                 {log.level}
               </span>
               <span className="min-w-0 whitespace-pre-wrap break-words text-(--text-primary)">

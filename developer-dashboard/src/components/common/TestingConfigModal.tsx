@@ -58,7 +58,7 @@ export default function TestingConfigModal({
         </h3>
         <button
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          className="flex h-8 w-8 items-center hover:cursor-pointer justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
           aria-label="Close configuration"
         >
           <X className="h-5 w-5" aria-hidden="true" />
@@ -128,7 +128,7 @@ export default function TestingConfigModal({
         <span className="text-[11px] text-(--text-tertiary) font-sans">Applied on the next run.</span>
         <button
           onClick={onClose}
-          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
+          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
         >
           Done
         </button>

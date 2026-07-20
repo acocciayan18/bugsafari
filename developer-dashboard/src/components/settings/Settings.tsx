@@ -222,7 +222,7 @@ const ToggleSwitch = memo(function ToggleSwitch({
 // ─────────────────────────────────────────────────────────────────────────────
 // Application Settings Section
 // Self-contained: owns its useUserSettings call.
-// Bridges settings.theme → DarkModeContext for immediate visual feedback.
+// Theme is applied globally by the settings layer; this only drives instant feedback.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ApplicationSettingsSection() {
@@ -238,13 +238,6 @@ function ApplicationSettingsSection() {
       hasLoadedRef.current = true;
     }
   }, [isSettingsLoading]);
-
-  // Sync stored theme to DarkModeContext whenever settings load from backend or localStorage
-  useEffect(() => {
-    if (!isSettingsLoading) {
-      setMode(settings.theme);
-    }
-  }, [settings.theme, isSettingsLoading, setMode]);
 
   const handleThemeSelect = async (mode: ThemeMode) => {
     setMode(mode); // Immediate visual feedback — don't wait for the async save
@@ -598,8 +591,8 @@ export default function Settings() {
   }, [isAuthenticated]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-(--surface-panel)">
-      <header className="flex items-center justify-between border-b border-(--border-hairline) px-6 py-4">
+    <div className="flex h-full w-full flex-col  bg-(--surface-panel)">
+      <header className="flex items-center justify-between border-b border-(--border-hairline) px-6 py-3">
         <div className="flex items-center">
           <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
@@ -617,7 +610,7 @@ export default function Settings() {
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app)">
+      <main className="m-6 mb-6 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app)">
         <div className="border-b border-(--border-hairline) px-6 py-4">
           <h2 className="text-lg font-bold text-(--text-primary)">SETTINGS</h2>
           <p className="mt-1 text-sm text-(--text-secondary)">
@@ -652,20 +645,7 @@ export default function Settings() {
         </div>
       </main>
 
-      <footer className="mb-6 px-6">
-        <div className="mb-4 flex h-2 gap-1 rounded-full">
-          <div className="h-full flex-1 rounded-full bg-gray-700 dark:bg-gray-300" />
-          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
-          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
-          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
-          <div className="h-full flex-1 rounded-full bg-gray-200 dark:bg-gray-600" />
-        </div>
-        <div className="text-center">
-          <span className="font-mono text-[13px] text-gray-400 dark:text-gray-500">
-            SETTINGS PANEL - V.8.3.1
-          </span>
-        </div>
-      </footer>
+      
     </div>
   );
 }

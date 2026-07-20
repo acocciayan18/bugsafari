@@ -33,6 +33,7 @@ import {
   type FindingAttribution,
   type StateFingerprint,
   type ActionRecord,
+  type RunTerminationOutcome,
 } from '../../../../shared/types.js';
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
@@ -117,6 +118,8 @@ interface SessionReportData {
   executionDate?: Date;
   timeElapsed?: number;
   status?: string;
+  outcome?: RunTerminationOutcome;
+  endedReason?: string;
   coveragePercentage?: number;
   metrics?: {
     totalActions?: number;
@@ -991,6 +994,8 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         executionDate: sessionDoc.startedAt,
         timeElapsed: sessionDoc.stats?.runtimeMs || 0,
         status: sessionDoc.status,
+        outcome: sessionDoc.outcome,
+        endedReason: sessionDoc.endedReason,
         coveragePercentage: sessionDoc.stats?.coveragePercentage,
         metrics: {
           totalActions: sessionDoc.stats?.actionsExecuted || 0,
@@ -1103,6 +1108,8 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         url: session.targetUrl,
         date: session.executionDate,
         status: session.status,
+        outcome: session.outcome,
+        endedReason: session.endedReason,
         coverage: session.coveragePercentage ?? 0,
         duration: session.timeElapsed,
         riskScore: Math.min(100, formattedAnalysis?.riskScore ?? ((session.metrics?.totalBugsFound || 0) * 25)),

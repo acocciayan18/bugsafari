@@ -367,7 +367,7 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 35. **`VerificationCandidate.reproduced` is never set in-run**, so its ±0.15 confidence branch is unreachable.
 36. **Landing page is non-functional** — every nav link, CTA, and footer link except "Try BugSafari" is a dead `href="#"`.
 37. **Notifications and Auto-Save settings have no consumers** (FR-14.2, FR-14.3).
-38. **~14 dashboard components are dead code** (`HelpMenuIcon`, `InfiltrationProfileSelector`, `TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set).
+38. **~14 dashboard components are dead code** (`InfiltrationProfileSelector`, `TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set).
 
 ---
 

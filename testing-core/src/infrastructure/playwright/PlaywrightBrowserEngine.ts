@@ -1,7 +1,8 @@
 import { chromium } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
-import type { OptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, StopReason, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, describeTermination } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
@@ -35,6 +36,8 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   // Set by stop() while a run() is in flight; tags the in-flight run so its
   // catch block can tell "expected teardown from stop()" apart from a real bug.
   private cancelledDuringRun = false;
+  // Trigger recorded by stop(); resolves the outcome when a run unwinds via cancellation.
+  private stopReason: StopReason | null = null;
   private capturedConfirmedBugs: Array<{
     bugId: string;
     type: string;
@@ -82,7 +85,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     return this.activeEngine?.getLastSessionId() ?? null;
   }
 
-  public async stop(): Promise<void> {
+  public async stop(reason: StopReason = 'operator'): Promise<void> {
     if (this.isStopping) {
       return;
     }
@@ -91,11 +94,13 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     try {
       // Tag any in-flight run() BEFORE tearing anything down, so its catch
       // block can recognize a resulting error as an expected side-effect of
-      // this stop() rather than inferring it from the error's message.
+      // this stop() rather than inferring it from the error's message. The
+      // trigger is recorded too, so the terminal result names the real cause.
       this.cancelledDuringRun = true;
+      this.stopReason = reason;
       // Force engine stop first - critical for zombie prevention
       if (this.activeEngine) {
-        this.activeEngine.stop();
+        this.activeEngine.stop(reason);
         console.log('[PlaywrightBrowserEngine] Engine stop requested');
         // Graceful shutdown: flush pending telemetry/DB writes BEFORE closing the
         // browser, so a stop can't strand in-flight forensic persistence.
@@ -117,6 +122,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // Fresh run: any cancellation tag belongs to a previous run and must not
     // leak forward and swallow a genuine failure in this one.
     this.cancelledDuringRun = false;
+    this.stopReason = null;
     // Drop the prior run's confirmed-bug snapshot so a save during THIS run can
     // never persist another run's (or another user's) findings.
     this.capturedConfirmedBugs = [];
@@ -233,16 +239,8 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     try {
       // 🔒 RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
       if (!this.activeEngine) {
-        // Gracefully abort - session was terminated by request
-        telemetry.emitTelemetry({
-          timestamp: new Date().toISOString(),
-          type: 'ACTION',
-          meta: {
-            actionExecuted: 'session-initialization-terminated',
-            message: '🏁 Session initialization terminated safely by request',
-          },
-        });
-        return { completed: false, reason: 'Session terminated by user', outcome: 'user-stopped' };
+        // Gracefully abort - session was terminated by request before exploration began
+        return this.cancellationResult(telemetry);
       }
       
       // 🔐 Authenticate into the target BEFORE exploration, so the engine's own
@@ -274,15 +272,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // null-deref bug unrelated to cancellation — misreporting a real crash
       // as a clean stop. Gating on the explicit tag removes that ambiguity.
       if (this.cancelledDuringRun) {
-        telemetry.emitTelemetry({
-          timestamp: new Date().toISOString(),
-          type: 'ACTION',
-          meta: {
-            actionExecuted: 'session-initialization-terminated',
-            message: '🏁 Session initialization terminated safely by request',
-          },
-        });
-        return { completed: false, reason: 'Session terminated by user', outcome: 'user-stopped' };
+        return this.cancellationResult(telemetry);
       }
       // Re-throw unexpected errors
       throw err;
@@ -294,6 +284,23 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       this.activeEngine = null;
     }
     return result;
+  }
+
+  // Terminal result for a run cancelled before or during startup, attributed to
+  // whoever called stop(). An untagged cancellation is an internal shutdown.
+  private cancellationResult(telemetry: TelemetryGateway): RunResult {
+    const trigger = this.stopReason ?? 'internal-shutdown';
+    const outcome = STOP_REASON_OUTCOME[trigger];
+    const reason = STOP_REASON_DETAIL[trigger];
+    telemetry.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: {
+        actionExecuted: 'session-initialization-terminated',
+        message: describeTermination(outcome, reason),
+      },
+    });
+    return { completed: false, reason, outcome };
   }
 
   /**

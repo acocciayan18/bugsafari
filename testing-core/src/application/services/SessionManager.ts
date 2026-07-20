@@ -8,7 +8,9 @@ import type {
   IncidentReport,
   RunLifecycleStatus,
   SessionAttachAck,
+  RunTerminationOutcome,
   SessionOwnerType,
+  StopReason,
   TelemetryEvent,
 } from '../../../../shared/types.js';
 import { SESSION_SNAPSHOT_EVENT } from '../../../../shared/types.js';
@@ -24,7 +26,9 @@ import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.j
 export interface EngineControl {
   pause?: () => void;
   resume?: () => void;
-  stop?: () => Promise<void> | void;
+  // `reason` names the stop trigger so the run's terminal outcome is attributed
+  // to its real cause instead of defaulting to operator intent.
+  stop?: (reason?: StopReason) => Promise<void> | void;
   // Settlement barrier: flush in-flight telemetry/DB writes before the state settles.
   settlePendingTasks?: () => Promise<void>;
   getElapsedActiveTimeMs?: () => number;
@@ -79,6 +83,10 @@ interface ActiveRun {
   ownerSocketIds: Set<string>;
   manualPaused: boolean;   // paused by the operator
   crashTerminated: boolean; // target server crash confirmed; run being torn down
+  // Why the run ended, captured off the terminal telemetry event. Held on the run
+  // (not derived from the capped replay buffer) so a restore is always accurate.
+  terminationOutcome: RunTerminationOutcome | null;
+  terminationReason: string | null;
   health: TargetHealthMonitor;
   graceTimer: ReturnType<typeof setTimeout> | null;
   // Replay ring buffers (bounded).
@@ -165,6 +173,8 @@ export class SessionManager implements TelemetryRecorder {
       ownerSocketIds: new Set<string>(),
       manualPaused: false,
       crashTerminated: false,
+      terminationOutcome: null,
+      terminationReason: null,
       health,
       graceTimer: null,
       telemetry: [],
@@ -224,6 +234,7 @@ export class SessionManager implements TelemetryRecorder {
     switch (kind) {
       case 'telemetry':
         pushCapped(run.telemetry, payload as TelemetryEvent, TELEMETRY_BUFFER_CAP);
+        this.observeTerminationFrom(payload as TelemetryEvent);
         this.observeStatusFrom(payload as TelemetryEvent);
         break;
       case 'url-changed':
@@ -247,6 +258,16 @@ export class SessionManager implements TelemetryRecorder {
         pushCapped(run.browserConsole, payload as BrowserConsoleMessage, CONSOLE_BUFFER_CAP);
         break;
     }
+  }
+
+  // Pin the termination the moment the engine declares one, so the reason survives
+  // independently of the capped telemetry buffer that carried it. First one wins —
+  // a later teardown event must not overwrite the real cause.
+  private observeTerminationFrom(event: TelemetryEvent): void {
+    const run = this.run;
+    if (!run || run.terminationOutcome || !event.meta?.terminationOutcome) return;
+    run.terminationOutcome = event.meta.terminationOutcome;
+    run.terminationReason = event.meta.message ?? null;
   }
 
   // Track PAUSED↔RUNNING from the engine's own pause/resume telemetry so a
@@ -339,6 +360,8 @@ export class SessionManager implements TelemetryRecorder {
       targetUrl: run.targetUrl,
       currentUrl: run.currentUrl,
       status: run.status,
+      terminationOutcome: run.terminationOutcome,
+      terminationReason: run.terminationReason,
       startedAt: new Date(run.startedAt).toISOString(),
       elapsedTimeMs: elapsed,
       timeboxMs: run.timeboxMs,
@@ -374,7 +397,7 @@ export class SessionManager implements TelemetryRecorder {
       void this.persistStatus('DISCONNECTED');
       console.log(`[SessionManager] Run ${active.runId} grace expired — terminating engine.`);
       // Engine.stop() unwinds run() whose finally calls endRun(); nothing else to do.
-      void Promise.resolve(active.engine.stop?.()).catch((err) =>
+      void Promise.resolve(active.engine.stop?.('disconnect-grace')).catch((err) =>
         console.error('[SessionManager] Grace-expiry stop failed:', err),
       );
     }, GRACE_MS);
@@ -422,7 +445,7 @@ export class SessionManager implements TelemetryRecorder {
     if (run.status === 'STOPPING') return; // idempotent against duplicate stop clicks
     run.status = 'STOPPING';
     this.emitEngineAction('engine-stopping', 'Stopping Safari — flushing telemetry and pending writes…');
-    await Promise.resolve(run.engine.stop());
+    await Promise.resolve(run.engine.stop('operator'));
     // endRun() is invoked by the run's own finally block; status settles to IDLE there.
   }
 
@@ -491,7 +514,7 @@ export class SessionManager implements TelemetryRecorder {
     // endRun() → teardownRun(), releasing the health monitor, grace timer, room,
     // and replay buffer. crashTerminated pins the terminal status through that path.
     try {
-      await Promise.resolve(run.engine.stop?.());
+      await Promise.resolve(run.engine.stop?.('target-crash'));
     } catch (err) {
       console.error('[SessionManager] Crash-termination stop failed:', err);
       // Engine unresponsive — force teardown so resources are still released.

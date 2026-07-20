@@ -13,8 +13,10 @@ import {
 } from '../common/TargetAuthPanel';
 import TestingConfigModal from '../common/TestingConfigModal';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
+import type { RunTerminationOutcome } from '../../types';
 import LiveFeed from '../common/LiveFeed';
-import SessionTimer from '../common/SessionTimer';
+import SessionTimerLive from '../common/SessionTimerLive';
+import QueueStandbyChip from '../common/QueueStandbyChip';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
@@ -52,11 +54,11 @@ interface ClinicalForensicsDashboardProps {
   testStatus?: TestSessionStatus;
   currentEngineAction?: string; 
   hasRunCompleted?: boolean;
+  /** Why the run ended — rendered by the Live Feed's terminal overlay. */
+  terminationOutcome?: RunTerminationOutcome | null;
   isSessionSaved?: boolean;
   isInitializing?: boolean;
   liveFrame?: string | null; 
-  sessionTimeMs?: number; 
-  remainingTimeMs?: number; 
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
@@ -81,11 +83,10 @@ export default function ClinicalForensicsDashboard({
   testStatus = 'IDLE',
   currentEngineAction = '',
   hasRunCompleted = false,
+  terminationOutcome = null,
   isSessionSaved = false,
   isInitializing = false,
   liveFrame = null,
-  sessionTimeMs,
-  remainingTimeMs,
   onPause,
   onResume,
   onStop,
@@ -220,21 +221,14 @@ export default function ClinicalForensicsDashboard({
               {/* Stopwatch is hidden while queued — it must not tick until a worker
                   promotes the run to RUNNING; a standby chip stands in its place. */}
               {!isQueued && (
-                <SessionTimer
-                  initialTimeMs={sessionTimeMs}
-                  remainingTimeMs={remainingTimeMs}
+                <SessionTimerLive
                   isRunning={isTestRunning}
                   isPaused={testStatus !== 'ACTIVE'}
                   onTimeUp={onStop}
                 />
               )}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
-              {isQueued && (
-                <span className="flex items-center gap-2 rounded-lg bg-(--status-neutral-bg) text-(--status-neutral-fg) px-4 py-2 text-[13px] font-bold uppercase tracking-wider">
-                  <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
-                  Queued — awaiting worker
-                </span>
-              )}
+              {isQueued && <QueueStandbyChip />}
               {/* Transitional indicator — the backend is settling in-flight tasks; all
                   controls are locked until it confirms PAUSED / IDLE via telemetry. */}
               {transitionLabel && (
@@ -366,6 +360,7 @@ export default function ClinicalForensicsDashboard({
                 isTestRunning={isTestRunning}
                 isQueued={isQueued}
                 hasRunCompleted={hasRunCompleted}
+                terminationOutcome={terminationOutcome}
                 isInitializing={isInitializing}
                 liveFrame={liveFrame}
               />
@@ -403,33 +398,33 @@ export default function ClinicalForensicsDashboard({
             <div className="flex overflow-visible">
               <button
                 onClick={() => setActiveTab('telemetry')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Activity className="h-3.5 w-3.5" />
-                telemetry
+                Telemetry
               </button>
               <button
                 onClick={() => setActiveTab('errors')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <TriangleAlert className="h-3.5 w-3.5" />
-                errors
+                Errors
                 <TabCount count={errorCount} />
               </button>
               <button
                 onClick={() => setActiveTab('network')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Network className="h-3.5 w-3.5" />
-                network
+                Network
                 <TabCount count={dedupeNetworkEvents(networkEvents).length} />
               </button>
               <button
                 onClick={() => setActiveTab('console')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest uppercase transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Terminal className="h-3.5 w-3.5" />
-                console
+                Console
                 <TabCount count={browserConsole.length} />
               </button>
             </div>
@@ -441,7 +436,7 @@ export default function ClinicalForensicsDashboard({
           <div className="relative flex-1 overflow-hidden">
             <div
               ref={logContainerRef}
-              className="h-full overflow-y-auto overflow-x-hidden bg-(--surface-panel) p-4 font-mono text-[13px] border border-(--border-hairline) border-t-0"
+              className="h-full overflow-y-auto overflow-x-hidden bg-(--surface-panel) p-4 pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
               style={{ scrollBehavior: 'smooth' }}
             >
               {activeTab === 'telemetry' && (

@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after fixing the frontend of testing config"
-git checkout -b 7-20-Ayan-5
-git push --set-upstream origin 7-20-Ayan-5
+git commit -m "files before applying Tier 1 — Correctness & trust"
+git checkout -b 7-20-Ayan-6
+git push --set-upstream origin 7-20-Ayan-6
 

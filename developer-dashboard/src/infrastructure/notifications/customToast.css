@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
 Custom Toast Styles
-White background, black text, colored icons per variant
+One surface for every variant: no leading icon, dismiss ✕ on the right
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /* Palette follows the app theme via the `dark` class on <html> */
@@ -11,7 +11,6 @@ White background, black text, colored icons per variant
   --toast-dismiss-fg: #6b7280;
   --toast-dismiss-hover-bg: #f3f4f6;
   --toast-dismiss-hover-fg: #000000;
-  --toast-dismiss-active-bg: #e5e7eb;
 }
 
 html.dark {
@@ -21,13 +20,13 @@ html.dark {
   --toast-dismiss-fg: #a1a1aa;
   --toast-dismiss-hover-bg: #27272a;
   --toast-dismiss-hover-fg: #fafafa;
-  --toast-dismiss-active-bg: #3f3f46;
 }
 
 /* Toast container */
 .toast-custom {
   display: flex;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
@@ -41,32 +40,13 @@ html.dark {
 }
 
 /* Toast content layout */
+/* min-width:0 stops long words from inflating the flex item past the button */
 .toast-custom .toast-content {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-}
-
-/* Toast icon */
-.toast-custom .toast-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-/* Icon colors by variant */
-.toast-custom .toast-icon.text-green-500 {
-  color: #22c55e;
-}
-
-.toast-custom .toast-icon.text-black {
-  color: var(--toast-text);
-}
-
-.toast-custom .toast-icon.text-red-500 {
-  color: #ef4444;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Toast message */
@@ -75,6 +55,21 @@ html.dark {
   font-weight: 600;
   line-height: 1.5;
   color: var(--toast-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.toast-custom .toast-description {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--toast-dismiss-fg);
+}
+
+/* Any leading icon sonner would inject is suppressed */
+.toast-custom [data-icon] {
+  display: none;
 }
 
 /* Dismiss button */
@@ -104,13 +99,28 @@ html.dark {
   outline-offset: 1px;
 }
 
-.toast-custom .toast-dismiss-btn:active {
-  background-color: var(--toast-dismiss-active-bg);
+/* Sonner's own close button ships absolutely positioned top-left and hover-gated;
+   pull it back into flow on the right so it matches the custom toast ✕ */
+.toast-custom .toast-dismiss-btn[data-close-button] {
+  position: static;
+  order: 1;
+  opacity: 1;
+  transform: none;
+  border: none;
+  background: transparent;
+  color: var(--toast-dismiss-fg);
 }
 
-/* Toast container for sonner - ensure proper positioning */
-[data-sonner-toast] .toast-custom {
-  margin-bottom: 8px;
+.toast-custom .toast-dismiss-btn[data-close-button]:hover {
+  background-color: var(--toast-dismiss-hover-bg);
+  color: var(--toast-dismiss-hover-fg);
+}
+
+/* sonner ships its own pressed state — keep the button flat on click */
+.toast-custom .toast-dismiss-btn:active,
+.toast-custom .toast-dismiss-btn[data-close-button]:active {
+  background-color: transparent;
+  transform: none;
 }
 
 /* Light theme overrides for sonner Toaster */

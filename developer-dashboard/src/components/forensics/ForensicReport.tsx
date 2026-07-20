@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, TriangleAlert, CircleHelp, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { fetchForensicReport } from '../../services/historyService';
+import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
@@ -38,6 +38,8 @@ import {
 } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { AttributionBadges, CopyButton, SeverityBadge } from '../common/ForensicCardKit';
+import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
+import { isCleanTermination } from '../../types';
 import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
 import { caughtBugToFindingView } from '../../utils/findingView';
 import { Modal } from '../ui/Modal';
@@ -70,9 +72,16 @@ function formatDate(value?: string): string {
   return parsed.toLocaleString();
 }
 
+// Themed off the resolved outcome, not the raw string: the backend sends DB
+// SessionStatus values ('Crashed'), so the old uppercase comparisons never matched
+// and every report — including crashes — rendered with the stable/green theme.
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
-  if (status === 'CRASHED') return { text: 'text-(--status-critical-fg)', dot: 'bg-(--status-critical-fg)', bg: 'bg-(--status-critical-bg)', border: 'border-(--status-critical-border)' };
-  if (status === 'HALTED') return { text: 'text-(--status-warning-fg)', dot: 'bg-(--status-warning-fg)', bg: 'bg-(--status-warning-bg)', border: 'border-(--status-warning-border)' };
+  const outcome = outcomeFromStatus(status);
+  if (outcome && !isCleanTermination(outcome)) {
+    return outcome === 'graceful-shutdown' || outcome === 'abandoned'
+      ? { text: 'text-(--status-warning-fg)', dot: 'bg-(--status-warning-fg)', bg: 'bg-(--status-warning-bg)', border: 'border-(--status-warning-border)' }
+      : { text: 'text-(--status-critical-fg)', dot: 'bg-(--status-critical-fg)', bg: 'bg-(--status-critical-bg)', border: 'border-(--status-critical-border)' };
+  }
   return { text: 'text-(--status-stable-fg)', dot: 'bg-(--status-stable-fg)', bg: 'bg-(--status-stable-bg)', border: 'border-(--status-stable-border)' };
 }
 
@@ -113,9 +122,18 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`h-3 w-3 rounded-full ${theme.dot}`} />
-            <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+            {report.outcome || outcomeFromStatus(report.status) ? (
+              <TerminationBadge outcome={report.outcome} status={report.status} reason={report.endedReason} />
+            ) : (
+              <>
+                <span className={`h-3 w-3 rounded-full ${theme.dot}`} />
+                <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+              </>
+            )}
           </div>
+          {report.endedReason && (
+            <div className="mt-1 text-[13px] text-(--text-tertiary)">{report.endedReason}</div>
+          )}
           <div className="mt-1 truncate text-sm font-medium text-(--text-secondary)" title={report.url}>{report.url || 'N/A'}</div>
           <div className="mt-0.5 flex items-center gap-2 text-[13px] text-(--text-tertiary)">
             <span>Run {sessionId}</span>
@@ -802,7 +820,7 @@ export default function ForensicReport() {
       setError(null);
 
       try {
-        const data = await fetchForensicReport(sessionId);
+        const data = await useHistoryStore.getState().loadReport(sessionId);
         if (!cancelled) {
           setReport(data);
         }
@@ -931,12 +949,7 @@ export default function ForensicReport() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-(--border-hairline) bg-(--surface-panel) px-6 py-4">
-        <div className="text-center">
-          <span className="font-mono text-[13px] text-(--text-tertiary)">END OF FORENSIC REPORT</span>
-        </div>
-      </footer>
+      
     </div>
   );
 }

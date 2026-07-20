@@ -1,7 +1,7 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
-import { defaultOptimizationSettings } from '../../../../shared/types.js';
-import type { OptimizationSettings, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
+import { defaultOptimizationSettings, describeTermination } from '../../../../shared/types.js';
+import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
@@ -16,6 +16,22 @@ import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js'
 interface RunState {
     active: boolean;
 }
+
+/** Coarse run status reported to the operator and used to settle the lifecycle. */
+type ExecutionStatus = 'COMPLETED' | 'CRASHED' | 'HALTED' | 'TIMEOUT' | 'STOPPED' | 'ABANDONED';
+
+// A user stop and an abandoned run are neither completions nor crashes; keeping them
+// distinct is what lets History and Reports state the real termination reason.
+const EXECUTION_STATUS_BY_OUTCOME: Record<RunTerminationOutcome, ExecutionStatus> = {
+    completed: 'COMPLETED',
+    'boundary-saturated': 'COMPLETED',
+    'user-stopped': 'STOPPED',
+    timebox: 'TIMEOUT',
+    'graceful-shutdown': 'HALTED',
+    'target-crash': 'CRASHED',
+    abandoned: 'ABANDONED',
+    exception: 'CRASHED',
+};
 
 /**
  * A finding transferred verbatim from the live dashboard Error Tab at save time.
@@ -473,7 +489,7 @@ export class StartExplorationUseCase {
         console.log(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
 
         this.executionStartTime = Date.now();
-        let executionStatus: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'TIMEOUT' = 'COMPLETED';
+        let executionStatus: ExecutionStatus = 'COMPLETED';
         const metrics: ExecutionMetrics = {
             totalActions: 0,
             totalBugsFound: 0,
@@ -558,11 +574,8 @@ try {
                 });
             }
 
-            executionStatus = result.outcome === 'exception'
-                ? 'CRASHED'
-                : result.outcome === 'timebox'
-                    ? 'TIMEOUT'
-                    : result.completed ? 'COMPLETED' : 'HALTED';
+            executionStatus = EXECUTION_STATUS_BY_OUTCOME[result.outcome]
+                ?? (result.completed ? 'COMPLETED' : 'HALTED');
 
             // Collect metrics from the reproduction playbook store (actions executed)
             const actionRecords = ReproductionPlaybookStore.snapshot();
@@ -577,7 +590,8 @@ try {
                 meta: {
                     actionExecuted: 'engine-stopped',
                     url: targetUrl,
-                    message: result.reason,
+                    terminationOutcome: result.outcome,
+                    message: describeTermination(result.outcome, result.reason),
                 },
             });
         } catch (error) {

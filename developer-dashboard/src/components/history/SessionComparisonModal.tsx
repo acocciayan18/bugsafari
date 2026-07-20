@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { X, TriangleAlert } from 'lucide-react';
-import { fetchForensicReport } from '../../services/historyService';
+import { useHistoryStore } from '../../stores/history/historyStore';
 import type { ForensicReportResponse } from '../../types';
 
 interface SessionComparisonModalProps {
@@ -55,7 +55,8 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
 
     setIsLoading(true);
     setError(null);
-    Promise.all(sessionIds.map((id) => fetchForensicReport(id)))
+    const loadReport = useHistoryStore.getState().loadReport;
+    Promise.all(sessionIds.map((id) => loadReport(id)))
       .then((loaded) => {
         if (!cancelled) setReports(loaded);
       })
