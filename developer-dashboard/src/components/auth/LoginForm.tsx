@@ -5,6 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
+import GuestModeModal from './GuestModeModal';
+import LegalFooter from '../legal/LegalFooter';
+import LegalDocModal from '../legal/LegalDocModal';
+import type { LegalDocId } from '../../legal/content';
 
 interface LoginFormProps {
   onGuestAccess?: () => void;
@@ -16,10 +20,11 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [touchedEmail, setTouchedEmail] = useState(false);
   const [touchedPassword, setTouchedPassword] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
+  const [openDocId, setOpenDocId] = useState<LegalDocId | null>(null);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -33,7 +38,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
   // Guest mode must be enabled through the context (React state + storage flag)
   // before navigating — navigating alone leaves the guards seeing a dead session.
-  const handleGuestClick = () => {
+  const confirmGuestAccess = () => {
+    setIsGuestModalOpen(false);
     continueAsGuest();
     if (onGuestAccess) onGuestAccess();
     navigate('/dashboard');
@@ -76,10 +82,20 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
           </div>
 
           <div className="mt-3 text-center">
-            <button type="button" onClick={handleGuestClick} className="text-sm text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-sm text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
               Continue As Guest
             </button>
           </div>
+
+          <LegalFooter onOpenDoc={setOpenDocId} />
+
+          <GuestModeModal
+            isOpen={isGuestModalOpen}
+            onClose={() => setIsGuestModalOpen(false)}
+            onContinue={confirmGuestAccess}
+            onCreateAccount={() => { setIsGuestModalOpen(false); navigate('/signup'); }}
+          />
+          <LegalDocModal docId={openDocId} onClose={() => setOpenDocId(null)} />
         </>
       }
     >

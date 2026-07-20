@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
+import { createRequire } from 'node:module'
+
+const { version } = createRequire(import.meta.url)('./package.json')
 
 // https://vite.dev/config/
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   server: {
     proxy: {
       '/api': {

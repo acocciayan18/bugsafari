@@ -153,7 +153,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after removing the route mutations back navigation"
+git commit -m "files after applying data privacy modal"
 git checkout -b 7-20-Ayan-7
 git push --set-upstream origin 7-20-Ayan-7
 

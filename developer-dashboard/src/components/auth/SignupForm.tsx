@@ -6,6 +6,9 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
+import LegalFooter from '../legal/LegalFooter';
+import LegalDocModal from '../legal/LegalDocModal';
+import type { LegalDocId } from '../../legal/content';
 
 
 
@@ -23,7 +26,10 @@ export default function SignupForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [touched, setTouched] = useState<TouchedState>({ email: false, password: false, confirmPassword: false });
   const [submitted, setSubmitted] = useState(false);
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
+  const [openDocId, setOpenDocId] = useState<LegalDocId | null>(null);
 
+  const consentRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmPasswordRef = useRef<HTMLInputElement>(null);
@@ -54,6 +60,10 @@ export default function SignupForm() {
     ? 'Password is required.'
     : '';
 
+  const consentError = submitted && !acceptedPolicies
+    ? 'You must accept the Privacy Notice and Terms of Use to create an account.'
+    : '';
+
   const showConfirmError = (touched.confirmPassword || submitted) && confirmPassword.length > 0 && !confirmMatches
     ? 'Passwords do not match.'
     : (touched.confirmPassword || submitted) && confirmPassword.length === 0
@@ -78,6 +88,10 @@ export default function SignupForm() {
       confirmPasswordRef.current?.focus();
       return;
     }
+    if (!acceptedPolicies) {
+      consentRef.current?.focus();
+      return;
+    }
 
     try {
       await signup({ email: email.trim(), password });
@@ -94,9 +108,13 @@ export default function SignupForm() {
       statusLabel={isLoading ? 'PROVISIONING' : authError || emailError ? 'REGISTRATION FAILED' : 'AWAITING INPUT'}
       statusTone={isLoading ? 'busy' : authError || emailError ? 'error' : 'idle'}
       footer={
-        <div className="mt-5 text-center text-sm text-(--text-primary)">
-          Already have an account? <Link to="/login" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Log in</Link>
-        </div>
+        <>
+          <div className="mt-5 text-center text-sm text-(--text-primary)">
+            Already have an account? <Link to="/login" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Log in</Link>
+          </div>
+          <LegalFooter onOpenDoc={setOpenDocId} />
+          <LegalDocModal docId={openDocId} onClose={() => setOpenDocId(null)} />
+        </>
       }
     >
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -168,6 +186,39 @@ export default function SignupForm() {
             </div>
 
             <PasswordRequirements password={password} />
+
+            <div>
+              <div className="flex items-start gap-2.5">
+                <input
+                  ref={consentRef}
+                  id="accept-policies"
+                  type="checkbox"
+                  checked={acceptedPolicies}
+                  onChange={(e) => setAcceptedPolicies(e.target.checked)}
+                  aria-invalid={!!consentError}
+                  aria-describedby={consentError ? 'accept-policies-error' : undefined}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+                />
+                <p className="text-[13px] leading-relaxed text-(--text-secondary)">
+                  <label htmlFor="accept-policies" className="cursor-pointer">
+                    I have read and agree to the
+                  </label>{' '}
+                  <button type="button" onClick={() => setOpenDocId('privacy')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+                    Privacy Notice
+                  </button>{' '}
+                  and{' '}
+                  <button type="button" onClick={() => setOpenDocId('terms')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+                    Terms of Use
+                  </button>
+                  , and confirm I will only test systems I am authorized to test.
+                </p>
+              </div>
+              {consentError && (
+                <p id="accept-policies-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">
+                  {consentError}
+                </p>
+              )}
+            </div>
 
             {(authError || emailError) && (
               <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
