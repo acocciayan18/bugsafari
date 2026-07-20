@@ -1097,6 +1097,11 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
       ]);
 
+      // Timestamp columns arrive as Date (Mongo) or string (client-transferred
+      // logs). ?. only guards null, not a string, so coerce both forms to ISO.
+      const toIso = (v: unknown): string | undefined =>
+        v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : undefined;
+
       const formattedErrors = errors.map(e => ({
         id: e._id?.toString(),
         type: e.type,
@@ -1116,13 +1121,13 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         bugClass: e.bugClass,
         scenario: e.scenario,
         cwe: e.cwe,
-        createdAt: e.createdAt?.toISOString(),
+        createdAt: toIso(e.createdAt),
       }));
 
       // Full per-run network + console logs — mirror the live dashboard tabs.
       // timestamp is a Date column; the wire contract stays an ISO string.
       const formattedNetworkLog = networkLog.map(n => ({
-        timestamp: n.timestamp?.toISOString(),
+        timestamp: toIso(n.timestamp),
         method: n.method,
         url: n.url,
         statusCode: n.statusCode,
@@ -1133,7 +1138,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         repeatCount: n.repeatCount,
       }));
       const formattedConsoleLog = consoleLog.map(c => ({
-        timestamp: c.timestamp?.toISOString(),
+        timestamp: toIso(c.timestamp),
         level: c.level,
         type: c.type,
         message: c.message,
@@ -1160,7 +1165,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         interactionCount: telemetry.interactionCount,
         failureCount: telemetry.failureCount,
         loadTimes: telemetry.loadTimes,
-        timestamp: telemetry.timestamp?.toISOString(),
+        timestamp: toIso(telemetry.timestamp),
       } : null;
 
       const formattedAnalysis = analysis ? {
@@ -1173,7 +1178,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         apiFailureCount: analysis.apiFailureCount,
         criticalErrorCount: analysis.criticalErrorCount,
         jsExceptionCount: analysis.jsExceptionCount,
-        createdAt: analysis.createdAt?.toISOString(),
+        createdAt: toIso(analysis.createdAt),
       } : null;
 
       // Build complete report

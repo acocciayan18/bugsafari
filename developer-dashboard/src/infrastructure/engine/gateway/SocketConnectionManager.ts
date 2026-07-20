@@ -75,6 +75,10 @@ export class SocketConnectionManager {
       reconnectionDelayMax: 5000,
       // Add timeout for connection attempts
       timeout: 20000,
+      // Present the JWT on every (re)connect so the backend can bind an
+      // authenticated run's room. Function form re-reads the (possibly rotated)
+      // token each handshake; guests send undefined and fall to possession-proof.
+      auth: (cb) => cb({ token: localStorage.getItem('bugsafari_token') ?? undefined }),
     });
   }
 

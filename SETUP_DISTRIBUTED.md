@@ -32,6 +32,9 @@ podman compose -f docker-compose.local.yml up -d
 # Podman Build
 podman compose -f docker-compose.local.yml up -d --build
 
+# Lucide React
+npm install lucide-react
+
 # Option 2: Generate Kubernetes YAML and apply (native Podman)
 podman generate kube docker-compose.local.yml > bugsafari-kube.yaml
 podman play kube bugsafari-kube.yaml
