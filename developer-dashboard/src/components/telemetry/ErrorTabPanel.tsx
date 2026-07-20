@@ -154,7 +154,7 @@ export default function ErrorTabPanel({
             <LiveFindingCard
               key={`report-${idx}`}
               view={reportToFindingView(report, count)}
-              icon="🔥"
+              icon=""
               kindLabel="Console Error"
               source="Console"
               count={count}

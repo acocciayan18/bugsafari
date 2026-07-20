@@ -10,10 +10,14 @@ import { useState } from 'react';
 import { ChevronDown, KeyRound, ShieldCheck } from 'lucide-react';
 import type { TargetAuthConfig } from '../../types';
 
+export type TargetAuthMethod = 'credentials' | 'storageState';
+
 export interface TargetAuthDraft {
   enabled: boolean;
+  method: TargetAuthMethod;
   username: string;
   password: string;
+  storageState: string;
   loginUrl: string;
   usernameSelector: string;
   passwordSelector: string;
@@ -23,8 +27,10 @@ export interface TargetAuthDraft {
 
 export const emptyTargetAuthDraft: TargetAuthDraft = {
   enabled: false,
+  method: 'credentials',
   username: '',
   password: '',
+  storageState: '',
   loginUrl: '',
   usernameSelector: '',
   passwordSelector: '',
@@ -32,15 +38,38 @@ export const emptyTargetAuthDraft: TargetAuthDraft = {
   successIndicator: '',
 };
 
+/** Structural check mirroring the backend's parseStorageState — same reject, earlier. */
+export function isStorageStateValid(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return false;
+    const { cookies, origins } = parsed as { cookies?: unknown; origins?: unknown };
+    if (!Array.isArray(cookies) || !Array.isArray(origins)) return false;
+    return cookies.length > 0 || origins.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Convert the form draft into the wire contract, or undefined when auth is off or
- * incomplete. Both username and password are required — a partial credential can
- * only ever produce a failed login, which aborts the run.
+ * incomplete. A form login needs both username and password; a seeded session needs
+ * storageState that parses — anything less can only produce a failed launch.
  */
 export function toTargetAuthConfig(draft: TargetAuthDraft): TargetAuthConfig | undefined {
-  if (!draft.enabled || !draft.username || !draft.password) return undefined;
+  if (!draft.enabled || isTargetAuthIncomplete(draft)) return undefined;
   const trimmed = (value: string): string | undefined => (value.trim() ? value.trim() : undefined);
+
+  if (draft.method === 'storageState') {
+    return {
+      mode: 'storageState',
+      storageState: draft.storageState.trim(),
+      successIndicator: trimmed(draft.successIndicator),
+    };
+  }
+
   return {
+    mode: 'credentials',
     username: draft.username,
     password: draft.password,
     loginUrl: trimmed(draft.loginUrl),
@@ -53,7 +82,10 @@ export function toTargetAuthConfig(draft: TargetAuthDraft): TargetAuthConfig | u
 
 /** True when auth is enabled but unusable — the parent blocks launch on this. */
 export function isTargetAuthIncomplete(draft: TargetAuthDraft): boolean {
-  return draft.enabled && (!draft.username || !draft.password);
+  if (!draft.enabled) return false;
+  return draft.method === 'storageState'
+    ? !isStorageStateValid(draft.storageState.trim())
+    : !draft.username || !draft.password;
 }
 
 interface TargetAuthPanelProps {
@@ -65,6 +97,11 @@ interface TargetAuthPanelProps {
 const FIELD_CLASS =
   'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
 const LABEL_CLASS = 'block text-[12px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
+
+const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string }> = [
+  { id: 'credentials', label: 'Login form' },
+  { id: 'storageState', label: 'Session state' },
+];
 
 export default function TargetAuthPanel({ draft, onChange, disabled = false }: TargetAuthPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -98,34 +135,87 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
 
       {draft.enabled && (
         <div className="border-t border-(--border-hairline) px-4 py-3 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={LABEL_CLASS} htmlFor="target-auth-username">Username / Email</label>
-              <input
-                id="target-auth-username"
-                type="text"
-                autoComplete="off"
-                value={draft.username}
+          <div role="radiogroup" aria-label="Authentication method" className="flex gap-2">
+            {METHOD_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={draft.method === option.id}
                 disabled={disabled}
-                onChange={(e) => set('username', e.target.value)}
-                className={FIELD_CLASS}
-                placeholder="example@email.com"
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLASS} htmlFor="target-auth-password">Password</label>
-              <input
-                id="target-auth-password"
-                type="password"
-                autoComplete="new-password"
-                value={draft.password}
-                disabled={disabled}
-                onChange={(e) => set('password', e.target.value)}
-                className={FIELD_CLASS}
-                placeholder="••••••••"
-              />
-            </div>
+                onClick={() => set('method', option.id)}
+                className={`flex-1 h-9 rounded-lg border px-3 text-[11px] font-bold uppercase tracking-wider font-sans transition-colors disabled:opacity-50 ${
+                  draft.method === option.id
+                    ? 'border-(--border-focus) bg-(--surface-inset) text-(--text-primary)'
+                    : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
+
+          {draft.method === 'credentials' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-username">Username / Email</label>
+                <input
+                  id="target-auth-username"
+                  type="text"
+                  autoComplete="off"
+                  value={draft.username}
+                  disabled={disabled}
+                  onChange={(e) => set('username', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="example@email.com"
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-password">Password</label>
+                <input
+                  id="target-auth-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={draft.password}
+                  disabled={disabled}
+                  onChange={(e) => set('password', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className={LABEL_CLASS} htmlFor="target-auth-storage-state">Playwright storageState JSON</label>
+              <textarea
+                id="target-auth-storage-state"
+                rows={5}
+                spellCheck={false}
+                autoComplete="off"
+                value={draft.storageState}
+                disabled={disabled}
+                onChange={(e) => set('storageState', e.target.value)}
+                className={`${FIELD_CLASS} h-auto py-2 font-mono text-[11px] resize-y`}
+                placeholder='{"cookies":[…],"origins":[…]}'
+              />
+              <p className="mt-1 text-[11px] text-(--text-tertiary) font-sans leading-relaxed">
+                Paste the output of <code>context.storageState()</code>. Use this for SSO, OAuth, MFA,
+                or captcha-guarded logins that a form fill cannot drive.
+              </p>
+              <div className="mt-3">
+                <label className={LABEL_CLASS} htmlFor="target-auth-state-success">Success indicator</label>
+                <input
+                  id="target-auth-state-success"
+                  type="text"
+                  value={draft.successIndicator}
+                  disabled={disabled}
+                  onChange={(e) => set('successIndicator', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="Optional — defaults to a login-wall check"
+                />
+              </div>
+            </div>
+          )}
 
           <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-(--text-tertiary) font-sans">
             <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
@@ -137,10 +227,14 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
 
           {incomplete && (
             <p className="text-[11px] font-semibold text-(--status-critical-fg) font-sans">
-              Both a username and a password are required to authenticate.
+              {draft.method === 'storageState'
+                ? 'Session state must be JSON with a non-empty "cookies" or "origins" array.'
+                : 'Both a username and a password are required to authenticate.'}
             </p>
           )}
 
+          {/* Selector overrides drive the form fill only — a seeded session submits nothing. */}
+          {draft.method === 'credentials' && (
           <button
             type="button"
             onClick={() => setShowAdvanced((prev) => !prev)}
@@ -153,8 +247,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             />
             Advanced — custom selectors
           </button>
+          )}
 
-          {showAdvanced && (
+          {showAdvanced && draft.method === 'credentials' && (
             <div className="space-y-3 pt-1">
               <p className="text-[11px] text-(--text-tertiary) font-sans leading-relaxed">
                 Leave blank to auto-detect the login form. Set these when the form is multi-step or

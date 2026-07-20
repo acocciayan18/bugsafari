@@ -5,6 +5,7 @@ import type {
     ActiveSessionSnapshot,
     ForensicCrashReport,
     IncidentReport,
+    ReproductionVerdict,
     SessionHistoryEntry,
     TelemetryEvent,
 } from '../../types';
@@ -107,6 +108,7 @@ export interface RunState {
     dismissAccessibilityBanner: () => void;
     addReport: (report: ForensicCrashReport) => void;
     addIncident: (incident: IncidentReport) => void;
+    applyReproductionVerdict: (verdict: ReproductionVerdict) => void;
     appendConsole: (message: BrowserConsoleMessage) => void;
     ingestTelemetry: (event: TelemetryEvent) => void;
     applyQueueUpdate: (update: QueueUpdate) => void;
@@ -173,6 +175,23 @@ export const useRunStore = create<RunState>((set, get) => ({
     incrementAccessibility: () => set((s) => ({ accessibilityCount: s.accessibilityCount + 1 })),
     addReport: (report) => set((s) => ({ reports: collapseFaultIntoBuffer(s.reports, report) })),
     addIncident: (incident) => set((s) => ({ incidents: collapseFaultIntoBuffer(s.incidents, incident) })),
+
+    // A reproduction verdict lands seconds after its finding — patch that card's
+    // verification in place rather than appending a second one.
+    applyReproductionVerdict: (verdict) => set((s) => ({
+        incidents: s.incidents.map((incident) =>
+            incident.bugId === verdict.bugId && incident.attribution
+                ? {
+                    ...incident,
+                    attribution: {
+                        ...incident.attribution,
+                        confidenceScore: verdict.confidenceScore,
+                        verificationStatus: verdict.verificationStatus,
+                    },
+                }
+                : incident,
+        ),
+    })),
     appendConsole: (message) => set((s) => ({ browserConsole: appendCapped(s.browserConsole, message, CONSOLE_BUFFER_CAP) })),
     pushTelemetry: (event) => set((s) => ({ telemetry: appendCapped(s.telemetry, event, TELEMETRY_CAP) })),
 

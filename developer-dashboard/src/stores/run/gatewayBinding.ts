@@ -15,6 +15,7 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     gateway.onAccessibility(() => s().incrementAccessibility());
     gateway.onForensicReport((report) => s().addReport(report));
     gateway.onIncidentReport((incident) => s().addIncident(incident));
+    gateway.onReproductionVerdict((verdict) => s().applyReproductionVerdict(verdict));
     gateway.onUrlChanged((url) => s().setCurrentUrl(url));
     gateway.onLiveFrame((frame) => s().setLiveFrame(frame));
     gateway.onBrowserConsole((message) => s().appendConsole(message));

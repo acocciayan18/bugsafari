@@ -26,6 +26,24 @@ export type VerificationStatus =
   | 'NEEDS_VERIFICATION' // Plausibly real but under-evidenced; needs a reproduction pass.
   | 'INCONCLUSIVE'; // Evidence too weak / origin uncertain to report as a bug.
 
+/** Socket channel carrying in-run reproduction verdicts back to the operator. */
+export const REPRODUCTION_VERDICT_EVENT = 'reproduction-verdict' as const;
+
+/**
+ * Result of the in-run reproduction pass for one finding, emitted once its replay
+ * settles. Arrives AFTER the finding itself — the dashboard patches the matching
+ * card by `bugId` rather than rendering a new one.
+ */
+export interface ReproductionVerdict {
+  bugId: string;
+  /** True ⇒ the original fault class recurred on replay. */
+  reproduced: boolean;
+  stepsReplayed: number;
+  /** Re-graded confidence after applying the reproduction delta. */
+  confidenceScore: number;
+  verificationStatus: VerificationStatus;
+}
+
 /** Verification verdict attached to a finding once the pipeline has evaluated it. */
 export interface VerificationVerdict {
   status: VerificationStatus;

@@ -256,16 +256,6 @@ export class StateRestorer {
         const landedInvalid = contextInvalid || offOrigin;
         const hashMatched =
           !landedInvalid && (await this.verifyReachedHash(page, targetHash, 3000));
-        // Back-nav defect oracle: report how history.back() actually landed.
-        if (!page.isClosed()) {
-          this.deps.onBackNavOutcome?.({
-            expectedUrl: targetUrl,
-            landedUrl: page.url(),
-            contextInvalid,
-            offOrigin,
-            hashMatched,
-          });
-        }
         if (hashMatched) {
           console.log('[StateRestorer] restore strategy A (history) succeeded');
           this.deps.telemetry.emitSystemStatus('Restored via history navigation.');

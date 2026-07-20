@@ -156,7 +156,7 @@ if (!response.ok) {
   }
 
   const responseData = await response.json() as { ok?: boolean; message?: string };
-  console.log('[historyService] ✅ Session saved:', responseData.message ?? 'success');
+  console.log('[historyService] Session saved:', responseData.message ?? 'success');
 }
 
 /**
@@ -275,7 +275,7 @@ export async function deleteRecord(recordId: string): Promise<void> {
       throw new Error(errorMessage);
     }
 
-    console.log('[historyService] ✅ Record deleted successfully!');
+    console.log('[historyService] Record deleted successfully!');
     return;
 
   } catch (error) {
@@ -372,7 +372,7 @@ const response = await fetchWithAuthRetry(`/api/history/export/${encodeURICompon
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
 
-    console.log('[historyService] ✅ Record exported successfully!');
+    console.log('[historyService] Record exported successfully!');
     return;
 
   } catch (error) {

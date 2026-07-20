@@ -1,12 +1,13 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, TelemetryEvent } from '../../../types';
+import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
 type ForensicHandler = (report: ForensicCrashReport) => void;
 type IncidentHandler = (report: IncidentReport) => void;
+type ReproductionVerdictHandler = (verdict: ReproductionVerdict) => void;
 type AccessibilityHandler = (finding: AccessibilityFinding) => void;
 type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
@@ -40,6 +41,7 @@ export class SocketConnectionManager {
   private telemetryHandler: TelemetryHandler | null = null;
   private forensicHandler: ForensicHandler | null = null;
   private incidentHandler: IncidentHandler | null = null;
+  private reproductionVerdictHandler: ReproductionVerdictHandler | null = null;
   private accessibilityHandler: AccessibilityHandler | null = null;
   private frameHandler: FrameHandler | null = null;
   private urlChangedHandler: UrlChangedHandler | null = null;
@@ -144,6 +146,7 @@ export class SocketConnectionManager {
     this.socket.on('telemetry', this.handleTelemetry);
     this.socket.on('forensic-report', this.handleForensicReport);
     this.socket.on('incident-report', this.handleIncidentReport);
+    this.socket.on(REPRODUCTION_VERDICT_EVENT, this.handleReproductionVerdict);
     this.socket.on(ACCESSIBILITY_EVENT, this.handleAccessibility);
     this.socket.on('live-frame', this.handleLiveFrame);
     this.socket.on('url-changed', this.handleUrlChanged);
@@ -170,6 +173,7 @@ export class SocketConnectionManager {
     this.socket.off('telemetry', this.handleTelemetry);
     this.socket.off('forensic-report', this.handleForensicReport);
     this.socket.off('incident-report', this.handleIncidentReport);
+    this.socket.off(REPRODUCTION_VERDICT_EVENT, this.handleReproductionVerdict);
     this.socket.off(ACCESSIBILITY_EVENT, this.handleAccessibility);
     this.socket.off('live-frame', this.handleLiveFrame);
     this.socket.off('url-changed', this.handleUrlChanged);
@@ -249,6 +253,10 @@ export class SocketConnectionManager {
     this.incidentHandler?.(report);
   };
 
+  private readonly handleReproductionVerdict = (verdict: ReproductionVerdict): void => {
+    this.reproductionVerdictHandler?.(verdict);
+  };
+
   private readonly handleAccessibility = (finding: AccessibilityFinding): void => {
     this.accessibilityHandler?.(finding);
   };
@@ -291,6 +299,9 @@ export class SocketConnectionManager {
   public onIncidentReport(handler: IncidentHandler): void {
     this.incidentHandler = handler;
   }
+  public onReproductionVerdict(handler: ReproductionVerdictHandler): void {
+    this.reproductionVerdictHandler = handler;
+  }
   public onAccessibility(handler: AccessibilityHandler): void {
     this.accessibilityHandler = handler;
   }
@@ -317,6 +328,7 @@ export class SocketConnectionManager {
     this.telemetryHandler = null;
     this.forensicHandler = null;
     this.incidentHandler = null;
+    this.reproductionVerdictHandler = null;
     this.accessibilityHandler = null;
     this.frameHandler = null;
     this.urlChangedHandler = null;

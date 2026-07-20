@@ -38,6 +38,8 @@ export type {
   VerifyFixProgress,
   VerifyFixPhase,
   RegressionSignal,
+  // In-run reproduction confirmation (patches a streamed finding's confidence)
+  ReproductionVerdict,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
   SessionAttachRequest,
@@ -66,6 +68,7 @@ export {
   SESSION_SNAPSHOT_EVENT,
   ACCESSIBILITY_EVENT,
   ACCESSIBILITY_BANNER_THRESHOLD,
+  REPRODUCTION_VERDICT_EVENT,
   QUEUE_SUBSCRIBE_EVENT,
   QUEUE_UPDATE_EVENT,
   TERMINATION_COPY,

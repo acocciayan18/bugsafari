@@ -75,7 +75,7 @@ const MULTIBYTE_STRINGS = [
   'uchehr\u200E test',  // RTL mark test
   'مرحبا بالعالم',  // Arabic hello
   // Emoji modifiers and variation sequences
-  '🔥𝔘𝔫𝔦𝔠𝔬𝔡𝔢🔥',  // Fire + Unico de + Fire
+  '𝔘𝔫𝔦𝔠𝔬𝔡𝔢',  // Fire + Unico de + Fire
   '👨‍👩‍👧‍👦',  // Family emoji sequence
   // Math symbols 
   '𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇',  // Mathematical bold capitals

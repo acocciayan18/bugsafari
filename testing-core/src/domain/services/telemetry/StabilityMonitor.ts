@@ -406,7 +406,7 @@ export class StabilityMonitor {
     if (!verdict.report) {
       t.emit('ACTION', {
         actionExecuted: 'unverified-runtime-fault',
-        message: `ℹ️ Unverified runtime fault suppressed (${attribution.origin}): ${verdict.reason}`,
+        message: `Unverified runtime fault suppressed (${attribution.origin}): ${verdict.reason}`,
       });
       return;
     }
@@ -445,6 +445,7 @@ export class StabilityMonitor {
     const faultSeverity = severity as FaultSeverity;
 
     t.gateway.emitIncidentReport({
+      bugId: finding.bugId,
       timestamp,
       reason,
       url,
@@ -665,6 +666,7 @@ export class StabilityMonitor {
       t.emitMilestone(`🔁 Duplicate action: ${defect.method} ${url}`);
 
       t.gateway.emitIncidentReport({
+        bugId: defect.bugId,
         timestamp,
         reason: defect.message,
         url,
@@ -809,7 +811,7 @@ export class StabilityMonitor {
       } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'api-hang-recurred',
-          message: `⏳ ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
+          message: ` ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
         });
       }
     } catch {
@@ -903,9 +905,10 @@ export class StabilityMonitor {
       severity: 'WARNING',
       attribution,
     });
-    t.emitMilestone(`⏳ API hang: ${defect.method} ${url}`);
+    t.emitMilestone(` API hang: ${defect.method} ${url}`);
 
     t.gateway.emitIncidentReport({
+      bugId: defect.bugId,
       timestamp,
       reason: defect.message,
       url,
@@ -1118,7 +1121,7 @@ export class StabilityMonitor {
           statusCode: status,
           url,
           method,
-          message: `ℹ️ Unverified backend response suppressed (${attribution.origin}): ${verdict.reason}`,
+          message: `Unverified backend response suppressed (${attribution.origin}): ${verdict.reason}`,
         });
         return;
       }
@@ -1222,7 +1225,7 @@ export class StabilityMonitor {
             actionExecuted: 'network-aborted',
             url,
             method,
-            message: `ℹ️ Active network connection closed due to user session abort. ${method} ${url}`,
+            message: `Active network connection closed due to user session abort. ${method} ${url}`,
           });
         }
         // Skip persistent logging for aborts - these are expected cancellation events
@@ -1268,7 +1271,7 @@ export class StabilityMonitor {
             actionExecuted: 'unverified-network-failure',
             url,
             method,
-            message: `ℹ️ Unverified network failure suppressed (${attribution.origin}): ${verdict.reason}`,
+            message: `Unverified network failure suppressed (${attribution.origin}): ${verdict.reason}`,
           });
         }
         return;
@@ -1293,7 +1296,12 @@ export class StabilityMonitor {
         attribution,
       });
 
+      // Minted here so the streamed card and the ledger entry share one identity —
+      // a later reproduction verdict patches the exact card the operator is looking at.
+      const networkBugId = `network-failed-${Date.now()}-${nextBugSeq()}`;
+
       t.gateway.emitIncidentReport({
+        bugId: networkBugId,
         timestamp,
         reason: `Network Request Failed: ${reason}`,
         url: this.deps.getLastKnownUrl() || page.url(),
@@ -1337,7 +1345,7 @@ export class StabilityMonitor {
       // Register network failure bug to memory — one distinct instance per
       // failed request (unique sequenced id), with stack/checklist/suggested fix.
       this.deps.registerConfirmedBug({
-        bugId: `network-failed-${Date.now()}-${nextBugSeq()}`,
+        bugId: networkBugId,
         type: 'NETWORK',
         message: `Network Request Failed: ${reason}`,
         selector: '',

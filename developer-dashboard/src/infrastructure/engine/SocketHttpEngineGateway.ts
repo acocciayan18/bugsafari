@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -125,6 +125,10 @@ export class SocketHttpEngineGateway implements EngineGateway {
   public onForensicReport(handler: (report: ForensicCrashReport) => void): void {
     this.connection.onForensicReport(handler);
   }
+  public onReproductionVerdict(handler: (verdict: ReproductionVerdict) => void): void {
+    this.connection.onReproductionVerdict(handler);
+  }
+
   public onIncidentReport(handler: (report: IncidentReport) => void): void {
     this.connection.onIncidentReport(handler);
   }

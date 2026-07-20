@@ -408,7 +408,7 @@ export class ActionExecutor {
     scenario: StressScenario,
   ): Promise<void> {
     const t = this.deps.telemetry;
-    const escalationMessage = `🔥 Escalating to ${scenario.name} on ${humanizeElement(target)}`;
+    const escalationMessage = ` Escalating to ${scenario.name} on ${humanizeElement(target)}`;
     t.emit('ACTION', {
       actionExecuted: 'stress-scenario-escalation',
       selector: target.selector,
@@ -661,7 +661,7 @@ export class ActionExecutor {
             t.emit('ACTION', {
               actionExecuted: 'data-fuzzer-injection',
               selector: target.selector,
-              message: `⚡ Data Fuzzer: Injecting ${category} strategy (escalation L${level}) into ${humanizeElement(target)} to test data validation limits.`,
+              message: `Data Fuzzer: Injecting ${category} strategy (escalation L${level}) into ${humanizeElement(target)} to test data validation limits.`,
             });
           }
           t.emit('ACTION', {

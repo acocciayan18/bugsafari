@@ -124,6 +124,9 @@ export interface ReproductionSnapshot {
 }
 
 export interface IncidentReport {
+  // Stable finding id, matching the confirmed-bug ledger. Lets a later verdict
+  // (e.g. an in-run reproduction result) patch this exact card instead of adding one.
+  bugId?: string;
   timestamp: string;
   reason: string;
   url: string;

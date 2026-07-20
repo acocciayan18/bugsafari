@@ -22,7 +22,6 @@ import type { BoundingBoxHighlighter } from '../../../infrastructure/playwright/
 import type { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import type {
-  BackNavObservation,
   BrokenNavigationFinder,
   NavigationDefect,
 } from '../../heuristics/BrokenNavigationFinder.js';
@@ -169,8 +168,6 @@ export interface StateRestorerDeps {
   telemetry: TelemetryEmitter;
   recordActionTrace: RecordActionTrace;
   getTargetOrigin(): string;
-  /** Optional observer for history-back restore outcomes (back-nav defect oracle). */
-  onBackNavOutcome?(o: BackNavObservation): void;
 }
 
 export interface ActionExecutorDeps {

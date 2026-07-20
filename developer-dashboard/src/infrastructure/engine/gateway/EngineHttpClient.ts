@@ -85,7 +85,7 @@ export class EngineHttpClient {
       const jobId = typeof data.jobId === 'string' ? data.jobId : null;
       const queued = data.queued === true;
       const resumed = data.resumed === true;
-      console.log(`[Gateway] ✅ Safari launch ${resumed ? 'RESUMED existing session' : 'accepted'} (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
+      console.log(`[Gateway] Safari launch ${resumed ? 'RESUMED existing session' : 'accepted'} (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
       return { runId, jobId, queued, resumed };
     } catch (error) {
       if (error instanceof TypeError) {
@@ -173,7 +173,7 @@ export class EngineHttpClient {
         console.warn('[Gateway] Stop rejected by server:', error);
         return { ok: false, error };
       }
-      console.log(`[Gateway] ✅ Stop accepted (${data.cancelled ? 'queued job cancelled' : 'run terminating'})`);
+      console.log(`[Gateway] Stop accepted (${data.cancelled ? 'queued job cancelled' : 'run terminating'})`);
       return { ...data, ok: true };
     } catch (httpError) {
       const error = httpError instanceof Error ? httpError.message : String(httpError);

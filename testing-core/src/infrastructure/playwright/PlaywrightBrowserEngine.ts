@@ -1,8 +1,8 @@
-import { chromium } from 'playwright';
+import { chromium, type BrowserContextOptions } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { OptimizationSettings, StopReason, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
-import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, describeTermination } from '../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, describeTermination, parseStorageState } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
@@ -184,10 +184,19 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     const browserVersion = await this.activeBrowser.version();
     console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
 
+    // storageState seeds a pre-authenticated session and MUST be applied at context
+    // creation — cookies/origins have to exist before the app's first boot. An
+    // unparseable state yields null here and the auth gate below rejects the run.
+    const seededState =
+      targetAuth?.mode === 'storageState' ? parseStorageState(targetAuth.storageState) : null;
+
     this.activeContext = await this.activeBrowser.newContext({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       ignoreHTTPSErrors: true,
       deviceScaleFactor: 1,
+      // Structurally validated above; Playwright's own type is narrower than the
+      // shared contract, which cannot depend on the playwright package.
+      ...(seededState ? { storageState: seededState as BrowserContextOptions['storageState'] } : {}),
     });
     this.activePage = await this.activeContext.newPage();
 
@@ -248,7 +257,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // oracle is installed (it must precede every navigation, login included) and
       // before live-frame capture starts, so no frame can catch a filled password.
       if (targetAuth) {
-        setScrubValues([targetAuth.username, targetAuth.password]);
+        // Only a form login types literals into the page; a seeded session has no
+        // value the target could echo back, so there is nothing to register.
+        if (targetAuth.mode === 'credentials') {
+          setScrubValues([targetAuth.username, targetAuth.password]);
+        }
         const auth = await new TargetAuthenticator().authenticate(this.activePage, targetAuth, targetUrl);
         if (auth.status !== 'authenticated') {
           // Deliberately NOT continuing unauthenticated: the engine would explore the

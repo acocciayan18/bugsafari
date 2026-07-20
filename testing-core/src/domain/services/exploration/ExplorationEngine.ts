@@ -11,6 +11,9 @@ import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import type { NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
+import { normalizeFaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
+import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
+import { applyReproductionOutcome } from '../verification/confidenceScore.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
@@ -181,6 +184,10 @@ export class ExplorationEngine {
   private activeGateway: TelemetryGateway | null = null;
 
   private confirmedBugsMemory: ConfirmedBug[] = [];
+
+  // In-run reproduction confirmation for newly registered findings. Null when the
+  // page exposes no browser handle (no sidecar context can be opened).
+  private reproductionProbe: ReproductionProbe | null = null;
 
   // Runtime metrics for Phase 3 telemetry tracking
   private runtimeMetrics: RuntimeMetrics = {
@@ -362,13 +369,71 @@ export class ExplorationEngine {
       if (!bug.streamed && bug.type !== 'NETWORK') {
         this.streamBugToErrorsTab(bug);
       }
+
+      // Single choke point for in-run reproduction: every finding class reaches the
+      // ledger here, already carrying its minimized timeline and bug class.
+      this.enqueueReproduction(bug);
     }
+  }
+
+  /** Queue a newly registered finding for one deterministic replay. */
+  private enqueueReproduction(bug: ConfirmedBug): void {
+    const bugClass = bug.attribution?.bugClass;
+    // No class ⇒ nothing for the collector to match a replayed fault against.
+    if (!this.reproductionProbe || !bugClass) return;
+    this.reproductionProbe.enqueue({
+      bugId: bug.bugId,
+      targetUrl: this.targetUrl,
+      actions: bug.reproductionActions ?? [],
+      bugClass,
+      faultType: normalizeFaultType(bug.type),
+      stateFingerprint: bug.stateFingerprint,
+    });
+  }
+
+  /**
+   * Fold a settled reproduction verdict back into the finding: re-grade its
+   * confidence with the same delta scoreFinding uses, refresh the ledger entry so
+   * persistence saves the corrected verdict, and patch the live card.
+   */
+  private onReproductionSettled(outcome: ReproductionOutcome): void {
+    const index = this.confirmedBugsMemory.findIndex((entry) => entry.bugId === outcome.bugId);
+    const existing = index >= 0 ? this.confirmedBugsMemory[index] : undefined;
+    if (!existing?.attribution) return;
+
+    const { score, status } = applyReproductionOutcome(
+      existing.attribution.confidenceScore ?? 0,
+      existing.attribution.origin ?? 'UNKNOWN',
+      outcome.reproduced,
+    );
+    const attribution = { ...existing.attribution, confidenceScore: score, verificationStatus: status };
+    this.confirmedBugsMemory[index] = { ...existing, attribution };
+
+    this.activeGateway?.emitReproductionVerdict?.({
+      bugId: outcome.bugId,
+      reproduced: outcome.reproduced,
+      stepsReplayed: outcome.stepsReplayed,
+      confidenceScore: score,
+      verificationStatus: status,
+    });
+
+    this.activeGateway?.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: {
+        actionExecuted: 'reproduction-verified',
+        message: outcome.reproduced
+          ? `🔁 Reproduced after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`
+          : `🔁 Did not reproduce after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`,
+      },
+    });
   }
 
   /** Emit a confirmed arsenal bug as a live incident-report for the Errors tab. */
   private streamBugToErrorsTab(bug: ConfirmedBug): void {
     if (!this.activeGateway) return;
     const incident: IncidentReport = {
+      bugId: bug.bugId,
       timestamp: bug.timestamp.toISOString(),
       reason: bug.message,
       url: this.activePage?.url() ?? this.targetUrl,
@@ -432,6 +497,9 @@ export class ExplorationEngine {
   // Settlement barrier: await every in-flight fire-and-forget write so Pause/Stop
   // flush pending telemetry + DB persistence before the lifecycle transitions.
   public async settlePendingTasks(): Promise<void> {
+    // Reproduction replays first: their verdicts re-register findings, which the
+    // task settle below is responsible for flushing.
+    await this.reproductionProbe?.settle();
     await this.asyncTasks.settle();
   }
 
@@ -641,6 +709,14 @@ export class ExplorationEngine {
       }
     };
 
+    // In-run reproduction confirmation. Replays land in sidecar contexts of the SAME
+    // browser — never on `page`, whose state the navigator owns. Absent only when the
+    // page exposes no browser handle (a non-Chromium/detached driver).
+    const browser = page.context().browser();
+    this.reproductionProbe = browser
+      ? new ReproductionProbe(browser, page.context(), (outcome) => this.onReproductionSettled(outcome))
+      : null;
+
     // Assemble the extracted domain services with explicit dependency contracts.
     const stabilityMonitor = new StabilityMonitor({
       telemetry: emitter,
@@ -661,7 +737,6 @@ export class ExplorationEngine {
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.targetOrigin,
-      onBackNavOutcome: (o) => void reportNavigationDefects(navigationFinder.observeBackNav(o)),
     });
 
     const actionExecutor = new ActionExecutor({
@@ -981,6 +1056,12 @@ export class ExplorationEngine {
         this.cleanupStabilityMonitor();
         this.cleanupStabilityMonitor = null;
       }
+
+      // Drain the in-flight replay before the browser closes, then refuse new work —
+      // a probe outlasting its browser would log a stream of disconnect noise.
+      await this.reproductionProbe?.settle();
+      this.reproductionProbe?.dispose();
+      this.reproductionProbe = null;
 
       // 🚀 Stop frame capture loop
       emitter.stopFrameCaptureLoop();

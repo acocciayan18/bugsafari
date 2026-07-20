@@ -579,7 +579,7 @@ export class ExplorationLoop {
       // Up to EMPTY_RETRY_LIMIT retries for delayed SPA rendering — wait and retry.
       if (ctx.emptyCheckCount <= EMPTY_RETRY_LIMIT) {
         this.deps.telemetry.emitMilestone(
-          `⏳ No interactive elements (check ${ctx.emptyCheckCount}/${EMPTY_RETRY_LIMIT + 1}) — waiting for delayed render...`,
+          ` No interactive elements (check ${ctx.emptyCheckCount}/${EMPTY_RETRY_LIMIT + 1}) — waiting for delayed render...`,
         );
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
         return { kind: 'continue' };
@@ -1350,7 +1350,7 @@ export class ExplorationLoop {
   ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean; actionThrew: boolean }> {
     // Emit exploration milestone
     const humanTarget = humanizeElement(target);
-    this.deps.telemetry.emitMilestone(`🎯 Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
+    this.deps.telemetry.emitMilestone(` Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
     this.deps.telemetry.emitSystemStatus(`Clicking ${humanTarget}...`);
 
     this.deps.actionExecutor.logHighImpact(target);
@@ -1631,7 +1631,7 @@ export class ExplorationLoop {
     const cov = this.deps.clusterRegistry.snapshot();
     const saturated = this.deps.clusterRegistry.saturatedClusterCount();
     this.deps.telemetry.emitMilestone(
-      `✅ Exploration Complete: ${ctx.budget} steps (${ctx.budgetExtensions} extension${ctx.budgetExtensions === 1 ? '' : 's'}), ` +
+      `Exploration Complete: ${ctx.budget} steps (${ctx.budgetExtensions} extension${ctx.budgetExtensions === 1 ? '' : 's'}), ` +
         `${cov.clusters} clusters (${saturated} fully explored), coverage ${(cov.coverage * 100).toFixed(0)}% ` +
         `(${cov.triggered}/${cov.discovered} controls).`,
     );

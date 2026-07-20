@@ -54,11 +54,33 @@ export function scoreFinding(input: ScoreInput): ScoreResult {
   else score -= 0.5; // an identified artifact origin should never read as a strong defect
 
   if (input.corroborated) score += 0.15;
-  if (input.reproduced === true) score += 0.15;
-  if (input.reproduced === false) score -= 0.1; // ran a repro pass and it did NOT recur
+  if (input.reproduced === true) score += REPRODUCED_BONUS;
+  if (input.reproduced === false) score -= NOT_REPRODUCED_PENALTY;
 
   score += 0.1 * clamp01(input.evidenceCompleteness);
-  score = clamp01(score);
+
+  return gradeScore(score, input.origin);
+}
+
+/** Weight of an in-run reproduction pass — applied at scoring time or retroactively. */
+export const REPRODUCED_BONUS = 0.15;
+/** Ran a repro pass and the fault did NOT recur. Deliberately milder than the bonus:
+ *  a non-reproducing replay is weaker evidence of absence than a reproducing one is
+ *  of presence (timing, state, and one-shot faults all replay clean). */
+export const NOT_REPRODUCED_PENALTY = 0.1;
+
+/**
+ * Re-grade an already-scored finding once its reproduction pass settles. Applies the
+ * SAME delta scoreFinding would have used, so an in-run verdict and a hypothetical
+ * up-front one converge on the identical score.
+ */
+export function applyReproductionOutcome(score: number, origin: FaultOrigin, reproduced: boolean): ScoreResult {
+  return gradeScore(score + (reproduced ? REPRODUCED_BONUS : -NOT_REPRODUCED_PENALTY), origin);
+}
+
+/** Clamp, threshold, and apply the origin caps. Single source of the verdict bands. */
+function gradeScore(raw: number, origin: FaultOrigin): ScoreResult {
+  const score = clamp01(raw);
 
   let status: VerificationStatus;
   if (score >= CONFIRMED_THRESHOLD) status = 'CONFIRMED';
@@ -66,7 +88,7 @@ export function scoreFinding(input: ScoreInput): ScoreResult {
   else status = 'INCONCLUSIVE';
 
   // Hard caps: only a target-app fault may be CONFIRMED; an unattributed one needs a pass.
-  if (status === 'CONFIRMED' && input.origin !== 'TARGET_APP') status = 'NEEDS_VERIFICATION';
+  if (status === 'CONFIRMED' && origin !== 'TARGET_APP') status = 'NEEDS_VERIFICATION';
 
   return { score: Math.round(score * 100) / 100, status };
 }

@@ -126,7 +126,6 @@ Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, ded
 - Two identical `POST /api/payments` fired 90ms apart by a double-clicked button, both succeeding.
 - A "View details" link that statically points at `/orders/42` but never navigates.
 - A router guard loop bouncing `/login ⇄ /dashboard` three times in under two seconds.
-- Back navigation landing on `/` instead of the previously visited list route.
 - A frozen tab from an unbounded loop in a click handler.
 - A form that submits successfully after `required` and `maxlength` are stripped in the DOM.
 - `<img src=x onerror=alert(1)>` reflected unescaped into a search results page.

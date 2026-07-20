@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
+import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 
@@ -142,25 +143,6 @@ export class StartExplorationUseCase {
         });
     }
 
-    private mapActionType(type: ActionRecord['type']): ActionStepTrace['actionType'] {
-        switch (type) {
-            case 'CLICK':      return 'click';
-            case 'INPUT':      return 'input';
-            case 'TYPE':       return 'input';
-            case 'NAVIGATION': return 'navigation';
-            case 'NAVIGATE':   return 'navigation';
-            case 'SUBMIT':     return 'bypass';
-            case 'NETWORK':    return 'bypass';
-            case 'HOVER':      return 'click';
-            case 'MACRO':      return 'macro';
-            default: {
-                const _exhaustive: never = type;
-                void _exhaustive;
-                return 'click';
-            }
-        }
-    }
-
     // Coerce a client-transferred network row into a persisted NetworkLogEntry.
     private mapNetworkEntry(raw: Record<string, unknown>): NetworkLogEntry {
         const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
@@ -196,18 +178,6 @@ export class StartExplorationUseCase {
         };
     }
 
-    private buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
-        return records.map((record, index) => ({
-            stepNumber:         index + 1,
-            timestamp:          record.timestamp,
-            actionType:         this.mapActionType(record.type),
-            selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
-            payloadText:        record.payload,
-            resultingStateHash: '',
-            durationMs:         record.durationMs,
-            macro:              record.macro,
-        }));
-    }
 
     // Signature built on the SHARED normalization (shared/faultSignature) so the
     // save-time dedup collapses exactly what the live dashboard collapsed — same
@@ -254,7 +224,7 @@ export class StartExplorationUseCase {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
-        const actionSteps = this.buildActionSteps(actionRecords);
+        const actionSteps = buildActionSteps(actionRecords);
 
         // SINGLE SOURCE OF TRUTH: the engine's confirmed-bug memory is now a
         // lossless superset of the live Errors Tab (every JS exception, console
@@ -293,7 +263,7 @@ export class StartExplorationUseCase {
                 reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
                 // Per-finding minimized, replayable timeline (empty ⇒ verifier falls
                 // back to the session-global actionSteps below).
-                actionSteps: this.buildActionSteps(Array.isArray(bug.reproductionActions) ? bug.reproductionActions : []),
+                actionSteps: buildActionSteps(Array.isArray(bug.reproductionActions) ? bug.reproductionActions : []),
                 timestamp: bug.timestamp,
                 attribution: bug.attribution,
                 stateFingerprint: bug.stateFingerprint,
@@ -308,7 +278,7 @@ export class StartExplorationUseCase {
                 advice: finding.advice ?? '',
                 stackTrace: finding.stackTrace ?? '',
                 reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
-                actionSteps: this.buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
+                actionSteps: buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
                 attribution: finding.attribution,
                 stateFingerprint: finding.stateFingerprint,

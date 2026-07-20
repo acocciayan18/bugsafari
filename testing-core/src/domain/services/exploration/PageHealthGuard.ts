@@ -144,7 +144,7 @@ export class PageHealthGuard {
     }
 
     this.consecutiveInvalidRounds = 0;
-    this.deps.telemetry.emitMilestone(`✅ Recovered to a valid page: ${recovered.url()}`);
+    this.deps.telemetry.emitMilestone(`Recovered to a valid page: ${recovered.url()}`);
     return { page: recovered, status: 'recovered' };
   }
 

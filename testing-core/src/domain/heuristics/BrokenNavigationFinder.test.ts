@@ -222,51 +222,6 @@ check('repeating a single route without alternation never reports', () => {
   }
 });
 
-console.log('\nBrokenNavigationFinder — BACK_NAV_STATE_LOSS');
-
-const backNav = (over: Partial<Parameters<BrokenNavigationFinder['observeBackNav']>[0]> = {}) => ({
-  expectedUrl: `${ORIGIN}/products`,
-  landedUrl: `${ORIGIN}/`,
-  contextInvalid: false,
-  offOrigin: false,
-  hashMatched: false,
-  ...over,
-});
-
-check('the same wrong route pair twice reports one defect', () => {
-  const f = new BrokenNavigationFinder();
-  assert.equal(f.observeBackNav(backNav()).length, 0);
-  const defects = f.observeBackNav(backNav());
-  assert.equal(defects.length, 1);
-  assert.equal(defects[0].kind, 'BACK_NAV_STATE_LOSS');
-  assert.equal(defects[0].bugClass, 'ROUTE_MUTATION_FAILURE');
-});
-
-check('contextInvalid / offOrigin / hashMatched never report', () => {
-  const f = new BrokenNavigationFinder();
-  for (let i = 0; i < 3; i++) {
-    assert.equal(f.observeBackNav(backNav({ contextInvalid: true })).length, 0);
-    assert.equal(f.observeBackNav(backNav({ offOrigin: true })).length, 0);
-    assert.equal(f.observeBackNav(backNav({ hashMatched: true })).length, 0);
-  }
-});
-
-check('landing on the expected route (hash-only drift) never reports', () => {
-  const f = new BrokenNavigationFinder();
-  for (let i = 0; i < 3; i++) {
-    assert.equal(
-      f.observeBackNav(backNav({ landedUrl: `${ORIGIN}/products?page=2` })).length,
-      0,
-    );
-  }
-});
-
-check('two different wrong pairs at one strike each never report', () => {
-  const f = new BrokenNavigationFinder();
-  assert.equal(f.observeBackNav(backNav({ landedUrl: `${ORIGIN}/` })).length, 0);
-  assert.equal(f.observeBackNav(backNav({ landedUrl: `${ORIGIN}/cart` })).length, 0);
-});
-
 console.log('\nBrokenNavigationFinder — ledger accounting');
 
 check('reported cap bounds the run ledger', () => {

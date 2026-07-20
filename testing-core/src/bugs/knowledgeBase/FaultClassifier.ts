@@ -21,6 +21,17 @@ import { matchesCategory, type SignalCategory } from './signalPatterns.js';
 /** The raw fault kind reported by a detector before classification. */
 export type FaultType = 'EXCEPTION' | 'CONSOLE' | 'NETWORK' | 'FREEZE';
 
+/** Map a finding's free-form type label back onto the classifier's coarse FaultType. */
+export function normalizeFaultType(type: string | undefined): FaultType {
+  const upper = (type ?? '').toUpperCase();
+  if (upper.includes('NETWORK') || upper.includes('API') || upper.includes('HTTP') || upper.includes('BOUNDARY')) {
+    return 'NETWORK';
+  }
+  if (upper.includes('FREEZE') || upper.includes('STALL') || upper.includes('UI')) return 'FREEZE';
+  if (upper.includes('CONSOLE')) return 'CONSOLE';
+  return 'EXCEPTION';
+}
+
 export interface FaultInput {
   faultType: FaultType;
   /** Primary error message / reason text. */

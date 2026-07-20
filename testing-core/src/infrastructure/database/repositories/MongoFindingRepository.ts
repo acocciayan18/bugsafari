@@ -62,7 +62,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       status: SessionStatus.RUNNING,
       startedAt: new Date(input.startedAt),
     });
-    console.log(`[MongoFindingRepository] ✅ Session created: ${session._id} for userId: ${userIdToUse}`);
+    console.log(`[MongoFindingRepository] Session created: ${session._id} for userId: ${userIdToUse}`);
     return session._id.toString();
   }
 

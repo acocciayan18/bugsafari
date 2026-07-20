@@ -205,12 +205,12 @@ export function setupStabilityMonitoring(
   // server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
   // /pageerror listeners, not this heartbeat.
   const handleHeartbeatTimeout = async (faultAtMs: number): Promise<void> => {
-    emitInfo('⏳ Browser thread stalled — attempting local recovery...');
+    emitInfo(' Browser thread stalled — attempting local recovery...');
     const recovered = await validatePageStability();
     if (disposed) return;
 
     if (recovered) {
-      emitInfo('✅ Browser thread recovered — resuming exploration.');
+      emitInfo('Browser thread recovered — resuming exploration.');
     } else {
       await emitFreezeFinding(faultAtMs);
     }

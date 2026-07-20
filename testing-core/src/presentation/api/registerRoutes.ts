@@ -34,6 +34,7 @@ import {
   type StateFingerprint,
   type ActionRecord,
   type RunTerminationOutcome,
+  parseStorageState,
 } from '../../../../shared/types.js';
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
@@ -59,21 +60,34 @@ function parseSelectedScenarios(body: unknown): TestingTypeId[] {
 }
 
 /**
- * Extract ephemeral target-app credentials from the request body.
+ * Extract ephemeral target-app authentication from the request body.
  *
- * Both username and password are required — a partial credential can only produce a
- * failed login. Never log the returned object: it is the one value in the request
- * that must not reach a log line, a database, or the job queue.
+ * Two modes: a form login (both username and password required — a partial
+ * credential can only produce a failed login) or a pre-authenticated Playwright
+ * storageState, structurally validated here so a malformed blob is rejected before
+ * a browser is ever launched. Never log the returned object: it is the one value in
+ * the request that must not reach a log line, a database, or the job queue.
  */
-function parseTargetAuth(body: unknown): TargetAuthConfig | undefined {
-  const raw = (body as { targetAuth?: unknown })?.targetAuth as Partial<TargetAuthConfig> | undefined;
-  if (!raw || typeof raw.username !== 'string' || typeof raw.password !== 'string') return undefined;
-  if (!raw.username || !raw.password) return undefined;
+function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefined {
+  const raw = (body as { targetAuth?: unknown })?.targetAuth as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== 'object') return undefined;
 
   const optionalString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
+  if (raw.mode === 'storageState') {
+    const state = typeof raw.storageState === 'string' ? raw.storageState : '';
+    // Malformed state is rejected, never downgraded: an unauthenticated run against
+    // an authenticated target reports a clean result that is silently wrong.
+    if (!state || !parseStorageState(state)) return 'invalid';
+    return { mode: 'storageState', storageState: state, successIndicator: optionalString(raw.successIndicator) };
+  }
+
+  if (typeof raw.username !== 'string' || typeof raw.password !== 'string') return 'invalid';
+  if (!raw.username || !raw.password) return 'invalid';
+
   return {
+    mode: 'credentials',
     username: raw.username,
     password: raw.password,
     loginUrl: optionalString(raw.loginUrl),
@@ -254,7 +268,7 @@ export function registerRoutes(
             }
             await runRegistry.clear(entry.runId, entry.userId);
             await queueBroadcaster?.broadcastCancelled(entry.jobId).catch(() => undefined);
-            console.log(`[API] ✅ Queued job ${entry.jobId} cancelled before pickup`);
+            console.log(`[API] Queued job ${entry.jobId} cancelled before pickup`);
             response.json({ ok: true, cancelled: true, jobId: entry.jobId, message: 'Queued session cancelled.' });
             return;
           }
@@ -299,7 +313,7 @@ export function registerRoutes(
 
     try {
       await sessionManager.stopByOperator();
-      console.log('[API] ✅ Engine stopped successfully via HTTP endpoint');
+      console.log('[API] Engine stopped successfully via HTTP endpoint');
       response.json({ ok: true, stopped: true, message: 'Safari session stopped.' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -335,7 +349,15 @@ export function registerRoutes(
       : undefined;
 
     // Ephemeral target-app credentials. Never logged here or anywhere downstream.
-    const targetAuth = parseTargetAuth(request.body);
+    const parsedAuth = parseTargetAuth(request.body);
+    if (parsedAuth === 'invalid') {
+      response.status(400).json({
+        error: 'AUTH_CONFIG_INVALID',
+        message: 'Target authentication is incomplete: supply both a username and a password, or a valid Playwright storageState.',
+      });
+      return;
+    }
+    const targetAuth = parsedAuth;
 
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
@@ -424,7 +446,7 @@ export function registerRoutes(
     useCase.setUserId(request.userId ?? null);
     console.log(request.userId
       ? `[API] ✓ Set userId for exploration session: ${request.userId}`
-      : `[API] ℹ️ No authenticated userId - guest session (no persistence)`);
+      : `[API] No authenticated userId - guest session (no persistence)`);
 
     // Extract optimization settings from request body
     const optimizationSettings = request.body?.optimization;
@@ -454,10 +476,10 @@ export function registerRoutes(
     // ownership and re-attach to this exact run.
     const runId = randomUUID();
 
-    console.log(`[API] ✅ Accepting safari launch for: ${targetUrl} (runId=${runId})`);
+    console.log(`[API] Accepting safari launch for: ${targetUrl} (runId=${runId})`);
     // Operator sees their original URL; the engine dials the routed one.
     response.json({ accepted: true, url: targetUrl, runId });
-    console.log(`[API] 🚀 Starting safari in background...`);
+    console.log(`[API] Starting safari in background...`);
     void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId, targetAuth);
   });
 
@@ -615,7 +637,7 @@ export function registerRoutes(
         return;
       }
 
-console.log('[API] ✅ Saved to sessions:', result.message, '| ownerType:', ownerType, '| userId:', userId);
+console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerType, '| userId:', userId);
       // Explicitly return 201 Created status for resource creation
       response.status(201).json({ ok: true, message: result.message, ownerType });
     } catch (error) {

@@ -6,6 +6,7 @@ import type {
   BrowserConsoleMessage,
   ForensicCrashReport,
   IncidentReport,
+  ReproductionVerdict,
   RunLifecycleStatus,
   SessionAttachAck,
   RunTerminationOutcome,
@@ -257,7 +258,25 @@ export class SessionManager implements TelemetryRecorder {
       case 'browser-console':
         pushCapped(run.browserConsole, payload as BrowserConsoleMessage, CONSOLE_BUFFER_CAP);
         break;
+      case 'reproduction-verdict':
+        // Patched into the buffered incident rather than buffered separately, so a
+        // reconnect replays the already-corrected card and needs no event ordering.
+        this.applyReproductionVerdict(payload as ReproductionVerdict);
+        break;
     }
+  }
+
+  /** Fold a late reproduction verdict into the buffered incident it belongs to. */
+  private applyReproductionVerdict(verdict: ReproductionVerdict): void {
+    const run = this.run;
+    if (!run || !verdict?.bugId) return;
+    const incident = run.incidents.find((entry) => entry.bugId === verdict.bugId);
+    if (!incident?.attribution) return;
+    incident.attribution = {
+      ...incident.attribution,
+      confidenceScore: verdict.confidenceScore,
+      verificationStatus: verdict.verificationStatus,
+    };
   }
 
   // Pin the termination the moment the engine declares one, so the reason survives

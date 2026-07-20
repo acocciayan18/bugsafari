@@ -1,5 +1,10 @@
 import type { Page } from 'playwright';
-import type { TargetAuthConfig, TargetAuthResult } from '../../../../shared/types.js';
+import type {
+  TargetAuthConfig,
+  TargetAuthResult,
+  TargetCredentialsAuth,
+  TargetStorageStateAuth,
+} from '../../../../shared/types.js';
 
 const NAV_TIMEOUT_MS = 20000;
 const FIELD_TIMEOUT_MS = 8000;
@@ -26,9 +31,53 @@ interface ResolvedSelectors {
  * credential material can reach a log or socket through this class.
  */
 export class TargetAuthenticator {
+  /** Route to the form-login driver or the seeded-session probe. */
   public async authenticate(
     page: Page,
     config: TargetAuthConfig,
+    targetUrl: string,
+  ): Promise<TargetAuthResult> {
+    return config.mode === 'storageState'
+      ? this.verifySeededSession(page, config, targetUrl)
+      : this.loginWithCredentials(page, config, targetUrl);
+  }
+
+  /**
+   * storageState mode: the context was already seeded with the operator's session,
+   * so there is nothing to submit — only to confirm the session survived. A stale
+   * state must fail loudly, otherwise the engine explores a login page and reports
+   * a clean run.
+   */
+  private async verifySeededSession(
+    page: Page,
+    config: TargetStorageStateAuth,
+    targetUrl: string,
+  ): Promise<TargetAuthResult> {
+    try {
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    } catch {
+      return { status: 'failed', reason: 'the target could not be loaded with the supplied session state' };
+    }
+
+    if (config.successIndicator) {
+      const seen = await page
+        .waitForSelector(config.successIndicator, { timeout: SUCCESS_TIMEOUT_MS, state: 'visible' })
+        .then(() => true)
+        .catch(() => false);
+      return seen
+        ? { status: 'authenticated', reason: 'session state accepted — success indicator present' }
+        : { status: 'failed', reason: 'the configured success indicator never appeared; the session state is likely expired' };
+    }
+
+    // Default oracle: a login wall means the seeded session was rejected.
+    return (await this.hasVisiblePasswordField(page))
+      ? { status: 'failed', reason: 'the target still presents a login form; the session state is likely expired' }
+      : { status: 'authenticated', reason: 'session state accepted — no login wall on the target' };
+  }
+
+  private async loginWithCredentials(
+    page: Page,
+    config: TargetCredentialsAuth,
     targetUrl: string,
   ): Promise<TargetAuthResult> {
     try {
@@ -67,7 +116,7 @@ export class TargetAuthenticator {
   /** Explicit selectors win; otherwise detect the form around the password field. */
   private async resolveSelectors(
     page: Page,
-    config: TargetAuthConfig,
+    config: TargetCredentialsAuth,
   ): Promise<ResolvedSelectors | null> {
     if (config.usernameSelector && config.passwordSelector) {
       return {
@@ -163,7 +212,7 @@ export class TargetAuthenticator {
    */
   private async verify(
     page: Page,
-    config: TargetAuthConfig,
+    config: TargetCredentialsAuth,
     resolved: ResolvedSelectors,
   ): Promise<TargetAuthResult> {
     if (config.successIndicator) {
@@ -188,6 +237,18 @@ export class TargetAuthenticator {
       return { status: 'failed', reason: 'the password field is still present after submitting' };
     }
     return { status: 'authenticated', reason: 'login form cleared', resolution: resolved };
+  }
+
+  /** Login-wall probe: a visible password input anywhere on the current page. */
+  private async hasVisiblePasswordField(page: Page): Promise<boolean> {
+    return page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('input[type="password"]')).some((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }),
+      )
+      .catch(() => false);
   }
 
   private async hasAuthError(page: Page): Promise<boolean> {

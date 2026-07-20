@@ -44,7 +44,7 @@ for TEST_FILE in $TEST_FILES; do
   # Check if pollution appeared
   if [ -e "$POLLUTION_CHECK" ]; then
     echo ""
-    echo "🎯 FOUND POLLUTER!"
+    echo " FOUND POLLUTER!"
     echo "   Test: $TEST_FILE"
     echo "   Created: $POLLUTION_CHECK"
     echo ""
@@ -59,5 +59,5 @@ for TEST_FILE in $TEST_FILES; do
 done
 
 echo ""
-echo "✅ No polluter found - all tests clean!"
+echo "No polluter found - all tests clean!"
 exit 0

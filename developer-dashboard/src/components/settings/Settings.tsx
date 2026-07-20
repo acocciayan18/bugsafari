@@ -473,7 +473,7 @@ function SecuritySettingsSection() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AccountSection() {
-  const { user, logout } = useAuth();
+  const { user, logout, isGuestMode } = useAuth();
   const { profile, isProfileLoading } = useUserSettings();
 
   const [displayName, setDisplayName] = useState('');
@@ -493,6 +493,37 @@ function AccountSection() {
     logout();
     toast.info('Signed out successfully');
   };
+
+  // Guests have no server-side profile — only identity-free actions apply.
+  if (isGuestMode) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
+            <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-(--text-primary)">Guest Session</p>
+            <p className="truncate text-[13px] text-(--text-secondary)">Not signed in</p>
+          </div>
+        </div>
+
+        <p className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5 text-[13px] text-(--text-secondary)">
+          Exploration runs work normally, but results are not saved to history. Sign in to keep them.
+        </p>
+
+        <div className="pt-4 border-t border-(--border-hairline)">
+          <button
+            onClick={logout}
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          >
+            <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+            Exit Guest Mode
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isProfileLoading) {
     return (
@@ -582,7 +613,7 @@ function AccountSection() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isGuestMode } = useAuth();
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -627,13 +658,16 @@ export default function Settings() {
             <AccountSection />
           </SettingsCard>
 
-          <SettingsCard
-            icon={<ShieldCheck className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
-            title="Security"
-            description="Password and account protection"
-          >
-            <SecuritySettingsSection />
-          </SettingsCard>
+          {/* Guests have no credentials to change — the whole card is inapplicable. */}
+          {!isGuestMode && (
+            <SettingsCard
+              icon={<ShieldCheck className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+              title="Security"
+              description="Password and account protection"
+            >
+              <SecuritySettingsSection />
+            </SettingsCard>
+          )}
 
           <SettingsCard
             icon={<Palette className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}

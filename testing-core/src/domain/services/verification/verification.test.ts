@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { classifyFaultOrigin } from './faultOrigin.js';
-import { scoreFinding } from './confidenceScore.js';
+import { scoreFinding, applyReproductionOutcome } from './confidenceScore.js';
 import { VerificationPipeline } from './VerificationPipeline.js';
 import { detectSoftFailBody, isBodyReadableResourceType, MAX_SOFT_FAIL_BODY_BYTES } from './softFailBody.js';
 
@@ -155,6 +155,27 @@ check('reproduction pass that did NOT recur lowers the score', () => {
   const withRepro = scoreFinding({ confidence: 'SIGNAL', origin: 'TARGET_APP', evidenceCompleteness: 0.5, corroborated: false, reproduced: false });
   const noRepro = scoreFinding({ confidence: 'SIGNAL', origin: 'TARGET_APP', evidenceCompleteness: 0.5, corroborated: false });
   assert.ok(withRepro.score < noRepro.score);
+});
+
+// ── Retroactive reproduction verdict (in-run probe) ──
+check('retroactive verdict matches an up-front score with the same outcome', () => {
+  const base = { confidence: 'SIGNAL' as const, origin: 'TARGET_APP' as const, evidenceCompleteness: 0.5, corroborated: false };
+  for (const reproduced of [true, false]) {
+    const upFront = scoreFinding({ ...base, reproduced });
+    const retro = applyReproductionOutcome(scoreFinding(base).score, 'TARGET_APP', reproduced);
+    assert.equal(retro.score, upFront.score);
+    assert.equal(retro.status, upFront.status);
+  }
+});
+
+check('a reproduced finding can cross into CONFIRMED', () => {
+  const before = scoreFinding({ confidence: 'SIGNAL', origin: 'TARGET_APP', evidenceCompleteness: 0.5, corroborated: false });
+  assert.notEqual(before.status, 'CONFIRMED');
+  assert.equal(applyReproductionOutcome(before.score, 'TARGET_APP', true).status, 'CONFIRMED');
+});
+
+check('retroactive verdict still cannot CONFIRM a non-target-app origin', () => {
+  assert.notEqual(applyReproductionOutcome(0.95, 'UNKNOWN', true).status, 'CONFIRMED');
 });
 
 // ── Pipeline: gating + correlation ──

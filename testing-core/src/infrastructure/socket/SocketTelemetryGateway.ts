@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
-import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.ts';
+import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 
@@ -11,7 +11,7 @@ export interface RoomEmitter {
 }
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console' | 'reproduction-verdict';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -94,6 +94,13 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitIncidentReport(report: IncidentReport): void {
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
+  }
+
+  // Buffered: the verdict lands seconds after its finding, so a client that
+  // reconnects in between must still receive the patch on replay.
+  public emitReproductionVerdict(verdict: ReproductionVerdict): void {
+    this.recorder?.record('reproduction-verdict', verdict);
+    this.channel().emit(REPRODUCTION_VERDICT_EVENT, verdict);
   }
 
   // WCAG findings ride their own channel so the dashboard's Accessibility tab

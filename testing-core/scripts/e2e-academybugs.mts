@@ -75,8 +75,8 @@ function summarize() {
   console.log(`\ntop control share of all actions: ${(topShare * 100).toFixed(1)}%`);
   const verdict =
     bySelector.size >= 3 && topShare < 0.6
-      ? '✅ EXPLORING — diverse controls, no single-control loop'
-      : '⚠️ POSSIBLE LOOP — one control dominates; inspect timeline';
+      ? 'EXPLORING — diverse controls, no single-control loop'
+      : 'POSSIBLE LOOP — one control dominates; inspect timeline';
   console.log(`verdict: ${verdict}`);
 }
 

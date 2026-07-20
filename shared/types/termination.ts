@@ -37,14 +37,14 @@ export const STOP_REASON_DETAIL: Record<StopReason, string> = {
 
 /** Operator-facing copy per outcome. `label` is the badge, `detail` the sentence. */
 export const TERMINATION_COPY: Record<RunTerminationOutcome, { label: string; detail: string; icon: string }> = {
-  completed: { label: 'Completed', icon: '✅', detail: 'Exploration finished — action budget exhausted.' },
-  'boundary-saturated': { label: 'Scope Covered', icon: '✅', detail: 'Configured scope fully explored — every discovered control was triggered.' },
-  'user-stopped': { label: 'Stopped by Operator', icon: '🛑', detail: 'Session stopped by the operator.' },
-  timebox: { label: 'Time Limit Reached', icon: '⏱️', detail: 'Session ended automatically — configured time budget reached.' },
-  'graceful-shutdown': { label: 'Halted', icon: '⚠️', detail: 'Session ended early — the engine could not continue safely.' },
-  'target-crash': { label: 'Target Crashed', icon: '💥', detail: 'Session terminated — the target application stopped responding.' },
-  abandoned: { label: 'Abandoned', icon: '🔌', detail: 'Session terminated — the operator disconnected and did not return.' },
-  exception: { label: 'Crashed', icon: '❌', detail: 'Session terminated by an unhandled engine failure.' },
+  completed: { label: 'Completed', icon: '', detail: 'Exploration finished — action budget exhausted.' },
+  'boundary-saturated': { label: 'Scope Covered', icon: '', detail: 'Configured scope fully explored — every discovered control was triggered.' },
+  'user-stopped': { label: 'Stopped by Operator', icon: '', detail: 'Session stopped by the operator.' },
+  timebox: { label: 'Time Limit Reached', icon: '', detail: 'Session ended automatically — configured time budget reached.' },
+  'graceful-shutdown': { label: 'Halted', icon: '', detail: 'Session ended early — the engine could not continue safely.' },
+  'target-crash': { label: 'Target Crashed', icon: '', detail: 'Session terminated — the target application stopped responding.' },
+  abandoned: { label: 'Abandoned', icon: '', detail: 'Session terminated — the operator disconnected and did not return.' },
+  exception: { label: 'Crashed', icon: '', detail: 'Session terminated by an unhandled engine failure.' },
 };
 
 /** Single source of truth for how a termination reads across every surface. */

@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CheckIcon } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -644,7 +644,7 @@ function FindingCard({
 function CleanRunCard() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
-      <span className="text-2xl">✅</span>
+      <span className="text-2xl"><CheckIcon className='w-4 h-4'/></span>
       <div className="text-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
       <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>

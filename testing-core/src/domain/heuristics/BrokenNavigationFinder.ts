@@ -1,13 +1,9 @@
 import { normalizeRoutePath } from '../../ml/domHasher.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 
-export type NavigationDefectKind =
-  | 'DEAD_INTERACTION'
-  | 'BROKEN_ROUTE'
-  | 'REDIRECT_LOOP'
-  | 'BACK_NAV_STATE_LOSS';
+export type NavigationDefectKind = 'DEAD_INTERACTION' | 'BROKEN_ROUTE' | 'REDIRECT_LOOP';
 
-export type NavigationBugClass = 'STRUCTURAL_NAVIGATION_LOGIC' | 'ROUTE_MUTATION_FAILURE';
+export type NavigationBugClass = 'STRUCTURAL_NAVIGATION_LOGIC';
 
 /** One navigation hop in a defect's causal chain (route oscillation / redirect loop). */
 export interface NavHop {
@@ -72,16 +68,7 @@ export interface UrlChange {
   timestampMs: number;
 }
 
-export interface BackNavObservation {
-  expectedUrl: string;
-  landedUrl: string;
-  contextInvalid: boolean;
-  offOrigin: boolean;
-  hashMatched: boolean;
-}
-
 const DEAD_CLICK_STRIKES = 2;
-const BACK_NAV_STRIKES = 2;
 const REDIRECT_WINDOW_MS = 4000;
 const REDIRECT_CYCLE_SIGHTINGS = 3;
 const OSCILLATION_GAP_MS = 1500;
@@ -101,7 +88,6 @@ export class BrokenNavigationFinder {
   // Routes already covered by a reported loop's chain — one cycle, one finding.
   private readonly suppressedLoopRoutes = new Set<string>();
   private readonly deadClickStrikes = new Map<string, number>();
-  private readonly backNavStrikes = new Map<string, number>();
   private redirectWindow: RedirectHop[] = [];
   private urlWindow: Array<{ route: string; timestampMs: number }> = [];
   private lastInteraction: { selector: string; fromRoute: string } | null = null;
@@ -257,35 +243,6 @@ export class BrokenNavigationFinder {
       evidence: [`Rapid route oscillation: ${chain}`],
       hops,
       advice: this.buildAdvice('Guard the router redirect/guard logic against mutually-redirecting routes.', 'STRUCTURAL_NAVIGATION_LOGIC'),
-      corroborated: true,
-    });
-  }
-
-  /** Back-nav oracle: history back verifiably landed on the wrong route, repeatedly. */
-  public observeBackNav(o: BackNavObservation): NavigationDefect[] {
-    if (o.contextInvalid || o.offOrigin || o.hashMatched) return [];
-    const expectedRoute = normalizeRoutePath(o.expectedUrl);
-    const landedRoute = normalizeRoutePath(o.landedUrl);
-    // Same route with only DOM-fingerprint drift is legitimate SPA behavior.
-    if (!expectedRoute || expectedRoute === landedRoute) return [];
-    const key = `${expectedRoute}=>${landedRoute}`;
-    const strikes = this.bumpStrike(this.backNavStrikes, key);
-    if (strikes < BACK_NAV_STRIKES) return [];
-    return this.emitOnce({
-      kind: 'BACK_NAV_STATE_LOSS',
-      bugId: `nav-back-${key}`,
-      bugClass: 'ROUTE_MUTATION_FAILURE',
-      severity: 'MEDIUM',
-      cwe: BUG_CATALOG.ROUTE_MUTATION_FAILURE.cwe,
-      message: `Back navigation lost state: expected route ${expectedRoute}, landed on ${landedRoute}`,
-      selector: '',
-      url: o.landedUrl,
-      route: landedRoute,
-      evidence: [
-        `history.back() from a state reached via ${expectedRoute} landed on ${landedRoute}`,
-        `Observed ${strikes}× for this exact route pair`,
-      ],
-      advice: this.buildAdvice('Ensure the router pushes a resolvable history entry for every state so back() restores it.', 'ROUTE_MUTATION_FAILURE'),
       corroborated: true,
     });
   }

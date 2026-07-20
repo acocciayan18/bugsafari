@@ -294,7 +294,7 @@ export const dataFuzzer: StressScenario = {
       }
 
       console.log(
-        `🔥 [ADAPTIVE FUZZ] L${level}/${MAX_ESCALATION_LEVEL} ${category} → ${description} (len=${payload.length}) on '${selector}'`
+        ` [ADAPTIVE FUZZ] L${level}/${MAX_ESCALATION_LEVEL} ${category} → ${description} (len=${payload.length}) on '${selector}'`
       );
 
       // Forensic capture wraps the full injection: pre-hash → bypass+inject+submit → post-hash.
@@ -363,7 +363,7 @@ export const dataFuzzer: StressScenario = {
     }
 
     if (meaningfulLevel >= 0) {
-      console.log(`✅ [StressScenario:DataFuzzer] Meaningful reaction at escalation L${meaningfulLevel} for '${selector}'`);
+      console.log(`[StressScenario:DataFuzzer] Meaningful reaction at escalation L${meaningfulLevel} for '${selector}'`);
     } else {
       console.log(
         `[StressScenario:DataFuzzer] No state change after full escalation (L0..${MAX_ESCALATION_LEVEL}) on '${selector}'`

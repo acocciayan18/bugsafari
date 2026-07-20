@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.ts';
 
 export type { BrowserConsoleLevel, BrowserConsoleMessage };
 
@@ -12,6 +12,9 @@ export interface TelemetryGateway {
 
   /** Dedicated WCAG channel — kept separate from the generic fault streams. */
   emitAccessibility(finding: AccessibilityFinding): void;
+
+  /** Late verdict patching an already-streamed finding with its reproduction result. */
+  emitReproductionVerdict?(verdict: ReproductionVerdict): void;
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;

@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
 export type BrowserConsoleLevel =
   | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
@@ -45,6 +45,8 @@ export interface EngineGateway {
   onTelemetry(handler: (event: TelemetryEvent) => void): void;
   onForensicReport(handler: (report: ForensicCrashReport) => void): void;
   onIncidentReport(handler: (report: IncidentReport) => void): void;
+  /** Late verdict patching an already-received finding with its reproduction result. */
+  onReproductionVerdict(handler: (verdict: ReproductionVerdict) => void): void;
   /** Dedicated WCAG stream — feeds the isolated Accessibility tab only. */
   onAccessibility(handler: (finding: AccessibilityFinding) => void): void;
   onLiveFrame(handler: (base64Jpeg: string) => void): void;
