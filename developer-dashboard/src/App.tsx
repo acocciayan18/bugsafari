@@ -4,7 +4,7 @@
 // Uses AuthContext for centralized authentication state management
 // AuthGuard handles route protection automatically
 
-import { useState, useEffect, type ReactNode } from 'react'; 
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useDashboardController } from './application/useCases/useDashboardController';
@@ -28,7 +28,6 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 
 function AuthAppContent() {
   const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const { user, isAuthenticated, isGuestMode, logout } = useAuth();
 
@@ -75,6 +74,9 @@ function AuthAppContent() {
 
   const hasValidSession = isAuthenticated || isGuestMode;
 
+  // Identity props shared by every protected route's nav shell.
+  const shellProps = { user, isAuthenticated, activeView };
+
   if (isAuthRoute || !hasValidSession) {
     return (
       <ThemeProvider>
@@ -103,14 +105,7 @@ function AuthAppContent() {
         <Route
           path="/dashboard"
           element={
-            <SidebarLayout
-              user={user}
-              isAuthenticated={isAuthenticated}
-              activeView={activeView}
-              isCollapsed={isSidebarCollapsed}
-              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              outerClassName="flex h-screen w-screen bg-(--surface-app) overflow-hidden"
-            >
+            <SidebarLayout {...shellProps}>
               {/* Purified Viewport pipeline: Direct layout rendering without nested wrapper container layers */}
               <div className="flex flex-col flex-1 min-h-0">
                 <ClinicalForensicsDashboard
@@ -149,14 +144,7 @@ function AuthAppContent() {
         <Route
           path="/history"
           element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
-            <SidebarLayout
-              user={user}
-              isAuthenticated={isAuthenticated}
-              activeView={activeView}
-              isCollapsed={isSidebarCollapsed}
-              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              contentClassName="flex flex-1"
-            >
+            <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
               <SavedEvaluationSafaris />
             </SidebarLayout>
           )}
@@ -164,14 +152,7 @@ function AuthAppContent() {
         <Route
           path="/settings"
           element={
-            <SidebarLayout
-              user={user}
-              isAuthenticated={isAuthenticated}
-              activeView={activeView}
-              isCollapsed={isSidebarCollapsed}
-              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              contentClassName="flex flex-1"
-            >
+            <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
               <Settings />
             </SidebarLayout>
           }
@@ -179,14 +160,7 @@ function AuthAppContent() {
         <Route
           path="/history/forensic-report/:sessionId"
           element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
-            <SidebarLayout
-              user={user}
-              isAuthenticated={isAuthenticated}
-              activeView={activeView}
-              isCollapsed={isSidebarCollapsed}
-              onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              contentClassName="flex flex-1"
-            >
+            <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
               <ForensicReport />
             </SidebarLayout>
           )}

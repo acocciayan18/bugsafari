@@ -101,7 +101,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
     >
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><User className="w-4 h-4" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><User className="w-4 h-4 shrink-0" /></span>
               <Input
                 ref={emailRef}
                 id="email"
@@ -118,12 +118,12 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
             </div>
 
             <div className="relative">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
                 <Link to="/forgot-password" className="text-sm font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
               </div>
               <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4" /></span>
+                <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
                 <input
                   ref={passwordRef}
                   id="password"
@@ -134,7 +134,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   placeholder="••••••••"
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   required
                 />
                 <button

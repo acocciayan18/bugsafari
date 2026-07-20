@@ -119,7 +119,7 @@ export default function SignupForm() {
     >
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Mail className="w-[18px] h-[18px]" strokeWidth={1.75} aria-hidden="true" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Mail className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /></span>
               <Input
                 ref={emailRef}
                 id="email"
@@ -136,7 +136,7 @@ export default function SignupForm() {
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
               <Input
                 ref={passwordRef}
                 id="password"
@@ -156,12 +156,12 @@ export default function SignupForm() {
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
               >
-                {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
+                {showPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
               </button>
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-[18px] h-[18px]" /></span>
+              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
               <Input
                 ref={confirmPasswordRef}
                 id="confirmPassword"
@@ -181,7 +181,7 @@ export default function SignupForm() {
                 aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                 className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
               >
-                {showConfirmPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
+                {showConfirmPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
               </button>
             </div>
 

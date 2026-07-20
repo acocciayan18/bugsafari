@@ -534,3 +534,42 @@ a {
         text-align: center;
     }
 }
+
+@media (max-width: 640px) {
+    .lp-section {
+        padding-block: 2.5rem;
+    }
+
+    /* 300px floor overflows a 375px viewport once container gutters are applied. */
+    .lp-feature-card {
+        min-width: 0;
+        flex-basis: 100%;
+    }
+
+    .lp-deep-dive {
+        padding: 2rem 1.25rem;
+        border-radius: 1.25rem;
+    }
+
+    .lp-deep-dive__visual {
+        min-height: 220px;
+    }
+
+    .lp-node-canvas {
+        width: 100%;
+        max-width: 260px;
+    }
+
+    .lp-hero__title {
+        max-width: none;
+    }
+
+    .lp-page .lp-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+
+    .lp-footer__links {
+        flex-wrap: wrap;
+    }
+}

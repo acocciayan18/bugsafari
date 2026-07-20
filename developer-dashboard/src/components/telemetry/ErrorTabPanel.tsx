@@ -23,7 +23,7 @@ interface ErrorTabPanelProps {
 
 /** This panel places attribution badges with left/top padding to match its card layout. */
 const AttributionBadges = ({ attribution }: Parameters<typeof AttributionBadgesBase>[0]) => (
-  <div className="px-4 pt-3">
+  <div className="px-3 pt-3 sm:px-4">
     <AttributionBadgesBase attribution={attribution} />
   </div>
 );
@@ -71,13 +71,13 @@ function LiveFindingCard({
 }) {
   return (
     <div className="bg-(--surface-panel) border border-(--border-hairline) border-l-4 border-l-(--status-critical-fg) rounded-lg overflow-hidden">
-      <div className="px-4 py-3 flex items-center justify-between border-b border-(--border-hairline)">
-        <div className="flex items-center gap-3">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-[13px] font-bold">
+      <div className="px-3 py-3 sm:px-4 flex flex-wrap items-start justify-between gap-x-2 gap-y-2 border-b border-(--border-hairline)">
+        <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-[13px] font-bold">
             {icon}
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-bold text-sm text-(--status-critical-fg)">{kindLabel}</span>
               <SeverityBadge severity={view.severity} />
               <OccurrenceBadge count={count} />
@@ -87,10 +87,12 @@ function LiveFindingCard({
             </div>
           </div>
         </div>
-        <CopyButton text={view.message} label="Error Message" />
+        <div className="shrink-0">
+          <CopyButton text={view.message} label="Error Message" />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 bg-(--surface-inset) border-b border-(--border-hairline)">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 px-3 py-3 sm:px-4 bg-(--surface-inset) border-b border-(--border-hairline)">
         <MetaCell label="Type" value={view.title} />
         <MetaCell label="Severity" value={view.severity ?? 'error'} />
         <MetaCell label="Source" value={source} />
@@ -99,7 +101,7 @@ function LiveFindingCard({
 
       <AttributionBadges attribution={view.attribution} />
 
-      <div className="px-4 py-3 bg-(--surface-panel) border-b border-(--border-hairline) max-h-40 overflow-y-auto custom-scrollbar">
+      <div className="px-3 py-3 sm:px-4 bg-(--surface-panel) border-b border-(--border-hairline) max-h-40 overflow-y-auto custom-scrollbar">
         <div className="text-[13px] font-mono whitespace-pre-wrap break-words leading-relaxed text-(--text-secondary)">
           {view.message}
         </div>

@@ -39,6 +39,17 @@ html.dark {
   max-width: 400px;
 }
 
+/* A 280px floor plus sonner's gutters overflows a 375px viewport — go fluid instead. */
+@media (max-width: 480px) {
+  .toast-custom {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+}
+
 /* Toast content layout */
 /* min-width:0 stops long words from inflating the flex item past the button */
 .toast-custom .toast-content {

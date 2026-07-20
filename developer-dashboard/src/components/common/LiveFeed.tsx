@@ -51,10 +51,6 @@ export default function LiveFeed({
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LiveFeedRenderer | null>(null);
   const [fps, setFps] = useState(0);
-  const [canvasDisplaySize, setCanvasDisplaySize] = useState({ 
-    width: `${NATIVE_VIEWPORT_WIDTH}px`, 
-    height: `${NATIVE_VIEWPORT_HEIGHT}px` 
-  });
 
   // Status determination — QUEUED holds a dedicated standby screen and suppresses
   // the initializing/idle states so the viewport never reads as "streaming" while
@@ -100,22 +96,12 @@ export default function LiveFeed({
   const updateCanvasSize = useCallback(() => {
     if (!containerRef.current || !canvasRef.current) return;
 
-    const containerRect = containerRef.current.getBoundingClientRect();
     const coverData = calculateCoverDimensions();
-
-    // Diagnostic: Log LiveFeed rendering metrics (cover mode)
-    console.log(`[LiveFeed] Render: container=${containerRect.width.toFixed(0)}x${containerRect.height.toFixed(0)}, native=${NATIVE_VIEWPORT_WIDTH}x${NATIVE_VIEWPORT_HEIGHT}, canvasInternal=${coverData.canvasWidth}x${coverData.canvasHeight}, scale=${coverData.scale.toFixed(3)}`);
 
     // Set canvas INTERNAL resolution to scaled dimensions
     // This implements object-fit: cover - the image fills the canvas without stretching
     canvasRef.current.width = coverData.canvasWidth;
     canvasRef.current.height = coverData.canvasHeight;
-
-    // Update state for placeholders (idle, initializing, completed screens)
-    setCanvasDisplaySize({
-      width: `${coverData.canvasWidth}px`,
-      height: `${coverData.canvasHeight}px`
-    });
   }, [calculateCoverDimensions]);
 
   // Initialize canvas dimensions with object-fit: cover
@@ -196,16 +182,16 @@ export default function LiveFeed({
     <div className="flex flex-col w-full h-full overflow-hidden bg-(--surface-panel) shadow-md rounded-md border border-(--border-hairline)">
 
       {/* BROWSER CHROME - decorative toolbar, no interaction */}
-      <div className="flex items-center gap-2 border-b border-(--border-hairline) bg-(--surface-app) px-3 py-2 shrink-0 rounded-t-md">
-        {/* LEFT: nav controls (decorative) */}
-        <div className="flex items-center gap-1 text-(--text-tertiary)">
-          <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowLeft size={14} /></span>
-          <span className="p-1 opacity-40 cursor-default" aria-hidden="true"><ArrowRight size={14} /></span>
+      <div className="flex items-center gap-1.5 border-b border-(--border-hairline) bg-(--surface-app) px-2 py-2 shrink-0 rounded-t-md sm:gap-2 sm:px-3">
+        {/* LEFT: nav controls (decorative) — arrows drop first, they carry no meaning here */}
+        <div className="flex shrink-0 items-center gap-1 text-(--text-tertiary)">
+          <span className="hidden p-1 opacity-40 cursor-default sm:inline" aria-hidden="true"><ArrowLeft size={14} /></span>
+          <span className="hidden p-1 opacity-40 cursor-default sm:inline" aria-hidden="true"><ArrowRight size={14} /></span>
           <span className="p-1 opacity-70 cursor-default" aria-hidden="true"><RotateCw size={13} /></span>
         </div>
 
         {/* CENTER: URL bar */}
-        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-2 bg-(--surface-panel) rounded-full px-3 py-1 text-[13px] text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline)">
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-1 bg-(--surface-panel) rounded-full px-2.5 py-1 text-[13px] text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline) sm:mx-2 sm:px-3">
           {isSecureUrl ? (
             <Lock size={11} className="shrink-0 text-(--text-tertiary)" aria-hidden="true" />
           ) : (
@@ -215,19 +201,19 @@ export default function LiveFeed({
         </div>
 
         {/* RIGHT: status + three-dot menu (decorative) */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 sm:gap-2">
           {isQueued && (
-            <span className="flex items-center gap-1.5 text-[13px] font-mono text-(--status-neutral-fg)">
-              <span className="h-3 w-3 bg-(--status-neutral-fg) rounded-full animate-pulse"></span>
+            <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-mono text-(--status-neutral-fg) sm:text-[13px]">
+              <span className="h-2.5 w-2.5 shrink-0 bg-(--status-neutral-fg) rounded-full animate-pulse sm:h-3 sm:w-3"></span>
               QUEUED
             </span>
           )}
 
           {!isQueued && !isTestRunning && !useBinaryStream && (
-            <span className="text-[13px] text-(--text-tertiary)">Ready</span>
+            <span className="whitespace-nowrap text-[11px] text-(--text-tertiary) sm:text-[13px]">Ready</span>
           )}
 
-          <span className="p-1 opacity-70 cursor-default text-(--text-tertiary)" aria-hidden="true">
+          <span className="hidden p-1 opacity-70 cursor-default text-(--text-tertiary) sm:inline" aria-hidden="true">
             <MoreVertical size={14} />
           </span>
         </div>
@@ -238,13 +224,11 @@ export default function LiveFeed({
         ref={containerRef}
         className="flex flex-col items-center justify-center flex-1 min-h-0 bg-(--surface-panel) overflow-hidden p-0 relative"
       >
+        {/* Overlays fill the container, not the cover-scaled canvas resolution, which overflows it. */}
         {/* IDLE STATE */}
         {isIdle && (
-          <div
-            className="absolute flex items-center justify-center z-10 bg-(--surface-panel)"
-            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
-          >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
+          <div className="absolute inset-0 flex items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
+            <p className="font-mono text-[11px] sm:text-sm tracking-[0.15em] sm:tracking-[0.3em] uppercase text-(--text-primary)">
               ENTER TARGET URL TO INITIATE
             </p>
           </div>
@@ -252,12 +236,9 @@ export default function LiveFeed({
 
         {/* QUEUED STANDBY STATE — run parked behind the worker fleet; no stream yet. */}
         {isQueued && (
-          <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-(--surface-panel)"
-            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
-          >
-            <span className="mb-4 inline-block h-6 w-6 animate-spin rounded-full border-2 border-(--status-neutral-fg) border-r-transparent"></span>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
+            <span className="mb-4 inline-block h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-(--status-neutral-fg) border-r-transparent"></span>
+            <p className="font-mono text-[11px] sm:text-sm tracking-[0.15em] sm:tracking-[0.3em] uppercase text-(--text-primary)">
               QUEUED — AWAITING WORKER FLEET
             </p>
           </div>
@@ -265,16 +246,13 @@ export default function LiveFeed({
 
         {/* INITIALIZING STATE */}
         {isInitializingScreen && (
-          <div
-            className="absolute flex flex-col items-center justify-center z-10 bg-(--surface-panel)"
-            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
-          >
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
             <div className="mb-4 flex items-center justify-center gap-1">
               <span className="h-3 w-3 bg-(--text-primary) animate-pulse"></span>
               <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '150ms' }}></span>
               <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '300ms' }}></span>
             </div>
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
+            <p className="font-mono text-[11px] sm:text-sm tracking-[0.15em] sm:tracking-[0.3em] uppercase text-(--text-primary)">
               ESTABLISHING TELEMETRY STREAM
             </p>
           </div>
@@ -282,11 +260,8 @@ export default function LiveFeed({
 
         {/* COMPLETED STATE */}
         {isCompleted && (
-          <div
-            className="absolute flex flex-col items-center justify-center gap-2 z-10 bg-(--surface-panel) px-6 text-center"
-            style={{ width: canvasDisplaySize.width, height: canvasDisplaySize.height }}
-          >
-            <p className="font-mono text-sm tracking-[0.3em] uppercase text-(--text-primary)">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 overflow-y-auto bg-(--surface-panel) px-4 py-3 text-center sm:px-6">
+            <p className="font-mono text-[11px] sm:text-sm tracking-[0.15em] sm:tracking-[0.3em] uppercase text-(--text-primary)">
               {terminationCopy?.label ?? 'Exploration Complete'}
             </p>
             <p className="max-w-md text-[13px] text-(--text-secondary)">

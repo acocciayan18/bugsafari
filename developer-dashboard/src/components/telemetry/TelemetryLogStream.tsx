@@ -75,9 +75,9 @@ export default function TelemetryLogStream({
           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
         </div>
       ))}
-      <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-        <span className="h-3 w-3 rounded-full bg-(--status-neutral-fg) animate-ping"></span>
-        <span className="font-mono text-[13px]">
+      <div className="flex items-start gap-2 py-2 text-(--text-secondary)">
+        <span className="mt-1 h-3 w-3 shrink-0 rounded-full bg-(--status-neutral-fg) animate-ping"></span>
+        <span className="min-w-0 font-mono text-[13px]">
           {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
         </span>
       </div>

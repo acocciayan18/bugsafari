@@ -25,7 +25,7 @@ export default function AuthShell({
   footer,
 }: AuthShellProps) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-(--surface-app)">
+    <div className="min-h-dvh-screen flex items-center justify-center p-3 sm:p-4 lg:p-6 bg-(--surface-app)">
       <div className={`w-full ${maxWidth}`}>
         <div className="relative">
           {/* Corner reticle — signature HUD frame */}
@@ -33,10 +33,10 @@ export default function AuthShell({
           <div className="bg-(--surface-panel) border border-(--border-hairline) rounded-(--radius-lg) shadow-(--shadow-sm)">
            
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <p className="text-center text-[13px] font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
               <h1 className="text-center text-h2 leading-tight font-semibold text-(--text-primary) mb-2">{title}</h1>
-              {subtitle && <p className="text-center text-body-sm text-(--text-primary) mb-6">{subtitle}</p>}
+              {subtitle && <p className="text-center text-body-sm text-(--text-primary) mb-5 sm:mb-6">{subtitle}</p>}
 
               {children}
             </div>

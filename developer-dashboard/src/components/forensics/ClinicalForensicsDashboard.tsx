@@ -186,38 +186,37 @@ export default function ClinicalForensicsDashboard({
       {/* ═══════════════════════════════════════════════════════════════
           TOP CONTROLS: COMMAND CENTER LAYER
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-5 shrink-0 space-y-4">
-        <div className="flex items-center justify-between h-9">
-          <div className="flex items-center gap-4">
-            <h2 className="text-sm font-bold tracking-[0.2em] text-(--text-secondary) uppercase font-sans">
-              COMMAND CENTER
-            </h2>
+      <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
+          <h2 className="text-[13px] sm:text-sm font-bold tracking-[0.16em] sm:tracking-[0.2em] text-(--text-secondary) uppercase font-sans">
+            COMMAND CENTER
+          </h2>
 
-            {/* Single entry point for every pre-launch setting — locked mid-run, since
-                the engine reads them once at launch and cannot re-apply them live. */}
-            <button
-              onClick={() => setIsConfigOpen(true)}
-              disabled={isActiveSession}
-              aria-haspopup="dialog"
-              aria-expanded={showConfigModal}
-              title={isActiveSession ? 'Configuration is locked while a run is in progress' : 'Open testing configuration'}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
-              <span>Configuration</span>
-              <span className="text-(--border-strong)" aria-hidden="true">|</span>
-              <span className="text-[11px] font-normal text-(--text-tertiary) font-sans">{configSummary}</span>
-              {/* Launch is blocked on incomplete credentials — surface it on the trigger,
-                  otherwise the cause is hidden behind a closed dialog. */}
-              {authIncomplete && !isActiveSession && (
-                <span className="h-1.5 w-1.5 rounded-full bg-(--status-critical-fg)" aria-label="Configuration incomplete" />
-              )}
-            </button>
-          </div>
+          {/* Single entry point for every pre-launch setting — locked mid-run, since
+              the engine reads them once at launch and cannot re-apply them live. */}
+          <button
+            onClick={() => setIsConfigOpen(true)}
+            disabled={isActiveSession}
+            aria-haspopup="dialog"
+            aria-expanded={showConfigModal}
+            title={isActiveSession ? 'Configuration is locked while a run is in progress' : 'Open testing configuration'}
+            className={`flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
+            <span>Configuration</span>
+            {/* The digest is the first thing to go when width is tight — the label carries the affordance. */}
+            <span className="hidden text-(--border-strong) md:inline" aria-hidden="true">|</span>
+            <span className="hidden min-w-0 truncate text-[11px] font-normal text-(--text-tertiary) font-sans md:inline">{configSummary}</span>
+            {/* Launch is blocked on incomplete credentials — surface it on the trigger,
+                otherwise the cause is hidden behind a closed dialog. */}
+            {authIncomplete && !isActiveSession && (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--status-critical-fg)" aria-label="Configuration incomplete" />
+            )}
+          </button>
 
           {/* Session controls and Timer management */}
           {showSessionControls && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:ml-auto">
               {/* Stopwatch is hidden while queued — it must not tick until a worker
                   promotes the run to RUNNING; a standby chip stands in its place. */}
               {!isQueued && (
@@ -235,7 +234,7 @@ export default function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-4 py-2 text-[13px] font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -244,7 +243,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause
@@ -253,7 +252,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -264,7 +263,7 @@ export default function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -273,7 +272,7 @@ export default function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -285,7 +284,7 @@ export default function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors ${
+  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors ${
     isSessionSaved
       ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -301,19 +300,23 @@ export default function ClinicalForensicsDashboard({
           )}
         </div>
 
-        {/* URL Input Bar + Side Anchored Initialize Button */}
-        <div className="flex items-center gap-3 w-full">
-          <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-(--text-tertiary)">
-              
-              <Globe className="absolute h-5 w-5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
-            </span>
+        {/* URL Input Bar + Initialize Button — stacks under `sm` so neither is squeezed */}
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="relative min-w-0 flex-1">
+            <Globe
+              className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-tertiary)"
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
             <input
-              type="text"
+              type="url"
+              inputMode="url"
+              autoComplete="url"
+              aria-label="Target URL"
               value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               disabled={isActiveSession}
-              className="w-full h-11 border border-(--border-strong) rounded-lg pl-11 pr-4 text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)"
+              className="w-full h-11 border border-(--border-strong) rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)"
               placeholder="Enter target URL to initiate..."
             />
           </div>
@@ -322,9 +325,9 @@ export default function ClinicalForensicsDashboard({
             onClick={handleInitialize}
             disabled={isActiveSession || authIncomplete}
             title={authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
-            className="flex h-11 hover:cursor-pointer items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
+            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
-            <Bug className="h-5 w-5" />
+            <Bug className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
           </button>
         </div>
@@ -345,14 +348,16 @@ export default function ClinicalForensicsDashboard({
 
 
       {/* ═══════════════════════════════════════════════════════════════
-          MAIN WORKSPACE LAYOUT PANELS (55% / 45%)
+          MAIN WORKSPACE — stacked column below `lg`, 55/45 split above.
+          Stacked mode gives the feed a fixed aspect block and lets the
+          terminal take the remaining height, so both stay visible at 375px.
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-1 flex-row overflow-hidden bg-(--surface-panel)">
+      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto lg:overflow-hidden lg:flex-row bg-(--surface-panel)">
 
-        {/* LEFT PANEL: Browser Frame Viewport */}
-        <div className="w-[55%] h-full overflow-hidden border-r border-(--border-hairline) flex flex-col">
-          <div className="flex-1 overflow-hidden bg-(--surface-raised) p-4 pb-2">
-            <div className="h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
+        {/* FEED PANEL: Browser Frame Viewport */}
+        <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
+          <div className="flex-1 overflow-hidden bg-(--surface-raised) p-3 pb-2 sm:p-4 sm:pb-2">
+            <div className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
               <LiveFeed
                 currentUrl={currentUrl || targetUrl}
                 frame={frameBuffer}
@@ -368,8 +373,8 @@ export default function ClinicalForensicsDashboard({
           </div>
           
           {/* Internal Telemetry System Action Status Notification Strip */}
-          <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-4 py-2">
-            <div className="flex items-center gap-3">
+          <div className="mx-3 mb-3 mt-1 flex shrink-0 items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-3 py-2 sm:mx-4 sm:mb-4 sm:px-4">
+            <div className="flex min-w-0 items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${testStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
@@ -390,22 +395,22 @@ export default function ClinicalForensicsDashboard({
           </div>
         </div>
 
-        {/* RIGHT PANEL: Streams output workspace */}
-        <div className="w-[45%] h-full shrink-0 flex flex-col overflow-hidden">
-          
-          {/* Clean Terminal Header Tabs Layout */}
-          <div className="flex items-center justify-between border-b border-(--border-hairline) bg-(--surface-raised) h-[46px] shrink-0">
-            <div className="flex overflow-visible">
+        {/* TERMINAL PANEL: Streams output workspace */}
+        <div className="flex min-h-[320px] w-full flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0 lg:w-[45%] lg:flex-none lg:shrink-0">
+
+          {/* Terminal header — tabs scroll horizontally rather than wrapping or clipping */}
+          <div className="flex items-center justify-between gap-1 border-b border-(--border-hairline) bg-(--surface-raised) h-[46px] shrink-0">
+            <div className="scroll-rail flex">
               <button
                 onClick={() => setActiveTab('telemetry')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Activity className="h-3.5 w-3.5" />
                 Telemetry
               </button>
               <button
                 onClick={() => setActiveTab('errors')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <TriangleAlert className="h-3.5 w-3.5" />
                 Errors
@@ -413,7 +418,7 @@ export default function ClinicalForensicsDashboard({
               </button>
               <button
                 onClick={() => setActiveTab('network')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Network className="h-3.5 w-3.5" />
                 Network
@@ -421,7 +426,7 @@ export default function ClinicalForensicsDashboard({
               </button>
               <button
                 onClick={() => setActiveTab('console')}
-                className={`flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13px] font-medium tracking-widest  transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
               >
                 <Terminal className="h-3.5 w-3.5" />
                 Console
@@ -436,7 +441,7 @@ export default function ClinicalForensicsDashboard({
           <div className="relative flex-1 overflow-hidden">
             <div
               ref={logContainerRef}
-              className="h-full overflow-y-auto overflow-x-hidden bg-(--surface-panel) p-4 pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
+              className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
               style={{ scrollBehavior: 'smooth' }}
             >
               {activeTab === 'telemetry' && (

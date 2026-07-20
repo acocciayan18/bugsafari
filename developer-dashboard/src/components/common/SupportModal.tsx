@@ -87,22 +87,21 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={resetAndClose} titleId="support-modal-title">
       {/* Modal Header */}
-      <div className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3">
-        <h3 id="support-modal-title" className="text-sm font-semibold text-(--text-primary)">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:px-4">
+        <h3 id="support-modal-title" className="min-w-0 text-sm font-semibold text-(--text-primary)">
           {TITLES[mode]}
         </h3>
         <button
           onClick={resetAndClose}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           aria-label="Close"
         >
-          
-          <X className="h-5 w-5" aria-hidden="true" />
+          <X className="h-5 w-5 shrink-0" aria-hidden="true" />
         </button>
       </div>
 
       {/* Modal Body */}
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-3 sm:p-4">
         {needsEmail && (
           <Input
             label="Your email"
@@ -132,19 +131,20 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
             rows={4}
-            className="w-full rounded-md border border-(--border-strong) px-4 py-3 text-base text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-none"
+            className="w-full rounded-md border border-(--border-strong) px-3 py-2.5 sm:px-4 sm:py-3 text-base sm:text-sm text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-y"
           />
         </div>
       </div>
 
       {/* Modal Footer */}
-      <div className="flex justify-end gap-2 border-t border-(--border-hairline) px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={resetAndClose} disabled={isSubmitting}>
+      <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:flex-row sm:justify-end sm:px-4">
+        <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={resetAndClose} disabled={isSubmitting}>
           Cancel
         </Button>
         <Button
           variant="primary"
           size="sm"
+          className="w-full sm:w-auto"
           onClick={handleSubmit}
           isLoading={isSubmitting}
           disabled={!canSubmit}

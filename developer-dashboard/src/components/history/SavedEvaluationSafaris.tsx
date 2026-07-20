@@ -143,17 +143,18 @@ export default function SavedEvaluationSafaris() {
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-6 py-4">
-        <div className="flex items-center">
+      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-4">
+        {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
+        <div className="hidden min-w-0 items-center lg:flex">
           <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
             BUGSAFARI
           </span>
           <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="text-sm font-semibold text-[var(--text-secondary)]">
+          <span className="truncate text-sm font-semibold text-[var(--text-secondary)]">
             AUTONOMOUS TESTING ENGINE
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4 lg:ml-auto">
           <button
             onClick={() => void fetchSessions(true)}
             disabled={isLoading}
@@ -168,11 +169,12 @@ export default function SavedEvaluationSafaris() {
         </div>
       </header>
 
-      <main className="m-6 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)]">
-        <div className="border-b border-[var(--border-hairline)] px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">
+      <main className="custom-scrollbar m-3 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-0 lg:m-6 lg:mb-0">
+        <div className="border-b border-[var(--border-hairline)] px-4 py-4 sm:px-6">
+          {/* Title + controls stack into rows until there's width for a single line. */}
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <h2 className="text-h2 font-bold text-[var(--text-primary)]">
                 SAVED EVALUATION SAFARIS
               </h2>
               {/* Select All checkbox - selects ALL filtered records */}
@@ -193,31 +195,31 @@ export default function SavedEvaluationSafaris() {
                 </label>
               )}
             </div>
-            <div className="flex items-center gap-6">
-              <div className="relative">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 xl:gap-6">
+              <div className="relative min-w-0 sm:w-56 xl:w-72">
                 <div
                   className="
-                    flex h-10 w-72 items-center rounded-md
+                    flex h-10 w-full items-center rounded-md
                     border border-[var(--border-hairline)]
                     bg-[var(--surface-app)]
                     px-3 py-2
                     shadow-sm
                     transition-all duration-200
-                    focus-within:border-[var(--accent-primary)]
+                    focus-within:border-[var(--border-focus)]
                     focus-within:ring-1
-                    focus-within:ring-[var(--accent-primary)]
-                    focus-within:shadow-md
+                    focus-within:ring-[var(--border-focus)]
                   "
                 >
-                  <Search className="h-5 w-5 text-[var(--text-tertiary)] transition-colors duration-200 group-focus-within:text-[var(--accent-primary)]" />
+                  <Search className="h-5 w-5 shrink-0 text-[var(--text-tertiary)]" />
                   <input
-                    type="text"
+                    type="search"
+                    aria-label="Search saved safaris by URL"
                     placeholder="Search URLs..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="
-                      ml-2 flex-1 bg-transparent
-                      text-sm text-[var(--text-primary)]
+                      ml-2 min-w-0 flex-1 bg-transparent
+                      text-base sm:text-sm text-[var(--text-primary)]
                       placeholder:text-[var(--text-tertiary)]
                       focus:outline-none
                     "
@@ -226,14 +228,14 @@ export default function SavedEvaluationSafaris() {
               </div>
               {/* Sort controls — field picker + direction toggle */}
               <div className="flex items-center gap-2">
-                <label htmlFor="history-sort-field" className="text-[13px] font-medium text-[var(--text-secondary)]">
+                <label htmlFor="history-sort-field" className="shrink-0 text-[13px] font-medium text-[var(--text-secondary)]">
                   Sort by
                 </label>
                 <select
                   id="history-sort-field"
                   value={sortConfig.field}
                   onChange={(e) => setSortConfig((prev) => ({ ...prev, field: e.target.value as SortField }))}
-                  className="h-8 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
+                  className="h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-focus)] sm:flex-none"
                 >
                   {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((field) => (
                     <option key={field} value={field}>{SORT_FIELD_LABELS[field]}</option>
@@ -241,7 +243,7 @@ export default function SavedEvaluationSafaris() {
                 </select>
                 <button
                   onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                  className="flex h-8 items-center gap-1 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                  className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
                   title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
                   aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
                 >
@@ -250,12 +252,13 @@ export default function SavedEvaluationSafaris() {
                     : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
+              <div className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as SeverityFilter[]).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setActiveFilter(filter)}
-                    className={`rounded px-3 py-1.5 text-[13px] font-medium transition-colors ${activeFilter === filter
+                    aria-pressed={activeFilter === filter}
+                    className={`shrink-0 cursor-pointer rounded px-3 py-1.5 text-[13px] font-medium transition-colors ${activeFilter === filter
                       ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
                       : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
                       }`}
@@ -270,7 +273,7 @@ export default function SavedEvaluationSafaris() {
 
         {/* Bulk Action Toolbar */}
         {selectedCount > 0 && (
-          <div className="flex items-center gap-4 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-6 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-4 py-2 sm:px-6">
             <span className="text-sm font-medium text-[var(--status-neutral-fg)]">
               {selectedCount} item{selectedCount > 1 ? 's' : ''} selected
             </span>
@@ -364,31 +367,33 @@ export default function SavedEvaluationSafaris() {
                     }
                   }}
                 >
-                  <div className="flex items-center justify-between px-6 py-4">
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">
+                  {/* Metadata wraps instead of overflowing; separators are drawn by the
+                      wrapper so a wrapped line never starts with a stray bullet. */}
+                  <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
                       </div>
-                      <div className="mt-1 flex items-center gap-4 text-[13px] text-[var(--text-secondary)]">
-                        <span>ID: {evalItem.id}</span>
-                        <span>•</span>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
+                        <span className="truncate">ID: {evalItem.id}</span>
+                        <span aria-hidden="true">•</span>
                         <span>{evalItem.date}</span>
-                        <span>•</span>
+                        <span aria-hidden="true">•</span>
                         <span>
                           {evalItem.steps} steps,
                           <CoverageDisplay percentage={evalItem.coverage} />
                         </span>
                         {typeof evalItem.pagesVisited === 'number' && (
                           <>
-                            <span>•</span>
+                            <span aria-hidden="true">•</span>
                             <span>{evalItem.pagesVisited} pages</span>
                           </>
                         )}
-                        <span>•</span>
+                        <span aria-hidden="true">•</span>
                         <TerminationBadge outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                       <div
                         className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${evalItem.severity === 'CRITICAL'
                           ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
@@ -409,7 +414,7 @@ export default function SavedEvaluationSafaris() {
                           onDeleteRecord={() => setDeleteState({ isOpen: true, recordId: evalItem.id, targetUrl: evalItem.targetUrl, isDeleting: false })}
                         />
                       </div>
-                      <div className="flex h-6 w-6 items-center justify-center">
+                      <div className="hidden h-6 w-6 items-center justify-center sm:flex">
                         <ChevronRight className="h-4 w-4 text-[var(--text-secondary)]" />
                       </div>
                     </div>
@@ -420,7 +425,7 @@ export default function SavedEvaluationSafaris() {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] px-6 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
           <div className="flex items-center">
             <span className="font-mono text-[13px] text-[var(--text-secondary)]">
               SHOWING {view.showingStart}-{view.showingEnd} OF {view.matchedCount} SAFARIS
@@ -446,7 +451,7 @@ export default function SavedEvaluationSafaris() {
         </div>
       </main>
 
-      <footer className="mb-6 px-6">
+      <footer className="mb-4 px-4 pb-safe sm:mb-6 sm:px-6">
         <div className="mb-4 flex h-2 gap-1 rounded-full">
           {progressSegments.map((idx) => (
             <div

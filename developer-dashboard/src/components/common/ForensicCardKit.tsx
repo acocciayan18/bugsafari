@@ -65,14 +65,14 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
+        className="w-full flex items-center gap-2 px-3 sm:px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
       >
-        <span className="text-sm">{isExpanded ? '▼' : '▶'}</span>
-        <span>{title}</span>
-        <span className="text-[11px] opacity-60 ml-auto">Click to {isExpanded ? 'collapse' : 'expand'}</span>
+        <span className="shrink-0 text-sm">{isExpanded ? '▼' : '▶'}</span>
+        <span className="min-w-0 text-left">{title}</span>
+        <span className="ml-auto hidden shrink-0 text-[11px] opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
-        <div className={`px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
+        <div className={`custom-scrollbar px-3 sm:px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
           <pre className="text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>
@@ -165,11 +165,12 @@ export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) =>
     );
   }
   return (
-    <div className="relative rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
-      <div className="absolute right-2 top-2">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
+      {/* Copy sits above the text rather than absolutely overlaying it, which clipped wrapped lines when narrow. */}
+      <div className="mb-1 flex justify-end">
         <CopyButton text={advice} label="Suggested Fix" />
       </div>
-      <pre className="whitespace-pre-wrap break-words pr-16 font-mono text-[13px] leading-relaxed text-(--text-primary)">{advice}</pre>
+      <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{advice}</pre>
     </div>
   );
 };

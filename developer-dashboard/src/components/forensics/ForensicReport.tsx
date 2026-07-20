@@ -443,7 +443,7 @@ function VerificationResultModal({
   return (
     <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-lg">
       {/* Accent header keyed to the verdict tone */}
-      <div className={`flex items-center gap-3 rounded-t-lg px-5 py-4 text-(--text-oninvert) ${meta.modalBar}`}>
+      <div className={`flex items-center gap-3 rounded-t-lg px-4 py-4 text-(--text-oninvert) sm:px-5 ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
@@ -451,10 +451,10 @@ function VerificationResultModal({
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto bg-(--surface-panel) px-5 py-4">
+      <div className="bg-(--surface-panel) px-4 py-4 sm:px-5">
         <p className="text-sm leading-relaxed text-(--text-primary)">{result.summary}</p>
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
           <ResultStat label="Steps Replayed" value={String(result.stepsReplayed)} />
           <ResultStat label="Duration" value={formatDuration(result.durationMs)} />
@@ -487,7 +487,7 @@ function VerificationResultModal({
       </div>
 
       {/* Footer actions */}
-      <div className="flex items-center justify-end gap-2 rounded-b-lg border-t border-(--border-hairline) bg-(--surface-panel) px-5 py-3">
+      <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-lg border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-5">
         <button
           type="button"
           onClick={onReverify}
@@ -684,7 +684,7 @@ function TabButton({ label, count, active, onClick }: { label: string; count: nu
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
+      className={`flex shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
         active
           ? 'border-(--border-strong) text-(--text-primary)'
           : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
@@ -892,31 +892,32 @@ export default function ForensicReport() {
   return (
     <div className="flex h-full w-full flex-col bg-(--surface-app)">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-(--border-hairline) bg-(--surface-panel) px-6 py-4">
-        <div className="flex items-center">
+      <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-4">
+        {/* Breadcrumb duplicates the compact top bar — desktop only; Back always stays. */}
+        <div className="hidden min-w-0 items-center lg:flex">
           <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>
         <button
           onClick={() => window.history.back()}
-          className="flex items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="flex shrink-0 items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover) lg:ml-auto"
         >
-         <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+         <ArrowLeft className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
          Back to History
         </button>
       </header>
 
       {/* Report Body */}
-      <main className="flex-1 overflow-auto p-6">
-        <div className="mx-auto flex max-w-4xl flex-col gap-6">
+      <main className="custom-scrollbar flex-1 overflow-auto p-3 pb-safe sm:p-4 lg:p-6">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
           <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={runtimeBugs.length} />
 
           <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
-            <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-(--border-hairline)">
+            <div className="scroll-rail mb-4 flex items-center gap-1 border-b border-(--border-hairline)">
               <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
               <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
               <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />

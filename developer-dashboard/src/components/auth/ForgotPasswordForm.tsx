@@ -77,10 +77,10 @@ export default function ForgotPasswordForm() {
         statusTone="success"
       >
         <div className="text-center">
-          <div className="w-16 h-16 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-(--status-stable-fg)"><Check className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-(--status-stable-fg)"><Check className="w-7 h-7 sm:w-8 sm:h-8" strokeWidth={1.75} aria-hidden="true" /></span>
           </div>
-          <p className="text-(--text-primary) mb-6">
+          <p className="text-(--text-primary) mb-5 sm:mb-6">
             If an account exists with that email, a password reset link has been sent.
           </p>
           <p className="text-sm text-(--text-tertiary) mb-6">
@@ -90,7 +90,7 @@ export default function ForgotPasswordForm() {
             to="/login"
             className="inline-flex items-center text-sm text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
           >
-            <ArrowLeft className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+            <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="ml-2">Back to sign in</span>
           </Link>
         </div>
@@ -110,7 +110,7 @@ export default function ForgotPasswordForm() {
         {/* Email Field */}
         <div className="relative">
           <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none">
-            <Mail className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+            <Mail className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
           </span>
           <Input
             ref={emailRef}

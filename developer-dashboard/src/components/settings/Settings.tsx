@@ -52,7 +52,7 @@ function SettingsCard({ icon, title, description, children }: {
 }) {
   return (
     <section className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
-      <header className="flex items-start gap-3 border-b border-(--border-hairline) px-5 py-4">
+      <header className="flex items-start gap-3 border-b border-(--border-hairline) px-4 py-4 sm:px-5">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
           {icon}
         </div>
@@ -61,7 +61,7 @@ function SettingsCard({ icon, title, description, children }: {
           <p className="text-[13px] text-(--text-secondary)">{description}</p>
         </div>
       </header>
-      <div className="flex-1 px-5 py-5">{children}</div>
+      <div className="flex-1 px-4 py-4 sm:px-5 sm:py-5">{children}</div>
     </section>
   );
 }
@@ -182,7 +182,7 @@ const ToggleSwitch = memo(function ToggleSwitch({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
+    <div className="flex items-center justify-between gap-3 py-3 sm:gap-4">
       <div className="flex items-start gap-3">
         {icon && <div className="mt-0.5 text-(--text-tertiary)">{icon}</div>}
         <div>
@@ -436,7 +436,7 @@ function SecuritySettingsSection() {
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 type="submit"
                 disabled={isPasswordChanging}
@@ -577,7 +577,7 @@ function AccountSection() {
         {showLogoutConfirm ? (
           <div className="space-y-3">
             <p className="text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleLogout}
                 className="rounded-lg bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
@@ -622,34 +622,33 @@ export default function Settings() {
   }, [isAuthenticated]);
 
   return (
-    <div className="flex h-full w-full flex-col  bg-(--surface-panel)">
-      <header className="flex items-center justify-between border-b border-(--border-hairline) px-6 py-3">
-        <div className="flex items-center">
+    <div className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)">
+      {/* Breadcrumb duplicates the compact top bar — desktop only. */}
+      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
+        <div className="flex min-w-0 items-center">
           <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
-        <div className="flex items-center gap-4">
-          {user && (
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-inset)">
-                <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
-              </div>
-              <span className="text-[13px] text-(--text-secondary) hidden md:inline">{user.email}</span>
+        {user && (
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
+              <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
             </div>
-          )}
-        </div>
+            <span className="hidden truncate text-[13px] text-(--text-secondary) md:inline">{user.email}</span>
+          </div>
+        )}
       </header>
 
-      <main className="m-6 mb-6 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app)">
-        <div className="border-b border-(--border-hairline) px-6 py-4">
-          <h2 className="text-lg font-bold text-(--text-primary)">SETTINGS</h2>
-          <p className="mt-1 text-sm text-(--text-secondary)">
+      <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-6">
+        <div className="border-b border-(--border-hairline) px-4 py-4 sm:px-6">
+          <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
+          <p className="mt-1 text-[13px] text-(--text-secondary) sm:text-sm">
             Manage your account preferences and application configuration
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6 xl:grid-cols-3">
           <SettingsCard
             icon={<User className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Account"

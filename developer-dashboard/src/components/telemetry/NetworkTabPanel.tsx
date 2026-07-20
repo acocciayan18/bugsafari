@@ -90,8 +90,8 @@ export default function NetworkTabPanel({
             key={`network-${idx}`}
             className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}
           >
-            <div className="px-3 py-2 flex items-center justify-between border-b border-(--border-hairline)">
-              <div className="flex items-center gap-2">
+            <div className="px-3 py-2 flex items-center justify-between gap-2 border-b border-(--border-hairline)">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span className={`font-mono text-[13px] font-bold ${textColor}`}>
                   {method} {statusCode || 'ERR'}
                 </span>

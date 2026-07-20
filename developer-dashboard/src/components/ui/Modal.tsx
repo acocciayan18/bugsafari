@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 interface ModalProps {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export function Modal({
   useEffect(() => {
     onCloseRef.current = onClose;
   });
+
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -83,15 +86,17 @@ export function Modal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-backdrop-in ${backdropClassName}`}
+      className={`fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-0 animate-backdrop-in sm:items-center sm:p-4 md:p-6 ${backdropClassName}`}
       onMouseDown={handleBackdropMouseDown}
     >
+      {/* Bottom sheet under `sm`, centered dialog above. Panel owns its own scroll so
+          tall content never clips on short viewports. */}
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`w-full ${maxWidthClassName} animate-fade-in rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl)`}
+        className={`custom-scrollbar w-full ${maxWidthClassName} max-h-[92dvh] overflow-y-auto overscroll-contain animate-fade-in rounded-t-(--radius-lg) rounded-b-none border border-(--border-hairline) bg-(--surface-panel) pb-safe shadow-(--shadow-xl) sm:max-h-[88dvh] sm:rounded-(--radius-lg) sm:pb-0`}
       >
         {children}
       </div>

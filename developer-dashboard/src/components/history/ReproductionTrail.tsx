@@ -8,7 +8,7 @@ export default function ReproductionTrail({ incidents }: ReproductionTrailProps)
   return (
     <div className="overflow-hidden rounded-xl border border-(--border-hairline)">
       <div className="border-b border-(--border-hairline) bg-(--surface-raised) px-4 py-3 text-sm font-medium text-(--text-primary)">Reproduction Trail</div>
-      <div className="h-[280px] overflow-auto bg-(--surface-panel) p-3 text-sm">
+      <div className="custom-scrollbar max-h-[280px] min-h-[160px] overflow-auto bg-(--surface-panel) p-3 text-sm">
         {incidents.length === 0 ? (
           <p className="text-(--text-secondary)">No incident report captured.</p>
         ) : (

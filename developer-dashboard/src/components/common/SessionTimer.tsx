@@ -129,7 +129,7 @@ function FullTimer({
     };
 
     return (
-        <div className="flex flex-col items-center gap-3 p-4 bg-(--surface-panel) rounded-lg shadow-md border border-(--border-hairline)">
+        <div className="flex w-full flex-col items-center gap-3 p-3 sm:p-4 bg-(--surface-panel) rounded-lg shadow-md border border-(--border-hairline)">
             {/* Status Badge */}
             <div className={`px-3 py-1 rounded-full text-[13px] font-bold uppercase tracking-wider ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
                     timeRemaining <= 0 ? 'bg-(--status-critical-bg) text-(--status-critical-fg)' :
@@ -140,7 +140,7 @@ function FullTimer({
             </div>
 
             {/* Clock Display with Progress Ring */}
-            <div className="relative w-28 h-28">
+            <div className="relative h-24 w-24 shrink-0 sm:h-28 sm:w-28">
                 {/* Background circle */}
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                     <circle
@@ -168,7 +168,7 @@ function FullTimer({
                 {/* Time Display */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span
-                        className="text-2xl font-mono font-bold"
+                        className="text-xl sm:text-2xl font-mono font-bold"
                         style={{ color: colors.text }}
                         aria-live="polite"
                     >
@@ -192,7 +192,7 @@ function FullTimer({
             </div>
 
             {/* Time Info */}
-            <div className="flex justify-between w-full text-[13px] text-(--text-secondary)">
+            <div className="flex w-full flex-wrap justify-between gap-x-3 gap-y-1 text-[13px] text-(--text-secondary)">
                 <span>Elapsed: {Math.floor((initialTimeMs - timeRemaining) / 1000)}s</span>
                 <span>Total: {initialTimeMs / 1000}s</span>
             </div>

@@ -70,22 +70,22 @@ export function CoverageDisplay({ percentage }: { percentage: number }) {
   const band = getCoverageBand(clampedPercentage);
 
   return (
-    <div className="flex items-center gap-1.5">
+    <span className="inline-flex shrink-0 items-center gap-1.5 align-middle">
       {/* Compact Progress Bar */}
-      <div className={`h-1.5 w-16 rounded-full ${band.track} overflow-hidden`}>
-        <div
-          className={`h-full ${band.fill} rounded-full transition-all duration-500 ease-out`}
+      <span className={`inline-block h-1.5 w-16 rounded-full ${band.track} overflow-hidden`}>
+        <span
+          className={`block h-full ${band.fill} rounded-full transition-all duration-500 ease-out`}
           style={{
             width: `${clampedPercentage}%`,
           }}
         />
-      </div>
+      </span>
 
       {/* Percentage with icon */}
-      <div className={`flex items-center gap-1 ${band.text}`}>
-       <ChartColumnBig className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+      <span className={`inline-flex items-center gap-1 ${band.text}`}>
+       <ChartColumnBig className="h-3 w-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
         <span className="text-[13px] font-semibold">{clampedPercentage}%</span>
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }

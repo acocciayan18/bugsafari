@@ -18,8 +18,8 @@ export function isPasswordValid(password: string): boolean {
 function RequirementRow({ met, label }: { met: boolean; label: string }) {
   return (
     <div className={`text-[13px] font-medium flex items-center gap-2 ${met ? 'text-(--status-stable-fg)' : 'text-(--status-critical-fg)'}`}>
-      {met ? <Check className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /> : <X className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />}
-      <span>{label}</span>
+      {met ? <Check className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <X className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
+      <span className="min-w-0">{label}</span>
     </div>
   );
 }
@@ -34,15 +34,15 @@ export default function PasswordRequirements({ password }: PasswordRequirementsP
   const c = getPasswordChecks(password);
   return (
     <div
-  className="rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) p-4"
+  className="rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) p-3 sm:p-4"
   role="status"
   aria-live="polite"
 >
-  <p className="mb-3 text-[13px] font-mono font-medium tracking-[0.08em] text-(--text-primary)">
+  <p className="mb-2 sm:mb-3 text-[13px] font-mono font-medium tracking-[0.08em] text-(--text-primary)">
     SECURITY REQUIREMENTS
   </p>
 
-  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
     <RequirementRow met={c.hasMinLength} label="At least 8 characters long" />
     <RequirementRow met={c.hasUppercase} label="Include 1 uppercase letter" />
     <RequirementRow met={c.hasNumber} label="Include at least one number" />

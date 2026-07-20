@@ -44,11 +44,11 @@ export function TerminationBadge({ outcome, status, reason, className = '' }: Te
 
   return (
     <span
-      className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[13px] font-medium ${tone} ${className}`}
+      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium sm:text-[13px] ${tone} ${className}`}
       title={reason || copy.detail}
     >
-      <span aria-hidden="true">{copy.icon}</span>
-      {copy.label}
+      <span className="shrink-0" aria-hidden="true">{copy.icon}</span>
+      <span className="min-w-0 truncate">{copy.label}</span>
     </span>
   );
 }

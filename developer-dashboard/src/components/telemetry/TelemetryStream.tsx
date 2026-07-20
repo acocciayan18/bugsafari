@@ -40,16 +40,16 @@ export default function TelemetryStream({
 
   return (
     <div className="w-full max-w-5xl rounded-2xl border border-(--border-hairline) bg-(--surface-panel) shadow-[0_10px_40px_rgba(0,0,0,0.04)]">
-      <div className="flex items-center justify-between gap-3 border-b border-(--border-hairline) px-4 py-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-(--surface-invert) text-[13px] font-bold text-(--text-oninvert)">TL</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-(--border-hairline) px-3 py-3 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-(--surface-invert) text-[13px] font-bold text-(--text-oninvert)">TL</span>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-(--text-primary)">Telemetry timeline</div>
             <div className="text-[13px] text-(--text-secondary)">Process steps + warnings/errors</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isTestRunning ? (
             <>
               <button
@@ -64,8 +64,8 @@ export default function TelemetryStream({
                 aria-label={isPaused ? 'Resume exploration' : 'Pause exploration'}
                 title={isPaused ? 'Resume exploration' : 'Pause exploration'}
               >
-                <span className="inline-flex items-center gap-2">
-                  {isPaused ? <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" /> : <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />}
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  {isPaused ? <Play className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <Pause className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
                   {isPaused ? 'Resume' : 'Pause'}
                 </span>
               </button>
@@ -82,19 +82,19 @@ export default function TelemetryStream({
                 aria-label="Stop exploration"
                 title="Stop exploration"
               >
-                <span className="inline-flex items-center gap-2">
-                  <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <Square className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                   Stop
                 </span>
               </button>
             </>
           ) : null}
 
-          <div className="text-[13px] text-(--text-secondary)">{events.length} events</div>
+          <div className="whitespace-nowrap text-[13px] text-(--text-secondary)">{events.length} events</div>
         </div>
       </div>
 
-      <div className="max-h-[360px] overflow-auto px-3 py-3 sm:px-5">
+      <div className="custom-scrollbar max-h-[360px] overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-5">
         {normalized.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <div className="grid h-12 w-12 place-items-center rounded-2xl border border-(--border-hairline) bg-(--surface-inset) text-sm font-semibold text-(--text-primary)">
@@ -135,12 +135,12 @@ export default function TelemetryStream({
                     className="rounded-xl border border-(--border-hairline) bg-(--surface-inset) px-3 py-2"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.color}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.color}`}>
                             {pill.label}
                           </span>
-                          <div className="truncate text-[13px] font-semibold text-(--text-primary)">{title}</div>
+                          <div className="min-w-0 flex-1 truncate text-[13px] font-semibold text-(--text-primary)">{title}</div>
                         </div>
                         <div className="mt-1 line-clamp-2 text-[11px] text-(--text-tertiary)">{sub}</div>
                       </div>

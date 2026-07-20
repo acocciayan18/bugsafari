@@ -43,17 +43,17 @@ export default function ResetPasswordForm() {
         statusTone="error"
       >
         <div className="text-center">
-          <div className="w-16 h-16 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-(--status-critical-fg)"><CircleX className="w-8 h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-(--status-critical-fg)"><CircleX className="w-7 h-7 sm:w-8 sm:h-8" strokeWidth={1.75} aria-hidden="true" /></span>
           </div>
-          <p className="text-(--text-primary) mb-6">
+          <p className="text-(--text-primary) mb-5 sm:mb-6">
             This password reset link is invalid or has expired.
           </p>
           <Link
             to="/forgot-password"
             className="inline-flex items-center text-sm text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
           >
-            <ArrowLeft className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+            <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="ml-2">Request a new reset link</span>
           </Link>
         </div>
@@ -140,7 +140,7 @@ export default function ResetPasswordForm() {
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-(--text-tertiary) pointer-events-none">
-                  <Lock className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                 </div>
                 <input
                   ref={passwordRef}
@@ -151,7 +151,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedPassword(true)}
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -174,7 +174,7 @@ export default function ResetPasswordForm() {
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-(--text-tertiary) pointer-events-none">
-                  <Lock className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                 </div>
                 <input
                   ref={confirmPasswordRef}
@@ -185,7 +185,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedConfirm(true)}
                   aria-invalid={!!confirmError}
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -224,7 +224,7 @@ export default function ResetPasswordForm() {
               to="/login"
               className="inline-flex items-center text-sm text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
-              <ArrowLeft className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
+              <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               <span className="ml-2">Back to sign in</span>
             </Link>
           </div>

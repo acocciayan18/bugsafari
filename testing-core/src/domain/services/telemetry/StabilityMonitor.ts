@@ -1217,18 +1217,8 @@ export class StabilityMonitor {
       }
 
       if (isAborted) {
-        // During stress scenarios (RouteTrasher, CoordinateBombing, etc.), network aborts
-        // are expected and abundant — suppress telemetry spam to keep the feed readable.
-        // Only emit ACTION telemetry for aborts during normal exploration.
-        if (!isStressScenarioActive()) {
-          t.emit('ACTION', {
-            actionExecuted: 'network-aborted',
-            url,
-            method,
-            message: `Active network connection closed due to user session abort. ${method} ${url}`,
-          });
-        }
-        // Skip persistent logging for aborts - these are expected cancellation events
+        // Aborts are cancellation artifacts (session stop, navigation, stress scenarios),
+        // never application defects — no telemetry, no persistence.
         return;
       }
 

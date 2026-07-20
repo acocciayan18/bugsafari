@@ -25,19 +25,19 @@ function formatStepTime(value?: string): string {
 // used by both the per-finding evidence and the saved report's appendix.
 export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   return (
-    <ol className="max-h-96 space-y-1.5 overflow-y-auto">
+    <ol className="custom-scrollbar max-h-96 space-y-1.5 overflow-y-auto overscroll-contain">
       {steps.map((step) => {
         const { kind, instruction, payloadDisplay } = humanizeActionStep(step);
         return (
           <li
             key={step.stepNumber}
-            className="flex items-start gap-2 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
+            className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
           >
-            <span className="mt-px text-[11px] font-mono text-(--text-tertiary)">{step.stepNumber}</span>
-            <span className={`mt-px rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+            <span className="mt-px shrink-0 text-[11px] font-mono text-(--text-tertiary)">{step.stepNumber}</span>
+            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
               {chipLabel(kind)}
             </span>
-            <div className="min-w-0">
+            <div className="w-full min-w-0 sm:w-auto sm:flex-1">
               <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
               {payloadDisplay && (
                 <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-[11px] text-(--status-critical-fg)">
@@ -87,13 +87,13 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
   return (
     <>
       {/* Human-executable reproduction */}
-      <div className="px-4 pt-3">
+      <div className="px-3 pt-3 sm:px-4">
         <Reproduction view={view} />
       </div>
 
       {/* Visual evidence captured at the fault instant (live/replay only) */}
       {view.screenshot && (
-        <div className="px-4 pt-3">
+        <div className="px-3 pt-3 sm:px-4">
           <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Screenshot at fault</div>
           <img
             src={`data:image/jpeg;base64,${view.screenshot}`}
@@ -106,7 +106,7 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
 
       {/* Original source frames resolved from the target's source maps (best-effort) */}
       {view.resolvedStackTrace && (
-        <div className="px-4 pt-3">
+        <div className="px-3 pt-3 sm:px-4">
           <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Original source (via source maps)</div>
           <pre className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
             {view.resolvedStackTrace}
@@ -115,7 +115,7 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
       )}
 
       {/* Suggested fix — bound to this finding's remediation */}
-      <div className="px-4 pt-3">
+      <div className="px-3 pt-3 sm:px-4">
         <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
         <SuggestedFixBlock advice={view.advice} />
       </div>

@@ -11,9 +11,12 @@
 // - Click outside to close
 // - Accessible labels
 
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 import { Download, EllipsisVertical, LoaderCircle, Scroll, Trash2 } from 'lucide-react';
+
+const MENU_WIDTH = 192;
+const MENU_HEIGHT_ESTIMATE = 132;
 
 interface RowActionMenuProps {
   recordId?: string;
@@ -43,7 +46,18 @@ export function RowActionMenu({
   disabled = false,
 }: RowActionMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [flipUp, setFlipUp] = useState(false);
+  const [alignLeft, setAlignLeft] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // Right-aligned w-48 panel can fall off either viewport edge in a narrow table; measure and flip.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setFlipUp(rect.bottom + MENU_HEIGHT_ESTIMATE > window.innerHeight && rect.top > MENU_HEIGHT_ESTIMATE);
+    setAlignLeft(rect.right - MENU_WIDTH < 8);
+  }, [isOpen]);
 
   const closeMenu = () => {
     setIsOpen(false);
@@ -84,7 +98,7 @@ export function RowActionMenu({
         }}
         onKeyDown={handleKeyDown}
         disabled={disabled || isLoading}
-        className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${
           disabled || isLoading
             ? 'cursor-not-allowed opacity-40'
             : 'hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2'
@@ -102,33 +116,38 @@ export function RowActionMenu({
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-(--border-hairline) bg-(--surface-panel) py-1 shadow-lg" role="menu">
+        <div
+          className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-hairline) bg-(--surface-panel) py-1 shadow-lg ${
+            flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+          } ${alignLeft ? 'left-0' : 'right-0'}`}
+          role="menu"
+        >
           <button
             onClick={() => handleItemClick(onViewReport)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
             role="menuitem"
           >
             
-            <Scroll className="h-4 w-4 text-(--text-secondary)" aria-hidden="true" />
+            <Scroll className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
             View Report
           </button>
           <button
             onClick={() => handleItemClick(onExportRecord)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
             role="menuitem"
           >
-            <Download className="h-4 w-4 text-(--text-secondary)" aria-hidden="true" />
+            <Download className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
             Export Record
           </button>
           <button
             onClick={() => handleItemClick(onDeleteRecord)}
             disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
+            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-sm text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
             role="menuitem"
           >
-            <Trash2 className="h-4 w-4 text-(--status-critical-fg)" aria-hidden="true" />
+            <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
             Delete Record
           </button>
         </div>

@@ -41,14 +41,14 @@ export function DeleteConfirmDialog({
 }: DeleteConfirmDialogProps) {
   return (
     <Modal isOpen={isOpen} onClose={() => !isLoading && onClose()} titleId="delete-confirm-title" closeOnBackdrop={!isLoading}>
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Header */}
         <div className="mb-4 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--status-critical-bg)">
-            <Trash2 className="h-5 w-5 text-(--status-critical-fg)" aria-hidden="true" />
+            <Trash2 className="h-5 w-5 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
           </div>
-          <div className="flex-1">
-            <h2 id="delete-confirm-title" className="text-lg font-semibold text-(--text-primary)">
+          <div className="min-w-0 flex-1">
+            <h2 id="delete-confirm-title" className="text-base sm:text-lg font-semibold text-(--text-primary)">
               {title}
             </h2>
             <p className="mt-1 text-sm text-(--text-secondary)">{message}</p>
@@ -59,11 +59,11 @@ export function DeleteConfirmDialog({
         {children && <div className="mb-4">{children}</div>}
 
         {/* Actions */}
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" size="md" onClick={onClose} disabled={isLoading}>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Button variant="secondary" size="md" className="w-full sm:w-auto" onClick={onClose} disabled={isLoading}>
             {cancelLabel}
           </Button>
-          <Button variant="destructive" size="md" onClick={onConfirm} isLoading={isLoading}>
+          <Button variant="destructive" size="md" className="w-full sm:w-auto" onClick={onConfirm} isLoading={isLoading}>
             {isLoading ? 'Deleting...' : confirmLabel}
           </Button>
         </div>

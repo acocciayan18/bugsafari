@@ -101,7 +101,8 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
         </button>
       </div>
 
-      <div className="max-h-[70vh] overflow-auto p-4">
+      {/* The Modal panel owns vertical scroll; this only needs the horizontal rail. */}
+      <div className="custom-scrollbar overflow-x-auto p-3 sm:p-4">
         {isLoading ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--border-hairline) border-t-(--text-secondary)" />
@@ -113,14 +114,14 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
             <span className="text-sm font-medium text-(--status-critical-fg)">{error}</span>
           </div>
         ) : (
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full min-w-[560px] border-collapse text-[13px]">
             <thead>
               <tr>
-                <th className="w-40 border-b border-(--border-hairline) px-3 py-2 text-left font-semibold text-(--text-secondary)">
+                <th className="sticky left-0 z-10 w-32 bg-(--surface-panel) border-b border-(--border-hairline) px-3 py-2 text-left font-semibold text-(--text-secondary) sm:w-40">
                   Metric
                 </th>
                 {reports.map((report, index) => (
-                  <th key={sessionIds[index]} className="border-b border-(--border-hairline) px-3 py-2 text-left align-top">
+                  <th key={sessionIds[index]} className="min-w-[140px] border-b border-(--border-hairline) px-3 py-2 text-left align-top">
                     <div className="font-semibold text-(--text-primary) break-all">{report.url}</div>
                     <div className="mt-1 font-normal text-(--text-secondary)">{formatDateTime(report.date)}</div>
                     <div className="mt-1 font-normal text-(--text-tertiary)">{report.status}</div>
@@ -131,7 +132,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
             <tbody>
               {metrics.map((row) => (
                 <tr key={row.label}>
-                  <td className="border-b border-(--border-hairline) px-3 py-2 font-medium text-(--text-secondary)">
+                  <td className="sticky left-0 z-10 bg-(--surface-panel) border-b border-(--border-hairline) px-3 py-2 font-medium text-(--text-secondary)">
                     {row.label}
                   </td>
                   {row.values.map((value, index) => (
@@ -160,7 +161,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
                 const values = reports.map((r) => r.findings?.bugsByCategory?.[category] ?? 0);
                 return (
                   <tr key={category}>
-                    <td className="border-b border-(--border-hairline) px-3 py-2 font-medium text-(--text-secondary)">{category}</td>
+                    <td className="sticky left-0 z-10 bg-(--surface-panel) border-b border-(--border-hairline) px-3 py-2 font-medium text-(--text-secondary)">{category}</td>
                     {values.map((value, index) => (
                       <td
                         key={sessionIds[index]}
@@ -181,7 +182,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
                 </td>
               </tr>
               <tr>
-                <td className="px-3 py-2 align-top font-medium text-(--text-secondary)">Routes</td>
+                <td className="sticky left-0 z-10 bg-(--surface-panel) px-3 py-2 align-top font-medium text-(--text-secondary)">Routes</td>
                 {reports.map((report, index) => {
                   const routes = report.visitedRoutes ?? [];
                   return (

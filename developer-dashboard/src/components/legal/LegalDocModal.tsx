@@ -15,7 +15,7 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
 
   return (
     <Modal isOpen onClose={onClose} titleId="legal-doc-title" maxWidthClassName="max-w-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-(--border-hairline) px-4 py-3 sm:px-5">
+      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:gap-4 sm:px-5">
         <div className="min-w-0">
           <h3 id="legal-doc-title" className="text-sm font-semibold text-(--text-primary)">
             {doc.title}
@@ -25,16 +25,15 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
         <button
           onClick={onClose}
           aria-label="Close"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          className="touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
         >
-          <X className="h-5 w-5" aria-hidden="true" />
+          <X className="h-5 w-5 shrink-0" aria-hidden="true" />
         </button>
       </div>
 
-      <div
-        tabIndex={0}
-        className="max-h-[60vh] space-y-5 overflow-y-auto px-4 py-4 sm:px-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-inset"
-      >
+      {/* Scroll is owned by the Modal panel — a nested max-h here would double-scroll. */}
+      <div className="space-y-5 px-3 py-4 sm:px-5">
+
         {doc.sections.map((section) => (
           <section key={section.heading} className="space-y-2">
             <h4 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-(--text-primary)">
@@ -61,8 +60,8 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
         ))}
       </div>
 
-      <div className="flex justify-end border-t border-(--border-hairline) px-4 py-3 sm:px-5">
-        <Button variant="secondary" size="sm" onClick={onClose}>
+      <div className="sticky bottom-0 flex justify-end border-t border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:px-5">
+        <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={onClose}>
           Close
         </Button>
       </div>

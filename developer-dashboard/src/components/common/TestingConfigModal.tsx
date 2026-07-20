@@ -65,7 +65,7 @@ export default function TestingConfigModal({
         </button>
       </div>
 
-      <div className="flex border-b border-(--border-hairline) px-2" role="tablist" aria-label="Configuration sections">
+      <div className="scroll-rail flex border-b border-(--border-hairline) px-2" role="tablist" aria-label="Configuration sections">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -74,7 +74,7 @@ export default function TestingConfigModal({
             aria-selected={activeTab === id}
             aria-controls={`config-panel-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors font-sans ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors font-sans ${
               activeTab === id
                 ? 'border-(--text-primary) text-(--text-primary)'
                 : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
@@ -93,7 +93,7 @@ export default function TestingConfigModal({
         ))}
       </div>
 
-      <div className="max-h-[60vh] min-h-[260px] overflow-y-auto p-4">
+      <div className="min-h-[240px] p-3 sm:p-4">
         {activeTab === 'infiltration' && (
           <div role="tabpanel" id="config-panel-infiltration" aria-labelledby="config-tab-infiltration" className="space-y-4">
             <InfiltrationProfileSelector profile={profile} onProfileChange={onProfileChange} />
@@ -124,7 +124,7 @@ export default function TestingConfigModal({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-(--border-hairline) px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) px-4 py-3">
         <span className="text-[11px] text-(--text-tertiary) font-sans">Applied on the next run.</span>
         <button
           onClick={onClose}

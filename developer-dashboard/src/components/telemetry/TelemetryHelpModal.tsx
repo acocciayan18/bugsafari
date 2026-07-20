@@ -86,7 +86,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         title="What do these tabs show?"
-        className="mr-3 grid h-6 w-6 shrink-0 place-items-center rounded-full text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary)"
+        className="touch-target mr-2 grid h-6 w-6 shrink-0 place-items-center rounded-full text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) sm:mr-3"
       >
         <HelpCircle className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
       </button>
@@ -95,9 +95,9 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         <div
           role="dialog"
           aria-label="Telemetry panel guide"
-          className="animate-in fade-in slide-in-from-top-1 absolute right-2 top-full z-50 mt-2 mb-4 max-h-[calc(100vh-6rem)] w-[min(24rem,calc(100vw-3rem))] origin-top-right overflow-y-auto rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl duration-150"
+          className="custom-scrollbar animate-in fade-in slide-in-from-top-1 absolute right-0 top-full z-50 mt-2 mb-4 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-2rem))] origin-top-right overflow-y-auto overscroll-contain rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl duration-150 sm:right-2"
         >
-          <div className="flex gap-1 border-b border-(--border-hairline) px-2 pt-2" role="tablist">
+          <div className="scroll-rail flex gap-1 border-b border-(--border-hairline) px-2 pt-2" role="tablist">
             {TOPICS.map((topic) => {
               const TopicIcon = topic.icon;
               const isActive = topic.id === activeId;
@@ -105,7 +105,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
                 <button
                   key={topic.id}
                   onClick={() => setActiveId(topic.id)}
-                  className={`flex items-center gap-1.5 rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
+                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
                     isActive
                       ? 'border-(--text-primary) text-(--text-primary)'
                       : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
@@ -113,19 +113,19 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
                   role="tab"
                   aria-selected={isActive}
                 >
-                  <TopicIcon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                  <TopicIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                   {topic.label}
                 </button>
               );
             })}
           </div>
 
-          <div key={active.id} className="animate-fade-in space-y-3 px-4 py-3.5" role="tabpanel">
+          <div key={active.id} className="animate-fade-in space-y-3 px-3 py-3.5 sm:px-4" role="tabpanel">
             <div className="flex items-start gap-2.5">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-(--surface-inset) text-(--text-primary)">
                 <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
               </span>
-              <p className="text-body-sm leading-5 text-(--text-secondary)">{active.what}</p>
+              <p className="min-w-0 text-body-sm leading-5 text-(--text-secondary)">{active.what}</p>
             </div>
 
             <div>
@@ -157,7 +157,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
             </div>
           </div>
 
-          <div className="border-t border-(--border-hairline) px-4 py-1.5">
+          <div className="border-t border-(--border-hairline) px-3 py-1.5 sm:px-4">
             <p className="text-caption text-(--text-disabled)">Press ESC to close</p>
           </div>
         </div>
