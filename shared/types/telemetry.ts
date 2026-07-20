@@ -8,7 +8,7 @@ import type { FindingAttribution } from './bug.js';
 export type TelemetryType = 'ACTION' | 'NETWORK' | 'EXCEPTION' | 'HEURISTIC_SCORE' | 'BUG';
 
 // ─────────────────────────────────────────────────────────────
-// ♿ ACCESSIBILITY (WCAG) TELEMETRY — isolated from the fault pipeline
+//  ACCESSIBILITY (WCAG) TELEMETRY — isolated from the fault pipeline
 // ─────────────────────────────────────────────────────────────
 
 // Dedicated Socket.IO channel so WCAG findings never mix with the generic
@@ -51,7 +51,7 @@ export type SemanticRole =
   | 'UNKNOWN';
 
 // ─────────────────────────────────────────────────────────────
-// 🧠 BUGSAFARI AI EXPERT SYSTEM TYPE GATES
+//  BUGSAFARI AI EXPERT SYSTEM TYPE GATES
 // ─────────────────────────────────────────────────────────────
 
 export interface IntelligentDiagnosis {
@@ -86,7 +86,7 @@ export interface TelemetryMeta {
   blockedUrl?: string;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
-  // 🧠 Optional parameter allowing the React client state logic to read inference mappings
+  //  Optional parameter allowing the React client state logic to read inference mappings
   aiDiagnostics?: IntelligentDiagnosis;
   // Deterministic classification + scenario/step attribution for a fault event.
   attribution?: FindingAttribution;

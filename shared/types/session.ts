@@ -13,6 +13,7 @@ import type { RunTerminationOutcome } from './termination.js';
 export type RunLifecycleStatus =
   | 'IDLE'          // no active run
   | 'QUEUED'        // job waiting in the distributed queue; no engine yet
+  | 'STARTING'      // room reserved, engine booting; owner may attach already
   | 'RUNNING'       // engine executing, owner attached
   | 'PAUSING'       // pause requested; awaiting in-flight tasks to settle (transient)
   | 'PAUSED'        // paused by operator

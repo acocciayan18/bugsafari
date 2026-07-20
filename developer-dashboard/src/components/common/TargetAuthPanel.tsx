@@ -109,6 +109,13 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
   const set = <K extends keyof TargetAuthDraft>(key: K, value: TargetAuthDraft[K]): void =>
     onChange({ ...draft, [key]: value });
 
+  // Switching method drops the other mode's secrets rather than parking them in
+  // memory for the tab's lifetime. toTargetAuthConfig already ignores them.
+  const setMethod = (method: TargetAuthMethod): void =>
+    onChange(method === 'credentials'
+      ? { ...draft, method, storageState: '' }
+      : { ...draft, method, username: '', password: '' });
+
   const incomplete = isTargetAuthIncomplete(draft);
 
   return (
@@ -144,7 +151,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                 role="radio"
                 aria-checked={draft.method === option.id}
                 disabled={disabled}
-                onClick={() => set('method', option.id)}
+                onClick={() => setMethod(option.id)}
                 className={`flex-1 h-9 rounded-lg border px-3 text-[11px] font-bold uppercase tracking-wider font-sans transition-colors disabled:opacity-50 ${
                   draft.method === option.id
                     ? 'border-(--border-focus) bg-(--surface-inset) text-(--text-primary)'

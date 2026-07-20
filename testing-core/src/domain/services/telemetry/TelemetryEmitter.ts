@@ -75,7 +75,7 @@ export class TelemetryEmitter {
   public startFrameCaptureLoop(page: Page): void {
     this.page = page;
 
-    // 🚀 Start the independent 33 ms frame loop the instant the page object
+    //  Start the independent 33 ms frame loop the instant the page object
     // exists — BEFORE page.goto. The page is at about:blank, so screenshots
     // succeed and emit valid (blank) JPEGs immediately, clearing the dashboard's
     // 30 s "no live frame" handshake within ~33 ms regardless of how long — or

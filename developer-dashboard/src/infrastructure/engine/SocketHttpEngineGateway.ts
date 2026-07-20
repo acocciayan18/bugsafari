@@ -19,6 +19,13 @@ export class SocketHttpEngineGateway implements EngineGateway {
   constructor(apiBaseUrl: string, socketUrl: string) {
     this.http = new EngineHttpClient(apiBaseUrl);
     this.connection = new SocketConnectionManager(apiBaseUrl, socketUrl);
+    // Socket attach exhausted its retries — ask the server directly rather than
+    // leaving the dashboard on a stream it never joined.
+    this.connection.onAttachExhausted(() => {
+      void this.fetchActiveSession()
+        .then((snapshot) => { if (snapshot) this.connection.emitSessionSnapshot(snapshot); })
+        .catch((error) => console.error('[Gateway] Snapshot fallback failed:', error));
+    });
   }
 
   public setAuthToken(token: string | null): void {
@@ -93,7 +100,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
    * Used for timeout cleanup to ensure backend terminates orphaned processes.
    */
   public async forceStop(): Promise<void> {
-    console.log('[Gateway] 🔴 forceStop called - attempting cleanup');
+    console.log('[Gateway]  forceStop called - attempting cleanup');
 
     // First, try socket emit (most reliable when connected)
     if (this.connection.connectionState === 'connected') {
@@ -111,7 +118,7 @@ export class SocketHttpEngineGateway implements EngineGateway {
    * queued job can only be removed through the queue-aware stop endpoint.
    */
   public cancelQueuedRun(): Promise<StopRunResult> {
-    console.log('[Gateway] 🚫 cancelQueuedRun called for runId:', this.runId);
+    console.log('[Gateway]  cancelQueuedRun called for runId:', this.runId);
     return this.http.stopRun(this.runId);
   }
 

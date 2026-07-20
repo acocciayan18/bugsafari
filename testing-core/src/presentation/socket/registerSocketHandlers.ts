@@ -59,6 +59,40 @@ function socketUserId(socket: Socket): string | null {
 }
 
 export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSupport): void {
+  // Queue-mode abandonment. A run executing in a worker is invisible to this
+  // process's SessionManager, so its disconnect-grace logic never fires and a
+  // closed tab left the worker burning its full timebox. Mirror that grace here
+  // and stop the run over the control bridge when nobody comes back.
+  const queueGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const cancelQueueGrace = (runId: string): void => {
+    const timer = queueGraceTimers.get(runId);
+    if (!timer) return;
+    clearTimeout(timer);
+    queueGraceTimers.delete(runId);
+    console.log(`[Socket] Owner returned to run ${runId} — abandonment timer cancelled.`);
+  };
+
+  const armQueueGrace = (runId: string): void => {
+    if (!queueSupport || queueGraceTimers.has(runId)) return;
+    const timer = setTimeout(() => {
+      queueGraceTimers.delete(runId);
+      void (async () => {
+        // Re-check occupancy: a client may have rejoined the room without
+        // passing through the cancel path (fresh socket, new subscribe).
+        const watchers = await io.in(`run:${runId}`).fetchSockets();
+        if (watchers.length > 0) return;
+        const entry = await queueSupport.runRegistry.findByRunId(runId).catch(() => null);
+        if (!entry) return;
+        console.log(`[Socket] Run ${runId} abandoned past grace — stopping the worker.`);
+        queueSupport.controlPublisher.publish('stop', runId);
+      })().catch((error) => console.error('[Socket] Abandonment stop failed:', error));
+    }, sessionManager.graceMs);
+    timer.unref();
+    queueGraceTimers.set(runId, timer);
+    console.log(`[Socket] Run ${runId} has no watchers — abandonment timer armed (${sessionManager.graceMs}ms).`);
+  };
+
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] dashboard connected ${socket.id}`);
 
@@ -92,8 +126,9 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       if (runId && (await ownsQueuedRun(runId))) {
         void socket.join(`run:${runId}`);
         socket.data.runId = runId;
+        cancelQueueGrace(runId);
       } else if (runId) {
-        console.warn(`[Socket] ❌ queue-subscribe rejected run binding: ${socket.id} does not own run ${runId}`);
+        console.warn(`[Socket]  queue-subscribe rejected run binding: ${socket.id} does not own run ${runId}`);
       }
       // Send the current place in line immediately, without waiting for the next
       // queue transition to fire a broadcast.
@@ -144,14 +179,14 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       if (controlPublisher) {
         const runId = socketRunId();
         if (!(await ownsQueuedRun(runId))) {
-          console.warn(`[Socket] ❌ ${label} rejected: ${socket.id} does not own run ${runId ?? '(none)'}`);
+          console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runId ?? '(none)'}`);
           return;
         }
         controlPublisher.publish(command, runId);
         return;
       }
       if (!ownsActiveRun()) {
-        console.warn(`[Socket] ❌ ${label} rejected: ${socket.id} does not own the active run`);
+        console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own the active run`);
         return;
       }
       console.log(`[Socket] Session ${label} manually`);
@@ -214,6 +249,14 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       // configurable window so a refresh / transient drop can reconnect instead
       // of losing the run. Only the LAST owner socket leaving arms the timer.
       sessionManager.handleDisconnect(socket.id);
+
+      // Distributed equivalent: the run lives in a worker, so SessionManager has
+      // nothing to grace. Arm our own once the run room is empty.
+      const runId = socketRunId();
+      if (!queueSupport || !runId) return;
+      void io.in(`run:${runId}`).fetchSockets()
+        .then((watchers) => { if (watchers.length === 0) armQueueGrace(runId); })
+        .catch((error) => console.error('[Socket] Abandonment check failed:', error));
     });
   });
 }

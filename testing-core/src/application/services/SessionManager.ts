@@ -44,6 +44,12 @@ export interface BeginRunParams {
   engine: EngineControl;
 }
 
+export interface ReserveRunParams extends Omit<BeginRunParams, 'engine'> {
+  // Invoked if the engine never calls beginRun before the reservation expires, so
+  // the caller can release whatever admission slot it claimed.
+  onAbandoned?: () => void;
+}
+
 // Env-tunable knobs (all optional; safe defaults).
 const GRACE_MS = readPositiveInt(process.env.BUGSAFARI_SESSION_GRACE_MS, 60_000);
 const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_INTERVAL_MS, 15_000);
@@ -58,6 +64,10 @@ const HEALTH_CRASH_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEAL
 // server failures are still caught browser-side (5xx / requestfailed / pageerror).
 // Enable only where the engine process and the browser share the target's network.
 const HEALTH_MONITOR_ENABLED = process.env.BUGSAFARI_TARGET_HEALTH_MONITOR?.trim().toLowerCase() === 'on';
+// How long a reserved room may wait for its engine to call beginRun before the
+// run is declared stillborn. Must exceed a cold Playwright launch (30s race in
+// PlaywrightBrowserEngine) with headroom for the pre-launch imports.
+const RESERVATION_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_RESERVATION_TIMEOUT_MS, 45_000);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const CONSOLE_BUFFER_CAP = 200;
@@ -90,6 +100,11 @@ interface ActiveRun {
   terminationReason: string | null;
   health: TargetHealthMonitor;
   graceTimer: ReturnType<typeof setTimeout> | null;
+  // Armed while STARTING; disarmed by beginRun. Expiry declares the run stillborn.
+  reservationTimer: ReturnType<typeof setTimeout> | null;
+  // A stop issued while STARTING has no engine to reach — remembered so beginRun
+  // honours it the moment the real engine attaches (no zombie run).
+  pendingStop: boolean;
   // Replay ring buffers (bounded).
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
@@ -147,19 +162,91 @@ export class SessionManager implements TelemetryRecorder {
 
   // ── Run lifecycle ────────────────────────────────────────────────────────
 
+  /**
+   * Create the run's room and replay buffers BEFORE the engine exists, so the
+   * HTTP response can be sent knowing a client that attaches immediately will
+   * join a room that is already there. Without this the client raced the engine's
+   * async boot, got `no-active-session`, and stayed deaf for the entire run.
+   */
+  public reserveRun(params: ReserveRunParams): void {
+    if (this.run) this.teardownRun();
+
+    this.run = this.createRun({
+      ...params,
+      // Placeholder control surface: a stop arriving during boot is recorded
+      // rather than dropped, and replayed against the real engine in beginRun.
+      engine: {
+        stop: () => {
+          if (this.run?.runId === params.runId) this.run.pendingStop = true;
+        },
+        getElapsedActiveTimeMs: () => 0,
+      },
+    }, 'STARTING');
+
+    this.run.reservationTimer = setTimeout(() => {
+      const run = this.run;
+      if (!run || run.runId !== params.runId || run.status !== 'STARTING') return;
+      console.error(`[SessionManager] Run ${run.runId} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
+      this.emitFailure(`Engine failed to start within ${Math.round(RESERVATION_TIMEOUT_MS / 1000)}s. The session was cancelled and all resources released.`);
+      this.endRun('CRASHED');
+      params.onAbandoned?.();
+    }, RESERVATION_TIMEOUT_MS);
+
+    this.gateway?.setRoom(this.run.room);
+    this.gateway?.setRecorder(this);
+    console.log(`[SessionManager] Run ${params.runId} reserved (room ready, awaiting engine).`);
+  }
+
   public beginRun(params: BeginRunParams): void {
+    // Upgrade a reservation in place: same room, same buffers, so telemetry
+    // emitted during boot is not discarded and attached sockets stay attached.
+    const reserved = this.run;
+    if (reserved && reserved.runId === params.runId && reserved.status === 'STARTING') {
+      if (reserved.reservationTimer) {
+        clearTimeout(reserved.reservationTimer);
+        reserved.reservationTimer = null;
+      }
+      reserved.engine = params.engine;
+      reserved.timeboxMs = params.timeboxMs;
+      reserved.userId = params.userId;
+      reserved.ownerKey = guestOwnerKey(params.userId, params.runId);
+      reserved.ownerType = params.userId ? 'authenticated' : 'guest';
+      reserved.status = 'RUNNING';
+      if (HEALTH_MONITOR_ENABLED) reserved.health.start();
+      console.log(`[SessionManager] Run ${params.runId} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
+      // Honour a stop the operator issued while the engine was still booting.
+      if (reserved.pendingStop) {
+        reserved.pendingStop = false;
+        console.log(`[SessionManager] Run ${params.runId} had a stop pending from boot — applying now.`);
+        void this.stopByOperator();
+      }
+      return;
+    }
+
     // Defensive: never leak a previous run's timers/monitors if begin is called
     // without a matching end (shouldn't happen under the 429 admission guard).
     if (this.run) {
       this.teardownRun();
     }
 
+    this.run = this.createRun(params, 'RUNNING');
+    this.lastTerminal = null;
+    this.gateway?.setRoom(this.run.room);
+    this.gateway?.setRecorder(this);
+    if (HEALTH_MONITOR_ENABLED) this.run.health.start();
+    console.log(`[SessionManager] Run ${params.runId} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
+  }
+
+  private createRun(params: BeginRunParams, status: RunLifecycleStatus): ActiveRun {
     const room = `run:${params.runId}`;
     const health = new TargetHealthMonitor(params.targetUrl, HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, {
       onCrash: (failures) => void this.onTargetCrash(failures),
     }, HEALTH_CRASH_THRESHOLD);
 
-    this.run = {
+    // A fresh run supersedes any previously retained final state.
+    this.lastTerminal = null;
+
+    return {
       runId: params.runId,
       userId: params.userId,
       ownerKey: guestOwnerKey(params.userId, params.runId),
@@ -169,7 +256,7 @@ export class SessionManager implements TelemetryRecorder {
       timeboxMs: params.timeboxMs,
       startedAt: Date.now(),
       engine: params.engine,
-      status: 'RUNNING',
+      status,
       room,
       ownerSocketIds: new Set<string>(),
       manualPaused: false,
@@ -178,6 +265,8 @@ export class SessionManager implements TelemetryRecorder {
       terminationReason: null,
       health,
       graceTimer: null,
+      reservationTimer: null,
+      pendingStop: false,
       telemetry: [],
       reports: [],
       incidents: [],
@@ -185,18 +274,29 @@ export class SessionManager implements TelemetryRecorder {
       browserConsole: [],
       lastFrame: null,
     };
+  }
 
-    // A fresh run supersedes any previously retained final state.
-    this.lastTerminal = null;
+  // Terminal failure notice for a run that never produced engine telemetry —
+  // gives the dashboard the same EXCEPTION + IDLE handshake a real run ends with,
+  // so no client is ever left waiting on a stream that will never open.
+  private emitFailure(message: string): void {
+    this.gateway?.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'EXCEPTION',
+      meta: { message },
+    });
+    this.gateway?.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: { actionExecuted: 'engine-status', message: 'IDLE' },
+    });
+  }
 
-    // Scope the wire to this run's room and start buffering for replay.
-    this.gateway?.setRoom(room);
-    this.gateway?.setRecorder(this);
-    // Only arm the out-of-browser reachability kill-switch when explicitly enabled
-    // (see HEALTH_MONITOR_ENABLED) — otherwise a container network mismatch could
-    // crash a perfectly healthy run.
-    if (HEALTH_MONITOR_ENABLED) health.start();
-    console.log(`[SessionManager] Run ${params.runId} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
+  /** Publish a terminal failure for the active run and release it. */
+  public failRun(message: string): void {
+    if (!this.run) return;
+    this.emitFailure(message);
+    this.endRun('CRASHED');
   }
 
   /** Called from the run's finally block when the engine loop returns/throws. */
@@ -220,6 +320,10 @@ export class SessionManager implements TelemetryRecorder {
     if (this.run.graceTimer) {
       clearTimeout(this.run.graceTimer);
       this.run.graceTimer = null;
+    }
+    if (this.run.reservationTimer) {
+      clearTimeout(this.run.reservationTimer);
+      this.run.reservationTimer = null;
     }
     this.gateway?.setRoom(null);
     this.gateway?.setRecorder(null);
@@ -289,7 +393,7 @@ export class SessionManager implements TelemetryRecorder {
     run.terminationReason = event.meta.message ?? null;
   }
 
-  // Track PAUSED↔RUNNING from the engine's own pause/resume telemetry so a
+  // Track PAUSEDRUNNING from the engine's own pause/resume telemetry so a
   // reattaching client sees the true state even after an operator pause.
   private observeStatusFrom(event: TelemetryEvent): void {
     const run = this.run;
@@ -326,7 +430,7 @@ export class SessionManager implements TelemetryRecorder {
     if (run.status === 'INTERRUPTED') {
       run.status = run.manualPaused ? 'PAUSED' : 'RUNNING';
       void this.persistStatus(run.status);
-      this.emitMilestone(`🔌 Operator reconnected — session restored (${run.status.toLowerCase()}).`);
+      this.emitMilestone(` Operator reconnected — session restored (${run.status.toLowerCase()}).`);
     }
 
     return { attached: true, snapshot: this.buildSnapshot(run) };
@@ -402,11 +506,13 @@ export class SessionManager implements TelemetryRecorder {
     run.ownerSocketIds.delete(socketId);
 
     if (run.ownerSocketIds.size > 0) return; // another tab/socket still attached
-    if (run.status !== 'RUNNING' && run.status !== 'PAUSED') return;
+    // STARTING included: an operator who closes the tab mid-boot must not leave a
+    // browser launching into nothing once the engine finally comes up.
+    if (run.status !== 'RUNNING' && run.status !== 'PAUSED' && run.status !== 'STARTING') return;
 
     run.status = 'INTERRUPTED';
     void this.persistStatus('INTERRUPTED');
-    this.emitMilestone(`⚠️ Operator disconnected — keeping session alive for ${Math.round(GRACE_MS / 1000)}s to allow reconnect.`);
+    this.emitMilestone(`️ Operator disconnected — keeping session alive for ${Math.round(GRACE_MS / 1000)}s to allow reconnect.`);
     console.log(`[SessionManager] Run ${run.runId} INTERRUPTED; grace timer armed (${GRACE_MS}ms).`);
 
     run.graceTimer = setTimeout(() => {
@@ -462,6 +568,14 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run || typeof run.engine.stop !== 'function') return;
     if (run.status === 'STOPPING') return; // idempotent against duplicate stop clicks
+    // Booting: there is no engine to stop yet. Stay STARTING and record the intent
+    // so beginRun applies it the instant the engine attaches — changing status here
+    // would strand the run outside the reservation-upgrade path.
+    if (run.status === 'STARTING') {
+      run.pendingStop = true;
+      this.emitEngineAction('engine-stopping', 'Stop requested during startup — Safari will terminate as soon as the engine comes up.');
+      return;
+    }
     run.status = 'STOPPING';
     this.emitEngineAction('engine-stopping', 'Stopping Safari — flushing telemetry and pending writes…');
     await Promise.resolve(run.engine.stop('operator'));
@@ -527,7 +641,7 @@ export class SessionManager implements TelemetryRecorder {
 
     // Broadcast + buffer the forensic report and a terminal milestone for the dashboard.
     this.gateway?.emitForensicReport(crashReport);
-    this.emitMilestone(`🛑 ${reason} Saving forensic report and terminating session.`);
+    this.emitMilestone(` ${reason} Saving forensic report and terminating session.`);
 
     // Graceful termination: stop() unwinds the engine's run() whose finally calls
     // endRun() → teardownRun(), releasing the health monitor, grace timer, room,

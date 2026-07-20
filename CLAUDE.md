@@ -44,12 +44,12 @@ Use project dependency file for correct versions.
 
 Avoid redundancy unless improves usability.
 
-## 🌍 1. System Context
+##  1. System Context
 BugSafari is an Autonomous Exploratory Testing Engine for SPAs. 
 - Tech: React 19/Vite, Node.js/Express, Playwright, Socket.IO, MongoDB Atlas, Podman.
 - Mechanics: It traverses the DOM via Playwright, scores elements using a Single-Layer Perceptron (Delta Rule), prevents loops using Structural DOM Hashing, applies heuristic data fuzzing, and records crashes via a 20-step Circular Action Buffer.
 
-## 🏗️ 2. Architecture (Monorepo)
+## ️ 2. Architecture (Monorepo)
 1. `developer-dashboard/`: Frontend Watchtower (Port `5173`).
 2. `testing-core/`: Backend Engine & Scenarios (Port `3000`).
 3. `shared/`: Strict TypeScript data contracts bridging both sides.

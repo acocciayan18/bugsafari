@@ -243,7 +243,7 @@ export const dataFuzzer: StressScenario = {
 
     // Classify the input element using heuristic-driven classifier
     const category = classifyInputElement(target);
-    console.log(`🔍 [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
+    console.log(` [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
     const fuzzLabel = resolveElementLabel(target);
 
     console.log(`[StressScenario:DataFuzzer] Starting adaptive fuzzing on '${selector}' (${tagName})`);

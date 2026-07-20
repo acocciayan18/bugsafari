@@ -472,7 +472,7 @@ const isDisabled = (element) => {
           element.hasAttribute('data-dismiss') ||
           element.hasAttribute('data-bs-dismiss') ||
           DISMISS_RE.test([className, id, ariaLabel, name].join(' ')) ||
-          /^\\s*(×|✕|✖|╳|x|close|cancel|dismiss)\\s*$/i.test(fullText);
+          /^\\s*(×|✕||╳|x|close|cancel|dismiss)\\s*$/i.test(fullText);
 
         return [{
           element,

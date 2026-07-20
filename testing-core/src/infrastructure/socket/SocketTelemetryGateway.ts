@@ -87,7 +87,6 @@ export class SocketTelemetryGateway implements TelemetryGateway {
       // full copy, not a degraded one missing the playbook/fix.
       reproductionPlaybook: report.reproductionPlaybook,
       advice: report.advice,
-      screenshot: report.screenshot,
     });
   }
 

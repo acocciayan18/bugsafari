@@ -423,8 +423,8 @@ export class ExplorationEngine {
       meta: {
         actionExecuted: 'reproduction-verified',
         message: outcome.reproduced
-          ? `🔁 Reproduced after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`
-          : `🔁 Did not reproduce after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`,
+          ? ` Reproduced after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`
+          : ` Did not reproduce after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`,
       },
     });
   }
@@ -545,7 +545,7 @@ export class ExplorationEngine {
         type: 'ACTION',
         meta: {
           actionExecuted: 'timebox-completed',
-          message: `⏱️ Time limit reached: ${this.timeboxMs / 60000} min timebox completed - exploration ended normally`,
+          message: `️ Time limit reached: ${this.timeboxMs / 60000} min timebox completed - exploration ended normally`,
         },
       });
 
@@ -692,7 +692,7 @@ export class ExplorationEngine {
           reproductionSteps,
           attribution,
         });
-        emitter.emitMilestone(`🧭 Navigation defect: ${defect.message}`);
+        emitter.emitMilestone(` Navigation defect: ${defect.message}`);
         this.registerConfirmedBug({
           bugId: defect.bugId,
           type: 'NAVIGATION',
@@ -755,11 +755,11 @@ export class ExplorationEngine {
     });
 
     // Operator visibility: announce which testing strategies are active this run.
-    emitter.emitMilestone(`🎛️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
+    emitter.emitMilestone(`️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
 
     // Announce the Strict Page Boundary Lock so the operator sees the URL is pinned.
     if (this.strictUrlLock) {
-      emitter.emitMilestone(`🔒 Strict Page Boundary Lock enabled — exploration confined to ${targetUrl}`);
+      emitter.emitMilestone(` Strict Page Boundary Lock enabled — exploration confined to ${targetUrl}`);
     }
 
     // Warm-start the perceptron from the latest brain for this URL BEFORE creating the
@@ -769,7 +769,7 @@ export class ExplorationEngine {
     this.sessionId = await this.createSession(targetUrl);
     this.lastSessionId = this.sessionId;
 
-    // 🕐 Start timing interval that accumulates active time (only when NOT paused)
+    //  Start timing interval that accumulates active time (only when NOT paused)
     // This replaces the fixed timeout approach with accumulative time tracking
     // Also emits TIME_REMAINING telemetry to sync with frontend
     this.startTimingInterval(telemetry);
@@ -866,7 +866,7 @@ export class ExplorationEngine {
     const attachSecondaryPage = (popup: Page): void => {
       popup.on('popup', attachSecondaryPage);
       void stabilityMonitor.attachSecondaryPage(popup).catch(() => undefined);
-      emitter.emitMilestone(`🪟 Monitoring app-opened tab: ${popup.url() || 'about:blank'}`);
+      emitter.emitMilestone(` Monitoring app-opened tab: ${popup.url() || 'about:blank'}`);
     };
 
     const attachPageListeners = (p: Page): void => {
@@ -881,12 +881,12 @@ export class ExplorationEngine {
       p.on('popup', attachSecondaryPage);
     };
 
-    // 🏁 Safari Initialized (milestone)
-    emitter.emitMilestone('🏁 Safari Initialized');
+    //  Safari Initialized (milestone)
+    emitter.emitMilestone(' Safari Initialized');
 
     attachPageListeners(page);
 
-    // 🚀 Start the independent 33 ms frame loop the instant the page object exists.
+    //  Start the independent 33 ms frame loop the instant the page object exists.
     emitter.startFrameCaptureLoop(page);
 
     // Deepest recovery rung: replace a dead/blank page with a fresh, fully re-wired
@@ -954,10 +954,10 @@ export class ExplorationEngine {
       // This helps the frontend understand the engine is processing
       emitter.emit('ACTION', {
         actionExecuted: 'browser-launched',
-        message: `🚀 Browser launched, navigating to ${targetUrl}...`,
+        message: ` Browser launched, navigating to ${targetUrl}...`,
       });
 
-      // 🔒 Proactive Strict Page Boundary Lock: arm the navigation guard BEFORE
+      //  Proactive Strict Page Boundary Lock: arm the navigation guard BEFORE
       // the first goto so the init script is present for the initial document and
       // the route interceptor is live for the very first navigation. Blocks any
       // main-frame navigation off the locked URL before it commits (no reactive
@@ -987,7 +987,7 @@ export class ExplorationEngine {
 
       await this.ensureDomReady(page, emitter);
 
-      // 🛡️ Initialize background stability/console monitoring (heartbeat + console tab).
+      // ️ Initialize background stability/console monitoring (heartbeat + console tab).
       this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
         page,
         (bug) => this.registerConfirmedBug(bug),
@@ -1051,7 +1051,7 @@ export class ExplorationEngine {
       runResult = await loop.execute(page, maxSteps);
       return runResult;
     } finally {
-      // 🧹 Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
+      //  Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
         this.cleanupStabilityMonitor();
         this.cleanupStabilityMonitor = null;
@@ -1063,10 +1063,10 @@ export class ExplorationEngine {
       this.reproductionProbe?.dispose();
       this.reproductionProbe = null;
 
-      // 🚀 Stop frame capture loop
+      //  Stop frame capture loop
       emitter.stopFrameCaptureLoop();
 
-      // 🕐 Stop timing interval
+      //  Stop timing interval
       this.stopTimingInterval();
 
       // CRITICAL: Emit explicit IDLE status to prevent zombie backend processes
@@ -1256,7 +1256,7 @@ export class ExplorationEngine {
       if (prior && Object.keys(prior.weights).length > 0) {
         this.scorer.importBrainState(prior);
         console.log(`[ExplorationEngine] Warm-started brain for ${targetUrl} (bias=${prior.bias.toFixed(3)})`);
-        emitter.emitMilestone('🧠 Warm-started brain from a prior session for this URL.');
+        emitter.emitMilestone(' Warm-started brain from a prior session for this URL.');
       }
     } catch (error) {
       console.error('[ExplorationEngine] Brain warm-start failed:', error);

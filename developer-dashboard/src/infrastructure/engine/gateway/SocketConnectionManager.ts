@@ -18,6 +18,9 @@ type QueueUpdateHandler = (update: QueueUpdate) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
+// Backoff for re-presenting the run token when the room isn't there yet.
+const ATTACH_RETRY_DELAYS_MS = [250, 500, 1000, 2000];
+
 /**
  * Socket.IO lifecycle + event binding/dispatch for the engine gateway. Owns the
  * socket, connection state, the bind/unbind blocks, every server→client handler,
@@ -49,6 +52,9 @@ export class SocketConnectionManager {
   private reconnectingHandler: ReconnectingHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
   private queueUpdateHandler: QueueUpdateHandler | null = null;
+  // Invoked when every attach retry failed — the coordinator falls back to the
+  // HTTP snapshot so a run we own is never lost to a room we couldn't join.
+  private attachExhaustedHandler: (() => void) | null = null;
   // jobId + runId of the enqueued run this client is tracking; re-sent on every
   // (re)connect so a drop during the queued phase rejoins the position stream.
   private queueSubscription: QueueSubscribeRequest | null = null;
@@ -87,11 +93,29 @@ export class SocketConnectionManager {
    * and explicitly right after a fresh run starts — the socket may already be
    * connected then, so it wouldn't otherwise pick up the newly-created room.
    */
-  public reattach(): void {
-    this.socket.emit(SESSION_ATTACH_EVENT, { runId: this.runId ?? undefined }, (ack: SessionAttachAck) => {
-      if (ack?.attached && ack.snapshot) {
-        this.sessionSnapshotHandler?.(ack.snapshot);
+  public reattach(attempt = 0): void {
+    const runId = this.runId;
+    this.socket.emit(SESSION_ATTACH_EVENT, { runId: runId ?? undefined }, (ack: SessionAttachAck) => {
+      if (ack?.attached) {
+        if (ack.snapshot) this.sessionSnapshotHandler?.(ack.snapshot);
+        return;
       }
+      // A failed attach used to be swallowed, leaving the client silently outside
+      // the run room for the rest of the session. Retry briefly: the run may be
+      // moments from existing (or, in queue mode, still being handed to a worker).
+      if (!runId || ack?.reason === 'not-owner') {
+        console.warn('[Gateway] Attach rejected:', ack?.reason ?? 'unknown');
+        return;
+      }
+      if (attempt >= ATTACH_RETRY_DELAYS_MS.length) {
+        console.warn(`[Gateway] Attach to run ${runId} gave up after ${attempt} retries (${ack?.reason ?? 'unknown'})`);
+        this.attachExhaustedHandler?.();
+        return;
+      }
+      // Late-joiner guard: the run token is still ours, so keep trying.
+      setTimeout(() => {
+        if (this.runId === runId) this.reattach(attempt + 1);
+      }, ATTACH_RETRY_DELAYS_MS[attempt]);
     });
   }
 
@@ -323,7 +347,15 @@ export class SocketConnectionManager {
   public onQueueUpdate(handler: QueueUpdateHandler): void {
     this.queueUpdateHandler = handler;
   }
+  public onAttachExhausted(handler: () => void): void {
+    this.attachExhaustedHandler = handler;
+  }
+  /** Route an out-of-band snapshot (HTTP fallback) through the normal handler. */
+  public emitSessionSnapshot(snapshot: ActiveSessionSnapshot): void {
+    this.sessionSnapshotHandler?.(snapshot);
+  }
   public removeAllListeners(): void {
+    this.attachExhaustedHandler = null;
     this.connectedHandler = null;
     this.telemetryHandler = null;
     this.forensicHandler = null;

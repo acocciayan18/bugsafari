@@ -71,7 +71,7 @@ export class BugFinderRunner {
       this.quarantined.add(finder.bugClass);
       this.deps.telemetry.emit('EXCEPTION', {
         actionExecuted: 'bug-finder-quarantined',
-        message: `🚫 Finder ${finder.bugClass} threw and is disabled for this run: ${
+        message: ` Finder ${finder.bugClass} threw and is disabled for this run: ${
           err instanceof Error ? err.message : String(err)
         }`,
       });
@@ -107,7 +107,7 @@ export class BugFinderRunner {
   private exhaustBudget(): void {
     this.budgetExhausted = true;
     this.deps.telemetry.emitMilestone(
-      `🧮 Finder budget reached (${this.deps.findingBudget} findings) — finder sweeps halted for this run.`,
+      ` Finder budget reached (${this.deps.findingBudget} findings) — finder sweeps halted for this run.`,
     );
   }
 }

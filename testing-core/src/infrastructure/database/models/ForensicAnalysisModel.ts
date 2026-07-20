@@ -57,10 +57,6 @@ const forensicAnalysisSchema = new Schema(
       type: Number,
       default: 0,
     },
-    screenshotCount: {
-      type: Number,
-      default: 0,
-    },
   },
   {
     timestamps: true,
@@ -83,7 +79,6 @@ export interface IForensicAnalysis extends Document {
   apiFailureCount: number;
   criticalErrorCount: number;
   jsExceptionCount: number;
-  screenshotCount: number;
   createdAt: Date;
   updatedAt: Date;
 }

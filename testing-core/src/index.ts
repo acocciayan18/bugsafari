@@ -23,6 +23,8 @@ import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadc
 import { TelemetryBridgeSubscriber } from './infrastructure/queue/telemetryBridge.js';
 import { ControlBridgePublisher } from './infrastructure/queue/controlBridge.js';
 import { RunRegistry } from './infrastructure/queue/RunRegistry.js';
+import { AuthVault } from './infrastructure/queue/AuthVault.js';
+import { reconcileRunRegistry } from './infrastructure/queue/registryReconciler.js';
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -62,7 +64,7 @@ sessionManager.initialize(telemetryGateway);
 // This ensures DB is ready before any auth requests are handled
 const dbReady = await connectDatabase();
 if (!dbReady) {
-  console.error('[BugSafari] ⚠️ Database connection failed - auth features may be unavailable');
+  console.error('[BugSafari] ️ Database connection failed - auth features may be unavailable');
 }
 
 const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
@@ -82,8 +84,10 @@ let queueStatusBroadcaster: QueueStatusBroadcaster | undefined;
 let telemetryBridge: TelemetryBridgeSubscriber | undefined;
 let controlPublisher: ControlBridgePublisher | undefined;
 let runRegistry: RunRegistry | undefined;
+let authVault: AuthVault | undefined;
+let reconcilerTimer: NodeJS.Timeout | undefined;
 if (taskQueue) {
-  console.log('[BugSafari] ⚑ BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
+  console.log('[BugSafari]  BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
   telemetryBridge = new TelemetryBridgeSubscriber(io);
   await telemetryBridge.start();
   queueStatusBroadcaster = new QueueStatusBroadcaster(io, taskQueue);
@@ -93,6 +97,21 @@ if (taskQueue) {
   // Redis run index + worker snapshots: lets a refreshed client rediscover and
   // resume its queued/active run even though it executes in a worker process.
   runRegistry = new RunRegistry();
+  // Encrypted single-use credential handoff. Null when BUGSAFARI_AUTH_KEY is
+  // unset — authenticated runs are then refused on the queue rather than
+  // downgraded to unauthenticated ones.
+  authVault = AuthVault.create() ?? undefined;
+
+  // Reconcile the Redis index against BullMQ so entries whose job vanished stop
+  // presenting as phantom sessions to /api/session/active.
+  const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+  const runReconciler = (): void => {
+    reconcileRunRegistry(runRegistry!, taskQueue, authVault)
+      .catch((error: unknown) => console.error('[BugSafari] Registry reconciler failed:', error));
+  };
+  reconcilerTimer = setInterval(runReconciler, RECONCILE_INTERVAL_MS);
+  reconcilerTimer.unref();
+  runReconciler();
 }
 
 // Register socket handlers now that optional queue support is resolved.
@@ -101,7 +120,7 @@ registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher && runRegi
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);
 registerSupportRoutes(app);
-registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry, controlPublisher, queueStatusBroadcaster);
+registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry, controlPublisher, queueStatusBroadcaster, authVault);
 
 // Terminal middleware — must stay last so every route's next(err) and every
 // unmatched /api path resolves to sanitized JSON instead of an HTML stack trace.
@@ -147,12 +166,14 @@ const shutdown = async (signal: string): Promise<void> => {
   console.log(`[BugSafari] Received ${signal}, shutting down gracefully...`);
   try {
     if (reaperTimer) clearInterval(reaperTimer);
+    if (reconcilerTimer) clearInterval(reconcilerTimer);
     await disconnectDatabase();
     console.log('[BugSafari] Database disconnected');
     await queueStatusBroadcaster?.close();
     await telemetryBridge?.close();
     await controlPublisher?.close();
     await runRegistry?.close();
+    await authVault?.close();
     await taskQueue?.close();
   } catch (err) {
     console.error('[BugSafari] Error during shutdown:', err);

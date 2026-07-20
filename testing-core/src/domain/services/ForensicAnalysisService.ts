@@ -45,18 +45,15 @@ export class ForensicAnalysisService {
           apiFailureCount: existing.apiFailureCount,
           criticalErrorCount: existing.criticalErrorCount,
           jsExceptionCount: existing.jsExceptionCount,
-          screenshotCount: existing.screenshotCount,
         },
         exists: true,
       };
     }
 
-// Collect forensic data (screenshots removed for storage optimization)
     const errors = await forensicErrorRepository.findByRunId(runId);
-    const screenshots: Array<{ _id?: Types.ObjectId }> = [];
 
     // Generate analysis
-    const analysis = this.generateAnalysis(runId, errors, screenshots);
+    const analysis = this.generateAnalysis(runId, errors);
     
     // Save to database
     const saved = await forensicAnalysisRepository.create(analysis);
@@ -72,7 +69,6 @@ export class ForensicAnalysisService {
         apiFailureCount: saved.apiFailureCount,
         criticalErrorCount: saved.criticalErrorCount,
         jsExceptionCount: saved.jsExceptionCount,
-        screenshotCount: saved.screenshotCount,
       },
       exists: false,
     };
@@ -91,7 +87,6 @@ export class ForensicAnalysisService {
       statusCode?: number;
       stackTrace?: string;
     }>,
-    screenshots: Array<{ _id?: Types.ObjectId }>,
   ): CreateForensicAnalysisParams {
     // Count error types
     const errorCount = errors.length;
@@ -109,7 +104,6 @@ export class ForensicAnalysisService {
       e.type === ForensicErrorType.UNHANDLED_REJECTION
     );
     const jsExceptionCount = jsExceptions.length;
-    const screenshotCount = screenshots.length;
 
     // Generate root cause analysis
     const rootCause = this.generateRootCause(errors, apiFailures, jsExceptions);
@@ -120,7 +114,6 @@ export class ForensicAnalysisService {
       apiFailureCount,
       criticalErrorCount,
       jsExceptionCount,
-      screenshotCount,
     );
 
     // Determine risk level
@@ -139,7 +132,6 @@ export class ForensicAnalysisService {
       apiFailureCount,
       criticalErrorCount,
       jsExceptionCount,
-      screenshotCount,
     };
   }
 
@@ -228,7 +220,6 @@ export class ForensicAnalysisService {
     apiFailureCount: number,
     criticalErrorCount: number,
     jsExceptionCount: number,
-    screenshotCount: number,
   ): number {
     let score = 0;
 
@@ -243,11 +234,6 @@ export class ForensicAnalysisService {
 
     // JavaScript exceptions (capped at 15)
     score += Math.min(15, jsExceptionCount * 8);
-
-    // Penalty for missing screenshots when errors occurred
-    if (errorCount > 0 && screenshotCount === 0) {
-      score += 10;
-    }
 
     // Cap at 100
     return Math.min(100, Math.max(0, score));
@@ -321,12 +307,6 @@ export class ForensicAnalysisService {
     // General recommendations based on error count
     if (errors.length > 5) {
       recommendations.push('Investigate high error rate - consider adding more robust error handling');
-    }
-
-    // Screenshot-related recommendations
-    const hasScreenshots = errors.some(e => e.type === ForensicErrorType.NAVIGATION_FAILURE);
-    if (hasScreenshots) {
-      recommendations.push('Add screenshot capture on critical events for better debugging');
     }
 
     // Remove duplicates

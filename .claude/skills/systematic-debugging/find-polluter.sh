@@ -14,7 +14,7 @@ fi
 POLLUTION_CHECK="$1"
 TEST_PATTERN="$2"
 
-echo "🔍 Searching for test that creates: $POLLUTION_CHECK"
+echo " Searching for test that creates: $POLLUTION_CHECK"
 echo "Test pattern: $TEST_PATTERN"
 echo ""
 
@@ -31,7 +31,7 @@ for TEST_FILE in $TEST_FILES; do
 
   # Skip if pollution already exists
   if [ -e "$POLLUTION_CHECK" ]; then
-    echo "⚠️  Pollution already exists before test $COUNT/$TOTAL"
+    echo "️  Pollution already exists before test $COUNT/$TOTAL"
     echo "   Skipping: $TEST_FILE"
     continue
   fi

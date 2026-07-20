@@ -148,9 +148,6 @@ export interface IncidentReport {
   attribution?: FindingAttribution;
   // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
   occurrences?: number;
-  // Base64 JPEG (no data: prefix) of the viewport at the fault instant. Live/replay
-  // only — deliberately NOT persisted to Mongo to avoid session-document bloat.
-  screenshot?: string;
   // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
   // severity badge instead of a hard-coded string.
   severity?: FaultSeverity;
@@ -174,9 +171,6 @@ export interface ForensicCrashReport {
   attribution?: FindingAttribution;
   // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
   occurrences?: number;
-  // Base64 JPEG (no data: prefix) of the viewport at the fault instant. Live/replay
-  // only — deliberately NOT persisted to Mongo to avoid session-document bloat.
-  screenshot?: string;
   // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
   // severity badge instead of a hard-coded string.
   severity?: FaultSeverity;

@@ -85,7 +85,7 @@ export async function saveSessionToHistory(
   }
 ): Promise<void> {
   const token = localStorage.getItem('bugsafari_token');
-  console.log('[historyService] 📤 saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
+  console.log('[historyService]  saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
 
   if (!targetUrl || typeof targetUrl !== 'string') {
     throw new Error('Invalid targetUrl: must be a non-empty string');
@@ -104,7 +104,7 @@ export async function saveSessionToHistory(
   };
 
   if (!token) {
-    console.log('[historyService] ⚠ No token - will fail with 401 if not logged in');
+    console.log('[historyService]  No token - will fail with 401 if not logged in');
   }
 
   // Reuse the shared fetch-options helper (auth headers + credentials) rather
@@ -113,7 +113,7 @@ export async function saveSessionToHistory(
   try {
     response = await fetchWithAuthRetry('/api/history/save-session', getFetchOptions('POST', payload));
   } catch (networkError) {
-    console.error('[historyService] ❌ Network error saving session:', networkError instanceof Error ? networkError.message : networkError);
+    console.error('[historyService]  Network error saving session:', networkError instanceof Error ? networkError.message : networkError);
     throw networkError;
   }
 
@@ -137,7 +137,7 @@ if (!response.ok) {
 
     // Handle guest rejection specifically
     if (response.status === 403 || errorCode === 'GUEST_FORBIDDEN') {
-      console.warn('[historyService] ❌ Guest save rejected - registration required');
+      console.warn('[historyService]  Guest save rejected - registration required');
       const err = new Error('Registration required to save history.') as Error & { 
         status: number; 
         code?: string;
@@ -149,7 +149,7 @@ if (!response.ok) {
       throw err;
     }
 
-    console.error('[historyService] ❌ Save failed:', errorMessage);
+    console.error('[historyService]  Save failed:', errorMessage);
     const err = new Error(errorMessage) as Error & { status: number };
     err.status = response.status;
     throw err;
@@ -216,7 +216,7 @@ export async function fetchForensicReport(sessionId: string): Promise<ForensicRe
     } catch {
       // Non-JSON error body — keep the status-based message.
     }
-    console.error('[historyService] ❌ fetchForensicReport failed:', errorMessage);
+    console.error('[historyService]  fetchForensicReport failed:', errorMessage);
     throw new Error(errorMessage);
   }
 
@@ -237,7 +237,7 @@ export async function deleteRecord(recordId: string): Promise<void> {
 
   if (!recordId || typeof recordId !== 'string') {
     const error = 'Invalid recordId: must be a non-empty string';
-    console.error('[historyService] ❌ Validation error:', error);
+    console.error('[historyService]  Validation error:', error);
     throw new Error(error);
   }
 
@@ -245,12 +245,12 @@ export async function deleteRecord(recordId: string): Promise<void> {
   const isValidObjectId = /^[a-fA-F0-9]{24}$/.test(recordId);
   if (!isValidObjectId) {
     const error = 'Invalid recordId format: must be a 24-character hex string';
-    console.error('[historyService] ❌ Validation error:', error);
+    console.error('[historyService]  Validation error:', error);
     throw new Error(error);
   }
 
   try {
-    console.log('[historyService] 📤 Sending DELETE request to /api/history/:id...');
+    console.log('[historyService]  Sending DELETE request to /api/history/:id...');
 
 // Remove encodeURIComponent - MongoDB ObjectIds don't need encoding and it can cause issues
     const response = await fetchWithAuthRetry(`/api/history/${recordId}`, getFetchOptions('DELETE'));
@@ -271,7 +271,7 @@ export async function deleteRecord(recordId: string): Promise<void> {
     // Handle errors
     if (!response.ok) {
       const errorMessage = responseData?.error || `Server returned ${response.status}`;
-      console.error('[historyService] ❌ Delete failed:', errorMessage);
+      console.error('[historyService]  Delete failed:', errorMessage);
       throw new Error(errorMessage);
     }
 
@@ -280,11 +280,11 @@ export async function deleteRecord(recordId: string): Promise<void> {
 
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService] ❌ Network error - could not reach API:', error.message);
+      console.error('[historyService]  Network error - could not reach API:', error.message);
     } else if (error instanceof Error) {
-      console.error('[historyService] ❌ Error:', error.message);
+      console.error('[historyService]  Error:', error.message);
     } else {
-      console.error('[historyService] ❌ Unknown error:', error);
+      console.error('[historyService]  Unknown error:', error);
     }
     throw error;
   }
@@ -312,11 +312,11 @@ export async function fetchSafariDocuments(): Promise<unknown[]> {
     return Array.isArray(data) ? data : [];
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService] ❌ Network error - could not reach API:', error.message);
+      console.error('[historyService]  Network error - could not reach API:', error.message);
     } else if (error instanceof Error) {
-      console.error('[historyService] ❌ Error:', error.message);
+      console.error('[historyService]  Error:', error.message);
     } else {
-      console.error('[historyService] ❌ Unknown error:', error);
+      console.error('[historyService]  Unknown error:', error);
     }
     throw error;
   }
@@ -332,12 +332,12 @@ export async function exportRecord(recordId: string): Promise<void> {
 
   if (!recordId || typeof recordId !== 'string') {
     const error = 'Invalid recordId: must be a non-empty string';
-    console.error('[historyService] ❌ Validation error:', error);
+    console.error('[historyService]  Validation error:', error);
     throw new Error(error);
   }
 
   try {
-    console.log('[historyService] 📤 Fetching record for export from /api/history/export/:id...');
+    console.log('[historyService]  Fetching record for export from /api/history/export/:id...');
 
 const response = await fetchWithAuthRetry(`/api/history/export/${encodeURIComponent(recordId)}`, getFetchOptions('GET'));
 
@@ -352,7 +352,7 @@ const response = await fetchWithAuthRetry(`/api/history/export/${encodeURICompon
         responseData = null;
       }
       const errorMessage = responseData?.error || `Server returned ${response.status}`;
-      console.error('[historyService] ❌ Export failed:', errorMessage);
+      console.error('[historyService]  Export failed:', errorMessage);
       throw new Error(errorMessage);
     }
 
@@ -377,11 +377,11 @@ const response = await fetchWithAuthRetry(`/api/history/export/${encodeURICompon
 
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService] ❌ Network error - could not reach API:', error.message);
+      console.error('[historyService]  Network error - could not reach API:', error.message);
     } else if (error instanceof Error) {
-      console.error('[historyService] ❌ Error:', error.message);
+      console.error('[historyService]  Error:', error.message);
     } else {
-      console.error('[historyService] ❌ Unknown error:', error);
+      console.error('[historyService]  Unknown error:', error);
     }
     throw error;
   }

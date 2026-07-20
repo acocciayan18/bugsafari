@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '../../stores/authStore';
 import { useRunStore } from '../../stores/run/runStore';
@@ -7,10 +8,14 @@ import { bindGatewayToRunStore, connectAndRestore } from '../../stores/run/gatew
 import { startRun, pauseRun, resumeRun, stopRun, saveRun, refreshHistory } from '../../stores/run/runCommands';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 
+import type { TestSessionStatus } from '../../stores/run/types';
+
 export type { TestSessionStatus } from '../../stores/run/types';
 export type { RunState as DashboardState } from '../../stores/run/runStore';
 
 const INITIALIZATION_TIMEOUT_MS = 30000;
+// A PAUSING/STOPPING settle is a flush of in-flight work, not a long operation.
+const TRANSITION_TIMEOUT_MS = 15000;
 
 // Ref-counted so StrictMode's synthetic unmount never disconnects a live socket
 let mountCount = 0;
@@ -51,11 +56,23 @@ function useRunSession(): void {
 
 // Watchdog: no live frame within 30s means the engine never came up. Dispatch a
 // backend stop so orphaned processes die, then release the UI.
-function useInitializationWatchdog(isInitializing: boolean, isTestRunning: boolean): void {
+//
+// The arming condition MUST mirror what LiveFeed uses to show its spinner. When
+// it keyed on isInitializing alone, any backend EXCEPTION cleared that flag and
+// disarmed the watchdog while the spinner — which also checks !liveFrame — kept
+// running forever with nothing left to time it out.
+function useInitializationWatchdog(
+    isInitializing: boolean,
+    isTestRunning: boolean,
+    hasLiveFrame: boolean,
+    status: TestSessionStatus,
+): void {
     const dispatchedRef = useRef(false);
+    // A queued job has no engine yet; its wait is bounded by the queue, not by us.
+    const armed = isTestRunning && status !== 'QUEUED' && (isInitializing || !hasLiveFrame);
 
     useEffect(() => {
-        if (!isInitializing || !isTestRunning) {
+        if (!armed) {
             dispatchedRef.current = false;
             return;
         }
@@ -95,7 +112,32 @@ function useInitializationWatchdog(isInitializing: boolean, isTestRunning: boole
             clearTimeout(timeout);
             dispatchedRef.current = false;
         };
-    }, [isInitializing, isTestRunning]);
+    }, [armed]);
+}
+
+// PAUSING/STOPPING lock every control until the engine confirms the transition.
+// If that confirmation never arrives (engine died mid-settle, socket outside the
+// room), the dashboard was stranded with no way out. Re-issue the stop and release.
+function useTransitionWatchdog(status: TestSessionStatus): void {
+    useEffect(() => {
+        if (status !== 'PAUSING' && status !== 'STOPPING') return;
+
+        const timeout = setTimeout(async () => {
+            console.warn(`[useDashboardController] ${status} never settled - forcing release`);
+            try {
+                const gateway = getEngineGateway() as unknown as { forceStop?: () => Promise<void> };
+                await gateway.forceStop?.();
+            } catch (error) {
+                console.error('[useDashboardController] Transition cleanup failed:', error);
+            }
+            // Only release if we are still stuck in the same transitional state.
+            if (useRunStore.getState().status !== status) return;
+            useRunStore.getState().markLaunchFailed(`Engine did not confirm ${status.toLowerCase()} within ${TRANSITION_TIMEOUT_MS / 1000}s`);
+            toast.error('The engine stopped responding mid-transition. Controls released.');
+        }, TRANSITION_TIMEOUT_MS);
+
+        return () => clearTimeout(timeout);
+    }, [status]);
 }
 
 /**
@@ -142,7 +184,8 @@ export function useDashboardController() {
         })),
     );
 
-    useInitializationWatchdog(state.isInitializing, state.isTestRunning);
+    useInitializationWatchdog(state.isInitializing, state.isTestRunning, state.liveFrame !== null, state.status);
+    useTransitionWatchdog(state.status);
 
     const actions = useMemo(() => ({
         handleTimeLimitExceeded: useRunStore.getState().handleTimeLimitExceeded,

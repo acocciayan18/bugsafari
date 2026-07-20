@@ -42,6 +42,7 @@ export function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus
     switch (status) {
         case 'QUEUED':
             return 'QUEUED';
+        case 'STARTING':      // room reserved, engine booting — the run is ours already
         case 'RUNNING':
         case 'INTERRUPTED':   // engine still alive inside the grace window
             return 'ACTIVE';
@@ -64,6 +65,6 @@ export function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus
 
 // A run is still live (config controls stay locked) for these lifecycle states
 export function lifecycleIsLive(status: RunLifecycleStatus): boolean {
-    return status === 'QUEUED' || status === 'RUNNING' || status === 'PAUSING'
+    return status === 'QUEUED' || status === 'STARTING' || status === 'RUNNING' || status === 'PAUSING'
         || status === 'PAUSED' || status === 'STOPPING' || status === 'INTERRUPTED';
 }

@@ -13,6 +13,11 @@ import type { ActionStepTrace } from '../../infrastructure/database/models/Sessi
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
+import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { FuzzForensicLog } from '../../infrastructure/monitoring/fuzzForensics.js';
+import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js';
+import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
+import { ConsoleLogStore } from '../../infrastructure/monitoring/ConsoleLogStore.js';
 
 interface RunState {
     active: boolean;
@@ -415,7 +420,7 @@ export class StartExplorationUseCase {
                 await consoleLogRepository.createMany(savedDocument._id as Types.ObjectId, conEntries);
                 console.log(`[StartExplorationUseCase] ✓ Saved logs: network=${netEntries.length} console=${conEntries.length}`);
             } catch (logError) {
-                console.error(`[StartExplorationUseCase] ⚠ Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
+                console.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
             }
 
             return { success: true, message: `Saved as ${savedDocument._id}` };
@@ -438,20 +443,6 @@ export class StartExplorationUseCase {
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
         console.log(`[StartExplorationUseCase] Selected scenarios received:`, selectedScenarios ?? '(all)');
-
-        const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
-        ReproductionPlaybookStore.reset();
-        // Reset the fuzz-step forensic log so snapshots are scoped to this run.
-        const { FuzzForensicLog } = await import('../../infrastructure/monitoring/fuzzForensics.js');
-        FuzzForensicLog.reset();
-        // Reset the navigation forensic log so route-trash snapshots are scoped to this run.
-        const { NavForensicLog } = await import('../../infrastructure/monitoring/navForensics.js');
-        NavForensicLog.reset();
-        // Reset the full network/console log buffers so they're scoped to this run.
-        const { NetworkLogStore } = await import('../../infrastructure/monitoring/NetworkLogStore.js');
-        NetworkLogStore.reset();
-        const { ConsoleLogStore } = await import('../../infrastructure/monitoring/ConsoleLogStore.js');
-        ConsoleLogStore.reset();
 
         // Phase 3: Get timebox from optimization settings (default: 600000ms = 10 minutes)
         const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
@@ -483,33 +474,46 @@ export class StartExplorationUseCase {
         // NOTE: state.active is already true here — the caller (registerRoutes.ts)
         // claimed it synchronously via tryActivate() before calling execute(), to
         // close the TOCTOU race that existed when this flag was set only at this
-        // point, after the awaited dynamic imports above.
+        // point.
 
-        // Register the run with the centralized SessionManager: it owns the
-        // engine control surface, reconnect replay buffer, grace window, room
-        // wiring, and target-health monitor for this run.
         const resolvedRunId = runId ?? randomUUID();
-        sessionManager.beginRun({
-            runId: resolvedRunId,
-            userId: this.currentUserId,
-            targetUrl,
-            timeboxMs: TIMEBOX_MS,
-            engine: this.browserEngine,
-        });
 
-        this.telemetry.emitTelemetry({
-            timestamp: new Date().toISOString(),
-            type: 'ACTION',
-            meta: {
-                actionExecuted: 'engine-started',
-                url: targetUrl,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                sessionId: this.currentSessionId as any,
-                message: `Launching Playwright headless session for ${targetUrl}`,
-            },
-        });
+        // EVERYTHING from here on is inside the try, so the finally below always
+        // releases state.active and ends the run. Setup that lived outside it used
+        // to leak the activation slot permanently on any startup failure, 429-ing
+        // every subsequent launch for the lifetime of the process.
+        try {
+            // Scope every forensic store to this run before the engine touches them.
+            ReproductionPlaybookStore.reset();
+            FuzzForensicLog.reset();
+            NavForensicLog.reset();
+            NetworkLogStore.reset();
+            ConsoleLogStore.reset();
 
-try {
+            // Register the run with the centralized SessionManager: it owns the
+            // engine control surface, reconnect replay buffer, grace window, room
+            // wiring, and target-health monitor. Upgrades the reservation the API
+            // created before responding, so the room and its buffers survive.
+            sessionManager.beginRun({
+                runId: resolvedRunId,
+                userId: this.currentUserId,
+                targetUrl,
+                timeboxMs: TIMEBOX_MS,
+                engine: this.browserEngine,
+            });
+
+            this.telemetry.emitTelemetry({
+                timestamp: new Date().toISOString(),
+                type: 'ACTION',
+                meta: {
+                    actionExecuted: 'engine-started',
+                    url: targetUrl,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    sessionId: this.currentSessionId as any,
+                    message: `Launching Playwright headless session for ${targetUrl}`,
+                },
+            });
+
             // Phase 3: Execute engine with engine-managed timebox (FIXED: uses accumulative active time tracking)
             // The engine now tracks elapsedActiveTimeMs internally and only counts time when NOT paused.
             // This prevents timebox from expiring during pause state.
@@ -522,7 +526,7 @@ try {
 // Check if the engine detected timebox exceeded (via its internal timing interval)
             if (result.outcome === 'timebox') {
                 executionStatus = 'TIMEOUT';
-                console.log(`[StartExplorationUseCase] ⚠️ Timebox of ${TIMEBOX_MS}ms exceeded (active time) - engine self-terminated`);
+                console.log(`[StartExplorationUseCase] ️ Timebox of ${TIMEBOX_MS}ms exceeded (active time) - engine self-terminated`);
 
                 this.telemetry.emitTelemetry({
                     timestamp: new Date().toISOString(),

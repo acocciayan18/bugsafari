@@ -159,7 +159,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             onClick={() => setShowRoutes((prev) => !prev)}
             className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-(--text-secondary) transition-colors hover:text-(--text-primary)"
           >
-            <span>{showRoutes ? '▼' : '▶'}</span>
+            <span>{showRoutes ? '▼' : ''}</span>
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
@@ -528,7 +528,7 @@ function FindingCard({
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
   // Normalized view — the shared <FindingEvidence> renders the reproduction /
-  // screenshot / resolved-frames / suggested-fix / stack sections identically to
+  // resolved-frames / suggested-fix / stack sections identically to
   // the live Errors tab.
   const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
 
@@ -620,7 +620,7 @@ function FindingCard({
         )}
       </div>
 
-      {/* Shared evidence: reproduction, screenshot, resolved source frames, suggested
+      {/* Shared evidence: reproduction, resolved source frames, suggested
           fix, and stack trace — rendered identically to the live Errors tab. */}
       <div className="pb-2">
         <FindingEvidence view={view} />
@@ -786,7 +786,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
         <span className="text-[13px] font-semibold uppercase tracking-wider text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
-        <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : '▶ Expand'}</span>
+        <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : ' Expand'}</span>
       </button>
       {isOpen && (
         <div className="border-t border-(--border-hairline) px-4 py-4">

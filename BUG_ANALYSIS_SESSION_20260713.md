@@ -69,9 +69,9 @@ if (style.display === 'none') return false;
 
 ### Evidence from Session Log
 ```
-[EXCEPTION] 🔴 Console Error: Failed to load resource: the server responded with a status of 404 ()
+[EXCEPTION]  Console Error: Failed to load resource: the server responded with a status of 404 ()
 [repeated 12 times]
-[EXCEPTION] 🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.
+[EXCEPTION]  System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.
 ```
 
 ### Root Cause Analysis

@@ -1,10 +1,10 @@
 // utils/findingView.ts
 // ONE normalized finding shape both the live Errors tab (IncidentReport /
 // ForensicCrashReport) and the saved report (ForensicCaughtBug) map into, so the
-// field-rename divergence (reason↔message, reproductionPlaybook↔reproductionSteps,
-// breadcrumbs/steps↔actionSteps) is resolved once here instead of in every renderer.
+// field-rename divergence (reasonmessage, reproductionPlaybookreproductionSteps,
+// breadcrumbs/stepsactionSteps) is resolved once here instead of in every renderer.
 // The shared <FindingEvidence> component renders a FindingView; each card keeps its
-// own header/chrome (live: incident/console header + screenshot; saved: number badge
+// own header/chrome (live: incident/console header; saved: number badge
 // + Verify-Fix control).
 import type {
   ForensicActionStep,
@@ -36,8 +36,6 @@ export interface FindingView {
   actionSteps?: ForensicActionStep[];
   advice?: string;
   attribution?: FindingAttribution;
-  /** Fault-instant screenshot — live/replay only (never persisted). */
-  screenshot?: string;
 }
 
 // The element the fault attaches to = the last real selector in the timeline
@@ -66,7 +64,6 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     reproductionSteps: inc.reproductionPlaybook ?? [],
     advice: inc.advice,
     attribution: inc.attribution,
-    screenshot: inc.screenshot,
   };
 }
 
@@ -85,7 +82,6 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     reproductionSteps: rep.reproductionPlaybook ?? [],
     advice: rep.advice,
     attribution: rep.attribution,
-    screenshot: rep.screenshot,
   };
 }
 

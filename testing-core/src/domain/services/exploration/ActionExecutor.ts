@@ -86,7 +86,7 @@ export class ActionExecutor {
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'form-fuzz-cap-reached',
           selector: target.selector,
-          message: `🧯 Form fuzz cap (${this.deps.formFuzzCap}) reached for ${humanizeElement(target)} — excluding form from further fuzzing.`,
+          message: ` Form fuzz cap (${this.deps.formFuzzCap}) reached for ${humanizeElement(target)} — excluding form from further fuzzing.`,
         });
         return;
       }
@@ -142,7 +142,7 @@ export class ActionExecutor {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'network-cascade-backoff',
         selector: target.selector,
-        message: `🧯 Network failure cascade detected — skipping stress-scenario payload on ${humanizeElement(target)} to avoid piling onto an unstable page.`,
+        message: ` Network failure cascade detected — skipping stress-scenario payload on ${humanizeElement(target)} to avoid piling onto an unstable page.`,
       });
       return;
     }
@@ -265,7 +265,7 @@ export class ActionExecutor {
       actionExecuted: 'form-control-actuated',
       selector: target.selector,
       message: checked
-        ? `☑️ Enabled toggle "${label}" to progress the form/workflow.`
+        ? `️ Enabled toggle "${label}" to progress the form/workflow.`
         : `Toggle "${label}" could not be actuated (obscured or detached).`,
     });
   }
@@ -341,7 +341,7 @@ export class ActionExecutor {
       actionExecuted: 'form-control-actuated',
       selector: target.selector,
       message: selected
-        ? `🔽 Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
+        ? ` Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
         : `Dropdown "${label}" had no selectable option.`,
     });
   }
@@ -391,7 +391,7 @@ export class ActionExecutor {
       actionExecuted: 'form-control-actuated',
       selector: target.selector,
       message: attached
-        ? `📎 Attached synthetic file to "${label}" and submitted to exercise upload validation.`
+        ? ` Attached synthetic file to "${label}" and submitted to exercise upload validation.`
         : `File input "${label}" could not be actuated.`,
     });
   }
@@ -441,7 +441,7 @@ export class ActionExecutor {
           t.emit('ACTION', {
             actionExecuted: 'security-constraints-stripped',
             selector: target.selector,
-            message: `🔓 Stripped HTML5 constraints from ${humanizeElement(target)} before security injection.`,
+            message: ` Stripped HTML5 constraints from ${humanizeElement(target)} before security injection.`,
           });
         } catch (error) {
           console.warn('[ActionExecutor] Constraint stripping failed before security scenario:', error);
@@ -667,7 +667,7 @@ export class ActionExecutor {
           t.emit('ACTION', {
             actionExecuted: 'form-submission-triggered',
             selector: target.selector,
-            message: `📨 Submitted form via "${submissionMethod}" to validate ${humanizeElement(target)} against the backend.`,
+            message: ` Submitted form via "${submissionMethod}" to validate ${humanizeElement(target)} against the backend.`,
           });
         },
       );
@@ -722,7 +722,7 @@ export class ActionExecutor {
         t.emit('ACTION', {
           actionExecuted: 'fuzz-escalation',
           selector: target.selector,
-          message: `📈 ${humanizeElement(target)} resisted L${level} (${resistance.reason}) — escalating to L${nextLevel} for the next encounter.`,
+          message: ` ${humanizeElement(target)} resisted L${level} (${resistance.reason}) — escalating to L${nextLevel} for the next encounter.`,
         });
       }
       // outcome === 'hold': payload accepted/processed without a fault — keep level.
@@ -767,7 +767,7 @@ export class ActionExecutor {
       t.emit('ACTION', {
         actionExecuted: 'exploratory-input',
         selector: target.selector,
-        message: `🧭 Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
+        message: ` Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
       });
     } catch (error) {
       console.warn('[ActionExecutor] Exploratory input failed:', error);
@@ -975,7 +975,7 @@ export class ActionExecutor {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'security-fuzzer-injection',
         selector,
-        message: `🔐 Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${humanizeElement(target)}`,
+        message: ` Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${humanizeElement(target)}`,
       });
     } catch (error) {
       console.warn('[ActionExecutor] Security fuzzer injection failed:', error);
@@ -1022,7 +1022,7 @@ export class ActionExecutor {
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',
       selector,
-      message: `🔓 Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
+      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
     });
   }
 
@@ -1062,7 +1062,7 @@ export class ActionExecutor {
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'storage-tamper-confirmed',
       selector: finding.selector,
-      message: `🔓 Confirmed client-trust violation (${classification.bugClass}) — privileged UI unlocked from forged client storage`,
+      message: ` Confirmed client-trust violation (${classification.bugClass}) — privileged UI unlocked from forged client storage`,
     });
   }
 }

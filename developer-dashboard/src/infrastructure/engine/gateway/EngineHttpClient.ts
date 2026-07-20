@@ -38,7 +38,7 @@ export class EngineHttpClient {
   }
 
   public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, knownRunId?: string | null, targetAuth?: TargetAuthConfig): Promise<StartTestResult> {
-    console.log(`[Gateway] 📤 POST /api/start-test starting for: ${targetUrl}`);
+    console.log(`[Gateway]  POST /api/start-test starting for: ${targetUrl}`);
     console.log(`[Gateway] API Base URL: ${this.apiBaseUrl}`);
     console.log(`[Gateway] Optimization Settings:`, optimizationSettings);
     console.log(`[Gateway] Infiltration Profile:`, infiltration);
@@ -73,7 +73,7 @@ export class EngineHttpClient {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[Gateway] ❌ Start failed: ${response.status} - ${errorText}`);
+        console.error(`[Gateway]  Start failed: ${response.status} - ${errorText}`);
         throw new Error(`Server returned ${response.status} - ${errorText}`);
       }
 
@@ -90,12 +90,12 @@ export class EngineHttpClient {
     } catch (error) {
       if (error instanceof TypeError) {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {
-          console.error(`[Gateway] ❌ Network error - server may be unreachable: ${this.apiBaseUrl}`);
-          console.error(`[Gateway] ❌ Possible causes: Server not running, CORS error, or network issue`);
+          console.error(`[Gateway]  Network error - server may be unreachable: ${this.apiBaseUrl}`);
+          console.error(`[Gateway]  Possible causes: Server not running, CORS error, or network issue`);
           throw new Error(`Cannot reach server at ${this.apiBaseUrl}. Is the backend running?`);
         }
 
-        console.error(`[Gateway] ❌ Fetch error:`, error.message);
+        console.error(`[Gateway]  Fetch error:`, error.message);
         throw new Error(`Network error: ${error.message}`);
       }
 

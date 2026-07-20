@@ -45,7 +45,7 @@ const HISTORY_STATUS: Partial<Record<SessionStatus, SessionHistoryRecord['status
 
 export class MongoFindingRepository implements FindingRepository {
 public async createSession(input: CreateSessionInput): Promise<string> {
-    console.log(`[MongoFindingRepository] 📝 Creating session for: ${input.targetUrl}`);
+    console.log(`[MongoFindingRepository]  Creating session for: ${input.targetUrl}`);
     console.log(`[MongoFindingRepository] UserId: ${input.userId ?? 'none/unauthenticated'}`);
     
     // Ownership is mandatory: every session must belong to a real authenticated

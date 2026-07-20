@@ -55,7 +55,7 @@ digraph process {
         "Answer questions, provide context" [shape=box];
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
         "Write diff file, dispatch task reviewer subagent (./task-reviewer-prompt.md)" [shape=box];
-        "Task reviewer reports spec ✅ and quality approved?" [shape=diamond];
+        "Task reviewer reports spec  and quality approved?" [shape=diamond];
         "Dispatch fix subagent for Critical/Important findings" [shape=box];
         "Mark task complete in todo list and progress ledger" [shape=box];
     }
@@ -71,10 +71,10 @@ digraph process {
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
     "Implementer subagent implements, tests, commits, self-reviews" -> "Write diff file, dispatch task reviewer subagent (./task-reviewer-prompt.md)";
-    "Write diff file, dispatch task reviewer subagent (./task-reviewer-prompt.md)" -> "Task reviewer reports spec ✅ and quality approved?";
-    "Task reviewer reports spec ✅ and quality approved?" -> "Dispatch fix subagent for Critical/Important findings" [label="no"];
+    "Write diff file, dispatch task reviewer subagent (./task-reviewer-prompt.md)" -> "Task reviewer reports spec  and quality approved?";
+    "Task reviewer reports spec  and quality approved?" -> "Dispatch fix subagent for Critical/Important findings" [label="no"];
     "Dispatch fix subagent for Critical/Important findings" -> "Write diff file, dispatch task reviewer subagent (./task-reviewer-prompt.md)" [label="re-review"];
-    "Task reviewer reports spec ✅ and quality approved?" -> "Mark task complete in todo list and progress ledger" [label="yes"];
+    "Task reviewer reports spec  and quality approved?" -> "Mark task complete in todo list and progress ledger" [label="yes"];
     "Mark task complete in todo list and progress ledger" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
     "More tasks remain?" -> "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" [label="no"];
@@ -147,9 +147,9 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
-## Handling Reviewer ⚠️ Items
+## Handling Reviewer ️ Items
 
-The task reviewer may report "⚠️ Cannot verify from diff" items — requirements
+The task reviewer may report "️ Cannot verify from diff" items — requirements
 that live in unchanged code or span tasks. These do not block the rest of the
 review, but you must resolve each one yourself before marking the task
 complete: you hold the plan and cross-task context the reviewer
@@ -293,7 +293,7 @@ Implementer: "Got it. Implementing now..."
   - Committed
 
 [Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ✅ - all requirements met, nothing extra.
+Task reviewer: Spec  - all requirements met, nothing extra.
   Strengths: Good test coverage, clean. Issues: None. Task quality: Approved.
 
 [Mark Task 1 complete]
@@ -310,7 +310,7 @@ Implementer:
   - Committed
 
 [Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ❌:
+Task reviewer: Spec :
   - Missing: Progress reporting (spec says "report every 100 items")
   - Extra: Added --json flag (not requested)
   Issues (Important): Magic number (100)
@@ -319,7 +319,7 @@ Task reviewer: Spec ❌:
 Fixer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
 
 [Task reviewer reviews again]
-Task reviewer: Spec ✅. Task quality: Approved.
+Task reviewer: Spec . Task quality: Approved.
 
 [Mark Task 2 complete]
 

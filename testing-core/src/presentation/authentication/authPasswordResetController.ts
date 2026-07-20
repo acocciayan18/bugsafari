@@ -42,7 +42,7 @@ async function sendPasswordResetEmail(email: string, resetToken: string): Promis
   const mailOptions = {
     from: `"${APP_NAME}" <${process.env.SMTP_USER || 'noreply@bugsafari.com'}>`,
     to: email,
-    subject: '🔐 Password Reset Request - BugSafari',
+    subject: ' Password Reset Request - BugSafari',
     html: `
 <!DOCTYPE html>
 <html>
@@ -103,7 +103,7 @@ async function sendPasswordResetEmail(email: string, resetToken: string): Promis
         </table>
 
         <p style="margin: 25px 0 0 0; color: #94a3b8; font-size: 12px; text-align: center;">
-          © ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
+           ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
         </p>
       </td>
     </tr>

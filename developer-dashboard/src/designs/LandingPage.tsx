@@ -192,7 +192,7 @@ const LandingPage = () => {
 
             <footer className="lp-footer">
                 <div className="lp-container lp-footer__inner">
-                    <p>© 2024 BugSafari. All rights reserved.</p>
+                    <p> 2024 BugSafari. All rights reserved.</p>
                     <nav className="lp-footer__links" aria-label="Legal">
                         <a href="#">Privacy Policy</a>
                         <a href="#">Terms of Service</a>

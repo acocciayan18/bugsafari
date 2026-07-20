@@ -15,7 +15,7 @@ You are the Testing Engine Architect for BugSafari — an Autonomous Exploratory
 - **Loop/coverage guard**: Structural DOM Hashing (`StateGraphNavigator`/`pathfinder/GraphStore`), `StateClusterRegistry`, `EdgeRepeatTracker`, `RouteExhaustionTracker`, `RouteTrashThrottle`, `routeTrashGating`, `StrictUrlLockGuard`, `interactionScope`.
 - **Determinism**: `services/SeededRandomGenerator.ts` — all randomness routes through it, never raw `Math.random`.
 - **Explainability**: `services/explainability/DecisionExplainer.ts`.
-- **Contracts**: `shared/types` is the sole source of truth across `developer-dashboard` ↔ `testing-core`.
+- **Contracts**: `shared/types` is the sole source of truth across `developer-dashboard`  `testing-core`.
 
 Read the real implementation before recommending an algorithm change. This is a mature, characterization-tested engine — prior tuning exists (backtrack caps, escalation thresholds); don't override it without citing what's measurably wrong.
 

@@ -37,7 +37,7 @@ export default function TelemetryLogStream({
 
         return {
           rawText: `[${type}] ${message}`,
-          aiDiagnostics: event.meta?.aiDiagnostics || null // 🧠 Passing down structured AI metadata
+          aiDiagnostics: event.meta?.aiDiagnostics || null //  Passing down structured AI metadata
         };
       })
       : [];
@@ -71,7 +71,7 @@ export default function TelemetryLogStream({
             {logObj.rawText}
           </div>
 
-{/* 🧠 Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
+{/*  Contextual Injection of AI Diagnostic Panel inside telemetry live flow */}
           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
         </div>
       ))}

@@ -6,7 +6,7 @@
 // settings appended to a run-start request.
 
 // ─────────────────────────────────────────────────────────────
-// 🚀 OPTIMIZATION SETTINGS (Shared between backend and frontend)
+//  OPTIMIZATION SETTINGS (Shared between backend and frontend)
 // ─────────────────────────────────────────────────────────────
 
 export interface OptimizationSettings {
@@ -56,7 +56,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 🎛️ TESTING TYPE SELECTOR (Operator-gated scenario matrix)
+// ️ TESTING TYPE SELECTOR (Operator-gated scenario matrix)
 // ─────────────────────────────────────────────────────────────
 // Single source of truth shared between the frontend checklist and the
 // backend execution gating, so the two can never drift. Each strategy
@@ -137,7 +137,7 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
 export const ALL_TESTING_TYPE_IDS: TestingTypeId[] = TESTING_TYPE_CATALOG.map((option) => option.id);
 
 // ─────────────────────────────────────────────────────────────
-// 🛰️ UNIFIED INFILTRATION PROFILES (operator-facing preset layer)
+// ️ UNIFIED INFILTRATION PROFILES (operator-facing preset layer)
 // ─────────────────────────────────────────────────────────────
 // A profile is a named preset over the testing-type matrix above. The operator
 // picks ONE profile instead of hand-toggling categories; the backend resolves it

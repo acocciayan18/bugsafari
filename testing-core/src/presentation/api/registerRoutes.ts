@@ -6,6 +6,7 @@ import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
+import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { validateObjectIdParams, readObjectIdParam } from '../middleware/validateObjectId.js';
@@ -29,6 +30,7 @@ import {
   type TestingTypeId,
   type InfiltrationProfileId,
   type TargetAuthConfig,
+  type OptimizationSettings,
   type ExplorationRunConfig,
   type FindingAttribution,
   type StateFingerprint,
@@ -83,6 +85,9 @@ function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefine
     return { mode: 'storageState', storageState: state, successIndicator: optionalString(raw.successIndicator) };
   }
 
+  // Enforce the union discriminant: an absent or unknown mode used to fall
+  // through and be silently treated as a credentials login.
+  if (raw.mode !== 'credentials') return 'invalid';
   if (typeof raw.username !== 'string' || typeof raw.password !== 'string') return 'invalid';
   if (!raw.username || !raw.password) return 'invalid';
 
@@ -195,11 +200,13 @@ export function registerRoutes(
   controlPublisher?: ControlBridgePublisher,
   // Terminal queue push for a cancelled job (BullMQ emits none for a removal).
   queueBroadcaster?: QueueStatusBroadcaster,
+  // Encrypted single-use handoff for target credentials on the distributed path.
+  authVault?: AuthVault,
 ): void {
   // BullMQ states meaning "still waiting for a worker".
   const WAITING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children']);
   // Lifecycle states in which the run is still live (controls stay bound to it).
-  const LIVE_LIFECYCLES = new Set(['QUEUED', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
+  const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
 
   // Minimal QUEUED snapshot for a job still in line (no engine, no buffers yet).
   const queuedSnapshot = (entry: RunRegistryEntry, position: number | null, queueDepth: number) => ({
@@ -235,16 +242,21 @@ export function registerRoutes(
   app.post('/api/safari/stop', writeLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const knownRunId = typeof request.body?.runId === 'string' && request.body.runId ? request.body.runId : undefined;
     const userId = request.userId ?? null;
-    console.log(`[API] 🔴 POST /api/safari/stop received (runId=${knownRunId ?? 'n/a'})`);
+    console.log(`[API]  POST /api/safari/stop received (runId=${knownRunId ?? 'n/a'})`);
 
     // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
-    if (taskQueue && runRegistry && knownRunId) {
+    if (taskQueue && runRegistry && (knownRunId || userId)) {
       try {
-        const entry = await runRegistry.findByRunId(knownRunId);
+        // Without a run token an authenticated operator is still resolvable by
+        // identity. Falling straight through used to answer {ok:true,
+        // alreadyStopped:true} while the worker kept running — a false success.
+        const entry = knownRunId
+          ? await runRegistry.findByRunId(knownRunId)
+          : await runRegistry.findByOwner(userId!);
         // A guest entry is possession-proven (its userId is null); an authenticated
         // one demands the matching identity.
         if (entry && entry.userId && entry.userId !== userId) {
-          console.warn('[API] ❌ Stop rejected: requester does not own the queued run');
+          console.warn('[API]  Stop rejected: requester does not own the queued run');
           response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
           return;
         }
@@ -262,11 +274,13 @@ export function registerRoutes(
               return;
             }
             if (!removed) {
-              console.error(`[API] ❌ Could not remove queued job ${entry.jobId} (state=${observed})`);
+              console.error(`[API]  Could not remove queued job ${entry.jobId} (state=${observed})`);
               response.status(409).json({ ok: false, error: 'The queued session could not be cancelled. Please retry.' });
               return;
             }
             await runRegistry.clear(entry.runId, entry.userId);
+            // No worker will ever consume the sealed credentials now.
+            await authVault?.discard(entry.runId);
             await queueBroadcaster?.broadcastCancelled(entry.jobId).catch(() => undefined);
             console.log(`[API] Queued job ${entry.jobId} cancelled before pickup`);
             response.json({ ok: true, cancelled: true, jobId: entry.jobId, message: 'Queued session cancelled.' });
@@ -279,7 +293,7 @@ export function registerRoutes(
               return;
             }
             controlPublisher.publish('stop', entry.runId);
-            console.log(`[API] ⏹ Stop bridged to worker for run ${entry.runId}`);
+            console.log(`[API]  Stop bridged to worker for run ${entry.runId}`);
             response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
             return;
           }
@@ -291,7 +305,7 @@ export function registerRoutes(
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[API] ❌ Distributed stop failed:', message);
+        console.error('[API]  Distributed stop failed:', message);
         response.status(502).json({ ok: false, error: 'Could not reach the run queue to stop this session.' });
         return;
       }
@@ -306,7 +320,7 @@ export function registerRoutes(
     }
 
     if (!sessionManager.ownsActiveRun(userId, knownRunId)) {
-      console.warn('[API] ❌ Stop rejected: requester does not own the active session');
+      console.warn('[API]  Stop rejected: requester does not own the active session');
       response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
       return;
     }
@@ -325,12 +339,12 @@ export function registerRoutes(
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
   app.post('/api/start-test', startTestLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log(`[API] 📥 POST /api/start-test received`);
+    console.log(`[API]  POST /api/start-test received`);
     console.log(`[API] Auth user: ${request.userId ?? 'guest'}`);
 
     const targetUrl = parseTargetUrl(request.body);
     if (!targetUrl) {
-      console.warn(`[API] ❌ Invalid URL in request`);
+      console.warn(`[API]  Invalid URL in request`);
       response.status(400).json({ error: 'A valid url is required.' });
       return;
     }
@@ -359,6 +373,11 @@ export function registerRoutes(
     }
     const targetAuth = parsedAuth;
 
+    // Resolved before the queue branch so a distributed run enforces the same
+    // timebox and tuning as a synchronous one.
+    const optimizationSettings = request.body?.optimization as OptimizationSettings | undefined;
+    console.log(`[API] Optimization settings:`, optimizationSettings);
+
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
@@ -366,14 +385,16 @@ export function registerRoutes(
     // to the worker (resolveEngineTargetUrl runs there against the browser's own
     // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
     if (taskQueue) {
-      // Credentials must never enter the job queue: BullMQ retains failed jobs in
-      // Redis for 24h in plaintext. Authenticated runs are in-process only. Never
-      // silently downgrade to an unauthenticated queued run — that would report a
-      // clean result for an app whose authenticated surface was never tested.
-      if (targetAuth) {
+      // Credentials never enter the job payload: BullMQ retains failed jobs in
+      // Redis for 24h in plaintext. They travel through the AuthVault instead —
+      // AES-256-GCM, 10-minute TTL, destroyed on first read by the worker. With
+      // no vault key configured we refuse rather than downgrade to an
+      // unauthenticated run, which would report a clean result for an app whose
+      // authenticated surface was never tested.
+      if (targetAuth && !authVault) {
         response.status(400).json({
           error: 'AUTH_UNSUPPORTED_ON_QUEUE',
-          message: 'Authenticated runs execute in-process only. Credentials are never written to the job queue.',
+          message: 'Authenticated queued runs require BUGSAFARI_AUTH_KEY (32-byte hex or base64) so credentials can be encrypted in transit. Set it, or run with the queue disabled.',
         });
         return;
       }
@@ -387,7 +408,7 @@ export function registerRoutes(
           if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
             const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
             if (state === 'active' || WAITING_STATES.has(state)) {
-              console.log(`[API] ♻️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
+              console.log(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
               response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runId: existing.runId, queued: state !== 'active' });
               return;
             }
@@ -395,29 +416,50 @@ export function registerRoutes(
           }
         }
 
-        const enqueued = await taskQueue.addSafariTask({
-          targetUrl,
-          requestedBy: request.userId ?? undefined,
-          selectedScenarios,
-        });
-        const timeboxMs = typeof request.body?.optimization?.['execution-timebox-ms'] === 'number'
-          ? request.body.optimization['execution-timebox-ms'] as number
-          : 600_000;
-        await runRegistry?.register({
-          runId: enqueued.runId,
-          jobId: enqueued.id,
+        // Issue the run token up front so the registry entry and the sealed
+        // credentials both exist BEFORE a worker can possibly claim the job.
+        const queuedRunId = randomUUID();
+        const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
+        const entry = {
+          runId: queuedRunId,
           userId: request.userId ?? null,
           targetUrl,
           timeboxMs,
           createdAt: new Date().toISOString(),
-        });
-        console.log(`[API] 🧵 Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName})`);
+        };
+
+        // Register first, enqueue second. The reverse order left a live job with
+        // no registry entry whenever register() failed: invisible to
+        // /api/session/active, unstoppable, unresumable — a true orphan.
+        await runRegistry?.register({ ...entry, jobId: 'pending' });
+        if (targetAuth && authVault) await authVault.put(queuedRunId, targetAuth);
+
+        let enqueued;
+        try {
+          enqueued = await taskQueue.addSafariTask({
+            targetUrl,
+            requestedBy: request.userId ?? undefined,
+            runId: queuedRunId,
+            selectedScenarios,
+            optimizationSettings,
+            hasAuth: Boolean(targetAuth),
+          });
+        } catch (error) {
+          // Compensate so a failed enqueue leaves neither a phantom entry nor
+          // orphaned ciphertext behind.
+          await runRegistry?.clear(queuedRunId, entry.userId).catch(() => undefined);
+          await authVault?.discard(queuedRunId);
+          throw error;
+        }
+
+        await runRegistry?.register({ ...entry, jobId: enqueued.id });
+        console.log(`[API]  Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
         // runId lets the client join run:${runId} for bridged worker telemetry;
         // jobId lets it subscribe to queue:${jobId} position pushes.
         response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runId: enqueued.runId, queued: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[API] ❌ Failed to enqueue safari job:', message);
+        console.error('[API]  Failed to enqueue safari job:', message);
         response.status(502).json({ error: 'Failed to enqueue the run on the worker fleet.' });
       }
       return;
@@ -431,11 +473,11 @@ export function registerRoutes(
       // a refreshed client that re-submits reconnects to its own live session.
       const owned = sessionManager.getSnapshotFor(request.userId ?? null, knownRunId);
       if (owned && LIVE_LIFECYCLES.has(owned.status)) {
-        console.log(`[API] ♻️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
+        console.log(`[API] ️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
         response.json({ accepted: true, resumed: true, url: owned.targetUrl, runId: owned.runId, queued: false });
         return;
       }
-      console.warn(`[API] ❌ Safari already running - rejecting request`);
+      console.warn(`[API]  Safari already running - rejecting request`);
       response.status(429).json({ error: 'A BugSafari run is already active.' });
       return;
     }
@@ -448,18 +490,14 @@ export function registerRoutes(
       ? `[API] ✓ Set userId for exploration session: ${request.userId}`
       : `[API] No authenticated userId - guest session (no persistence)`);
 
-    // Extract optimization settings from request body
-    const optimizationSettings = request.body?.optimization;
-    console.log(`[API] Optimization settings:`, optimizationSettings);
-
-    // (selectedScenarios resolved above, before the queue branch.)
+    // (optimizationSettings and selectedScenarios resolved above, before the queue branch.)
 
     // Route the target for the active RUN_ENVIRONMENT before launch: bridge
     // loopback in DOCKER_LOCAL, or reject an unreachable private address in
     // CLOUD_HOSTED with a clear operator message. Reject BEFORE accepting.
     const routing = resolveEngineTargetUrl(targetUrl);
     if (!routing.ok) {
-      console.warn(`[API] ❌ Target rejected: ${routing.message}`);
+      console.warn(`[API]  Target rejected: ${routing.message}`);
       // Roll back the slot claimed above — we're bailing out without ever
       // calling execute(), so nothing else will reset it to false.
       useCase.releaseActivation();
@@ -468,7 +506,7 @@ export function registerRoutes(
     }
     const engineUrl = routing.url;
     if (routing.rewritten) {
-      console.log(`[API] ↪ Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
+      console.log(`[API]  Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
     }
 
     // Server-issued run token: returned to the client (stored client-side) so a
@@ -476,11 +514,33 @@ export function registerRoutes(
     // ownership and re-attach to this exact run.
     const runId = randomUUID();
 
+    // Create the run's room and replay buffers BEFORE responding. The client
+    // attaches the instant it sees this response; without the reservation it
+    // raced the engine's async boot, was told 'no-active-session', never joined
+    // run:${runId}, and stayed deaf for the whole run (the "stuck loading" bug).
+    const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
+    sessionManager.reserveRun({
+      runId,
+      userId: request.userId ?? null,
+      targetUrl,
+      timeboxMs,
+      onAbandoned: () => useCase.releaseActivation(),
+    });
+
     console.log(`[API] Accepting safari launch for: ${targetUrl} (runId=${runId})`);
     // Operator sees their original URL; the engine dials the routed one.
     response.json({ accepted: true, url: targetUrl, runId });
     console.log(`[API] Starting safari in background...`);
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId, targetAuth);
+    // Fire-and-forget, but never unhandled: a rejection here means the run died
+    // before its own finally could report anything, so we must publish the
+    // terminal handshake ourselves or the dashboard waits forever.
+    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId, targetAuth)
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[API]  Safari run ${runId} failed to start:`, message);
+        sessionManager.failRun(`Engine failed to start: ${message}`);
+        useCase.releaseActivation();
+      });
   });
 
   // Restore-on-load: a returning client asks whether it owns an active run and,
@@ -553,7 +613,7 @@ export function registerRoutes(
     // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
     // If somehow we reached here without a valid userId, reject as guest
     if (!request.userId) {
-      console.warn('[API] ❌ Guest save attempt rejected: No authenticated userId');
+      console.warn('[API]  Guest save attempt rejected: No authenticated userId');
       response.status(403).json({
         error: 'Registration required to save history.',
         code: 'GUEST_FORBIDDEN',
@@ -654,7 +714,7 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
 
     // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
     if (!request.userId) {
-      console.warn('[API] ❌ Guest history access rejected: No authenticated userId');
+      console.warn('[API]  Guest history access rejected: No authenticated userId');
       response.status(403).json({
         error: 'Registration required to view session history.',
         code: 'GUEST_FORBIDDEN',
@@ -829,7 +889,7 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
     }
   });
 
-  // 🧠 Phase 5: Forensic Analysis API - Get analysis for a test run
+  //  Phase 5: Forensic Analysis API - Get analysis for a test run
   // requireAuth + tenant scoping: forensic analyses expose rootCause/riskScore/recommendations,
   // so a run's analysis is readable only by the user who owns that run's session.
   app.get('/api/forensic/analysis', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
@@ -870,7 +930,6 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
             apiFailureCount: latest.apiFailureCount,
             criticalErrorCount: latest.criticalErrorCount,
             jsExceptionCount: latest.jsExceptionCount,
-            screenshotCount: latest.screenshotCount,
             createdAt: latest.createdAt?.toISOString(),
           },
         });
@@ -909,7 +968,6 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
           apiFailureCount: analysis.apiFailureCount,
           criticalErrorCount: analysis.criticalErrorCount,
           jsExceptionCount: analysis.jsExceptionCount,
-          screenshotCount: analysis.screenshotCount,
           createdAt: analysis.createdAt?.toISOString(),
         },
       });
@@ -919,7 +977,7 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
     }
   });
 
-  // 🧠 Phase 5: Trigger forensic analysis generation
+  //  Phase 5: Trigger forensic analysis generation
   // requireAuth + ownership: analyzeRun() is compute-heavy and reads a run's session/errors,
   // so only the session owner may trigger it (prevents anonymous DoS + foreign-session reads).
   app.post('/api/forensic/analyze', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
@@ -971,7 +1029,6 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
           apiFailureCount: result.analysis.apiFailureCount,
           criticalErrorCount: result.analysis.criticalErrorCount,
           jsExceptionCount: result.analysis.jsExceptionCount,
-          screenshotCount: result.analysis.screenshotCount,
           createdAt: new Date().toISOString(),
         },
         message: result.exists ? 'Analysis already exists (returned cached)' : 'Analysis generated successfully',
@@ -984,7 +1041,7 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
 
 
 
-  // 📊 Complete Forensic Report API - Get comprehensive report for a session
+  //  Complete Forensic Report API - Get comprehensive report for a session
   app.get('/api/forensic/report/:sessionId', readLimiter, requireAuth, validateObjectIdParams('sessionId'), async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/forensic/report/:sessionId called');
 
@@ -1086,9 +1143,6 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         stackTrace: c.stackTrace,
       }));
 
-// Screenshots removed - return empty array
-      const formattedScreenshots: never[] = [];
-
       const formattedTelemetry = telemetry ? {
         browser: telemetry.browser,
         browserVersion: telemetry.browserVersion,
@@ -1119,7 +1173,6 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         apiFailureCount: analysis.apiFailureCount,
         criticalErrorCount: analysis.criticalErrorCount,
         jsExceptionCount: analysis.jsExceptionCount,
-        screenshotCount: analysis.screenshotCount,
         createdAt: analysis.createdAt?.toISOString(),
       } : null;
 
@@ -1160,9 +1213,6 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         // Full network + console logs (all requests / all levels) — mirror live tabs.
         networkLog: formattedNetworkLog,
         consoleLog: formattedConsoleLog,
-
-        // Screenshots
-        screenshots: formattedScreenshots,
 
         // AI Analysis
         aiAnalysis: formattedAnalysis,

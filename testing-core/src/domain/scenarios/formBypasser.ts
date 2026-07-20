@@ -287,7 +287,7 @@ export const formBypasser: StressScenario = {
     try {
       const result = await stripConstraintsSilently(page, selector);
       console.log(
-        `[Telemetry:ACTION] 🔓 FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
+        `[Telemetry:ACTION]  FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
       );
 
       // Record to ActionBuffer for reproduction playbook

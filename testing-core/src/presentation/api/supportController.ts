@@ -41,11 +41,11 @@ export function registerSupportRoutes(app: Express): void {
         subject,
         description,
       });
-      console.log(`[API] 🎫 Support ticket ${ticket.id} recorded (${mode}) from ${request.userId ?? 'guest'}`);
+      console.log(`[API]  Support ticket ${ticket.id} recorded (${mode}) from ${request.userId ?? 'guest'}`);
       response.status(201).json({ ok: true, ticketId: ticket.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('[API] ❌ Support ticket save failed:', message);
+      console.error('[API]  Support ticket save failed:', message);
       response.status(500).json({ error: 'Could not record your request. Please try again.' });
     }
   });

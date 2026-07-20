@@ -440,13 +440,25 @@ export const useRunStore = create<RunState>((set, get) => ({
         });
     },
 
-    markLaunchFailed: (message) =>
+    // A failed launch owns no run — drop the tokens too, or the next start sends a
+    // stale knownRunId and the server "resumes" a session that no longer exists.
+    markLaunchFailed: (message) => {
+        runRefs.queuePhase = 'done';
+        runRefs.runStarted = false;
+        toast.dismiss(STATUS_TOAST_ID);
+        getEngineGateway().setRunId(null);
+        writeStorage(RUN_ID_STORAGE_KEY, null);
+        writeStorage(JOB_ID_STORAGE_KEY, null);
         set((s) => ({
             isInitializing: false,
             isThinking: false,
             isLaunching: false,
             isTestRunning: false,
+            isQueued: false,
+            queuePosition: null,
+            queueDepth: 0,
             status: 'IDLE',
             telemetry: appendCapped(s.telemetry, exceptionEvent(`Launch failed: ${message}`), TELEMETRY_CAP),
-        })),
+        }));
+    },
 }));

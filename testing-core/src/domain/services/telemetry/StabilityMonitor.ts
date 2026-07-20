@@ -341,19 +341,6 @@ export class StabilityMonitor {
     return resolver;
   }
 
-  // Grab a bounded JPEG of the viewport at fault time for visual evidence. Never
-  // throws (a closed/navigating page just yields no screenshot) and is size-bounded
-  // by JPEG quality; the result rides the live report + reconnect replay only.
-  private async captureFaultScreenshot(page: Page): Promise<string | undefined> {
-    try {
-      if (page.isClosed()) return undefined;
-      const buffer = await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
-      return buffer.toString('base64');
-    } catch {
-      return undefined;
-    }
-  }
-
   /** Auto-dismiss native dialogs so they never block exploration. */
   public attachDialogAutoDismiss(page: Page): void {
     const t = this.deps.telemetry;
@@ -420,7 +407,7 @@ export class StabilityMonitor {
       if (finding.occurrence === 2 || finding.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'runtime-fault-recurred',
-          message: `🔁 ${finding.message} — recurred ${finding.occurrence}× this run`,
+          message: ` ${finding.message} — recurred ${finding.occurrence}× this run`,
         });
       }
       return;
@@ -429,14 +416,12 @@ export class StabilityMonitor {
     this.deps.setFreeze();
     const remediation = finding.studentAdvice;
     const reason = finding.message;
-    // Visual evidence of the viewport at the fault instant (live/replay only).
-    const screenshot = await this.captureFaultScreenshot(page);
     // Best-effort source-map resolution of the raw stack's top frames (undefined
     // when the target ships no reachable maps).
     const resolvedStackTrace = await this.getResolver(page).resolve(stack);
 
     t.emit('EXCEPTION', {
-      message: `🔴 ${finding.message}`,
+      message: ` ${finding.message}`,
       exceptionDetails: { message, stackTrace },
       reproductionSteps: reproductionPlaybook,
       attribution,
@@ -456,7 +441,6 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: remediation,
       attribution,
-      screenshot,
       severity: faultSeverity,
       resolvedStackTrace,
     });
@@ -470,7 +454,6 @@ export class StabilityMonitor {
       reproductionPlaybook,
       advice: remediation,
       attribution,
-      screenshot,
       severity: faultSeverity,
       resolvedStackTrace,
     });
@@ -479,7 +462,7 @@ export class StabilityMonitor {
     this.deps.persistForensicError({
       type: forensicType,
       severity,
-      message: `🔴 ${finding.message}`,
+      message: ` ${finding.message}`,
       stackTrace,
       url,
       bugClass: attribution.bugClass,
@@ -648,7 +631,7 @@ export class StabilityMonitor {
     t.emit('NETWORK', {
       url,
       method: defect.method,
-      message: `🟠 ${defect.message}`,
+      message: ` ${defect.message}`,
       severity: defect.verdict === 'GUARDED' ? 'INFO' : 'WARNING',
       attribution,
     });
@@ -659,11 +642,11 @@ export class StabilityMonitor {
       if (defect.occurrence === 3 || defect.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'duplicate-action-recurred',
-          message: `🔁 ${defect.message} — recurred ${defect.occurrence}× this run`,
+          message: ` ${defect.message} — recurred ${defect.occurrence}× this run`,
         });
       }
     } else {
-      t.emitMilestone(`🔁 Duplicate action: ${defect.method} ${url}`);
+      t.emitMilestone(` Duplicate action: ${defect.method} ${url}`);
 
       t.gateway.emitIncidentReport({
         bugId: defect.bugId,
@@ -695,7 +678,7 @@ export class StabilityMonitor {
       this.deps.persistForensicError({
         type: ForensicErrorType.INTERACTION_FAILURE,
         severity: SEVERITY_TO_FORENSIC[defect.severity],
-        message: `🟠 ${defect.message}`,
+        message: ` ${defect.message}`,
         stackTrace,
         url,
         endpoint: url,
@@ -901,7 +884,7 @@ export class StabilityMonitor {
     t.emit('NETWORK', {
       url,
       method: defect.method,
-      message: `🟠 ${defect.message}`,
+      message: ` ${defect.message}`,
       severity: 'WARNING',
       attribution,
     });
@@ -937,7 +920,7 @@ export class StabilityMonitor {
     this.deps.persistForensicError({
       type: ForensicErrorType.TIMEOUT_FAILURE,
       severity: SEVERITY_TO_FORENSIC[defect.severity],
-      message: `🟠 ${defect.message}`,
+      message: ` ${defect.message}`,
       stackTrace,
       url,
       endpoint: url,
@@ -1090,7 +1073,7 @@ export class StabilityMonitor {
           url,
           method,
           durationMs: this.computeRequestDuration(response.request()),
-          message: `🛡️ Defensive response (informational): HTTP ${status} ${method} ${url} — ${verdict.reason}`,
+          message: `️ Defensive response (informational): HTTP ${status} ${method} ${url} — ${verdict.reason}`,
         });
         return;
       }
@@ -1361,12 +1344,12 @@ export class StabilityMonitor {
     page: Page,
     onBugRegistered: StabilityMonitorDeps['registerConfirmedBug'],
   ): Promise<() => void> {
-    // 🛡️ Initialize stability monitoring - runs silently in background
+    // ️ Initialize stability monitoring - runs silently in background
     // Monitors System Lock-up (5s heartbeat timeout). Real server outages are
     // caught separately via 5xx/requestfailed/pageerror listeners below.
     const cleanup = setupStabilityMonitoring(page, this.deps.telemetry.gateway, onBugRegistered);
 
-    // 🖥️ Setup isolated browser console listener for dedicated Console Tab in dashboard
+    // ️ Setup isolated browser console listener for dedicated Console Tab in dashboard
     // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
     await setupBrowserConsoleListener(page, this.deps.telemetry.gateway);
 

@@ -143,7 +143,7 @@ export default function ErrorTabPanel({
             <LiveFindingCard
               key={`incident-${idx}`}
               view={incidentToFindingView(incident, count)}
-              icon="⚠"
+              icon=""
               kindLabel="Forensics (Incident)"
               source="Runtime"
               count={count}

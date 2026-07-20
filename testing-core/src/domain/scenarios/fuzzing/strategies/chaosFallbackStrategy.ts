@@ -76,7 +76,7 @@ const MULTIBYTE_STRINGS = [
   'مرحبا بالعالم',  // Arabic hello
   // Emoji modifiers and variation sequences
   '𝔘𝔫𝔦𝔠𝔬𝔡𝔢',  // Fire + Unico de + Fire
-  '👨‍👩‍👧‍👦',  // Family emoji sequence
+  '‍‍‍',  // Family emoji sequence
   // Math symbols 
   '𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇',  // Mathematical bold capitals
   '𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖',  // Mathematical bold digits
@@ -224,7 +224,7 @@ export function generateChaosPayload(): ChaosPayload {
   }
 
   // Instrumentation: Log the dispatched payload to CLI
-  console.log(`🌀 [CHAOS STRATEGY] Dispatched raw invalid character/symbol payload string -> Length: ${payload.value.length}`);
+  console.log(` [CHAOS STRATEGY] Dispatched raw invalid character/symbol payload string -> Length: ${payload.value.length}`);
 
   return payload;
 }

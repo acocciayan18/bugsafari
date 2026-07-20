@@ -1,6 +1,6 @@
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import type { TestingTypeId } from '../../../../shared/types.js';
+import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 
 export const SAFARI_TASK_QUEUE_NAME = 'safari-tasks';
 
@@ -18,6 +18,12 @@ export interface SafariTaskPayload {
   // Resolved infiltration-profile scenario gate — carried so the worker runs the
   // selected testing types instead of defaulting to all of them.
   selectedScenarios?: TestingTypeId[];
+  // Operator tuning (timebox included) — without this the worker silently ran the
+  // 600s default while the dashboard displayed the operator's chosen limit.
+  optimizationSettings?: OptimizationSettings;
+  // Marker only: the credentials themselves live encrypted in the AuthVault under
+  // this run's id and are never written to the job payload.
+  hasAuth?: boolean;
   createdAt: string;
 }
 
@@ -26,6 +32,8 @@ export interface EnqueueSafariTaskInput {
   requestedBy?: string;
   runId?: string;
   selectedScenarios?: TestingTypeId[];
+  optimizationSettings?: OptimizationSettings;
+  hasAuth?: boolean;
 }
 
 export interface EnqueuedSafariTask {
@@ -74,8 +82,14 @@ export class TaskQueue {
       requestedBy: input.requestedBy,
       runId,
       selectedScenarios: input.selectedScenarios,
+      optimizationSettings: input.optimizationSettings,
+      hasAuth: input.hasAuth,
       createdAt: new Date().toISOString(),
-    });
+    }, input.hasAuth
+      // Vault credentials are consumed destructively, so a retry could never
+      // reproduce the authenticated run — fail it once, visibly, instead.
+      ? { attempts: 1 }
+      : undefined);
 
     return {
       id: String(job.id),

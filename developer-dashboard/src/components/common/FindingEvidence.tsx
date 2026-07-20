@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // FindingEvidence - the shared evidence body for ONE finding.
-// Renders reproduction, screenshot, resolved source frames, suggested
+// Renders reproduction, resolved source frames, suggested
 // fix, and stack trace identically for the live Errors tab and the
 // saved Forensic Report, driven by a normalized FindingView. Each
 // caller keeps its own header/chrome; only this evidence block is
@@ -90,19 +90,6 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
       <div className="px-3 pt-3 sm:px-4">
         <Reproduction view={view} />
       </div>
-
-      {/* Visual evidence captured at the fault instant (live/replay only) */}
-      {view.screenshot && (
-        <div className="px-3 pt-3 sm:px-4">
-          <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Screenshot at fault</div>
-          <img
-            src={`data:image/jpeg;base64,${view.screenshot}`}
-            alt="Viewport at the moment the fault was captured"
-            className="w-full rounded-md border border-(--border-hairline)"
-            loading="lazy"
-          />
-        </div>
-      )}
 
       {/* Original source frames resolved from the target's source maps (best-effort) */}
       {view.resolvedStackTrace && (

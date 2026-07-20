@@ -201,7 +201,7 @@ export class ExplorationLoop {
         // recreated page; `unrecoverable` ends the run cleanly.
         const health = await this.deps.ensurePageHealth(page);
         if (health.status === 'unrecoverable') {
-          telemetry.emitMilestone('🛑 Unrecoverable invalid browser state — ending exploration.');
+          telemetry.emitMilestone(' Unrecoverable invalid browser state — ending exploration.');
           return {
             completed: false,
             reason: 'Unrecoverable invalid browser state (about:blank / closed page).',
@@ -271,7 +271,7 @@ export class ExplorationLoop {
         }
         const fingerprint = fpResult.fingerprint;
 
-        // ♿ Static WCAG audit of this state (runs once per novel structural shell;
+        //  Static WCAG audit of this state (runs once per novel structural shell;
         // fully isolated — an audit failure must never derail exploration).
         await this.auditAccessibility(page, fingerprint.compound.structure);
 
@@ -305,7 +305,7 @@ export class ExplorationLoop {
         if (targetResolution.kind === 'return') return targetResolution.result;
         target = targetResolution.target;
 
-        // 🔮 Forward lookahead (proactive): skip WITHOUT clicking any edge that
+        //  Forward lookahead (proactive): skip WITHOUT clicking any edge that
         // can't advance exploration — one resolving to a breadcrumb ancestor
         // (would loop) or one that opens a new tab / dead-end scheme (can't change
         // the app-under-test's main page). Marks it cyclic + accounts it as
@@ -333,7 +333,7 @@ export class ExplorationLoop {
           decision.score,
         );
 
-        // 🧭 Navigation-defect observation BEFORE any parent restore, so the
+        //  Navigation-defect observation BEFORE any parent restore, so the
         // post-action URL still reflects what the interaction actually did.
         this.observeNavigation(page, fingerprint.compound, target, {
           traversalOk,
@@ -341,7 +341,7 @@ export class ExplorationLoop {
           actionThrew,
         });
 
-        // 🐛 Finder sweep on the DOM the interaction actually produced — before
+        //  Finder sweep on the DOM the interaction actually produced — before
         // applyTraversalOutcome, which may restore the parent and destroy it.
         await this.runBugFinders(page, step, fingerprint.currentHash, target);
 
@@ -390,7 +390,7 @@ export class ExplorationLoop {
         ctx.budgetExtensions++;
         const remaining = this.deps.clusterRegistry.unexploredControlCount();
         this.deps.telemetry.emitMilestone(
-          `🔎 ${remaining} unexplored control(s) remain — extending budget to ${ctx.budget} steps (extension ${ctx.budgetExtensions}).`,
+          ` ${remaining} unexplored control(s) remain — extending budget to ${ctx.budget} steps (extension ${ctx.budgetExtensions}).`,
         );
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'budget-extended',
@@ -414,7 +414,7 @@ export class ExplorationLoop {
   }
 
   private async maybeSabotageNetwork(page: Page, ctx: RunContext): Promise<void> {
-    // 📡 Network Sabotage (NetworkSaboteur): gated by the 'navigation' testing
+    //  Network Sabotage (NetworkSaboteur): gated by the 'navigation' testing
     // type, so it runs only under profiles that select it (CHAOS + High-Frequency
     // Concurrency Strain) and never leaks into data/async/auth profiles. Fires on
     // a deterministic cadence (every Nth step) so execution stays reproducible.
@@ -425,7 +425,7 @@ export class ExplorationLoop {
       
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'network-sabotage',
-        message: '📡 Chaos Mode: Sabotaging network requests for this step...',
+        message: ' Chaos Mode: Sabotaging network requests for this step...',
       });
       // Execute the network sabotage - note: this remains active for subsequent interactions
       await networkSaboteur.execute(page);
@@ -469,7 +469,7 @@ export class ExplorationLoop {
       // Restore the viewport so parsing/coordinate capture starts from the top.
       await page.evaluate(() => window.scrollTo(0, 0));
       await settle(page);
-      this.deps.telemetry.emitMilestone('🔄 Scrolled to reveal lazy-loaded / off-screen content before re-parsing.');
+      this.deps.telemetry.emitMilestone(' Scrolled to reveal lazy-loaded / off-screen content before re-parsing.');
     } catch {
       // Detached/closed/navigated page — handled by ensurePageHealth next step.
     }
@@ -531,7 +531,7 @@ export class ExplorationLoop {
     if (!ctx.saturatedLogged.has(structure)) {
       ctx.saturatedLogged.add(structure);
       this.deps.telemetry.emitMilestone(
-        `🧭 Page fully explored (${url}) — skipping re-parse/re-test; advancing to the nearest unexplored branch.`,
+        ` Page fully explored (${url}) — skipping re-parse/re-test; advancing to the nearest unexplored branch.`,
       );
     }
     this.deps.telemetry.emit('ACTION', {
@@ -551,8 +551,8 @@ export class ExplorationLoop {
     page: Page,
     ctx: RunContext,
   ): Promise<{ kind: 'continue' } | { kind: 'deadend' } | { kind: 'proceed'; ranked: InteractiveElement[] }> {
-    // 🧠 Prioritization (milestone comes right after parse/scoring)
-    this.deps.telemetry.emitMilestone('👁️ Vision Active');
+    //  Prioritization (milestone comes right after parse/scoring)
+    this.deps.telemetry.emitMilestone('️ Vision Active');
 
     // Page-context validity + strict-lock confinement are enforced by the
     // per-iteration ensurePageHealth() gate in execute(); here we only wait for
@@ -586,7 +586,7 @@ export class ExplorationLoop {
       }
       // Still empty on the third consecutive check — classify as Structural Dead-End.
       this.deps.telemetry.emitMilestone(
-        `🕳️ Structural Dead-End: no interactive elements after ${ctx.emptyCheckCount} checks — skipping page and backtracking.`,
+        `️ Structural Dead-End: no interactive elements after ${ctx.emptyCheckCount} checks — skipping page and backtracking.`,
       );
       return { kind: 'deadend' };
     }
@@ -603,11 +603,11 @@ export class ExplorationLoop {
     if (elements.every((el) => this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector))) {
       const revealed = await this.scrollToRevealNewControls(page, elements);
       if (revealed) {
-        this.deps.telemetry.emitMilestone('🔻 Frontier spent — adaptive scroll revealed new off-screen controls.');
+        this.deps.telemetry.emitMilestone(' Frontier spent — adaptive scroll revealed new off-screen controls.');
         elements = revealed;
       } else {
         this.deps.telemetry.emitMilestone(
-          '🔚 Page fully explored (frontier spent, nothing new on scroll) — backtracking to nearest unexplored branch.',
+          ' Page fully explored (frontier spent, nothing new on scroll) — backtracking to nearest unexplored branch.',
         );
       }
     }
@@ -848,7 +848,7 @@ export class ExplorationLoop {
     if (stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
       const intensity = computePenaltyIntensity(stagnation.stagnationScore, ctx.stagnationForceBacktrack);
       this.deps.telemetry.emitMilestone(
-        `🚨 Stagnation detected (score=${stagnation.stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
+        ` Stagnation detected (score=${stagnation.stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
       );
       for (const element of ranked) {
         this.deps.scorer.penalize(element.selector, (Math.abs(element.riskScore) + 1) * intensity);
@@ -1002,7 +1002,7 @@ export class ExplorationLoop {
     const limits = this.boundaryConstraints();
     if (limits.length === 0) {
       const reason = 'Graph Exhausted — full reachable application graph explored (post-recovery).';
-      this.deps.telemetry.emitMilestone(`🔚 ${reason}`);
+      this.deps.telemetry.emitMilestone(` ${reason}`);
       this.deps.telemetry.emit('ACTION', { actionExecuted: 'graph-exhausted', message: reason });
       return { completed: true, reason, outcome: 'completed' };
     }
@@ -1010,7 +1010,7 @@ export class ExplorationLoop {
     const reason =
       `Boundary Saturation Reached — configured scope fully explored (${limits.join('; ')}). ` +
       'The application graph beyond the boundary was not explored.';
-    this.deps.telemetry.emitMilestone(`🧱 ${reason}`);
+    this.deps.telemetry.emitMilestone(` ${reason}`);
     this.deps.telemetry.emit('ACTION', { actionExecuted: 'boundary-saturation', message: reason });
     return { completed: true, reason, outcome: 'boundary-saturated' };
   }
@@ -1036,7 +1036,7 @@ export class ExplorationLoop {
         ctx.budget = Math.min(ctx.hardCap, ctx.budget + ctx.extensionSteps);
         ctx.recoveryRounds = ctx.maxRecoveryRounds - 1; // allow another round
         this.deps.telemetry.emitMilestone(
-          `🔎 Graph reported exhausted but ${this.deps.clusterRegistry.unexploredControlCount()} control(s) untriggered — extending budget to ${ctx.budget} and recovering.`,
+          ` Graph reported exhausted but ${this.deps.clusterRegistry.unexploredControlCount()} control(s) untriggered — extending budget to ${ctx.budget} and recovering.`,
         );
       } else {
         return { kind: 'return', result: this.completionResult() };
@@ -1046,7 +1046,7 @@ export class ExplorationLoop {
     ctx.recoveryRounds++;
     const recovery = this.deps.pathNavigator.recoverFromExhaustion();
     this.deps.telemetry.emitMilestone(
-      `♻️ ${describeRecovery(recovery.requeuedEdges)} (round ${ctx.recoveryRounds}/${ctx.maxRecoveryRounds}).`,
+      `️ ${describeRecovery(recovery.requeuedEdges)} (round ${ctx.recoveryRounds}/${ctx.maxRecoveryRounds}).`,
     );
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'adaptive-recovery',
@@ -1063,9 +1063,9 @@ export class ExplorationLoop {
       if (this.deps.strictUrlLock) {
         // Under the boundary lock the origin re-seed is a competing navigation:
         // the boundary-lock restore is the sole page-transition authority, so skip it.
-        this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: skipping origin re-seed (boundary lock owns navigation).');
+        this.deps.telemetry.emitMilestone(' Strict URL Lock: skipping origin re-seed (boundary lock owns navigation).');
       } else {
-        this.deps.telemetry.emitMilestone(`♻️ Re-seeding exploration from origin: ${origin}`);
+        this.deps.telemetry.emitMilestone(`️ Re-seeding exploration from origin: ${origin}`);
         await this.deps.stateRestorer.restoreToState(page, '', origin);
         await settle(page);
       }
@@ -1126,14 +1126,14 @@ export class ExplorationLoop {
         statusCode: mainFrameStatus,
         url,
         method: 'GET',
-        message: `⛔ Error state excluded (HTTP ${mainFrameStatus}) at ${url} — not registered as a graph state.`,
+        message: ` Error state excluded (HTTP ${mainFrameStatus}) at ${url} — not registered as a graph state.`,
       });
     }
     this.deps.telemetry.emitMilestone(
-      `⛔ Error/invalid page excluded from graph (${routeVerdict.reason}) — treating as a dead end and recovering to the nearest unexplored state.`,
+      ` Error/invalid page excluded from graph (${routeVerdict.reason}) — treating as a dead end and recovering to the nearest unexplored state.`,
     );
 
-    // 🧭 Broken-route oracle: raise a navigation defect when this hard HTTP error
+    //  Broken-route oracle: raise a navigation defect when this hard HTTP error
     // state was reached via a user-style interaction (never via engine recovery).
     this.deps.reportNavigationDefects(
       this.deps.navigationFinder.observeErrorState({
@@ -1186,7 +1186,7 @@ export class ExplorationLoop {
     // races the boundary-lock restore. Skip it — the lock keeps us on the single
     // permitted URL and the next parse re-reads the live DOM regardless.
     if (this.deps.strictUrlLock) {
-      this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
+      this.deps.telemetry.emitMilestone(' Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
       return;
     }
 
@@ -1202,13 +1202,13 @@ export class ExplorationLoop {
         score: Number(decision.frontier.priority.toFixed(3)),
         stateHash: decision.targetHash,
         message:
-          `🧭 Frontier target ${decision.targetHash.substring(0, 8)} — priority ${decision.frontier.priority.toFixed(2)} ` +
+          ` Frontier target ${decision.targetHash.substring(0, 8)} — priority ${decision.frontier.priority.toFixed(2)} ` +
           `(risk ${decision.frontier.edgeScore.toFixed(2)} + novelty ${decision.frontier.noveltyBonus.toFixed(2)}); ` +
           `${decision.path?.length ? `${decision.path.length}-step BFS path` : 'no explored route — restore ladder'}.`,
       });
     }
 
-    this.deps.telemetry.emitMilestone(`↩️ Backtracking to ${decision.targetUrl}`);
+    this.deps.telemetry.emitMilestone(`️ Backtracking to ${decision.targetUrl}`);
     this.deps.telemetry.emitSystemStatus(`Backtracking to ${decision.targetHash.substring(0, 8)}...`);
 
     // Preferred: replay the BFS-planned action sequence — deterministic,
@@ -1223,7 +1223,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'path-replanned',
         stateHash: decision.targetHash,
-        message: `♻️ BFS path replay to ${decision.targetHash.substring(0, 8)} failed en route — replanning via restore ladder.`,
+        message: `️ BFS path replay to ${decision.targetHash.substring(0, 8)} failed en route — replanning via restore ladder.`,
       });
     }
 
@@ -1270,7 +1270,7 @@ export class ExplorationLoop {
       this.deps.scorer.penalize(target.selector, Math.abs(target.riskScore) + 1);
       const human = humanizeElement(target);
       this.deps.telemetry.emitMilestone(
-        `🔁 Transition budget reached: ${human} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,
+        ` Transition budget reached: ${human} repeatedly returns to seen views (limit ${this.deps.transitionRepeatBudget}). Deprioritizing session-wide and choosing an unexplored route.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'transition-budget-exhausted',
@@ -1290,7 +1290,7 @@ export class ExplorationLoop {
       // so it stops inflating hasUnexploredControls() and driving endless re-seeds.
       this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
       this.deps.telemetry.emitMilestone(
-        `🔁 Cyclic-loop avoided: ${humanizeElement(target)} leads back to a breadcrumb ancestor (${probe.href}). Choosing another pathway.`,
+        ` Cyclic-loop avoided: ${humanizeElement(target)} leads back to a breadcrumb ancestor (${probe.href}). Choosing another pathway.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'cyclic-loop-detected',
@@ -1317,7 +1317,7 @@ export class ExplorationLoop {
           ? 'opens a new tab'
           : 'non-navigational link';
       this.deps.telemetry.emitMilestone(
-        `🚫 Skipping ${humanizeElement(target)} (${reason}) — keeping exploration on the app under test.`,
+        ` Skipping ${humanizeElement(target)} (${reason}) — keeping exploration on the app under test.`,
       );
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'off-site-control-skipped',
@@ -1390,7 +1390,7 @@ export class ExplorationLoop {
       traversalOk = false;
       childHash = currentHash;
       this.deps.telemetry.emitMilestone(
-        `⛔ ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
+        ` ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
       );
     }
 
@@ -1442,7 +1442,7 @@ export class ExplorationLoop {
         });
       }
 
-      // 🔁 Forward lookahead (reactive): the click landed on a state that
+      //  Forward lookahead (reactive): the click landed on a state that
       // is already an ancestor on our breadcrumb path — a genuine backward
       // loop the static probe couldn't predict (JS-driven navigation).
       // Permanently mark the edge cyclic so it's never retried. syncStack
@@ -1450,7 +1450,7 @@ export class ExplorationLoop {
       if (this.deps.pathNavigator.isAncestorHash(childHash)) {
         this.deps.pathNavigator.markEdgeCyclic(previousHashBeforeAction, target.selector);
         this.deps.telemetry.emitMilestone(
-          `🔁 Cyclic-loop detected: ${humanizeElement(target)} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
+          ` Cyclic-loop detected: ${humanizeElement(target)} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
         );
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'cyclic-loop-detected',
@@ -1484,9 +1484,9 @@ export class ExplorationLoop {
         this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
       }
       if (this.deps.strictUrlLock) {
-        this.deps.telemetry.emitMilestone('🔒 Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
+        this.deps.telemetry.emitMilestone(' Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
       } else {
-        this.deps.telemetry.emitMilestone(`🩹 Edge unstable — restoring parent locally (no false exhaustion).`);
+        this.deps.telemetry.emitMilestone(` Edge unstable — restoring parent locally (no false exhaustion).`);
         this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
       }

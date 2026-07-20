@@ -4,9 +4,16 @@
 // Credentials for the application UNDER TEST — unrelated to BugSafari's own
 // operator accounts (see presentation/authentication).
 //
-// INVARIANT: ephemeral. These values live in memory for the duration of one run
-// and are never written to MongoDB, Redis, logs, reports, or telemetry. Anything
-// that would persist or broadcast a run config must exclude this object.
+// INVARIANT: ephemeral, and never stored in plaintext. These values live in
+// memory for the duration of one run and are never written to MongoDB, logs,
+// reports, telemetry, or a BullMQ job payload (which Redis retains for 24h on
+// failure). Anything that persists or broadcasts a run config must exclude them.
+//
+// The ONE permitted crossing of a process boundary is the AuthVault
+// (testing-core/src/infrastructure/queue/AuthVault.ts): AES-256-GCM sealed under
+// BUGSAFARI_AUTH_KEY, keyed by runId, 10-minute TTL, destroyed on first read.
+// That is what makes an authenticated run safe to queue; the job payload itself
+// carries only a `hasAuth` marker.
 
 /** Form login driven by the engine against the target's own login page. */
 export interface TargetCredentialsAuth {

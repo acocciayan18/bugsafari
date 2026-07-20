@@ -148,12 +148,10 @@ export default function ClinicalForensicsDashboard({
 
   const handleInitialize = () => {
     if (!onStartInitialization || authIncomplete) return;
+    // The draft is deliberately retained so reopening the config modal — or
+    // re-running against the same target — shows what the operator entered.
+    // It lives only in component state: never persisted, gone on page reload.
     onStartInitialization(urlInput, selectedProfile, strictBoundary, toTargetAuthConfig(authDraft));
-    // Drop the credentials from component state the moment they are handed off —
-    // they are ephemeral per run, so nothing should survive in the form.
-    if (authDraft.enabled) {
-      setAuthDraft({ ...authDraft, username: '', password: '' });
-    }
   };
 
   // Job parked behind the worker fleet — hold the dashboard in standby (frozen

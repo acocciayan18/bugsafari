@@ -2,7 +2,7 @@
 
 **Goal:** make the engine do its job without producing false results, looping forever, or failing to explore different parts of a target site — then implement **D2/D3 adaptive pacing**.
 
-**Status:** ✅ All changes implemented, unit-tested, typechecked, built, and verified end-to-end against a live site.
+**Status:**  All changes implemented, unit-tested, typechecked, built, and verified end-to-end against a live site.
 
 **Test/build:** `tsc --noEmit` clean · **16/16** test files pass · `tsc` build clean.
 
@@ -86,7 +86,7 @@ Fixed waits (`wait(350)` per step) and a full **3 s** `verifyTraversal` poll on 
 
 Drove the real production path (`PlaywrightBrowserEngine.run`, headless, guest mode) via a throwaway harness (`testing-core/scripts/e2e-academybugs.mts`, exploration+navigation, 150 s active timebox). Consistent across runs:
 
-- **8 → 7 distinct controls** acted on out of 10 actions; **top-control share ~20 %** → verdict **✅ EXPLORING**.
+- **8 → 7 distinct controls** acted on out of 10 actions; **top-control share ~20 %** → verdict ** EXPLORING**.
 - Novelty rewards fired **only** on genuinely new shells; returns to seen shells registered as `state-revisited` (penalty), not false novelty.
 - **Cyclic loops blocked**: re-selecting a just-clicked control was caught (`cyclic-blocked` + revisit penalty), not rewarded — the exact behavior that was broken on guru99.
 - Pacing: run time **182 s → 161 s → 153.7 s** for the same 10 steps across the pacing iterations, with behavior unchanged.

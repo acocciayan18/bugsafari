@@ -31,7 +31,7 @@ export const PRIVACY_NOTICE: LegalDoc = {
       bullets: [
         'Account data — email address and a one-way hashed password.',
         'Session data — target URLs you supply, testing configuration, and run timestamps.',
-        'Telemetry — DOM element traces, action sequences, console and network errors, and screenshots captured from the application you test.',
+        'Telemetry — DOM element traces, action sequences, and console and network errors captured from the application you test.',
         'Technical data — browser and device information needed to serve the dashboard.',
       ],
     },

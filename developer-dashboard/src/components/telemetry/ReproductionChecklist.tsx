@@ -8,7 +8,7 @@ import {
 } from '../../utils/reproductionFormat';
 
 /**
- * 🧭 Reproduction Playbook — a high-contrast, numbered checklist of the
+ *  Reproduction Playbook — a high-contrast, numbered checklist of the
  * human-executable steps that led to a captured defect, with a per-step
  * action-type chip and observed results shown apart from the actions.
  * Self-contained so it can render natively inside any defect card.
@@ -34,7 +34,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <div className="min-w-0 text-[11px] font-black uppercase tracking-wider text-(--text-secondary)">
-          🧭 Reproduction Playbook
+           Reproduction Playbook
         </div>
         {steps.length > 0 && (
           <button

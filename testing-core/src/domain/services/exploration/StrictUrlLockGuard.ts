@@ -107,7 +107,7 @@ export class StrictUrlLockGuard {
       this.telemetry.emit('ACTION', {
         actionExecuted: 'strict-url-lock-blocked',
         url: request.url(),
-        message: `🔒 Strict URL Lock: blocked navigation to ${request.url()} (locked to ${this.lockedUrl}).`,
+        message: ` Strict URL Lock: blocked navigation to ${request.url()} (locked to ${this.lockedUrl}).`,
       });
     };
 

@@ -94,7 +94,7 @@ export class PageHealthGuard {
   private async recoverInvalid(page: Page): Promise<PageHealthResult> {
     if (this.totalRecoveries >= this.maxRecoveries) {
       this.deps.telemetry.emitMilestone(
-        `🛑 Page recovery abandoned after ${this.totalRecoveries} attempts — invalid context persists.`,
+        ` Page recovery abandoned after ${this.totalRecoveries} attempts — invalid context persists.`,
       );
       return { page, status: 'unrecoverable' };
     }
@@ -106,7 +106,7 @@ export class PageHealthGuard {
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'page-health-invalid',
       url: invalidUrl,
-      message: `⚠️ Invalid browser context (${invalidUrl}) — recovery rung ${rung}.`,
+      message: `️ Invalid browser context (${invalidUrl}) — recovery rung ${rung}.`,
     });
 
     // Under strict lock every recovery targets the locked URL; in normal mode we
@@ -149,7 +149,7 @@ export class PageHealthGuard {
   }
 
   private async recreate(): Promise<Page | null> {
-    this.deps.telemetry.emitMilestone('♻️ Recreating browser page (deepest recovery rung)...');
+    this.deps.telemetry.emitMilestone('️ Recreating browser page (deepest recovery rung)...');
     try {
       const fresh = await this.deps.recreatePage();
       if (fresh) this.deps.recordRecovery(fresh.isClosed() ? '(closed)' : fresh.url(), 'recreate-page');
@@ -188,7 +188,7 @@ export class PageHealthGuard {
 
   private async restoreDrift(page: Page): Promise<PageHealthResult> {
     if (this.driftRestores >= this.maxRecoveries) {
-      this.deps.telemetry.emitMilestone('🛑 Strict URL Lock: drift-restore budget exhausted — ending exploration.');
+      this.deps.telemetry.emitMilestone(' Strict URL Lock: drift-restore budget exhausted — ending exploration.');
       return { page, status: 'unrecoverable' };
     }
     this.driftRestores += 1;
@@ -196,7 +196,7 @@ export class PageHealthGuard {
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'strict-url-lock-restore',
       url: page.url(),
-      message: `🔒 Strict URL Lock: residual drift to ${page.url()} — restoring ${target}.`,
+      message: ` Strict URL Lock: residual drift to ${page.url()} — restoring ${target}.`,
     });
 
     try {

@@ -113,7 +113,7 @@ export interface SessionHistoryEntry {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 🔬 FORENSIC INSPECTION REPORT TYPES
+//  FORENSIC INSPECTION REPORT TYPES
 // Mirrors the `report` object returned by GET /api/forensic/report/:sessionId
 // (testing-core/src/presentation/api/registerRoutes.ts). Only the fields the
 // inspection drawer renders are modelled here.
@@ -259,7 +259,7 @@ export interface ForensicReportResponse {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 👤 USER SETTINGS TYPES
+//  USER SETTINGS TYPES
 // ─────────────────────────────────────────────────────────────
 
 export interface UserProfile {

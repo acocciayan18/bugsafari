@@ -16,7 +16,6 @@ export interface CreateForensicAnalysisParams {
   apiFailureCount?: number;
   criticalErrorCount?: number;
   jsExceptionCount?: number;
-  screenshotCount?: number;
 }
 
 export class ForensicAnalysisRepository {
@@ -37,7 +36,6 @@ export class ForensicAnalysisRepository {
       apiFailureCount: params.apiFailureCount ?? 0,
       criticalErrorCount: params.criticalErrorCount ?? 0,
       jsExceptionCount: params.jsExceptionCount ?? 0,
-      screenshotCount: params.screenshotCount ?? 0,
     });
 
     return analysis.save();

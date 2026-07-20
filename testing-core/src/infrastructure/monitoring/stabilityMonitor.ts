@@ -100,7 +100,7 @@ export function setupStabilityMonitoring(
 
     const faultType: FaultType = 'FREEZE';
     const reason = "System Lock-up Detected: The browser's Main Thread is unresponsive.";
-    const banner = "🧊 System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
+    const banner = " System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
     const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
     const { advice, attribution } = classify(faultType, reason, { url });
 

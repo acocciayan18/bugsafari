@@ -112,28 +112,28 @@ export async function connectDatabase(): Promise<boolean> {
       mongoose.connection.on('connected', () => {
         isConnected = true;
         connectionError = null;
-        console.log(`[mongooseClient] 🟢 Connection established (${mongoose.connection.name})`);
+        console.log(`[mongooseClient]  Connection established (${mongoose.connection.name})`);
       });
 
       mongoose.connection.on('disconnected', () => {
         isConnected = false;
-        console.log(`[mongooseClient] 🔴 Connection disconnected`);
+        console.log(`[mongooseClient]  Connection disconnected`);
       });
 
       mongoose.connection.on('error', (err) => {
         connectionError = err as Error;
-        console.error(`[mongooseClient] ❌ Connection error:`, err);
+        console.error(`[mongooseClient]  Connection error:`, err);
       });
 
       mongoose.connection.on('reconnect', () => {
         isConnected = true;
-        console.log(`[mongooseClient] 🔄 Connection reestablished`);
+        console.log(`[mongooseClient]  Connection reestablished`);
       });
 
       return mongoose;
     } catch (err) {
       connectionError = err instanceof Error ? err : new Error(String(err));
-      console.error(`[mongooseClient] 🟡 Initial connection failed:`, err);
+      console.error(`[mongooseClient]  Initial connection failed:`, err);
       throw err;
     }
   })();
@@ -154,7 +154,7 @@ export async function disconnectDatabase(): Promise<void> {
   if (connectionInstance) {
     try {
       await mongoose.disconnect();
-      console.log('[mongooseClient] 🔌 Disconnected gracefully');
+      console.log('[mongooseClient]  Disconnected gracefully');
     } catch (err) {
       console.error('[mongooseClient] Error during disconnect:', err);
     } finally {

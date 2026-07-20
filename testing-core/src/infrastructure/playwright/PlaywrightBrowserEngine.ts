@@ -246,13 +246,13 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
     let result: RunResult;
     try {
-      // 🔒 RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
+      //  RACE CONDITION FIX: Check if engine was nullified during rapid cancellation
       if (!this.activeEngine) {
         // Gracefully abort - session was terminated by request before exploration began
         return this.cancellationResult(telemetry);
       }
       
-      // 🔐 Authenticate into the target BEFORE exploration, so the engine's own
+      //  Authenticate into the target BEFORE exploration, so the engine's own
       // navigation lands on an authenticated session. Runs after the reflection
       // oracle is installed (it must precede every navigation, login included) and
       // before live-frame capture starts, so no frame can catch a filled password.
@@ -278,7 +278,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
     } catch (err: unknown) {
-      // 🔒 RACE CONDITION FIX: only treat this as an expected, graceful stop
+      //  RACE CONDITION FIX: only treat this as an expected, graceful stop
       // when stop() actually tagged this run as cancelled. Previously this
       // matched on `err instanceof TypeError && message.includes('Cannot read
       // properties of null')`, which would just as happily swallow a genuine

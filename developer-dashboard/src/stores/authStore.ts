@@ -156,7 +156,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 persistSession(data.token, data.refreshToken, data.user);
 
                 console.log('[authStore] Signup successful:', data.user.email);
-                console.log('✔ [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.');
+                console.log(' [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.');
                 toast.success('Account created! Redirecting to sign in...');
 
                 // Graceful delay before bouncing to sign-in

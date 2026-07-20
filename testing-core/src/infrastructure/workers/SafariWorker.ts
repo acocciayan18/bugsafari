@@ -9,6 +9,7 @@ import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQue
 import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { RunRegistry } from '../queue/RunRegistry.js';
+import { AuthVault } from '../queue/AuthVault.js';
 import { resolveEngineTargetUrl } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
@@ -94,7 +95,31 @@ export async function createSafariWorker(
   // Registry: this worker publishes a throttled replay snapshot of its live run
   // so the API process can rebuild a refreshed client's dashboard cross-process.
   const runRegistry = new RunRegistry(redisUrl);
+  const authVault = AuthVault.create(redisUrl);
   const SNAPSHOT_INTERVAL_MS = 2_000;
+  // jobId -> run identity for jobs this worker is currently processing. The
+  // 'stalled' event delivers only a jobId and Worker exposes no job lookup, so
+  // the mapping has to be kept here to clean up an abandoned run.
+  const claimsByJobId = new Map<string, { runId: string; userId: string | null }>();
+
+  // Terminal handshake for a run that died outside execute()'s own reporting —
+  // a stalled lock, a payload rejection, an auth failure. Without this the
+  // dashboard sits on its last snapshot until the 60s TTL lapses, and a client
+  // that already left queue:${jobId} never learns the run is dead at all.
+  const publishRunFailure = (runId: string, message: string): void => {
+    if (sessionManager.getActiveRunId() === runId) {
+      sessionManager.failRun(message);
+      return;
+    }
+    telemetry.setRoom(`run:${runId}`);
+    telemetry.emitTelemetry({ timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message } });
+    telemetry.emitTelemetry({
+      timestamp: new Date().toISOString(),
+      type: 'ACTION',
+      meta: { actionExecuted: 'engine-status', message: 'IDLE' },
+    });
+    telemetry.setRoom(null);
+  };
 
   const worker = new Worker<SafariTaskPayload>(
     SAFARI_TASK_QUEUE_NAME,
@@ -122,7 +147,7 @@ async (job) => {
       }
       const engineUrl = routing.url;
       if (routing.rewritten) {
-        console.log(`[SafariWorker] ↪ Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
+        console.log(`[SafariWorker]  Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
       }
 
       // Bind the run to the SAME runId the client received at enqueue, so the
@@ -137,14 +162,31 @@ async (job) => {
             .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
         }
       }, SNAPSHOT_INTERVAL_MS);
+      claimsByJobId.set(String(job.id ?? ''), { runId: payload.runId, userId: payload.requestedBy ?? null });
       let succeeded = false;
       try {
-        // Honor the operator's infiltration-profile gate carried on the job payload;
-        // undefined would make ScenarioGate default to all testing types.
-        await useCase.execute(engineUrl, undefined, payload.selectedScenarios, payload.runId);
+        // Open the sealed credentials exactly once. A miss means the vault entry
+        // expired or a retry already consumed it — fail loudly rather than run
+        // unauthenticated, which would report a clean result for a surface that
+        // was never reached.
+        let targetAuth;
+        if (payload.hasAuth) {
+          targetAuth = await authVault?.take(payload.runId) ?? null;
+          if (!targetAuth) {
+            throw new Error('Target credentials were unavailable (expired or already consumed). Start the authenticated run again.');
+          }
+        }
+
+        // Honor the operator's infiltration-profile gate AND tuning carried on the
+        // job payload; undefined would default the gate to all testing types and
+        // the timebox to 600s regardless of what the operator configured.
+        await useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runId, targetAuth ?? undefined);
         succeeded = true;
       } finally {
         clearInterval(snapshotTimer);
+        claimsByJobId.delete(String(job.id ?? ''));
+        // Ciphertext outlives neither success nor failure.
+        if (payload.hasAuth) await authVault?.discard(payload.runId);
         // Only settle the registry when the run is truly over — a failure BullMQ
         // will retry must stay resumable/deduplicated.
         const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
@@ -186,8 +228,32 @@ async (job) => {
     console.log(`[SafariWorker] completed job=${job.id ?? 'unknown'}`);
   });
 
+  // A lock that lapsed while the job was still active: BullMQ re-queues it, so
+  // the same runId would stream a second, interleaved run into the same room.
+  // Destroy the credentials and tell the dashboard the run is gone.
+  worker.on('stalled', (jobId) => {
+    console.error(`[SafariWorker] stalled job=${jobId} — lock expired, run abandoned`);
+    // The stalled event carries only the id, and Worker has no job lookup — hence
+    // the claim map maintained by the processor.
+    const claim = claimsByJobId.get(jobId);
+    if (!claim) return;
+    claimsByJobId.delete(jobId);
+    void authVault?.discard(claim.runId);
+    publishRunFailure(claim.runId, 'The worker executing this session stopped responding and the run was abandoned.');
+    void runRegistry.clear(claim.runId, claim.userId)
+      .catch((error) => console.error('[SafariWorker] stalled cleanup failed:', error instanceof Error ? error.message : error));
+  });
+
   worker.on('failed', (job, error) => {
     console.error(`[SafariWorker] failed job=${job?.id ?? 'unknown'} error=${error.message}`);
+    if (!job?.data?.runId) return;
+    // BullMQ increments attemptsMade only after the processor settles, so during
+    // this handler it still counts prior attempts — matching its own retry test
+    // (`attemptsMade + 1 < opts.attempts`). Verified against bullmq 5.78.0.
+    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    if (!isFinalAttempt) return;
+    void authVault?.discard(job.data.runId);
+    publishRunFailure(job.data.runId, `Session failed before it could finish: ${error.message}`);
   });
 
   worker.on('error', (error) => {
@@ -202,6 +268,7 @@ async (job) => {
       await worker.close();
       await controlSubscriber.close();
       await runRegistry.close();
+      await authVault?.close();
       await publisher.close();
     },
   };

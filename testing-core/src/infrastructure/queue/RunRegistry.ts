@@ -79,6 +79,30 @@ export class RunRegistry {
     await this.redis.del(...keys);
   }
 
+  /**
+   * Every live index entry. SCAN (not KEYS) so a large keyspace is walked in
+   * bounded chunks instead of blocking Redis.
+   */
+  public async listEntries(): Promise<RunRegistryEntry[]> {
+    const entries: RunRegistryEntry[] = [];
+    let cursor = '0';
+    do {
+      const [next, keys] = await this.redis.scan(cursor, 'MATCH', this.runKey('*'), 'COUNT', 100);
+      cursor = next;
+      if (keys.length === 0) continue;
+      const values = await this.redis.mget(...keys);
+      for (const raw of values) {
+        if (!raw) continue;
+        try {
+          entries.push(JSON.parse(raw) as RunRegistryEntry);
+        } catch {
+          // Unparseable entry — the sweep's caller drops it via clear().
+        }
+      }
+    } while (cursor !== '0');
+    return entries;
+  }
+
   /** Worker-side write of the replay snapshot (throttled live, or final-state with a longer TTL). */
   public async writeSnapshot(runId: string, snapshot: ActiveSessionSnapshot, ttlSeconds = SNAPSHOT_TTL_SECONDS): Promise<void> {
     await this.redis.set(this.snapshotKey(runId), JSON.stringify(snapshot), 'EX', ttlSeconds);
