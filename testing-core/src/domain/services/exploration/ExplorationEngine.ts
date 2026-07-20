@@ -11,7 +11,7 @@ import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import type { NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
-import { normalizeFaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
+import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
 import { applyReproductionOutcome } from '../verification/confidenceScore.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
@@ -364,9 +364,13 @@ export class ExplorationEngine {
 
       // Surface arsenal-discovered bugs (fuzzing/injection/stress/storage) on the
       // live Errors tab. JS/console exceptions are already streamed by
-      // StabilityMonitor (streamed=true); network faults own the Network tab.
+      // StabilityMonitor (streamed=true); plain network faults own the Network tab.
+      // Exception: a masked vulnerability in a 2xx body (e.g. NOSQL_INJECTION) arrives
+      // as a NETWORK bug but is a genuine security finding, so it is promoted here —
+      // otherwise it stays invisible on the Network tab and never reaches Findings.
       // WCAG findings never reach this ledger — they are ephemeral, WS-only events.
-      if (!bug.streamed && bug.type !== 'NETWORK') {
+      const isSecurityFinding = isSecurityBugClass(bug.attribution?.bugClass);
+      if (!bug.streamed && (bug.type !== 'NETWORK' || isSecurityFinding)) {
         this.streamBugToErrorsTab(bug);
       }
 

@@ -171,15 +171,27 @@ return element.textContent ? element.textContent.replace(/\\s+/g, ' ').trim() : 
       };
 
       /**
-       * Compute SHA-256 hash of text using Web Crypto API.
-       * Returns a deterministic hex string of the hash.
+       * Deterministic text hash for structural DOM signatures.
+       * Prefers SHA-256 (Web Crypto), but crypto.subtle is undefined on insecure
+       * origins (plain HTTP that isn't localhost), so fall back to a fast non-crypto
+       * hash — structural signatures need determinism, not cryptographic strength.
        */
       const computeTextHash = async (text) => {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(text);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        if (crypto && crypto.subtle && crypto.subtle.digest) {
+          const data = new TextEncoder().encode(text);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        // cyrb53 — deterministic 64-bit hash, no secure context required.
+        let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+        for (let i = 0; i < text.length; i++) {
+          const ch = text.charCodeAt(i);
+          h1 = Math.imul(h1 ^ ch, 2654435761);
+          h2 = Math.imul(h2 ^ ch, 1597334677);
+        }
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+        return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
       };
 
 const isDisabled = (element) => {

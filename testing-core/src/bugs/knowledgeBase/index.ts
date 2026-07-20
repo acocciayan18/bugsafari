@@ -24,6 +24,7 @@ export {
 
 export {
   classifyFault,
+  isSecurityBugClass,
   type FaultType,
   type FaultInput,
   type FaultClassification,

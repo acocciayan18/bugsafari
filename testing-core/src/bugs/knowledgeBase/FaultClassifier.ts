@@ -91,6 +91,11 @@ const SECURITY_BUGCLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
   'CLIENT_TRUST_BOUNDARY_VIOLATION',
 ]);
 
+/** True for injection/leak classes — a genuine vulnerability, not a plain HTTP failure. */
+export function isSecurityBugClass(bugClass: string | undefined): boolean {
+  return bugClass !== undefined && SECURITY_BUGCLASSES.has(bugClass as BugClass);
+}
+
 /**
  * Which text source each signal category is tested against. QUERY_MUTATION tokens
  * (undefined/null/NaN) appear legitimately in page content, so it is URL-only —

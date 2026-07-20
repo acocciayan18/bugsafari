@@ -10,6 +10,7 @@ import {
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
 import {
   classifyFault,
+  isSecurityBugClass,
   matchesCategory,
   FREEZE_SELECTORS,
   INPUT_BLOCK_SELECTORS,
@@ -1154,11 +1155,17 @@ export class StabilityMonitor {
         cwe: attribution.cwe,
       });
 
-      // Register HTTP error bug to memory — one distinct instance PER failing
-      // response (unique sequenced id), enriched with the stack/body, the
-      // replication checklist, and a copyable suggested fix for the drawer.
+      // Register HTTP error bug to memory. Plain failures use a unique sequenced id
+      // (one distinct instance PER response — full telemetry parity). A masked
+      // vulnerability in a 2xx body (e.g. NOSQL_INJECTION) instead uses a stable
+      // class+endpoint id so a control hit dozens of times collapses to one
+      // occurrence-counted Finding rather than flooding the drawer.
+      const securityFinding = isSecurityBugClass(attribution.bugClass);
+      const bugId = securityFinding
+        ? `softfail-${attribution.bugClass}-${method}-${url.split('?')[0]}`
+        : `http-${status}-${Date.now()}-${nextBugSeq()}`;
       this.deps.registerConfirmedBug({
-        bugId: `http-${status}-${Date.now()}-${nextBugSeq()}`,
+        bugId,
         type: 'NETWORK',
         message: `HTTP ${status} Error: ${method} ${url}`,
         selector: '',

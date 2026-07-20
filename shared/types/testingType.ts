@@ -50,8 +50,8 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
-  'page-saturation-visits': 3,  // 3 gain-less revisits to a shell → fully explored
-  'page-saturation-interactions': 8,  // 8 repeat actuations on a shell → fully explored
+  'page-saturation-visits': 8,  // gain-less revisits to a shell → fully explored
+  'page-saturation-interactions': 25,  // repeat actuations on a shell → fully explored
   'form-fuzz-cap': 2,  // 2 fuzz submissions per form → excluded from further fuzzing
 };
 
