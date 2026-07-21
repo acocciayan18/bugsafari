@@ -46,9 +46,15 @@ export interface SignalBuckets {
  */
 export class FaultCollector {
   private readonly faults: CollectedFault[] = [];
+  private readonly endpoints = new Set<string>();
   private bound = false;
 
   constructor(private readonly page: Page) {}
+
+  /** URL pathnames the replay actually issued requests to — proves the fault trigger ran. */
+  public exercisedEndpoints(): string[] {
+    return [...this.endpoints];
+  }
 
   /** Begin capturing faults. Idempotent. */
   public attach(): void {
@@ -85,6 +91,7 @@ export class FaultCollector {
   };
 
   private readonly onResponse = (response: Response): void => {
+    this.recordEndpoint(response.url());
     const status = response.status();
     if (status < 400) return;
     if (!FAULT_RESOURCE_TYPES.has(response.request().resourceType())) return;
@@ -97,10 +104,16 @@ export class FaultCollector {
   };
 
   private readonly onRequestFailed = (request: Request): void => {
+    this.recordEndpoint(request.url());
     if (!FAULT_RESOURCE_TYPES.has(request.resourceType())) return;
     const reason = request.failure()?.errorText ?? 'request failed';
     this.faults.push({ faultType: 'NETWORK', message: `Request failed: ${reason}`, url: request.url() });
   };
+
+  private recordEndpoint(url: string): void {
+    const path = pathOf(url);
+    if (path) this.endpoints.add(path);
+  }
 
   private safeUrl(): string | undefined {
     try {
@@ -192,6 +205,16 @@ export class FaultCollector {
   private contentHasSignal(content: string): boolean {
     if (!content) return false;
     return (Object.keys(SIGNAL_PATTERNS) as SignalCategory[]).some((category) => matchesCategory(category, content));
+  }
+}
+
+/** URL → pathname (no query), or '' when unparseable. Used to compare fault triggers across runs. */
+export function pathOf(url: string | undefined): string {
+  if (!url) return '';
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '';
   }
 }
 

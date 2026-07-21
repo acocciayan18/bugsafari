@@ -14,6 +14,10 @@ export interface VerdictInput {
   weak: RegressionSignal[];
   stats: ReplayStepStats;
   timelineSource: 'finding' | 'session';
+  /** Pathname of the request that defined the fault (network faults only); '' when N/A. */
+  faultEndpoint?: string;
+  /** Pathnames the replay actually requested — used to prove the fault trigger ran. */
+  seenEndpoints?: string[];
 }
 
 export interface VerdictDecision {
@@ -39,6 +43,12 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   if (stats.total === 0 || ratio < MIN_EXECUTED_RATIO || !stats.finalStepExecuted) {
     return { verdict: 'INCONCLUSIVE', reason: 'INSUFFICIENT_REPLAY', matchedSignals: [] };
   }
+  // A fault defined by a specific request is only "resolved" if the replay actually
+  // re-issued that request and it no longer faulted. If the recorded steps never hit
+  // the endpoint, the failure condition was never re-tested — clean proves nothing.
+  if (input.faultEndpoint && !(input.seenEndpoints ?? []).includes(input.faultEndpoint)) {
+    return { verdict: 'INCONCLUSIVE', reason: 'FAULT_TRIGGER_NOT_EXERCISED', matchedSignals: [] };
+  }
   if (timelineSource === 'session') {
     return { verdict: 'INCONCLUSIVE', reason: 'LEGACY_TIMELINE', matchedSignals: [] };
   }
@@ -51,11 +61,13 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
     case 'REPRODUCED':
       return `Bug still active: ${bugClass} reproduced after replaying ${stats.total} recorded step(s).`;
     case 'CLEAN_REPLAY':
-      return `All ${stats.executed} of ${stats.total} recorded step(s) executed and no ${bugClass} fault recurred. Defect resolved.`;
+      return `${stats.executed} of ${stats.total} recorded step(s) executed and no ${bugClass} fault recurred. Defect resolved.`;
     case 'WEAK_MATCH_ONLY':
       return `Faults of the same class (${bugClass}) occurred but could not be corroborated as the original defect. Not enough evidence to call it resolved.`;
     case 'INSUFFICIENT_REPLAY':
       return `Only ${stats.executed} of ${stats.total} recorded step(s) executed (${stats.skipped} skipped, ${stats.failed} failed) — not enough of the reproduction ran to prove the fix.`;
+    case 'FAULT_TRIGGER_NOT_EXERCISED':
+      return `The recorded steps replayed without re-triggering the request that produced the original ${bugClass} fault, so a clean run cannot prove it is fixed.`;
     case 'LEGACY_TIMELINE':
       return `Replay used the legacy session-wide timeline, which may never reach the faulting state; a clean run cannot prove this specific defect is fixed.`;
     default:

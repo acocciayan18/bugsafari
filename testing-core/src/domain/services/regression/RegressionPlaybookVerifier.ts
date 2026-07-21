@@ -110,6 +110,8 @@ export class RegressionPlaybookVerifier {
         weak: probe.weakSignals,
         stats: probe.stepStats,
         timelineSource: finding.timelineSource,
+        faultEndpoint: this.faultEndpoint(finding),
+        seenEndpoints: probe.seenEndpoints,
       });
       const summary = summarize(decision, originalBugClass, probe.stepStats);
 
@@ -170,6 +172,22 @@ export class RegressionPlaybookVerifier {
       bug,
       timelineSource: usePerFinding ? 'finding' : 'session',
     };
+  }
+
+  /**
+   * Pathname of the request that produced the fault, parsed from the finding message
+   * (e.g. "HTTP 200 Error: POST http://host/api/login" → "/api/login"). Empty when the
+   * fault has no associated request — the endpoint-exercised gate then does not apply.
+   */
+  private faultEndpoint(finding: LoadedFinding): string | undefined {
+    const url = finding.bug.message?.match(/https?:\/\/[^\s"')]+/i)?.[0];
+    if (!url) return undefined;
+    try {
+      const path = new URL(url).pathname;
+      return path === '/' ? undefined : path;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Prefer the persisted knowledge-base class; otherwise derive it deterministically. */

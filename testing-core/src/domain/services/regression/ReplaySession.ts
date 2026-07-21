@@ -56,6 +56,8 @@ export interface ReplaySessionResult {
   weakSignals: SignalBuckets['weak'];
   /** Different-class faults observed during replay — new findings, not reproduction evidence. */
   otherSignals: SignalBuckets['other'];
+  /** URL pathnames the replay actually requested — proves whether the fault trigger ran. */
+  seenEndpoints: string[];
   error?: string;
 }
 
@@ -82,6 +84,7 @@ export async function runReplaySession(
     matchedSignals: [],
     weakSignals: [],
     otherSignals: [],
+    seenEndpoints: [],
     error,
   });
 
@@ -123,7 +126,10 @@ export async function runReplaySession(
     // Replay finished; hold for async faults to surface, then classify.
     emit('validating', stepsReplayed);
     await page.waitForTimeout(settleFor(bugClass, faultType));
-    const pageContent = await page.content().catch(() => '');
+    // Strip inline script/style source before the content-signature scan: page.content()
+    // serializes the whole document, and an app's own `console.error("TypeError…")` literal
+    // would otherwise match as a reproduced fault the replay never actually executed.
+    const pageContent = stripNonRendered(await page.content().catch(() => ''));
     await probes.drain();
     collector.detach();
 
@@ -142,6 +148,7 @@ export async function runReplaySession(
       matchedSignals: buckets.strong,
       weakSignals: buckets.weak,
       otherSignals: buckets.other,
+      seenEndpoints: collector.exercisedEndpoints(),
     };
   } catch (error) {
     return failed(`Replay error: ${error instanceof Error ? error.message : String(error)}`);
@@ -166,6 +173,14 @@ function tally(stats: ReplayStepStats, status: ReplayStepStatus): void {
   if (status === 'ok') stats.executed += 1;
   else if (status === 'skipped') stats.skipped += 1;
   else stats.failed += 1;
+}
+
+/** Drop script/style bodies + comments so the content scan sees rendered DOM, not source code. */
+export function stripNonRendered(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
 }
 
 /** Adaptive validation window: hangs need to outlast the hang threshold, network faults land late. */

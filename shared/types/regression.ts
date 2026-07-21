@@ -19,6 +19,7 @@ export type VerifyFixReason =
   | 'REPRODUCED' // strong same-class signal recurred
   | 'CLEAN_REPLAY' // executed timeline, no recurrence
   | 'INSUFFICIENT_REPLAY' // too few recorded steps actually executed
+  | 'FAULT_TRIGGER_NOT_EXERCISED' // replay never re-hit the request that defined the fault
   | 'UNVERIFIABLE_BUG_CLASS' // class has no replay-time detector
   | 'WEAK_MATCH_ONLY' // same-class faults seen but uncorroborated
   | 'LEGACY_TIMELINE' // session-global fallback timeline; clean run not provable

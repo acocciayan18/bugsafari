@@ -7,6 +7,7 @@ import type { Page } from 'playwright';
 import { decideVerdict, MIN_EXECUTED_RATIO } from './verdict.js';
 import { FaultCollector, messagesSimilar, normalizeMessage } from './FaultCollector.js';
 import { isReplayVerifiable } from './replayProbes.js';
+import { stripNonRendered } from './ReplaySession.js';
 import type { ReplayStepStats } from '../../../../../shared/types.js';
 
 let passed = 0;
@@ -86,6 +87,32 @@ check('clean fully-executed per-finding replay → RESOLVED', () => {
   const d = decideVerdict({ strong: [], weak: [], stats: stats(), timelineSource: 'finding' });
   assert.equal(d.verdict, 'RESOLVED');
   assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
+check('clean replay that never hit the fault endpoint → INCONCLUSIVE, not RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultEndpoint: '/api/login', seenEndpoints: ['/'],
+  });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'FAULT_TRIGGER_NOT_EXERCISED');
+});
+
+check('clean replay that DID re-hit the fault endpoint → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultEndpoint: '/api/login', seenEndpoints: ['/', '/api/login'],
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+  assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
+check('reproduction still wins over the endpoint gate (strong signal → STILL_ACTIVE)', () => {
+  const d = decideVerdict({
+    strong: [signal], weak: [], stats: stats(), timelineSource: 'finding',
+    faultEndpoint: '/api/login', seenEndpoints: ['/'],
+  });
+  assert.equal(d.verdict, 'STILL_ACTIVE');
 });
 
 console.log('messagesSimilar — deterministic error-identity check');
@@ -188,6 +215,33 @@ check('status code echoed in original message corroborates a same-class match', 
     pageContent: '',
   });
   assert.equal(b.strong.length, 1);
+});
+
+console.log('stripNonRendered — content scan must not match source code');
+
+check('error-string literal inside an inline script is not scannable content', () => {
+  const html = `<body><h1>Acme</h1><script>document.getElementById('x').addEventListener('click',()=>{console.error("TypeError: Cannot read properties of undefined (reading 'report')")})</script></body>`;
+  const cleaned = stripNonRendered(html);
+  assert.ok(!/cannot read propert/i.test(cleaned));
+  assert.ok(/Acme/.test(cleaned));
+});
+
+check('a fault signature rendered into the visible DOM still survives stripping', () => {
+  const html = `<body><div id="err">Internal Server Error</div><script>boot()</script></body>`;
+  const cleaned = stripNonRendered(html);
+  assert.ok(/internal server error/i.test(cleaned));
+});
+
+check('content scan on a page whose only signature lives in script source → no strong match', () => {
+  const c = collect();
+  const pageContent = stripNonRendered(`<body><h1>Acme</h1><script>console.error("is not a function")</script></body>`);
+  const b = c.evaluate({
+    originalBugClass: 'RUNTIME_STABILITY_EXCEPTION',
+    originalFaultType: 'EXCEPTION',
+    originalMessage: 'allProducts.filter is not a function',
+    pageContent,
+  });
+  assert.equal(b.strong.length, 0);
 });
 
 console.log('isReplayVerifiable — class gate');

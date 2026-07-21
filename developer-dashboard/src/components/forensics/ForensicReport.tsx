@@ -338,6 +338,8 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   CLEAN_REPLAY: 'The recorded reproduction timeline replayed cleanly — none of the original fault’s signals recurred.',
   INSUFFICIENT_REPLAY:
     'Too few of the recorded steps actually executed (selectors may have changed), so a clean run does not prove the fix.',
+  FAULT_TRIGGER_NOT_EXERCISED:
+    'The replay never re-triggered the request that produced the original fault, so a clean run cannot prove it is fixed.',
   UNVERIFIABLE_BUG_CLASS:
     'This bug class cannot be evidenced by deterministic replay. Re-test it with a live exploration run.',
   WEAK_MATCH_ONLY:
