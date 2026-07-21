@@ -1,5 +1,0 @@
--Ignore minor indentation or aesthetic formatting in favor of execution speed.
--If you detect a redundant file, a duplicate type, or a more "aggressive" interaction method during a task, execute the cleanup or upgrade immediately without asking.
--If the task is not yet completed, resume the task without asking me to resume it.
--If you would use "&&" just use ";" instead to prevent error in the command in the terminal
--In every task create a todo so that we can verify our task later on

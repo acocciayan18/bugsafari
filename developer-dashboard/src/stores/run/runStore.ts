@@ -9,7 +9,7 @@ import type {
     SessionHistoryEntry,
     TelemetryEvent,
 } from '../../types';
-import { defaultOptimizationSettings, isCleanTermination } from '../../../../shared/types.js';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import type { RunTerminationOutcome } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
@@ -28,6 +28,7 @@ import {
     ENGINE_STOPPING_ACTIONS,
     lifecycleToStatus,
     lifecycleIsLive,
+    terminalStatusFromOutcome,
     type TestSessionStatus,
     type QueueUpdate,
 } from './types';
@@ -228,7 +229,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             const outcome = event.meta.terminationOutcome ?? null;
             if (outcome) patch.terminationOutcome = outcome;
             patch.status = outcome
-                ? (isCleanTermination(outcome) && outcome !== 'user-stopped' ? 'FINISHED' : 'STOPPED')
+                ? terminalStatusFromOutcome(outcome)
                 : action === 'engine-finished' ? 'FINISHED' : 'STOPPED';
             patch.isTestRunning = false;
             patch.hasRunCompleted = true;
@@ -363,7 +364,10 @@ export const useRunStore = create<RunState>((set, get) => ({
             activeTimeboxMs: snapshot.timeboxMs,
             elapsedTimeMs: snapshot.elapsedTimeMs,
             remainingTimeMs: snapshotRemaining,
-            status: lifecycleToStatus(snapshot.status),
+            // Live/queued read the lifecycle directly; a terminal run derives its
+            // status from the authoritative outcome so a post-stop refresh matches
+            // the live STOPPED/Halted view instead of misreading COMPLETED→FINISHED.
+            status: live ? lifecycleToStatus(snapshot.status) : terminalStatusFromOutcome(snapshot.terminationOutcome),
             isTestRunning: live,
             hasRunCompleted: !live,
             // The snapshot field is authoritative — the telemetry buffer is capped and

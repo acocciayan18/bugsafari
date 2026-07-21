@@ -1,3 +1,8 @@
+// Load .env as the very first side effect — before any transitive module reads
+// process.env. The worker consumes the SAME config as the API (BUGSAFARI_AUTH_KEY,
+// REDIS_URL, …); without this it ran on shell env only, so an AuthVault key set in
+// .env never reached it and every queued authenticated run failed to decrypt.
+import 'dotenv/config';
 import { createSafariWorker, type SafariWorkerRuntime } from './infrastructure/workers/SafariWorker.js';
 
 let runtime: SafariWorkerRuntime | null = null;

@@ -14,6 +14,7 @@ import { buildActionSteps } from '../../domain/services/forensics/actionStepMapp
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 import { FuzzForensicLog } from '../../infrastructure/monitoring/fuzzForensics.js';
 import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js';
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
@@ -140,12 +141,10 @@ export class StartExplorationUseCase {
         return this.currentUserId;
     }
 
+    // Human-readable session playbook — same shared narrator the dashboard uses, so
+    // saved steps read in plain language with no raw selectors or engine action codes.
     private buildBreadcrumbSteps(records: ActionRecord[]): string[] {
-        return records.map((record, index) => {
-            const target = record.fallbackLabel ? `${record.selector} (${record.fallbackLabel})` : record.selector;
-            const payloadPart = record.payload ? ` with payload "${record.payload.slice(0, 80)}"` : '';
-            return `Step ${index + 1}: ${record.type} ${target} at ${record.url}${payloadPart}`;
-        });
+        return narrateActionRecords(records);
     }
 
     // Coerce a client-transferred network row into a persisted NetworkLogEntry.

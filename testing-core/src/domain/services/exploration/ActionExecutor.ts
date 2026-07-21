@@ -11,6 +11,7 @@ import { captureStateFingerprint } from '../../../infrastructure/monitoring/stat
 import {
   resolveElementLabel,
   humanizeElement,
+  humanizeSelector,
   describeConstraintBypass,
   describeInputInjection,
   describeNavigation,
@@ -1022,7 +1023,7 @@ export class ActionExecutor {
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',
       selector,
-      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
+      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${humanizeSelector(selector)}`,
     });
   }
 

@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { humanizeElement } from './narration.js';
+import { humanizeElement, humanizeSelector } from './narration.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -42,4 +42,22 @@ check('type=submit resolves to Button', () => {
   assert.equal(humanizeElement({ tagName: 'input', type: 'submit', name: 'go' }), 'Button: "go"');
 });
 
-console.log(`\n${passed} humanizeElement checks passed.`);
+check('selector chain reduces to last-segment semantic name', () => {
+  assert.equal(humanizeSelector('div.app > form#login button#submit'), '<button#submit>');
+});
+
+check('attribute selector reads the attribute label', () => {
+  assert.equal(humanizeSelector('input[name="user"]'), 'the "user" input field');
+});
+
+check('class-only and tag-only selectors stay readable', () => {
+  assert.equal(humanizeSelector('button.btn-primary'), '<button.btn-primary>');
+  assert.equal(humanizeSelector('nav > a'), 'link');
+});
+
+check('empty / N-A selector falls back to generic element', () => {
+  assert.equal(humanizeSelector(''), 'element');
+  assert.equal(humanizeSelector('N/A'), 'element');
+});
+
+console.log(`\n${passed} narration checks passed.`);

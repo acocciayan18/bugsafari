@@ -286,13 +286,6 @@ export class ExplorationLoop {
           continue;
         }
 
-        telemetry.emit('ACTION', {
-          actionExecuted: 'element-selected',
-          selector: target.selector,
-          score: Number(target.riskScore.toFixed(4)),
-          message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
-        });
-
         // StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
 
         if (decision.kind === 'backtrack') {
@@ -304,6 +297,14 @@ export class ExplorationLoop {
         const targetResolution = this.resolveExploreEdgeTarget(decision, ranked);
         if (targetResolution.kind === 'return') return targetResolution.result;
         target = targetResolution.target;
+
+        // Emitted AFTER resolution so the stream names the element actually chosen.
+        telemetry.emit('ACTION', {
+          actionExecuted: 'element-selected',
+          selector: target.selector,
+          score: Number(target.riskScore.toFixed(4)),
+          message: `Next target: ${humanizeElement(target)} (priority score ${target.riskScore.toFixed(2)})`,
+        });
 
         //  Forward lookahead (proactive): skip WITHOUT clicking any edge that
         // can't advance exploration — one resolving to a breadcrumb ancestor
@@ -1438,7 +1439,7 @@ export class ExplorationLoop {
           actionExecuted: 'saturated-destination-penalized',
           selector: target.selector,
           stateHash: childHash,
-          message: `Transition via ${humanizeElement(target)} landed on saturated state ${childHash.substring(0, 8)} — strong negative weight update; edge suppressed for future repeats.`,
+          message: `${humanizeElement(target)} led to an already fully explored screen — this path will be avoided from now on.`,
         });
       }
 
@@ -1450,13 +1451,13 @@ export class ExplorationLoop {
       if (this.deps.pathNavigator.isAncestorHash(childHash)) {
         this.deps.pathNavigator.markEdgeCyclic(previousHashBeforeAction, target.selector);
         this.deps.telemetry.emitMilestone(
-          ` Cyclic-loop detected: ${humanizeElement(target)} returned to ancestor ${childHash.substring(0, 8)}. Edge blocked.`,
+          ` Loop detected: ${humanizeElement(target)} led back to a previously visited screen. This path is now blocked.`,
         );
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'cyclic-loop-detected',
           selector: target.selector,
           stateHash: childHash,
-          message: `Reactive lookahead: ${humanizeElement(target)} looped back to ancestor ${childHash.substring(0, 8)}.`,
+          message: `${humanizeElement(target)} navigated back to an earlier screen — marked as a loop.`,
         });
       }
     } else {
@@ -1525,7 +1526,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'novelty-reward-triggered',
         selector: target.selector,
-        message: `Novel state discovered (visitCount: 1). Fired Perceptron Delta Rule to reward weights for ${humanizeElement(target)}.`,
+        message: `Discovered a new application state via ${humanizeElement(target)} — similar elements will be prioritized next.`,
       });
     } else {
       // Unproductive action — it returned to an already-seen state. Beyond the
@@ -1552,7 +1553,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'state-revisited',
         selector: target.selector,
-        message: `State revisited (visitCount: ${visitCount}). Applied Perceptron revisit penalty + priority penalty for ${humanizeElement(target)}.`,
+        message: `${humanizeElement(target)} returned to an already-tested state (${visitCount} states seen) — deprioritizing it.`,
       });
     }
 
@@ -1564,7 +1565,7 @@ export class ExplorationLoop {
       actionExecuted: 'curiosity-decision',
       selector: target.selector,
       score: decisionScore,
-      message: `Curiosity-driven: ${curiosityDriven ? 'EXPLORE' : 'BACKTRACK'} (topScore=${decisionScore.toFixed(2)}, boredomThreshold=${boredomThreshold})`,
+      message: `Decision: ${curiosityDriven ? 'keep exploring this screen' : 'backtrack to an earlier screen'} (interest ${decisionScore.toFixed(2)}, threshold ${boredomThreshold})`,
     });
 
     const mlConfidence = this.deps.scorer.getConfidence(target.featureVector);

@@ -17,6 +17,7 @@ import {
   type FaultType,
 } from '../../../bugs/knowledgeBase/index.js';
 import { scrubCredentials } from './credentialScrub.js';
+import { humanizeSelector } from '../forensics/narration.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
@@ -224,7 +225,7 @@ export class StabilityMonitor {
   private triggeringActionFor(atMs: number): string | undefined {
     try {
       const ctx = this.deps.getInteractionContext(atMs);
-      return ctx ? `${ctx.label || 'element'} (${ctx.selector})` : undefined;
+      return ctx ? (ctx.label || humanizeSelector(ctx.selector)) : undefined;
     } catch {
       return undefined;
     }

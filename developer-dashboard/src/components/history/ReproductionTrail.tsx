@@ -1,4 +1,5 @@
 import type { IncidentReport } from '../../types';
+import { describeActionRecord } from '../../../../shared/reproduction.js';
 
 interface ReproductionTrailProps {
   incidents: IncidentReport[];
@@ -18,17 +19,11 @@ export default function ReproductionTrail({ incidents }: ReproductionTrailProps)
               <div className="text-[13px] text-(--status-critical-fg)">{new Date(incident.timestamp).toLocaleString()}</div>
               <div className="mt-1 text-[13px] text-(--text-secondary)">URL: {incident.url}</div>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] text-(--text-secondary)">
-                {incident.steps.map((step, stepIndex) => {
-                  const target = step.fallbackLabel ? `${step.selector} (${step.fallbackLabel})` : step.selector;
-                  const payload = step.payload ? ` with "${step.payload.slice(0, 60)}"` : '';
-                  const path = toPathname(step.url);
-                  return (
-                    <li key={`${step.timestamp}-${stepIndex}`}>
-                      Step {stepIndex + 1}: {step.type} {target} on {path}
-                      {payload}
-                    </li>
-                  );
-                })}
+                {incident.steps.map((step, stepIndex) => (
+                  <li key={`${step.timestamp}-${stepIndex}`}>
+                    {describeActionRecord(step)} <span className="text-(--text-tertiary)">({toPathname(step.url)})</span>
+                  </li>
+                ))}
               </ol>
             </article>
           ))

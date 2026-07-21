@@ -1,5 +1,6 @@
 import { normalizeRoutePath } from '../../ml/domHasher.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
+import { humanizeSelector } from '../services/forensics/narration.js';
 
 export type NavigationDefectKind = 'DEAD_INTERACTION' | 'BROKEN_ROUTE' | 'REDIRECT_LOOP';
 
@@ -121,11 +122,12 @@ export class BrokenNavigationFinder {
     const strikes = this.bumpStrike(this.deadClickStrikes, key);
     if (!declaredElsewhere && strikes < DEAD_CLICK_STRIKES) return [];
 
+    const label = humanizeSelector(o.selector);
     const evidence = [
-      `Control "${o.selector}" on route ${o.fromRoute} produced no DOM, URL, or network change`,
+      `${label} on route ${o.fromRoute} produced no visible, URL, or network change when clicked`,
       declaredElsewhere
-        ? `Element statically declares destination ${o.probedRoute} but never navigates`
-        : `${strikes} consecutive no-op attempts on the same structural shell`,
+        ? `It points to ${o.probedRoute} but never actually navigates there`
+        : `${strikes} consecutive clicks did nothing on the same screen`,
     ];
     return this.emitOnce({
       kind: 'DEAD_INTERACTION',
@@ -134,8 +136,8 @@ export class BrokenNavigationFinder {
       severity: 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: declaredElsewhere
-        ? `Dead navigation control "${o.selector}" — links to ${o.probedRoute} but nothing happens on click`
-        : `Dead navigation control "${o.selector}" — ${strikes} clicks produced no observable change`,
+        ? `Dead navigation control ${label} — links to ${o.probedRoute} but nothing happens on click`
+        : `Dead navigation control ${label} — ${strikes} clicks produced no observable change`,
       selector: o.selector,
       url: o.url,
       route: o.fromRoute,
@@ -150,20 +152,21 @@ export class BrokenNavigationFinder {
     if (this.lastNavCause !== 'interaction' || !this.lastInteraction) return [];
     if (o.statusCode === null || o.statusCode < 400) return [];
     const { selector, fromRoute } = this.lastInteraction;
+    const label = humanizeSelector(selector);
     return this.emitOnce({
       kind: 'BROKEN_ROUTE',
       bugId: `nav-broken-route-${o.statusCode}-${o.route}`,
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: o.statusCode >= 500 ? 'HIGH' : 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
-      message: `Broken route: "${selector}" navigated ${fromRoute} → ${o.route} (HTTP ${o.statusCode})`,
+      message: `Broken route: ${label} navigated ${fromRoute} → ${o.route} and the server returned HTTP ${o.statusCode}`,
       selector,
       url: o.url,
       route: o.route,
       statusCode: o.statusCode,
       evidence: [
-        `Interaction with "${selector}" navigated ${fromRoute} → ${o.route}`,
-        `Main-frame document responded HTTP ${o.statusCode}`,
+        `Clicking ${label} navigated ${fromRoute} → ${o.route}`,
+        `The page responded with HTTP ${o.statusCode}`,
         `Route verdict: ${o.reason}`,
       ],
       advice: this.buildAdvice('Fix the link target or add a resolvable fallback route for this path.', 'STRUCTURAL_NAVIGATION_LOGIC'),

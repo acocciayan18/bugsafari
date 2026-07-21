@@ -40,7 +40,7 @@ interface CustomToastProps {
 // another shell here would nest a second border inside it.
 function CustomToast({ message, onClose }: CustomToastProps) {
   return (
-    <div className="flex items-center justify-between w-full gap-3">
+    <div className="flex items-center justify-between w-full gap-3 ">
       <div className="toast-content flex-1 min-w-0">
         <span className="toast-message break-words">{message}</span>
       </div>

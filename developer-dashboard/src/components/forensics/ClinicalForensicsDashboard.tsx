@@ -502,7 +502,7 @@ export default function ClinicalForensicsDashboard({
                 </>
               )}
 
-              {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
+              {activeTab === 'errors' && <ErrorTabPanel errors={errors} browserConsole={browserConsole} networkEvents={networkEvents} />}
               {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
               {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} />}
             </div>

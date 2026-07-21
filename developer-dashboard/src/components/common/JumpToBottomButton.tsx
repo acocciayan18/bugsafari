@@ -17,7 +17,6 @@ export default function JumpToBottomButton({ visible, onClick }: JumpToBottomBut
       aria-label="Jump to newest log entry"
     >
       <ArrowDown className="h-4 w-4 shrink-0" />
-      <span className="whitespace-nowrap">Jump to Bottom</span>
     </button>
   );
 }
