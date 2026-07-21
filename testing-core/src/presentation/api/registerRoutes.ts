@@ -15,6 +15,7 @@ import { sessionManager } from '../../application/services/SessionManager.js';
 import { randomUUID } from 'node:crypto';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
+import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
@@ -1097,6 +1098,15 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
       ]);
 
+      // Authoritative findings source. forensic_errors is a live-stream mirror
+      // that is empty for manually-saved runs, so the risk score/level are
+      // derived from the persisted caughtBugs — the same findings the report
+      // lists — and fall back to the forensic_errors analysis only when absent.
+      const caughtBugs = sessionDoc.forensicTrace?.caughtBugs ?? [];
+      const findingsRiskScore = forensicAnalysisService.scoreFindings(caughtBugs);
+      const effectiveRiskScore = caughtBugs.length > 0 ? findingsRiskScore : (analysis?.riskScore ?? 0);
+      const effectiveRiskLevel = determineRiskLevel(effectiveRiskScore);
+
       // Timestamp columns arrive as Date (Mongo) or string (client-transferred
       // logs). ?. only guards null, not a string, so coerce both forms to ISO.
       const toIso = (v: unknown): string | undefined =>
@@ -1168,17 +1178,27 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         timestamp: toIso(telemetry.timestamp),
       } : null;
 
-      const formattedAnalysis = analysis ? {
-        id: analysis._id?.toString(),
-        rootCause: analysis.rootCause,
-        riskScore: analysis.riskScore,
-        riskLevel: analysis.riskLevel,
-        recommendations: analysis.recommendations,
-        errorCount: analysis.errorCount,
-        apiFailureCount: analysis.apiFailureCount,
-        criticalErrorCount: analysis.criticalErrorCount,
-        jsExceptionCount: analysis.jsExceptionCount,
-        createdAt: toIso(analysis.createdAt),
+      // Findings-derived root cause when forensic_errors is empty but caughtBugs exist.
+      const rank = (s?: string | null): number =>
+        ({ CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 })[(s ?? 'MEDIUM').toUpperCase()] ?? 3;
+      const topBug = caughtBugs.length > 0
+        ? [...caughtBugs].sort((a, b) => rank(b.severity) - rank(a.severity))[0]
+        : null;
+      const findingsRootCause = topBug
+        ? `${caughtBugs.length} issue${caughtBugs.length === 1 ? '' : 's'} detected; most severe: ${topBug.type} (${(topBug.severity ?? 'MEDIUM').toUpperCase()}).`
+        : null;
+
+      const formattedAnalysis = (analysis || caughtBugs.length > 0) ? {
+        id: analysis?._id?.toString(),
+        rootCause: caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? ''),
+        riskScore: effectiveRiskScore,
+        riskLevel: effectiveRiskLevel,
+        recommendations: analysis?.recommendations ?? [],
+        errorCount: analysis?.errorCount ?? caughtBugs.length,
+        apiFailureCount: analysis?.apiFailureCount ?? 0,
+        criticalErrorCount: analysis?.criticalErrorCount ?? caughtBugs.filter(b => (b.severity ?? '').toUpperCase() === 'CRITICAL').length,
+        jsExceptionCount: analysis?.jsExceptionCount ?? 0,
+        createdAt: analysis?.createdAt ? toIso(analysis.createdAt) : undefined,
       } : null;
 
       // Build complete report
@@ -1192,7 +1212,7 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         endedReason: session.endedReason,
         coverage: session.coveragePercentage ?? 0,
         duration: session.timeElapsed,
-        riskScore: Math.min(100, formattedAnalysis?.riskScore ?? ((session.metrics?.totalBugsFound || 0) * 25)),
+        riskScore: effectiveRiskScore,
 
         // Findings
         findings: {

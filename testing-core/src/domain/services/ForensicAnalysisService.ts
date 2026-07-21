@@ -13,6 +13,34 @@ import {
 } from '../../infrastructure/database/models/ForensicErrorModel.js';
 import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 
+// Severity-weighted, saturating risk model (0-100). Replaces count-bucketing,
+// which capped after a handful of errors and read near-identical across URLs.
+const SEVERITY_WEIGHT: Record<ForensicErrorSeverity, number> = {
+  [ForensicErrorSeverity.CRITICAL]: 20,
+  [ForensicErrorSeverity.HIGH]: 10,
+  [ForensicErrorSeverity.MEDIUM]: 4,
+  [ForensicErrorSeverity.LOW]: 1.5,
+  [ForensicErrorSeverity.INFO]: 0.5,
+};
+
+// Relative danger of each error class, multiplied into its severity weight.
+const TYPE_MULTIPLIER: Record<ForensicErrorType, number> = {
+  [ForensicErrorType.API_FAILURE]: 1.6,
+  [ForensicErrorType.JS_EXCEPTION]: 1.5,
+  [ForensicErrorType.UNHANDLED_REJECTION]: 1.5,
+  [ForensicErrorType.NAVIGATION_FAILURE]: 1.4,
+  [ForensicErrorType.TIMEOUT_FAILURE]: 1.2,
+  [ForensicErrorType.CONSOLE_ERROR]: 1.0,
+  [ForensicErrorType.INTERACTION_FAILURE]: 0.9,
+  [ForensicErrorType.SELECTOR_FAILURE]: 0.6,
+  [ForensicErrorType.CONSOLE_WARN]: 0.4,
+};
+
+// Diminishing-returns constant: larger = slower climb. Tuned so one critical
+// server fault lands ~HIGH and a few medium bugs stay MEDIUM, while the curve
+// asymptotes toward (never pins) 100 as faults accumulate.
+const RISK_SATURATION_K = 40;
+
 /**
  * ForensicAnalysisService - Core service for AI-powered forensic analysis
  * 
@@ -22,6 +50,21 @@ import { determineRiskLevel } from '../../infrastructure/database/models/Forensi
  * 3. Recommendations - Actionable fixes
  */
 export class ForensicAnalysisService {
+  /**
+   * Risk score (0-100) from persisted findings (caughtBugs) — the authoritative
+   * source for saved runs, where the forensic_errors collection is empty. Same
+   * severity-weighted saturating curve as calculateRiskScore.
+   */
+  scoreFindings(findings: Array<{ severity?: string | null }>): number {
+    if (findings.length === 0) return 0;
+    let weightSum = 0;
+    for (const f of findings) {
+      const key = (f.severity ?? 'MEDIUM').toUpperCase() as ForensicErrorSeverity;
+      weightSum += SEVERITY_WEIGHT[key] ?? SEVERITY_WEIGHT[ForensicErrorSeverity.MEDIUM];
+    }
+    return Math.round(100 * (1 - Math.exp(-weightSum / RISK_SATURATION_K)));
+  }
+
   /**
    * Analyze forensic data for a completed test run
    */
@@ -108,13 +151,8 @@ export class ForensicAnalysisService {
     // Generate root cause analysis
     const rootCause = this.generateRootCause(errors, apiFailures, jsExceptions);
 
-    // Calculate risk score
-    const riskScore = this.calculateRiskScore(
-      errorCount,
-      apiFailureCount,
-      criticalErrorCount,
-      jsExceptionCount,
-    );
+    // Calculate risk score (severity-weighted, saturating)
+    const riskScore = this.calculateRiskScore(errors);
 
     // Determine risk level
     const riskLevel = determineRiskLevel(riskScore);
@@ -213,30 +251,42 @@ export class ForensicAnalysisService {
   }
 
   /**
-   * Calculate risk score (0-100)
+   * Calculate risk score (0-100) — severity-weighted with diminishing returns.
+   * Each error contributes severityWeight * typeMultiplier (+ a status-code bump
+   * for HTTP faults); distinct failing endpoints add per-target breadth signal.
+   * The sum is passed through a saturating curve so scores discriminate across
+   * the full range instead of pinning to the ceiling after a few bugs.
    */
   private calculateRiskScore(
-    errorCount: number,
-    apiFailureCount: number,
-    criticalErrorCount: number,
-    jsExceptionCount: number,
+    errors: Array<{
+      type: ForensicErrorType;
+      severity: ForensicErrorSeverity;
+      endpoint?: string;
+      statusCode?: number;
+    }>,
   ): number {
-    let score = 0;
+    if (errors.length === 0) return 0;
 
-    // Base score from error count (capped at 30)
-    score += Math.min(30, errorCount * 2);
+    let weightSum = 0;
+    const failingEndpoints = new Set<string>();
 
-    // API failures are high impact (capped at 30)
-    score += Math.min(30, apiFailureCount * 10);
+    for (const e of errors) {
+      const severity = SEVERITY_WEIGHT[e.severity] ?? SEVERITY_WEIGHT[ForensicErrorSeverity.MEDIUM];
+      const typeMul = TYPE_MULTIPLIER[e.type] ?? 1;
+      let contribution = severity * typeMul;
+      // Server faults (5xx) weigh more than client-side (4xx).
+      if (e.statusCode && e.statusCode >= 500) contribution += 6;
+      else if (e.statusCode && e.statusCode >= 400) contribution += 3;
+      weightSum += contribution;
+      if (e.endpoint) failingEndpoints.add(e.endpoint);
+    }
 
-    // Critical errors add significant risk (capped at 15)
-    score += Math.min(15, criticalErrorCount * 15);
+    // Breadth of impact: distinct failing endpoints add per-target signal.
+    weightSum += failingEndpoints.size * 3;
 
-    // JavaScript exceptions (capped at 15)
-    score += Math.min(15, jsExceptionCount * 8);
-
-    // Cap at 100
-    return Math.min(100, Math.max(0, score));
+    // Saturating curve — asymptotic to 100, never pins at it.
+    const score = 100 * (1 - Math.exp(-weightSum / RISK_SATURATION_K));
+    return Math.round(Math.min(100, Math.max(0, score)));
   }
 
   /**

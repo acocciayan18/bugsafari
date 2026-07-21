@@ -83,10 +83,15 @@ export class SocketTelemetryGateway implements TelemetryGateway {
         url: report.url,
         payload: item.payload,
       })),
-      // Forward the frozen steps + remediation so the synthesized incident is a
-      // full copy, not a degraded one missing the playbook/fix.
+      // Forward the frozen steps + remediation + classification so the synthesized
+      // incident is a FULL copy. Omitting attribution/severity/culprit here degraded
+      // it: this incident arrives after the real one and wins the frontend collapse,
+      // stripping the bug class + severity + culprit from the saved finding.
       reproductionPlaybook: report.reproductionPlaybook,
       advice: report.advice,
+      attribution: report.attribution,
+      severity: report.severity,
+      culpritSelector: report.culpritSelector,
     });
   }
 
