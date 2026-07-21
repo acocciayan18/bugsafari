@@ -154,6 +154,10 @@ export interface IncidentReport {
   // Top stack frames resolved through the target's source maps to original
   // file:line:col — best-effort (absent when no usable map was reachable).
   resolvedStackTrace?: string;
+  // The control that actually caused the fault, resolved from the interaction
+  // active at fault time — authoritative over the last timeline step, which lags
+  // behind async faults and points at a later/burst action.
+  culpritSelector?: string;
 }
 
 export interface ForensicCrashReport {
@@ -177,4 +181,6 @@ export interface ForensicCrashReport {
   // Top stack frames resolved through the target's source maps to original
   // file:line:col — best-effort (absent when no usable map was reachable).
   resolvedStackTrace?: string;
+  // The control that actually caused the fault (see IncidentReport.culpritSelector).
+  culpritSelector?: string;
 }

@@ -21,6 +21,7 @@ import {
   BUG_FINDERS,
   setStructuralProbeAccessor,
   setConcurrentStressAccessor,
+  resetConstraintBypassFinder,
 } from '../../../bugs/finders/index.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -448,6 +449,7 @@ export class ExplorationEngine {
       reproductionPlaybook: bug.reproductionSteps,
       advice: bug.advice,
       attribution: bug.attribution,
+      culpritSelector: bug.selector || undefined,
     };
     this.activeGateway.emitIncidentReport(incident);
   }
@@ -997,6 +999,7 @@ export class ExplorationEngine {
         (bug) => this.registerConfirmedBug(bug),
       );
 
+      resetConstraintBypassFinder(); // clear the per-run one-probe-per-field guard
       const bugFinderRunner = new BugFinderRunner({
         finders: BUG_FINDERS,
         gate: this.gate,

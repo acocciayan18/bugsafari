@@ -230,6 +230,23 @@ export class StabilityMonitor {
     }
   }
 
+  // The control that actually caused a fault: the interaction active at fault time.
+  // Authoritative over the last timeline step, which lags an async fault.
+  private culpritSelectorAt(atMs: number): string | undefined {
+    try {
+      return this.deps.getInteractionContext(atMs)?.selector || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Culprit for a network fault, resolved at the request's START — when the control
+  // that fired it was active — not its settle time (which may land on a later action).
+  private culpritForRequest(request: Request): string | undefined {
+    const start = this.requestStartTimes.get(request);
+    return this.culpritSelectorAt(start ?? this.requestSettledAtMs(request));
+  }
+
   // Wall-clock duration of a settled request; prefers Playwright's precise timing.
   private computeRequestDuration(request: Request): number | undefined {
     try {
@@ -430,6 +447,7 @@ export class StabilityMonitor {
 
     const faultSeverity = severity as FaultSeverity;
 
+    const culpritSelector = this.culpritSelectorAt(faultAtMs);
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,
       timestamp,
@@ -444,6 +462,7 @@ export class StabilityMonitor {
       attribution,
       severity: faultSeverity,
       resolvedStackTrace,
+      culpritSelector,
     });
 
     t.gateway.emitForensicReport({
@@ -457,6 +476,7 @@ export class StabilityMonitor {
       attribution,
       severity: faultSeverity,
       resolvedStackTrace,
+      culpritSelector,
     });
 
     // Persist to forensic_errors so saved history mirrors the live Errors tab.
@@ -477,7 +497,7 @@ export class StabilityMonitor {
       bugId: finding.bugId,
       type: 'EXCEPTION',
       message: finding.message,
-      selector: '',
+      selector: this.culpritSelectorAt(faultAtMs) ?? '',
       payloadUsed: source,
       advice: remediation,
       stackTrace,
@@ -662,6 +682,7 @@ export class StabilityMonitor {
         advice: defect.advice,
         attribution,
         severity,
+        culpritSelector: defect.selector || undefined,
       });
 
       t.gateway.emitForensicReport({
@@ -674,6 +695,7 @@ export class StabilityMonitor {
         advice: defect.advice,
         attribution,
         severity,
+        culpritSelector: defect.selector || undefined,
       });
 
       this.deps.persistForensicError({
@@ -904,6 +926,7 @@ export class StabilityMonitor {
       advice: defect.advice,
       attribution,
       severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      culpritSelector: this.culpritSelectorAt(faultAtMs),
     });
 
     t.gateway.emitForensicReport({
@@ -916,6 +939,7 @@ export class StabilityMonitor {
       advice: defect.advice,
       attribution,
       severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      culpritSelector: this.culpritSelectorAt(faultAtMs),
     });
 
     this.deps.persistForensicError({
@@ -936,7 +960,7 @@ export class StabilityMonitor {
       bugId: defect.bugId,
       type: 'INFINITE_LOADING',
       message: defect.message,
-      selector: '',
+      selector: this.culpritSelectorAt(faultAtMs) ?? '',
       payloadUsed: defect.method,
       advice: defect.advice,
       stackTrace,
@@ -1168,7 +1192,7 @@ export class StabilityMonitor {
         bugId,
         type: 'NETWORK',
         message: `HTTP ${status} Error: ${method} ${url}`,
-        selector: '',
+        selector: this.culpritForRequest(response.request()) ?? '',
         payloadUsed: method,
         advice: remediation,
         stackTrace: forensicDetail,
@@ -1280,6 +1304,7 @@ export class StabilityMonitor {
       // a later reproduction verdict patches the exact card the operator is looking at.
       const networkBugId = `network-failed-${Date.now()}-${nextBugSeq()}`;
 
+      const failedCulprit = this.culpritForRequest(request);
       t.gateway.emitIncidentReport({
         bugId: networkBugId,
         timestamp,
@@ -1293,6 +1318,7 @@ export class StabilityMonitor {
         advice: remediation,
         attribution,
         severity: severity as FaultSeverity,
+        culpritSelector: failedCulprit,
       });
 
       t.gateway.emitForensicReport({
@@ -1305,6 +1331,7 @@ export class StabilityMonitor {
         advice: remediation,
         attribution,
         severity: severity as FaultSeverity,
+        culpritSelector: failedCulprit,
       });
 
       // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
@@ -1328,7 +1355,7 @@ export class StabilityMonitor {
         bugId: networkBugId,
         type: 'NETWORK',
         message: `Network Request Failed: ${reason}`,
-        selector: '',
+        selector: failedCulprit ?? '',
         payloadUsed: method,
         advice: remediation,
         stackTrace: failureDetail,

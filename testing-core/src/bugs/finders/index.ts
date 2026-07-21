@@ -26,3 +26,4 @@ export const BUG_FINDERS: readonly BugFinder[] = [
 
 export { setChaosManagerAccessor as setStructuralProbeAccessor } from './structuralProbe.js';
 export { setChaosManagerAccessor as setConcurrentStressAccessor } from './concurrentStress.js';
+export { resetConstraintBypassFinder } from './constraintBypass.js';

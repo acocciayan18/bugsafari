@@ -93,19 +93,34 @@ async function stripAndInject(page: Page, selector: string, violating: string): 
  * (4xx / error) is correctly enforcing the rule and yields no finding — so a silent
  * acceptance, the most common form of this bug, is no longer invisible.
  */
+// Fields already probed this run — one submit-and-confirm attempt per field is
+// enough, so a re-visited control is a cheap skip instead of re-submitting.
+const attemptedSelectors = new Set<string>();
+
+/** Clear the per-run attempt log. Called at the start of each exploration run. */
+export function resetConstraintBypassFinder(): void {
+  attemptedSelectors.clear();
+}
+
 export const constraintBypassFinder: BugFinder = {
   bugClass: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
   testingType: 'formBypass',
+  // Transactional: considered every applicable step (not cadence-sampled), so a
+  // sparsely-visited constrained field is still probed. The per-field guard below
+  // keeps the cost to one submit per field per run.
+  frequency: 'transactional',
 
   async isApplicable(ctx: Omit<BugContext, 'crashHalted'>): Promise<boolean> {
     const el = ctx.element;
     if (!el) return false;
-    return el.tagName === 'input' || el.tagName === 'textarea';
+    if (el.tagName !== 'input' && el.tagName !== 'textarea') return false;
+    return !attemptedSelectors.has(el.selector);
   },
 
   async run(ctx: BugContext): Promise<BugFinding[]> {
     const element = ctx.element;
     if (!element) return [];
+    attemptedSelectors.add(element.selector); // one probe per field per run
 
     const plan = planFromType(element) ?? (await planFromAttributes(ctx.page, element.selector));
     if (!plan) return []; // no enforceable client constraint → nothing to bypass
@@ -136,7 +151,6 @@ export const constraintBypassFinder: BugFinder = {
     }
 
     const accepted = captured.hit;
-    console.log(`[CBTRACE] selector=${element.selector} constraint=${plan.constraint} accepted=${accepted ? accepted.status + ' ' + accepted.url : 'none'}`);
     if (!accepted) return []; // server rejected/errored or nothing submitted → not confirmed
 
     return [
