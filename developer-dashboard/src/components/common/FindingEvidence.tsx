@@ -11,14 +11,9 @@ import { useState } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, splitObservations } from '../../utils/reproductionFormat';
+import { formatReportTime } from '../../utils/datetime';
 import ReproductionChecklist, { ObservationsBlock } from '../telemetry/ReproductionChecklist';
 import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
-
-function formatStepTime(value?: string): string {
-  if (!value) return '';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString();
-}
 
 // Ordered structured trace — one chip row per step (action-type chip + imperative
 // instruction + payload code chip). The single source for structured reproduction,
@@ -46,7 +41,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
               )}
               <div className="mt-0.5 text-[11px] text-(--text-tertiary)">
                 {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
-                {formatStepTime(step.timestamp)}
+                {formatReportTime(step.timestamp)}
               </div>
             </div>
           </li>

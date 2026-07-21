@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Check, Bug, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
+import { Check, BugPlay, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
   emptyTargetAuthDraft,
@@ -325,7 +325,7 @@ export default function ClinicalForensicsDashboard({
             title={authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
             className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
-            <Bug className="h-5 w-5 shrink-0" />
+            <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
           </button>
         </div>

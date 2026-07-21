@@ -34,6 +34,10 @@ export interface ReproductionRequest {
   actions: ActionRecord[];
   bugClass: string;
   faultType: FaultType;
+  /** Original fault message — corroborates same-class matches during replay. */
+  originalMessage?: string;
+  /** Scenario active at fault time, threaded into replay classification. */
+  scenario?: string;
   stateFingerprint?: StateFingerprint;
 }
 
@@ -129,6 +133,8 @@ export class ReproductionProbe {
           steps: buildActionSteps(request.actions),
           bugClass: request.bugClass,
           faultType: request.faultType,
+          originalMessage: request.originalMessage,
+          scenario: request.scenario,
           stateFingerprint: request.stateFingerprint,
           // The sidecar carries the live session, so a login wall here means the
           // replay genuinely cannot reach the surface — not a stale-credential artifact.

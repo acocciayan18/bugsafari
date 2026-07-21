@@ -8,6 +8,7 @@ import {
   classifyNarrativeLine as sharedClassify,
   describeConstraintBypass,
   describeInputInjection,
+  describeReplayMacro,
   maskPayload,
   type StepKind,
 } from '../../../shared/reproduction.js';
@@ -72,7 +73,8 @@ export function humanizeActionStep(
 ): { kind: StepKind; instruction: string; payloadDisplay: string } {
   const kind = kindFor(step.actionType);
   if (kind === 'macro') {
-    return { kind, instruction: step.macro?.summary || 'Replay recorded stress-scenario burst', payloadDisplay: '' };
+    const instruction = step.macro ? describeReplayMacro(step.macro) : 'Replay recorded stress-scenario burst';
+    return { kind, instruction, payloadDisplay: '' };
   }
   const t = target(step, kind);
   const instruction =

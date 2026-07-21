@@ -392,6 +392,8 @@ export class ExplorationEngine {
       actions: bug.reproductionActions ?? [],
       bugClass,
       faultType: normalizeFaultType(bug.type),
+      originalMessage: bug.message,
+      scenario: bug.attribution?.scenario,
       stateFingerprint: bug.stateFingerprint,
     });
   }

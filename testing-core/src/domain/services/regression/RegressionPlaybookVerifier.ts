@@ -5,13 +5,17 @@ import { classifyFault, normalizeFaultType, type FaultType } from '../../../bugs
 import type {
   VerifyFixRequest,
   VerifyFixResult,
-  RegressionVerdict,
+  VerifyFixReason,
   VerifyFixProgress,
+  ReplayStepStats,
 } from '../../../../../shared/types.js';
 import { runReplaySession } from './ReplaySession.js';
+import { isReplayVerifiable } from './replayProbes.js';
+import { decideVerdict, summarize } from './verdict.js';
 import type { LoadedFinding } from './types.js';
 
 const LAUNCH_TIMEOUT_MS = 30_000;
+const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
 
 /**
  * Deterministic regression replay. Given a saved finding it launches a FRESH,
@@ -44,20 +48,32 @@ export class RegressionPlaybookVerifier {
     };
 
     if (!isValidObjectId(sessionId) || !bugId) {
-      return this.inconclusive(sessionId, bugId, 'UNKNOWN', 0, startedAt, 'Invalid sessionId or bugId.');
+      return this.failed(sessionId, bugId, 'UNKNOWN', startedAt, 'Invalid sessionId or bugId.');
     }
 
     const finding = await this.loadFinding(sessionId, bugId, userId);
     if (!finding) {
-      return this.inconclusive(sessionId, bugId, 'UNKNOWN', 0, startedAt, 'Finding not found or access denied.');
+      return this.failed(sessionId, bugId, 'UNKNOWN', startedAt, 'Finding not found or access denied.');
     }
 
     const originalFaultType = normalizeFaultType(finding.bug.type);
     const originalBugClass = this.resolveOriginalBugClass(finding, originalFaultType);
 
+    // Classes replay can never evidence must not burn a browser launch to fabricate RESOLVED.
+    if (!isReplayVerifiable(originalBugClass)) {
+      return this.inconclusive(
+        sessionId,
+        bugId,
+        originalBugClass,
+        startedAt,
+        'UNVERIFIABLE_BUG_CLASS',
+        `${originalBugClass} cannot be verified by deterministic replay; re-test with a live exploration run.`,
+      );
+    }
+
     console.log(
       `[RegressionVerifier] Replaying ${finding.actionSteps.length} step(s) for bug ${bugId} ` +
-        `(class=${originalBugClass}) on ${finding.targetUrl}`,
+        `(class=${originalBugClass}, timeline=${finding.timelineSource}) on ${finding.targetUrl}`,
     );
 
     let browser: Browser | undefined;
@@ -78,38 +94,48 @@ export class RegressionPlaybookVerifier {
         steps: finding.actionSteps,
         bugClass: originalBugClass,
         faultType: originalFaultType,
+        originalMessage: finding.bug.message ?? '',
+        scenario: finding.bug.attribution?.scenario,
         stateFingerprint: finding.bug.stateFingerprint,
         guardLoginWall: true,
         onProgress: (phase, done, total) => emit(phase, done, total),
       });
 
       if (!probe.ok) {
-        return this.inconclusive(sessionId, bugId, originalBugClass, probe.stepsReplayed, startedAt, probe.error ?? 'Replay failed.');
+        return this.failed(sessionId, bugId, originalBugClass, startedAt, probe.error ?? 'Replay failed.');
       }
 
-      const { matchedSignals, stepsReplayed } = probe;
-      const verdict: RegressionVerdict = probe.reproduced ? 'STILL_ACTIVE' : 'RESOLVED';
-      const summary =
-        verdict === 'STILL_ACTIVE'
-          ? `Bug still active: ${originalBugClass} reproduced after replaying ${stepsReplayed} recorded step(s).`
-          : `No ${originalBugClass} fault reproduced after replaying ${stepsReplayed} recorded step(s). Defect resolved.`;
+      const decision = decideVerdict({
+        strong: probe.matchedSignals,
+        weak: probe.weakSignals,
+        stats: probe.stepStats,
+        timelineSource: finding.timelineSource,
+      });
+      const summary = summarize(decision, originalBugClass, probe.stepStats);
 
-      console.log(`[RegressionVerifier] Verdict for bug ${bugId}: ${verdict} (${matchedSignals.length} signal(s))`);
+      console.log(
+        `[RegressionVerifier] Verdict for bug ${bugId}: ${decision.verdict}/${decision.reason} ` +
+          `(${decision.matchedSignals.length} signal(s), ${probe.stepStats.executed}/${probe.stepStats.total} executed)`,
+      );
 
       return {
         ok: true,
-        verdict,
+        verdict: decision.verdict,
+        reason: decision.reason,
         sessionId,
         bugId,
         bugClass: originalBugClass,
-        stepsReplayed,
-        matchedSignals,
+        stepsReplayed: probe.stepsReplayed,
+        stepStats: probe.stepStats,
+        matchedSignals: decision.matchedSignals,
+        otherSignals: probe.otherSignals,
+        timelineSource: finding.timelineSource,
         summary,
         durationMs: Date.now() - startedAt,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return this.inconclusive(sessionId, bugId, originalBugClass, 0, startedAt, `Replay error: ${message}`);
+      return this.failed(sessionId, bugId, originalBugClass, startedAt, `Replay error: ${message}`);
     } finally {
       if (browser) {
         await browser.close().catch(() => undefined);
@@ -135,12 +161,14 @@ export class RegressionPlaybookVerifier {
 
     // Prefer THIS finding's own minimized, replayable timeline; fall back to the
     // session-global timeline only for legacy records saved before per-finding
-    // capture existed. Per-finding steps replay just the causally-required actions.
+    // capture existed. A clean run on the fallback cannot prove the fix (LEGACY_TIMELINE).
     const perFindingSteps = Array.isArray(bug.actionSteps) ? bug.actionSteps : [];
+    const usePerFinding = perFindingSteps.length > 0;
     return {
       targetUrl: doc.targetUrl,
-      actionSteps: perFindingSteps.length > 0 ? perFindingSteps : doc.actionSteps ?? [],
+      actionSteps: usePerFinding ? perFindingSteps : doc.actionSteps ?? [],
       bug,
+      timelineSource: usePerFinding ? 'finding' : 'session',
     };
   }
 
@@ -169,24 +197,55 @@ export class RegressionPlaybookVerifier {
     ]);
   }
 
+  /** Replay ran but the evidence cannot support RESOLVED — verdict INCONCLUSIVE with a typed reason. */
   private inconclusive(
     sessionId: string,
     bugId: string,
     bugClass: string,
-    stepsReplayed: number,
     startedAt: number,
-    error: string,
+    reason: VerifyFixReason,
+    summary: string,
   ): VerifyFixResult {
-    console.warn(`[RegressionVerifier] INCONCLUSIVE for bug ${bugId}: ${error}`);
+    console.warn(`[RegressionVerifier] INCONCLUSIVE (${reason}) for bug ${bugId}: ${summary}`);
     return {
-      ok: false,
+      ok: true,
       verdict: 'INCONCLUSIVE',
+      reason,
       sessionId,
       bugId,
       bugClass,
-      stepsReplayed,
+      stepsReplayed: 0,
+      stepStats: { ...EMPTY_STATS },
       matchedSignals: [],
-      summary: `Verification inconclusive: ${error}`,
+      otherSignals: [],
+      timelineSource: 'finding',
+      summary,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  /** The replay could not run at all — the verdict says nothing about the bug. */
+  private failed(
+    sessionId: string,
+    bugId: string,
+    bugClass: string,
+    startedAt: number,
+    error: string,
+  ): VerifyFixResult {
+    console.warn(`[RegressionVerifier] VERIFICATION_FAILED for bug ${bugId}: ${error}`);
+    return {
+      ok: false,
+      verdict: 'VERIFICATION_FAILED',
+      reason: 'REPLAY_ERROR',
+      sessionId,
+      bugId,
+      bugClass,
+      stepsReplayed: 0,
+      stepStats: { ...EMPTY_STATS },
+      matchedSignals: [],
+      otherSignals: [],
+      timelineSource: 'finding',
+      summary: `Verification failed: ${error}`,
       durationMs: Date.now() - startedAt,
       error,
     };

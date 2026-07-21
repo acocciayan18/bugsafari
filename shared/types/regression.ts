@@ -9,9 +9,30 @@
 
 /** Terminal outcome of a regression replay. */
 export type RegressionVerdict =
-  | 'RESOLVED' // Replayed the recorded steps; the original fault did NOT recur → fixed.
-  | 'STILL_ACTIVE' // The original fault class reproduced during replay → still broken.
-  | 'INCONCLUSIVE'; // Could not run the replay (finding missing, auth failed, nav failed…).
+  | 'RESOLVED' // Replay executed the recorded steps; the original fault did NOT recur → fixed.
+  | 'STILL_ACTIVE' // The original fault reproduced during replay → still broken.
+  | 'INCONCLUSIVE' // Replay ran, but the evidence is insufficient to declare RESOLVED.
+  | 'VERIFICATION_FAILED'; // Replay could not run (launch/nav/auth/infra error) — verdict says nothing about the bug.
+
+/** Machine-readable cause behind a verdict, driving operator-facing explanations. */
+export type VerifyFixReason =
+  | 'REPRODUCED' // strong same-class signal recurred
+  | 'CLEAN_REPLAY' // executed timeline, no recurrence
+  | 'INSUFFICIENT_REPLAY' // too few recorded steps actually executed
+  | 'UNVERIFIABLE_BUG_CLASS' // class has no replay-time detector
+  | 'WEAK_MATCH_ONLY' // same-class faults seen but uncorroborated
+  | 'LEGACY_TIMELINE' // session-global fallback timeline; clean run not provable
+  | 'REPLAY_ERROR'; // infra failure, detail in `error`
+
+/** Per-step execution evidence backing the verdict. */
+export interface ReplayStepStats {
+  total: number;
+  executed: number;
+  skipped: number;
+  failed: number;
+  /** True when the final (causal) recorded step actually executed. */
+  finalStepExecuted: boolean;
+}
 
 /** Client → engine payload identifying the saved finding to verify. */
 export interface VerifyFixRequest {
@@ -54,17 +75,25 @@ export interface RegressionSignal {
 
 /** Engine → client acknowledgement returned for a VerifyFixRequest. */
 export interface VerifyFixResult {
-  /** True when the replay ran to completion (verdict is trustworthy). */
+  /** True when the replay ran to completion (false ⇔ verdict VERIFICATION_FAILED). */
   ok: boolean;
   verdict: RegressionVerdict;
+  /** Why the verdict was reached; keys the operator-facing explanation. */
+  reason: VerifyFixReason;
   sessionId: string;
   bugId: string;
   /** Knowledge-base BugClass of the ORIGINAL finding being re-checked. */
   bugClass: string;
-  /** Number of recorded actions actually replayed. */
+  /** Number of recorded actions attempted (equals stepStats.total). */
   stepsReplayed: number;
-  /** Replay-observed signals that matched the original bug class (empty ⇒ RESOLVED). */
+  /** Executed/skipped/failed breakdown proving how much of the reproduction ran. */
+  stepStats: ReplayStepStats;
+  /** Replay-observed signals that matched the original bug (STILL_ACTIVE evidence). */
   matchedSignals: RegressionSignal[];
+  /** Replay-observed faults of a DIFFERENT class — new findings, not reproduction evidence. */
+  otherSignals: RegressionSignal[];
+  /** 'finding' = per-finding minimized timeline; 'session' = legacy session-global fallback. */
+  timelineSource: 'finding' | 'session';
   /** Operator-facing one-line summary of the outcome. */
   summary: string;
   /** Total replay wall-clock time in milliseconds. */

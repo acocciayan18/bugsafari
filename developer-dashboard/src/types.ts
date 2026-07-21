@@ -35,9 +35,11 @@ export type {
   RegressionVerdict,
   VerifyFixRequest,
   VerifyFixResult,
+  VerifyFixReason,
   VerifyFixProgress,
   VerifyFixPhase,
   RegressionSignal,
+  ReplayStepStats,
   // In-run reproduction confirmation (patches a streamed finding's confidence)
   ReproductionVerdict,
   // Session recovery & reconnection

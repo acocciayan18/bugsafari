@@ -24,7 +24,7 @@ const VERIFY_TIMEOUT_MS = 180_000;
  * Per-bug verification state as a discriminated union:
  *  - idle:    never verified (or reset).
  *  - running: replay in flight, carrying the live phase + step progress.
- *  - done:    terminal VerifyFixResult (RESOLVED / STILL_ACTIVE / INCONCLUSIVE).
+ *  - done:    terminal VerifyFixResult (RESOLVED / STILL_ACTIVE / INCONCLUSIVE / VERIFICATION_FAILED).
  */
 export type VerifyStatus =
   | { state: 'idle' }
@@ -123,12 +123,16 @@ export function useRegressionVerifier(): RegressionVerifier {
         const message = error instanceof Error ? error.message : String(error);
         const failed: VerifyFixResult = {
           ok: false,
-          verdict: 'INCONCLUSIVE',
+          verdict: 'VERIFICATION_FAILED',
+          reason: 'REPLAY_ERROR',
           sessionId: request.sessionId,
           bugId,
           bugClass: 'UNKNOWN',
           stepsReplayed: 0,
+          stepStats: { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false },
           matchedSignals: [],
+          otherSignals: [],
+          timelineSource: 'finding',
           summary: `Verification request failed: ${message}`,
           durationMs: 0,
           error: message,

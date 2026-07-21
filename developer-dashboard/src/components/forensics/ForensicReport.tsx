@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CheckIcon } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Bug } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -28,6 +28,7 @@ import type {
   ForensicReportResponse,
   VerifyFixRequest,
   VerifyFixResult,
+  VerifyFixReason,
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
@@ -37,7 +38,8 @@ import {
   toMarkdownChecklist,
 } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
-import { AttributionBadges, CopyButton, SeverityBadge } from '../common/ForensicCardKit';
+import { CopyButton, SeverityBadge } from '../common/ForensicCardKit';
+import { formatReportDate, formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination } from '../../types';
 import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
@@ -61,15 +63,6 @@ function formatDuration(durationMs: number): string {
   }
 
   return `${seconds}s`;
-}
-
-function formatDate(value?: string): string {
-  if (!value) return 'N/A';
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-
-  return parsed.toLocaleString();
 }
 
 // Themed off the resolved outcome, not the raw string: the backend sends DB
@@ -119,27 +112,31 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
 
   return (
     <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {report.outcome || outcomeFromStatus(report.status) ? (
-              <TerminationBadge outcome={report.outcome} status={report.status} reason={report.endedReason} />
-            ) : (
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Target</div>
+          <div className="mt-1 truncate text-lg font-bold text-(--text-primary)" title={report.url}>{report.url || 'N/A'}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-(--text-tertiary)">
+            <span className="font-mono">Run {sessionId}</span>
+            <span aria-hidden="true">•</span>
+            <span>{formatReportDateTime(report.date)}</span>
+            {report.endedReason && (
               <>
-                <span className={`h-3 w-3 rounded-full ${theme.dot}`} />
-                <span className={`text-sm font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+                <span aria-hidden="true">•</span>
+                <span className="text-(--text-secondary)">{report.endedReason}</span>
               </>
             )}
           </div>
-          {report.endedReason && (
-            <div className="mt-1 text-[13px] text-(--text-tertiary)">{report.endedReason}</div>
+        </div>
+        <div className="shrink-0">
+          {report.outcome || outcomeFromStatus(report.status) ? (
+            <TerminationBadge outcome={report.outcome} status={report.status} reason={report.endedReason} />
+          ) : (
+            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${theme.bg}`}>
+              <span className={`h-2.5 w-2.5 rounded-full ${theme.dot}`} />
+              <span className={`text-[13px] font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+            </span>
           )}
-          <div className="mt-1 truncate text-sm font-medium text-(--text-secondary)" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-0.5 flex items-center gap-2 text-[13px] text-(--text-tertiary)">
-            <span>Run {sessionId}</span>
-            <span>•</span>
-            <span>Started {formatDate(report.date)}</span>
-          </div>
         </div>
       </div>
 
@@ -230,11 +227,11 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
     ? actionStepsToMarkdown(bug.actionSteps)
     : toMarkdownChecklist(narrativeSteps, []);
   return [
-    `Finding #${index}: ${bugClass}`,
+    `Finding #${index + 1}: ${bugClass}`,
     bug.message ? `Message: ${bug.message}` : '',
     bug.selector ? `Selector: ${bug.selector}` : '',
     bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
-    `Detected: ${formatDate(bug.timestamp)}`,
+    `Detected: ${formatReportDateTime(bug.timestamp)}`,
     bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
     reproMarkdown ? `\nReproduction Steps:\n${reproMarkdown}` : '',
     observations.length ? `\nObserved:\n${observations.map((o) => `> ${o}`).join('\n')}` : '',
@@ -245,7 +242,7 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
 // Verify Fix — per-finding regression replay control + result modal.
 // The control renders the whole lifecycle: an idle trigger → a live
 // progress pill (replaying N/total → validating) → a settled verdict
-// badge (RESOLVED / STILL ACTIVE / INCONCLUSIVE) that reopens a
+// badge (RESOLVED / STILL ACTIVE / INCONCLUSIVE / VERIFICATION FAILED) that reopens a
 // dedicated result modal. The finding card itself also re-themes to
 // the settled verdict so a reader sees at a glance whether the defect
 // is fixed. Phase data is streamed from the engine over the socket.
@@ -261,6 +258,9 @@ const alertIcon: VerdictIcon = (c) => (
 );
 const questionIcon: VerdictIcon = (c) => (
   <CircleHelp className={c} strokeWidth={1.75} aria-hidden="true" />
+);
+const xIcon: VerdictIcon = (c) => (
+  <CircleX className={c} strokeWidth={1.75} aria-hidden="true" />
 );
 
 interface VerdictMeta {
@@ -317,6 +317,34 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
     modalBar: 'bg-(--status-warning-fg)',
     icon: questionIcon,
   },
+  VERIFICATION_FAILED: {
+    label: 'Verification Failed',
+    badge: 'bg-(--status-warning-fg) text-(--text-oninvert) hover:opacity-90',
+    chip: 'bg-(--status-warning-bg) text-(--status-warning-fg) border border-(--status-warning-border)',
+    dot: 'bg-(--status-warning-fg)',
+    cardBorder: 'border-(--status-warning-border)',
+    cardHeaderBg: 'bg-(--status-warning-bg) border-(--status-warning-border)',
+    cardTitle: 'text-(--status-warning-fg)',
+    cardSub: 'text-(--status-warning-fg)',
+    numberBg: 'bg-(--status-warning-fg)',
+    modalBar: 'bg-(--status-warning-fg)',
+    icon: xIcon,
+  },
+};
+
+// Operator-facing explanation for each non-terminal-proof reason.
+const REASON_TEXT: Record<VerifyFixReason, string> = {
+  REPRODUCED: 'The original fault recurred during replay — the defect is still present.',
+  CLEAN_REPLAY: 'The recorded reproduction timeline replayed cleanly — none of the original fault’s signals recurred.',
+  INSUFFICIENT_REPLAY:
+    'Too few of the recorded steps actually executed (selectors may have changed), so a clean run does not prove the fix.',
+  UNVERIFIABLE_BUG_CLASS:
+    'This bug class cannot be evidenced by deterministic replay. Re-test it with a live exploration run.',
+  WEAK_MATCH_ONLY:
+    'Faults of the same class occurred but could not be corroborated as the original defect — not enough evidence either way.',
+  LEGACY_TIMELINE:
+    'This finding predates per-finding timelines; the session-wide replay may never reach the faulting state, so a clean run is not proof.',
+  REPLAY_ERROR: 'The target could not be replayed — this verdict says nothing about the bug. Try again.',
 };
 
 // Base (unverified) finding theme — the existing "confirmed bug" look, mapped to critical status tokens.
@@ -400,11 +428,11 @@ function VerifyFixControl({
 // reproduced the original fault.
 // ─────────────────────────────────────────────────────────────
 
-function ResultStat({ label, value }: { label: string; value: string }) {
+function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
       <div className="text-[9px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</div>
-      <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={value}>{value}</div>
+      <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
 }
@@ -454,16 +482,21 @@ function VerificationResultModal({
       <div className="bg-(--surface-panel) px-4 py-4 sm:px-5">
         <p className="text-sm leading-relaxed text-(--text-primary)">{result.summary}</p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
-          <ResultStat label="Steps Replayed" value={String(result.stepsReplayed)} />
+          <ResultStat
+            label="Steps Run"
+            value={`${result.stepStats.executed}/${result.stepStats.total}`}
+            title={`${result.stepStats.executed} executed, ${result.stepStats.skipped} skipped, ${result.stepStats.failed} failed`}
+          />
+          <ResultStat label="Timeline" value={result.timelineSource === 'session' ? 'Legacy' : 'Finding'} />
           <ResultStat label="Duration" value={formatDuration(result.durationMs)} />
         </div>
 
-        {result.verdict === 'STILL_ACTIVE' && result.matchedSignals.length > 0 && (
+        {result.matchedSignals.length > 0 && (
           <div className="mt-4">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-secondary)">
-              Reproduced Signals ({result.matchedSignals.length})
+              {result.verdict === 'STILL_ACTIVE' ? 'Reproduced Signals' : 'Uncorroborated Same-Class Signals'} ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
               {result.matchedSignals.map((signal, idx) => (
@@ -475,13 +508,32 @@ function VerificationResultModal({
 
         {result.verdict === 'RESOLVED' && (
           <div className="mt-4 rounded-md border border-(--status-stable-border) bg-(--status-stable-bg) p-3 text-[13px] text-(--status-stable-fg)">
-            The recorded reproduction timeline replayed cleanly — none of the original fault's signals recurred.
+            {REASON_TEXT.CLEAN_REPLAY}
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
           <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
-            {result.error || 'The replay could not run to completion, so this verdict is not trustworthy. Try again.'}
+            {REASON_TEXT[result.reason] ?? result.error ?? 'The replay could not conclude. Try again.'}
+          </div>
+        )}
+
+        {result.verdict === 'VERIFICATION_FAILED' && (
+          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
+            {result.error ? `${REASON_TEXT.REPLAY_ERROR} (${result.error})` : REASON_TEXT.REPLAY_ERROR}
+          </div>
+        )}
+
+        {result.otherSignals.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-secondary)">
+              Other Faults Observed — Different Class ({result.otherSignals.length})
+            </div>
+            <ul className="space-y-2">
+              {result.otherSignals.map((signal, idx) => (
+                <ReproducedSignal key={idx} signal={signal} />
+              ))}
+            </ul>
           </div>
         )}
       </div>
@@ -506,6 +558,46 @@ function VerificationResultModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Standardized finding metadata — a fixed, consistently-ordered row of
+// labeled pills rendered identically for every bug type (methodology, CWE,
+// verification status, fault step). Absent values are skipped but never
+// reorder, so cards stay visually aligned regardless of which fields exist.
+// ─────────────────────────────────────────────────────────────
+
+function MetaPill({ label, value, title }: { label: string; value: string; title?: string }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
+      <span className="text-[11px] font-semibold text-(--text-primary)">{value}</span>
+    </span>
+  );
+}
+
+function FindingMetaBar({ bug }: { bug: ForensicCaughtBug }) {
+  const attribution = bug.attribution;
+  const methodology = attribution?.scenario || attribution?.testingType;
+  const verification = attribution?.verificationStatus
+    ? `${attribution.verificationStatus.replace(/_/g, ' ')}${typeof attribution.confidenceScore === 'number' ? ` ${Math.round(attribution.confidenceScore * 100)}%` : ''}`
+    : undefined;
+
+  const pills: Array<{ label: string; value: string; title?: string }> = [];
+  if (methodology) pills.push({ label: 'Methodology', value: methodology, title: 'Scenario that provoked the fault' });
+  if (attribution?.cwe) pills.push({ label: 'CWE', value: attribution.cwe, title: 'MITRE CWE identifier' });
+  if (verification) pills.push({ label: 'Status', value: verification, title: 'Finding-verification pipeline verdict' });
+  if (typeof attribution?.stepIndex === 'number') pills.push({ label: 'Step', value: String(attribution.stepIndex), title: 'Execution step at fault time' });
+
+  if (pills.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {pills.map((pill) => <MetaPill key={pill.label} {...pill} />)}
+    </div>
   );
 }
 
@@ -560,8 +652,8 @@ function FindingCard({
       {/* Header */}
       <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-[13px] font-bold text-(--text-oninvert)`}>
-            {index}
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-(--text-oninvert)`}>
+            <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -582,7 +674,7 @@ function FindingCard({
                 </span>
               )}
             </div>
-            <div className={`text-[11px] opacity-75 ${theme.cardSub}`}>{formatDate(bug.timestamp)}</div>
+            <div className={`text-[11px] opacity-75 ${theme.cardSub}`}>{formatReportDateTime(bug.timestamp)}</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -597,9 +689,9 @@ function FindingCard({
         </div>
       </div>
 
-      {/* Attribution */}
+      {/* Standardized metadata — identical row across every bug type */}
       <div className="px-4 pt-3">
-        <AttributionBadges attribution={bug.attribution} />
+        <FindingMetaBar bug={bug} />
       </div>
 
       {/* Message / Selector / Payload grid */}
@@ -644,7 +736,7 @@ function FindingCard({
 function CleanRunCard() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
-      <span className="text-2xl"><CheckIcon className='w-4 h-4'/></span>
+      <CircleCheckBig className="h-8 w-8 text-(--status-stable-fg)" strokeWidth={1.75} aria-hidden="true" />
       <div className="text-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
       <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>

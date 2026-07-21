@@ -2,9 +2,9 @@
 // regression/ReplaySession.ts — DETERMINISTIC REPLAY CORE
 // ═══════════════════════════════════════════════════════════════
 // The single implementation of "seed state → load target → replay the recorded
-// timeline → decide whether the original fault class recurred". Shared by the
-// post-hoc regression verifier (Verify Fix on a saved finding) and the in-run
-// reproduction probe, so both reach a verdict through identical rules.
+// timeline → decide whether the original fault recurred". Shared by the post-hoc
+// regression verifier (Verify Fix on a saved finding) and the in-run reproduction
+// probe, so both reach a verdict through identical rules.
 //
 // The caller owns the context lifecycle and MUST pass a fresh, isolated one: this
 // seeds cookies/init scripts that would otherwise leak into a reused session.
@@ -12,13 +12,16 @@
 import type { BrowserContext, Page } from 'playwright';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
-import type { RegressionSignal, StateFingerprint } from '../../../../../shared/types.js';
-import { FaultCollector } from './FaultCollector.js';
-import { ReplayActionRunner } from './ReplayActionRunner.js';
+import type { ReplayStepStats, StateFingerprint } from '../../../../../shared/types.js';
+import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
+import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
+import { ReplayProbes, HANG_THRESHOLD_MS } from './replayProbes.js';
 
 // Deterministic settle windows so async faults surface without any randomness.
 export const PER_STEP_SETTLE_MS = 400;
 export const FINAL_SETTLE_MS = 800;
+const NETWORK_SETTLE_MS = 3_000;
+const HANG_SETTLE_MS = HANG_THRESHOLD_MS + 2_000;
 const NAV_TIMEOUT_MS = 30_000;
 
 export interface ReplaySessionParams {
@@ -28,6 +31,10 @@ export interface ReplaySessionParams {
   bugClass: string;
   /** Coarse fault type of the original finding, for the content-signature pass. */
   faultType: FaultType;
+  /** Original finding's message — corroborates same-class matches (empty ⇒ no similarity pass). */
+  originalMessage?: string;
+  /** Scenario active when the bug was first caught, threaded into classification. */
+  scenario?: string;
   /** Client state captured at fault time, restored before the app boots. */
   stateFingerprint?: StateFingerprint;
   /** True ⇒ refuse when the replay lands on a login wall (a stale saved finding). */
@@ -38,13 +45,23 @@ export interface ReplaySessionParams {
 export interface ReplaySessionResult {
   /** False ⇒ the replay never reached a decidable state; `reproduced` is meaningless. */
   ok: boolean;
+  /** True ⇔ at least one STRONG (corroborated) same-class signal recurred. */
   reproduced: boolean;
   stepsReplayed: number;
-  matchedSignals: RegressionSignal[];
+  /** Executed/skipped/failed evidence — RESOLVED is only trustworthy when enough ran. */
+  stepStats: ReplayStepStats;
+  /** Corroborated same-class signals (the reproduction proof). */
+  matchedSignals: SignalBuckets['strong'];
+  /** Same-class but uncorroborated signals — enough to block RESOLVED, not to prove STILL_ACTIVE. */
+  weakSignals: SignalBuckets['weak'];
+  /** Different-class faults observed during replay — new findings, not reproduction evidence. */
+  otherSignals: SignalBuckets['other'];
   error?: string;
 }
 
-/** Replay one finding's timeline in `context` and report whether its fault class recurred. */
+const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
+
+/** Replay one finding's timeline in `context` and report whether its fault recurred. */
 export async function runReplaySession(
   context: BrowserContext,
   params: ReplaySessionParams,
@@ -61,7 +78,10 @@ export async function runReplaySession(
     ok: false,
     reproduced: false,
     stepsReplayed: 0,
+    stepStats: { ...EMPTY_STATS, total: steps.length },
     matchedSignals: [],
+    weakSignals: [],
+    otherSignals: [],
     error,
   });
 
@@ -70,6 +90,8 @@ export async function runReplaySession(
   const page = await context.newPage();
   const collector = new FaultCollector(page);
   collector.attach();
+  const probes = new ReplayProbes(page, collector, bugClass, faultType);
+  await probes.arm();
   const runner = new ReplayActionRunner(page, targetUrl);
 
   try {
@@ -86,32 +108,71 @@ export async function runReplaySession(
       return failed('Target requires authentication; the replay never reached the recorded surface.');
     }
 
+    const stats: ReplayStepStats = { ...EMPTY_STATS, total: steps.length };
     let stepsReplayed = 0;
     emit('replaying', stepsReplayed);
     for (const step of steps) {
-      const outcome = await runner.replay(step);
+      const status = await replayStep(runner, step);
+      tally(stats, status);
+      if (step === steps[steps.length - 1]) stats.finalStepExecuted = status === 'ok';
       stepsReplayed += 1;
-      if (outcome.status === 'error') {
-        console.warn(`[ReplaySession] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
-      }
       emit('replaying', stepsReplayed);
       await page.waitForTimeout(PER_STEP_SETTLE_MS);
     }
 
     // Replay finished; hold for async faults to surface, then classify.
     emit('validating', stepsReplayed);
-    await page.waitForTimeout(FINAL_SETTLE_MS);
+    await page.waitForTimeout(settleFor(bugClass, faultType));
     const pageContent = await page.content().catch(() => '');
+    await probes.drain();
     collector.detach();
 
-    const matchedSignals = collector.evaluate(bugClass, faultType, pageContent);
-    return { ok: true, reproduced: matchedSignals.length > 0, stepsReplayed, matchedSignals };
+    const buckets = collector.evaluate({
+      originalBugClass: bugClass,
+      originalFaultType: faultType,
+      originalMessage: params.originalMessage ?? '',
+      scenario: params.scenario,
+      pageContent,
+    });
+    return {
+      ok: true,
+      reproduced: buckets.strong.length > 0,
+      stepsReplayed,
+      stepStats: stats,
+      matchedSignals: buckets.strong,
+      weakSignals: buckets.weak,
+      otherSignals: buckets.other,
+    };
   } catch (error) {
     return failed(`Replay error: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
+    probes.detach();
     collector.detach();
     await page.close().catch(() => undefined);
   }
+}
+
+/** A persisted blank selector ('N/A') can never resolve — count it skipped without invoking the runner. */
+async function replayStep(runner: ReplayActionRunner, step: ActionStepTrace): Promise<ReplayStepStatus> {
+  if (step.actionType !== 'macro' && (!step.selector || step.selector === 'N/A')) return 'skipped';
+  const outcome = await runner.replay(step);
+  if (outcome.status === 'error') {
+    console.warn(`[ReplaySession] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
+  }
+  return outcome.status;
+}
+
+function tally(stats: ReplayStepStats, status: ReplayStepStatus): void {
+  if (status === 'ok') stats.executed += 1;
+  else if (status === 'skipped') stats.skipped += 1;
+  else stats.failed += 1;
+}
+
+/** Adaptive validation window: hangs need to outlast the hang threshold, network faults land late. */
+function settleFor(bugClass: string, faultType: FaultType): number {
+  if (bugClass === 'INFINITE_LOADING') return HANG_SETTLE_MS;
+  if (faultType === 'NETWORK') return NETWORK_SETTLE_MS;
+  return FINAL_SETTLE_MS;
 }
 
 /** Seed cookies + local/session storage from the fingerprint before the app loads. */

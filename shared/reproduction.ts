@@ -3,7 +3,7 @@
 // drawer) render steps through these pure builders so every surface reads in one
 // voice. No runtime deps: types only.
 
-import type { ActionRecord, ActionType, ActionOutcome } from './types/bug.js';
+import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from './types/bug.js';
 
 const MAX_LABEL_LENGTH = 60;
 const MAX_PAYLOAD_LENGTH = 80;
@@ -142,6 +142,35 @@ export function describeConcurrentBurstSiblings(outcome: BurstSummary): string {
     `Click ${outcome.attempted} sibling elements at once, no wait ` +
     `(${outcome.completed}/${outcome.attempted} landed, ${outcome.durationMs}ms)`
   );
+}
+
+/**
+ * Params-based human description of a replay macro — names the actual elements /
+ * dimensions from the stored params so the playbook never shows a vague
+ * "Click N sibling elements at once". Live execution metrics (landed/ms) are
+ * intentionally omitted; per-step duration is surfaced separately by the renderer.
+ */
+export function describeReplayMacro(macro: ReplayMacro): string {
+  const params = macro.params ?? {};
+  switch (macro.scenario) {
+    case 'ConcurrentSiblingBurst': {
+      const selectors = (params.selectors ?? []).filter(Boolean);
+      const count = selectors.length || params.count || 0;
+      const named = selectors.length ? ` — ${selectors.join(', ')}` : '';
+      return `Rapidly click ${count} sibling element${count === 1 ? '' : 's'} at the same time, no delay${named}`;
+    }
+    case 'CoordinateBombing': {
+      const count = params.count ?? 0;
+      const dims = params.width && params.height ? ` across the ${params.width}×${params.height} viewport` : '';
+      return `Fire ${count} rapid clicks at fixed grid coordinates${dims}`;
+    }
+    case 'RouteTrasher': {
+      const reps = params.repetitions ?? 0;
+      return `Trash navigation history ${reps}× — rapid back/forward traversal`;
+    }
+    default:
+      return macro.summary || 'Replay recorded stress-scenario burst';
+  }
 }
 
 /** Deterministic coordinate-bombing step (CoordinateBombing). */

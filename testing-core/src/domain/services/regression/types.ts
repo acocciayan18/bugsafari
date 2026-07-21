@@ -8,6 +8,8 @@ export interface CollectedFault {
   message: string;
   statusCode?: number;
   url?: string;
+  /** Set by ported replay probes whose classes classifyFault cannot produce. */
+  bugClassOverride?: string;
 }
 
 /**
@@ -18,4 +20,6 @@ export interface LoadedFinding {
   targetUrl: string;
   actionSteps: ActionStepTrace[];
   bug: ICaughtBug;
+  /** 'finding' = per-finding minimized timeline; 'session' = legacy session-global fallback. */
+  timelineSource: 'finding' | 'session';
 }

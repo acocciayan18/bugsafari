@@ -8,14 +8,41 @@ import type { CollectedFault } from './types.js';
 const FAULT_RESOURCE_TYPES = new Set(['document', 'xhr', 'fetch']);
 // Cap page-content scanned by the classifier so a huge DOM can't stall the regex pass.
 const MAX_CONTENT_SCAN = 200_000;
+// Different-class faults surfaced to the operator are deduped and capped to stay readable.
+const MAX_OTHER_SIGNALS = 10;
+// Normalized-message prefix length used by the similarity containment check.
+const SIMILARITY_PREFIX = 80;
+
+/** What `evaluate` needs to compare replay faults against the original finding. */
+export interface EvaluateInput {
+  originalBugClass: string;
+  originalFaultType: FaultType;
+  /** Original finding's message — corroborates same-class matches via similarity. */
+  originalMessage: string;
+  /** Scenario active when the bug was first caught, threaded into classifyFault. */
+  scenario?: string;
+  pageContent: string;
+}
+
+/**
+ * Tri-bucket verdict evidence:
+ *   strong — same class, corroborated (signal-backed, probe-detected, or message-similar) → reproduction proof.
+ *   weak   — same class but INFERRED-only and message-dissimilar → not proof, blocks RESOLVED.
+ *   other  — different class → new findings, surfaced but never reproduction evidence.
+ */
+export interface SignalBuckets {
+  strong: RegressionSignal[];
+  weak: RegressionSignal[];
+  other: RegressionSignal[];
+}
 
 /**
  * Attaches Playwright page listeners for the duration of a replay and accumulates
  * every runtime fault (JS exception, console error, failed response/request). At
  * the end, `evaluate` re-runs the SAME deterministic knowledge-base classifier
- * used by live detection and returns only the faults whose resolved bug class
- * matches the ORIGINAL finding — so a RESOLVED/STILL_ACTIVE verdict is grounded
- * in identical rules to how the bug was first reported.
+ * used by live detection and buckets each fault by how strongly it evidences the
+ * ORIGINAL finding — so a RESOLVED/STILL_ACTIVE verdict is grounded in identical
+ * rules to how the bug was first reported, corroborated by message identity.
  */
 export class FaultCollector {
   private readonly faults: CollectedFault[] = [];
@@ -41,6 +68,11 @@ export class FaultCollector {
     this.page.off('console', this.onConsole);
     this.page.off('response', this.onResponse);
     this.page.off('requestfailed', this.onRequestFailed);
+  }
+
+  /** Feed a fault observed by a ported replay probe (hang/freeze/soft-fail/rejection). */
+  public addExternal(fault: CollectedFault): void {
+    this.faults.push(fault);
   }
 
   private readonly onPageError = (error: Error): void => {
@@ -79,42 +111,67 @@ export class FaultCollector {
   }
 
   /**
-   * Deterministically decide which observed faults reproduce the original bug.
-   * A collected runtime fault matches when it classifies to `originalBugClass`.
-   * The page content is only considered when it actually matches a known signal
-   * signature — that guards against the classifier's fault-type-default fallback
-   * spuriously equalling the original class on a clean page.
+   * Deterministically bucket every observed fault against the original bug.
+   * Same class alone is NOT proof: an unrelated console error INFERRED-defaults
+   * into the exception class and would otherwise "reproduce" any exception-class
+   * finding. Strong requires corroboration — probe override, a signal-backed
+   * classification, message similarity, or a status code echoed by the original.
    */
-  public evaluate(originalBugClass: string, originalFaultType: FaultType, pageContent: string): RegressionSignal[] {
-    const matched: RegressionSignal[] = [];
+  public evaluate(input: EvaluateInput): SignalBuckets {
+    const { originalBugClass, originalFaultType, originalMessage, scenario } = input;
+    const buckets: SignalBuckets = { strong: [], weak: [], other: [] };
+    const seenOther = new Set<string>();
 
     for (const fault of this.faults) {
-      const input: FaultInput = {
+      const signal: RegressionSignal = {
         faultType: fault.faultType,
         message: fault.message,
         statusCode: fault.statusCode,
         url: fault.url,
       };
-      if (classifyFault(input).bugClass === originalBugClass) {
-        matched.push({
-          faultType: fault.faultType,
-          message: fault.message,
-          statusCode: fault.statusCode,
-          url: fault.url,
-        });
+
+      if (fault.bugClassOverride) {
+        if (fault.bugClassOverride === originalBugClass) buckets.strong.push(signal);
+        else this.pushOther(buckets, seenOther, signal);
+        continue;
       }
+
+      const faultInput: FaultInput = {
+        faultType: fault.faultType,
+        message: fault.message,
+        statusCode: fault.statusCode,
+        url: fault.url,
+        scenario,
+      };
+      const cls = classifyFault(faultInput);
+      if (cls.bugClass !== originalBugClass) {
+        this.pushOther(buckets, seenOther, signal);
+        continue;
+      }
+
+      const corroborated =
+        cls.confidence !== 'INFERRED' ||
+        messagesSimilar(fault.message, originalMessage) ||
+        (fault.statusCode !== undefined && originalMessage.includes(String(fault.statusCode)));
+      if (corroborated) buckets.strong.push(signal);
+      // Uncorroborated console chatter is framework noise (React logs via console.error);
+      // real uncaught exceptions / failed requests stay weak and block RESOLVED.
+      else if (fault.faultType === 'CONSOLE') this.pushOther(buckets, seenOther, signal);
+      else buckets.weak.push(signal);
     }
 
-    const content = pageContent.slice(0, MAX_CONTENT_SCAN);
+    const content = input.pageContent.slice(0, MAX_CONTENT_SCAN);
     if (this.contentHasSignal(content)) {
       const contentInput: FaultInput = {
         faultType: originalFaultType,
         message: '',
         content,
         url: this.safeUrl(),
+        scenario,
       };
+      // Signal-gated content classification is hard evidence, never INFERRED noise.
       if (classifyFault(contentInput).bugClass === originalBugClass) {
-        matched.push({
+        buckets.strong.push({
           faultType: originalFaultType,
           message: `Original ${originalBugClass} signature present in replayed page content`,
           url: this.safeUrl(),
@@ -122,11 +179,38 @@ export class FaultCollector {
       }
     }
 
-    return matched;
+    return buckets;
+  }
+
+  private pushOther(buckets: SignalBuckets, seen: Set<string>, signal: RegressionSignal): void {
+    const key = normalizeMessage(signal.message);
+    if (seen.has(key) || buckets.other.length >= MAX_OTHER_SIGNALS) return;
+    seen.add(key);
+    buckets.other.push(signal);
   }
 
   private contentHasSignal(content: string): boolean {
     if (!content) return false;
     return (Object.keys(SIGNAL_PATTERNS) as SignalCategory[]).some((category) => matchesCategory(category, content));
   }
+}
+
+/** Collapse volatile spans (quoted values, numbers, URLs) so the same error matches across runs. */
+export function normalizeMessage(message: string): string {
+  return message
+    .toLowerCase()
+    .replace(/(["'`]).*?\1/g, '""')
+    .replace(/https?:\/\/\S+/g, 'u')
+    .replace(/\d+/g, '#')
+    .trim()
+    .slice(0, 160);
+}
+
+/** Deterministic sameness test: equal after normalization, or one contains the other's prefix. */
+export function messagesSimilar(a: string, b: string): boolean {
+  const na = normalizeMessage(a);
+  const nb = normalizeMessage(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  return na.includes(nb.slice(0, SIMILARITY_PREFIX)) || nb.includes(na.slice(0, SIMILARITY_PREFIX));
 }

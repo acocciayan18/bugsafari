@@ -35,17 +35,21 @@ const regressionVerifier = new RegressionPlaybookVerifier();
 // of clicks can't spawn parallel headless sessions and exhaust resources.
 let verificationInProgress = false;
 
-/** Build a terminal INCONCLUSIVE ack without running a replay (validation/guard failures). */
-function inconclusiveAck(request: Partial<VerifyFixRequest>, error: string): VerifyFixResult {
+/** Build a terminal VERIFICATION_FAILED ack without running a replay (validation/guard failures). */
+function verificationFailedAck(request: Partial<VerifyFixRequest>, error: string): VerifyFixResult {
   return {
     ok: false,
-    verdict: 'INCONCLUSIVE',
+    verdict: 'VERIFICATION_FAILED',
+    reason: 'REPLAY_ERROR',
     sessionId: request.sessionId ?? '',
     bugId: request.bugId ?? '',
     bugClass: 'UNKNOWN',
     stepsReplayed: 0,
+    stepStats: { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false },
     matchedSignals: [],
-    summary: `Verification inconclusive: ${error}`,
+    otherSignals: [],
+    timelineSource: 'finding',
+    summary: `Verification failed: ${error}`,
     durationMs: 0,
     error,
   };
@@ -207,7 +211,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
 
       // Payload validation.
       if (typeof request.sessionId !== 'string' || !request.sessionId || typeof request.bugId !== 'string' || !request.bugId) {
-        respond(inconclusiveAck(request, 'sessionId and bugId are required.'));
+        respond(verificationFailedAck(request, 'sessionId and bugId are required.'));
         return;
       }
 
@@ -215,13 +219,13 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       // finding lookup to them. The client never supplies its own userId.
       const userId = socketUserId(socket);
       if (!userId) {
-        respond(inconclusiveAck(request, 'Authentication required to verify a fix.'));
+        respond(verificationFailedAck(request, 'Authentication required to verify a fix.'));
         return;
       }
 
       // Serialize replays to avoid parallel headless-browser storms.
       if (verificationInProgress) {
-        respond(inconclusiveAck(request, 'Another verification is already in progress. Please retry shortly.'));
+        respond(verificationFailedAck(request, 'Another verification is already in progress. Please retry shortly.'));
         return;
       }
 
@@ -237,7 +241,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[Socket] verify-fix failed:', message);
-        respond(inconclusiveAck(request, `Verification error: ${message}`));
+        respond(verificationFailedAck(request, `Verification error: ${message}`));
       } finally {
         verificationInProgress = false;
       }
