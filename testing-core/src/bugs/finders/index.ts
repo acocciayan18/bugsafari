@@ -3,6 +3,7 @@ import { structuralProbeFinder } from './structuralProbe.js';
 import { concurrentStressGuard } from './concurrentStress.js';
 import { noSqlInjectionFinder } from './noSqlInjection.js';
 import { spaRaceConditionsFinder } from './spaRaceConditions.js';
+import { constraintBypassFinder } from './constraintBypass.js';
 
 /**
  * Finders executed by BugFinderRunner, ordered cheapest-gate-first.
@@ -20,6 +21,7 @@ export const BUG_FINDERS: readonly BugFinder[] = [
   concurrentStressGuard,
   noSqlInjectionFinder,
   spaRaceConditionsFinder,
+  constraintBypassFinder,
 ];
 
 export { setChaosManagerAccessor as setStructuralProbeAccessor } from './structuralProbe.js';

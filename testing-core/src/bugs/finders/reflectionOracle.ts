@@ -59,7 +59,21 @@ export async function resetExecutionWitness(page: Page): Promise<void> {
 
 /** Payload contains executable markup — required for a raw-reflection CONFIRMED verdict. */
 function hasDangerousMarkup(payload: string): boolean {
-  return /<\s*(script|img|svg|iframe|object|embed|body|input|details|a)\b|on\w+\s*=|javascript:/i.test(payload);
+  return /<\s*(script|img|svg|iframe|object|embed|body|input|details|a|video|source|audio|track)\b|on\w+\s*=|javascript:/i.test(payload);
+}
+
+// Normalize markup so a payload that survived unescaped is still matched after the
+// browser's HTML round-trip (added attribute quotes, collapsed whitespace, void-tag
+// closing, case). Entities are left intact, so escaped output (&lt;…&gt;) never
+// matches here — preserving the SANITIZED verdict and the no-false-positive guard.
+function normalizeMarkup(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s*=\s*/g, '=')
+    .replace(/["']/g, '')
+    .replace(/\s*<\s*/g, '<')
+    .replace(/\s*>\s*/g, '>');
 }
 
 /** Unique per-injection marker so reflection is correlated to THIS payload, not ambient markup. */
@@ -99,7 +113,12 @@ export function classifyReflection(params: {
   if (!payload) return 'ABSENT';
   // Reflected raw/unescaped AND actually dangerous → the markup is live in the DOM.
   // The markup guard prevents a harmless plain-text reflection reading as a leak.
-  if (hasDangerousMarkup(payload) && rawHtml.includes(payload)) return 'CONFIRMED';
+  // Exact match first; then a normalization-tolerant match so a payload the browser
+  // round-tripped (quotes added, whitespace/void-tags normalized) is still caught.
+  if (hasDangerousMarkup(payload)) {
+    if (rawHtml.includes(payload)) return 'CONFIRMED';
+    if (normalizeMarkup(rawHtml).includes(normalizeMarkup(payload))) return 'CONFIRMED';
+  }
   // Present only as HTML entities → the sink escaped it correctly.
   const encoded = htmlEncode(payload);
   if (encoded !== payload && rawHtml.includes(encoded)) return 'SANITIZED';

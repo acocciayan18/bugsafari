@@ -107,6 +107,7 @@ const CATEGORY_SOURCE: Record<SignalCategory, 'url' | 'text' | 'both'> = {
   CLIENT_CRASH: 'text',
   COMPONENT_FAIL: 'text',
   SERVER_ERROR: 'text',
+  INFO_LEAK: 'text',
   NOSQL_ERROR: 'text',
   XSS_REFLECTION: 'text',
   QUERY_MUTATION: 'url',
@@ -121,6 +122,7 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
   XSS_REFLECTION: ['FUZZ_VULNERABILITY_LEAK', 'INPUT_SANITIZATION_FAILURE'],
   REDIRECT_LOOP: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
   COMPONENT_FAIL: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
+  INFO_LEAK: ['SECURITY_VULNERABILITY_LEAK'],
   SERVER_ERROR: ['BOUNDARY_STRESS_FAILURE', 'SECURITY_VULNERABILITY_LEAK'],
   CLIENT_CRASH: ['RUNTIME_STABILITY_EXCEPTION'],
   DEAD_END: ['STRUCTURAL_NAVIGATION_LOGIC'],
@@ -133,6 +135,9 @@ const CATEGORY_PRIORITY: SignalCategory[] = [
   'XSS_REFLECTION',
   'REDIRECT_LOOP',
   'COMPONENT_FAIL',
+  // A leaked stack/path/connection-string is a specific info-exposure verdict; it
+  // must outrank the generic 5xx SERVER_ERROR so a leak isn't demoted to BOUNDARY.
+  'INFO_LEAK',
   'SERVER_ERROR',
   'CLIENT_CRASH',
   'DEAD_END',

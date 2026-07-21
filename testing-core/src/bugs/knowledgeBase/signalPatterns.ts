@@ -19,6 +19,7 @@ export type SignalCategory =
   | 'CLIENT_CRASH'
   | 'COMPONENT_FAIL'
   | 'SERVER_ERROR'
+  | 'INFO_LEAK'
   | 'NOSQL_ERROR'
   | 'XSS_REFLECTION'
   | 'QUERY_MUTATION';
@@ -65,6 +66,16 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /module not found/i,
     /chunk.*not found/i,
     /loading (chunk|failed)/i,
+  ],
+  // Leaked server internals in an error/response body — a stack frame, an internal
+  // filesystem path, a node-runtime path, or a datastore connection string. Distinct
+  // from a bare 5xx: this is information exposure (CWE-200), not a stress failure.
+  INFO_LEAK: [
+    /\bat\s+[\w.$<>[\]]+\s*\([^)]*:\d+:\d+\)/i,
+    /\bat\s+\/[\w./-]+:\d+:\d+/i,
+    /\binternal\/(?:process|modules|bootstrap)\//i,
+    /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis):\/\/\S+/i,
+    /\/(?:srv|var\/www|usr\/src|home\/[\w-]+)\/[\w./-]+\.\w{1,4}\b/i,
   ],
   // Server-side collapse (error message + response body + status text).
   SERVER_ERROR: [

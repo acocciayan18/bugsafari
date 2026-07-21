@@ -205,18 +205,27 @@ const JSON_TOKENS = new Set([
   'params',
 ]);
 
+// Split identifiers into word tokens on delimiters and camelCase boundaries, so a
+// keyword matches only a real word — never a mid-word substring.
+function tokenizeIdentifiers(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
 /**
- * Checks if a string contains any token from a given set (case-insensitive).
- * @param text The text to search in
- * @param tokens The set of tokens to match against
- * @returns true if any token is found in the text
+ * Whether any word token matches a keyword by whole-word or prefix. Prefix keeps
+ * intended matches (search→searchbar, email→emailaddress, num→number) while a
+ * boundary blocks false ones (count→accounts, search→research) that a raw
+ * substring test produced — which misrouted a search field to numeric payloads.
  */
 function containsToken(text: string, tokens: Set<string>): boolean {
   if (!text) return false;
-  const lowerText = text.toLowerCase();
-  for (const token of tokens) {
-    if (lowerText.includes(token)) {
-      return true;
+  for (const word of tokenizeIdentifiers(text)) {
+    for (const token of tokens) {
+      if (word === token || word.startsWith(token)) return true;
     }
   }
   return false;

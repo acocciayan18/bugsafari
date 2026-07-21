@@ -86,6 +86,17 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     expectSecurity: false,
   },
   {
+    name: 'info-leak: server stack trace leaked in a 2xx body',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 200 GET /api/report',
+      content: 'Error: ECONNREFUSED\n    at Object.<anonymous> (/srv/app/db.js:42:17)\n    at process._tickCallback (internal/process/next_tick.js:68:7)',
+      statusCode: 200,
+    },
+    expected: 'SECURITY_VULNERABILITY_LEAK',
+    expectSecurity: true,
+  },
+  {
     name: 'xss: reflected + confirmed by oracle',
     input: {
       faultType: 'CONSOLE',
