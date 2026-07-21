@@ -47,7 +47,7 @@ const RECENT_SESSION_LOOKUP_LIMIT = 500;
  * TestingTypeId[] the ScenarioGate consumes. An unknown/absent profile resolves
  * to the all-enabled default; a CUSTOM profile honors its individual selection.
  */
-function parseSelectedScenarios(body: unknown): TestingTypeId[] {
+export function parseSelectedScenarios(body: unknown): TestingTypeId[] {
   const raw = (body as { infiltration?: unknown })?.infiltration as Partial<ExplorationRunConfig> | undefined;
   const knownProfiles = new Set<string>(INFILTRATION_PROFILE_CATALOG.map((profile) => profile.id));
   const profile = typeof raw?.profile === 'string' && knownProfiles.has(raw.profile)
@@ -70,7 +70,7 @@ function parseSelectedScenarios(body: unknown): TestingTypeId[] {
  * a browser is ever launched. Never log the returned object: it is the one value in
  * the request that must not reach a log line, a database, or the job queue.
  */
-function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefined {
+export function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefined {
   const raw = (body as { targetAuth?: unknown })?.targetAuth as Record<string, unknown> | undefined;
   if (!raw || typeof raw !== 'object') return undefined;
 
@@ -89,11 +89,14 @@ function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefine
   // through and be silently treated as a credentials login.
   if (raw.mode !== 'credentials') return 'invalid';
   if (typeof raw.username !== 'string' || typeof raw.password !== 'string') return 'invalid';
-  if (!raw.username || !raw.password) return 'invalid';
+  // Username is trimmed (an email/identifier is never legitimately whitespace-padded);
+  // password is left verbatim since spaces can be significant. A whitespace-only
+  // username is rejected rather than sent to guarantee a failed login.
+  if (!raw.username.trim() || !raw.password) return 'invalid';
 
   return {
     mode: 'credentials',
-    username: raw.username,
+    username: raw.username.trim(),
     password: raw.password,
     loginUrl: optionalString(raw.loginUrl),
     usernameSelector: optionalString(raw.usernameSelector),

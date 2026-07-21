@@ -2,6 +2,7 @@ import type { Page, Response } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
+import { humanizeElement } from '../../domain/services/forensics/narration.js';
 
 // Window (ms) to let the submitted request settle so its response can be judged.
 const OBSERVE_WINDOW_MS = 1200;
@@ -145,7 +146,7 @@ export const constraintBypassFinder: BugFinder = {
         title: 'Client-only validation bypassed — server accepted invalid input',
         severity: 'MEDIUM',
         evidence: {
-          message: `Stripped ${plan.constraint} on ${element.selector}, submitted a browser-rejected value, and ${accepted.url} accepted it (HTTP ${accepted.status}). The constraint was enforced only client-side.`,
+          message: `Removed the ${plan.constraint} rule on ${humanizeElement(element)}, submitted a value the browser would normally reject, and the server accepted it (HTTP ${accepted.status} at ${accepted.url}). Validation is enforced only in the browser.`,
           selector: element.selector,
           actionExecuted: 'form-constraint-bypass',
           stateHash: ctx.stateHash,

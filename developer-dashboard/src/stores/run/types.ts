@@ -1,4 +1,5 @@
-import type { RunLifecycleStatus } from '../../types';
+import type { RunLifecycleStatus, RunTerminationOutcome } from '../../types';
+import { isCleanTermination } from '../../../../shared/types.js';
 
 // Unified Test Session Status Type for the visibility matrix
 export type TestSessionStatus = 'IDLE' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
@@ -61,6 +62,16 @@ export function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus
         default:
             return 'IDLE';
     }
+}
+
+// Terminal display status derived from the run's termination outcome — the single
+// source of truth shared by the live telemetry path and the restore-on-refresh
+// path, so a user-stopped/halted run reads the same STOPPED after a reload as it
+// did live (its retained lifecycle settles to COMPLETED, which alone would misread
+// as FINISHED). user-stopped is clean but still a manual STOP, not a completion.
+export function terminalStatusFromOutcome(outcome: RunTerminationOutcome | null): TestSessionStatus {
+    if (!outcome) return 'FINISHED';
+    return isCleanTermination(outcome) && outcome !== 'user-stopped' ? 'FINISHED' : 'STOPPED';
 }
 
 // A run is still live (config controls stay locked) for these lifecycle states

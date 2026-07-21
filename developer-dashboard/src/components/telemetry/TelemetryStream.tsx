@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pause, Play, Square } from 'lucide-react';
 
 import type { TelemetryEvent } from '../../types';
+import { humanizeSelector } from '../../../../shared/reproduction.js';
 
 // (Types are imported above; kept file-local Describe logic only.)
 
@@ -195,7 +196,7 @@ function describeEvent(event: TelemetryEvent): DescribeResult {
     return {
       pill: { label: 'STEP', color: 'bg-(--status-stable-bg) text-(--status-stable-fg)' },
       title: event.meta.message ? event.meta.message : `Score update`,
-      sub: event.meta.selector ? `target: ${event.meta.selector}` : event.meta.actionExecuted ?? 'heuristic',
+      sub: event.meta.selector ? `target: ${humanizeSelector(event.meta.selector)}` : event.meta.actionExecuted ?? 'heuristic',
     };
   }
 

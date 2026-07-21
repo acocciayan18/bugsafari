@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { IncidentReport, ForensicCrashReport } from '../../types';
+import type { IncidentReport, ForensicCrashReport, BrowserConsoleMessage, TelemetryEvent } from '../../types';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { incidentToFindingView, reportToFindingView, type FindingView } from '../../utils/findingView';
+import { correlateLiveEvidence } from '../../utils/runtimeEvidence';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import { AttributionBadges as AttributionBadgesBase, CopyButton, SeverityBadge } from '../common/ForensicCardKit';
 import FindingEvidence from '../common/FindingEvidence';
+import { AlertTriangle } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -15,6 +17,9 @@ interface ErrorTabPanelProps {
     incidents: IncidentReport[];
     reports: ForensicCrashReport[];
   };
+  /** Live streams used to correlate per-finding runtime evidence. */
+  browserConsole?: BrowserConsoleMessage[];
+  networkEvents?: TelemetryEvent[];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -54,27 +59,30 @@ const MetaCell = ({ label, value, mono = true }: { label: string; value: string;
 // so a live fault and its saved counterpart render their evidence identically.
 function LiveFindingCard({
   view,
-  icon,
   kindLabel,
   source,
   count,
   index,
   aiDiagnostics,
+  browserConsole,
+  networkEvents,
 }: {
   view: FindingView;
-  icon: string;
   kindLabel: string;
   source: string;
   count: number;
   index: number;
   aiDiagnostics: any;
+  browserConsole: BrowserConsoleMessage[];
+  networkEvents: TelemetryEvent[];
 }) {
+  const evidence = correlateLiveEvidence(view.timestamp, browserConsole, networkEvents);
   return (
     <div className="bg-(--surface-panel) border border-(--border-hairline) border-l-4 border-l-(--status-critical-fg) rounded-lg overflow-hidden">
       <div className="px-3 py-3 sm:px-4 flex flex-wrap items-start justify-between gap-x-2 gap-y-2 border-b border-(--border-hairline)">
         <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-[13px] font-bold">
-            {icon}
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center text-(--status-critical-fg) text-[13px] font-bold">
+            <AlertTriangle className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -96,7 +104,9 @@ function LiveFindingCard({
         <MetaCell label="Type" value={view.title} />
         <MetaCell label="Severity" value={view.severity ?? 'error'} />
         <MetaCell label="Source" value={source} />
-        <MetaCell label="Index" value={`#${index}`} />
+        {view.elementLabel
+          ? <MetaCell label="Element" value={view.elementLabel} mono={false} />
+          : <MetaCell label="Index" value={`#${index}`} />}
       </div>
 
       <AttributionBadges attribution={view.attribution} />
@@ -109,7 +119,7 @@ function LiveFindingCard({
       </div>
 
       <div className="pb-3">
-        <FindingEvidence view={view} />
+        <FindingEvidence view={view} evidence={evidence} />
       </div>
     </div>
   );
@@ -120,7 +130,9 @@ function LiveFindingCard({
 // ─────────────────────────────────────────────────────────────
 
 export default function ErrorTabPanel({
-  errors = { incidents: [], reports: [] }
+  errors = { incidents: [], reports: [] },
+  browserConsole = [],
+  networkEvents = [],
 }: ErrorTabPanelProps) {
   const errorIncidents = errors?.incidents ?? [];
   // A JS exception / console error arrives as BOTH an incident and a crash
@@ -143,12 +155,13 @@ export default function ErrorTabPanel({
             <LiveFindingCard
               key={`incident-${idx}`}
               view={incidentToFindingView(incident, count)}
-              icon=""
               kindLabel="Forensics (Incident)"
               source="Runtime"
               count={count}
               index={idx}
               aiDiagnostics={(incident as any).aiDiagnostics}
+              browserConsole={browserConsole}
+              networkEvents={networkEvents}
             />
           ))}
 
@@ -156,12 +169,13 @@ export default function ErrorTabPanel({
             <LiveFindingCard
               key={`report-${idx}`}
               view={reportToFindingView(report, count)}
-              icon=""
               kindLabel="Console Error"
               source="Console"
               count={count}
               index={idx}
               aiDiagnostics={(report as any).aiDiagnostics}
+              browserConsole={browserConsole}
+              networkEvents={networkEvents}
             />
           ))}
         </>

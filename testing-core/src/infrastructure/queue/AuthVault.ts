@@ -59,6 +59,13 @@ export class AuthVault {
     return new AuthVault(new Redis(redisUrl, { maxRetriesPerRequest: null }), key);
   }
 
+  // Test seam: build a vault over an injected ioredis-compatible client and raw
+  // 32-byte key, so the seal/single-use/fail-closed contract is exercisable
+  // without a live Redis. Not used by production code.
+  public static withClient(client: Redis, key: Buffer): AuthVault {
+    return new AuthVault(client, key);
+  }
+
   private vaultKey(runId: string): string {
     return `safari:auth:${runId}`;
   }

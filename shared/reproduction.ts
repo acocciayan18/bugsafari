@@ -61,6 +61,29 @@ export function resolveElementLabel(element: ElementLabelSource): string {
   return genericElementLabel(element.tagName, element.type);
 }
 
+const ATTR_LABEL_PATTERN = /\[(?:aria-label|placeholder|name|title|alt)[*^$~|]?=\s*["']?([^"'\]]+)["']?\]/i;
+
+/**
+ * Human-readable name derived from a raw CSS selector — used ONLY when no recorded
+ * label exists. Reads the LAST segment of the chain and renders a semantic fallback
+ * (`the "Email" field`, `<button#submit>`), never the full selector chain.
+ */
+export function humanizeSelector(selector?: string): string {
+  const raw = collapse(selector);
+  if (!raw || raw === 'N/A') return 'element';
+  const segments = raw.split(/\s*[>+~]\s*|\s+/).filter(Boolean);
+  const last = segments[segments.length - 1] ?? raw;
+  const attrLabel = last.match(ATTR_LABEL_PATTERN)?.[1];
+  const tag = (last.match(/^[a-zA-Z][\w-]*/)?.[0] ?? '').toLowerCase();
+  const id = last.match(/#([\w-]+)/)?.[1];
+  const className = last.match(/\.([\w-]+)/)?.[1];
+  if (attrLabel) return `the "${truncate(attrLabel, MAX_LABEL_LENGTH)}" ${genericElementLabel(tag)}`;
+  if (id) return `<${tag || 'element'}#${id}>`;
+  if (className) return `<${tag || 'element'}.${className}>`;
+  if (tag) return genericElementLabel(tag);
+  return 'element';
+}
+
 // Capitalized element kind for operator-facing descriptions (Button/Input/Link).
 function elementKind(tagName?: string, type?: string): string {
   const tag = (tagName ?? '').toLowerCase();

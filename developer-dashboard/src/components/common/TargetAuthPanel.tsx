@@ -2,9 +2,10 @@
 // TargetAuthPanel.tsx - EPHEMERAL TARGET-APP CREDENTIALS
 // ═══════════════════════════════════════════════════════════════
 // Collects login details for the application UNDER TEST so exploration can reach
-// authenticated surface. Values live in component state for one launch and are
-// cleared by the parent immediately after submission — nothing is persisted here,
-// and autoComplete is off so the browser does not offer to save them either.
+// authenticated surface. Values live only in the parent's in-memory draft — retained
+// across modal open/close and re-runs, never persisted to disk, history, or the job
+// queue, and gone on reload. autoComplete is off so the browser does not offer to
+// save them either.
 
 import { useState } from 'react';
 import { ChevronDown, KeyRound, ShieldCheck } from 'lucide-react';
@@ -70,7 +71,7 @@ export function toTargetAuthConfig(draft: TargetAuthDraft): TargetAuthConfig | u
 
   return {
     mode: 'credentials',
-    username: draft.username,
+    username: draft.username.trim(),
     password: draft.password,
     loginUrl: trimmed(draft.loginUrl),
     usernameSelector: trimmed(draft.usernameSelector),
@@ -85,7 +86,7 @@ export function isTargetAuthIncomplete(draft: TargetAuthDraft): boolean {
   if (!draft.enabled) return false;
   return draft.method === 'storageState'
     ? !isStorageStateValid(draft.storageState.trim())
-    : !draft.username || !draft.password;
+    : !draft.username.trim() || !draft.password;
 }
 
 interface TargetAuthPanelProps {

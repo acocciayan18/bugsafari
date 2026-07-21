@@ -13,6 +13,7 @@ import type {
   IncidentReport,
 } from '../types';
 import type { FindingAttribution } from '../../../shared/types.js';
+import { humanizeSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 
 export interface FindingView {
@@ -27,6 +28,8 @@ export interface FindingView {
   timestamp?: string;
   url?: string;
   selector?: string;
+  /** Human-readable name of the element the fault attaches to — never a selector chain. */
+  elementLabel?: string;
   payloadUsed?: string;
   stackTrace?: string;
   resolvedStackTrace?: string;
@@ -49,6 +52,24 @@ function culpritSelector(steps: Array<{ selector?: string }> | undefined): strin
   return undefined;
 }
 
+// Human name for the culprit element: last recorded label in the timeline, else a
+// semantic reading of the selector — the UI never shows the raw selector chain.
+function culpritLabel(
+  steps: Array<{ selector?: string; elementLabel?: string; fallbackLabel?: string }> | undefined,
+  selector?: string,
+): string | undefined {
+  if (steps) {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const step = steps[i];
+      const s = step?.selector;
+      if (!s || !s.trim() || s === 'N/A') continue;
+      const label = (step.elementLabel ?? step.fallbackLabel ?? '').trim();
+      return label || humanizeSelector(s);
+    }
+  }
+  return selector ? humanizeSelector(selector) : undefined;
+}
+
 export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occurrences ?? 1): FindingView {
   return {
     key: liveFaultSignature(inc),
@@ -59,6 +80,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     timestamp: inc.timestamp,
     url: inc.url,
     selector: culpritSelector(inc.steps),
+    elementLabel: culpritLabel(inc.steps, culpritSelector(inc.steps)),
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
     reproductionSteps: inc.reproductionPlaybook ?? [],
@@ -77,6 +99,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     timestamp: rep.timestamp,
     url: rep.url,
     selector: culpritSelector(rep.breadcrumbs),
+    elementLabel: culpritLabel(rep.breadcrumbs, culpritSelector(rep.breadcrumbs)),
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
     reproductionSteps: rep.reproductionPlaybook ?? [],
@@ -94,6 +117,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     occurrences,
     timestamp: bug.timestamp,
     selector: bug.selector,
+    elementLabel: culpritLabel(bug.actionSteps, bug.selector),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,

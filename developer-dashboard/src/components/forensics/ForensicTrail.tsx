@@ -56,14 +56,8 @@ export default function ForensicTrail({ reports }: ForensicTrailProps) {
                     Step {step.stepNumber}: {step.instruction}
                   </li>
                 ))
-              ) : latest.breadcrumbs.length === 0 ? (
-                <li className="text-(--text-tertiary)">No reproduction steps available.</li>
               ) : (
-                latest.breadcrumbs.map((bc, idx) => (
-                  <li key={`${bc.timestamp}-${idx}`} className="rounded bg-(--surface-raised) px-2 py-1">
-                    Step {idx + 1}: {bc.action} {bc.selector}
-                  </li>
-                ))
+                <li className="text-(--text-tertiary)">No reproduction steps available.</li>
               )}
             </ol>
           </div>

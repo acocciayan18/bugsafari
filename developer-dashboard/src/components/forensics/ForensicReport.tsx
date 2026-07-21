@@ -41,7 +41,8 @@ import { AttributionBadges, CopyButton, SeverityBadge } from '../common/Forensic
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination } from '../../types';
 import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
-import { caughtBugToFindingView } from '../../utils/findingView';
+import { caughtBugToFindingView, type FindingView } from '../../utils/findingView';
+import { correlateSavedEvidence, type RuntimeEvidence } from '../../utils/runtimeEvidence';
 import { Modal } from '../ui/Modal';
 import {
   useRegressionVerifier,
@@ -223,7 +224,7 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 // ActionStepList (the structured, per-step trace) is shared with the live Errors
 // tab via ../common/FindingEvidence — imported above, reused here in the appendix.
 
-function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
+function buildBugSummaryText(bug: ForensicCaughtBug, view: FindingView, index: number): string {
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
   const { steps: narrativeSteps, observations } = splitObservations(bug.reproductionSteps ?? []);
   const reproMarkdown = bug.actionSteps?.length
@@ -232,7 +233,7 @@ function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
   return [
     `Finding #${index}: ${bugClass}`,
     bug.message ? `Message: ${bug.message}` : '',
-    bug.selector ? `Selector: ${bug.selector}` : '',
+    view.elementLabel ? `Element: ${view.elementLabel}` : '',
     bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
     `Detected: ${formatDate(bug.timestamp)}`,
     bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
@@ -516,6 +517,7 @@ function FindingCard({
   sessionId,
   status,
   onVerify,
+  evidence,
 }: {
   bug: ForensicCaughtBug;
   index: number;
@@ -523,14 +525,15 @@ function FindingCard({
   sessionId?: string;
   status: VerifyStatus;
   onVerify: (request: VerifyFixRequest) => void;
+  evidence?: RuntimeEvidence;
 }) {
   const [showResult, setShowResult] = useState(false);
   const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
-  const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
   // Normalized view — the shared <FindingEvidence> renders the reproduction /
   // resolved-frames / suggested-fix / stack sections identically to
   // the live Errors tab.
   const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
+  const summaryText = useMemo(() => buildBugSummaryText(bug, view, index), [bug, view, index]);
 
   // A verifiable finding needs both a persisted session id and a stable bugId.
   const canVerify = Boolean(sessionId) && Boolean(bug.bugId);
@@ -609,8 +612,8 @@ function FindingCard({
           <div className="mt-0.5 text-sm text-(--text-primary)">{bug.message || 'No details provided'}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={bug.selector}>{bug.selector || 'N/A'}</div>
+          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Element</div>
+          <div className="mt-0.5 truncate text-[13px] text-(--text-secondary)" title={view.elementLabel}>{view.elementLabel || 'Not tied to a specific element'}</div>
         </div>
         {bug.payloadUsed && (
           <div className="min-w-0">
@@ -623,7 +626,7 @@ function FindingCard({
       {/* Shared evidence: reproduction, resolved source frames, suggested
           fix, and stack trace — rendered identically to the live Errors tab. */}
       <div className="pb-2">
-        <FindingEvidence view={view} />
+        <FindingEvidence view={view} evidence={evidence} />
       </div>
 
       {/* Dedicated verification outcome surface (auto-opens on completion) */}
@@ -935,6 +938,7 @@ export default function ForensicReport() {
                       sessionId={sessionId}
                       status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
                       onVerify={verify}
+                      evidence={correlateSavedEvidence(bug.timestamp, consoleRows, networkRows)}
                     />
                   ))}
                 </div>
