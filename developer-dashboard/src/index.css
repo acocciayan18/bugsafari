@@ -171,7 +171,6 @@
   html,
   body {
     overflow-x: hidden;
-    overscroll-behavior-y: none;
   }
 
   /* Long URLs, stack traces and selectors are everywhere in this app. */
