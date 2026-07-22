@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, AlertCircle,  Lock, Eye, EyeOff, } from 'lucide-react';
+import { Mail, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -9,8 +9,6 @@ import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
 import type { LegalDocId } from '../../legal/content';
-
-
 
 interface TouchedState {
   email: boolean;
@@ -38,7 +36,9 @@ export default function SignupForm() {
   const { signup, isLoading, emailError, authError, clearEmailError, clearAuthError, setNavigate: setAuthNavigate } = useAuth();
 
   useEffect(() => {
-    setAuthNavigate(navigate);
+    if (setAuthNavigate) {
+      setAuthNavigate(navigate);
+    }
   }, [navigate, setAuthNavigate]);
 
   const markTouched = (field: keyof TouchedState) => () => setTouched((t) => ({ ...t, [field]: true }));
@@ -73,8 +73,8 @@ export default function SignupForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    clearEmailError();
-    clearAuthError();
+    if (clearEmailError) clearEmailError();
+    if (clearAuthError) clearAuthError();
 
     if (!emailFormatValid) {
       emailRef.current?.focus();
@@ -117,131 +117,136 @@ export default function SignupForm() {
         </>
       }
     >
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Mail className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /></span>
-              <Input
-                ref={emailRef}
-                id="email"
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); if (emailError) clearEmailError(); }}
-                onBlur={markTouched('email')}
-                placeholder="example@email.com"
-                className="pl-10 font-(--font-sans)"
-                error={emailErrorMessage || undefined}
-                required
-              />
-            </div>
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div className="relative">
+          <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none">
+            <Mail className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <Input
+            ref={emailRef}
+            id="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => { 
+              setEmail(e.target.value); 
+              if (emailError && clearEmailError) clearEmailError(); 
+            }}
+            onBlur={markTouched('email')}
+            placeholder="example@email.com"
+            className="pl-10 font-(--font-sans)"
+            error={emailErrorMessage || undefined}
+            required
+          />
+        </div>
 
-            <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
-              <Input
-                ref={passwordRef}
-                id="password"
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onBlur={markTouched('password')}
-                placeholder="••••••••"
-                className="pl-10 pr-10"
-                error={showPasswordError || undefined}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
+        <div className="relative">
+          <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none">
+            <Lock className="w-4 h-4 shrink-0" />
+          </span>
+          <Input
+            ref={passwordRef}
+            id="password"
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onBlur={markTouched('password')}
+            placeholder="••••••••"
+            className="pl-10 pr-10"
+            error={showPasswordError || undefined}
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
+          >
+            {showPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
+          </button>
+        </div>
+
+        <div className="relative">
+          <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none">
+            <Lock className="w-4 h-4 shrink-0" />
+          </span>
+          <Input
+            ref={confirmPasswordRef}
+            id="confirmPassword"
+            label="Confirm Password"
+            type={showConfirmPassword ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            onBlur={markTouched('confirmPassword')}
+            placeholder="••••••••"
+            className="pl-10 pr-10"
+            error={showConfirmError || undefined}
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+            className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
+          >
+            {showConfirmPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
+          </button>
+        </div>
+
+        <PasswordRequirements password={password} />
+
+        <div>
+          <div className="flex items-start gap-2.5">
+            <input
+              ref={consentRef}
+              id="accept-policies"
+              type="checkbox"
+              checked={acceptedPolicies}
+              onChange={(e) => setAcceptedPolicies(e.target.checked)}
+              aria-invalid={!!consentError}
+              aria-describedby={consentError ? 'accept-policies-error' : undefined}
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+            />
+            <p className="text-[13px] leading-relaxed text-(--text-secondary)">
+              <label htmlFor="accept-policies" className="cursor-pointer">
+                I have read and agree to the
+              </label>{' '}
+              <button type="button" onClick={() => setOpenDocId('privacy')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+                Privacy Notice
+              </button>{' '}
+              and{' '}
+              <button type="button" onClick={() => setOpenDocId('terms')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+                Terms of Use
               </button>
-            </div>
+              , and confirm I will only test systems I am authorized to test.
+            </p>
+          </div>
+          {consentError && (
+            <p id="accept-policies-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">
+              {consentError}
+            </p>
+          )}
+        </div>
 
-            <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
-              <Input
-                ref={confirmPasswordRef}
-                id="confirmPassword"
-                label="Confirm Password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                onBlur={markTouched('confirmPassword')}
-                placeholder="••••••••"
-                className="pl-10 pr-10"
-                error={showConfirmError || undefined}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-0 top-[26px] flex h-10 w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
-              >
-                {showConfirmPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
-              </button>
-            </div>
+        {(authError || emailError) && (
+          <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
+            <p className="text-sm text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
+          </div>
+        )}
 
-            <PasswordRequirements password={password} />
-
-            <div>
-              <div className="flex items-start gap-2.5">
-                <input
-                  ref={consentRef}
-                  id="accept-policies"
-                  type="checkbox"
-                  checked={acceptedPolicies}
-                  onChange={(e) => setAcceptedPolicies(e.target.checked)}
-                  aria-invalid={!!consentError}
-                  aria-describedby={consentError ? 'accept-policies-error' : undefined}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-                />
-                <p className="text-[13px] leading-relaxed text-(--text-secondary)">
-                  <label htmlFor="accept-policies" className="cursor-pointer">
-                    I have read and agree to the
-                  </label>{' '}
-                  <button type="button" onClick={() => setOpenDocId('privacy')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
-                    Privacy Notice
-                  </button>{' '}
-                  and{' '}
-                  <button type="button" onClick={() => setOpenDocId('terms')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
-                    Terms of Use
-                  </button>
-                  , and confirm I will only test systems I am authorized to test.
-                </p>
-              </div>
-              {consentError && (
-                <p id="accept-policies-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">
-                  {consentError}
-                </p>
-              )}
-            </div>
-
-            {(authError || emailError) && (
-              <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              className="w-full"
-              isLoading={isLoading}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Creating account...' : 'Create Account'}
-            </Button>
-
-            
-
-            
-          </form>
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          className="w-full"
+          isLoading={isLoading}
+          disabled={isLoading}
+        >
+          {isLoading ? 'Creating account...' : 'Create Account'}
+        </Button>
+      </form>
     </AuthShell>
   );
 }

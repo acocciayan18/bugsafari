@@ -22,6 +22,7 @@ import Settings from './components/settings/Settings';
 import ConnectionStatusOverlay from './components/common/ConnectionStatusOverlay';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
+import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
 import { defaultOptimizationSettings } from '../../shared/types.js';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
@@ -39,6 +40,7 @@ function AuthAppContent() {
   
   const location = useLocation();
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isInfoRoute = location.pathname === '/explore' || location.pathname === '/features' || location.pathname === '/community' || location.pathname === '/about';
 
   const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, dismissAccessibilityBanner } =
     useDashboardController();
@@ -72,6 +74,19 @@ function AuthAppContent() {
     );
   }
 
+  if (isInfoRoute) {
+    return (
+      <ThemeProvider>
+        <Routes>
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/community" element={<CommunityPage />} />
+          <Route path="/about" element={<AboutPage />} />
+        </Routes>
+      </ThemeProvider>
+    );
+  }
+
   const hasValidSession = isAuthenticated || isGuestMode;
 
   // Identity props shared by every protected route's nav shell.
@@ -86,6 +101,10 @@ function AuthAppContent() {
           <Route path="/signup" element={<SignupForm />} />
           <Route path="/forgot-password" element={<ForgotPasswordForm />} />
           <Route path="/reset-password" element={<ResetPasswordForm />} />
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/community" element={<CommunityPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ThemeProvider>
@@ -165,6 +184,10 @@ function AuthAppContent() {
             </SidebarLayout>
           )}
         />
+        <Route path="/explore" element={<ExplorePage />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/community" element={<CommunityPage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route
           path="*"
           element={
