@@ -8,7 +8,7 @@ import type { RoomEmitter } from '../socket/SocketTelemetryGateway.js';
 export const TELEMETRY_BRIDGE_CHANNEL = 'safari:telemetry';
 
 interface BridgeMessage {
-  room: string | null; // run:${runId} room, or null for a legacy broadcast
+  room: string | null; // run:${runToken} room, or null for a legacy broadcast
   event: string;
   args: unknown[];
 }

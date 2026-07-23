@@ -29,6 +29,8 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
   private activeEngine: AutonomousExplorationEngine | null = null;
   private optimizationSettings: OptimizationSettings | undefined = undefined;
+  // Public RUN- code stamped on this run's DB session doc for live/history id parity. Set before run().
+  private runCode: string | null = null;
   private activePage: import('playwright').Page | null = null;
   private activeContext: import('playwright').BrowserContext | null = null;
   private activeBrowser: import('playwright').Browser | null = null;
@@ -50,6 +52,10 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   // Snapshot of distinct visited routes, captured at teardown so it survives after run() returns.
   private capturedVisitedRoutes: string[] = [];
   private currentBrowserInfo: BrowserInfo | null = null;
+
+  public setRunCode(runCode: string): void {
+    this.runCode = runCode;
+  }
 
   public pause(): void {
     this.activeEngine?.pause();
@@ -129,7 +135,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     this.optimizationSettings = optimizationSettings;
     console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
     console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
-    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios, userId);
+    this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios, userId, this.runCode ?? undefined);
     // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup

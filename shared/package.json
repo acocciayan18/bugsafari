@@ -3,5 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "types": "types.ts"
+  "types": "types.ts",
+  "exports": {
+    ".": "./types.ts",
+    "./types": "./types.ts",
+    "./url": "./url.ts",
+    "./reproduction": "./reproduction.ts",
+    "./faultSignature": "./faultSignature.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node scripts/run-tests.mjs"
+  }
 }

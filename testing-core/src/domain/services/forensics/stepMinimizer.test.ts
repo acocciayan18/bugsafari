@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import type { ActionRecord } from '../../../../../shared/types.ts';
+import type { ActionRecord } from '../../../../../shared/types.js';
 import { minimizeActionRecords } from './stepMinimizer.js';
 
 let passed = 0;

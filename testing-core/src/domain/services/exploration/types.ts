@@ -9,7 +9,7 @@ import type {
   RunTerminationOutcome,
   StateFingerprint,
   StopReason,
-} from '../../../../../shared/types.ts';
+} from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { RecursiveDomParser } from '../../heuristics/domParser.js';
 import type { DomHasher } from '../../../ml/domHasher.js';

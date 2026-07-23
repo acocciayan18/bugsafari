@@ -11,7 +11,7 @@ import type { IntelligentDiagnosis } from '../../types';
  *  Unified AI Diagnostic Card Component
  * Displays BugSafari Expert System vulnerability analysis
  */
-const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null }) => {
+const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined }) => {
   if (!ai) return null;
 
   const isCritical = ai.severity === 'CRITICAL';

@@ -47,6 +47,7 @@ export function useHistoryView(): HistoryView {
             const matchesSearch =
                 needle === '' ||
                 item.targetUrl.toLowerCase().includes(needle) ||
+                (item.runId?.toLowerCase().includes(needle) ?? false) ||
                 item.id.toLowerCase().includes(needle);
             return matchesSearch && (activeFilter === 'ALL' || item.severity === activeFilter);
         });

@@ -1,4 +1,4 @@
-import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from '../../../../shared/types.ts';
+import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from '../../../../shared/types.js';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';

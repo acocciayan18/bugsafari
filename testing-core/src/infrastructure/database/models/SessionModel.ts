@@ -1,6 +1,7 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import type { ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
+import { generateRunCode } from '../runCodeGenerator.js';
 
 export interface ISessionConfig {
   maxDepth?: number;
@@ -115,6 +116,18 @@ const StateFingerprintSchemaField = {
 
 const sessionSchema = new Schema(
   {
+    // Public, human-readable session identifier (RUN-XXXXXX). The user-facing
+    // canonical id; `_id` stays the internal DB key + forensic correlation key.
+    // Sparse-unique so legacy docs load until the backfill assigns one.
+    runId: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      uppercase: true,
+      match: [/^RUN-[0-9A-F]{6}$/, 'runId must be RUN- followed by 6 uppercase hex characters'],
+      default: generateRunCode,
+    },
     // User association - CRITICAL: Every session must belong to a user
     userId: {
       type: Schema.Types.ObjectId,
@@ -388,6 +401,7 @@ sessionSchema.index(
 );
 
 export interface ISession extends Document {
+  runId?: string;
   userId: Types.ObjectId;
   targetUrl: string;
   status: SessionStatus;

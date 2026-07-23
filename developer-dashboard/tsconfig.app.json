@@ -16,10 +16,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Type-safety: strict contract parity with testing-core */
+    "strict": true,
+
     /* Linting */
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

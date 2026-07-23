@@ -5,6 +5,8 @@ interface ConnectionStatusOverlayProps {
   isConnected: boolean;
   isReconnecting: boolean;
   reconnectAttempt: number;
+  // Socket.IO exhausted its reconnection budget — terminal, needs a manual reload.
+  reconnectGaveUp: boolean;
   isRestoring: boolean;
 }
 
@@ -15,15 +17,18 @@ export default function ConnectionStatusOverlay({
   isConnected,
   isReconnecting,
   reconnectAttempt,
+  reconnectGaveUp,
   isRestoring,
 }: ConnectionStatusOverlayProps) {
   const { showToast, dismissToast } = useToast();
   const backendId = useRef<string | undefined>(undefined);
   const reconnectId = useRef<string | undefined>(undefined);
   const restoreId = useRef<string | undefined>(undefined);
+  const gaveUpId = useRef<string | undefined>(undefined);
 
-  // Backend link down and not actively retrying (initial loss).
-  const backendDown = !isConnected && !isReconnecting;
+  // Backend link down and not actively retrying (initial loss). Suppressed once
+  // reconnection has terminally failed — that state owns its own explicit toast.
+  const backendDown = !isConnected && !isReconnecting && !reconnectGaveUp;
 
   useEffect(() => {
     if (backendDown && !backendId.current) {
@@ -55,6 +60,22 @@ export default function ConnectionStatusOverlay({
     }
   }, [isReconnecting, reconnectAttempt, showToast, dismissToast]);
 
+  // Reconnection budget exhausted — a terminal, distinct-from-"reconnecting" state
+  // so an operator can tell a dead run from a recovering one. Reload to resume.
+  useEffect(() => {
+    if (reconnectGaveUp && !gaveUpId.current) {
+      gaveUpId.current = showToast({
+        variant: 'error',
+        message: 'Connection to BugSafari lost. Automatic reconnection failed — reload the page to resume your session.',
+        duration: Infinity,
+        onDismiss: () => { gaveUpId.current = undefined; },
+      });
+    } else if (!reconnectGaveUp && gaveUpId.current) {
+      dismissToast(gaveUpId.current);
+      gaveUpId.current = undefined;
+    }
+  }, [reconnectGaveUp, showToast, dismissToast]);
+
   // Session restore after reconnect; suppressed while backend is fully down.
   useEffect(() => {
     if (isRestoring && !backendDown) {
@@ -75,7 +96,7 @@ export default function ConnectionStatusOverlay({
   // Dismiss any live status toast on unmount.
   useEffect(
     () => () => {
-      [backendId, reconnectId, restoreId].forEach((ref) => {
+      [backendId, reconnectId, restoreId, gaveUpId].forEach((ref) => {
         if (ref.current) dismissToast(ref.current);
       });
     },

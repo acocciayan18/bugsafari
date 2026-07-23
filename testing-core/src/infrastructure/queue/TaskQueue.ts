@@ -11,9 +11,12 @@ export function resolveQueueConnection(redisUrl = process.env.REDIS_URL ?? 'redi
 export interface SafariTaskPayload {
   targetUrl: string;
   requestedBy?: string;
-  // Server-issued run token: the worker binds its telemetry room to run:${runId}
-  // and the client subscribes to the same id, so bridged live events line up.
-  runId: string;
+  // Server-issued run token: the worker binds its telemetry room to run:${runToken}
+  // and the client subscribes to the same token, so bridged live events line up.
+  runToken: string;
+  // Public RUN- code minted at enqueue: the worker stamps it on the DB session doc
+  // and surfaces it as snapshot.runId, so queued runs keep live/history id parity.
+  runCode: string;
   sessionId?: string;
   // Resolved infiltration-profile scenario gate — carried so the worker runs the
   // selected testing types instead of defaulting to all of them.
@@ -30,7 +33,8 @@ export interface SafariTaskPayload {
 export interface EnqueueSafariTaskInput {
   targetUrl: string;
   requestedBy?: string;
-  runId?: string;
+  runToken?: string;
+  runCode: string;
   selectedScenarios?: TestingTypeId[];
   optimizationSettings?: OptimizationSettings;
   hasAuth?: boolean;
@@ -40,15 +44,17 @@ export interface EnqueuedSafariTask {
   id: string;
   queueName: string;
   targetUrl: string;
-  runId: string;
+  runToken: string;
+  runCode: string;
 }
 
 const defaultJobOptions: JobsOptions = {
-  attempts: 2,
-  backoff: {
-    type: 'exponential',
-    delay: 5_000,
-  },
+  // No automatic retry for any safari job. A partial exploration is not
+  // idempotently resumable — a retry re-invokes execute() with the same runToken,
+  // relaunching a second browser, re-streaming telemetry into the live room, and
+  // re-creating the run's session doc. Auth runs are additionally impossible to
+  // retry (vault credentials are single-use). Fail once, visibly.
+  attempts: 1,
   removeOnComplete: {
     age: 60 * 60,
     count: 100,
@@ -76,26 +82,25 @@ export class TaskQueue {
       throw new Error('Cannot enqueue a Safari task without a target URL.');
     }
 
-    const runId = input.runId ?? randomUUID();
+    const runToken = input.runToken ?? randomUUID();
+    // attempts:1 comes from defaultJobOptions — every safari job is non-retryable.
     const job = await this.queue.add('run-safari', {
       targetUrl,
       requestedBy: input.requestedBy,
-      runId,
+      runToken,
+      runCode: input.runCode,
       selectedScenarios: input.selectedScenarios,
       optimizationSettings: input.optimizationSettings,
       hasAuth: input.hasAuth,
       createdAt: new Date().toISOString(),
-    }, input.hasAuth
-      // Vault credentials are consumed destructively, so a retry could never
-      // reproduce the authenticated run — fail it once, visibly, instead.
-      ? { attempts: 1 }
-      : undefined);
+    });
 
     return {
       id: String(job.id),
       queueName: SAFARI_TASK_QUEUE_NAME,
       targetUrl,
-      runId,
+      runToken,
+      runCode: input.runCode,
     };
   }
 

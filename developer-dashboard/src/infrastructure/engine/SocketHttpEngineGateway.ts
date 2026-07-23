@@ -154,6 +154,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   public onReconnecting(handler: (attempt: number) => void): void {
     this.connection.onReconnecting(handler);
   }
+  public onReconnectFailed(handler: () => void): void {
+    this.connection.onReconnectFailed(handler);
+  }
   public onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void {
     this.connection.onSessionSnapshot(handler);
   }

@@ -14,7 +14,8 @@ export type QueueJobState = 'waiting' | 'active' | 'completed' | 'failed' | 'can
 /** Client → server: join the update stream for an enqueued job + its future run room. */
 export interface QueueSubscribeRequest {
   jobId: string;
-  runId?: string;
+  /** Opaque bearer token for the future run room (was runId). */
+  runToken?: string;
 }
 
 /** Server → client: a queue position / lifecycle push for one job. */

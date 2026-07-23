@@ -4,6 +4,8 @@ export interface CreateSessionInput {
   targetUrl: string;
   startedAt: string;
   userId?: string;  // Optional - will be required for authenticated sessions
+  // Public RUN- code minted at run-start; stamped so live + history share one id. Schema default mints one when absent.
+  runId?: string;
 }
 
 export interface SaveBrainConfigInput {
@@ -22,6 +24,8 @@ export interface BrainState {
 
 export interface SessionHistoryRecord {
   id: string;
+  /** Public RUN- code. Absent on legacy docs until the backfill assigns one. */
+  runId?: string;
   targetUrl: string;
   status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
   startedAt: string;

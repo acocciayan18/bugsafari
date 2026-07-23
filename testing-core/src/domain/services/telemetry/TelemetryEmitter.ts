@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import type { AccessibilityFinding, TelemetryEvent } from '../../../../../shared/types.ts';
+import type { AccessibilityFinding, TelemetryEvent } from '../../../../../shared/types.js';
 import type { TelemetryEmitterFlags } from '../exploration/types.js';
 import { isBrowserClosedError } from './StabilityMonitor.js';
 

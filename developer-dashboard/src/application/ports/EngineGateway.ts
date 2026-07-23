@@ -1,18 +1,8 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
 
-export type BrowserConsoleLevel =
-  | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
-
-export interface BrowserConsoleMessage {
-  timestamp: string;
-  level: BrowserConsoleLevel;
-  type: string;
-  message: string;
-  url?: string;
-  line?: number;
-  column?: number;
-  stackTrace?: string;
-}
+// Re-export the single shared console contract so existing port consumers
+// (runStore, gatewayBinding, SocketConnectionManager) keep their import path.
+export type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
 
 /** Outcome of a start request: a synchronous run yields just a runId; a queued
  *  run additionally yields the jobId used to track its place in line. */
@@ -54,6 +44,8 @@ export interface EngineGateway {
   onBrowserConsole(handler: (message: BrowserConsoleMessage) => void): void;
   // Reconnection & recovery.
   onReconnecting(handler: (attempt: number) => void): void;
+  /** Socket.IO exhausted its reconnection budget — terminal, needs a manual reload. */
+  onReconnectFailed(handler: () => void): void;
   onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
   /** Live queue-position / lifecycle pushes for an enqueued (distributed) run. */
   onQueueUpdate(handler: (update: QueueUpdate) => void): void;
@@ -67,6 +59,12 @@ export interface EngineGateway {
   /** Launch a run; resolves with the run token and (when queued) its jobId.
    *  `targetAuth` is ephemeral — it is sent once and never stored anywhere. */
   startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<StartTestResult>;
+  /** Pause the live engine (socket emit); no-op if the run isn't executing. */
+  pauseTest(): void;
+  /** Resume a paused engine (socket emit). */
+  resumeTest(): void;
+  /** Stop the live engine (socket emit); for QUEUED runs use cancelQueuedRun. */
+  stopTest(): void;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */

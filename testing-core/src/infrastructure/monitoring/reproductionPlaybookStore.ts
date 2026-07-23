@@ -1,4 +1,4 @@
-import type { ActionRecord } from '../../../../shared/types.ts';
+import type { ActionRecord } from '../../../../shared/types.js';
 
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 

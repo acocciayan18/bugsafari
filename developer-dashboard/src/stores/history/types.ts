@@ -17,6 +17,8 @@ export interface ForensicTrace {
 
 export interface EvaluationSafari {
     id: string;
+    // Public RUN- code shown to operators; falls back to `id` when a legacy row lacks it.
+    runId?: string;
     targetUrl: string;
     date: string;
     /** Epoch ms of the run's start — the sortable truth behind the display `date`. */
@@ -93,6 +95,7 @@ export function formatDate(dateStr: string): string {
 export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): EvaluationSafari[] {
     return sessions.map((session) => ({
         id: session.id,
+        runId: session.runId,
         targetUrl: session.targetUrl,
         date: formatDate(session.startedAt),
         startedAtMs: toEpochMs(session.startedAt),

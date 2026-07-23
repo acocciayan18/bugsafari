@@ -78,13 +78,8 @@ cd developer-dashboard ; npm run dev
 # Initialize podman machine and start
 
 podman machine init
-
 podman machine start
-
-# Bring down resources and wipe out state cache cleanly
 podman compose -f docker-compose.local.yml down
-
-# Spin the services back up with hot-reloading active
 podman compose -f docker-compose.local.yml up --build -d
 
 
@@ -162,6 +157,6 @@ podman compose -f docker-compose.local.yml up --build -d
 git init
 git add .
 git commit -m "files with improve verified"
-git checkout -b 7-21-Ayan-3
-git push --set-upstream origin 7-21-Ayan-3
+git checkout -b 7-23-Ayan-1
+git push --set-upstream origin 7-23-Ayan-1
 

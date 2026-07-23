@@ -375,7 +375,7 @@ export default function SavedEvaluationSafaris() {
                         {evalItem.targetUrl}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
-                        <span className="truncate">ID: {evalItem.id}</span>
+                        <span className="truncate font-mono">ID: {evalItem.runId ?? evalItem.id}</span>
                         <span aria-hidden="true">•</span>
                         <span>{evalItem.date}</span>
                         <span aria-hidden="true">•</span>

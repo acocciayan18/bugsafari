@@ -1,0 +1,91 @@
+name: bugsafari-prod
+
+# Production topology: API + worker fleet + Redis, all built from the single root
+# Dockerfile (no inline dockerfile divergence — see B3). Secrets are injected from
+# the host environment; nothing is hardcoded. Requires MONGODB_URI and JWT_SECRET to
+# be exported (the API hard-fails on boot without JWT_SECRET in production).
+
+x-shared-env: &shared-env
+  NODE_ENV: production
+  MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI}
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+  JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
+  REDIS_URL: redis://redis:6379
+  RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD}
+  PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  # TTL is always on; keep the cascade reaper on so expired sessions don't orphan
+  # forensic children (DB3).
+  BUGSAFARI_ENABLE_RETENTION_REAPER: "true"
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: bugsafari-prod-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - bugsafari-prod
+
+  api:
+    container_name: bugsafari-prod-api
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *shared-env
+      # Route start-test through Redis to the worker fleet — mandatory for prod
+      # so the API process never launches Playwright in-process (SC2).
+      BUGSAFARI_USE_QUEUE: "1"
+      BUGSAFARI_PORT: "3000"
+      BUGSAFARI_API_PORT: "3000"
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      APP_NAME: ${APP_NAME:-BugSafari}
+    command: ["npm", "run", "start", "--workspace", "testing-core"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bugsafari-prod
+
+  worker:
+    container_name: bugsafari-prod-worker
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *shared-env
+      # Keep at 1 until run state is de-singletoned (SC1). Scale out with replicas.
+      BUGSAFARI_WORKER_CONCURRENCY: ${BUGSAFARI_WORKER_CONCURRENCY:-1}
+    command: ["npm", "run", "start:worker", "--workspace", "testing-core"]
+    # Scale the fleet horizontally: docker compose -f docker-compose.prod.yml up --scale worker=3
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bugsafari-prod
+
+networks:
+  bugsafari-prod:
+    driver: bridge
+
+volumes:
+  redis-data:

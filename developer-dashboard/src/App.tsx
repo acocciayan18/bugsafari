@@ -20,6 +20,7 @@ import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
 import ConnectionStatusOverlay from './components/common/ConnectionStatusOverlay';
+import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
@@ -117,6 +118,7 @@ function AuthAppContent() {
         isConnected={state.isConnected}
         isReconnecting={state.isReconnecting}
         reconnectAttempt={state.reconnectAttempt}
+        reconnectGaveUp={state.reconnectGaveUp}
         isRestoring={state.isRestoring}
       />
       
@@ -127,6 +129,7 @@ function AuthAppContent() {
             <SidebarLayout {...shellProps}>
               {/* Purified Viewport pipeline: Direct layout rendering without nested wrapper container layers */}
               <div className="flex flex-col flex-1 min-h-0">
+                <RouteErrorBoundary resetKey={location.pathname} label="Dashboard">
                 <ClinicalForensicsDashboard
                   targetUrl={targetUrl}
                   currentUrl={state.currentUrl}
@@ -156,6 +159,7 @@ function AuthAppContent() {
                     startTest(url, { ...defaultOptimizationSettings, strictUrlLock: !!strictBoundary }, { profile }, targetAuth);
                   }}
                 />
+                </RouteErrorBoundary>
               </div>
             </SidebarLayout>
           }
@@ -180,7 +184,9 @@ function AuthAppContent() {
           path="/history/forensic-report/:sessionId"
           element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
             <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
-              <ForensicReport />
+              <RouteErrorBoundary resetKey={location.pathname} label="ForensicReport">
+                <ForensicReport />
+              </RouteErrorBoundary>
             </SidebarLayout>
           )}
         />

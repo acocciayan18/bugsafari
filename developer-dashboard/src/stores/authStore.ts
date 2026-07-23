@@ -65,7 +65,7 @@ function readStoredUser(): AuthUser | null {
     }
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
     user: readStoredUser(),
     token: readStoredToken(),
     isLoading: false,

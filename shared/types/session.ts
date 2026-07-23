@@ -34,7 +34,10 @@ export const SESSION_SNAPSHOT_EVENT = 'session-snapshot' as const;
 
 /** Everything a returning client needs to rebuild the live dashboard verbatim. */
 export interface ActiveSessionSnapshot {
+  /** Public, human-readable session code (RUN-XXXXXX) shown to the operator. */
   runId: string;
+  /** Opaque high-entropy bearer token used to (re)attach + prove ownership. */
+  runToken: string;
   ownerType: SessionOwnerType;
   targetUrl: string;
   currentUrl: string;
@@ -64,7 +67,8 @@ export interface ActiveSessionSnapshot {
 
 /** Client → server attach request presented on every (re)connection. */
 export interface SessionAttachRequest {
-  runId?: string;
+  /** Opaque bearer token from the last snapshot; proves ownership on reattach. */
+  runToken?: string;
 }
 
 /** Server → client attach acknowledgement carrying the replay bundle when owned. */

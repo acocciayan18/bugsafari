@@ -6,9 +6,11 @@ import { Types } from 'mongoose';
  */
 export class ForensicTelemetryRepository {
   /**
-   * Create a new forensic telemetry record
+   * Upsert the single telemetry document for a run. One row per run — repeated
+   * calls (initial browser info, final metrics) update in place instead of
+   * accumulating dead rows only the latest of which is ever read.
    */
-  async create(data: {
+  async upsertForRun(data: {
     forensicRunId: Types.ObjectId;
     browser: string;
     browserVersion: string;
@@ -25,22 +27,13 @@ export class ForensicTelemetryRepository {
     pageCount?: number;
     interactionCount?: number;
     failureCount?: number;
-    loadTimes?: Array<{
-      url: string;
-      loadTime: number;
-      timestamp: Date;
-    }>;
-  }): Promise<IForensicTelemetry> {
-    const telemetry = new ForensicTelemetryModel(data);
-    return telemetry.save();
-  }
-
-  /**
-   * Get all telemetry records for a forensic run
-   */
-  async findByForensicRunId(forensicRunId: Types.ObjectId | string): Promise<IForensicTelemetry[]> {
-    const objectId = typeof forensicRunId === 'string' ? new Types.ObjectId(forensicRunId) : forensicRunId;
-    return ForensicTelemetryModel.find({ forensicRunId: objectId }).sort({ timestamp: -1 });
+  }): Promise<IForensicTelemetry | null> {
+    const { forensicRunId, ...rest } = data;
+    return ForensicTelemetryModel.findOneAndUpdate(
+      { forensicRunId },
+      { $set: rest, $setOnInsert: { forensicRunId } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
   }
 
   /**
@@ -48,49 +41,10 @@ export class ForensicTelemetryRepository {
    */
   async findLatestByForensicRunId(forensicRunId: Types.ObjectId | string): Promise<IForensicTelemetry | null> {
     const objectId = typeof forensicRunId === 'string' ? new Types.ObjectId(forensicRunId) : forensicRunId;
-    return ForensicTelemetryModel.findOne({ forensicRunId: objectId }).sort({ timestamp: -1 });
-  }
-
-  /**
-   * Update telemetry metrics for a run
-   */
-  async updateMetrics(
-    forensicRunId: Types.ObjectId | string,
-    updates: {
-      executionDuration?: number;
-      requestsCount?: number;
-      pageCount?: number;
-      interactionCount?: number;
-      failureCount?: number;
-      memoryUsage?: number;
-      cpuUsage?: number;
-    },
-  ): Promise<IForensicTelemetry | null> {
-    const objectId = typeof forensicRunId === 'string' ? new Types.ObjectId(forensicRunId) : forensicRunId;
-    return ForensicTelemetryModel.findOneAndUpdate(
-      { forensicRunId: objectId },
-      { $set: updates },
-      { new: true },
-    );
-  }
-
-  /**
-   * Add a load time entry
-   */
-  async addLoadTime(
-    forensicRunId: Types.ObjectId | string,
-    loadTime: {
-      url: string;
-      loadTime: number;
-      timestamp: Date;
-    },
-  ): Promise<IForensicTelemetry | null> {
-    const objectId = typeof forensicRunId === 'string' ? new Types.ObjectId(forensicRunId) : forensicRunId;
-    return ForensicTelemetryModel.findOneAndUpdate(
-      { forensicRunId: objectId },
-      { $push: { loadTimes: loadTime } },
-      { new: true },
-    );
+    return ForensicTelemetryModel.findOne({ forensicRunId: objectId })
+      .sort({ timestamp: -1 })
+      .lean<IForensicTelemetry>()
+      .exec();
   }
 }
 

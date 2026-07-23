@@ -49,6 +49,7 @@ export class ForensicAnalysisRepository {
       forensicRunId: new Types.ObjectId(forensicRunId),
     })
       .sort({ createdAt: -1 })
+      .lean<IForensicAnalysis>()
       .exec();
   }
 

@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.js';
 
 export type { BrowserConsoleLevel, BrowserConsoleMessage };
 

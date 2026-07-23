@@ -1,5 +1,4 @@
 import type { Express, Request, Response } from 'express';
-import type { ParsedQs } from 'qs';
 import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
@@ -9,7 +8,6 @@ import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueSta
 import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
-import { validateObjectIdParams, readObjectIdParam } from '../middleware/validateObjectId.js';
 import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { randomUUID } from 'node:crypto';
@@ -21,6 +19,8 @@ import { forensicTelemetryRepository } from '../../infrastructure/database/repos
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
+import { generateRunCode, generateUniqueRunCode } from '../../infrastructure/database/runCodeGenerator.js';
+import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { Types } from 'mongoose';
 import { extractStringParam, extractIntParam } from './queryParams.js';
 import { parsePagination, buildPage, isPaginatedRequest } from './pagination.js';
@@ -42,6 +42,30 @@ import {
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
 const RECENT_SESSION_LOOKUP_LIMIT = 500;
+
+// Resolve a URL id param to a Mongo query selector: a RUN- code targets `runId`,
+// a 24-char ObjectId targets `_id`, anything else is unresolvable (null → 400/404).
+function resolveSessionSelector(idOrCode: string): { _id: Types.ObjectId } | { runId: string } | null {
+  const code = normalizeRunCode(idOrCode);
+  if (code) return { runId: code };
+  if (Types.ObjectId.isValid(idOrCode)) return { _id: new Types.ObjectId(idOrCode) };
+  return null;
+}
+
+// Lazy Phase-3 safety net: a legacy doc served by id may still lack a runId; mint
+// and persist one before returning so the caller always sees a public code.
+async function ensureRunId(doc: { _id: Types.ObjectId; runId?: string | null }): Promise<string | undefined> {
+  if (doc.runId) return doc.runId;
+  try {
+    const code = await generateUniqueRunCode(async (candidate) => !!(await SessionModel.exists({ runId: candidate })));
+    await SessionModel.updateOne({ _id: doc._id, runId: { $in: [null, undefined] } }, { $set: { runId: code } });
+    doc.runId = code;
+    return code;
+  } catch (error) {
+    console.error('[API] Lazy runId backfill failed for', String(doc._id), error instanceof Error ? error.message : error);
+    return undefined;
+  }
+}
 
 /**
  * Interpret the client-supplied Unified Infiltration Profile into the concrete
@@ -108,21 +132,6 @@ function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefine
 // Safe Parameter Extraction Utilities
 // Addresses: string|string[] type issues from Express req.query/req.params
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Safely extract and validate ObjectId from string parameter.
- * Returns null if invalid.
- */
-function extractObjectIdParam(value: string | ParsedQs | (string | ParsedQs)[] | undefined): string | null {
-  const str = extractStringParam(value);
-  if (!str) return null;
-
-  // Basic validation - ObjectId is 24 hex characters
-  if (!/^[0-9a-fA-F]{24}$/.test(str)) {
-    return null;
-  }
-  return str;
-}
 
 /**
  * Sanitize and validate targetUrl to prevent NoSQL injection and XSS attacks
@@ -211,7 +220,8 @@ export function registerRoutes(
 
   // Minimal QUEUED snapshot for a job still in line (no engine, no buffers yet).
   const queuedSnapshot = (entry: RunRegistryEntry, position: number | null, queueDepth: number) => ({
-    runId: entry.runId,
+    runId: entry.runCode,
+    runToken: entry.runToken,
     jobId: entry.jobId,
     ownerType: entry.userId ? 'authenticated' as const : 'guest' as const,
     targetUrl: entry.targetUrl,
@@ -241,18 +251,18 @@ export function registerRoutes(
   // someone else's session. `ok` reflects the ACTUAL outcome — a failed stop never
   // reports success, so the dashboard can trust it before resetting its own state.
   app.post('/api/safari/stop', writeLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    const knownRunId = typeof request.body?.runId === 'string' && request.body.runId ? request.body.runId : undefined;
+    const knownRunToken = typeof request.body?.runToken === 'string' && request.body.runToken ? request.body.runToken : undefined;
     const userId = request.userId ?? null;
-    console.log(`[API]  POST /api/safari/stop received (runId=${knownRunId ?? 'n/a'})`);
+    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ?? 'n/a'})`);
 
     // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
-    if (taskQueue && runRegistry && (knownRunId || userId)) {
+    if (taskQueue && runRegistry && (knownRunToken || userId)) {
       try {
         // Without a run token an authenticated operator is still resolvable by
         // identity. Falling straight through used to answer {ok:true,
         // alreadyStopped:true} while the worker kept running — a false success.
-        const entry = knownRunId
-          ? await runRegistry.findByRunId(knownRunId)
+        const entry = knownRunToken
+          ? await runRegistry.findByRunToken(knownRunToken)
           : await runRegistry.findByOwner(userId!);
         // A guest entry is possession-proven (its userId is null); an authenticated
         // one demands the matching identity.
@@ -270,7 +280,7 @@ export function registerRoutes(
             if (!removed && observed === 'active') {
               // Raced a worker between the state read and the removal — fall through
               // to the running path rather than reporting a cancel that didn't happen.
-              controlPublisher?.publish('stop', entry.runId);
+              controlPublisher?.publish('stop', entry.runToken);
               response.json({ ok: true, stopping: true, message: 'Run started before cancellation; stop dispatched to the worker.' });
               return;
             }
@@ -279,9 +289,9 @@ export function registerRoutes(
               response.status(409).json({ ok: false, error: 'The queued session could not be cancelled. Please retry.' });
               return;
             }
-            await runRegistry.clear(entry.runId, entry.userId);
+            await runRegistry.clear(entry.runToken, entry.userId);
             // No worker will ever consume the sealed credentials now.
-            await authVault?.discard(entry.runId);
+            await authVault?.discard(entry.runToken);
             await queueBroadcaster?.broadcastCancelled(entry.jobId).catch(() => undefined);
             console.log(`[API] Queued job ${entry.jobId} cancelled before pickup`);
             response.json({ ok: true, cancelled: true, jobId: entry.jobId, message: 'Queued session cancelled.' });
@@ -293,14 +303,14 @@ export function registerRoutes(
               response.status(503).json({ ok: false, error: 'Stop channel to the worker fleet is unavailable.' });
               return;
             }
-            controlPublisher.publish('stop', entry.runId);
-            console.log(`[API]  Stop bridged to worker for run ${entry.runId}`);
+            controlPublisher.publish('stop', entry.runToken);
+            console.log(`[API]  Stop bridged to worker for run ${entry.runToken}`);
             response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
             return;
           }
 
           // Terminal/vanished job — clean the stale index and report it idempotently.
-          await runRegistry.clear(entry.runId, entry.userId);
+          await runRegistry.clear(entry.runToken, entry.userId);
           response.json({ ok: true, alreadyStopped: true, message: 'This session had already finished.' });
           return;
         }
@@ -320,7 +330,7 @@ export function registerRoutes(
       return;
     }
 
-    if (!sessionManager.ownsActiveRun(userId, knownRunId)) {
+    if (!sessionManager.ownsActiveRun(userId, knownRunToken)) {
       console.warn('[API]  Stop rejected: requester does not own the active session');
       response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
       return;
@@ -359,8 +369,8 @@ export function registerRoutes(
     // Run token the client already holds from a previous launch (localStorage) —
     // possession proves ownership, letting a refreshed client (incl. guests)
     // resume its live run instead of double-submitting.
-    const knownRunId = typeof request.body?.knownRunId === 'string' && request.body.knownRunId
-      ? (request.body.knownRunId as string)
+    const knownRunId = typeof request.body?.knownRunToken === 'string' && request.body.knownRunToken
+      ? (request.body.knownRunToken as string)
       : undefined;
 
     // Ephemeral target-app credentials. Never logged here or anywhere downstream.
@@ -405,24 +415,27 @@ export function registerRoutes(
         if (runRegistry) {
           const existing = request.userId
             ? await runRegistry.findByOwner(request.userId)
-            : (knownRunId ? await runRegistry.findByRunId(knownRunId) : null);
+            : (knownRunId ? await runRegistry.findByRunToken(knownRunId) : null);
           if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
             const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
             if (state === 'active' || WAITING_STATES.has(state)) {
               console.log(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
-              response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runId: existing.runId, queued: state !== 'active' });
+              // runToken re-joins run:${runToken}; runId is the public code for display.
+              response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runToken: existing.runToken, runId: existing.runCode, queued: state !== 'active' });
               return;
             }
-            await runRegistry.clear(existing.runId, existing.userId);
+            await runRegistry.clear(existing.runToken, existing.userId);
           }
         }
 
-        // Issue the run token up front so the registry entry and the sealed
-        // credentials both exist BEFORE a worker can possibly claim the job.
-        const queuedRunId = randomUUID();
+        // Issue the run token AND the public code up front so the registry entry and
+        // the sealed credentials both exist BEFORE a worker can possibly claim the job.
+        const queuedRunToken = randomUUID();
+        const queuedRunCode = generateRunCode();
         const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
         const entry = {
-          runId: queuedRunId,
+          runToken: queuedRunToken,
+          runCode: queuedRunCode,
           userId: request.userId ?? null,
           targetUrl,
           timeboxMs,
@@ -433,14 +446,15 @@ export function registerRoutes(
         // no registry entry whenever register() failed: invisible to
         // /api/session/active, unstoppable, unresumable — a true orphan.
         await runRegistry?.register({ ...entry, jobId: 'pending' });
-        if (targetAuth && authVault) await authVault.put(queuedRunId, targetAuth);
+        if (targetAuth && authVault) await authVault.put(queuedRunToken, targetAuth);
 
         let enqueued;
         try {
           enqueued = await taskQueue.addSafariTask({
             targetUrl,
             requestedBy: request.userId ?? undefined,
-            runId: queuedRunId,
+            runToken: queuedRunToken,
+            runCode: queuedRunCode,
             selectedScenarios,
             optimizationSettings,
             hasAuth: Boolean(targetAuth),
@@ -448,16 +462,16 @@ export function registerRoutes(
         } catch (error) {
           // Compensate so a failed enqueue leaves neither a phantom entry nor
           // orphaned ciphertext behind.
-          await runRegistry?.clear(queuedRunId, entry.userId).catch(() => undefined);
-          await authVault?.discard(queuedRunId);
+          await runRegistry?.clear(queuedRunToken, entry.userId).catch(() => undefined);
+          await authVault?.discard(queuedRunToken);
           throw error;
         }
 
         await runRegistry?.register({ ...entry, jobId: enqueued.id });
-        console.log(`[API]  Enqueued safari job ${enqueued.id} runId=${enqueued.runId} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
-        // runId lets the client join run:${runId} for bridged worker telemetry;
-        // jobId lets it subscribe to queue:${jobId} position pushes.
-        response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runId: enqueued.runId, queued: true });
+        console.log(`[API]  Enqueued safari job ${enqueued.id} runToken=${enqueued.runToken} runCode=${enqueued.runCode} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
+        // runToken lets the client join run:${runToken} for bridged worker telemetry;
+        // jobId lets it subscribe to queue:${jobId} position pushes; runId is the public code.
+        response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runToken: enqueued.runToken, runId: enqueued.runCode, queued: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[API]  Failed to enqueue safari job:', message);
@@ -475,7 +489,7 @@ export function registerRoutes(
       const owned = sessionManager.getSnapshotFor(request.userId ?? null, knownRunId);
       if (owned && LIVE_LIFECYCLES.has(owned.status)) {
         console.log(`[API] ️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
-        response.json({ accepted: true, resumed: true, url: owned.targetUrl, runId: owned.runId, queued: false });
+        response.json({ accepted: true, resumed: true, url: owned.targetUrl, runToken: owned.runToken, runId: owned.runId, queued: false });
         return;
       }
       console.warn(`[API]  Safari already running - rejecting request`);
@@ -512,33 +526,37 @@ export function registerRoutes(
 
     // Server-issued run token: returned to the client (stored client-side) so a
     // returning socket — including a guest after a full refresh — can prove
-    // ownership and re-attach to this exact run.
-    const runId = randomUUID();
+    // ownership and re-attach to this exact run. The public RUN- code is minted
+    // alongside it and threaded into execute() so the reservation, the DB doc, and
+    // the response all carry the SAME code (no live/history drift).
+    const runToken = randomUUID();
+    const runCode = generateRunCode();
 
     // Create the run's room and replay buffers BEFORE responding. The client
     // attaches the instant it sees this response; without the reservation it
     // raced the engine's async boot, was told 'no-active-session', never joined
-    // run:${runId}, and stayed deaf for the whole run (the "stuck loading" bug).
+    // run:${runToken}, and stayed deaf for the whole run (the "stuck loading" bug).
     const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
     sessionManager.reserveRun({
-      runId,
+      runToken,
+      runCode,
       userId: request.userId ?? null,
       targetUrl,
       timeboxMs,
       onAbandoned: () => useCase.releaseActivation(),
     });
 
-    console.log(`[API] Accepting safari launch for: ${targetUrl} (runId=${runId})`);
+    console.log(`[API] Accepting safari launch for: ${targetUrl} (runToken=${runToken}, runCode=${runCode})`);
     // Operator sees their original URL; the engine dials the routed one.
-    response.json({ accepted: true, url: targetUrl, runId });
+    response.json({ accepted: true, url: targetUrl, runToken, runId: runCode });
     console.log(`[API] Starting safari in background...`);
     // Fire-and-forget, but never unhandled: a rejection here means the run died
     // before its own finally could report anything, so we must publish the
     // terminal handshake ourselves or the dashboard waits forever.
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runId, targetAuth)
+    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[API]  Safari run ${runId} failed to start:`, message);
+        console.error(`[API]  Safari run ${runToken} failed to start:`, message);
         sessionManager.failRun(`Engine failed to start: ${message}`);
         useCase.releaseActivation();
       });
@@ -547,10 +565,10 @@ export function registerRoutes(
   // Restore-on-load: a returning client asks whether it owns an active run and,
   // if so, gets the full replay snapshot to rebuild the live dashboard. Uses the
   // same optionalAuth as start-test — authed users are matched by identity, guests
-  // by the runId they present. Returns { snapshot: null } when nothing is owned.
+  // by the runToken they present. Returns { snapshot: null } when nothing is owned.
   app.get('/api/session/active', readLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    const runId = extractStringParam(request.query.runId);
-    const local = sessionManager.getSnapshotFor(request.userId ?? null, runId);
+    const runToken = extractStringParam(request.query.runToken);
+    const local = sessionManager.getSnapshotFor(request.userId ?? null, runToken);
     if (local || !taskQueue || !runRegistry) {
       response.json({ snapshot: local });
       return;
@@ -559,11 +577,11 @@ export function registerRoutes(
     // Distributed mode: the run (if any) lives in a worker process — resolve it
     // through the Redis registry, with BullMQ as the authority on job state.
     try {
-      const entry = runId
-        ? await runRegistry.findByRunId(runId)
+      const entry = runToken
+        ? await runRegistry.findByRunToken(runToken)
         : (request.userId ? await runRegistry.findByOwner(request.userId) : null);
       // An authenticated run demands a matching identity. Previously the check
-      // was skipped whenever the CALLER was anonymous, so presenting the runId
+      // was skipped whenever the CALLER was anonymous, so presenting the runToken
       // with no token returned another user's live snapshot. Guest-owned entries
       // stay possession-proven (entry.userId is null).
       if (!entry || (entry.userId && entry.userId !== (request.userId ?? null))) {
@@ -581,7 +599,7 @@ export function registerRoutes(
       if (state === 'active') {
         // Worker publishes a throttled replay snapshot to Redis; fall back to a
         // minimal RUNNING shell if the run just started and none exists yet.
-        const workerSnapshot = await runRegistry.readSnapshot(entry.runId);
+        const workerSnapshot = await runRegistry.readSnapshot(entry.runToken);
         const snapshot = workerSnapshot
           ? { ...workerSnapshot, jobId: entry.jobId }
           : { ...queuedSnapshot(entry, null, 0), status: 'RUNNING' as const };
@@ -592,12 +610,12 @@ export function registerRoutes(
       // Job finished/failed/vanished: serve the worker-published FINAL state if
       // one exists (post-completion refresh restores the finished dashboard);
       // otherwise the entry is stale — clean it up.
-      const finalSnapshot = await runRegistry.readSnapshot(entry.runId);
+      const finalSnapshot = await runRegistry.readSnapshot(entry.runToken);
       if (finalSnapshot && !LIVE_LIFECYCLES.has(finalSnapshot.status)) {
         response.json({ snapshot: { ...finalSnapshot, jobId: entry.jobId } });
         return;
       }
-      await runRegistry.clear(entry.runId, entry.userId);
+      await runRegistry.clear(entry.runToken, entry.userId);
       response.json({ snapshot: null });
     } catch (error) {
       console.error('[API] /api/session/active distributed lookup failed:', error instanceof Error ? error.message : error);
@@ -698,9 +716,10 @@ export function registerRoutes(
         return;
       }
 
-console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerType, '| userId:', userId);
-      // Explicitly return 201 Created status for resource creation
-      response.status(201).json({ ok: true, message: result.message, ownerType });
+console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId ?? 'n/a', '| ownerType:', ownerType, '| userId:', userId);
+      // Explicitly return 201 Created status for resource creation. runId is the
+      // saved doc's public RUN- code for the client to display/deep-link.
+      response.status(201).json({ ok: true, message: result.message, runId: result.runId, ownerType });
     } catch (error) {
       console.error('[API] Error saving session:', error);
       response.status(500).json({ error: 'Failed to save the session.' });
@@ -795,49 +814,50 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
   });
 
 // Delete a session by ID (using sessions collection)
-  app.delete('/api/history/:id', writeLimiter, requireAuth, validateObjectIdParams('id'), async (request: AuthRequest, response: Response): Promise<void> => {
+  app.delete('/api/history/:id', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] DELETE /api/history/:id called');
     console.log('[API] Record ID:', request.params.id);
     console.log('[API] Authenticated user:', request.userId ?? 'none');
 
     try {
       const userId = request.userId;
-      // FIXED: Safely extract recordId from params - can be string|string[]
-      const recordId = extractObjectIdParam(request.params.id);
+      // Accept either an ObjectId or a public RUN- code.
+      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
 
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
         return;
       }
 
-      if (!recordId) {
+      if (!selector) {
         response.status(400).json({ error: 'Invalid record ID format.' });
         return;
       }
 
-      console.log('[API] Deleting session record:', recordId, 'for user:', userId);
-      
-      // Use SessionModel.deleteOne with userId for ownership check
-      const result = await SessionModel.deleteOne({
-        _id: new Types.ObjectId(recordId),
-        userId: new Types.ObjectId(userId),
-      });
+      console.log('[API] Deleting session record:', selector, 'for user:', userId);
 
-      if (result.deletedCount === 0) {
+      // findOneAndDelete resolves the doc's _id (needed for the cascade) while its
+      // filter proves ownership — a RUN- code alone never yields a foreign _id.
+      const deleted = await SessionModel.findOneAndDelete({
+        ...selector,
+        userId: new Types.ObjectId(userId),
+      }).lean();
+
+      if (!deleted) {
         console.warn('[API] Delete failed: Record not found or not owned by user');
         response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
-      // Ownership was proven by the deleteOne filter above, so the cascade is safe.
-      // Without it the run's forensic errors, telemetry, logs and brain configs
-      // would linger forever with no parent session.
-      const cascaded = await deleteSessionCascade(new Types.ObjectId(recordId)).catch((error: unknown) => {
-        console.error('[API] Cascade delete failed for session', recordId, error);
+      // Ownership was proven by the filter above, so the cascade is safe. Without
+      // it the run's forensic errors, telemetry, logs and brain configs would
+      // linger forever with no parent session.
+      const cascaded = await deleteSessionCascade(deleted._id).catch((error: unknown) => {
+        console.error('[API] Cascade delete failed for session', String(deleted._id), error);
         return null;
       });
 
-      console.log('[API] Record deleted successfully:', recordId, 'cascade:', cascaded ?? 'failed');
+      console.log('[API] Record deleted successfully:', String(deleted._id), 'cascade:', cascaded ?? 'failed');
       response.json({ ok: true, message: 'Record deleted successfully.' });
     } catch (error) {
       console.error('[API] Error in DELETE /api/history/:id:', error);
@@ -846,7 +866,7 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
   });
 
 // Export a session record as JSON (using sessions collection)
-  app.get('/api/history/export/:id', readLimiter, requireAuth, validateObjectIdParams('id'), async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/history/export/:id', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/history/export/:id called');
     console.log('[API] Record ID to export:', request.params.id);
     console.log('[API] Authenticated user:', request.userId ?? 'none');
@@ -859,30 +879,32 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
         return;
       }
 
-      // FIXED: Safely extract recordId from params - can be string|string[]
-      const recordId = extractObjectIdParam(request.params.id);
-      if (!recordId) {
+      // Accept either an ObjectId or a public RUN- code.
+      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
+      if (!selector) {
         response.status(400).json({ error: 'Invalid record ID format.' });
         return;
       }
 
-      console.log('[API] Fetching session record for export:', recordId, 'for user:', userId);
-      
+      console.log('[API] Fetching session record for export:', selector, 'for user:', userId);
+
       // Use SessionModel.findOne with userId for ownership check
       const record = await SessionModel.findOne({
-        _id: new Types.ObjectId(recordId),
+        ...selector,
         userId: new Types.ObjectId(userId),
       }).lean();
 
       if (!record) {
-        console.warn('[API] Record not found or access denied:', recordId);
+        console.warn('[API] Record not found or access denied:', selector);
         response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
-      console.log('[API] Record found for export:', recordId);
+      // Prefer the public code in the filename; fall back to the _id for legacy docs.
+      const exportName = record.runId ?? String(record._id);
+      console.log('[API] Record found for export:', exportName);
       response.setHeader('Content-Type', 'application/json');
-      response.setHeader('Content-Disposition', `attachment; filename="safari-${recordId}.json"`);
+      response.setHeader('Content-Disposition', `attachment; filename="safari-${exportName}.json"`);
       response.json(record);
     } catch (error) {
       console.error('[API] Error in GET /api/history/export/:id:', error);
@@ -937,21 +959,23 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
         return;
       }
 
-      // Explicit session id → confirm the caller owns that session before returning its analysis.
-      if (!Types.ObjectId.isValid(sessionId)) {
+      // Explicit session id (ObjectId or RUN- code) → confirm the caller owns that
+      // session, then key children by its resolved _id.
+      const selector = resolveSessionSelector(sessionId);
+      if (!selector) {
         response.status(400).json({ error: 'Invalid session ID format.' });
         return;
       }
-      const owned = await SessionModel.exists({
-        _id: new Types.ObjectId(sessionId),
+      const ownedDoc = await SessionModel.findOne({
+        ...selector,
         userId: new Types.ObjectId(userId),
-      });
-      if (!owned) {
+      }).select('_id').lean();
+      if (!ownedDoc) {
         response.status(404).json({ analysis: null, error: 'Session not found or access denied.' });
         return;
       }
 
-      const analysis = await forensicAnalysisRepository.findByRunId(sessionId);
+      const analysis = await forensicAnalysisRepository.findByRunId(String(ownedDoc._id));
       if (!analysis) {
         response.json({ analysis: null, message: 'No analysis found for this session. Run a test first.' });
         return;
@@ -996,21 +1020,24 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
         response.status(400).json({ error: 'sessionId is required in request body.' });
         return;
       }
-      if (!Types.ObjectId.isValid(sessionId)) {
+      // Accept either an ObjectId or a public RUN- code, then resolve to the _id.
+      const selector = resolveSessionSelector(sessionId);
+      if (!selector) {
         response.status(400).json({ error: 'Invalid session ID format.' });
         return;
       }
-      const owned = await SessionModel.exists({
-        _id: new Types.ObjectId(sessionId),
+      const ownedDoc = await SessionModel.findOne({
+        ...selector,
         userId: new Types.ObjectId(userId),
-      });
-      if (!owned) {
+      }).select('_id').lean();
+      if (!ownedDoc) {
         response.status(404).json({ error: 'Session not found or access denied.' });
         return;
       }
+      const resolvedSessionId = String(ownedDoc._id);
 
-      console.log('[API] Generating forensic analysis for session:', sessionId);
-      const result = await forensicAnalysisService.analyzeRun(sessionId);
+      console.log('[API] Generating forensic analysis for session:', resolvedSessionId);
+      const result = await forensicAnalysisService.analyzeRun(resolvedSessionId);
 
       if (!result.analysis) {
         response.status(500).json({ error: 'Failed to generate analysis', analysis: null });
@@ -1043,22 +1070,27 @@ console.log('[API] Saved to sessions:', result.message, '| ownerType:', ownerTyp
 
 
   //  Complete Forensic Report API - Get comprehensive report for a session
-  app.get('/api/forensic/report/:sessionId', readLimiter, requireAuth, validateObjectIdParams('sessionId'), async (request: AuthRequest, response: Response): Promise<void> => {
+  app.get('/api/forensic/report/:sessionId', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     console.log('[API] GET /api/forensic/report/:sessionId called');
 
     try {
-      const sessionId = readObjectIdParam(request, 'sessionId');
       const userId = request.userId;
       if (!userId) {
         response.status(401).json({ error: 'Authentication required.' });
         return;
       }
+      // Accept either an ObjectId or a public RUN- code.
+      const selector = resolveSessionSelector(extractStringParam(request.params.sessionId) ?? '');
+      if (!selector) {
+        response.status(400).json({ error: 'Invalid sessionId format.', code: 'INVALID_ID' });
+        return;
+      }
 
-console.log('[API] Fetching complete forensic report for session:', sessionId, 'user:', userId);
+console.log('[API] Fetching complete forensic report for session:', selector, 'user:', userId);
 
       // Fetch session data from sessions collection (unified history)
       const sessionDoc = await SessionModel.findOne({
-        _id: new Types.ObjectId(sessionId),
+        ...selector,
         userId: new Types.ObjectId(userId),
       }).lean();
 
@@ -1066,6 +1098,12 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         response.status(404).json({ error: 'Session not found or access denied.' });
         return;
       }
+
+      // Lazy Phase-3 backfill so even a legacy doc surfaces a public code.
+      const runCode = await ensureRunId(sessionDoc);
+      // Forensic CHILDREN are keyed by the session's _id (forensicRunId), never the
+      // RUN- code — resolve the doc first, then hand its _id string to the repos.
+      const sessionId = String(sessionDoc._id);
 
       // Convert to SessionReportData format
       const session: SessionReportData = {
@@ -1089,14 +1127,44 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         actionSteps: sessionDoc.actionSteps ?? [],
       };
 
-      // Five independent per-run reads — issued together, not serially.
-      const [errors, networkLog, consoleLog, telemetry, analysis] = await Promise.all([
-        forensicErrorRepository.findByRunId(sessionId).catch(() => []),
-        networkLogRepository.findByRunId(sessionId).catch(() => []),
-        consoleLogRepository.findByRunId(sessionId).catch(() => []),
+      // BK8: opt-in pagination for the three heavy log arrays. Absent params keep
+      // the original full-report response byte-for-byte; when a limit is supplied
+      // the arrays are page-bounded at the DB layer (per-run indexes) and accurate
+      // run-wide counts come from dedicated count queries so the summary and the
+      // dashboard's error totals stay correct regardless of the page fetched.
+      const parseIntParam = (raw: unknown, min: number): number | undefined => {
+        const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+        return Number.isFinite(n) && n >= min ? n : undefined;
+      };
+      const logsLimit = parseIntParam(request.query.logsLimit, 1);
+      const logsOffset = parseIntParam(request.query.logsOffset, 0) ?? 0;
+      const paginate = logsLimit !== undefined;
+
+      // Independent per-run reads — issued together, not serially. The count
+      // queries only run in paginated mode; otherwise they resolve to no-ops.
+      const [errors, networkLog, consoleLog, telemetry, analysis, errorCounts, errorTotal, networkTotal, consoleTotal] = await Promise.all([
+        paginate
+          ? forensicErrorRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+          : forensicErrorRepository.findByRunId(sessionId).catch(() => []),
+        paginate
+          ? networkLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+          : networkLogRepository.findByRunId(sessionId).catch(() => []),
+        paginate
+          ? consoleLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+          : consoleLogRepository.findByRunId(sessionId).catch(() => []),
         forensicTelemetryRepository.findLatestByForensicRunId(sessionId).catch(() => null),
         forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
+        paginate ? forensicErrorRepository.getCountByType(sessionId).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+        paginate ? forensicErrorRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
+        paginate ? networkLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
+        paginate ? consoleLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
       ]);
+
+      // Error summary counts must reflect the WHOLE run, not the returned page —
+      // page-local in default mode (from the full array), count-query-backed when paginated.
+      const errorTypeCount = (type: string): number =>
+        paginate ? (errorCounts[type] ?? 0) : errors.filter((e) => e.type === type).length;
+      const totalErrorRows = paginate ? errorTotal : errors.length;
 
       // Authoritative findings source. forensic_errors is a live-stream mirror
       // that is empty for manually-saved runs, so the risk score/level are
@@ -1203,8 +1271,10 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
 
       // Build complete report
       const report = {
-        // Executive Summary
+        // Executive Summary. `runId` stays the internal id string existing clients
+        // key off; `runCode` is the public RUN- code for display/deep-links.
         runId: session._id?.toString(),
+        runCode: runCode ?? sessionDoc.runId,
         url: session.targetUrl,
         date: session.executionDate,
         status: session.status,
@@ -1225,10 +1295,10 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
 
         // Error Logs
         errorLogs: {
-          consoleErrors: errors.filter(e => e.type === 'CONSOLE_ERROR').length,
-          apiFailures: errors.filter(e => e.type === 'API_FAILURE').length,
-          jsExceptions: errors.filter(e => e.type === 'JS_EXCEPTION').length,
-          totalErrors: errors.length,
+          consoleErrors: errorTypeCount('CONSOLE_ERROR'),
+          apiFailures: errorTypeCount('API_FAILURE'),
+          jsExceptions: errorTypeCount('JS_EXCEPTION'),
+          totalErrors: totalErrorRows,
           errors: formattedErrors,
         },
 
@@ -1250,6 +1320,16 @@ console.log('[API] Fetching complete forensic report for session:', sessionId, '
         // Session-global execution context — rehydrates the live tabbed layout.
         visitedRoutes: sessionDoc.visitedRoutes ?? [],
         pagesVisited: sessionDoc.stats?.pagesVisited ?? 0,
+
+        // Present only when the client opted into pagination — lets a lazy-loading
+        // tab know the run-wide totals and how much of each array it just received.
+        pagination: paginate ? {
+          limit: logsLimit,
+          offset: logsOffset,
+          errors: { total: errorTotal, returned: formattedErrors.length },
+          network: { total: networkTotal, returned: formattedNetworkLog.length },
+          console: { total: consoleTotal, returned: formattedConsoleLog.length },
+        } : undefined,
       };
 
       console.log('[API] Returning complete forensic report for session:', sessionId);

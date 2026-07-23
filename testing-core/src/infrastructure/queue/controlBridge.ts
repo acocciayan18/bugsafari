@@ -10,7 +10,7 @@ export const CONTROL_BRIDGE_CHANNEL = 'safari:control';
 export type OperatorCommand = 'pause' | 'resume' | 'stop';
 
 interface ControlMessage {
-  runId: string | null; // scope to a specific run; null => apply to the local active run
+  runToken: string | null; // scope to a specific run by its token; null => apply to the local active run
   command: OperatorCommand;
 }
 
@@ -26,8 +26,8 @@ export class ControlBridgePublisher {
     this.pub = redisClient(redisUrl);
   }
 
-  public publish(command: OperatorCommand, runId: string | null): void {
-    const message: ControlMessage = { runId, command };
+  public publish(command: OperatorCommand, runToken: string | null): void {
+    const message: ControlMessage = { runToken, command };
     void this.pub.publish(CONTROL_BRIDGE_CHANNEL, JSON.stringify(message)).catch((error) => {
       console.error('[ControlBridge] publish failed:', error instanceof Error ? error.message : error);
     });
@@ -43,7 +43,7 @@ export class ControlBridgeSubscriber {
   private readonly sub: Redis;
 
   constructor(
-    private readonly handler: (command: OperatorCommand, runId: string | null) => void,
+    private readonly handler: (command: OperatorCommand, runToken: string | null) => void,
     redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
   ) {
     this.sub = redisClient(redisUrl);
@@ -53,8 +53,8 @@ export class ControlBridgeSubscriber {
     await this.sub.subscribe(CONTROL_BRIDGE_CHANNEL);
     this.sub.on('message', (_channel, raw) => {
       try {
-        const { runId, command } = JSON.parse(raw) as ControlMessage;
-        this.handler(command, runId);
+        const { runToken, command } = JSON.parse(raw) as ControlMessage;
+        this.handler(command, runToken);
       } catch (error) {
         console.error('[ControlBridge] drop malformed command:', error instanceof Error ? error.message : error);
       }

@@ -30,13 +30,13 @@ export async function reconcileRunRegistry(
     if (LIVE_JOB_STATES.has(state)) continue;
 
     // Terminal or vanished. Keep it only while the replay snapshot is alive.
-    const snapshot = await registry.readSnapshot(entry.runId);
+    const snapshot = await registry.readSnapshot(entry.runToken);
     if (snapshot) continue;
 
-    await registry.clear(entry.runId, entry.userId);
-    await authVault?.discard(entry.runId);
+    await registry.clear(entry.runToken, entry.userId);
+    await authVault?.discard(entry.runToken);
     cleared += 1;
-    console.log(`[RegistryReconciler] Cleared stale run ${entry.runId} (job ${entry.jobId} state=${state})`);
+    console.log(`[RegistryReconciler] Cleared stale run ${entry.runCode} (token=${entry.runToken}, job ${entry.jobId} state=${state})`);
   }
 
   return cleared;

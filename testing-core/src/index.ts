@@ -16,6 +16,8 @@ import { registerSocketHandlers } from './presentation/socket/registerSocketHand
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
 import { reapExpiredSessionChildren } from './infrastructure/database/retentionReaper.js';
+import { syncAllIndexes } from './infrastructure/database/indexSync.js';
+import { backfillRunIds } from './infrastructure/database/runIdBackfill.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
@@ -65,6 +67,18 @@ sessionManager.initialize(telemetryGateway);
 const dbReady = await connectDatabase();
 if (!dbReady) {
   console.error('[BugSafari] ️ Database connection failed - auth features may be unavailable');
+}
+
+// Enforce declared index intent at boot (production runs autoIndex:false). Guarded
+// and non-fatal — a per-collection index conflict must never block startup. Opt out
+// with BUGSAFARI_SKIP_INDEX_SYNC=true when an external release step owns it.
+if (dbReady && process.env.BUGSAFARI_SKIP_INDEX_SYNC !== 'true') {
+  syncAllIndexes()
+    .then(({ synced, failed }) => console.log(`[BugSafari] Index sync: ${synced} synced, ${failed} failed`))
+    // Lazy Phase-3 backfill: stamp a public runId on every legacy doc once the
+    // sparse-unique index exists. Non-fatal — a failure must not block startup.
+    .then(() => backfillRunIds())
+    .catch((error: unknown) => console.error('[BugSafari] Index sync / runId backfill failed:', error));
 }
 
 const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
@@ -132,12 +146,14 @@ httpServer.listen(port, () => {
 });
 
 // Periodic orphan sweep. The TTL index expires abandoned sessions but MongoDB
-// does not cascade, so their forensic children need reclaiming. Opt-in via env
-// so only one process in a deployment runs it.
+// does not cascade, so their forensic children WILL orphan unless something reaps
+// them — hence on-by-default. Opt out with BUGSAFARI_DISABLE_RETENTION_REAPER=true
+// only when an external db:reap cron owns the sweep. Concurrent reaps across
+// processes are safe (deleteMany is idempotent).
 const REAP_INTERVAL_MS = 60 * 60 * 1000;
 let reaperTimer: NodeJS.Timeout | undefined;
 
-if (dbReady && process.env.BUGSAFARI_ENABLE_RETENTION_REAPER === 'true') {
+if (dbReady && process.env.BUGSAFARI_DISABLE_RETENTION_REAPER !== 'true') {
   const runReaper = (): void => {
     reapExpiredSessionChildren()
       .then((totals) => {

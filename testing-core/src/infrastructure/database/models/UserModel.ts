@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 export interface IUser extends Document {
   email: string;
   password: string;
+  name?: string;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   settings: {
@@ -25,6 +26,12 @@ const userSchema = new Schema(
       trim: true,
       lowercase: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address'],
+    },
+    name: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Name must be at most 100 characters'],
+      default: undefined,
     },
     password: {
       type: String,

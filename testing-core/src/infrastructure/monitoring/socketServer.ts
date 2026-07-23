@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
-import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.js';
 import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
 
 export class TelemetryHub {

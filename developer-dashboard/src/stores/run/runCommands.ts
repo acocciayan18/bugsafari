@@ -82,12 +82,12 @@ export async function startRun(
 
 export function pauseRun(): void {
     if (useRunStore.getState().status !== 'ACTIVE') return;
-    (getEngineGateway() as any).pauseTest();
+    getEngineGateway().pauseTest();
 }
 
 export function resumeRun(): void {
     if (useRunStore.getState().status !== 'PAUSED') return;
-    (getEngineGateway() as any).resumeTest();
+    getEngineGateway().resumeTest();
 }
 
 export async function stopRun(): Promise<void> {
@@ -116,7 +116,7 @@ export async function stopRun(): Promise<void> {
     }
 
     if (status === 'ACTIVE' || status === 'PAUSED') {
-        (gateway as any).stopTest();
+        gateway.stopTest();
     }
 }
 

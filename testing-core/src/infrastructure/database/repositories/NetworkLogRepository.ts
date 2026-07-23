@@ -21,6 +21,20 @@ export class NetworkLogRepository {
       .lean<INetworkLog[]>()
       .exec();
   }
+
+  // One chronological page — same order as findByRunId, bounded by offset/limit.
+  async findPageByRunId(forensicRunId: string | Types.ObjectId, limit: number, offset: number): Promise<INetworkLog[]> {
+    return NetworkLogModel.find({ forensicRunId: new Types.ObjectId(forensicRunId) })
+      .sort({ timestamp: 1 })
+      .skip(Math.max(0, offset))
+      .limit(Math.min(Math.max(1, limit), MAX_FORENSIC_ROWS))
+      .lean<INetworkLog[]>()
+      .exec();
+  }
+
+  async countByRunId(forensicRunId: string | Types.ObjectId): Promise<number> {
+    return NetworkLogModel.countDocuments({ forensicRunId: new Types.ObjectId(forensicRunId) }).exec();
+  }
 }
 
 export const networkLogRepository = new NetworkLogRepository();

@@ -77,7 +77,7 @@ export async function createSafariWorker(
   // Cross-process telemetry: the isolated worker has no browser-facing Socket.IO
   // server, so the gateway publishes every room-scoped event to Redis instead.
   // The API process's TelemetryBridgeSubscriber re-emits each frame into the same
-  // run:${runId} room the dashboard is watching. SessionManager still buffers for
+  // run:${runToken} room the dashboard is watching. SessionManager still buffers for
   // replay and scopes rooms exactly as in the synchronous path — only the wire
   // transport changed.
   const publisher = new RedisTelemetryPublisher(redisUrl);
@@ -87,7 +87,7 @@ export async function createSafariWorker(
   // Reverse of the telemetry bridge: apply operator pause/resume/stop clicks that
   // the API process publishes to this worker's live run.
   const controlSubscriber = new ControlBridgeSubscriber(
-    (command, runId) => sessionManager.applyOperatorControl(command, runId),
+    (command, runToken) => sessionManager.applyOperatorControl(command, runToken),
     redisUrl,
   );
   await controlSubscriber.start();
@@ -100,18 +100,18 @@ export async function createSafariWorker(
   // jobId -> run identity for jobs this worker is currently processing. The
   // 'stalled' event delivers only a jobId and Worker exposes no job lookup, so
   // the mapping has to be kept here to clean up an abandoned run.
-  const claimsByJobId = new Map<string, { runId: string; userId: string | null }>();
+  const claimsByJobId = new Map<string, { runToken: string; userId: string | null }>();
 
   // Terminal handshake for a run that died outside execute()'s own reporting —
   // a stalled lock, a payload rejection, an auth failure. Without this the
   // dashboard sits on its last snapshot until the 60s TTL lapses, and a client
   // that already left queue:${jobId} never learns the run is dead at all.
-  const publishRunFailure = (runId: string, message: string): void => {
-    if (sessionManager.getActiveRunId() === runId) {
+  const publishRunFailure = (runToken: string, message: string): void => {
+    if (sessionManager.getActiveRunId() === runToken) {
       sessionManager.failRun(message);
       return;
     }
-    telemetry.setRoom(`run:${runId}`);
+    telemetry.setRoom(`run:${runToken}`);
     telemetry.emitTelemetry({ timestamp: new Date().toISOString(), type: 'EXCEPTION', meta: { message } });
     telemetry.emitTelemetry({
       timestamp: new Date().toISOString(),
@@ -150,19 +150,20 @@ async (job) => {
         console.log(`[SafariWorker]  Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
       }
 
-      // Bind the run to the SAME runId the client received at enqueue, so the
-      // worker's telemetry room (run:${runId}) matches the room the dashboard joined.
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runId=${payload.runId} target=${engineUrl}`);
+      // Bind the run to the SAME run token the client received at enqueue, so the
+      // worker's telemetry room (run:${runToken}) matches the room the dashboard joined.
+      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runToken=${payload.runToken} runCode=${payload.runCode} target=${engineUrl}`);
       // Throttled snapshot publishing: mirrors the live SessionManager replay
       // buffer into Redis so /api/session/active can serve it from the API process.
+      // Match on the token (snapshot.runToken) — snapshot.runId is the public code.
       const snapshotTimer = setInterval(() => {
         const snapshot = sessionManager.getActiveSnapshot();
-        if (snapshot && snapshot.runId === payload.runId) {
-          void runRegistry.writeSnapshot(payload.runId, { ...snapshot, jobId: String(job.id ?? '') })
+        if (snapshot && snapshot.runToken === payload.runToken) {
+          void runRegistry.writeSnapshot(payload.runToken, { ...snapshot, jobId: String(job.id ?? '') })
             .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
         }
       }, SNAPSHOT_INTERVAL_MS);
-      claimsByJobId.set(String(job.id ?? ''), { runId: payload.runId, userId: payload.requestedBy ?? null });
+      claimsByJobId.set(String(job.id ?? ''), { runToken: payload.runToken, userId: payload.requestedBy ?? null });
       let succeeded = false;
       try {
         // Open the sealed credentials exactly once. A miss means the vault entry
@@ -171,7 +172,7 @@ async (job) => {
         // was never reached.
         let targetAuth;
         if (payload.hasAuth) {
-          targetAuth = await authVault?.take(payload.runId) ?? null;
+          targetAuth = await authVault?.take(payload.runToken) ?? null;
           if (!targetAuth) {
             throw new Error('Target credentials were unavailable (expired or already consumed). Start the authenticated run again.');
           }
@@ -179,26 +180,27 @@ async (job) => {
 
         // Honor the operator's infiltration-profile gate AND tuning carried on the
         // job payload; undefined would default the gate to all testing types and
-        // the timebox to 600s regardless of what the operator configured.
-        await useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runId, targetAuth ?? undefined);
+        // the timebox to 600s regardless of what the operator configured. runCode is
+        // threaded so the worker-created session doc reuses the enqueue-minted code.
+        await useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runToken, targetAuth ?? undefined, payload.runCode);
         succeeded = true;
       } finally {
         clearInterval(snapshotTimer);
         claimsByJobId.delete(String(job.id ?? ''));
         // Ciphertext outlives neither success nor failure.
-        if (payload.hasAuth) await authVault?.discard(payload.runId);
+        if (payload.hasAuth) await authVault?.discard(payload.runToken);
         // Only settle the registry when the run is truly over — a failure BullMQ
         // will retry must stay resumable/deduplicated.
         const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
         if (succeeded || isFinalAttempt) {
           const terminal = sessionManager.getLastTerminalSnapshot();
-          if (terminal && terminal.runId === payload.runId) {
+          if (terminal && terminal.runToken === payload.runToken) {
             // Publish the final state (10 min TTL) so a post-completion refresh
             // restores the finished dashboard instead of resetting to IDLE.
-            await runRegistry.writeSnapshot(payload.runId, { ...terminal, jobId: String(job.id ?? '') }, 600)
+            await runRegistry.writeSnapshot(payload.runToken, { ...terminal, jobId: String(job.id ?? '') }, 600)
               .catch((error) => console.error('[SafariWorker] terminal snapshot publish failed:', error instanceof Error ? error.message : error));
           } else {
-            await runRegistry.clear(payload.runId, payload.requestedBy ?? null)
+            await runRegistry.clear(payload.runToken, payload.requestedBy ?? null)
               .catch((error) => console.error('[SafariWorker] registry cleanup failed:', error instanceof Error ? error.message : error));
           }
         }
@@ -228,32 +230,32 @@ async (job) => {
     console.log(`[SafariWorker] completed job=${job.id ?? 'unknown'}`);
   });
 
-  // A lock that lapsed while the job was still active: BullMQ re-queues it, so
-  // the same runId would stream a second, interleaved run into the same room.
-  // Destroy the credentials and tell the dashboard the run is gone.
+  // A lock lapse fires 'stalled', but Node does not abort the running processor —
+  // a still-live claim means execute()'s finally has NOT run, so this run is
+  // genuinely still emitting for its runToken. Tearing down its buffers/room/vault
+  // here (the old behaviour) destroyed a live run's state and stranded its emits
+  // in a nulled room. The lapse is a false alarm (a briefly-blocked event loop);
+  // let the processor's own finally own all cleanup. If the claim is already gone,
+  // the processor settled — nothing to clean.
   worker.on('stalled', (jobId) => {
-    console.error(`[SafariWorker] stalled job=${jobId} — lock expired, run abandoned`);
-    // The stalled event carries only the id, and Worker has no job lookup — hence
-    // the claim map maintained by the processor.
     const claim = claimsByJobId.get(jobId);
-    if (!claim) return;
-    claimsByJobId.delete(jobId);
-    void authVault?.discard(claim.runId);
-    publishRunFailure(claim.runId, 'The worker executing this session stopped responding and the run was abandoned.');
-    void runRegistry.clear(claim.runId, claim.userId)
-      .catch((error) => console.error('[SafariWorker] stalled cleanup failed:', error instanceof Error ? error.message : error));
+    if (claim) {
+      console.warn(`[SafariWorker] stalled job=${jobId} but processor still active for run ${claim.runToken} — not tearing down; execute() owns cleanup.`);
+      return;
+    }
+    console.error(`[SafariWorker] stalled job=${jobId} — no active claim; run already settled.`);
   });
 
   worker.on('failed', (job, error) => {
     console.error(`[SafariWorker] failed job=${job?.id ?? 'unknown'} error=${error.message}`);
-    if (!job?.data?.runId) return;
+    if (!job?.data?.runToken) return;
     // BullMQ increments attemptsMade only after the processor settles, so during
     // this handler it still counts prior attempts — matching its own retry test
     // (`attemptsMade + 1 < opts.attempts`). Verified against bullmq 5.78.0.
     const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     if (!isFinalAttempt) return;
-    void authVault?.discard(job.data.runId);
-    publishRunFailure(job.data.runId, `Session failed before it could finish: ${error.message}`);
+    void authVault?.discard(job.data.runToken);
+    publishRunFailure(job.data.runToken, `Session failed before it could finish: ${error.message}`);
   });
 
   worker.on('error', (error) => {

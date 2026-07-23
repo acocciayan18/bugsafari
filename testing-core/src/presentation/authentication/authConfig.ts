@@ -119,8 +119,14 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
  */
 export function verifyTokenSync(token: string): AuthPayload | null {
   try {
-    const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET) as unknown as AuthPayload;
-    return decoded;
+    const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET) as Record<string, unknown>;
+    // A validly-signed token missing string userId/email must fail cleanly here,
+    // not blow up downstream in `new Types.ObjectId(undefined)`.
+    if (typeof decoded.userId !== 'string' || typeof decoded.email !== 'string') {
+      console.warn('[AUTH] Token verification failed: userId/email claim missing or non-string');
+      return null;
+    }
+    return { userId: decoded.userId, email: decoded.email };
   } catch (err) {
     // FIX: Log specific reason for verification failure to help diagnose 401 issues
     if (err instanceof jwt.TokenExpiredError) {

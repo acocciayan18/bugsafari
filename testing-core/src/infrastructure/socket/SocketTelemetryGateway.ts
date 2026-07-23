@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.ts';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.js';
 import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';

@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Bug } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Bug, Info, Calendar, Hash } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -39,7 +39,7 @@ import {
 } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { CopyButton, SeverityBadge } from '../common/ForensicCardKit';
-import { formatReportDate, formatReportDateTime } from '../../utils/datetime';
+import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination } from '../../types';
 import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
@@ -101,6 +101,8 @@ function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: {
 function ExecutiveSummary({ report, sessionId, findingsCount }: { report: ForensicReportResponse; sessionId: string; findingsCount?: number }) {
   const theme = statusTheme(report.status);
   const [showRoutes, setShowRoutes] = useState(false);
+  // Prefer the human-readable RUN- code from the report body; fall back to the routed id.
+  const runCode = report.runId || sessionId;
   // Prefer the DISTINCT finding count (identical repeats collapsed) so the summary
   // matches the number of cards below; fall back to raw totals for legacy data.
   const findingsTotal = findingsCount && findingsCount > 0
@@ -116,17 +118,36 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         <div className="min-w-0 flex-1">
           <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Target</div>
           <div className="mt-1 truncate text-lg font-bold text-(--text-primary)" title={report.url}>{report.url || 'N/A'}</div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-(--text-tertiary)">
-            <span className="font-mono">Run {sessionId}</span>
-            <span aria-hidden="true">•</span>
-            <span>{formatReportDateTime(report.date)}</span>
-            {report.endedReason && (
-              <>
-                <span aria-hidden="true">•</span>
-                <span className="text-(--text-secondary)">{report.endedReason}</span>
-              </>
-            )}
-          </div>
+         <div className="flex flex-wrap items-center gap-2 text-xs text-(--text-secondary)">
+    {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
+    <span className="inline-flex items-center gap-1.5 py-0.5 rounded text-(--text-secondary) font-mono font-medium ">
+      <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
+      <span>{runCode}</span>
+      <CopyButton text={runCode} label="Run ID" />
+    </span>
+
+    {/* Vertical Hairline Divider */}
+    <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
+
+    {/* Date Timestamp */}
+    <span className="inline-flex items-center gap-1.5 text-(--text-secondary)">
+      <Calendar className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
+      <span>{formatReportDateTime(report.date)}</span>
+    </span>
+
+    {/* Optional Termination Reason */}
+    {report.endedReason && (
+      <>
+        {/* Vertical Hairline Divider */}
+        <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
+
+        <span className="inline-flex items-center gap-1.5 text-(--text-tertiary)">
+          <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate max-w-[250px]">{report.endedReason}</span>
+        </span>
+      </>
+    )}
+  </div>
         </div>
         <div className="shrink-0">
           {report.outcome || outcomeFromStatus(report.status) ? (

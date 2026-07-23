@@ -25,15 +25,20 @@ export interface QueueSocketSupport {
   broadcaster: QueueStatusBroadcaster;
   // Bridges operator run-controls to the worker running the run out-of-process.
   controlPublisher: ControlBridgePublisher;
-  // Redis run index — the authority on who owns a runId across processes.
+  // Redis run index — the authority on who owns a runToken across processes.
   runRegistry: RunRegistry;
 }
 
 // Single shared verifier; each verify() call owns its own isolated browser session.
 const regressionVerifier = new RegressionPlaybookVerifier();
-// A regression replay drives a real browser — serialize verifications so a burst
-// of clicks can't spawn parallel headless sessions and exhaust resources.
-let verificationInProgress = false;
+// A regression replay drives a real browser. Serialize verifications PER OPERATOR
+// so a burst of clicks can't spawn parallel headless sessions for one user, while
+// one operator's verification never blocks another's — the prior process-global
+// boolean did both (cross-tenant denial). A hard timeout guarantees the slot is
+// always released even if the replay browser hangs; the old flag, cleared only in
+// finally, disabled verification process-wide until restart when a replay stuck.
+const verificationsInFlight = new Set<string>();
+const VERIFY_FIX_TIMEOUT_MS = 120_000;
 
 /** Build a terminal VERIFICATION_FAILED ack without running a replay (validation/guard failures). */
 function verificationFailedAck(request: Partial<VerifyFixRequest>, error: string): VerifyFixResult {
@@ -69,46 +74,46 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
   // and stop the run over the control bridge when nobody comes back.
   const queueGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  const cancelQueueGrace = (runId: string): void => {
-    const timer = queueGraceTimers.get(runId);
+  const cancelQueueGrace = (runToken: string): void => {
+    const timer = queueGraceTimers.get(runToken);
     if (!timer) return;
     clearTimeout(timer);
-    queueGraceTimers.delete(runId);
-    console.log(`[Socket] Owner returned to run ${runId} — abandonment timer cancelled.`);
+    queueGraceTimers.delete(runToken);
+    console.log(`[Socket] Owner returned to run ${runToken} — abandonment timer cancelled.`);
   };
 
-  const armQueueGrace = (runId: string): void => {
-    if (!queueSupport || queueGraceTimers.has(runId)) return;
+  const armQueueGrace = (runToken: string): void => {
+    if (!queueSupport || queueGraceTimers.has(runToken)) return;
     const timer = setTimeout(() => {
-      queueGraceTimers.delete(runId);
+      queueGraceTimers.delete(runToken);
       void (async () => {
         // Re-check occupancy: a client may have rejoined the room without
         // passing through the cancel path (fresh socket, new subscribe).
-        const watchers = await io.in(`run:${runId}`).fetchSockets();
+        const watchers = await io.in(`run:${runToken}`).fetchSockets();
         if (watchers.length > 0) return;
-        const entry = await queueSupport.runRegistry.findByRunId(runId).catch(() => null);
+        const entry = await queueSupport.runRegistry.findByRunToken(runToken).catch(() => null);
         if (!entry) return;
-        console.log(`[Socket] Run ${runId} abandoned past grace — stopping the worker.`);
-        queueSupport.controlPublisher.publish('stop', runId);
+        console.log(`[Socket] Run ${runToken} abandoned past grace — stopping the worker.`);
+        queueSupport.controlPublisher.publish('stop', runToken);
       })().catch((error) => console.error('[Socket] Abandonment stop failed:', error));
     }, sessionManager.graceMs);
     timer.unref();
-    queueGraceTimers.set(runId, timer);
-    console.log(`[Socket] Run ${runId} has no watchers — abandonment timer armed (${sessionManager.graceMs}ms).`);
+    queueGraceTimers.set(runToken, timer);
+    console.log(`[Socket] Run ${runToken} has no watchers — abandonment timer armed (${sessionManager.graceMs}ms).`);
   };
 
   io.on('connection', (socket: Socket) => {
     console.log(`[Socket] dashboard connected ${socket.id}`);
 
-    // Queue-mode ownership. A null/unknown runId must NEVER reach the control
-    // bridge: the worker treats runId===null as "apply to my local run", so an
+    // Queue-mode ownership. A null/unknown runToken must NEVER reach the control
+    // bridge: the worker treats runToken===null as "apply to my local run", so an
     // unscoped publish would pause/stop every run in the fleet from any anonymous
-    // socket. The runId must resolve to a live registry entry, and an authenticated
+    // socket. The runToken must resolve to a live registry entry, and an authenticated
     // owner's run may only be driven by that same identity (possession of the
     // unguessable token remains the guest path).
-    const ownsQueuedRun = async (runId: string | null): Promise<boolean> => {
-      if (!runId || !queueSupport) return false;
-      const entry = await queueSupport.runRegistry.findByRunId(runId).catch(() => null);
+    const ownsQueuedRun = async (runToken: string | null): Promise<boolean> => {
+      if (!runToken || !queueSupport) return false;
+      const entry = await queueSupport.runRegistry.findByRunToken(runToken).catch(() => null);
       if (!entry) return false;
       if (!entry.userId) return true;
       return entry.userId === socketUserId(socket);
@@ -123,16 +128,16 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       if (!jobId || !queueSupport) return;
 
       void socket.join(queueRoom(jobId));
-      // The run room streams that run's telemetry — bind it only to a runId this
-      // socket actually owns, so a bogus/foreign id can't be used to eavesdrop or
-      // to seed socket.data.runId for a later control command.
-      const runId = typeof request.runId === 'string' && request.runId ? request.runId : null;
-      if (runId && (await ownsQueuedRun(runId))) {
-        void socket.join(`run:${runId}`);
-        socket.data.runId = runId;
-        cancelQueueGrace(runId);
-      } else if (runId) {
-        console.warn(`[Socket]  queue-subscribe rejected run binding: ${socket.id} does not own run ${runId}`);
+      // The run room streams that run's telemetry — bind it only to a runToken this
+      // socket actually owns, so a bogus/foreign token can't be used to eavesdrop or
+      // to seed socket.data.runToken for a later control command.
+      const runToken = typeof request.runToken === 'string' && request.runToken ? request.runToken : null;
+      if (runToken && (await ownsQueuedRun(runToken))) {
+        void socket.join(`run:${runToken}`);
+        socket.data.runToken = runToken;
+        cancelQueueGrace(runToken);
+      } else if (runToken) {
+        console.warn(`[Socket]  queue-subscribe rejected run binding: ${socket.id} does not own run ${runToken}`);
       }
       // Send the current place in line immediately, without waiting for the next
       // queue transition to fire a broadcast.
@@ -148,10 +153,10 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     socket.on(SESSION_ATTACH_EVENT, (payload: unknown, ack?: (result: SessionAttachAck) => void) => {
       const respond = typeof ack === 'function' ? ack : (): void => undefined;
       const request = (payload ?? {}) as SessionAttachRequest;
-      if (typeof request.runId === 'string' && request.runId) {
-        socket.data.runId = request.runId;
+      if (typeof request.runToken === 'string' && request.runToken) {
+        socket.data.runToken = request.runToken;
       }
-      const result = sessionManager.attach(socket, request.runId, socketUserId(socket));
+      const result = sessionManager.attach(socket, request.runToken, socketUserId(socket));
       if (result.attached) {
         console.log(`[Socket] ${socket.id} re-attached to active run.`);
       }
@@ -162,31 +167,31 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     // process, so the command is published over the control bridge scoped to the
     // socket's runId; otherwise it's applied to the in-process SessionManager.
     const controlPublisher = queueSupport?.controlPublisher ?? null;
-    const socketRunId = (): string | null => (typeof socket.data.runId === 'string' ? socket.data.runId : null);
+    const socketRunToken = (): string | null => (typeof socket.data.runToken === 'string' ? socket.data.runToken : null);
 
     // In-process controls act on the single active run, so they must be scoped to
     // its owner — otherwise any connected socket could pause or kill a run it does
     // not own. Mirrors the ownership check on POST /api/safari/stop; the queue
     // branch enforces the equivalent via ownsQueuedRun.
     const ownsActiveRun = (): boolean => {
-      const activeRunId = sessionManager.getActiveRunId();
-      if (!activeRunId) return false;
+      const activeRunToken = sessionManager.getActiveRunId();
+      if (!activeRunToken) return false;
       // Possession of the run token proves ownership (same trust model as
       // SESSION_ATTACH) — the dashboard socket carries no JWT. A matching
       // authenticated identity is accepted as the alternative proof.
-      if (socketRunId() === activeRunId) return true;
+      if (socketRunToken() === activeRunToken) return true;
       const activeUserId = sessionManager.getActiveUserId();
       return activeUserId !== null && activeUserId === socketUserId(socket);
     };
 
     const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void): Promise<void> => {
       if (controlPublisher) {
-        const runId = socketRunId();
-        if (!(await ownsQueuedRun(runId))) {
-          console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runId ?? '(none)'}`);
+        const runToken = socketRunToken();
+        if (!(await ownsQueuedRun(runToken))) {
+          console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runToken ?? '(none)'}`);
           return;
         }
-        controlPublisher.publish(command, runId);
+        controlPublisher.publish(command, runToken);
         return;
       }
       if (!ownsActiveRun()) {
@@ -223,27 +228,39 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         return;
       }
 
-      // Serialize replays to avoid parallel headless-browser storms.
-      if (verificationInProgress) {
+      // Serialize replays per operator to avoid parallel headless-browser storms
+      // for one user, without denying other operators.
+      if (verificationsInFlight.has(userId)) {
         respond(verificationFailedAck(request, 'Another verification is already in progress. Please retry shortly.'));
         return;
       }
 
-      verificationInProgress = true;
+      verificationsInFlight.add(userId);
       console.log(`[Socket] verify-fix requested by user ${userId} for session ${request.sessionId} bug ${request.bugId}`);
       try {
-        const result = await regressionVerifier.verify(
-          { sessionId: request.sessionId, bugId: request.bugId },
-          userId,
-          (progress: VerifyFixProgress) => socket.emit(VERIFY_FIX_PROGRESS_EVENT, progress),
-        );
+        // Race the replay against a hard timeout so a hung browser can never keep
+        // this operator's slot (or, previously, the whole process) locked.
+        const result = await Promise.race([
+          regressionVerifier.verify(
+            { sessionId: request.sessionId, bugId: request.bugId },
+            userId,
+            (progress: VerifyFixProgress) => socket.emit(VERIFY_FIX_PROGRESS_EVENT, progress),
+          ),
+          new Promise<never>((_, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error(`Verification timed out after ${Math.round(VERIFY_FIX_TIMEOUT_MS / 1000)}s.`)),
+              VERIFY_FIX_TIMEOUT_MS,
+            );
+            timer.unref();
+          }),
+        ]);
         respond(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[Socket] verify-fix failed:', message);
         respond(verificationFailedAck(request, `Verification error: ${message}`));
       } finally {
-        verificationInProgress = false;
+        verificationsInFlight.delete(userId);
       }
     });
 
@@ -256,10 +273,10 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
 
       // Distributed equivalent: the run lives in a worker, so SessionManager has
       // nothing to grace. Arm our own once the run room is empty.
-      const runId = socketRunId();
-      if (!queueSupport || !runId) return;
-      void io.in(`run:${runId}`).fetchSockets()
-        .then((watchers) => { if (watchers.length === 0) armQueueGrace(runId); })
+      const runToken = socketRunToken();
+      if (!queueSupport || !runToken) return;
+      void io.in(`run:${runToken}`).fetchSockets()
+        .then((watchers) => { if (watchers.length === 0) armQueueGrace(runToken); })
         .catch((error) => console.error('[Socket] Abandonment check failed:', error));
     });
   });

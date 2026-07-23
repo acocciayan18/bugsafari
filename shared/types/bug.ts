@@ -5,6 +5,7 @@
 // compose the reproduction playbook.
 
 import type { FaultConfidence, FaultOrigin, VerificationStatus } from './verification.js';
+import type { IntelligentDiagnosis } from './telemetry.js';
 
 export interface ActionBreadcrumb {
   timestamp: string;
@@ -158,6 +159,9 @@ export interface IncidentReport {
   // active at fault time — authoritative over the last timeline step, which lags
   // behind async faults and points at a later/burst action.
   culpritSelector?: string;
+  // Heuristic expert-system diagnosis (vulnerability class / CWE / fix) surfaced
+  // on the finding card. Optional — absent when the classifier had no match.
+  aiDiagnostics?: IntelligentDiagnosis;
 }
 
 export interface ForensicCrashReport {
@@ -183,4 +187,6 @@ export interface ForensicCrashReport {
   resolvedStackTrace?: string;
   // The control that actually caused the fault (see IncidentReport.culpritSelector).
   culpritSelector?: string;
+  // Heuristic expert-system diagnosis — see IncidentReport.aiDiagnostics.
+  aiDiagnostics?: IntelligentDiagnosis;
 }

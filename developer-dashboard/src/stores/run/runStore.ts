@@ -13,6 +13,7 @@ import { defaultOptimizationSettings, isCleanTermination } from '../../../../sha
 import type { RunTerminationOutcome } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
+import { logger } from '../../utils/logger';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import {
     CONSOLE_BUFFER_CAP,
@@ -91,6 +92,8 @@ export interface RunState {
     browserConsole: BrowserConsoleMessage[];
     isReconnecting: boolean;
     reconnectAttempt: number;
+    // Socket.IO exhausted its reconnection budget — terminal, needs a manual reload.
+    reconnectGaveUp: boolean;
     isRestoring: boolean;
     isQueued: boolean;
     queuePosition: number | null;
@@ -98,6 +101,7 @@ export interface RunState {
 
     setConnected: (connected: boolean) => void;
     setReconnecting: (attempt: number) => void;
+    setReconnectFailed: () => void;
     setRestoring: (restoring: boolean) => void;
     setCurrentUrl: (url: string) => void;
     setLiveFrame: (frame: string) => void;
@@ -110,6 +114,7 @@ export interface RunState {
     addIncident: (incident: IncidentReport) => void;
     applyReproductionVerdict: (verdict: ReproductionVerdict) => void;
     appendConsole: (message: BrowserConsoleMessage) => void;
+    appendConsoleBatch: (messages: BrowserConsoleMessage[]) => void;
     ingestTelemetry: (event: TelemetryEvent) => void;
     applyQueueUpdate: (update: QueueUpdate) => void;
     hydrateFromSnapshot: (snapshot: ActiveSessionSnapshot) => void;
@@ -154,6 +159,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     browserConsole: [],
     isReconnecting: false,
     reconnectAttempt: 0,
+    reconnectGaveUp: false,
     isRestoring: false,
     isQueued: false,
     queuePosition: null,
@@ -161,10 +167,12 @@ export const useRunStore = create<RunState>((set, get) => ({
 
     setConnected: (connected) =>
         set(connected
-            ? { isConnected: true, isReconnecting: false, reconnectAttempt: 0 }
+            ? { isConnected: true, isReconnecting: false, reconnectAttempt: 0, reconnectGaveUp: false }
             : { isConnected: false, isThinking: false }),
 
-    setReconnecting: (attempt) => set({ isReconnecting: true, reconnectAttempt: attempt }),
+    setReconnecting: (attempt) => set({ isReconnecting: true, reconnectAttempt: attempt, reconnectGaveUp: false }),
+    // Reconnection budget exhausted — clear the retry spinner and latch the terminal state.
+    setReconnectFailed: () => set({ isReconnecting: false, isConnected: false, reconnectGaveUp: true }),
     setRestoring: (isRestoring) => set({ isRestoring }),
     setCurrentUrl: (currentUrl) => set({ currentUrl }),
     setSessionHistory: (sessionHistory) => set({ sessionHistory }),
@@ -193,6 +201,11 @@ export const useRunStore = create<RunState>((set, get) => ({
         ),
     })),
     appendConsole: (message) => set((s) => ({ browserConsole: appendCapped(s.browserConsole, message, CONSOLE_BUFFER_CAP) })),
+    // Throttled ingestion flushes a window of console messages in one commit.
+    appendConsoleBatch: (messages) => {
+        if (messages.length === 0) return;
+        set((s) => ({ browserConsole: [...s.browserConsole, ...messages].slice(-CONSOLE_BUFFER_CAP) }));
+    },
     pushTelemetry: (event) => set((s) => ({ telemetry: appendCapped(s.telemetry, event, TELEMETRY_CAP) })),
 
     setLiveFrame: (frame) => {
@@ -247,7 +260,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             if (action === 'system-status' && event.meta.message) patch.currentEngineAction = event.meta.message;
 
             if (action === 'engine-status' && event.meta.message === 'IDLE') {
-                console.log('[runStore] Received explicit IDLE status - resetting all button states');
+                logger.debug('[runStore] Received explicit IDLE status - resetting all button states');
                 Object.assign(patch, {
                     isTestRunning: false,
                     isLaunching: false,
@@ -379,13 +392,13 @@ export const useRunStore = create<RunState>((set, get) => ({
         });
 
         if (snapshot.jobId && live) {
-            gateway.restoreQueueSubscription(snapshot.jobId, snapshot.runId);
+            gateway.restoreQueueSubscription(snapshot.jobId, snapshot.runToken);
             writeStorage(JOB_ID_STORAGE_KEY, snapshot.jobId);
         }
 
-        // Keep the run token aligned so a subsequent reconnect re-attaches
-        gateway.setRunId(snapshot.runId);
-        writeStorage(RUN_ID_STORAGE_KEY, snapshot.runId);
+        // Reattach proves ownership with the opaque runToken, never the display runId code
+        gateway.setRunId(snapshot.runToken);
+        writeStorage(RUN_ID_STORAGE_KEY, snapshot.runToken);
     },
 
     resetForLaunch: (timeboxMs, resolvedUrl) => {

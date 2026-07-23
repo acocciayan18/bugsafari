@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
 import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, TelemetryEvent } from '../../../types';
 import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
+import { logger } from '../../../utils/logger';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -13,6 +14,7 @@ type FrameHandler = (base64Jpeg: string) => void;
 type UrlChangedHandler = (url: string) => void;
 type BrowserConsoleHandler = (message: BrowserConsoleMessage) => void;
 type ReconnectingHandler = (attempt: number) => void;
+type ReconnectFailedHandler = () => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
 type QueueUpdateHandler = (update: QueueUpdate) => void;
 
@@ -50,6 +52,7 @@ export class SocketConnectionManager {
   private urlChangedHandler: UrlChangedHandler | null = null;
   private browserConsoleHandler: BrowserConsoleHandler | null = null;
   private reconnectingHandler: ReconnectingHandler | null = null;
+  private reconnectFailedHandler: ReconnectFailedHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
   private queueUpdateHandler: QueueUpdateHandler | null = null;
   // Invoked when every attach retry failed — the coordinator falls back to the
@@ -99,7 +102,7 @@ export class SocketConnectionManager {
    */
   public reattach(attempt = 0): void {
     const runId = this.runId;
-    this.socket.emit(SESSION_ATTACH_EVENT, { runId: runId ?? undefined }, (ack: SessionAttachAck) => {
+    this.socket.emit(SESSION_ATTACH_EVENT, { runToken: runId ?? undefined }, (ack: SessionAttachAck) => {
       if (ack?.attached) {
         if (ack.snapshot) this.sessionSnapshotHandler?.(ack.snapshot);
         return;
@@ -128,7 +131,7 @@ export class SocketConnectionManager {
    * start receiving QUEUE_UPDATE pushes. Remembered so a reconnect re-subscribes.
    */
   public subscribeQueue(jobId: string, runId: string | null): void {
-    this.queueSubscription = { jobId, runId: runId ?? undefined };
+    this.queueSubscription = { jobId, runToken: runId ?? undefined };
     this.emitQueueSubscribe();
   }
 
@@ -152,6 +155,8 @@ export class SocketConnectionManager {
       if (this.connectionStateValue === 'connecting') {
         console.warn('[Gateway] Connection timeout - server may not be responding');
         this.connectionStateValue = 'disconnected';
+        // Notify the store so it can distinguish "never connected" from "connecting".
+        this.connectedHandler?.(false);
       }
     }, this.CONNECTION_TIMEOUT_MS);
 
@@ -184,6 +189,10 @@ export class SocketConnectionManager {
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
     this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
+    // A successful reconnect clears the overlay; exhausting the budget latches a
+    // terminal "connection lost, reload" state instead of a frozen "attempt N".
+    this.socket.io.on('reconnect', this.handleReconnect);
+    this.socket.io.on('reconnect_failed', this.handleReconnectFailed);
 
     this.socket.connect();
   }
@@ -209,6 +218,8 @@ export class SocketConnectionManager {
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
     this.socket.off(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
+    this.socket.io.off('reconnect', this.handleReconnect);
+    this.socket.io.off('reconnect_failed', this.handleReconnectFailed);
     this.socket.off('connect_error');
     this.socket.off('error');
     this.socket.disconnect();
@@ -231,12 +242,12 @@ export class SocketConnectionManager {
    * connected). Resolves after a short window so the emit reaches the wire.
    */
   public stopViaSocket(): Promise<void> {
-    console.log('[Gateway] Attempting stop via socket...');
+    logger.debug('[Gateway] Attempting stop via socket...');
     return new Promise((resolve) => {
       this.socket.emit('stop-test');
       // Give socket time to send before resolving
       setTimeout(() => {
-        console.log('[Gateway] Socket stop sent');
+        logger.debug('[Gateway] Socket stop sent');
         resolve();
       }, 100);
     });
@@ -249,7 +260,7 @@ export class SocketConnectionManager {
       this.connectionTimeoutId = null;
     }
     this.connectionStateValue = 'connected';
-    console.log('[Gateway] Connected successfully');
+    logger.debug('[Gateway] Connected successfully');
     this.connectedHandler?.(true);
 
     // Re-attach to the owned run (if any). The backend replays the buffered
@@ -267,6 +278,19 @@ export class SocketConnectionManager {
   private readonly handleReconnectAttempt = (attempt: number): void => {
     this.connectionStateValue = 'reconnecting';
     this.reconnectingHandler?.(attempt);
+  };
+
+  // Socket.IO's own 'connect' also fires, driving the connected handler; this just
+  // guarantees the reconnecting/terminal overlay is cleared on recovery.
+  private readonly handleReconnect = (): void => {
+    this.connectionStateValue = 'connected';
+    this.connectedHandler?.(true);
+  };
+
+  private readonly handleReconnectFailed = (): void => {
+    console.warn('[Gateway] Reconnection attempts exhausted');
+    this.connectionStateValue = 'disconnected';
+    this.reconnectFailedHandler?.();
   };
 
   private readonly handleTelemetry = (event: TelemetryEvent): void => {
@@ -345,6 +369,9 @@ export class SocketConnectionManager {
   public onReconnecting(handler: ReconnectingHandler): void {
     this.reconnectingHandler = handler;
   }
+  public onReconnectFailed(handler: ReconnectFailedHandler): void {
+    this.reconnectFailedHandler = handler;
+  }
   public onSessionSnapshot(handler: SessionSnapshotHandler): void {
     this.sessionSnapshotHandler = handler;
   }
@@ -360,6 +387,7 @@ export class SocketConnectionManager {
   }
   public removeAllListeners(): void {
     this.attachExhaustedHandler = null;
+    this.reconnectFailedHandler = null;
     this.connectedHandler = null;
     this.telemetryHandler = null;
     this.forensicHandler = null;

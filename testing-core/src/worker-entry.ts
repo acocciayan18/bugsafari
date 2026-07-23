@@ -3,6 +3,10 @@ import { createSafariWorker, type SafariWorkerRuntime } from './infrastructure/w
 let runtime: SafariWorkerRuntime | null = null;
 let shuttingDown = false;
 
+// A close() that hangs must not keep a faulted process alive holding its BullMQ
+// job lock until the 10-min lockDuration stalls it — force-exit after this.
+const FORCE_EXIT_TIMEOUT_MS = 10_000;
+
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) {
     return;
@@ -22,6 +26,33 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   }
 }
 
+// Fault path: after an uncaught error the loop may sit on a corrupt code path.
+// Attempt a bounded clean close, then force exit(1) so the supervisor restarts a
+// fresh worker instead of the process lingering — a graceful SIGTERM shutdown that
+// only sets exitCode is not enough here.
+async function crash(label: string, detail: unknown): Promise<void> {
+  console.error(`[BugSafari Worker] ${label}:`, detail);
+  if (shuttingDown) {
+    process.exit(1);
+  }
+  shuttingDown = true;
+
+  const forceExit = setTimeout(() => {
+    console.error('[BugSafari Worker] runtime close did not settle — forcing exit(1).');
+    process.exit(1);
+  }, FORCE_EXIT_TIMEOUT_MS);
+  forceExit.unref();
+
+  try {
+    await runtime?.close();
+  } catch (error) {
+    console.error('[BugSafari Worker] close during crash failed:', error instanceof Error ? error.message : error);
+  } finally {
+    clearTimeout(forceExit);
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
@@ -34,13 +65,11 @@ async function main(): Promise<void> {
   });
 
   process.on('uncaughtException', (error) => {
-    console.error('[BugSafari Worker] uncaught exception:', error);
-    void shutdown('SIGTERM');
+    void crash('uncaught exception', error);
   });
 
   process.on('unhandledRejection', (reason) => {
-    console.error('[BugSafari Worker] unhandled rejection:', reason);
-    void shutdown('SIGTERM');
+    void crash('unhandled rejection', reason);
   });
 
   console.log(`[BugSafari Worker] booting Safari Fleet worker with Redis at ${redisUrl}`);

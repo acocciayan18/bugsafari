@@ -8,6 +8,7 @@ import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry
 import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
+import { generateRunCode } from '../../infrastructure/database/runCodeGenerator.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
@@ -72,6 +73,9 @@ export class StartExplorationUseCase {
     // Captured after run() returns and NOT cleared by execute()'s finally block —
     // it must survive until the operator's later, independent Save request.
     private lastCompletedSessionId: string | null = null;
+    // Public RUN- code minted for the current run; survives into a later Save so the
+    // fallback-created doc reuses the code the operator saw live.
+    private lastRunCode: string | null = null;
     private executionStartTime: number = 0;
     private optimizationSettings: OptimizationSettings | undefined;
 
@@ -225,7 +229,7 @@ export class StartExplorationUseCase {
             clientNetworkLog?: Record<string, unknown>[];
             clientConsoleLog?: Record<string, unknown>[];
         },
-    ): Promise<{ success: boolean; message: string }> {
+    ): Promise<{ success: boolean; message: string; runId?: string }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
@@ -341,14 +345,40 @@ export class StartExplorationUseCase {
         const visitedRoutes = (this.browserEngine.getVisitedRoutes?.() ?? []).slice(0, 500);
         const errorsEncountered = caughtBugs.length;
 
+        // The run's own auto-created session id (the forensic correlation key). When
+        // present we must reuse it on save so children stay keyed; a mismatch/absence
+        // is the only case that mints a fresh document.
+        const originalSessionId = this.lastCompletedSessionId && isValidObjectId(this.lastCompletedSessionId)
+            ? new Types.ObjectId(this.lastCompletedSessionId)
+            : null;
+
+        // Preserve a genuine termination verdict recorded by markSessionTerminated —
+        // a manual save must never rewrite a crashed/timed-out run as Completed.
+        const existingTerminal = originalSessionId
+            ? await SessionModel.findOne({ _id: originalSessionId, userId: userObjectId })
+                .select('status outcome endedReason finishedAt')
+                .lean()
+            : null;
+
+        const lifecycleFields = existingTerminal?.outcome
+            ? {
+                status: existingTerminal.status,
+                outcome: existingTerminal.outcome,
+                endedReason: existingTerminal.endedReason ?? 'Manually saved by operator',
+                finishedAt: existingTerminal.finishedAt ?? new Date(),
+            }
+            : {
+                status: SessionStatus.COMPLETED,
+                endedReason: 'Manually saved by operator',
+                finishedAt: new Date(),
+            };
+
         const sessionFields = {
             userId: userObjectId,
             targetUrl,
-            status: SessionStatus.COMPLETED,
+            ...lifecycleFields,
             startedAt,
-            finishedAt: new Date(),
             savedManually: true,
-            endedReason: 'Manually saved by operator',
             findingCount: findingsTotal,
             actionTraceCount: actionRecords.length,
             config: {
@@ -384,9 +414,9 @@ export class StartExplorationUseCase {
             // id during the run, so saving no longer produces a second, duplicate
             // document. Only fall back to creating a new one if that document
             // doesn't exist (e.g. the initial DB write failed at run-start).
-            let savedDocument = this.lastCompletedSessionId && isValidObjectId(this.lastCompletedSessionId)
+            let savedDocument = originalSessionId
                 ? await SessionModel.findOneAndUpdate(
-                    { _id: new Types.ObjectId(this.lastCompletedSessionId), userId: userObjectId },
+                    { _id: originalSessionId, userId: userObjectId },
                     { $set: sessionFields },
                     { new: true },
                 )
@@ -394,8 +424,16 @@ export class StartExplorationUseCase {
 
             let source = 'update-in-place';
             if (!savedDocument) {
-                savedDocument = await SessionModel.create(sessionFields);
-                source = 'fallback-create';
+                // No engine doc existed: stamp the run's own public RUN- code when we
+                // have it so the created doc's runId matches what the operator saw live.
+                const runCodeField = this.lastRunCode ? { runId: this.lastRunCode } : {};
+                // Reuse the run's own id when we have one, so forensic children written
+                // during the run stay correctly keyed; only mint a fresh id when the run
+                // never persisted a session (no children exist to orphan).
+                savedDocument = originalSessionId
+                    ? await SessionModel.create({ _id: originalSessionId, ...runCodeField, ...sessionFields })
+                    : await SessionModel.create({ ...runCodeField, ...sessionFields });
+                source = originalSessionId ? 'reuse-id-create' : 'fallback-create';
             }
 
             console.log(`[StartExplorationUseCase] ✓ Manual save to sessions (${source}): ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
@@ -423,7 +461,7 @@ export class StartExplorationUseCase {
                 console.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
             }
 
-            return { success: true, message: `Saved as ${savedDocument._id}` };
+            return { success: true, message: `Saved as ${savedDocument._id}`, runId: savedDocument.runId };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
             console.error(`[StartExplorationUseCase] ✗ Manual save failed: ${errorMessage}`);
@@ -434,11 +472,14 @@ export class StartExplorationUseCase {
     // Wraps the run in a private RNG scope so concurrent runs cannot interleave
     // draws from the scenario PRNG. The engine seeds inside its constructor, so
     // the scope must enclose construction, not just the exploration loop.
-    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig): Promise<void> {
-        return withScenarioRandomScope(() => this.executeInScope(targetUrl, optimizationSettings, selectedScenarios, runId, targetAuth));
+    // `runId` is the live bearer TOKEN; `runCode` is the public RUN- code. On the
+    // queue path the worker passes the code minted at enqueue so live/history stay
+    // in parity; the synchronous path omits it and one is minted here.
+    public async execute(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig, runCode?: string): Promise<void> {
+        return withScenarioRandomScope(() => this.executeInScope(targetUrl, optimizationSettings, selectedScenarios, runId, targetAuth, runCode));
     }
 
-    private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig): Promise<void> {
+    private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig, providedRunCode?: string): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
         console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
@@ -476,7 +517,16 @@ export class StartExplorationUseCase {
         // close the TOCTOU race that existed when this flag was set only at this
         // point.
 
-        const resolvedRunId = runId ?? randomUUID();
+        // The incoming `runId` param IS the live bearer token (room key + ownership
+        // proof), distinct from the public RUN- code minted next.
+        const resolvedRunToken = runId ?? randomUUID();
+        // One public RUN- code for the whole run: the SessionManager surfaces it as
+        // snapshot.runId AND the engine stamps it as the DB doc's runId, so live,
+        // telemetry, and history all show the same code. Reuse the queue-minted code
+        // when provided so a worker-executed run keeps the same code the client saw.
+        const runCode = providedRunCode ?? generateRunCode();
+        this.lastRunCode = runCode;
+        this.browserEngine.setRunCode?.(runCode);
 
         // EVERYTHING from here on is inside the try, so the finally below always
         // releases state.active and ends the run. Setup that lived outside it used
@@ -495,7 +545,8 @@ export class StartExplorationUseCase {
             // wiring, and target-health monitor. Upgrades the reservation the API
             // created before responding, so the room and its buffers survive.
             sessionManager.beginRun({
-                runId: resolvedRunId,
+                runToken: resolvedRunToken,
+                runCode,
                 userId: this.currentUserId,
                 targetUrl,
                 timeboxMs: TIMEBOX_MS,
@@ -510,7 +561,7 @@ export class StartExplorationUseCase {
                     url: targetUrl,
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     sessionId: this.currentSessionId as any,
-                    message: `Launching Playwright headless session for ${targetUrl}`,
+                    message: `Launching Playwright session for ${targetUrl}`,
                 },
             });
 

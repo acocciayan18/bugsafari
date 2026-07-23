@@ -81,22 +81,14 @@ export {
 // Local binding (the re-export above does not bring the name into local scope).
 import type { FindingAttribution, ReplayMacro, RunTerminationOutcome } from '../../shared/types.js';
 
-export type BrowserConsoleLevel =
-  | 'log' | 'error' | 'warning' | 'info' | 'debug' | 'trace' | 'notice';
-
-export interface BrowserConsoleMessage {
-  timestamp: string;
-  level: BrowserConsoleLevel;
-  type: string;
-  message: string;
-  url?: string;
-  line?: number;
-  column?: number;
-  stackTrace?: string;
-}
+// Browser console contract lives once in shared/types/console.ts — re-exported here
+// so frontend consumers keep importing it from the local barrel without shadowing it.
+export type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../shared/types.js';
 
 export interface SessionHistoryEntry {
   id: string;
+  // Public human-readable run code (RUN-XXXXXX); absent on legacy rows saved before it existed.
+  runId?: string;
   targetUrl: string;
   status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
   startedAt: string;

@@ -32,20 +32,15 @@ export async function handleTokenRefresh(
       return;
     }
 
-    const { UserModel } = await import('../../infrastructure/database/models/UserModel.js');
-    const user = await UserModel.findById(result.userId).select('email');
-    if (!user) {
-      response.status(401).json({ error: GENERIC_FAILURE, code: 'REFRESH_INVALID' });
-      return;
-    }
-
-    console.log(`[Auth] Token rotated for user: ${user.email}`);
+    // Rotation already loaded the user to sign the token — reuse its email
+    // instead of a second identical lookup.
+    console.log(`[Auth] Token rotated for user: ${result.email}`);
     response.json({
       ok: true,
       token: result.tokens.token,
       refreshToken: result.tokens.refreshToken,
       expiresIn: result.tokens.expiresIn,
-      user: { id: result.userId, email: user.email },
+      user: { id: result.userId, email: result.email },
     });
   } catch (err) {
     next(err);

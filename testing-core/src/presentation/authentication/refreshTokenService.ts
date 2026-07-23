@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { RefreshTokenModel } from '../../infrastructure/database/models/RefreshTokenModel.js';
@@ -18,7 +18,7 @@ export type RotationFailure =
   | 'REVOKED';
 
 export type RotationResult =
-  | { ok: true; tokens: IssuedTokens; userId: string }
+  | { ok: true; tokens: IssuedTokens; userId: string; email: string }
   | { ok: false; reason: RotationFailure };
 
 const REFRESH_BYTES = 48;
@@ -51,7 +51,9 @@ async function mintPair(userId: string, email: string, familyId: string): Promis
   return {
     token: signAccessToken(userId, email),
     refreshToken,
-    expiresIn: AUTH_CONFIG.ACCESS_TOKEN_TTL_MS,
+    // Seconds, per the OAuth convention a standards-following client expects —
+    // the access token is signed with a matching TTL (ACCESS_TOKEN_TTL '30m').
+    expiresIn: Math.floor(AUTH_CONFIG.ACCESS_TOKEN_TTL_MS / 1000),
   };
 }
 
@@ -64,37 +66,42 @@ export async function rotateRefreshToken(presented: unknown): Promise<RotationRe
   }
 
   const tokenHash = hashToken(presented);
-  const record = await RefreshTokenModel.findOne({ tokenHash });
-  if (!record) return { ok: false, reason: 'NOT_FOUND' };
+  const now = new Date();
 
-  // Constant-time confirmation of the indexed match.
-  const stored = Buffer.from(record.tokenHash, 'utf8');
-  const computed = Buffer.from(tokenHash, 'utf8');
-  if (stored.length !== computed.length || !timingSafeEqual(stored, computed)) {
-    return { ok: false, reason: 'NOT_FOUND' };
-  }
+  // Atomic single-use consume-and-revoke. Only ONE presentation can flip the live
+  // row to revoked; the unique tokenHash index guarantees a single matching doc,
+  // so concurrent replays can't both mint a successor. This is the whole security
+  // value of rotation — a non-atomic read-then-write lost it under concurrency.
+  const consumed = await RefreshTokenModel.findOneAndUpdate(
+    { tokenHash, revokedAt: { $exists: false } },
+    { $set: { revokedAt: now, revokedReason: 'rotated' } },
+  );
 
-  if (record.revokedAt) {
-    console.error(`[AUTH] Refresh token reuse detected for user ${record.userId} — revoking family ${record.familyId}`);
-    await revokeFamily(record.familyId, 'reuse-detected');
+  if (!consumed) {
+    // No live row matched: the token never existed, or it existed already-revoked
+    // (a replay of a rotated/burned value). Burn the whole family on reuse.
+    const existing = await RefreshTokenModel.findOne({ tokenHash }).select('familyId userId');
+    if (!existing) return { ok: false, reason: 'NOT_FOUND' };
+    console.error(`[AUTH] Refresh token reuse detected for user ${existing.userId} — revoking family ${existing.familyId}`);
+    await revokeFamily(existing.familyId, 'reuse-detected');
     return { ok: false, reason: 'REUSE_DETECTED' };
   }
 
-  if (record.expiresAt.getTime() <= Date.now()) {
-    await RefreshTokenModel.updateOne({ _id: record._id }, { revokedAt: new Date(), revokedReason: 'expired' });
+  // `consumed` is the pre-update document (revokedAt was absent when it matched).
+  if (consumed.expiresAt.getTime() <= now.getTime()) {
+    await RefreshTokenModel.updateOne({ _id: consumed._id }, { $set: { revokedReason: 'expired' } });
     return { ok: false, reason: 'EXPIRED' };
   }
 
   const { UserModel } = await import('../../infrastructure/database/models/UserModel.js');
-  const user = await UserModel.findById(record.userId).select('email');
+  const user = await UserModel.findById(consumed.userId).select('email');
   if (!user) {
-    await revokeFamily(record.familyId, 'user-missing');
+    await revokeFamily(consumed.familyId, 'user-missing');
     return { ok: false, reason: 'REVOKED' };
   }
 
-  await RefreshTokenModel.updateOne({ _id: record._id }, { revokedAt: new Date(), revokedReason: 'rotated' });
-  const tokens = await mintPair(record.userId.toString(), user.email, record.familyId);
-  return { ok: true, tokens, userId: record.userId.toString() };
+  const tokens = await mintPair(consumed.userId.toString(), user.email, consumed.familyId);
+  return { ok: true, tokens, userId: consumed.userId.toString(), email: user.email };
 }
 
 export async function revokeFamily(familyId: string, reason: string): Promise<void> {

@@ -61,9 +61,7 @@ export async function handleGetProfile(
             email: user.email,
         };
 
-        // @ts-expect-error - user may have name field from schema extensions
         if (user.name) {
-            // @ts-expect-error - user may have name field from schema extensions
             profile.name = user.name;
         }
 
@@ -123,9 +121,7 @@ export async function handleUpdateProfile(
             email: user.email,
         };
 
-        // @ts-expect-error - user may have name field from schema extensions
         if (user.name) {
-            // @ts-expect-error - user may have name field from schema extensions
             profile.name = user.name;
         }
 

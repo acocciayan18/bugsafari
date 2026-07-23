@@ -9,6 +9,8 @@ export interface BrowserEngineConfig {
 export interface BrowserEngine {
   /** `targetAuth` is ephemeral: in-memory for this run only, never persisted or logged. */
   run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string, targetAuth?: TargetAuthConfig): Promise<RunResult>;
+  /** Public RUN- code to stamp on this run's DB session doc, so live/history share one id. Call before run(). */
+  setRunCode?(runCode: string): void;
   pause?(): void;
   resume?(): void;
   /** `reason` names the trigger so the terminal outcome is attributed to its real cause. */

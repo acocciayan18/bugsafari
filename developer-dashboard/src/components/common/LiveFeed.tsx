@@ -2,7 +2,7 @@
 // High-contrast brutalist technical aesthetic
 // Dark container for canvas streaming
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { memo, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
 import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
@@ -29,7 +29,7 @@ interface LiveFeedProps {
 const NATIVE_VIEWPORT_WIDTH = 1440;
 const NATIVE_VIEWPORT_HEIGHT = 900;
 
-export default function LiveFeed({
+function LiveFeed({
   frame,
   currentUrl,
   targetUrl,
@@ -50,7 +50,10 @@ export default function LiveFeed({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LiveFeedRenderer | null>(null);
-  const [fps, setFps] = useState(0);
+  // One reused decoder + a generation counter so an older frame's late decode can
+  // never paint over a newer one, and a pending decode is dropped on unmount.
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const frameGenRef = useRef(0);
 
   // Status determination — QUEUED holds a dedicated standby screen and suppresses
   // the initializing/idle states so the viewport never reads as "streaming" while
@@ -140,15 +143,7 @@ export default function LiveFeed({
       rendererRef.current.connect();
       rendererRef.current.start();
 
-      const fpsInterval = setInterval(() => {
-        const metrics = rendererRef.current?.getMetrics();
-        if (metrics) {
-          setFps(metrics.avgFrameRate);
-        }
-      }, 1000);
-
       return () => {
-        clearInterval(fpsInterval);
         rendererRef.current?.destroy();
         rendererRef.current = null;
       };
@@ -161,21 +156,25 @@ export default function LiveFeed({
   const renderFrame = liveFrame || frame;
 
   useEffect(() => {
-    if (renderFrame && !useBinaryStream && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      
-      if (ctx) {
-        const img = new Image();
-        img.onload = () => {
-          // Draw image to fill canvas (object-fit: cover behavior)
-          // Canvas internal resolution already set to cover dimensions
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        };
-        img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
-      }
-    }
+    if (!renderFrame || useBinaryStream || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Tag this decode; only the latest generation is allowed to paint.
+    const generation = ++frameGenRef.current;
+    const img = imageRef.current ?? (imageRef.current = new Image());
+    img.onload = () => {
+      // A newer frame superseded this one, or the canvas unmounted — drop the paint.
+      if (generation !== frameGenRef.current || !canvasRef.current) return;
+      // Draw image to fill canvas (object-fit: cover behavior); canvas internal
+      // resolution is already set to cover dimensions.
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
+
+    return () => { img.onload = null; };
   }, [renderFrame, useBinaryStream]);
 
   return (
@@ -279,3 +278,7 @@ export default function LiveFeed({
     </div>
   );
 }
+
+// Memoized so a telemetry-only store change (no frame/url/status change) can't
+// re-run the canvas draw — the frame path is isolated from the log render storm.
+export default memo(LiveFeed);

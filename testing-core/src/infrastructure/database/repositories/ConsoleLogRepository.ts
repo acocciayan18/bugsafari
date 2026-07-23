@@ -21,6 +21,20 @@ export class ConsoleLogRepository {
       .lean<IConsoleLog[]>()
       .exec();
   }
+
+  // One chronological page — same order as findByRunId, bounded by offset/limit.
+  async findPageByRunId(forensicRunId: string | Types.ObjectId, limit: number, offset: number): Promise<IConsoleLog[]> {
+    return ConsoleLogModel.find({ forensicRunId: new Types.ObjectId(forensicRunId) })
+      .sort({ timestamp: 1 })
+      .skip(Math.max(0, offset))
+      .limit(Math.min(Math.max(1, limit), MAX_FORENSIC_ROWS))
+      .lean<IConsoleLog[]>()
+      .exec();
+  }
+
+  async countByRunId(forensicRunId: string | Types.ObjectId): Promise<number> {
+    return ConsoleLogModel.countDocuments({ forensicRunId: new Types.ObjectId(forensicRunId) }).exec();
+  }
 }
 
 export const consoleLogRepository = new ConsoleLogRepository();

@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { IncidentReport, ForensicCrashReport } from '../../types';
+import type { IncidentReport, ForensicCrashReport, IntelligentDiagnosis } from '../../types';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { incidentToFindingView, reportToFindingView, type FindingView } from '../../utils/findingView';
 import AiDiagnosticCard from './AiDiagnosticCard';
@@ -67,7 +66,7 @@ function LiveFindingCard({
   source: string;
   count: number;
   index: number;
-  aiDiagnostics: any;
+  aiDiagnostics?: IntelligentDiagnosis;
 }) {
   return (
     <div className="bg-(--surface-panel) border border-(--border-hairline) border-l-4 border-l-(--status-critical-fg) rounded-lg overflow-hidden">
@@ -134,34 +133,34 @@ export default function ErrorTabPanel({
   const reportGroups = groupBySignature<ForensicCrashReport>(errorReports, liveFaultSignature, (r) => r.occurrences ?? 1);
 
   return (
-    <div className="space-y-4 p-2">
+    <div className="space-y-4 p-2" role="log" aria-live="assertive" aria-relevant="additions" aria-label="Captured errors">
       {incidentGroups.length === 0 && reportGroups.length === 0 ? (
         <div className="text-(--text-secondary) italic py-4">No errors captured yet.</div>
       ) : (
         <>
           {incidentGroups.map(({ item: incident, count }, idx) => (
             <LiveFindingCard
-              key={`incident-${idx}`}
+              key={`incident-${liveFaultSignature(incident)}`}
               view={incidentToFindingView(incident, count)}
               icon=""
               kindLabel="Forensics (Incident)"
               source="Runtime"
               count={count}
               index={idx}
-              aiDiagnostics={(incident as any).aiDiagnostics}
+              aiDiagnostics={incident.aiDiagnostics}
             />
           ))}
 
           {reportGroups.map(({ item: report, count }, idx) => (
             <LiveFindingCard
-              key={`report-${idx}`}
+              key={`report-${liveFaultSignature(report)}`}
               view={reportToFindingView(report, count)}
               icon=""
               kindLabel="Console Error"
               source="Console"
               count={count}
               index={idx}
-              aiDiagnostics={(report as any).aiDiagnostics}
+              aiDiagnostics={report.aiDiagnostics}
             />
           ))}
         </>

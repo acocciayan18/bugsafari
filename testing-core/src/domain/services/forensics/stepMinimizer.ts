@@ -1,4 +1,4 @@
-import type { ActionRecord } from '../../../../../shared/types.ts';
+import type { ActionRecord } from '../../../../../shared/types.js';
 
 /**
  * Reproduction-step minimization — the causal filter between the rolling action

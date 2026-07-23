@@ -2,7 +2,7 @@
 // ClinicalForensicsDashboard.tsx - FORENSIC TELEMETRY VIEW
 // ═══════════════════════════════════════════════════════════════
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, BugPlay, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
@@ -25,6 +25,14 @@ import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } f
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
+
+// Ordered tab model — drives both render and the ARIA tabs roving-tabindex pattern.
+const TERMINAL_TABS = [
+  { id: 'telemetry', label: 'Telemetry', Icon: Activity },
+  { id: 'errors', label: 'Errors', Icon: TriangleAlert },
+  { id: 'network', label: 'Network', Icon: Network },
+  { id: 'console', label: 'Console', Icon: Terminal },
+] as const;
 
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -98,6 +106,25 @@ export default function ClinicalForensicsDashboard({
   // STATE MANAGEMENT
   // ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TerminalTab>('telemetry');
+  const tabRefs = useRef<Record<TerminalTab, HTMLButtonElement | null>>({
+    telemetry: null, errors: null, network: null, console: null,
+  });
+
+  // WCAG 4.1.2 tabs: arrow/Home/End move selection and focus (roving tabindex).
+  const handleTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const order = TERMINAL_TABS.map((t) => t.id);
+    const i = order.indexOf(activeTab);
+    let next: TerminalTab | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = order[(i + 1) % order.length];
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = order[(i - 1 + order.length) % order.length];
+    else if (e.key === 'Home') next = order[0];
+    else if (e.key === 'End') next = order[order.length - 1];
+    if (next) {
+      e.preventDefault();
+      setActiveTab(next);
+      tabRefs.current[next]?.focus();
+    }
+  };
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
@@ -108,19 +135,32 @@ export default function ClinicalForensicsDashboard({
   // TELEMETRY SCROLL & UTILITIES
   // ─────────────────────────────────────────────────────────────
   const formattedTelemetry = useMemo(() => {
+    // Stable per-row keys: a content signature disambiguated by an occurrence counter,
+    // so a row keeps its identity as the buffer slides (index-as-key re-associated an
+    // expanded row to the wrong event when the window shifted).
+    const seen = new Map<string, number>();
     const events = Array.isArray(telemetry)
       ? telemetry
           .filter((event) => (typeof event === 'string' ? !event.includes('[NETWORK]') : event?.type !== 'NETWORK'))
           .map((event) => {
+            const base =
+              typeof event === 'string'
+                ? event
+                : `${event.timestamp}|${event.type ?? 'EVENT'}|${event.meta?.message ?? event.meta?.actionExecuted ?? 'event'}`;
+            const n = seen.get(base) ?? 0;
+            seen.set(base, n + 1);
+            const key = `${base}#${n}`;
+
             if (typeof event === 'string') {
-              return { rawText: event, aiDiagnostics: null };
+              return { key, rawText: event, aiDiagnostics: null };
             }
             const type = event.type ?? 'EVENT';
             const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
 
             return {
+              key,
               rawText: `[${type}] ${message}`,
-              aiDiagnostics: event.meta?.aiDiagnostics || null 
+              aiDiagnostics: event.meta?.aiDiagnostics || null
             };
           })
       : [];
@@ -177,6 +217,14 @@ export default function ClinicalForensicsDashboard({
   // A launched run freezes its settings — collapse the dialog rather than leaving
   // a stale editable copy open over a live session.
   const showConfigModal = isConfigOpen && !isActiveSession;
+
+  // Per-tab badge counts, keyed to the tab model so the tablist can render generically.
+  const tabCounts: Record<TerminalTab, number> = {
+    telemetry: 0,
+    errors: errorCount,
+    network: dedupeNetworkEvents(networkEvents).length,
+    console: browserConsole.length,
+  };
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--surface-app)">
@@ -398,38 +446,28 @@ export default function ClinicalForensicsDashboard({
 
           {/* Terminal header — tabs scroll horizontally rather than wrapping or clipping */}
           <div className="flex items-center justify-between gap-1 border-b border-(--border-hairline) bg-(--surface-raised) h-[46px] shrink-0">
-            <div className="scroll-rail flex">
-              <button
-                onClick={() => setActiveTab('telemetry')}
-                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest transition-colors font-sans ${activeTab === 'telemetry' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
-              >
-                <Activity className="h-3.5 w-3.5" />
-                Telemetry
-              </button>
-              <button
-                onClick={() => setActiveTab('errors')}
-                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'errors' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
-              >
-                <TriangleAlert className="h-3.5 w-3.5" />
-                Errors
-                <TabCount count={errorCount} />
-              </button>
-              <button
-                onClick={() => setActiveTab('network')}
-                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'network' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
-              >
-                <Network className="h-3.5 w-3.5" />
-                Network
-                <TabCount count={dedupeNetworkEvents(networkEvents).length} />
-              </button>
-              <button
-                onClick={() => setActiveTab('console')}
-                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest  transition-colors font-sans ${activeTab === 'console' ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
-              >
-                <Terminal className="h-3.5 w-3.5" />
-                Console
-                <TabCount count={browserConsole.length} />
-              </button>
+            <div className="scroll-rail flex" role="tablist" aria-label="Telemetry streams">
+              {TERMINAL_TABS.map(({ id, label, Icon }) => {
+                const selected = activeTab === id;
+                return (
+                  <button
+                    key={id}
+                    ref={(el) => { tabRefs.current[id] = el; }}
+                    role="tab"
+                    id={`terminal-tab-${id}`}
+                    aria-selected={selected}
+                    aria-controls="terminal-tabpanel"
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => setActiveTab(id)}
+                    onKeyDown={handleTabKeyDown}
+                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {label}
+                    <TabCount count={tabCounts[id]} />
+                  </button>
+                );
+              })}
             </div>
 
             <TelemetryHelpModal activeTab={activeTab} />
@@ -439,18 +477,22 @@ export default function ClinicalForensicsDashboard({
           <div className="relative flex-1 overflow-hidden">
             <div
               ref={logContainerRef}
+              role="tabpanel"
+              id="terminal-tabpanel"
+              aria-labelledby={`terminal-tab-${activeTab}`}
+              tabIndex={0}
               className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
               style={{ scrollBehavior: 'smooth' }}
             >
               {activeTab === 'telemetry' && (
-                <>
+                <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Engine telemetry log">
                   {showAccessibilityBanner && onDismissAccessibilityBanner && (
                     <AccessibilityWarningBanner count={accessibilityCount} onDismiss={onDismissAccessibilityBanner} />
                   )}
                   {showSessionControls ? (
                     <>
-                      {formattedTelemetry.map((logObj, index) => (
-                        <div key={index} className="py-1 border-b border-(--border-hairline)/50 last:border-0">
+                      {formattedTelemetry.map((logObj) => (
+                        <div key={logObj.key} className="py-1 border-b border-(--border-hairline)/50 last:border-0">
                           <div
                             className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
                               ? 'text-(--text-secondary)'
@@ -479,8 +521,8 @@ export default function ClinicalForensicsDashboard({
                     </div>
                   ) : (
                     <>
-                      {formattedTelemetry.map((logObj, index) => (
-                        <div key={index} className="py-1">
+                      {formattedTelemetry.map((logObj) => (
+                        <div key={logObj.key} className="py-1">
                           <div
                             className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
                               ? 'text-(--text-secondary)'
@@ -499,7 +541,7 @@ export default function ClinicalForensicsDashboard({
                       </div>
                     </>
                   )}
-                </>
+                </div>
               )}
 
               {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}

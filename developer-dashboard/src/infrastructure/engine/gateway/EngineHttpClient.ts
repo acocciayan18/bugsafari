@@ -46,7 +46,7 @@ export class EngineHttpClient {
     console.log(`[Gateway] Target authentication: ${targetAuth ? 'supplied' : 'none'}`);
 
     try {
-      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig; knownRunId?: string; targetAuth?: TargetAuthConfig } = { url: targetUrl };
+      const requestBody: { url: string; optimization?: OptimizationSettings; infiltration?: ExplorationRunConfig; knownRunToken?: string; targetAuth?: TargetAuthConfig } = { url: targetUrl };
       if (optimizationSettings) {
         requestBody.optimization = optimizationSettings;
       }
@@ -59,7 +59,7 @@ export class EngineHttpClient {
       // Run token from a prior launch — lets the server resume an owned session
       // (dedupe) instead of starting a duplicate.
       if (knownRunId) {
-        requestBody.knownRunId = knownRunId;
+        requestBody.knownRunToken = knownRunId;
       }
 
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/start-test`, {
@@ -80,8 +80,9 @@ export class EngineHttpClient {
       // Capture the server-issued run token so a later refresh / reconnect can
       // prove ownership and re-attach. A queued (202) response additionally carries
       // the jobId used to track the run's place in the worker-fleet line.
-      const data = (await response.json().catch(() => ({}))) as { runId?: string; jobId?: string; queued?: boolean; resumed?: boolean };
-      const runId = typeof data.runId === 'string' ? data.runId : null;
+      const data = (await response.json().catch(() => ({}))) as { runToken?: string; runId?: string; jobId?: string; queued?: boolean; resumed?: boolean };
+      // `runToken` is the opaque ownership/attach token; `runId` (the RUN- code) is display-only.
+      const runId = typeof data.runToken === 'string' ? data.runToken : null;
       const jobId = typeof data.jobId === 'string' ? data.jobId : null;
       const queued = data.queued === true;
       const resumed = data.resumed === true;
@@ -139,7 +140,7 @@ export class EngineHttpClient {
    */
   public async fetchActiveSession(runId?: string | null): Promise<ActiveSessionSnapshot | null> {
     try {
-      const query = runId ? `?runId=${encodeURIComponent(runId)}` : '';
+      const query = runId ? `?runToken=${encodeURIComponent(runId)}` : '';
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/session/active${query}`, {
         headers: this.getAuthHeaders(),
       });
@@ -164,7 +165,7 @@ export class EngineHttpClient {
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/safari/stop`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: runId ?? null }),
+        body: JSON.stringify({ runToken: runId ?? null }),
       });
 
       const data = (await response.json().catch(() => ({}))) as Partial<StopRunResult>;

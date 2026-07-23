@@ -2,7 +2,7 @@ import type { Page, Request, Response } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
-import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.ts';
+import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.js';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
 import { RecursiveDomParser } from '../../heuristics/domParser.js';
 import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
@@ -32,7 +32,8 @@ import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightB
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
-import { forensicErrorRepository } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
+import { forensicErrorRepository, type CreateForensicErrorParams } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
+import { MAX_FORENSIC_ROWS } from '../../../infrastructure/database/queryLimits.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { Types, isValidObjectId } from 'mongoose';
 
@@ -82,6 +83,8 @@ const BUG_FINDER_BUDGET = 25;
 // not train the model on the acting element.
 const NETWORK_ATTRIBUTION_WINDOW_MS = 2000;
 const MAX_NETWORK_REWARDS_PER_ACTION = 3;
+// Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
+const FORENSIC_FLUSH_THRESHOLD = 50;
 
 /**
  * Manages parent execution orchestration and run setups for an autonomous
@@ -163,6 +166,12 @@ export class ExplorationEngine {
   // the lifecycle settles (graceful settlement barrier).
   private readonly asyncTasks = new AsyncTaskTracker();
 
+  // Per-run forensic-error buffer — batched via createMany instead of one insert
+  // per event, and capped so a spewing target can't write unbounded rows.
+  private forensicErrorBuffer: ForensicErrorParams[] = [];
+  private forensicErrorsPersisted = 0;
+  private forensicFlushChain: Promise<void> = Promise.resolve();
+
   // Accumulative active time tracking for timebox (only counts when NOT paused)
   private elapsedActiveTimeMs: number = 0;
   private timingInterval: ReturnType<typeof setInterval> | null = null;
@@ -226,6 +235,8 @@ export class ExplorationEngine {
     private readonly optimizationSettings?: OptimizationSettings,
     selectedScenarios?: TestingTypeId[],
     private readonly userId?: string,
+    // Public RUN- code stamped on the auto-created session doc so live + history share one id.
+    private readonly runCode?: string,
   ) {
     console.log(`[ExplorationEngine] Optimization settings:`, optimizationSettings);
 
@@ -730,7 +741,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       getBreadcrumbs: () => this.actions.snapshot(),
       breadcrumbsToActionRecords: (b) => this.breadcrumbsToActionRecords(b),
-      persistForensicError: (params) => { this.asyncTasks.track(this.persistForensicError(params)); },
+      persistForensicError: (params) => this.bufferForensicError(params),
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
@@ -776,6 +787,11 @@ export class ExplorationEngine {
 
     this.sessionId = await this.createSession(targetUrl);
     this.lastSessionId = this.sessionId;
+
+    // Reset the per-run forensic-error batch for this fresh run.
+    this.forensicErrorBuffer = [];
+    this.forensicErrorsPersisted = 0;
+    this.forensicFlushChain = Promise.resolve();
 
     //  Start timing interval that accumulates active time (only when NOT paused)
     // This replaces the fixed timeout approach with accumulative time tracking
@@ -1114,6 +1130,10 @@ export class ExplorationEngine {
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }
+      // Drain any queued flush, then write the residual buffer before the run's
+      // session id is cleared, so no forensic error is lost or mis-keyed.
+      await this.forensicFlushChain.catch(() => undefined);
+      await this.flushForensicErrors();
       await this.completeSession(runResult);
       this.sessionId = null;
       this.activePage = null;
@@ -1133,6 +1153,7 @@ export class ExplorationEngine {
         targetUrl,
         startedAt: new Date().toISOString(),
         userId: this.userId,
+        runId: this.runCode,
       });
     } catch (error) {
       console.error('[ExplorationEngine] Failed to create Safari session:', error);
@@ -1272,19 +1293,38 @@ export class ExplorationEngine {
     }
   }
 
-  /**
-   * Persist error to forensic_errors database (Phase 2: Error Logging System)
-   */
-  private async persistForensicError(params: ForensicErrorParams): Promise<void> {
+  // Buffer a forensic error for batched persistence. Synchronous, drops silently
+  // past the per-run cap (mirrors the read-side MAX_FORENSIC_ROWS truncation), and
+  // schedules a serialized flush once the buffer reaches FORENSIC_FLUSH_THRESHOLD.
+  private bufferForensicError(params: ForensicErrorParams): void {
     if (!this.sessionId) return;
+    if (this.forensicErrorsPersisted + this.forensicErrorBuffer.length >= MAX_FORENSIC_ROWS) return;
+    this.forensicErrorBuffer.push(params);
+    if (this.forensicErrorBuffer.length >= FORENSIC_FLUSH_THRESHOLD) {
+      this.scheduleForensicFlush();
+    }
+  }
 
+  // Serialize flushes onto one chain so concurrent createMany calls can't interleave,
+  // and track the chain so the settlement barrier awaits it.
+  private scheduleForensicFlush(): void {
+    this.forensicFlushChain = this.forensicFlushChain.then(() => this.flushForensicErrors());
+    this.asyncTasks.track(this.forensicFlushChain);
+  }
+
+  // Drain the buffer to Mongo in one batch, honoring the per-run cap. Never throws.
+  private async flushForensicErrors(): Promise<void> {
+    if (!this.sessionId || this.forensicErrorBuffer.length === 0) return;
+    const remaining = MAX_FORENSIC_ROWS - this.forensicErrorsPersisted;
+    if (remaining <= 0) { this.forensicErrorBuffer = []; return; }
+    const batch = this.forensicErrorBuffer.splice(0, remaining);
+    const runId = new Types.ObjectId(this.sessionId);
+    const rows: CreateForensicErrorParams[] = batch.map((params) => ({ forensicRunId: runId, ...params }));
     try {
-      await forensicErrorRepository.create({
-        forensicRunId: new Types.ObjectId(this.sessionId),
-        ...params,
-      });
+      await forensicErrorRepository.createMany(rows);
+      this.forensicErrorsPersisted += rows.length;
     } catch (error) {
-      console.error('[ExplorationEngine] Failed to persist forensic error:', error);
+      console.error('[ExplorationEngine] Failed to flush forensic errors:', error);
     }
   }
 
@@ -1311,7 +1351,7 @@ export class ExplorationEngine {
     if (!this.sessionId) return;
 
     try {
-      await forensicTelemetryRepository.create({
+      await forensicTelemetryRepository.upsertForRun({
         forensicRunId: new Types.ObjectId(this.sessionId),
         ...params,
       });

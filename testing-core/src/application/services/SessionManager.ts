@@ -37,7 +37,8 @@ export interface EngineControl {
 }
 
 export interface BeginRunParams {
-  runId: string;
+  runToken: string;             // opaque bearer token: room key + ownership proof
+  runCode: string;              // public RUN- code surfaced to the operator
   userId: string | null;        // authenticated owner id, or null for a guest run
   targetUrl: string;
   timeboxMs: number;
@@ -78,7 +79,8 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 interface ActiveRun {
-  runId: string;
+  runToken: string;   // opaque bearer token: room key + ownership proof
+  runCode: string;    // public RUN- code surfaced to the operator
   userId: string | null;
   // Tenant key that is unique even for guests, so two anonymous operators are
   // never treated as the same principal by a null===null comparison.
@@ -177,7 +179,7 @@ export class SessionManager implements TelemetryRecorder {
       // rather than dropped, and replayed against the real engine in beginRun.
       engine: {
         stop: () => {
-          if (this.run?.runId === params.runId) this.run.pendingStop = true;
+          if (this.run?.runToken === params.runToken) this.run.pendingStop = true;
         },
         getElapsedActiveTimeMs: () => 0,
       },
@@ -185,8 +187,8 @@ export class SessionManager implements TelemetryRecorder {
 
     this.run.reservationTimer = setTimeout(() => {
       const run = this.run;
-      if (!run || run.runId !== params.runId || run.status !== 'STARTING') return;
-      console.error(`[SessionManager] Run ${run.runId} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
+      if (!run || run.runToken !== params.runToken || run.status !== 'STARTING') return;
+      console.error(`[SessionManager] Run ${run.runToken} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
       this.emitFailure(`Engine failed to start within ${Math.round(RESERVATION_TIMEOUT_MS / 1000)}s. The session was cancelled and all resources released.`);
       this.endRun('CRASHED');
       params.onAbandoned?.();
@@ -194,14 +196,14 @@ export class SessionManager implements TelemetryRecorder {
 
     this.gateway?.setRoom(this.run.room);
     this.gateway?.setRecorder(this);
-    console.log(`[SessionManager] Run ${params.runId} reserved (room ready, awaiting engine).`);
+    console.log(`[SessionManager] Run ${params.runToken} reserved (room ready, awaiting engine).`);
   }
 
   public beginRun(params: BeginRunParams): void {
     // Upgrade a reservation in place: same room, same buffers, so telemetry
     // emitted during boot is not discarded and attached sockets stay attached.
     const reserved = this.run;
-    if (reserved && reserved.runId === params.runId && reserved.status === 'STARTING') {
+    if (reserved && reserved.runToken === params.runToken && reserved.status === 'STARTING') {
       if (reserved.reservationTimer) {
         clearTimeout(reserved.reservationTimer);
         reserved.reservationTimer = null;
@@ -209,15 +211,15 @@ export class SessionManager implements TelemetryRecorder {
       reserved.engine = params.engine;
       reserved.timeboxMs = params.timeboxMs;
       reserved.userId = params.userId;
-      reserved.ownerKey = guestOwnerKey(params.userId, params.runId);
+      reserved.ownerKey = guestOwnerKey(params.userId, params.runToken);
       reserved.ownerType = params.userId ? 'authenticated' : 'guest';
       reserved.status = 'RUNNING';
       if (HEALTH_MONITOR_ENABLED) reserved.health.start();
-      console.log(`[SessionManager] Run ${params.runId} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
+      console.log(`[SessionManager] Run ${params.runToken} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
       // Honour a stop the operator issued while the engine was still booting.
       if (reserved.pendingStop) {
         reserved.pendingStop = false;
-        console.log(`[SessionManager] Run ${params.runId} had a stop pending from boot — applying now.`);
+        console.log(`[SessionManager] Run ${params.runToken} had a stop pending from boot — applying now.`);
         void this.stopByOperator();
       }
       return;
@@ -234,11 +236,11 @@ export class SessionManager implements TelemetryRecorder {
     this.gateway?.setRoom(this.run.room);
     this.gateway?.setRecorder(this);
     if (HEALTH_MONITOR_ENABLED) this.run.health.start();
-    console.log(`[SessionManager] Run ${params.runId} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
+    console.log(`[SessionManager] Run ${params.runToken} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
   }
 
   private createRun(params: BeginRunParams, status: RunLifecycleStatus): ActiveRun {
-    const room = `run:${params.runId}`;
+    const room = `run:${params.runToken}`;
     const health = new TargetHealthMonitor(params.targetUrl, HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, {
       onCrash: (failures) => void this.onTargetCrash(failures),
     }, HEALTH_CRASH_THRESHOLD);
@@ -247,9 +249,10 @@ export class SessionManager implements TelemetryRecorder {
     this.lastTerminal = null;
 
     return {
-      runId: params.runId,
+      runToken: params.runToken,
+      runCode: params.runCode,
       userId: params.userId,
-      ownerKey: guestOwnerKey(params.userId, params.runId),
+      ownerKey: guestOwnerKey(params.userId, params.runToken),
       ownerType: params.userId ? 'authenticated' : 'guest',
       targetUrl: params.targetUrl,
       currentUrl: params.targetUrl,
@@ -302,7 +305,7 @@ export class SessionManager implements TelemetryRecorder {
   /** Called from the run's finally block when the engine loop returns/throws. */
   public endRun(finalStatus: RunLifecycleStatus = 'COMPLETED'): void {
     if (!this.run) return;
-    const { runId } = this.run;
+    const { runToken } = this.run;
     // A confirmed server crash is terminal — the normal run-completion path must
     // not downgrade it back to COMPLETED when the stopped engine unwinds.
     const status: RunLifecycleStatus = this.run.crashTerminated ? 'CRASH_COMPLETED' : finalStatus;
@@ -311,7 +314,7 @@ export class SessionManager implements TelemetryRecorder {
     // Retain the final state so a post-completion refresh can restore it.
     this.lastTerminal = { snapshot: this.buildSnapshot(this.run), userId: this.run.userId };
     this.teardownRun();
-    console.log(`[SessionManager] Run ${runId} ended (${status})`);
+    console.log(`[SessionManager] Run ${runToken} ended (${status})`);
   }
 
   private teardownRun(): void {
@@ -447,7 +450,7 @@ export class SessionManager implements TelemetryRecorder {
    * whose request DOES carry the Bearer token.
    */
   private isOwner(run: ActiveRun, runId: string | undefined, userId: string | null): boolean {
-    if (typeof runId === 'string' && runId === run.runId) return true;
+    if (typeof runId === 'string' && runId === run.runToken) return true;
     return run.userId !== null && userId !== null && userId === run.userId;
   }
 
@@ -470,7 +473,7 @@ export class SessionManager implements TelemetryRecorder {
     // No live run: offer the retained final state to its owner (token or identity).
     const terminal = this.lastTerminal;
     if (!terminal) return null;
-    const ownsByToken = typeof runId === 'string' && runId === terminal.snapshot.runId;
+    const ownsByToken = typeof runId === 'string' && runId === terminal.snapshot.runToken;
     const ownsByIdentity = terminal.userId !== null && userId !== null && userId === terminal.userId;
     return ownsByToken || ownsByIdentity ? terminal.snapshot : null;
   }
@@ -478,7 +481,8 @@ export class SessionManager implements TelemetryRecorder {
   private buildSnapshot(run: ActiveRun): ActiveSessionSnapshot {
     const elapsed = run.engine.getElapsedActiveTimeMs?.() ?? Math.max(0, Date.now() - run.startedAt);
     return {
-      runId: run.runId,
+      runId: run.runCode,
+      runToken: run.runToken,
       ownerType: run.ownerType,
       targetUrl: run.targetUrl,
       currentUrl: run.currentUrl,
@@ -513,14 +517,14 @@ export class SessionManager implements TelemetryRecorder {
     run.status = 'INTERRUPTED';
     void this.persistStatus('INTERRUPTED');
     this.emitMilestone(`️ Operator disconnected — keeping session alive for ${Math.round(GRACE_MS / 1000)}s to allow reconnect.`);
-    console.log(`[SessionManager] Run ${run.runId} INTERRUPTED; grace timer armed (${GRACE_MS}ms).`);
+    console.log(`[SessionManager] Run ${run.runToken} INTERRUPTED; grace timer armed (${GRACE_MS}ms).`);
 
     run.graceTimer = setTimeout(() => {
       const active = this.run;
-      if (!active || active.runId !== run.runId) return;
+      if (!active || active.runToken !== run.runToken) return;
       active.status = 'DISCONNECTED';
       void this.persistStatus('DISCONNECTED');
-      console.log(`[SessionManager] Run ${active.runId} grace expired — terminating engine.`);
+      console.log(`[SessionManager] Run ${active.runToken} grace expired — terminating engine.`);
       // Engine.stop() unwinds run() whose finally calls endRun(); nothing else to do.
       void Promise.resolve(active.engine.stop?.('disconnect-grace')).catch((err) =>
         console.error('[SessionManager] Grace-expiry stop failed:', err),
@@ -584,14 +588,14 @@ export class SessionManager implements TelemetryRecorder {
 
   /** RunId of the active run, or null. Used to scope cross-process controls. */
   public getActiveRunId(): string | null {
-    return this.run?.runId ?? null;
+    return this.run?.runToken ?? null;
   }
 
   // Apply an operator control bridged from the API process, scoped to runId.
   // Ignored if this process holds no matching run (another worker owns it).
   public applyOperatorControl(command: OperatorCommand, runId: string | null): void {
     const run = this.run;
-    if (!run || (runId !== null && runId !== run.runId)) return;
+    if (!run || (runId !== null && runId !== run.runToken)) return;
     if (command === 'pause') void this.pauseByOperator();
     else if (command === 'resume') this.resumeByOperator();
     else void this.stopByOperator();

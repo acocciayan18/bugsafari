@@ -7,6 +7,7 @@ import { initRunTimer } from '../../stores/run/runTimer';
 import { bindGatewayToRunStore, connectAndRestore } from '../../stores/run/gatewayBinding';
 import { startRun, pauseRun, resumeRun, stopRun, saveRun, refreshHistory } from '../../stores/run/runCommands';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
+import { logger } from '../../utils/logger';
 
 import type { TestSessionStatus } from '../../stores/run/types';
 
@@ -81,17 +82,17 @@ function useInitializationWatchdog(
             if (dispatchedRef.current) return;
             dispatchedRef.current = true;
 
-            console.warn('[useDashboardController] Initialization timeout reached - dispatching cleanup to backend');
+            logger.warn('[useDashboardController] Initialization timeout reached - dispatching cleanup to backend');
             useRunStore.getState().setCleaningUp(true);
 
             try {
                 const gateway = getEngineGateway() as unknown as { forceStop?: () => Promise<void> };
                 if (typeof gateway.forceStop === 'function') {
                     await gateway.forceStop();
-                    console.log('[useDashboardController] Cleanup dispatched to backend');
+                    logger.debug('[useDashboardController] Cleanup dispatched to backend');
                 }
             } catch (error) {
-                console.error('[useDashboardController] Cleanup dispatch failed:', error);
+                logger.error('[useDashboardController] Cleanup dispatch failed:', error);
             }
 
             useRunStore.setState({
@@ -123,12 +124,12 @@ function useTransitionWatchdog(status: TestSessionStatus): void {
         if (status !== 'PAUSING' && status !== 'STOPPING') return;
 
         const timeout = setTimeout(async () => {
-            console.warn(`[useDashboardController] ${status} never settled - forcing release`);
+            logger.warn(`[useDashboardController] ${status} never settled - forcing release`);
             try {
                 const gateway = getEngineGateway() as unknown as { forceStop?: () => Promise<void> };
                 await gateway.forceStop?.();
             } catch (error) {
-                console.error('[useDashboardController] Transition cleanup failed:', error);
+                logger.error('[useDashboardController] Transition cleanup failed:', error);
             }
             // Only release if we are still stuck in the same transitional state.
             if (useRunStore.getState().status !== status) return;
@@ -177,6 +178,7 @@ export function useDashboardController() {
             browserConsole: s.browserConsole,
             isReconnecting: s.isReconnecting,
             reconnectAttempt: s.reconnectAttempt,
+            reconnectGaveUp: s.reconnectGaveUp,
             isRestoring: s.isRestoring,
             isQueued: s.isQueued,
             queuePosition: s.queuePosition,

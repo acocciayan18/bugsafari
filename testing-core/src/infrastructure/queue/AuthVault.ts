@@ -31,7 +31,7 @@ function readKey(raw: string | undefined): Buffer | null {
  * Ephemeral, encrypted, single-use store for target-app credentials crossing the
  * process boundary to a worker.
  *
- * The job payload never carries the secret — only the runId, which is already
+ * The job payload never carries the secret — only the runToken, which is already
  * public to the run's owner. Ciphertext lives under its own key with a short TTL
  * and is consumed with GETDEL, so it exists for exactly one read. This is what
  * makes authenticated runs safe to queue: BullMQ retains failed job payloads in
@@ -59,11 +59,11 @@ export class AuthVault {
     return new AuthVault(new Redis(redisUrl, { maxRetriesPerRequest: null }), key);
   }
 
-  private vaultKey(runId: string): string {
-    return `safari:auth:${runId}`;
+  private vaultKey(runToken: string): string {
+    return `safari:auth:${runToken}`;
   }
 
-  public async put(runId: string, auth: TargetAuthConfig): Promise<void> {
+  public async put(runToken: string, auth: TargetAuthConfig): Promise<void> {
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv(ALGORITHM, this.key, iv);
     const ct = Buffer.concat([cipher.update(JSON.stringify(auth), 'utf8'), cipher.final()]);
@@ -73,7 +73,7 @@ export class AuthVault {
       tag: cipher.getAuthTag().toString('base64'),
       ct: ct.toString('base64'),
     };
-    await this.redis.set(this.vaultKey(runId), JSON.stringify(sealed), 'EX', AUTH_TTL_SECONDS);
+    await this.redis.set(this.vaultKey(runToken), JSON.stringify(sealed), 'EX', AUTH_TTL_SECONDS);
   }
 
   /**
@@ -82,8 +82,8 @@ export class AuthVault {
    * to an unauthenticated one, which would report a clean result for a surface
    * that was never tested.
    */
-  public async take(runId: string): Promise<TargetAuthConfig | null> {
-    const raw = await this.redis.getdel(this.vaultKey(runId));
+  public async take(runToken: string): Promise<TargetAuthConfig | null> {
+    const raw = await this.redis.getdel(this.vaultKey(runToken));
     if (!raw) return null;
     try {
       const sealed = JSON.parse(raw) as SealedAuth;
@@ -100,8 +100,8 @@ export class AuthVault {
   }
 
   /** Best-effort removal for a cancelled or dead job. */
-  public async discard(runId: string): Promise<void> {
-    await this.redis.del(this.vaultKey(runId)).catch(() => undefined);
+  public async discard(runToken: string): Promise<void> {
+    await this.redis.del(this.vaultKey(runToken)).catch(() => undefined);
   }
 
   public async close(): Promise<void> {

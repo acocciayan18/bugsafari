@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM mcr.microsoft.com/playwright:v1.60.0-noble
+        FROM mcr.microsoft.com/playwright:v1.60.0-jammy
         WORKDIR /app
         ENV NODE_ENV=development
         COPY package.json package-lock.json ./
@@ -40,7 +40,7 @@ services:
         RUN npm ci --workspace testing-core --include-workspace-root
         COPY testing-core ./testing-core
         COPY shared ./shared
-        RUN npm run build --workspace shared
+        RUN npm run build --workspace shared --if-present
         RUN npm run build --workspace testing-core
         EXPOSE 3000
     environment:
@@ -98,7 +98,7 @@ services:
     build:
       context: .
       dockerfile_inline: |
-        FROM mcr.microsoft.com/playwright:v1.60.0-noble
+        FROM mcr.microsoft.com/playwright:v1.60.0-jammy
         WORKDIR /app
         ENV NODE_ENV=development
         COPY package.json package-lock.json ./
@@ -107,7 +107,7 @@ services:
         RUN npm ci --workspace testing-core --include-workspace-root
         COPY testing-core ./testing-core
         COPY shared ./shared
-        RUN npm run build --workspace shared
+        RUN npm run build --workspace shared --if-present
         RUN npm run build --workspace testing-core
     environment:
       - MONGODB_URI=${MONGODB_URI}

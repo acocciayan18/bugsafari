@@ -79,7 +79,11 @@ export function collapseFaultIntoBuffer<T extends IncidentReport | ForensicCrash
 ): T[] {
   const sig = liveFaultSignature(incoming);
   const existing = prev.find((f) => liveFaultSignature(f) === sig);
-  const merged = { ...incoming, occurrences: (existing?.occurrences ?? 0) + 1 } as T;
+  // A live emission carries no count (one occurrence → existing+1). A hydrated row
+  // carries its true accumulated total, which must not be discounted to the replay
+  // count — seed from whichever is larger so live ×N and restored ×N never disagree.
+  const occurrences = Math.max(incoming.occurrences ?? 1, (existing?.occurrences ?? 0) + 1);
+  const merged = { ...incoming, occurrences } as T;
   const rest = existing ? prev.filter((f) => liveFaultSignature(f) !== sig) : prev;
   return [merged, ...rest].slice(0, cap);
 }
