@@ -5,30 +5,30 @@ const featureCards = [
         tag: 'AI',
         title: 'Scriptless Traversal',
         description:
-            'Navigate complex microservices and state machines without writing a single manual test script. Let our AI map the topology.',
+            'Clicks through your pages, forms, and buttons on its own. No test scripts to write or maintain.',
     },
     {
         tag: 'ML',
         title: 'Adaptive Intelligence',
         description:
-            "The forensic engine learns your system's baseline behavior and identifies subtle deviations before they become catastrophic outages.",
+            'A scoring model learns which elements are worth testing and adjusts its choices as it explores.',
     },
     {
         tag: 'RT',
         title: 'Real-time Forensics',
         description:
-            'Rewind and replay system state with nanosecond precision. Analyze logic paths as they occurred in the live production environment.',
+            'Keeps the last 20 actions before a crash, so you can see exactly what led to it.',
     },
 ];
 
 const deepTraceChecks = [
     {
-        title: 'Logic Isolation',
-        description: 'Isolate specific execution branches across 1,000+ nodes.',
+        title: 'State Tracking',
+        description: 'Tracks each page state it visits during a run.',
     },
     {
-        title: 'Dependency Mapping',
-        description: 'Automatically detect hidden circular dependencies in real-time.',
+        title: 'Loop Detection',
+        description: 'Recognizes when it has already tried something and moves on.',
     },
 ];
 
@@ -68,13 +68,13 @@ const LandingPage = () => {
                     <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                         <div className="relative z-10 space-y-6">
                             <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-zinc-200 bg-zinc-50 rounded-full text-zinc-800 shadow-xs">
-                                <span className="font-mono text-[11px] uppercase tracking-widest font-bold">AI-Native Intelligence</span>
+                                <span className="font-mono text-[11px] uppercase tracking-widest font-bold">Automated Web Testing</span>
                             </div>
                             <h1 className="text-[48px] lg:text-[64px] leading-tight text-black font-extrabold uppercase">
-                                Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
+                                Find Bugs.<br/><span className="text-zinc-400">Automatically.</span>
                             </h1>
                             <p className="text-[16px] leading-[24px] text-zinc-600 max-w-lg">
-                                BugSafari leverages adaptive AI to perform forensic-level analysis on complex distributed systems. Identify root causes in seconds, not hours, with scriptless traversal.
+                                BugSafari explores your web app the way a real user would — clicking through pages, filling in forms, and testing inputs on its own. It finds crashes and errors without you writing a single test script.
                             </p>
                             <div className="flex flex-wrap gap-4 pt-4">
                                 <button 
@@ -98,43 +98,43 @@ const LandingPage = () => {
                                         <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                         <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                     </div>
-                                    <div className="flex-1 text-center font-mono text-[11px] text-zinc-500 font-bold">bug-safari-forensics-v2.trace</div>
+                                    <div className="flex-1 text-center font-mono text-[11px] text-zinc-500 font-bold">bugsafari-session.log</div>
                                 </div>
                                 <div className="p-4 space-y-4 font-mono text-[13px] bg-white text-zinc-800">
                                     <div className="flex gap-4">
                                         <div className="w-12 text-zinc-400 text-right select-none">124</div>
-                                        <div className="text-black"><span className="font-bold text-indigo-600">async</span> function <span className="underline decoration-zinc-300">resolveTrace</span>(packet) &#123;</div>
+                                        <div className="text-black"><span className="font-bold text-indigo-600">async</span> function <span className="underline decoration-zinc-300">handleClick</span>(element) &#123;</div>
                                     </div>
                                     <div className="flex gap-4 bg-zinc-50 border-l-2 border-zinc-400 py-1.5 px-2 rounded-r items-center shadow-xs">
                                         <div className="w-10 text-zinc-600 font-bold text-right select-none">125</div>
-                                        <div className="text-zinc-800">&nbsp; let result = <span className="font-bold text-indigo-600">await</span> forensicEngine.analyze(packet);</div>
+                                        <div className="text-zinc-800">&nbsp; let result = <span className="font-bold text-indigo-600">await</span> engine.testElement(element);</div>
                                         <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-black text-white text-[10px] font-bold rounded">
-                                            ANOMALY
+                                            CRASH
                                         </div>
                                     </div>
                                     <div className="flex gap-4">
                                         <div className="w-12 text-zinc-400 text-right select-none">126</div>
-                                        <div className="text-zinc-400">&nbsp; // AI suggests memory leak in packet buffer allocation</div>
+                                        <div className="text-zinc-400">&nbsp; // Unhandled promise rejection detected</div>
                                     </div>
                                     <div className="pt-4 border-t border-zinc-200/80 mt-4">
                                         <div className="grid grid-cols-3 gap-4">
                                             <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">CPU Usage</div>
-                                                <div className="text-[18px] font-bold">94.2%</div>
+                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Elements Scanned</div>
+                                                <div className="text-[18px] font-bold">842</div>
                                                 <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                     <div className="h-full bg-black rounded-full w-4/5"></div>
                                                 </div>
                                             </div>
                                             <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Memory</div>
-                                                <div className="text-[18px] font-bold">2.4 GB</div>
+                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">States Explored</div>
+                                                <div className="text-[18px] font-bold">63</div>
                                                 <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                     <div className="h-full bg-black rounded-full w-1/3"></div>
                                                 </div>
                                             </div>
                                             <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Confidence</div>
-                                                <div className="text-[18px] font-bold">98.4%</div>
+                                                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Risk Score</div>
+                                                <div className="text-[18px] font-bold">87</div>
                                                 <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                     <div className="h-full bg-black rounded-full w-11/12"></div>
                                                 </div>
@@ -147,26 +147,12 @@ const LandingPage = () => {
                     </div>
                 </section>
 
-                {/* Trust Section */}
-                <section className="py-12 border-y border-zinc-200 bg-zinc-50/50">
-                    <div className="max-w-[1440px] mx-auto px-6">
-                        <p className="text-center font-mono text-[13px] text-zinc-500 font-bold uppercase tracking-[0.2em] mb-10">Trusted by 2,000+ engineering teams globally</p>
-                        <div className="flex flex-wrap justify-center items-center gap-12 lg:gap-20 opacity-75">
-                            <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">VECTOR</div>
-                            <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">NEXUS</div>
-                            <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">CORE</div>
-                            <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">STRATUS</div>
-                            <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">CYPHER</div>
-                        </div>
-                    </div>
-                </section>
-
                 {/* Features Bento Grid (Fixed Icon Wrapping Issue with Solid Badges) */}
                 <section className="py-24 px-6 bg-white">
                     <div className="max-w-[1440px] mx-auto">
                         <div className="text-center mb-16 space-y-4">
-                            <h2 className="text-[40px] text-black font-extrabold uppercase">Engineered for Technical Precision</h2>
-                            <p className="text-[16px] text-zinc-600 max-w-2xl mx-auto">A clinical approach to system observability. No fluff, just the high-fidelity data you need to fix production faster.</p>
+                            <h2 className="text-[40px] text-black font-extrabold uppercase">What It Does</h2>
+                            <p className="text-[16px] text-zinc-600 max-w-2xl mx-auto">A straightforward testing tool. It shows you what broke and gives you the steps to reproduce it.</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {featureCards.map((card) => (
@@ -188,8 +174,8 @@ const LandingPage = () => {
                 <section className="py-24 px-6 bg-zinc-50/50 relative overflow-hidden border-y border-zinc-200">
                     <div className="max-w-[1440px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                         <div className="space-y-6">
-                            <h2 className="text-[40px] text-black font-extrabold uppercase">Deep Trace Analysis</h2>
-                            <p className="text-[16px] text-zinc-600 leading-relaxed">Visualize logic paths like never before. Our proprietary TraceMap technology renders complex execution flows as a navigable forensic graph.</p>
+                            <h2 className="text-[40px] text-black font-extrabold uppercase">See What It Found</h2>
+                            <p className="text-[16px] text-zinc-600 leading-relaxed">Every run keeps a record of the pages and actions it tried, so you can follow the exact steps that led to a bug.</p>
                             <ul className="space-y-4">
                                 {deepTraceChecks.map((item) => (
                                     <li key={item.title} className="flex items-start gap-3">
@@ -218,9 +204,9 @@ const LandingPage = () => {
                 <section className="py-32 px-6 text-center bg-white">
                     <div className="max-w-3xl mx-auto space-y-8">
                         <h2 className="text-[48px] text-black font-extrabold uppercase">Ready to start your safari?</h2>
-                        <p className="text-[16px] text-zinc-600">Join thousands of engineers who have stopped guessing and started knowing. Get full forensic visibility into your production systems today.</p>
+                        <p className="text-[16px] text-zinc-600">Point BugSafari at your app's URL and see what it finds.</p>
                         <div className="flex flex-col sm:flex-row justify-center gap-4">
-                            <button 
+                            <button
                                 onClick={() => navigate('/login')}
                                 className="px-10 py-4 bg-black text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all uppercase tracking-widest text-xs cursor-pointer"
                             >
@@ -229,9 +215,6 @@ const LandingPage = () => {
                             <button className="px-10 py-4 border border-zinc-200 rounded-lg text-black font-medium bg-white shadow-xs hover:bg-zinc-50 transition-all uppercase tracking-widest text-xs cursor-pointer">
                                 Schedule Demo
                             </button>
-                        </div>
-                        <div className="pt-8">
-                            <p className="font-mono text-[11px] text-zinc-500 font-bold uppercase tracking-widest">No credit card required • 14-day free trial • Unlimited agents</p>
                         </div>
                     </div>
                 </section>
@@ -243,10 +226,10 @@ const LandingPage = () => {
                     <div className="space-y-4">
                         <div className="text-[20px] font-extrabold text-black uppercase tracking-tighter">BugSafari</div>
                         <p className="text-[14px] text-zinc-500 font-medium max-w-xs">
-                            © 2026 BugSafari Inc. Forensic Debugging for Modern Systems.
+                            © 2026 BugSafari. Automated testing for web apps.
                         </p>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 md:gap-12">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 md:gap-12">
                         <div className="flex flex-col gap-3">
                             <span className="font-mono text-[11px] font-extrabold text-black uppercase">Resources</span>
                             <button onClick={() => navigate('/explore')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Documentation</button>
@@ -265,17 +248,10 @@ const LandingPage = () => {
                             <a className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors" href="#">Careers</a>
                             <button onClick={() => navigate('/community')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Blog</button>
                         </div>
-                        <div className="flex flex-col gap-3">
-                            <span className="font-mono text-[11px] font-extrabold text-black uppercase">Status</span>
-                            <a className="flex items-center gap-2 font-mono text-[11px] text-black font-bold hover:underline transition-all" href="#">
-                                <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                ALL SYSTEMS OPERATIONAL
-                            </a>
-                        </div>
                     </div>
                 </div>
                 <div className="max-w-[1440px] mx-auto px-6 py-6 border-t border-zinc-200 text-center md:text-left">
-                    <p className="font-mono text-[11px] text-zinc-500 font-bold">MADE WITH PRECISION FOR THE MODERN ENGINEERING STACK.</p>
+                    <p className="font-mono text-[11px] text-zinc-500 font-bold">BUILT FOR TESTING WEB APPS.</p>
                 </div>
             </footer>
         </div>

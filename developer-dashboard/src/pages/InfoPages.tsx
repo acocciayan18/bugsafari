@@ -229,15 +229,6 @@ export function ExplorePage() {
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">Infiltration Profiles</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">One Target URL, Five Ways In</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every run picks one profile, which gates which scenario families fire and derives the pathfinder's mode — exploration, coverage, or targeted probe.</p>
-                    </div>
-                    <ProfileTabs />
-                </div>
-
                 <FaqAccordion items={[
                     { q: 'Do I need to write test scripts?', a: 'No. The recursive DOM parser discovers interactive elements straight from the live page on every step — there is no fixture, selector list, or path to hand-author before a run.' },
                     { q: 'How does it avoid clicking the same button forever?', a: 'Five independent layers — repeat-strike thresholds, forward look-ahead, ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking — keep the state graph moving toward unexplored territory instead of circling.' },
