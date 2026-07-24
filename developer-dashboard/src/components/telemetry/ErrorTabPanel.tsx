@@ -4,6 +4,7 @@ import { incidentToFindingView, reportToFindingView, type FindingView } from '..
 import AiDiagnosticCard from './AiDiagnosticCard';
 import { AttributionBadges as AttributionBadgesBase, CopyButton, SeverityBadge } from '../common/ForensicCardKit';
 import FindingEvidence from '../common/FindingEvidence';
+import { AlertTriangle } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
 // PROPS INTERFACE
@@ -73,7 +74,7 @@ function LiveFindingCard({
       <div className="px-3 py-3 sm:px-4 flex flex-wrap items-start justify-between gap-x-2 gap-y-2 border-b border-(--border-hairline)">
         <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-(--status-critical-border) text-(--status-critical-fg) text-[13px] font-bold">
-            {icon}
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

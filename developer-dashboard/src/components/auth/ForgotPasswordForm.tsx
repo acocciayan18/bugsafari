@@ -1,7 +1,7 @@
 import { useState, useRef, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Check, Mail, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import AuthShell from './AuthShell';

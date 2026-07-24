@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SECTION_META } from './sectionMeta';
 
 const PageShell = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => {
     const navigate = useNavigate();
@@ -181,9 +182,8 @@ function BugTaxonomyGrid() {
     );
 }
 
-export function ExplorePage() {
+export function ExploreContent() {
     return (
-        <PageShell title="Explore the Exploration Engine" subtitle="How BugSafari discovers, scores, and traverses a Single-Page Application's interaction surface with zero test scripts.">
             <div className="space-y-16">
                 <SplitSection
                     eyebrow="Scriptless Discovery"
@@ -247,13 +247,19 @@ export function ExplorePage() {
 
                 <DarkCta heading="Watch It Explore Your App" sub="Point BugSafari at a target URL and see the state graph, the risk scores, and the live telemetry build in real time." />
             </div>
+    );
+}
+
+export function ExplorePage() {
+    return (
+        <PageShell title={SECTION_META.explore.title} subtitle={SECTION_META.explore.subtitle}>
+            <ExploreContent />
         </PageShell>
     );
 }
 
-export function FeaturesPage() {
+export function FeaturesContent() {
     return (
-        <PageShell title="Core Features & Architecture" subtitle="Scriptless traversal, a self-learning risk model, and forensic-grade evidence for every finding — engineered for Single-Page Applications.">
             <div className="space-y-16">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
@@ -351,13 +357,19 @@ export function FeaturesPage() {
 
                 <DarkCta heading="See Every Feature Live" sub="Run BugSafari against your own app and watch scoring, scenarios, and forensic capture work together in one session." />
             </div>
+    );
+}
+
+export function FeaturesPage() {
+    return (
+        <PageShell title={SECTION_META.features.title} subtitle={SECTION_META.features.subtitle}>
+            <FeaturesContent />
         </PageShell>
     );
 }
 
-export function CommunityPage() {
+export function CommunityContent() {
     return (
-        <PageShell title="Community & Practice" subtitle="Who BugSafari is built for, and how it fits into a real development loop.">
             <div className="space-y-16">
                 <SplitSection
                     eyebrow="Who It's For"
@@ -420,13 +432,19 @@ export function CommunityPage() {
 
                 <DarkCta heading="Bring Your Own App" sub="Whether you're prepping a demo tonight or hardening something before deploy, start a run and see what BugSafari finds." />
             </div>
+    );
+}
+
+export function CommunityPage() {
+    return (
+        <PageShell title={SECTION_META.community.title} subtitle={SECTION_META.community.subtitle}>
+            <CommunityContent />
         </PageShell>
     );
 }
 
-export function AboutPage() {
+export function AboutContent() {
     return (
-        <PageShell title="About BugSafari" subtitle="An autonomous, adaptive exploratory testing engine built to close the predictability gap in Single-Page Application testing.">
             <div className="space-y-16">
                 <div className="space-y-6 text-zinc-700 leading-relaxed text-base max-w-4xl">
                     <p>BugSafari was born out of a simple frustration: modern Single-Page Applications hide subtle regressions, timing races, and validation bypasses that scripted, linear test suites never think to try. Randomized "monkey" testing has the opposite problem — plenty of activity, little structural intelligence, weak reproducibility, and low forensic value.</p>
@@ -484,6 +502,13 @@ export function AboutPage() {
 
                 <DarkCta heading="Put It to Work" sub="Start a free run and see BugSafari's exploration, scoring, and forensic reporting on your own application." />
             </div>
+    );
+}
+
+export function AboutPage() {
+    return (
+        <PageShell title={SECTION_META.about.title} subtitle={SECTION_META.about.subtitle}>
+            <AboutContent />
         </PageShell>
     );
 }

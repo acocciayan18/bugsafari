@@ -3,7 +3,7 @@
 // to POST /api/support/tickets.
 
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';

@@ -12,7 +12,7 @@ import type {
   ForensicCrashReport,
   IncidentReport,
 } from '../types';
-import type { FindingAttribution } from '../../../shared/types.js';
+import type { ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
 import { liveFaultSignature } from './errorDeduplication';
 
 export interface FindingView {
@@ -36,6 +36,8 @@ export interface FindingView {
   actionSteps?: ForensicActionStep[];
   advice?: string;
   attribution?: FindingAttribution;
+  /** Structured constraint-bypass evidence — drives the finding card's metadata grid. */
+  bypass?: ConstraintBypassDetail;
 }
 
 // The element the fault attaches to = the last real selector in the timeline
@@ -64,6 +66,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     reproductionSteps: inc.reproductionPlaybook ?? [],
     advice: inc.advice,
     attribution: inc.attribution,
+    bypass: inc.bypass,
   };
 }
 
@@ -101,5 +104,6 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     actionSteps: bug.actionSteps,
     advice: bug.advice,
     attribution: bug.attribution,
+    bypass: bug.bypass,
   };
 }

@@ -4,6 +4,7 @@ import type {
   ActionOutcome,
   ActionRecord,
   ActionType,
+  ConstraintBypassDetail,
   FaultSeverity,
   FindingAttribution,
   RunTerminationOutcome,
@@ -83,6 +84,8 @@ export interface ConfirmedBug {
   stateFingerprint?: StateFingerprint;
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
+  /** Structured evidence for a client-side constraint bypass — drives the metadata grid. */
+  bypass?: ConstraintBypassDetail;
   /** Backend-classified severity — surfaced as the saved report's severity badge. */
   severity?: FaultSeverity;
   /** True when this bug was already streamed to the Errors tab by StabilityMonitor

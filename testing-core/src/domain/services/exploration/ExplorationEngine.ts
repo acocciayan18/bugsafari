@@ -463,6 +463,7 @@ export class ExplorationEngine {
       advice: bug.advice,
       attribution: bug.attribution,
       culpritSelector: bug.selector || undefined,
+      bypass: bug.bypass,
     };
     this.activeGateway.emitIncidentReport(incident);
   }

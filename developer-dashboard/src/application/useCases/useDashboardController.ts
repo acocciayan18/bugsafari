@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '../../stores/authStore';
 import { useRunStore } from '../../stores/run/runStore';

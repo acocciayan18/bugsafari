@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { toast } from 'sonner';
+import { toast } from '../infrastructure/notifications/ToastProvider';
 import type { UserProfile, UserSettings, ProfileUpdateData } from '../types';
 import { loadGuestSettings, saveGuestSettings } from '../utils/settingsStorage';
 import { buildAuthHeaders } from '../utils/authHeaders';

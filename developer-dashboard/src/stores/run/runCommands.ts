@@ -1,4 +1,4 @@
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';

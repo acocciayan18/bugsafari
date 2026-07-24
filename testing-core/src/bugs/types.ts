@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
-import type { TestingTypeId } from '../../../shared/types.js';
+import type { ConstraintBypassDetail, TestingTypeId } from '../../../shared/types.js';
 
 export type BugClass =
   | 'INPUT_SANITIZATION_FAILURE'
@@ -29,6 +29,8 @@ export interface BugFinding {
     statusCode?: number;
     durationMs?: number;
     isCascadingFailure?: boolean;
+    // Structured bypass evidence — set only by the constraint-bypass finder.
+    bypass?: ConstraintBypassDetail;
     previousContext?: {
       type: string;
       timestamp: number;

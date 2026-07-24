@@ -83,16 +83,19 @@ export class BugFinderRunner {
     const attribution = resolveScenarioAttribution();
     const stateFingerprint = await captureStateFingerprint(ctx.page).catch(() => undefined);
 
+    const bypass = finding.evidence?.bypass;
     this.deps.registerConfirmedBug({
       bugId: deriveBugId(finding, ctx),
       type: 'FINDER',
       message: finding.evidence?.message ?? finding.title,
       selector: finding.evidence?.selector ?? '',
-      payloadUsed: finding.evidence?.actionExecuted ?? '',
+      // Prefer the actual submitted payload (may be ''); fall back to the action label.
+      payloadUsed: bypass ? bypass.payload : finding.evidence?.actionExecuted ?? '',
       advice: definition.remediation,
       timestamp: new Date(),
       severity: finding.severity,
       stateFingerprint,
+      bypass,
       attribution: {
         bugClass: finding.bugClass,
         cwe: definition.cwe,

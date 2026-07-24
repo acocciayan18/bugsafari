@@ -7,7 +7,7 @@
 // single-sourced, so the two views can never drift in field handling.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, splitObservations } from '../../utils/reproductionFormat';
@@ -51,6 +51,47 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   );
 }
 
+// One label/value row of the bypass metadata grid. Values render in a code chip so
+// selectors, payloads and endpoints stay monospaced and copy-clean.
+function BypassRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="mt-0.5 text-[13px] leading-relaxed text-(--text-primary) break-words">{children}</div>
+    </div>
+  );
+}
+
+const Chip = ({ text }: { text: string }) => (
+  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-[12px] text-(--text-secondary)">
+    {text}
+  </code>
+);
+
+// Structured constraint-bypass evidence — the exact field, payload, stripped guard
+// and accepting endpoint, so a developer never parses them out of the prose summary.
+function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> }) {
+  const payload = bypass.payload === '' ? '""' : bypass.payload;
+  return (
+    <div>
+      <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Bypass Details</div>
+      <div className="grid grid-cols-1 gap-3 rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 sm:grid-cols-2">
+        <BypassRow label="Target element">{bypass.element}</BypassRow>
+        <BypassRow label="Bypass action">
+          Stripped <Chip text={bypass.strippedAttribute} />, then submitted
+        </BypassRow>
+        <BypassRow label="Payload"><Chip text={payload} /></BypassRow>
+        <BypassRow label="Endpoint">
+          <Chip text={`${bypass.method} ${bypass.endpoint}`} />
+        </BypassRow>
+        <BypassRow label="Response">
+          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span> — server accepted the value
+        </BypassRow>
+      </div>
+    </div>
+  );
+}
+
 // Reproduction: prefer the structured, replayable trace (same timeline Verify Fix
 // replays), fall back to the prose checklist, then an empty-state message. Observed
 // results live in the narrative steps, so they surface beneath the structured trace.
@@ -81,6 +122,13 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
 
   return (
     <>
+      {/* Structured bypass evidence — constraint-bypass findings only */}
+      {view.bypass && (
+        <div className="px-3 pt-3 sm:px-4">
+          <BypassDetails bypass={view.bypass} />
+        </div>
+      )}
+
       {/* Human-executable reproduction */}
       <div className="px-3 pt-3 sm:px-4">
         <Reproduction view={view} />

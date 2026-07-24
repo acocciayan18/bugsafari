@@ -2,6 +2,7 @@ import type { Page, Response } from 'playwright';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
+import { humanizeElement, resolveElementLabel } from '../../../../shared/reproduction.js';
 
 // Window (ms) to let the submitted request settle so its response can be judged.
 const OBSERVE_WINDOW_MS = 1200;
@@ -17,6 +18,21 @@ function safeOrigin(url: string): string {
   } catch {
     return '';
   }
+}
+
+// Domain-stripped request path (pathname + query) for developer-facing evidence.
+function relativeEndpoint(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+// Prose form of the submitted value — empty string reads as an explicit phrase.
+function describePayload(value: string): string {
+  return value === '' ? 'an empty value' : `"${value}"`;
 }
 
 function sameOrigin(url: string, origin: string): boolean {
@@ -127,14 +143,14 @@ export const constraintBypassFinder: BugFinder = {
 
     const origin = safeOrigin(ctx.targetUrl);
     // Holder object (not a bare let) so TS doesn't narrow the closure-mutated value.
-    const captured: { hit: { status: number; url: string } | null } = { hit: null };
+    const captured: { hit: { status: number; url: string; method: string } | null } = { hit: null };
     const onResponse = (response: Response): void => {
       if (captured.hit) return;
       try {
         const method = response.request().method();
         const stateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
         if (stateChanging && response.status() < 400 && sameOrigin(response.url(), origin)) {
-          captured.hit = { status: response.status(), url: response.url() };
+          captured.hit = { status: response.status(), url: response.url(), method };
         }
       } catch {
         // response detached — ignore
@@ -153,17 +169,33 @@ export const constraintBypassFinder: BugFinder = {
     const accepted = captured.hit;
     if (!accepted) return []; // server rejected/errored or nothing submitted → not confirmed
 
+    const label = resolveElementLabel(element);
+    const endpoint = relativeEndpoint(accepted.url);
+    const message =
+      `The "${label}" field enforces ${plan.constraint} only in the browser. ` +
+      `After removing that guard and submitting ${describePayload(plan.violating)}, ` +
+      `${accepted.method} ${endpoint} accepted it (HTTP ${accepted.status}). ` +
+      `The server never re-validates this rule, so any client can bypass it.`;
+
     return [
       {
         bugClass: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
         title: 'Client-only validation bypassed — server accepted invalid input',
         severity: 'MEDIUM',
         evidence: {
-          message: `Stripped ${plan.constraint} on ${element.selector}, submitted a browser-rejected value, and ${accepted.url} accepted it (HTTP ${accepted.status}). The constraint was enforced only client-side.`,
+          message,
           selector: element.selector,
           actionExecuted: 'form-constraint-bypass',
           stateHash: ctx.stateHash,
           statusCode: accepted.status,
+          bypass: {
+            element: humanizeElement(element),
+            payload: plan.violating,
+            strippedAttribute: plan.constraint,
+            endpoint,
+            method: accepted.method,
+            status: accepted.status,
+          },
         },
       },
     ];

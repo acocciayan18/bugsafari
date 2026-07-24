@@ -1,7 +1,8 @@
 import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { Toaster, toast, type ToasterProps } from 'sonner';
+import { Toaster, toast as sonnerToast, type ToasterProps, type ExternalToast } from 'sonner';
 import { useThemeStore } from '../../stores/themeStore';
+import { TOAST_ID } from './toastId';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Toast Types
@@ -110,22 +111,24 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
     const { variant = 'telemetry', message, onDismiss } = options;
     const duration = options.duration ?? (variant === 'error' ? 5000 : 2000);
 
+    // Forced id: this call always lands in the app's single toast slot, replacing
+    // whatever was showing instead of stacking a new one.
     // sonner hands the render callback the toast id, not a close handler — the ✕
     // must dismiss by that id.
-    const toastId = toast.custom(
-      (id) => <CustomToast message={message} onClose={() => toast.dismiss(id)} />,
-      { duration, onDismiss, onAutoClose: onDismiss, unstyled: true, className: 'toast-custom' },
+    const toastId = sonnerToast.custom(
+      (id) => <CustomToast message={message} onClose={() => sonnerToast.dismiss(id)} />,
+      { id: TOAST_ID, duration, onDismiss, onAutoClose: onDismiss, unstyled: true, className: 'toast-custom' },
     );
 
     return toastId !== undefined ? String(toastId) : undefined;
   }, []);
 
-const dismissToast = useCallback((id: string) => {
-    toast.dismiss(id);
+  const dismissToast = useCallback((id: string) => {
+    sonnerToast.dismiss(id);
   }, []);
 
   const dismissAll = useCallback(() => {
-    toast.dismiss();
+    sonnerToast.dismiss();
   }, []);
 
   const success = useCallback((message: string, options?: Partial<ToastOptions>) => {
@@ -164,7 +167,7 @@ const dismissToast = useCallback((id: string) => {
         position="top-center"
         theme={theme}
         closeButton
-        visibleToasts={3}
+        visibleToasts={1}
         icons={HIDDEN_TOAST_ICONS}
         toastOptions={TOAST_OPTIONS}
         {...toasterProps}
@@ -174,7 +177,30 @@ const dismissToast = useCallback((id: string) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Re-export toast for direct sonner usage if needed
+// toast — sonner wrapper that forces every call into the single app-wide slot
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export { toast };
+// Any call site using this instead of useToast() still lands in the same slot —
+// id is always overridden, so callers can't accidentally opt back into stacking.
+const withSlot = (data?: ExternalToast): ExternalToast => ({ ...data, id: TOAST_ID });
+
+export const toast = Object.assign(
+  (message: Parameters<typeof sonnerToast>[0], data?: ExternalToast) => sonnerToast(message, withSlot(data)),
+  {
+    success: (message: Parameters<typeof sonnerToast.success>[0], data?: ExternalToast) =>
+      sonnerToast.success(message, withSlot(data)),
+    error: (message: Parameters<typeof sonnerToast.error>[0], data?: ExternalToast) =>
+      sonnerToast.error(message, withSlot(data)),
+    info: (message: Parameters<typeof sonnerToast.info>[0], data?: ExternalToast) =>
+      sonnerToast.info(message, withSlot(data)),
+    warning: (message: Parameters<typeof sonnerToast.warning>[0], data?: ExternalToast) =>
+      sonnerToast.warning(message, withSlot(data)),
+    message: (message: Parameters<typeof sonnerToast.message>[0], data?: ExternalToast) =>
+      sonnerToast.message(message, withSlot(data)),
+    loading: (message: Parameters<typeof sonnerToast.loading>[0], data?: ExternalToast) =>
+      sonnerToast.loading(message, withSlot(data)),
+    custom: (jsx: Parameters<typeof sonnerToast.custom>[0], data?: ExternalToast) =>
+      sonnerToast.custom(jsx, withSlot(data)),
+    dismiss: sonnerToast.dismiss,
+  },
+);

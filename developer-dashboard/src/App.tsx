@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';

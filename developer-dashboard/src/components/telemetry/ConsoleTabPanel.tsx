@@ -53,7 +53,8 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
 
   return (
     <div className="-mx-3 -mt-3 sm:-mx-4 sm:-mt-4">
-    <div className="sticky top-0 z-10 -mt-3 -mx-3 sm:-mt-4 sm:-mx-4 flex flex-wrap items-center gap-1.5 px-3 py-2 sm:px-4 mb-1 bg-(--surface-panel) border-b border-(--border-hairline)">{FILTERS.map((level) => (
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1.5 px-3 py-2 sm:px-4 bg-(--surface-panel) border-b border-(--border-hairline)">
+        {FILTERS.map((level) => (
           <button
             key={level}
             type="button"

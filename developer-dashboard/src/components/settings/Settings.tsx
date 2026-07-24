@@ -26,7 +26,7 @@ import {
   Mail,
   Hash,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useUserSettings } from '../../hooks/useUserSettings';

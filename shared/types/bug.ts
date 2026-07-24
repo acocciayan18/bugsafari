@@ -124,6 +124,26 @@ export interface ReproductionSnapshot {
   narrative: string[];
 }
 
+/**
+ * Structured evidence for a confirmed CLIENT_SIDE_CONSTRAINT_BYPASS — the fields the
+ * finding card's metadata grid renders so a developer reads the exact field, payload,
+ * stripped guard, and accepting endpoint instead of parsing them out of prose.
+ */
+export interface ConstraintBypassDetail {
+  /** Human element descriptor, e.g. `Input: "Business Name" (id: #businessName)`. */
+  element: string;
+  /** The browser-rejected value the server accepted ('' ⇒ empty submission). */
+  payload: string;
+  /** The client-only constraint that was stripped (required, maxlength=40, type=email). */
+  strippedAttribute: string;
+  /** Relative request path the value reached — domain stripped. */
+  endpoint: string;
+  /** State-changing method of the accepting request. */
+  method: string;
+  /** HTTP status the server answered with. */
+  status: number;
+}
+
 export interface IncidentReport {
   // Stable finding id, matching the confirmed-bug ledger. Lets a later verdict
   // (e.g. an in-run reproduction result) patch this exact card instead of adding one.
@@ -162,6 +182,8 @@ export interface IncidentReport {
   // Heuristic expert-system diagnosis (vulnerability class / CWE / fix) surfaced
   // on the finding card. Optional — absent when the classifier had no match.
   aiDiagnostics?: IntelligentDiagnosis;
+  // Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS.
+  bypass?: ConstraintBypassDetail;
 }
 
 export interface ForensicCrashReport {

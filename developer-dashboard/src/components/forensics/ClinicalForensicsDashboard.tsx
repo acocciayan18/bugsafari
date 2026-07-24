@@ -298,7 +298,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor:pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -309,7 +309,7 @@ export default function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor:pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -318,7 +318,7 @@ export default function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor:pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop

@@ -1,7 +1,7 @@
 import { useState, useRef, type FormEvent } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CircleX, Eye, EyeOff, Lock, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';

@@ -4,7 +4,7 @@ import { defaultOptimizationSettings, describeTermination } from '../../../../sh
 import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
-import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
+import type { ActionRecord, ConstraintBypassDetail, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
@@ -258,6 +258,7 @@ export class StartExplorationUseCase {
                 reproductionActions?: ActionRecord[];
                 attribution?: FindingAttribution;
                 stateFingerprint?: StateFingerprint;
+                bypass?: ConstraintBypassDetail;
                 severity?: string;
                 resolvedStackTrace?: string;
             }) => ({
@@ -276,6 +277,7 @@ export class StartExplorationUseCase {
                 timestamp: bug.timestamp,
                 attribution: bug.attribution,
                 stateFingerprint: bug.stateFingerprint,
+                bypass: bug.bypass,
                 severity: bug.severity,
             }))
             : clientFindings.map((finding, index) => ({

@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import type { ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
+import type { ConstraintBypassDetail, ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
 
@@ -60,6 +60,8 @@ export interface ICaughtBug {
     confidenceScore?: number;
     corroborated?: boolean;
   };
+  /** Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS. */
+  bypass?: ConstraintBypassDetail;
 }
 
 export interface IForensicTrace {
@@ -326,6 +328,19 @@ const sessionSchema = new Schema(
           },
           // Client-state snapshot restored before regression replay (cross-page faults).
           stateFingerprint: { type: StateFingerprintSchemaField, required: false, default: null },
+          // Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS.
+          bypass: {
+            type: {
+              element: { type: String, default: '' },
+              payload: { type: String, default: '' },
+              strippedAttribute: { type: String, default: '' },
+              endpoint: { type: String, default: '' },
+              method: { type: String, default: '' },
+              status: { type: Number, default: 0 },
+            },
+            required: false,
+            default: null,
+          },
         }],
       },
       required: false,

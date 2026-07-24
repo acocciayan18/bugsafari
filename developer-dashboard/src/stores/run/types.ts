@@ -1,4 +1,5 @@
 import type { RunLifecycleStatus } from '../../types';
+import { TOAST_ID } from '../../infrastructure/notifications/toastId';
 
 // Unified Test Session Status Type for the visibility matrix
 export type TestSessionStatus = 'IDLE' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
@@ -21,8 +22,8 @@ export const RUN_ID_STORAGE_KEY = 'bugsafari:runId';
 // jobId of an enqueued distributed run — needed to rejoin the queue-position stream
 export const JOB_ID_STORAGE_KEY = 'bugsafari:jobId';
 
-// Single shared toast slot so a newer status replaces the previous one in place
-export const STATUS_TOAST_ID = 'session-status';
+// Now the same app-wide slot — kept as an alias so callers don't need to change.
+export const STATUS_TOAST_ID = TOAST_ID;
 
 export const ENGINE_TERMINAL_ACTIONS = new Set([
     'engine-stopped',

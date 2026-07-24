@@ -11,7 +11,7 @@ import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
 import { deleteRecord as deleteSafariRecord, exportRecord } from '../../services/historyService';
-import { toast } from 'sonner';
+import { toast } from '../../infrastructure/notifications/ToastProvider';
 import SessionComparisonModal from './SessionComparisonModal';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';

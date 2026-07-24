@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { toast } from 'sonner';
+import { toast } from '../infrastructure/notifications/ToastProvider';
 import { isTokenExpired } from '../utils/tokenUtils';
 import {
     refreshAuthToken,
