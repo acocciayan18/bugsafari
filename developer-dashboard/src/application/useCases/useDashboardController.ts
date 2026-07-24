@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '../../stores/authStore';
 import { useRunStore } from '../../stores/run/runStore';
@@ -15,8 +14,10 @@ export type { TestSessionStatus } from '../../stores/run/types';
 export type { RunState as DashboardState } from '../../stores/run/runStore';
 
 const INITIALIZATION_TIMEOUT_MS = 30000;
-// A PAUSING/STOPPING settle is a flush of in-flight work, not a long operation.
-const TRANSITION_TIMEOUT_MS = 15000;
+// Idempotent re-delivery cadence for a stalled PAUSING/STOPPING transition. The
+// backend guards duplicate pause/stop, so a re-issued command is a safe keep-alive
+// against a control emit dropped on a flaky socket — never an escalation.
+const TRANSITION_REDELIVER_MS = 15000;
 
 // Ref-counted so StrictMode's synthetic unmount never disconnects a live socket
 let mountCount = 0;
@@ -116,28 +117,34 @@ function useInitializationWatchdog(
     }, [armed]);
 }
 
-// PAUSING/STOPPING lock every control until the engine confirms the transition.
-// If that confirmation never arrives (engine died mid-settle, socket outside the
-// room), the dashboard was stranded with no way out. Re-issue the stop and release.
-function useTransitionWatchdog(status: TestSessionStatus): void {
+// PAUSING and STOPPING are settled by the engine's own telemetry — engine-paused,
+// or engine-stopped→IDLE, applied through ingestTelemetry — so a slow transition is
+// progress, not a failure. This guards only the one way a transition stalls: a
+// control emit dropped on a flaky socket. It re-delivers the SAME command on an
+// interval until the engine leaves the transitional state. Pause re-delivers PAUSE
+// and Stop re-delivers STOP — the two never cross, so a slow pause can never become a
+// stop — and neither raises an error: the engine WILL reach a terminal state (its
+// run() finally always emits IDLE). Genuine unrecoverability is a lost connection,
+// which ConnectionStatusOverlay surfaces with a reload prompt, not a transition timer.
+function useTransitionRedelivery(status: TestSessionStatus): void {
     useEffect(() => {
         if (status !== 'PAUSING' && status !== 'STOPPING') return;
 
-        const timeout = setTimeout(async () => {
-            logger.warn(`[useDashboardController] ${status} never settled - forcing release`);
-            try {
-                const gateway = getEngineGateway() as unknown as { forceStop?: () => Promise<void> };
-                await gateway.forceStop?.();
-            } catch (error) {
-                logger.error('[useDashboardController] Transition cleanup failed:', error);
-            }
-            // Only release if we are still stuck in the same transitional state.
-            if (useRunStore.getState().status !== status) return;
-            useRunStore.getState().markLaunchFailed(`Engine did not confirm ${status.toLowerCase()} within ${TRANSITION_TIMEOUT_MS / 1000}s`);
-            toast.error('The engine stopped responding mid-transition. Controls released.');
-        }, TRANSITION_TIMEOUT_MS);
+        const gateway = getEngineGateway();
+        // Stop re-delivers via forceStop (socket with HTTP fallback) so it survives a
+        // dropped socket; pause is socket-only, matching its backend control channel.
+        const redeliver = status === 'PAUSING'
+            ? () => gateway.pauseTest()
+            : () => void gateway.forceStop().catch((error) => logger.error('[useDashboardController] Stop re-delivery failed:', error));
 
-        return () => clearTimeout(timeout);
+        const interval = setInterval(() => {
+            // Re-deliver only while still stuck in the very same transition.
+            if (useRunStore.getState().status !== status) return;
+            logger.warn(`[useDashboardController] ${status} still settling — re-delivering ${status === 'PAUSING' ? 'pause' : 'stop'}.`);
+            redeliver();
+        }, TRANSITION_REDELIVER_MS);
+
+        return () => clearInterval(interval);
     }, [status]);
 }
 
@@ -187,7 +194,7 @@ export function useDashboardController() {
     );
 
     useInitializationWatchdog(state.isInitializing, state.isTestRunning, state.liveFrame !== null, state.status);
-    useTransitionWatchdog(state.status);
+    useTransitionRedelivery(state.status);
 
     const actions = useMemo(() => ({
         handleTimeLimitExceeded: useRunStore.getState().handleTimeLimitExceeded,

@@ -318,7 +318,7 @@ export default function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor:pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor:pointer!!!  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -361,6 +361,9 @@ export default function ClinicalForensicsDashboard({
               aria-label="Target URL"
               value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
+              }}
               disabled={isActiveSession}
               className="w-full h-11 border border-(--border-strong) rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)"
               placeholder="Enter target URL to initiate..."

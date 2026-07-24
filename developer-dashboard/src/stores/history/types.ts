@@ -16,8 +16,10 @@ export interface ForensicTrace {
 }
 
 export interface EvaluationSafari {
+    // Public identifier used for ALL routing/lookups (navigate, delete, export,
+    // compare, React keys) — the RUN- code, never the internal Mongo _id.
     id: string;
-    // Public RUN- code shown to operators; falls back to `id` when a legacy row lacks it.
+    // Same public RUN- code, kept for the searchable/display field.
     runId?: string;
     targetUrl: string;
     date: string;
@@ -94,7 +96,9 @@ export function formatDate(dateStr: string): string {
 
 export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]): EvaluationSafari[] {
     return sessions.map((session) => ({
-        id: session.id,
+        // Public code is the canonical id everywhere in the UI; the raw _id
+        // (session.id) is only a defensive fallback for a legacy row without one.
+        id: session.runId ?? session.id,
         runId: session.runId,
         targetUrl: session.targetUrl,
         date: formatDate(session.startedAt),

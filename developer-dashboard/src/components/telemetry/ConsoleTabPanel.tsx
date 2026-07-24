@@ -77,7 +77,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
           {browserConsole.length === 0 ? 'No browser console logs captured yet.' : `No ${filter} logs in this session.`}
         </div>
       ) : (
-        <div className="leading-5 pb-6">
+        <div className="leading-5 pb-6 ">
           {visible.map((log, idx) => (
             <div
               key={`${log.timestamp}-${idx}`}

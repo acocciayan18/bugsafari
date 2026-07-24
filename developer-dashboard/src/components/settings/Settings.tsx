@@ -640,7 +640,7 @@ export default function Settings() {
         )}
       </header>
 
-      <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-6">
+      <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
         <div className="border-b border-(--border-hairline) px-4 py-4 sm:px-6">
           <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
           <p className="mt-1 text-[13px] text-(--text-secondary) sm:text-sm">

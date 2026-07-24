@@ -903,9 +903,13 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // Prefer the public code in the filename; fall back to the _id for legacy docs.
       const exportName = record.runId ?? String(record._id);
       console.log('[API] Record found for export:', exportName);
+      // Strip internal identifiers from the downloaded payload — the export keys
+      // off the public runId, never the Mongo _id / owner userId.
+      const { _id: _ignoredId, userId: _ignoredUser, __v: _ignoredVersion, ...safeRecord } =
+        record as typeof record & { __v?: unknown };
       response.setHeader('Content-Type', 'application/json');
       response.setHeader('Content-Disposition', `attachment; filename="safari-${exportName}.json"`);
-      response.json(record);
+      response.json(safeRecord);
     } catch (error) {
       console.error('[API] Error in GET /api/history/export/:id:', error);
       response.status(500).json({ error: 'Failed to export the record.' });
@@ -943,8 +947,6 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         }
         response.json({
           analysis: {
-            id: latest._id?.toString(),
-            forensicRunId: latest.forensicRunId?.toString(),
             rootCause: latest.rootCause,
             riskScore: latest.riskScore,
             riskLevel: latest.riskLevel,
@@ -983,8 +985,6 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
 
       response.json({
         analysis: {
-          id: analysis._id?.toString(),
-          forensicRunId: analysis.forensicRunId?.toString(),
           rootCause: analysis.rootCause,
           riskScore: analysis.riskScore,
           riskLevel: analysis.riskLevel,
@@ -1047,8 +1047,6 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       console.log('[API] Analysis generated successfully, risk score:', result.analysis.riskScore);
       response.json({
         analysis: {
-          id: result.analysis.forensicRunId?.toString(),
-          forensicRunId: result.analysis.forensicRunId?.toString(),
           rootCause: result.analysis.rootCause,
           riskScore: result.analysis.riskScore,
           riskLevel: result.analysis.riskLevel,
@@ -1257,7 +1255,6 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         : null;
 
       const formattedAnalysis = (analysis || caughtBugs.length > 0) ? {
-        id: analysis?._id?.toString(),
         rootCause: caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? ''),
         riskScore: effectiveRiskScore,
         riskLevel: effectiveRiskLevel,
@@ -1271,10 +1268,9 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
 
       // Build complete report
       const report = {
-        // Executive Summary. `runId` stays the internal id string existing clients
-        // key off; `runCode` is the public RUN- code for display/deep-links.
-        runId: session._id?.toString(),
-        runCode: runCode ?? sessionDoc.runId,
+        // Executive Summary. `runId` is the PUBLIC RUN- code only — the internal
+        // _id is never emitted to the client.
+        runId: runCode ?? sessionDoc.runId ?? '',
         url: session.targetUrl,
         date: session.executionDate,
         status: session.status,

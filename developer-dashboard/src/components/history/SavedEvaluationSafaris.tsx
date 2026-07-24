@@ -16,7 +16,7 @@ import SessionComparisonModal from './SessionComparisonModal';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Lock, RefreshCcw, Search, Trash2, TriangleAlert, Upload } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, Trash2, TriangleAlert, Upload } from 'lucide-react';
 
 // Upper bound on side-by-side comparison columns before the table stops being readable.
 const MAX_COMPARE = 4;
@@ -143,7 +143,7 @@ export default function SavedEvaluationSafaris() {
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-4">
+      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
         {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
         <div className="hidden min-w-0 items-center lg:flex">
           <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
@@ -169,8 +169,8 @@ export default function SavedEvaluationSafaris() {
         </div>
       </header>
 
-      <main className="custom-scrollbar m-3 mb-0 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-0 lg:m-6 lg:mb-0">
-        <div className="border-b border-[var(--border-hairline)] px-4 py-4 sm:px-6">
+      <main className="custom-scrollbar m-3 mb-5 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-5 lg:m-5 lg:mb-5">
+        <div className="border-b border-[var(--border-hairline)] px-4 py-4  sm:px-6">
           {/* Title + controls stack into rows until there's width for a single line. */}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -375,9 +375,16 @@ export default function SavedEvaluationSafaris() {
                         {evalItem.targetUrl}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
-                        <span className="truncate font-mono">ID: {evalItem.runId ?? evalItem.id}</span>
-                        <span aria-hidden="true">•</span>
-                        <span>{evalItem.date}</span>
+                       <span className="inline-flex items-center truncate font-mono">
+                          <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+                          <span>{evalItem.runId ?? evalItem.id}</span>
+                        </span>
+                        <span className="inline-flex items-center truncate font-mono">
+                          <Calendar className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+                          <span>{evalItem.date}</span>
+                        </span>
+
+                       
                         <span aria-hidden="true">•</span>
                         <span>
                           {evalItem.steps} steps,
@@ -451,22 +458,7 @@ export default function SavedEvaluationSafaris() {
         </div>
       </main>
 
-      <footer className="mb-4 px-4 pb-safe sm:mb-6 sm:px-6">
-        <div className="mb-4 flex h-2 gap-1 rounded-full">
-          {progressSegments.map((idx) => (
-            <div
-              key={idx}
-              className={`h-full flex-1 rounded-full ${idx === 1 ? 'bg-[var(--surface-invert)]' : 'bg-[var(--surface-raised)]'
-                }`}
-            />
-          ))}
-        </div>
-        <div className="text-center">
-          <span className="font-mono text-[13px] text-[var(--text-tertiary)]">
-            END OF FORENSIC RECORD MANIFEST - V.8.2.19
-          </span>
-        </div>
-      </footer>
+      
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog

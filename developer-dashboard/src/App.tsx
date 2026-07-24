@@ -5,13 +5,14 @@
 // AuthGuard handles route protection automatically
 
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import ClinicalForensicsDashboard from './components/forensics/ClinicalForensicsDashboard';
 import ForensicReport from './components/forensics/ForensicReport';
+import GuestSavePromptModal from './components/auth/GuestSavePromptModal';
 import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ForgotPasswordForm from './components/auth/ForgotPasswordForm';
@@ -30,8 +31,10 @@ type ViewType = 'dashboard' | 'history' | 'settings';
 
 function AuthAppContent() {
   const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [showGuestSavePrompt, setShowGuestSavePrompt] = useState(false);
 
   const { user, isAuthenticated, isGuestMode, logout } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handler = () => logout();
@@ -47,6 +50,11 @@ function AuthAppContent() {
     useDashboardController();
 
   const handleSaveSessionToHistory = () => {
+    // Guests never persist — upsell an account instead of firing a doomed save.
+    if (isGuestMode) {
+      setShowGuestSavePrompt(true);
+      return;
+    }
     if (state.isSessionSaved) {
       toast('Session has already been saved.');
       return;
@@ -205,6 +213,15 @@ function AuthAppContent() {
           }
         />
       </Routes>
+
+      <GuestSavePromptModal
+        isOpen={showGuestSavePrompt}
+        onClose={() => setShowGuestSavePrompt(false)}
+        onCreateAccount={() => {
+          setShowGuestSavePrompt(false);
+          navigate('/signup');
+        }}
+      />
     </ThemeProvider>
   );
 }

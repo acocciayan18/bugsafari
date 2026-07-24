@@ -10,6 +10,7 @@ import type {
   ReplayStepStats,
 } from '../../../../../shared/types.js';
 import { runReplaySession } from './ReplaySession.js';
+import { normalizeRunCode } from '../../../../../shared/runCode.js';
 import { isReplayVerifiable } from './replayProbes.js';
 import { decideVerdict, summarize } from './verdict.js';
 import type { LoadedFinding } from './types.js';
@@ -47,7 +48,8 @@ export class RegressionPlaybookVerifier {
       }
     };
 
-    if (!isValidObjectId(sessionId) || !bugId) {
+    // Accept the public RUN- code or a legacy raw ObjectId; loadFinding resolves either.
+    if ((!normalizeRunCode(sessionId) && !isValidObjectId(sessionId)) || !bugId) {
       return this.failed(sessionId, bugId, 'UNKNOWN', startedAt, 'Invalid sessionId or bugId.');
     }
 
@@ -149,8 +151,16 @@ export class RegressionPlaybookVerifier {
   private async loadFinding(sessionId: string, bugId: string, userId: string): Promise<LoadedFinding | null> {
     if (!isValidObjectId(userId)) return null;
 
+    // Resolve the public RUN- code (or a raw ObjectId) to an ownership-scoped
+    // selector — the client only ever holds the public code now.
+    const code = normalizeRunCode(sessionId);
+    const selector = code
+      ? { runId: code }
+      : isValidObjectId(sessionId) ? { _id: new Types.ObjectId(sessionId) } : null;
+    if (!selector) return null;
+
     const doc = await SessionModel.findOne({
-      _id: new Types.ObjectId(sessionId),
+      ...selector,
       userId: new Types.ObjectId(userId),
     })
       .select('targetUrl actionSteps forensicTrace')

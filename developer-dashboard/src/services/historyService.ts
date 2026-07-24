@@ -5,6 +5,7 @@
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
 import type { ActionRecord, StateFingerprint } from '../../../shared/types.js';
+import { isRunCode } from '../../../shared/runCode.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { refreshAuthToken } from '../utils/authRefresh';
 
@@ -241,10 +242,10 @@ export async function deleteRecord(recordId: string): Promise<void> {
     throw new Error(error);
   }
 
-  // Validate it's a valid MongoDB ObjectId format (24 hex characters)
-  const isValidObjectId = /^[a-fA-F0-9]{24}$/.test(recordId);
-  if (!isValidObjectId) {
-    const error = 'Invalid recordId format: must be a 24-character hex string';
+  // Accept the public RUN- code or a legacy 24-char ObjectId; the backend resolves either.
+  const isValidId = isRunCode(recordId) || /^[a-fA-F0-9]{24}$/.test(recordId);
+  if (!isValidId) {
+    const error = 'Invalid recordId format: expected a RUN- code.';
     console.error('[historyService]  Validation error:', error);
     throw new Error(error);
   }
@@ -252,7 +253,7 @@ export async function deleteRecord(recordId: string): Promise<void> {
   try {
     console.log('[historyService]  Sending DELETE request to /api/history/:id...');
 
-// Remove encodeURIComponent - MongoDB ObjectIds don't need encoding and it can cause issues
+// RUN- codes and ObjectIds are URL-safe (hex + dash) — no encoding needed.
     const response = await fetchWithAuthRetry(`/api/history/${recordId}`, getFetchOptions('DELETE'));
 
     console.log('[historyService] Response status:', response.status);

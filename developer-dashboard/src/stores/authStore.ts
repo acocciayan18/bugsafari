@@ -181,6 +181,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     // treat the run as authenticated and persist it.
     continueAsGuest: () => {
         clearSession();
+        // Drop any prior authenticated user's cached identity so a guest never inherits it.
+        localStorage.removeItem('bugsafari_displayName');
         localStorage.setItem('bugsafari_guest', 'true');
         set({ token: null, user: null, isGuestMode: true });
         console.log('[authStore] Guest mode enabled');
@@ -200,7 +202,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
         set({ token: null, user: null, isGuestMode: false });
         clearSession();
+        // Full teardown: no guest remnants survive a logout or guest-mode exit.
         localStorage.removeItem('bugsafari_guest');
+        localStorage.removeItem('bugsafari_guest_settings');
+        localStorage.removeItem('bugsafari_displayName');
 
         toast.info('Signed out successfully');
         console.log('[authStore] User logged out');

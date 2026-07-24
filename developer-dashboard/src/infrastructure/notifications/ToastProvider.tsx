@@ -58,6 +58,50 @@ function CustomToast({ message, onClose }: CustomToastProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// renderToast — the single entry every toast in the app goes through
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface RenderToastOptions {
+  message: string;
+  variant?: ToastVariant;
+  duration?: number;
+  id?: string | number;
+  onDismiss?: () => void;
+}
+
+// Message currently held in the shared slot, tracked so an identical repeat of the
+// same event is skipped instead of re-triggering a flicker.
+let activeSlotMessage: string | null = null;
+
+// Every toast renders the same CustomToast jsx into one shared id by default, so a
+// new call replaces the old one in place — never a second stacked toast, and never
+// a stale render bleeding through (the failure of mixing custom + title paths).
+function renderToast(options: RenderToastOptions): string | undefined {
+  const { message, variant = 'telemetry', onDismiss } = options;
+  const targetId = options.id ?? TOAST_ID;
+  const duration = options.duration ?? (variant === 'error' ? 5000 : 2000);
+  const isSharedSlot = targetId === TOAST_ID;
+
+  // Duplicate suppression: same message already occupying the slot → no-op.
+  if (isSharedSlot && activeSlotMessage === message) return String(targetId);
+  if (isSharedSlot) activeSlotMessage = message;
+
+  const releaseSlot = () => {
+    if (isSharedSlot && activeSlotMessage === message) activeSlotMessage = null;
+    onDismiss?.();
+  };
+
+  // sonner hands the render callback the toast id, not a close handler — the ✕
+  // must dismiss by that id.
+  const toastId = sonnerToast.custom(
+    (id) => <CustomToast message={message} onClose={() => sonnerToast.dismiss(id)} />,
+    { id: targetId, duration, onDismiss: releaseSlot, onAutoClose: releaseSlot, unstyled: true, className: 'toast-custom' },
+  );
+
+  return toastId !== undefined ? String(toastId) : undefined;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Toast Context
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -105,22 +149,10 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
   // Store is readable regardless of provider order, so mounting above App is fine.
   const theme = useThemeStore((s) => (s.isDark ? 'dark' : 'light'));
 
+  // Variant no longer changes the visuals — every toast shares one shell; it only
+  // buys errors a longer read. All calls land in the single shared slot.
   const showToast = useCallback((options: ToastOptions): string | undefined => {
-    // Variant no longer changes the visuals — every toast shares one shell; it only
-    // buys errors a longer read.
-    const { variant = 'telemetry', message, onDismiss } = options;
-    const duration = options.duration ?? (variant === 'error' ? 5000 : 2000);
-
-    // Forced id: this call always lands in the app's single toast slot, replacing
-    // whatever was showing instead of stacking a new one.
-    // sonner hands the render callback the toast id, not a close handler — the ✕
-    // must dismiss by that id.
-    const toastId = sonnerToast.custom(
-      (id) => <CustomToast message={message} onClose={() => sonnerToast.dismiss(id)} />,
-      { id: TOAST_ID, duration, onDismiss, onAutoClose: onDismiss, unstyled: true, className: 'toast-custom' },
-    );
-
-    return toastId !== undefined ? String(toastId) : undefined;
+    return renderToast(options);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
@@ -177,30 +209,26 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// toast — sonner wrapper that forces every call into the single app-wide slot
+// toast — non-React call sites (stores, async handlers) route through renderToast
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Any call site using this instead of useToast() still lands in the same slot —
-// id is always overridden, so callers can't accidentally opt back into stacking.
-const withSlot = (data?: ExternalToast): ExternalToast => ({ ...data, id: TOAST_ID });
+// Every variant renders the same CustomToast into the shared slot, so a store's
+// toast.success and a component's toast.error never stack or fight over the id.
+// Callers may still pass an explicit `id`/`duration` in `data` (e.g. run status).
+const emit = (message: string, variant: ToastVariant, data?: ExternalToast) =>
+  renderToast({ message, variant, id: data?.id, duration: data?.duration, onDismiss: data?.onDismiss });
 
 export const toast = Object.assign(
-  (message: Parameters<typeof sonnerToast>[0], data?: ExternalToast) => sonnerToast(message, withSlot(data)),
+  (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
   {
-    success: (message: Parameters<typeof sonnerToast.success>[0], data?: ExternalToast) =>
-      sonnerToast.success(message, withSlot(data)),
-    error: (message: Parameters<typeof sonnerToast.error>[0], data?: ExternalToast) =>
-      sonnerToast.error(message, withSlot(data)),
-    info: (message: Parameters<typeof sonnerToast.info>[0], data?: ExternalToast) =>
-      sonnerToast.info(message, withSlot(data)),
-    warning: (message: Parameters<typeof sonnerToast.warning>[0], data?: ExternalToast) =>
-      sonnerToast.warning(message, withSlot(data)),
-    message: (message: Parameters<typeof sonnerToast.message>[0], data?: ExternalToast) =>
-      sonnerToast.message(message, withSlot(data)),
-    loading: (message: Parameters<typeof sonnerToast.loading>[0], data?: ExternalToast) =>
-      sonnerToast.loading(message, withSlot(data)),
+    success: (message: string, data?: ExternalToast) => emit(message, 'success', data),
+    error: (message: string, data?: ExternalToast) => emit(message, 'error', data),
+    info: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
+    warning: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
+    message: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
+    loading: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     custom: (jsx: Parameters<typeof sonnerToast.custom>[0], data?: ExternalToast) =>
-      sonnerToast.custom(jsx, withSlot(data)),
+      sonnerToast.custom(jsx, { ...data, id: data?.id ?? TOAST_ID }),
     dismiss: sonnerToast.dismiss,
   },
 );
