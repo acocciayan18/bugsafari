@@ -1305,6 +1305,23 @@ export class ExplorationLoop {
     // triggered so it neither re-queues nor inflates the untriggered count that
     // drives endless re-seeding, keeping exploration on the target origin.
     const offSite = probe.href !== null && this.leavesTargetOrigin(probe.href);
+
+    // Same-origin target="_blank": drive the tab in a bounded sub-session instead of
+    // blocking it forever, then record the same self-loop outcome below — from this
+    // page's point of view the click changed nothing, so the graph is unaffected.
+    if (!offSite && probe.newTab && !probe.deadEnd && this.deps.tabs.canExploreSecondary()) {
+      if (await this.deps.tabs.exploreViaControl(page, target.selector)) {
+        this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
+        this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'secondary-tab-explored',
+          selector: target.selector,
+          message: `Explored the tab opened by ${humanizeElement(target)} and returned to the app under test.`,
+        });
+        return true;
+      }
+    }
+
     if (offSite || probe.newTab || probe.deadEnd) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       this.deps.clusterRegistry.markTriggered(structureHash, target.selector, step);

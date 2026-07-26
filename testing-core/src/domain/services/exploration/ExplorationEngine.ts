@@ -1,4 +1,4 @@
-import type { Page, Request, Response } from 'playwright';
+import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
 import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
@@ -59,7 +59,8 @@ import { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import { NetworkFailureCascadeTracker } from './NetworkFailureCascadeTracker.js';
 import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
-import type { CleanActionStep, ConfirmedBug, ForensicErrorParams, RunResult, RunTerminationOutcome, RuntimeMetrics, StopReason } from './types.js';
+import { TabWindowManager } from './TabWindowManager.js';
+import type { CleanActionStep, ConfirmedBug, ExplorationLoopDeps, ForensicErrorParams, RunResult, RunTerminationOutcome, RuntimeMetrics, StopReason } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCHES (Addressing Critical Vulnerabilities)
@@ -114,6 +115,12 @@ export class ExplorationEngine {
   // Clustered state-space coverage layer (keyed by normalized structure hash).
   // Saturation thresholds resolved from optimizationSettings in the constructor.
   private readonly clusterRegistry: StateClusterRegistry;
+  // Resolved graph/coverage settings, kept as fields so a secondary-tab sub-session
+  // can build isolated collaborators configured identically to the primary's.
+  private readonly saturationVisits: number;
+  private readonly saturationInteractions: number;
+  private readonly pathfinderMode: PathfinderMode;
+  private readonly explorationSeed: number | undefined;
   // Per-(selector, category) payload-escalation level for adaptive fuzzing.
   private readonly escalationTracker = new EscalationTracker();
   // Consecutive defensive/error-route detector — drives URL-aware error-state
@@ -269,6 +276,8 @@ export class ExplorationEngine {
     const maxInteractions = optimizationSettings?.['page-saturation-interactions']
       ?? defaultOptimizationSettings['page-saturation-interactions'] ?? 8;
     this.clusterRegistry = new StateClusterRegistry({ maxVisits, maxInteractions });
+    this.saturationVisits = maxVisits;
+    this.saturationInteractions = maxInteractions;
     console.log(`[ExplorationEngine] Page-saturation caps:`, { maxVisits, maxInteractions });
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
@@ -278,11 +287,13 @@ export class ExplorationEngine {
     // Reproducibility seed (optional). One seed drives BOTH the edge-selection
     // softmax and fuzz payload/vector choice, so a seeded run replays identically.
     const explorationSeed = optimizationSettings?.['exploration-seed'];
+    this.explorationSeed = explorationSeed;
     seedScenarioRandom(explorationSeed);
     console.log(`[ExplorationEngine] Exploration seed:`, explorationSeed ?? '(unseeded — non-deterministic)');
 
     // Derive and wire the scenario-aware pathfinder mode.
     const pathfinderMode = ExplorationEngine.derivePathfinderMode(selectedScenarios);
+    this.pathfinderMode = pathfinderMode;
     this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode, explorationSeed });
     console.log(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
 
@@ -626,7 +637,8 @@ export class ExplorationEngine {
     return 'CLICK';
   }
 
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo): Promise<RunResult> {
+  /** `authOrigins` are ORIGINS only — the target's auth config never enters the engine. */
+  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo, authOrigins: readonly string[] = []): Promise<RunResult> {
     // Initialize runtime metrics tracking
     this.runtimeMetrics = {
       startTime: Date.now(),
@@ -822,11 +834,9 @@ export class ExplorationEngine {
     await this.persistBrainSnapshot('start');
     this.lastActedTarget = null;
 
-    // Page-scoped wiring is applied through one routine so the deepest recovery
-    // rung (page recreation) rebuilds a fresh page identically to launch — no
-    // listener/telemetry drift between the initial page and a recreated one.
-    const handleFramenavigated = (): void => {
-      const url = page.url();
+    // Page-agnostic observation sinks. TabWindowManager owns which page's events reach
+    // them, so the same run-scoped state is fed by whichever tab currently has focus.
+    const onNavigated = (url: string): void => {
       if (!url) return;
       lastKnownUrl = url;
       // Phase 3: Track page count when navigating
@@ -835,12 +845,11 @@ export class ExplorationEngine {
       void reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
     };
 
-    const handleRequest = (request: Request): void => {
+    const onNetworkRequest = (resourceType: string): void => {
       const t = this.lastActedTarget;
       if (!t) {
         return;
       }
-      const resourceType = request.resourceType();
       if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
       // Only reward network activity plausibly caused by this action: within a short
       // causal window and under a per-action cap. Background SPA chatter (socket.io
@@ -867,88 +876,84 @@ export class ExplorationEngine {
 
     // Capture the status of top-level document navigations only (not subresources
     // or in-page fetches) so the loop can flag an HTTP ≥400 route without reading
-    // response bodies. Guarded — a teardown race must never break navigation.
-    const handleResponse = (response: Response): void => {
-      try {
-        const request = response.request();
-        if (request.resourceType() !== 'document' || !request.isNavigationRequest()) return;
-        if (response.frame() !== page.mainFrame()) return;
-        lastMainFrameStatus = { path: normalizeRoutePath(response.url()), status: response.status() };
-        void reportNavigationDefects(navigationFinder.observeRedirectHop({
-          url: response.url(),
-          route: lastMainFrameStatus.path,
-          status: lastMainFrameStatus.status,
-          timestampMs: Date.now(),
-        }));
-      } catch {
-        /* response already gone — ignore */
-      }
-    };
-
-    // Wire fault + console capture onto an app-opened tab/popup, then arm the same
-    // handler on it so a popup-of-a-popup is covered too. Errors on these pages are
-    // otherwise invisible (the explorer never drives them).
-    const attachSecondaryPage = (popup: Page): void => {
-      popup.on('popup', attachSecondaryPage);
-      void stabilityMonitor.attachSecondaryPage(popup).catch(() => undefined);
-      emitter.emitMilestone(` Monitoring app-opened tab: ${popup.url() || 'about:blank'}`);
-    };
-
-    const attachPageListeners = (p: Page): void => {
-      stabilityMonitor.attachDialogAutoDismiss(p);
-      stabilityMonitor.attachExceptionMonitoring(p);
-      stabilityMonitor.attachCrashMonitoring(p);
-      p.on('request', handleRequest);
-      p.on('response', handleResponse);
-      stabilityMonitor.attachNetworkMonitoring(p);
-      p.on('framenavigated', handleFramenavigated);
-      // Capture faults on any tab the target opens from this page.
-      p.on('popup', attachSecondaryPage);
+    // response bodies. The document/main-frame filtering happens in TabWindowManager,
+    // which owns the per-page listener and knows which page the response belongs to.
+    const onDocumentResponse = (url: string, status: number): void => {
+      lastMainFrameStatus = { path: normalizeRoutePath(url), status };
+      void reportNavigationDefects(navigationFinder.observeRedirectHop({
+        url,
+        route: lastMainFrameStatus.path,
+        status: lastMainFrameStatus.status,
+        timestampMs: Date.now(),
+      }));
     };
 
     //  Safari Initialized (milestone)
     emitter.emitMilestone(' Safari Initialized');
 
-    attachPageListeners(page);
+    // Forward-declared: the loop deps hold `tabs`, `tabs` holds `driveSecondary`, and
+    // `driveSecondary` derives its deps from the loop's. The cycle is broken by reading
+    // loopDeps lazily at call time, which is always after assignment.
+    let loopDeps: ExplorationLoopDeps;
 
-    //  Start the independent 33 ms frame loop the instant the page object exists.
-    emitter.startFrameCaptureLoop(page);
+    // Bounded sub-session on an approved secondary tab: the same loop, but with an
+    // isolated graph/coverage layer, a non-consuming timebox, popup-scoped health, and
+    // a stop that also fires when the tab closes itself.
+    const driveSecondary = async (tab: Page, budget: number, deadlineMs: number): Promise<void> => {
+      const subLoop = new ExplorationLoop({
+        ...loopDeps,
+        pathNavigator: new StateGraphNavigator({ mode: this.pathfinderMode, explorationSeed: this.explorationSeed }),
+        clusterRegistry: new StateClusterRegistry({
+          maxVisits: this.saturationVisits,
+          maxInteractions: this.saturationInteractions,
+        }),
+        routeExhaustion: new RouteExhaustionTracker(),
+        // Never pageHealthGuard.ensureHealthy — its deepest rung recreates the PRIMARY.
+        ensurePageHealth: async (p) => ({
+          page: p,
+          status: PageHealthGuard.isInvalidContext(p) ? 'unrecoverable' as const : 'healthy' as const,
+        }),
+        // A self-closing popup must read as a stop, not as a crash finding.
+        isStopRequested: () => this.isStopRequested || tab.isClosed(),
+        // isTimeboxExceeded (not checkTimeboxAndTerminateIfExceeded): the latter is a
+        // one-shot latch, and consuming it here would stop the outer loop ever timing out.
+        checkTimebox: () => this.isTimeboxExceeded() || Date.now() >= deadlineMs,
+      });
+      await subLoop.execute(tab, budget);
+    };
 
-    // Deepest recovery rung: replace a dead/blank page with a fresh, fully re-wired
-    // one navigated back to the target (strict guard reinstalled if enabled).
-    const recreatePage = async (): Promise<Page | null> => {
-      navigationFinder.noteEngineNavigation();
-      try {
-        const context = page.context();
-        emitter.stopFrameCaptureLoop();
+    const tabs = new TabWindowManager({
+      context: page.context(),
+      telemetry: emitter,
+      stabilityMonitor,
+      getTargetUrl: () => this.targetUrl,
+      getTargetOrigin: () => this.targetOrigin,
+      authOrigins,
+      strictUrlLock: this.strictUrlLock,
+      setActivePage: (p) => { this.activePage = p; },
+      onNavigated,
+      onNetworkRequest,
+      onDocumentResponse,
+      noteEngineNavigation: () => navigationFinder.noteEngineNavigation(),
+      ensureDomReady: (p) => this.ensureDomReady(p, emitter),
+      attachAfterNavigation: async (p) => {
+        this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
+          p,
+          (bug) => this.registerConfirmedBug(bug),
+        );
+      },
+      disposeAfterNavigation: () => {
         if (this.cleanupStabilityMonitor) {
           this.cleanupStabilityMonitor();
           this.cleanupStabilityMonitor = null;
         }
-        if (!page.isClosed()) {
-          try { await page.close(); } catch { /* already gone */ }
-        }
-        const fresh = await context.newPage();
-        page = fresh;
-        this.activePage = fresh;
-        if (this.strictUrlLock) {
-          await new StrictUrlLockGuard(targetUrl, emitter).install(fresh);
-        }
-        attachPageListeners(fresh);
-        emitter.startFrameCaptureLoop(fresh);
-        await fresh.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        handleFramenavigated();
-        await this.ensureDomReady(fresh, emitter);
-        this.cleanupStabilityMonitor = await stabilityMonitor.attachAfterNavigation(
-          fresh,
-          (bug) => this.registerConfirmedBug(bug),
-        );
-        return fresh;
-      } catch (err) {
-        console.error('[ExplorationEngine] Page recreation failed:', err instanceof Error ? err.message : String(err));
-        return null;
-      }
-    };
+      },
+      driveSecondary,
+    });
+
+    // Wires the launch page, focuses it, starts the 33 ms frame loop, and arms
+    // context-level new-tab detection — all before the first navigation.
+    await tabs.adoptPrimary(page);
 
     // Universal invalid-context recovery + strict-lock drift restore, applied
     // once per exploration iteration by the loop via ensurePageHealth().
@@ -957,7 +962,7 @@ export class ExplorationEngine {
       getTargetUrl: () => this.targetUrl,
       getTargetOrigin: () => this.targetOrigin,
       strictUrlLock: this.strictUrlLock,
-      recreatePage,
+      recreatePage: () => tabs.recreateFocused(),
       recordRecovery: (url, strategy) => {
         navigationFinder.noteEngineNavigation();
         return this.recordActionTrace(
@@ -1008,7 +1013,7 @@ export class ExplorationEngine {
         { actionType: 'NAVIGATE', humanIdentifier: targetUrl, url: targetUrl },
       );
 
-      handleFramenavigated(); // emit the real post-navigation URL
+      onNavigated(page.url()); // emit the real post-navigation URL
 
       await this.ensureDomReady(page, emitter);
 
@@ -1029,7 +1034,7 @@ export class ExplorationEngine {
       });
 
       // Delegate the incremental step-by-step exploration to ExplorationLoop.
-      const loop = new ExplorationLoop({
+      loopDeps = {
         parser: this.parser,
         scorer: this.scorer,
         hashManager: this.hashManager,
@@ -1045,6 +1050,7 @@ export class ExplorationEngine {
         visitedStructures: this.visitedStructures,
         actionExecutor,
         stateRestorer,
+        tabs,
         telemetry: emitter,
         runtimeMetrics: this.runtimeMetrics,
         isStopRequested: () => this.isStopRequested,
@@ -1072,9 +1078,9 @@ export class ExplorationEngine {
         registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
         bugFinderRunner,
         sessionGuardActive: this.authenticatedRun,
-      });
+      };
 
-      runResult = await loop.execute(page, maxSteps);
+      runResult = await new ExplorationLoop(loopDeps).execute(page, maxSteps);
       return runResult;
     } finally {
       //  Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
@@ -1126,8 +1132,9 @@ export class ExplorationEngine {
         }));
       }
 
-      page.off('framenavigated', handleFramenavigated);
-      page.off('response', handleResponse);
+      // Detaches every page listener this run armed and reclaims any tab the target
+      // opened; the primary page itself is closed by the browser engine's teardown.
+      await tabs.dispose();
       if (!this.freezeActionTraceRecording) {
         await this.persistBrainSnapshot('finish');
       }

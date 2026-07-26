@@ -281,8 +281,15 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         this.activeEngine.recordAuthenticationMarker();
       }
 
+      // Origins only — the auth config itself never crosses into the engine (least
+      // privilege), but a login host must stay approved so an SSO popup can complete.
+      const authOrigins =
+        targetAuth?.mode === 'credentials' && targetAuth.loginUrl
+          ? [new URL(targetAuth.loginUrl, targetUrl).origin]
+          : [];
+
       // Pass browserInfo to the engine for telemetry collection
-      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo);
+      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo, authOrigins);
     } catch (err: unknown) {
       //  RACE CONDITION FIX: only treat this as an expected, graceful stop
       // when stop() actually tagged this run as cancelled. Previously this

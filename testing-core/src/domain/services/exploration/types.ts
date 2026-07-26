@@ -40,6 +40,7 @@ import type { RouteExhaustionTracker } from './RouteExhaustionTracker.js';
 import type { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import type { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
+import type { TabWindowManager } from './TabWindowManager.js';
 
 // ─────────────────────────────────────────────────────────────
 // Shared data shapes
@@ -216,6 +217,8 @@ export interface ExplorationLoopDeps {
   visitedStructures: Set<string>;
   actionExecutor: ActionExecutor;
   stateRestorer: StateRestorer;
+  /** Tab/window lifecycle owner — lets the lookahead drive an approved same-origin new tab. */
+  tabs: TabWindowManager;
   telemetry: TelemetryEmitter;
   runtimeMetrics: RuntimeMetrics;
   isStopRequested(): boolean;
