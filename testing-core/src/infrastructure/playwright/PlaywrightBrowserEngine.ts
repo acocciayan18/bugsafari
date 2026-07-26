@@ -8,6 +8,7 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import type { RunResult } from '../../domain/services/exploration/types.js';
 import { installReflectionOracle } from '../../bugs/finders/reflectionOracle.js';
 import { TargetAuthenticator } from './TargetAuthenticator.js';
+import type { SessionRestoreFn } from '../../domain/services/exploration/SessionPreservationGuard.js';
 import { setScrubValues, clearScrubValues } from '../../domain/services/telemetry/credentialScrub.js';
 
 /**
@@ -266,6 +267,10 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // login landed (below), so the engine explores the authenticated surface —
       // not the login URL, which would just bounce it back to the public form.
       let explorationUrl = targetUrl;
+      // Injected into the engine on an authenticated run so the session guard can
+      // re-authenticate in place after a session loss. The engine receives this
+      // opaque callback only — never the credentials/state (least privilege).
+      let restoreSession: SessionRestoreFn | undefined;
       if (targetAuth) {
         // Only a form login types literals into the page; a seeded session has no
         // value the target could echo back, so there is nothing to register.
@@ -283,6 +288,24 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
           };
         }
         this.activeEngine.recordAuthenticationMarker();
+        // const capture preserves the narrowed (non-undefined) config type inside the closure.
+        const authConfig = targetAuth;
+        restoreSession = async (restorePage): Promise<boolean> => {
+          try {
+            // storageState mode: re-seed the operator's cookies before re-verifying,
+            // since a logout cleared them. ponytail: cookie-only re-seed — add a
+            // localStorage re-seed here if a target keeps its auth token there.
+            if (authConfig.mode === 'storageState' && seededState?.cookies?.length) {
+              await restorePage.context().addCookies(
+                seededState.cookies as Parameters<import('playwright').BrowserContext['addCookies']>[0],
+              );
+            }
+            const result = await new TargetAuthenticator().authenticate(restorePage, authConfig, targetUrl);
+            return result.status === 'authenticated';
+          } catch {
+            return false;
+          }
+        };
         // Explore from the post-login landing page, not the login URL. Re-navigating
         // to targetUrl (the login form) would abandon the authenticated session's
         // location and strand exploration on the public login/registration pages —
@@ -305,7 +328,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         : [];
 
       // Pass browserInfo to the engine for telemetry collection
-      result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins);
+      result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins, restoreSession);
     } catch (err: unknown) {
       //  RACE CONDITION FIX: only treat this as an expected, graceful stop
       // when stop() actually tagged this run as cancelled. Previously this

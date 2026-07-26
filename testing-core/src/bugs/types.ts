@@ -15,7 +15,8 @@ export type BugClass =
   | 'CASCADING_STATE_FAILURE'
   | 'ROUTE_MUTATION_FAILURE'
   | 'CLIENT_TRUST_BOUNDARY_VIOLATION'
-  | 'INFINITE_LOADING';
+  | 'INFINITE_LOADING'
+  | 'SESSION_SYNC_FAULT';
 
 export interface BugFinding {
   bugClass: BugClass;

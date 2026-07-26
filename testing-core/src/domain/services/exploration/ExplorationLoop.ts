@@ -19,7 +19,8 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import { describeRecovery, humanizeElement } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, settle } from './types.js';
-import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST, isSessionExitControl } from './interactionScope.js';
+import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
+import { isSessionDestroyingControl, shouldVetoExecution, SESSION_EXIT_DEMOTION } from './SessionPreservationGuard.js';
 import type { ExplorationLoopDeps, RunResult } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { isNovelStructuralState } from './noveltyScoring.js';
@@ -59,12 +60,6 @@ const MAX_FRONTIER_SCROLLS = 6;
 // are exhausted before a route change. Demotion, not removal — still selectable
 // once the in-page frontier is spent.
 const NAV_EDGE_DEMOTION = 300;
-
-// Session-exit demotion, applied only to authenticated runs. Larger than every other
-// demotion so logout is genuinely last-resort: clicking it early deauthenticates the
-// engine and wastes the rest of the run on a login page. Demotion, not removal — it
-// stays reachable once the whole authenticated frontier is spent.
-const SESSION_EXIT_DEMOTION = 2000;
 
 // href schemes that are not real route transitions (in-page / non-navigational).
 const NON_NAV_HREF_RE = /^\s*(#|javascript:|mailto:|tel:|sms:|$)/i;
@@ -303,6 +298,25 @@ export class ExplorationLoop {
         const targetResolution = this.resolveExploreEdgeTarget(decision, ranked);
         if (targetResolution.kind === 'return') return targetResolution.result;
         target = targetResolution.target;
+
+        // Session-preservation hard veto: on an authenticated run, never click a
+        // session-destroying control (logout, re-login, account delete/switch,
+        // password reset, token revoke). Demotion alone lets it fire once the
+        // frontier is spent; this blocks the click outright and accounts the edge
+        // covered so the frontier still converges. Off for guest/unauth runs.
+        if (this.deps.sessionGuardActive && shouldVetoExecution(target)) {
+          this.deps.pathNavigator.markEdgeCyclic(fingerprint.currentHash, target.selector);
+          this.deps.clusterRegistry.markTriggered(fingerprint.compound.structure, target.selector, step);
+          this.deps.telemetry.emitMilestone(
+            ` Session preserved: suppressed ${humanizeElement(target)} — a session-destroying control on an authenticated run.`,
+          );
+          this.deps.telemetry.emit('ACTION', {
+            actionExecuted: 'session-control-suppressed',
+            selector: target.selector,
+            message: `Vetoed ${humanizeElement(target)}: would end/replace the authenticated session.`,
+          });
+          continue;
+        }
 
         //  Forward lookahead (proactive): skip WITHOUT clicking any edge that
         // can't advance exploration — one resolving to a breadcrumb ancestor
@@ -648,7 +662,7 @@ export class ExplorationLoop {
     if (this.deps.sessionGuardActive) {
       ranked = ranked
         .map((element) =>
-          isSessionExitControl(element)
+          isSessionDestroyingControl(element)
             ? { ...element, riskScore: element.riskScore - SESSION_EXIT_DEMOTION }
             : element,
         )

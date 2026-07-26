@@ -72,11 +72,7 @@ export function attackTargetBoost(element: ScopeClassifiable): number {
   return classifyInteractionScope(element) === 'attack-vector' ? ATTACK_TARGET_SCORE_BOOST : 0;
 }
 
-// Controls that would end the target session. During an authenticated run these are
-// demoted so the engine does not log itself out and spend the run on a login page.
-const SESSION_EXIT_RE = /(log[\s_-]?out|sign[\s_-]?out|end[\s_-]?session)/i;
-
-/** True when an element's visible text/attributes identify it as a session-exit control. */
-export function isSessionExitControl(element: ScopeClassifiable & { innerText?: string; id?: string; className?: string }): boolean {
-  return SESSION_EXIT_RE.test(`${element.innerText ?? ''} ${element.id ?? ''} ${element.className ?? ''}`);
-}
+// Session-exit classification moved to the centralized SessionPreservationGuard
+// (broadened beyond logout to every session-destroying control). Re-exported here
+// so existing call sites keep the original name.
+export { isSessionDestroyingControl as isSessionExitControl } from './SessionPreservationGuard.js';

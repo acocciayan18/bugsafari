@@ -50,6 +50,8 @@ import { StateRestorer } from './StateRestorer.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
+import { shouldTriggerSessionLoss, classifySessionLoss, SessionRestoreCoordinator, type SessionRestoreFn } from './SessionPreservationGuard.js';
+import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { BugFinderRunner } from './BugFinderRunner.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
 import { AsyncTaskTracker } from './AsyncTaskTracker.js';
@@ -658,7 +660,7 @@ export class ExplorationEngine {
   }
 
   /** `authOrigins` are ORIGINS only — the target's auth config never enters the engine. */
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo, authOrigins: readonly string[] = []): Promise<RunResult> {
+  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo, authOrigins: readonly string[] = [], restoreSession?: SessionRestoreFn): Promise<RunResult> {
     // Initialize runtime metrics tracking
     this.runtimeMetrics = {
       startTime: Date.now(),
@@ -854,15 +856,85 @@ export class ExplorationEngine {
     await this.persistBrainSnapshot('start');
     this.lastActedTarget = null;
 
+    // Session-preservation restore coordinator — inert unless the run authenticated
+    // AND a restore callback was injected (guest/unauth runs pass none).
+    const restoreCoordinator = new SessionRestoreCoordinator(restoreSession ?? null);
+
+    // Classify an unexpected authenticated -> auth-page navigation as a Session
+    // Synchronization Fault, emit the finding, and attempt an in-place restore so
+    // exploration continues without restarting. Best-effort: a failed restore
+    // leaves the run exploring the unauthenticated surface rather than aborting.
+    const handleSessionLoss = async (from: string, to: string): Promise<void> => {
+      const descriptor = classifySessionLoss(from, to);
+      const definition = BUG_CATALOG.SESSION_SYNC_FAULT;
+      const bugId = `session-sync-fault-${Date.now()}`;
+      const timestamp = new Date().toISOString();
+      const attribution: FindingAttribution = {
+        bugClass: 'SESSION_SYNC_FAULT',
+        cwe: definition.cwe,
+        ...resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName()),
+        origin: 'TARGET_APP',
+        confidence: 'SIGNAL',
+        verificationStatus: 'NEEDS_VERIFICATION',
+      };
+      emitter.emitMilestone(` Session synchronization fault — ${descriptor.reason}`);
+      emitter.gateway.emitIncidentReport({
+        bugId,
+        timestamp,
+        reason: descriptor.reason,
+        url: to,
+        steps: this.breadcrumbsToActionRecords(this.actions.snapshot()),
+        advice: definition.remediation,
+        attribution,
+        severity: definition.defaultSeverity,
+      });
+      this.registerConfirmedBug({
+        bugId,
+        type: 'SESSION_SYNC_FAULT',
+        message: descriptor.reason,
+        selector: '',
+        payloadUsed: '',
+        advice: definition.remediation,
+        attribution,
+        severity: definition.defaultSeverity,
+        timestamp: new Date(),
+      });
+
+      if (restoreCoordinator.canRestore() && this.activePage) {
+        const ok = await restoreCoordinator.restore(this.activePage);
+        emitter.emitSystemStatus(
+          ok
+            ? 'Authenticated session restored — continuing exploration.'
+            : 'Session restore failed — continuing on the unauthenticated surface.',
+        );
+        emitter.emit('ACTION', {
+          actionExecuted: ok ? 'session-restored' : 'session-restore-failed',
+          url: this.activePage.url(),
+          message: ok
+            ? 'Re-authenticated after a session synchronization fault.'
+            : 'Could not re-authenticate; exploration continues unauthenticated (no restart).',
+        });
+      } else {
+        emitter.emitSystemStatus('Session lost and no restore available — continuing unauthenticated.');
+      }
+    };
+
     // Page-agnostic observation sinks. TabWindowManager owns which page's events reach
     // them, so the same run-scoped state is fed by whichever tab currently has focus.
     const onNavigated = (url: string): void => {
       if (!url) return;
+      const from = lastKnownUrl;
       lastKnownUrl = url;
       // Phase 3: Track page count when navigating
       this.runtimeMetrics.pageCount++;
       emitter.gateway.emitUrlChanged(url);
       void reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
+      // Session guard: an authenticated run that lands on an auth page (and wasn't
+      // already there) lost its session. Skipped while a restore is in flight so
+      // the restore navigation can't re-trigger itself.
+      if (shouldTriggerSessionLoss(this.authenticatedRun, restoreCoordinator.isRestoring, from, url)) {
+        void handleSessionLoss(from, url);
+      }
     };
 
     const onNetworkRequest = (resourceType: string): void => {

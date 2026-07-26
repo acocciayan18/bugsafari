@@ -184,4 +184,16 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Clear the loading flag in a finally block so every path (success/error) exits loading',
     ),
   },
+  SESSION_SYNC_FAULT: {
+    title: 'Session synchronization fault',
+    description: 'The authenticated session was lost mid-exploration — a control or redirect bounced the app back to a login page without an explicit sign-out.',
+    defaultSeverity: 'HIGH',
+    cwe: 'CWE-613',
+    remediation: remediation(
+      'Suggested remediation — session synchronization',
+      '1. Keep the session token valid across in-app navigation; avoid unintended redirects to login',
+      '2. Refresh/renew the session before expiry instead of forcing a re-login mid-flow',
+      '3. Add a test that navigates the authenticated surface and asserts no bounce to the login page',
+    ),
+  },
 };
