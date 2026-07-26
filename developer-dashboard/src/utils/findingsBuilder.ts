@@ -7,6 +7,7 @@ import type { ForensicCrashReport, IncidentReport } from '../types';
 import type { SaveFindingPayload } from '../services/historyService';
 import { mapIncidentStepsToPlaybook, mapForensicReportToPlaybook, type PlaybookStep } from './semanticInstructionMapper';
 import { dedupeReportsAgainstIncidents } from './errorDeduplication';
+import { reportableIncidents, reportableReports } from './findingRouting';
 // Same culprit resolution the live cards render, so the saved Selector is the one
 // the operator already saw.
 import { resolveCulprit } from './findingView';
@@ -43,7 +44,10 @@ function classifyFinding(statusCode?: number): string {
 // Build the complete, uncompressed findings array from the exact incidents and
 // crash reports the operator saw live — no dedup, no filter, no truncation.
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
-  const fromIncidents: SaveFindingPayload[] = incidents.map((inc, i) => {
+  // Same routing tree as the live Errors tab, so a saved history holds exactly the
+  // findings the operator saw — infrastructure noise stays in the network log.
+  const actionableIncidents = reportableIncidents(incidents);
+  const fromIncidents: SaveFindingPayload[] = actionableIncidents.map((inc, i) => {
     const checklist = inc.reproductionPlaybook && inc.reproductionPlaybook.length > 0
       ? inc.reproductionPlaybook
       : formatChecklist(mapIncidentStepsToPlaybook(inc.steps));
@@ -71,7 +75,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
 
   // Drop crash reports that mirror an incident so the transferred findings match
   // the de-duplicated live Errors Tab (one slot per fault).
-  const uniqueReports = dedupeReportsAgainstIncidents(incidents, reports);
+  const uniqueReports = dedupeReportsAgainstIncidents(actionableIncidents, reportableReports(reports));
   const fromReports: SaveFindingPayload[] = uniqueReports.map((rep, i) => {
     const checklist = rep.reproductionPlaybook && rep.reproductionPlaybook.length > 0
       ? rep.reproductionPlaybook

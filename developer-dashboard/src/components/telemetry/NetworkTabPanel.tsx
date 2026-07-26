@@ -1,5 +1,5 @@
 import type { TelemetryEvent } from '../../types';
-import { isActionableNetworkStatus } from '../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent } from '../../../../shared/types.js';
 import ReproductionChecklist from './ReproductionChecklist';
 import AiDiagnosticCard from './AiDiagnosticCard';
 
@@ -68,10 +68,18 @@ export default function NetworkTabPanel({
         const aiDiagnostics = meta?.aiDiagnostics || null;
         const reproductionSteps = meta?.reproductionSteps ?? [];
 
-        // Every row here already qualified as a failure (see isActionableNetworkFailure);
-        // a missing statusCode means a transport-level failure (DNS/offline/refused/timeout).
-        const isServerError = statusCode === undefined || statusCode >= 500;
-        const isClientError = statusCode !== undefined && statusCode >= 400 && statusCode < 500;
+        // Tier comes from the shared routing tree — the same call the engine made when
+        // it decided this was a Network row rather than a finding. A transport failure
+        // (no status) is infrastructure, so it no longer paints itself critical red.
+        const routed = routeNetworkEvent({
+          kind: statusCode === undefined ? 'TRANSPORT_FAILURE' : 'HTTP_RESPONSE',
+          statusCode,
+          url,
+          resourceType: 'xhr',
+          failureText: message,
+        });
+        const isServerError = routed.reasonCode === 'SERVER_ERROR' || routed.reasonCode === 'SOFT_FAIL_BODY';
+        const isClientError = !isServerError && routed.tier !== 'INFORMATIONAL';
 
         const borderColor = isServerError
           ? 'border-(--status-critical-border)'
@@ -98,6 +106,9 @@ export default function NetworkTabPanel({
                 {count > 1 && (
                   <span className="text-[11px] text-(--text-secondary)">×{count}</span>
                 )}
+                <span className="rounded bg-(--surface-inset) px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-(--text-tertiary)">
+                  {routed.reasonCode.replace(/_/g, ' ').toLowerCase()}
+                </span>
               </div>
             </div>
             <div className="px-3 py-2 text-[13px] font-mono text-(--text-secondary) break-all">

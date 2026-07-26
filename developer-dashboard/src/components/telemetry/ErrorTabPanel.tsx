@@ -5,6 +5,7 @@
 
 import type { IncidentReport, ForensicCrashReport } from '../../types';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
+import { reportableIncidents, reportableReports } from '../../utils/findingRouting';
 import { incidentToFindingView, reportToFindingView } from '../../utils/findingView';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import FindingCard from '../common/FindingCard';
@@ -19,11 +20,13 @@ interface ErrorTabPanelProps {
 export default function ErrorTabPanel({
   errors = { incidents: [], reports: [] }
 }: ErrorTabPanelProps) {
-  const errorIncidents = errors?.incidents ?? [];
+  // Infrastructure/environment events belong to the Network tab — the shared
+  // routing tree decides, so live, replayed and saved views agree.
+  const errorIncidents = reportableIncidents(errors?.incidents ?? []);
   // A JS exception / console error arrives as BOTH an incident and a crash
   // report; render the incident once and suppress the mirrored report so each
   // fault is a single card (matching the engine's confirmed-bug count).
-  const errorReports = dedupeReportsAgainstIncidents(errorIncidents, errors?.reports ?? []);
+  const errorReports = dedupeReportsAgainstIncidents(errorIncidents, reportableReports(errors?.reports ?? []));
 
   // Collapse identical repeats (same fault re-thrown across the run) into one card
   // with an ×N count — lossless display grouping, nothing is dropped.

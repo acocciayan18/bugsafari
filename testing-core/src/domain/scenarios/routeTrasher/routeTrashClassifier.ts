@@ -6,13 +6,15 @@
 // severity model, and for which browser/network events are expected noise that
 // must NOT create findings or trigger recovery.
 //
+// The HTTP tiers themselves now come from the shared decision tree
+// (shared/types/telemetryRouting.ts) — this module is the scenario-facing view of
+// it, adding the console/render-probe classification RouteTrasher needs.
+//
 // Consumers:
-//   • StabilityMonitor.attachNetworkMonitoring — the finding authority. Uses
-//     isExpectedResourceNoise() + classifyHttpStatus() to decide whether a
-//     response becomes a finding (MEDIUM+) or informational telemetry only.
 //   • RouteTrasher — annotates its immutable scenario window with severity-
 //     labelled narration and returns per-run severity counts (no findings; the
 //     globally-attached StabilityMonitor owns finding creation to avoid dupes).
+//   • StabilityMonitor — routes responses through the shared tree directly.
 //
 // The tiers (per product spec):
 //   CRITICAL      — unhandled client-side exception, browser crash, white-screen.
@@ -23,6 +25,11 @@
 //                   without an uncaught frontend error. Telemetry only, no finding.
 
 import type { ApiResponseTrace, ConsoleAnomaly } from '../../../infrastructure/monitoring/anomalyListeners.js';
+import {
+  DEFENSIVE_CLIENT_STATUSES as SHARED_DEFENSIVE_CLIENT_STATUSES,
+  isStaticAssetRequest,
+  routeNetworkEvent,
+} from '../../../../../shared/types.js';
 
 /** The three-tier severity model for route-trashing effects. */
 export type RouteTrashSeverity = 'CRITICAL' | 'MEDIUM' | 'INFORMATIONAL';
@@ -35,35 +42,7 @@ export type RouteTrashSeverity = 'CRITICAL' | 'MEDIUM' | 'INFORMATIONAL';
  * so the intent (these are the graceful-rejection codes we deliberately provoke)
  * is self-describing.
  */
-export const DEFENSIVE_CLIENT_STATUSES: ReadonlySet<number> = new Set([
-  400, // Bad Request       — malformed input / invalid route param rejected
-  401, // Unauthorized      — auth required
-  403, // Forbidden         — authorization boundary enforced
-  404, // Not Found         — mutated route/resource does not exist
-  405, // Method Not Allowed
-  406, // Not Acceptable
-  409, // Conflict
-  410, // Gone
-  415, // Unsupported Media Type
-  422, // Unprocessable Entity — validation rejected the payload
-  429, // Too Many Requests
-]);
-
-/** Non-API resource types whose failed loads are browser noise, never app faults. */
-const ASSET_RESOURCE_TYPES: ReadonlySet<string> = new Set([
-  'image',
-  'font',
-  'media',
-  'stylesheet',
-  'script',
-  'manifest',
-  'texttrack',
-  'other',
-]);
-
-/** URL suffixes of static assets — backstops resourceType when it is ambiguous. */
-const ASSET_URL_PATTERN =
-  /\.(?:png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|otf|eot|css|js|mjs|map|mp4|webm|ogg|mp3|wav|json)(?:[?#].*)?$/i;
+export const DEFENSIVE_CLIENT_STATUSES = SHARED_DEFENSIVE_CLIENT_STATUSES;
 
 /** A caller-supplied render probe used to detect a white-screen failure. */
 export interface RenderProbe {
@@ -95,48 +74,28 @@ export interface HttpResponseVerdict {
  * is filtered so a route-mutation run cannot be polluted by it.
  */
 export function isExpectedResourceNoise(url: string, resourceType: string, status: number): boolean {
-  if (resourceType === 'xhr' || resourceType === 'fetch') {
-    return false; // real API traffic — always worth classifying
-  }
-  // Non-API subresource: a failed/redirected static asset load is expected noise.
-  if (status >= 400 && (ASSET_RESOURCE_TYPES.has(resourceType) || ASSET_URL_PATTERN.test(url))) {
-    return true;
-  }
-  return false;
+  return status >= 400 && isStaticAssetRequest(url, resourceType);
 }
 
 /**
- * Classify a single HTTP response into the three-tier model.
+ * Classify a single HTTP response into the three-tier model. Delegates to the
+ * shared routing tree so this scenario's narration and the StabilityMonitor's
+ * promotion decision can never diverge.
  *
  * @param status        HTTP status code.
  * @param opts.softFailBody  A <400 response whose body flags an error (masked failure).
  */
 export function classifyHttpStatus(status: number, opts?: { softFailBody?: boolean }): HttpResponseVerdict {
-  if (status >= 500) {
-    return {
-      severity: 'MEDIUM',
-      createFinding: true,
-      reason: `HTTP ${status} server error — backend failed to handle the mutated request.`,
-    };
-  }
-  if (opts?.softFailBody) {
-    return {
-      severity: 'MEDIUM',
-      createFinding: true,
-      reason: `HTTP ${status} with an error-flagged body — soft failure masked as success.`,
-    };
-  }
-  if (status >= 400) {
-    return {
-      severity: 'INFORMATIONAL',
-      createFinding: false,
-      reason: `HTTP ${status} defensive response — request rejected gracefully.`,
-    };
-  }
+  const routed = routeNetworkEvent({
+    kind: 'HTTP_RESPONSE',
+    statusCode: status,
+    resourceType: 'xhr',
+    softFailBody: opts?.softFailBody,
+  });
   return {
-    severity: 'INFORMATIONAL',
-    createFinding: false,
-    reason: `HTTP ${status} — normal response.`,
+    severity: routed.promote ? 'MEDIUM' : 'INFORMATIONAL',
+    createFinding: routed.promote,
+    reason: routed.reason,
   };
 }
 

@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after improving the rappid clicker message"
+git commit -m "files before applying multiple tabs handler"
 git checkout -b 7-26-Ayan-1
 git push --set-upstream origin 7-26-Ayan-1
 

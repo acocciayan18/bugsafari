@@ -5,6 +5,7 @@ import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../../../shared/types.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
+import { ChaosInjectionRegistry } from '../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { describeNetworkSabotage } from '../services/forensics/narration.js';
 import { FREEZE_SELECTORS, INPUT_BLOCK_SELECTORS } from '../../bugs/knowledgeBase/index.js';
 import { scenarioRandom } from './seededRandom.js';
@@ -157,6 +158,10 @@ function shouldExcludeRequest(url: string, excludeExtensions: string[]): boolean
  */
 function recordSabotage(mode: SabotageMode, targetUrl: string, pageUrl: string): void {
   try {
+    // Mark the endpoint as chaos-injected so any failure it produces is routed to
+    // Findings (the app's handling of an injected fault is what is under test)
+    // instead of being filtered out as environment noise.
+    ChaosInjectionRegistry.mark(targetUrl, mode);
     ActionRecorder.recordStep({
       actionType: 'NETWORK',
       humanIdentifier: mode,

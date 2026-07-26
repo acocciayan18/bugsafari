@@ -10,23 +10,37 @@ import {
 } from '../../../infrastructure/database/models/ForensicErrorModel.js';
 import {
   classifyFault,
+  ensureFindingEvidence,
   isSecurityBugClass,
   matchesCategory,
   FREEZE_SELECTORS,
   INPUT_BLOCK_SELECTORS,
   type FaultType,
 } from '../../../bugs/knowledgeBase/index.js';
+import { ChaosInjectionRegistry } from '../../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { scrubCredentials } from './credentialScrub.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
-import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
-import type { FaultSeverity, FindingAttribution } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus } from '../../../../../shared/types.js';
+import type {
+  ActionBreadcrumb,
+  FaultSeverity,
+  FindingAttribution,
+  NetworkRoutingVerdict,
+  ReproductionSnapshot,
+  StateFingerprint,
+} from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
-import { VerificationPipeline, detectSoftFailBody, isBodyReadableResourceType, type VerificationCandidate } from '../verification/index.js';
+import {
+  NetworkFaultArbiter,
+  VerificationPipeline,
+  detectSoftFailBody,
+  isBodyReadableResourceType,
+  type VerificationCandidate,
+} from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
 import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
 
@@ -171,6 +185,33 @@ export function isRaceScenarioActive(): boolean {
   return raceScenarios.some((s) => scenario.includes(s));
 }
 
+/**
+ * Everything needed to report ONE network fault, frozen at the instant it failed.
+ * A failure that routes to the Network tab is parked with this payload: if the app
+ * then throws because the call died, the arbiter hands it back and it is promoted
+ * with the evidence from failure time, not from 2s later.
+ */
+interface NetworkFaultEvidence {
+  page: Page;
+  request: Request;
+  timestamp: string;
+  faultAtMs: number;
+  url: string;
+  method: string;
+  reason: string;
+  detail: string;
+  statusCode?: number;
+  bodyContent?: string;
+  durationMs?: number;
+  triggeringAction?: string;
+  culpritSelector?: string;
+  breadcrumbs: ActionBreadcrumb[];
+  reproduction: ReproductionSnapshot;
+  stateFingerprint?: StateFingerprint;
+  /** Sabotage mode when this failure was chaos-injected. */
+  chaosMode?: string;
+}
+
 // ─────────────────────────────────────────────────────────────
 // StabilityMonitor — attaches fault-catching page listeners
 // ─────────────────────────────────────────────────────────────
@@ -190,6 +231,10 @@ export class StabilityMonitor {
 
   // Fine-grained runtime-error classifier + collapse-count dedup (one per run).
   private readonly runtimeFinder = new RuntimeStabilityFinder();
+
+  // Parks network failures that routed to the Network tab; a runtime fault landing
+  // inside the correlation window claims them back as genuine findings.
+  private readonly networkArbiter = new NetworkFaultArbiter<NetworkFaultEvidence>();
 
   // Two-phase double-submit detector: opens candidates on overlapping identical requests,
   // judges them once the responses settle (one per run).
@@ -419,6 +464,11 @@ export class StabilityMonitor {
       return;
     }
 
+    // The app threw: any network failure parked in the correlation window is now a
+    // proven UI-breaking fault and is promoted alongside this one. Done before the
+    // dedup collapse below — a recurring exception still proves the request broke it.
+    await this.promotePendingNetworkFaults(faultAtMs);
+
     // Classify into a subtype + student-friendly remediation and dedup by signature.
     const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack, url, timestampMs: faultAtMs });
 
@@ -435,7 +485,14 @@ export class StabilityMonitor {
     }
 
     this.deps.setFreeze();
-    const remediation = finding.studentAdvice;
+    // Same evidence contract as every other promotion path: steps, CWE, remediation.
+    const complete = ensureFindingEvidence({
+      attribution,
+      advice: finding.studentAdvice,
+      reproductionPlaybook,
+      context: url,
+    });
+    const remediation = complete.advice;
     const reason = finding.message;
     // Best-effort source-map resolution of the raw stack's top frames (undefined
     // when the target ships no reachable maps).
@@ -444,8 +501,8 @@ export class StabilityMonitor {
     t.emit('EXCEPTION', {
       message: ` ${finding.message}`,
       exceptionDetails: { message, stackTrace },
-      reproductionSteps: reproductionPlaybook,
-      attribution,
+      reproductionSteps: complete.reproductionPlaybook,
+      attribution: complete.attribution,
     });
 
     const faultSeverity = severity as FaultSeverity;
@@ -460,9 +517,9 @@ export class StabilityMonitor {
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
       reproductionActions: reproduction.actions,
       stateFingerprint,
-      reproductionPlaybook,
+      reproductionPlaybook: complete.reproductionPlaybook,
       advice: remediation,
-      attribution,
+      attribution: complete.attribution,
       severity: faultSeverity,
       resolvedStackTrace,
       culpritSelector,
@@ -474,9 +531,9 @@ export class StabilityMonitor {
       url,
       stackTrace,
       breadcrumbs,
-      reproductionPlaybook,
+      reproductionPlaybook: complete.reproductionPlaybook,
       advice: remediation,
-      attribution,
+      attribution: complete.attribution,
       severity: faultSeverity,
       resolvedStackTrace,
       culpritSelector,
@@ -489,9 +546,9 @@ export class StabilityMonitor {
       message: ` ${finding.message}`,
       stackTrace,
       url,
-      bugClass: attribution.bugClass,
-      scenario: attribution.scenario,
-      cwe: attribution.cwe,
+      bugClass: complete.attribution.bugClass,
+      scenario: complete.attribution.scenario,
+      cwe: complete.attribution.cwe,
     });
 
     // Register the confirmed bug under the finder's stable, signature-derived id so a
@@ -505,10 +562,10 @@ export class StabilityMonitor {
       advice: remediation,
       stackTrace,
       resolvedStackTrace,
-      reproductionSteps: reproductionPlaybook,
+      reproductionSteps: complete.reproductionPlaybook,
       reproductionActions: reproduction.actions,
       stateFingerprint,
-      attribution,
+      attribution: complete.attribution,
       severity: faultSeverity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
@@ -639,18 +696,26 @@ export class StabilityMonitor {
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
     const severity = SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity;
-    const attribution: FindingAttribution = {
-      bugClass: defect.bugClass,
-      cwe: defect.cwe,
-      scenario: scenario.scenario,
-      testingType: scenario.testingType,
-      stepIndex: reproduction.actions.length,
-      origin: 'TARGET_APP',
-      confidence: defect.faultConfidence,
-      confidenceScore: defect.confidenceScore,
-      verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
-      corroborated: defect.corroborated,
-    };
+    // Same contract as every promotion path: steps + CWE + remediation, filled from
+    // the knowledge base when this self-gating finder left one of them empty.
+    const complete = ensureFindingEvidence({
+      attribution: {
+        bugClass: defect.bugClass,
+        cwe: defect.cwe,
+        scenario: scenario.scenario,
+        testingType: scenario.testingType,
+        stepIndex: reproduction.actions.length,
+        origin: 'TARGET_APP',
+        confidence: defect.faultConfidence,
+        confidenceScore: defect.confidenceScore,
+        verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+        corroborated: defect.corroborated,
+      },
+      advice: defect.advice,
+      reproductionPlaybook,
+      context: `${defect.method} ${url}`,
+    });
+    const attribution: FindingAttribution = complete.attribution;
 
     t.emit('NETWORK', {
       url,
@@ -681,8 +746,8 @@ export class StabilityMonitor {
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
         reproductionActions: reproduction.actions,
         stateFingerprint,
-        reproductionPlaybook,
-        advice: defect.advice,
+        reproductionPlaybook: complete.reproductionPlaybook,
+        advice: complete.advice,
         attribution,
         severity,
         culpritSelector: defect.selector || undefined,
@@ -694,8 +759,8 @@ export class StabilityMonitor {
         url,
         stackTrace,
         breadcrumbs,
-        reproductionPlaybook,
-        advice: defect.advice,
+        reproductionPlaybook: complete.reproductionPlaybook,
+        advice: complete.advice,
         attribution,
         severity,
         culpritSelector: defect.selector || undefined,
@@ -723,9 +788,9 @@ export class StabilityMonitor {
       message: defect.message,
       selector: defect.selector,
       payloadUsed: defect.method,
-      advice: defect.advice,
+      advice: complete.advice,
       stackTrace,
-      reproductionSteps: reproductionPlaybook,
+      reproductionSteps: complete.reproductionPlaybook,
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
@@ -897,15 +962,24 @@ export class StabilityMonitor {
     const reproductionPlaybook = reproduction.narrative;
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
-    const attribution: FindingAttribution = {
-      bugClass: defect.bugClass,
-      cwe: defect.cwe,
-      scenario: scenario.scenario,
-      testingType: scenario.testingType,
-      stepIndex: reproduction.actions.length,
-      confidence: 'SIGNAL',
-      corroborated: defect.corroborated,
-    };
+    // A dropped/hung request that left the UI stuck IS the network-broke-the-UI case,
+    // so it promotes here and its evidence goes through the same completion contract.
+    const complete = ensureFindingEvidence({
+      attribution: {
+        bugClass: defect.bugClass,
+        cwe: defect.cwe,
+        scenario: scenario.scenario,
+        testingType: scenario.testingType,
+        stepIndex: reproduction.actions.length,
+        origin: 'TARGET_APP',
+        confidence: 'SIGNAL',
+        corroborated: defect.corroborated,
+      },
+      advice: defect.advice,
+      reproductionPlaybook,
+      context: `${defect.method} ${url}`,
+    });
+    const attribution: FindingAttribution = complete.attribution;
 
     t.emit('NETWORK', {
       url,
@@ -925,8 +999,8 @@ export class StabilityMonitor {
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
       reproductionActions: reproduction.actions,
       stateFingerprint,
-      reproductionPlaybook,
-      advice: defect.advice,
+      reproductionPlaybook: complete.reproductionPlaybook,
+      advice: complete.advice,
       attribution,
       severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
       culpritSelector: this.culpritSelectorAt(faultAtMs),
@@ -938,8 +1012,8 @@ export class StabilityMonitor {
       url,
       stackTrace,
       breadcrumbs,
-      reproductionPlaybook,
-      advice: defect.advice,
+      reproductionPlaybook: complete.reproductionPlaybook,
+      advice: complete.advice,
       attribution,
       severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
       culpritSelector: this.culpritSelectorAt(faultAtMs),
@@ -953,9 +1027,9 @@ export class StabilityMonitor {
       url,
       endpoint: url,
       method: defect.method,
-      bugClass: defect.bugClass,
+      bugClass: complete.attribution.bugClass,
       scenario: attribution.scenario,
-      cwe: defect.cwe,
+      cwe: complete.attribution.cwe,
     });
 
     // type is deliberately not NETWORK/ACCESSIBILITY so registerConfirmedBug streams it to the Errors tab.
@@ -965,9 +1039,9 @@ export class StabilityMonitor {
       message: defect.message,
       selector: this.culpritSelectorAt(faultAtMs) ?? '',
       payloadUsed: defect.method,
-      advice: defect.advice,
+      advice: complete.advice,
       stackTrace,
-      reproductionSteps: reproductionPlaybook,
+      reproductionSteps: complete.reproductionPlaybook,
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
@@ -975,6 +1049,178 @@ export class StabilityMonitor {
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
+  }
+
+  /**
+   * The ONE path from "actionable network fault" to "reported finding". Both the
+   * response and the transport-failure handlers funnel through here, so every
+   * promoted network finding carries the same evidence contract: reproduction
+   * breadcrumbs, a CWE-classified attribution, and remediation guidance.
+   *
+   * Provenance still runs — it decides WHOSE fault it is and feeds the confidence
+   * score — but it can no longer veto a fault the routing tree already proved
+   * actionable (an injected chaos failure, or one that broke the UI): those are
+   * environment-shaped by construction, and vetoing them was how they got lost.
+   */
+  private async promoteNetworkFault(evidence: NetworkFaultEvidence, routing: NetworkRoutingVerdict): Promise<void> {
+    const t = this.deps.telemetry;
+    const isHttpFault = evidence.statusCode !== undefined;
+    const faultMessage = isHttpFault
+      ? `HTTP ${evidence.statusCode} ${evidence.method} ${evidence.url}`
+      : `Network Request Failed: ${evidence.reason}`;
+    const playbook = evidence.reproduction.narrative;
+
+    const verification = this.verifyFault('NETWORK', faultMessage, {
+      statusCode: evidence.statusCode,
+      url: evidence.url,
+      content: evidence.bodyContent || evidence.detail,
+      evidence: {
+        hasMessage: true,
+        hasStatusCode: isHttpFault,
+        hasReproductionSteps: playbook.length > 0,
+        hasSelector: Boolean(evidence.culpritSelector),
+      },
+    });
+
+    const forced = routing.reasonCode === 'CHAOS_INJECTED' || routing.reasonCode === 'BROKE_UI';
+    if (!verification.report && !forced) {
+      t.emit('NETWORK', {
+        statusCode: evidence.statusCode,
+        url: evidence.url,
+        method: evidence.method,
+        message: `Not reported as a defect (${verification.attribution.origin}): ${verification.reason}`,
+      });
+      return;
+    }
+
+    // A forced promotion is attributed to the app: it either failed to handle an
+    // injected fault or broke the interface when the request died. The routing code
+    // travels with the finding so the dashboard re-applies the same decision.
+    const attribution: FindingAttribution = {
+      ...verification.attribution,
+      ...(forced && !verification.report
+        ? { origin: 'TARGET_APP' as const, verificationStatus: 'NEEDS_VERIFICATION' as const }
+        : {}),
+      routingReason: routing.reasonCode,
+    };
+
+    // Guarantee the three things a developer needs before this leaves the engine.
+    const complete = ensureFindingEvidence({
+      attribution,
+      advice: verification.advice,
+      reproductionPlaybook: playbook,
+      context: `${evidence.method} ${evidence.url}`,
+    });
+
+    const severity =
+      routing.tier === 'CRITICAL' && verification.severity !== ForensicErrorSeverity.CRITICAL
+        ? ForensicErrorSeverity.HIGH
+        : verification.severity;
+
+    // Only genuine target-app failures move the failed-request metric.
+    this.deps.onApiFailure();
+
+    const reportUrl = this.deps.getLastKnownUrl() || evidence.page.url();
+    const headline = `${faultMessage} — ${routing.reason}`;
+    // Stable id for a masked security finding (collapses repeats on one endpoint);
+    // a sequenced id for plain failures so every instance stays distinct.
+    const bugId = isSecurityBugClass(complete.attribution.bugClass)
+      ? `softfail-${complete.attribution.bugClass}-${evidence.method}-${evidence.url.split('?')[0]}`
+      : `${isHttpFault ? `http-${evidence.statusCode}` : 'network-failed'}-${Date.now()}-${nextBugSeq()}`;
+
+    t.emit('NETWORK', {
+      statusCode: evidence.statusCode,
+      url: evidence.url,
+      method: evidence.method,
+      durationMs: evidence.durationMs,
+      message: headline,
+      reproductionSteps: complete.reproductionPlaybook,
+      attribution: complete.attribution,
+    });
+
+    t.gateway.emitIncidentReport({
+      bugId,
+      timestamp: evidence.timestamp,
+      reason: headline,
+      url: reportUrl,
+      statusCode: evidence.statusCode,
+      stackTrace: evidence.detail,
+      steps: this.deps.breadcrumbsToActionRecords(evidence.breadcrumbs),
+      reproductionActions: evidence.reproduction.actions,
+      stateFingerprint: evidence.stateFingerprint,
+      reproductionPlaybook: complete.reproductionPlaybook,
+      advice: complete.advice,
+      attribution: complete.attribution,
+      severity: severity as FaultSeverity,
+      culpritSelector: evidence.culpritSelector,
+    });
+
+    t.gateway.emitForensicReport({
+      timestamp: evidence.timestamp,
+      reason: headline,
+      url: reportUrl,
+      statusCode: evidence.statusCode,
+      stackTrace: evidence.detail,
+      breadcrumbs: evidence.breadcrumbs,
+      reproductionPlaybook: complete.reproductionPlaybook,
+      advice: complete.advice,
+      attribution: complete.attribution,
+      severity: severity as FaultSeverity,
+      culpritSelector: evidence.culpritSelector,
+    });
+
+    this.deps.persistForensicError({
+      type: ForensicErrorType.API_FAILURE,
+      severity,
+      message: headline,
+      stackTrace: evidence.detail,
+      url: reportUrl,
+      endpoint: evidence.url,
+      method: evidence.method,
+      statusCode: evidence.statusCode,
+      responseText: (evidence.bodyContent ?? '').slice(0, 500),
+      action: evidence.triggeringAction,
+      bugClass: complete.attribution.bugClass,
+      scenario: complete.attribution.scenario,
+      cwe: complete.attribution.cwe,
+    });
+
+    this.deps.registerConfirmedBug({
+      bugId,
+      type: 'NETWORK',
+      message: headline,
+      selector: evidence.culpritSelector ?? '',
+      payloadUsed: evidence.method,
+      advice: complete.advice,
+      stackTrace: evidence.detail,
+      reproductionSteps: complete.reproductionPlaybook,
+      reproductionActions: evidence.reproduction.actions,
+      stateFingerprint: evidence.stateFingerprint,
+      attribution: complete.attribution,
+      severity: severity as FaultSeverity,
+      timestamp: new Date(evidence.timestamp),
+      streamed: true, // the incident report above already put it on the Errors tab
+    });
+  }
+
+  // A runtime fault just fired: any network failure parked inside the correlation
+  // window is now proven consequential (the call died and the app threw), so it is
+  // promoted with the evidence frozen at ITS failure time.
+  private async promotePendingNetworkFaults(faultAtMs: number): Promise<void> {
+    const claimed = this.networkArbiter.claimCausedBy(faultAtMs);
+    for (const evidence of claimed) {
+      await this.promoteNetworkFault(
+        evidence,
+        routeNetworkEvent({
+          kind: evidence.statusCode === undefined ? 'TRANSPORT_FAILURE' : 'HTTP_RESPONSE',
+          statusCode: evidence.statusCode,
+          url: evidence.url,
+          resourceType: 'xhr',
+          failureText: evidence.reason,
+          causedRuntimeFault: true,
+        }),
+      );
+    }
   }
 
   /** Monitor HTTP responses (>=400 or soft-fail body) and outright request failures. */
@@ -1015,14 +1261,12 @@ export class StabilityMonitor {
       this.pending.clear();
     });
 
-    // Centralized three-tier network classification (see routeTrashClassifier —
-    // the single source of truth shared with the RouteTrasher scenario):
-    //   • Expected resource noise (favicon/image/font/bundle failures) → ignored.
-    //   • Defensive 4xx (400/401/403/404/…) handled gracefully → INFORMATIONAL
-    //     telemetry only; NO finding, NO forensic persistence, NOT counted as an
-    //     API failure (so it never inflates metrics or triggers recovery).
-    //   • 5xx or a soft-fail body masked behind a 2xx → MEDIUM+ backend failure
-    //     finding with full forensic detail.
+    // Surface routing is decided by the shared decision tree (shared/types/
+    // telemetryRouting.ts), the same one the dashboard and the RouteTrasher use:
+    //   • Asset noise (favicon/image/font/bundle) → dropped entirely.
+    //   • Defensive 4xx, CORS blocks, plain successes → Network tab only.
+    //   • 5xx, an error payload masked behind a 2xx, or a chaos-injected failure
+    //     → Finding, with full forensic detail.
     page.on('response', async (response: Response) => {
       const status = response.status();
       const url = response.url();
@@ -1039,9 +1283,8 @@ export class StabilityMonitor {
       // Full network log (Network tab): record every meaningful request, any status.
       this.recordNetworkLog(response.request(), status, status < 400);
 
-      // Filter expected browser/network noise (missing static assets, etc.) so a
-      // normal 404 favicon/image can never create a false-positive finding.
-      if (isExpectedResourceNoise(url, resourceType, status)) {
+      // Asset chatter (missing favicon, lazy image 404) never reaches the classifier.
+      if (routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: status, url, resourceType }).reasonCode === 'ASSET_NOISE') {
         return;
       }
 
@@ -1079,122 +1322,73 @@ export class StabilityMonitor {
         return;
       }
 
-      const verdict = classifyHttpStatus(status, { softFailBody });
+      const settledAtMs = this.requestSettledAtMs(response.request());
+      const chaosMode = ChaosInjectionRegistry.modeFor(url, settledAtMs);
+      const verdict = routeNetworkEvent({
+        kind: 'HTTP_RESPONSE',
+        statusCode: status,
+        url,
+        resourceType,
+        softFailBody,
+        chaosInjected: chaosMode !== undefined,
+      });
 
-      // INFORMATIONAL: expected defensive response handled gracefully. Surface it
-      // on the Network tab as telemetry only — no finding, no persistence, no
-      // confirmed bug, and it is NOT counted as an API failure.
-      if (!verdict.createFinding) {
+      // Network-tab only: defensive 4xx, CORS blocks, and anything the tree does
+      // not consider actionable. Telemetry row, no finding, no persistence, and
+      // it is NOT counted as an API failure.
+      if (!verdict.promote) {
         t.emit('NETWORK', {
           statusCode: status,
           url,
           method,
           durationMs: this.computeRequestDuration(response.request()),
-          message: `️ Defensive response (informational): HTTP ${status} ${method} ${url} — ${verdict.reason}`,
+          message: `HTTP ${status} ${method} ${url} — ${verdict.reason}`,
         });
         return;
       }
 
-      // MEDIUM+: genuine backend failure (5xx or masked soft-fail). Candidate finding.
-      // One immutable snapshot, frozen at the moment this response failed, bound
-      // identically to the live telemetry and the saved confirmed bug. Reading
-      // the global rolling buffer twice (once per consumer) risks the live card
-      // and the stored record diverging if an action lands between the reads.
-      const reproduction = ActiveScenarioTracker.flushSnapshot({
-        faultUrl: this.deps.getLastKnownUrl() || page.url(),
-        faultAtMs: this.requestSettledAtMs(response.request()),
-      });
-      const reproductionPlaybook = reproduction.narrative;
-      const stateFingerprint = await captureStateFingerprint(page);
-      // Verify before reporting: the response body is scanned for NoSQL/server-error
-      // signatures, the 5xx escalates severity, and provenance rejects third-party /
-      // environment failures so only genuine target-app backend faults are reported.
-      const verification = this.verifyFault('NETWORK', `HTTP ${status} ${method} ${url}`, {
-        statusCode: status,
-        url,
-        content: bodyContent,
-        evidence: { hasMessage: true, hasStatusCode: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
-      });
-      const { advice: remediation, severity, attribution } = verification;
-      if (!verification.report) {
-        t.emit('NETWORK', {
-          statusCode: status,
-          url,
-          method,
-          message: `Unverified backend response suppressed (${attribution.origin}): ${verdict.reason}`,
-        });
-        return;
-      }
-
-      // Phase 3: Track failed requests count (only genuine target-app failures).
-      this.deps.onApiFailure();
-
-      // Forensic dossier: everything a developer needs to act without re-running the
-      // safari — the exact call, how long it took, why it failed, and what provoked it.
+      // Actionable: 5xx, an error payload masked behind a 2xx, or a chaos-injected
+      // failure. One immutable snapshot, frozen at the moment this response failed,
+      // bound identically to the live telemetry and the saved confirmed bug.
       const durationMs = this.computeRequestDuration(response.request());
-      const triggeringAction = this.triggeringActionFor(this.requestSettledAtMs(response.request()));
-      const forensicDetail = [
+      const triggeringAction = this.triggeringActionFor(settledAtMs);
+      const detail = [
         `Request: ${method} ${url}`,
-        `Status: HTTP ${status} (${softFailBody ? 'masked failure in a 2xx body' : verdict.reason})`,
+        `Status: HTTP ${status} (${verdict.reason})`,
         durationMs !== undefined ? `Response time: ${durationMs}ms` : undefined,
         `Failure reason: ${softFailEvidence || verdict.reason}`,
+        chaosMode ? `Injected fault: ${chaosMode} (BugSafari chaos scenario)` : undefined,
         triggeringAction ? `Triggering action: ${triggeringAction}` : undefined,
         bodyContent ? `Response body (truncated): ${bodyContent.slice(0, 500)}` : undefined,
       ]
         .filter(Boolean)
         .join('\n');
 
-      t.emit('NETWORK', {
-        statusCode: status,
-        url,
-        method,
-        durationMs,
-        message: `Network ${status} ${method} ${url}`,
-        reproductionSteps: reproductionPlaybook,
-        attribution,
-      });
-
-      // Persist API failure to forensic_errors database (Phase 2: Error Logging System)
-      this.deps.persistForensicError({
-        type: ForensicErrorType.API_FAILURE,
-        severity,
-        message: `API Failure: HTTP ${status} ${method} ${url}${durationMs !== undefined ? ` (${durationMs}ms)` : ''}`,
-        stackTrace: forensicDetail,
-        url: this.deps.getLastKnownUrl() || page.url(),
-        endpoint: url,
-        method,
-        statusCode: status,
-        responseText: bodyContent.slice(0, 500),
-        action: triggeringAction,
-        bugClass: attribution.bugClass,
-        scenario: attribution.scenario,
-        cwe: attribution.cwe,
-      });
-
-      // Register HTTP error bug to memory. Plain failures use a unique sequenced id
-      // (one distinct instance PER response — full telemetry parity). A masked
-      // vulnerability in a 2xx body (e.g. NOSQL_INJECTION) instead uses a stable
-      // class+endpoint id so a control hit dozens of times collapses to one
-      // occurrence-counted Finding rather than flooding the drawer.
-      const securityFinding = isSecurityBugClass(attribution.bugClass);
-      const bugId = securityFinding
-        ? `softfail-${attribution.bugClass}-${method}-${url.split('?')[0]}`
-        : `http-${status}-${Date.now()}-${nextBugSeq()}`;
-      this.deps.registerConfirmedBug({
-        bugId,
-        type: 'NETWORK',
-        message: `HTTP ${status} Error: ${method} ${url}`,
-        selector: this.culpritForRequest(response.request()) ?? '',
-        payloadUsed: method,
-        advice: remediation,
-        stackTrace: forensicDetail,
-        reproductionSteps: reproductionPlaybook,
-        reproductionActions: reproduction.actions,
-        stateFingerprint,
-        attribution,
-        severity: severity as FaultSeverity,
-        timestamp: new Date(),
-      });
+      await this.promoteNetworkFault(
+        {
+          page,
+          request: response.request(),
+          timestamp: new Date().toISOString(),
+          faultAtMs: settledAtMs,
+          url,
+          method,
+          reason: verdict.reason,
+          detail,
+          statusCode: status,
+          bodyContent,
+          durationMs,
+          triggeringAction,
+          culpritSelector: this.culpritForRequest(response.request()),
+          breadcrumbs: this.deps.getBreadcrumbs(),
+          reproduction: ActiveScenarioTracker.flushSnapshot({
+            faultUrl: this.deps.getLastKnownUrl() || page.url(),
+            faultAtMs: settledAtMs,
+          }),
+          stateFingerprint: await captureStateFingerprint(page),
+          chaosMode,
+        },
+        verdict,
+      );
     });
 
     // Catch network request failures (timeouts, connection errors, aborts)
@@ -1222,142 +1416,83 @@ export class StabilityMonitor {
         void this.confirmStuckLoading(page, { trigger: 'REQUEST_FAILED', url, method, failureDetail: reason });
       }
 
-      if (isAborted) {
-        // Aborts are cancellation artifacts (session stop, navigation, stress scenarios),
-        // never application defects — no telemetry, no persistence.
-        return;
-      }
-
-      // Cascade tracking on the raw failure — see the response handler above.
-      this.deps.recordNetworkFailure();
-
-      // Full network log: a genuine (non-abort) failure is a Network-tab row too.
-      this.recordNetworkLog(request, undefined, false, reason);
-
-      // Process as EXCEPTION for real network failures
-      const reproduction = ActiveScenarioTracker.flushSnapshot({
-        faultUrl: this.deps.getLastKnownUrl() || page.url(),
-        faultAtMs: Date.now(),
-      });
-      const reproductionPlaybook = reproduction.narrative;
-      const stateFingerprint = await captureStateFingerprint(page);
-      // Verify before reporting: DNS/TLS and third-party-host failures are environment
-      // artifacts and are gated out here, while a refusal/reset/timeout against the
-      // app's OWN backend is attributed to the target app and reported.
-      const failedDurationMs = this.computeRequestDuration(request);
-      const triggeringAction = this.triggeringActionFor(Date.now());
-      const failureDetail = [
-        `Request: ${method} ${url}`,
-        'Status: no response (transport-level failure)',
-        failedDurationMs !== undefined ? `Time to failure: ${failedDurationMs}ms` : undefined,
-        `Failure reason: ${reason}`,
-        triggeringAction ? `Triggering action: ${triggeringAction}` : undefined,
-      ]
-        .filter(Boolean)
-        .join('\n');
-      const verdict = this.verifyFault('NETWORK', `Network Request Failed: ${reason}`, {
+      const failedAtMs = this.requestSettledAtMs(request);
+      const chaosMode = ChaosInjectionRegistry.modeFor(url, failedAtMs);
+      const routing = routeNetworkEvent({
+        kind: 'TRANSPORT_FAILURE',
         url,
-        content: failureDetail,
-        evidence: { hasMessage: true, hasReproductionSteps: reproductionPlaybook.length > 0 },
+        resourceType: failedResource,
+        failureText: reason,
+        chaosInjected: chaosMode !== undefined,
       });
-      const { advice: remediation, severity, attribution } = verdict;
-      if (!verdict.report) {
+
+      // Static-asset chatter never reaches the Network tab or the failure counters.
+      if (routing.reasonCode === 'ASSET_NOISE') return;
+
+      // Cancellations are harness artifacts (session stop, superseded navigation) —
+      // logged for context only, never counted, never parked for promotion.
+      const cancelled = routing.reasonCode === 'CANCELLED' || (isAborted && !chaosMode);
+
+      this.recordNetworkLog(request, undefined, false, reason);
+      if (!cancelled) this.deps.recordNetworkFailure();
+
+      if (cancelled) {
         if (!isStressScenarioActive()) {
-          t.emit('ACTION', {
-            actionExecuted: 'unverified-network-failure',
-            url,
-            method,
-            message: `Unverified network failure suppressed (${attribution.origin}): ${verdict.reason}`,
-          });
+          t.emit('NETWORK', { url, method, message: `${method} ${url} — ${routing.reason}` });
         }
         return;
       }
 
-      t.emit('EXCEPTION', {
-        url,
-        method,
-        message: `Network Request Failed: ${reason} for ${method} ${url}`,
-        reproductionSteps: reproductionPlaybook,
-        attribution,
-      });
-
-      // Transport-level failure (DNS/offline/refused/timeout — genuinely verified,
-      // non-abort) is a Network-tab row too, not just an Errors-tab exception.
+      // Every transport failure is a Network-tab row, whatever the promotion verdict.
+      const failedDurationMs = this.computeRequestDuration(request);
+      const triggeringAction = this.triggeringActionFor(failedAtMs);
       t.emit('NETWORK', {
         url,
         method,
         durationMs: failedDurationMs,
-        message: `Network Request Failed: ${reason} for ${method} ${url}`,
-        reproductionSteps: reproductionPlaybook,
-        attribution,
+        message: `${method} ${url} failed: ${reason} — ${routing.reason}`,
       });
 
-      // Minted here so the streamed card and the ledger entry share one identity —
-      // a later reproduction verdict patches the exact card the operator is looking at.
-      const networkBugId = `network-failed-${Date.now()}-${nextBugSeq()}`;
-
-      const failedCulprit = this.culpritForRequest(request);
-      t.gateway.emitIncidentReport({
-        bugId: networkBugId,
+      const evidence: NetworkFaultEvidence = {
+        page,
+        request,
         timestamp,
-        reason: `Network Request Failed: ${reason}`,
-        url: this.deps.getLastKnownUrl() || page.url(),
-        stackTrace: failureDetail,
-        steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionActions: reproduction.actions,
-        stateFingerprint,
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-        severity: severity as FaultSeverity,
-        culpritSelector: failedCulprit,
-      });
-
-      t.gateway.emitForensicReport({
-        timestamp,
-        reason: `Network Request Failed: ${reason}`,
-        url: this.deps.getLastKnownUrl() || page.url(),
-        stackTrace: failureDetail,
-        breadcrumbs,
-        reproductionPlaybook,
-        advice: remediation,
-        attribution,
-        severity: severity as FaultSeverity,
-        culpritSelector: failedCulprit,
-      });
-
-      // Persist network failure to forensic_errors database (Phase 2: Error Logging System)
-      this.deps.persistForensicError({
-        type: ForensicErrorType.API_FAILURE,
-        severity,
-        message: `Network Request Failed: ${reason} for ${method} ${url}`,
-        stackTrace: failureDetail,
-        url: this.deps.getLastKnownUrl() || page.url(),
-        endpoint: url,
+        faultAtMs: failedAtMs,
+        url,
         method,
-        action: triggeringAction,
-        bugClass: attribution.bugClass,
-        scenario: attribution.scenario,
-        cwe: attribution.cwe,
-      });
+        reason,
+        detail: [
+          `Request: ${method} ${url}`,
+          'Status: no response (transport-level failure)',
+          failedDurationMs !== undefined ? `Time to failure: ${failedDurationMs}ms` : undefined,
+          `Failure reason: ${reason}`,
+          chaosMode ? `Injected fault: ${chaosMode} (BugSafari chaos scenario)` : undefined,
+          triggeringAction ? `Triggering action: ${triggeringAction}` : undefined,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        durationMs: failedDurationMs,
+        triggeringAction,
+        culpritSelector: this.culpritForRequest(request),
+        breadcrumbs,
+        reproduction: ActiveScenarioTracker.flushSnapshot({
+          faultUrl: this.deps.getLastKnownUrl() || page.url(),
+          faultAtMs: failedAtMs,
+        }),
+        stateFingerprint: await captureStateFingerprint(page),
+        chaosMode,
+      };
 
-      // Register network failure bug to memory — one distinct instance per
-      // failed request (unique sequenced id), with stack/checklist/suggested fix.
-      this.deps.registerConfirmedBug({
-        bugId: networkBugId,
-        type: 'NETWORK',
-        message: `Network Request Failed: ${reason}`,
-        selector: failedCulprit ?? '',
-        payloadUsed: method,
-        advice: remediation,
-        stackTrace: failureDetail,
-        reproductionSteps: reproductionPlaybook,
-        reproductionActions: reproduction.actions,
-        stateFingerprint,
-        attribution,
-        severity: severity as FaultSeverity,
-        timestamp: new Date(),
-      });
+      if (routing.promote) {
+        await this.promoteNetworkFault(evidence, routing);
+        return;
+      }
+
+      // Infrastructure/environment failure: Network tab only for now. Parked so that
+      // if the app throws because this call died within the correlation window, the
+      // arbiter hands it back and it is promoted with THIS evidence (see
+      // promotePendingNetworkFaults).
+      this.networkArbiter.hold(url, evidence, failedAtMs);
     });
   }
 

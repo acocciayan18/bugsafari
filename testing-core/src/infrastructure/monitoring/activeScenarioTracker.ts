@@ -63,7 +63,7 @@ export class ActiveScenarioTracker {
     // Seed the navigation step when the rolling log has nothing yet, so the
     // playbook always opens with context even on the very first scenario.
     if (ReproductionPlaybookStore.snapshot().length === 0 && targetUrl) {
-      steps.push(`Go to ${targetUrl}`);
+      steps.push(`Open ${targetUrl}`);
     }
     ActiveScenarioTracker.active = {
       scenario,

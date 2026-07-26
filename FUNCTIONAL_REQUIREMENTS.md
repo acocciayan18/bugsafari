@@ -134,7 +134,7 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 
 **FR-4.7 StorageTamper** — Snapshots privileged-UI baseline, forges role/admin/isAuthenticated flags, re-mints the JWT with `alg: none` and `role: admin`, reloads the same URL, and applies a strict positive-delta oracle. Originals are restored and the page reloaded afterwards.
 
-**FR-4.8 RouteTrasher** — **Disabled engine-wide.** Omitted from the scenario registry and explicitly excluded in `ActionExecutor.ts:536`. Its module is retained for back-compat forensics, and its `classifyHttpStatus` / `isExpectedResourceNoise` helpers are still the live HTTP source of truth.
+**FR-4.8 RouteTrasher** — **Disabled engine-wide.** Omitted from the scenario registry and explicitly excluded in `ActionExecutor.ts:536`. Its module is retained for back-compat forensics; its `classifyHttpStatus` / `isExpectedResourceNoise` helpers now delegate to the shared routing tree (`shared/types/telemetryRouting.ts`), which is the single source of truth for network-vs-finding routing across the engine and the dashboard.
 
 ---
 

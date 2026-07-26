@@ -23,6 +23,12 @@ export {
 } from './scenarioCatalog.js';
 
 export {
+  ensureFindingEvidence,
+  type FindingEvidenceInput,
+  type FindingEvidenceResult,
+} from './findingEvidence.js';
+
+export {
   classifyFault,
   isSecurityBugClass,
   type FaultType,

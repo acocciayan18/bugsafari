@@ -59,6 +59,8 @@ export interface ICaughtBug {
     verificationStatus?: string;
     confidenceScore?: number;
     corroborated?: boolean;
+    /** Routing-tree reason code behind the promotion (see shared telemetryRouting). */
+    routingReason?: string;
   };
   /** Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS. */
   bypass?: ConstraintBypassDetail;
@@ -358,6 +360,8 @@ const sessionSchema = new Schema(
               verificationStatus: { type: String, default: null },
               confidenceScore: { type: Number, default: null },
               corroborated: { type: Boolean, default: null },
+              // Why the shared routing tree promoted this to a finding.
+              routingReason: { type: String, default: null },
             },
             required: false,
             default: null,

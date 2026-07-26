@@ -45,6 +45,12 @@ export interface FindingAttribution {
   confidenceScore?: number;
   /** True when a repeat occurrence or a second channel corroborated the fault. */
   corroborated?: boolean;
+  /**
+   * Why the routing tree promoted this to a finding (RoutingReasonCode). Absent on
+   * runtime faults, which are findings by definition, and on records predating it.
+   * Lets the dashboard re-apply the same decision without re-deriving it from prose.
+   */
+  routingReason?: string;
 }
 
 export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK' | 'MACRO';

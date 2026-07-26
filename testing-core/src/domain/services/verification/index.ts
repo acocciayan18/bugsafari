@@ -11,3 +11,4 @@ export {
   type VerificationCandidate,
   type VerificationOutcome,
 } from './VerificationPipeline.js';
+export { NetworkFaultArbiter, type PendingNetworkFault } from './networkFaultArbiter.js';

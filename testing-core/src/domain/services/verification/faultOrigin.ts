@@ -9,6 +9,15 @@
 // transport/environment failures. Deterministic and side-effect-free.
 
 import type { FaultOrigin } from '../../../../../shared/types.js';
+import {
+  ABORT_PATTERNS,
+  BROWSER_NOISE_MARKERS,
+  BUGSAFARI_MARKERS,
+  ENVIRONMENT_TRANSPORT_MARKERS,
+  EXTENSION_URL_PREFIXES,
+  HOST_DEPENDENT_TRANSPORT_MARKERS,
+  PLAYWRIGHT_MARKERS,
+} from '../../../../../shared/types.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 
 export interface OriginInput {
@@ -27,77 +36,9 @@ export interface OriginVerdict {
   reason: string;
 }
 
-// BugSafari's own injected scripts/markers — never the app under test.
-const BUGSAFARI_MARKERS = ['[bugsafari', 'bugsafari-inject', '__bugsafari'];
-
-// Playwright / automation-driver artifacts. These fire because the harness closed
-// the page, timed out a wait, or aborted an in-flight action — not app faults.
-const PLAYWRIGHT_MARKERS = [
-  'target page, context or browser has been closed',
-  'target closed',
-  'browser has been closed',
-  'execution context was destroyed',
-  'page.goto',
-  'page.evaluate',
-  'waiting for selector',
-  'waiting for locator',
-  'locator.',
-  'timeout exceeded',
-  'timeout of',
-  'navigation timeout',
-];
-
-// Cancellations — the request was aborted (operator stop, superseded navigation).
-// Anchored to net-error tokens / explicit request phrasing: a bare "cancelled" also
-// appears in legitimate app errors ("Payment cancelled by gateway"), which must not
-// be silently attributed to the harness.
-const ABORT_PATTERNS = [
-  /net::err_aborted/,
-  /\berr_aborted\b/,
-  /\brequest (?:was )?(?:cancell?ed|aborted)\b/,
-  /\b(?:operation|action|navigation) (?:was )?(?:cancell?ed|aborted)\b/,
-];
-
-// Browser / devtools / extension noise. Benign engine chatter, not app defects.
-const BROWSER_NOISE_MARKERS = [
-  'resizeobserver loop limit exceeded',
-  'resizeobserver loop completed',
-  'non-error promise rejection captured',
-  'script error.', // cross-origin script error with no detail — unattributable
-];
-const EXTENSION_URL_PREFIXES = ['chrome-extension://', 'moz-extension://', 'safari-extension://', 'devtools://'];
-
-// Transport / environment failures. The network or host is unreachable/misconfigured;
-// the application's own code is not at fault.
-// Environmental regardless of which host they hit: no network, broken DNS,
-// misconfigured TLS/proxy. Never the application's own code.
-const ENVIRONMENT_TRANSPORT_MARKERS = [
-  'err_name_not_resolved',
-  'err_name_resolution_failed',
-  'err_internet_disconnected',
-  'err_network_changed',
-  'err_address_unreachable',
-  'err_cert_',
-  'err_ssl_',
-  'err_proxy_connection_failed',
-];
-
-// Transport failures whose meaning depends on WHO failed. Against a third-party host
-// they are environment noise; against the app's own backend they ARE the defect — the
-// server crashed, hung past its timeout, or dropped the connection. Suppressing these
-// unconditionally hid the most severe class of API failure.
-const HOST_DEPENDENT_TRANSPORT_MARKERS = [
-  'err_connection_refused',
-  'err_connection_reset',
-  'err_connection_closed',
-  'err_connection_aborted',
-  'err_connection_failed',
-  'err_connection_timed_out',
-  'err_timed_out',
-  'err_empty_response',
-  'err_response_headers_truncated',
-  'err_http2_protocol_error',
-];
+// The marker vocabulary lives in shared/types/telemetryRouting.ts so provenance
+// (whose code is at fault) and routing (which surface it belongs on) can never
+// disagree about what a DNS failure, an abort, or a driver artifact looks like.
 
 function includesAny(haystack: string, needles: readonly string[]): boolean {
   return needles.some((n) => haystack.includes(n));
