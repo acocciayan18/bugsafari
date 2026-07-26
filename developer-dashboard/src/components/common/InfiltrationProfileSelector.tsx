@@ -20,7 +20,7 @@ function InfiltrationProfileSelectorImpl({
 }: InfiltrationProfileSelectorProps) {
   return (
     <div className="w-full flex flex-col gap-2">
-      <span className="text-[11px] font-bold text-(--text-tertiary) uppercase tracking-wider font-sans">
+      <span className="text-xs font-bold text-(--text-tertiary) uppercase tracking-wider font-sans">
         Infiltration Matrix
       </span>
 
@@ -44,7 +44,7 @@ function InfiltrationProfileSelectorImpl({
               />
               <span className="flex flex-col">
                 <span className={`text-[13px] font-semibold leading-tight ${isSelected ? 'text-(--text-oninvert)' : 'text-(--text-secondary)'}`}>{option.label}</span>
-                <span className={`text-[11px] leading-tight mt-0.5 ${isSelected ? 'text-(--text-oninvert) opacity-80' : 'text-(--text-tertiary)'}`}>{option.description}</span>
+                <span className={`text-xs leading-tight mt-0.5 ${isSelected ? 'text-(--text-oninvert) opacity-80' : 'text-(--text-tertiary)'}`}>{option.description}</span>
               </span>
             </label>
           );

@@ -17,7 +17,7 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
     <Modal isOpen onClose={onClose} titleId="legal-doc-title" maxWidthClassName="max-w-2xl">
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:gap-4 sm:px-5">
         <div className="min-w-0">
-          <h3 id="legal-doc-title" className="text-sm font-semibold text-(--text-primary)">
+          <h3 id="legal-doc-title" className="text-[13px] font-semibold text-(--text-primary)">
             {doc.title}
           </h3>
           <p className="mt-0.5 text-[13px] text-(--text-tertiary)">{doc.summary}</p>
@@ -40,21 +40,21 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
               {section.heading}
             </h4>
             {section.body.map((paragraph) => (
-              <p key={paragraph} className="text-sm leading-relaxed text-(--text-secondary)">
+              <p key={paragraph} className="text-[13px] leading-relaxed text-(--text-secondary)">
                 {paragraph}
               </p>
             ))}
             {section.bullets && (
-              <ul className="space-y-1.5 pl-4">
+              <div>
                 {section.bullets.map((bullet) => (
-                  <li
+                  <p
                     key={bullet}
-                    className="list-disc text-sm leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
+                    className="list-disc text-[13px] leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
                   >
                     {bullet}
-                  </li>
+                  </p>
                 ))}
-              </ul>
+              </div>
             )}
           </section>
         ))}

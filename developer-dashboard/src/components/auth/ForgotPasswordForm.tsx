@@ -83,12 +83,12 @@ export default function ForgotPasswordForm() {
           <p className="text-(--text-primary) mb-5 sm:mb-6">
             If an account exists with that email, a password reset link has been sent.
           </p>
-          <p className="text-sm text-(--text-tertiary) mb-6">
+          <p className="text-[13px] text-(--text-tertiary) mb-6">
             In development, check the server console for the reset link.
           </p>
           <Link
             to="/login"
-            className="inline-flex items-center text-sm text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+            className="inline-flex items-center text-[13px] text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
           >
             <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="ml-2">Back to sign in</span>
@@ -131,7 +131,7 @@ export default function ForgotPasswordForm() {
         {serverError && (
           <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-            <p className="text-sm text-(--status-critical-fg)" role="alert">{serverError}</p>
+            <p className="text-[13px] text-(--status-critical-fg)" role="alert">{serverError}</p>
           </div>
         )}
 
@@ -145,7 +145,7 @@ export default function ForgotPasswordForm() {
       <div className="mt-6 flex justify-center">
         <Link
           to="/login"
-          className="inline-flex items-center text-sm text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+          className="inline-flex items-center text-[13px] text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
         >
           <ArrowLeft className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
           <span className="ml-2">Back to sign in</span>

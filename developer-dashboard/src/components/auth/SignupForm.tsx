@@ -109,7 +109,7 @@ export default function SignupForm() {
       statusTone={isLoading ? 'busy' : authError || emailError ? 'error' : 'idle'}
       footer={
         <>
-          <div className="mt-5 text-center text-sm text-(--text-primary)">
+          <div className="mt-5 text-center text-[13px] text-(--text-primary)">
             Already have an account? <Link to="/login" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Log in</Link>
           </div>
           <LegalFooter onOpenDoc={setOpenDocId} />
@@ -232,7 +232,7 @@ export default function SignupForm() {
         {(authError || emailError) && (
           <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-            <p className="text-sm text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
+            <p className="text-[13px] text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
           </div>
         )}
 

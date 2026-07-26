@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
+import { Clock } from 'lucide-react';
 
 interface SessionTimerProps {
     initialTimeMs?: number;      // Total timebox for this run — Default: 600000 (10 minutes)
@@ -84,11 +85,13 @@ function CompactTimer({
     const isUrgent = timeRemaining <= 30000;
 
     return (
-        <div className="flex items-center gap-2">
-            <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`}>
-                {formattedTime}
-            </div>
-        </div>
+        <div className="flex items-center justify-center gap-2">
+    <Clock className={`h-4 w-4 ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`} />
+    <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`}>
+        {formattedTime}
+    </div>
+</div>
+
     );
 }
 

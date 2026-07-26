@@ -53,7 +53,7 @@ export default function TestingConfigModal({
       backdropClassName="bg-transparent backdrop-blur-[3px]"
     >
       <div className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3">
-        <h3 id="testing-config-title" className="text-sm font-semibold text-(--text-primary)">
+        <h3 id="testing-config-title" className="text-[13px] font-semibold text-(--text-primary)">
           Testing Configuration
         </h3>
         <button
@@ -74,7 +74,7 @@ export default function TestingConfigModal({
             aria-selected={activeTab === id}
             aria-controls={`config-panel-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors font-sans ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors font-sans ${
               activeTab === id
                 ? 'border-(--text-primary) text-(--text-primary)'
                 : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
@@ -106,10 +106,10 @@ export default function TestingConfigModal({
                 className="mt-0.5 rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
               />
               <span className="flex flex-col">
-                <span className="text-[11px] font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
+                <span className="text-xs font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
                   Strict Boundary Lock
                 </span>
-                <span className="text-[11px] text-(--text-tertiary) font-sans mt-0.5">
+                <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">
                   Confine exploration to the exact target URL — never follow links off it.
                 </span>
               </span>
@@ -125,10 +125,10 @@ export default function TestingConfigModal({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) px-4 py-3">
-        <span className="text-[11px] text-(--text-tertiary) font-sans">Applied on the next run.</span>
+        <span className="text-xs text-(--text-tertiary) font-sans">Applied on the next run.</span>
         <button
           onClick={onClose}
-          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors"
+          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
         >
           Done
         </button>

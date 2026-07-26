@@ -39,8 +39,8 @@ function MetaPill({ label, value, title }: { label: string; value: string; title
       title={title}
       className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
     >
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
-      <span className="text-[11px] font-semibold text-(--text-primary)">{value}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
+      <span className="text-xs font-semibold text-(--text-primary)">{value}</span>
     </span>
   );
 }
@@ -84,9 +84,8 @@ export default function FindingCard({
   showBypass?: boolean;
   children?: ReactNode;
 }) {
-  // FindingView already drops placeholder selectors ('', 'N/A'), so presence here
-  // means real evidence — an absent one takes its whole cell out of the grid.
-  const selector = view.selector;
+  // Human-readable culprit name, never the raw selector. Absent ⇒ cell is dropped.
+  const element = view.elementLabel;
 
   return (
     <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
@@ -96,12 +95,12 @@ export default function FindingCard({
             <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{view.title}</span>
+            <span className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{view.title}</span>
             <SeverityBadge severity={view.severity} />
             {view.occurrences > 1 && (
               <span
                 title={`This fault occurred ${view.occurrences} times this session`}
-                className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold leading-none text-(--text-oninvert)"
+                className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold leading-none text-(--text-oninvert)"
               >
                 ×{view.occurrences}
               </span>
@@ -121,12 +120,12 @@ export default function FindingCard({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Message</div>
-            <div className="mt-0.5 break-words text-sm text-(--text-primary)">{view.message || 'No details provided'}</div>
+            <div className="mt-0.5 break-words text-[13px] text-(--text-primary)">{view.message || 'No details provided'}</div>
           </div>
-          {selector && (
+          {element && (
             <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
-              <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={selector}>{selector}</div>
+              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Element</div>
+              <div className="mt-0.5 truncate text-[13px] text-(--text-primary)" title={element}>{element}</div>
             </div>
           )}
           {view.payloadUsed && (

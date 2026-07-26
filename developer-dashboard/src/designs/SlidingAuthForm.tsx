@@ -47,7 +47,7 @@ export default function SlidingAuthForm() {
                 {/* Back button positioned inside the card, above login form */}
                 <button
                     onClick={handleBack}
-                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-white/90 hover:bg-white shadow-md hover:shadow-lg transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
+                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-white/90 hover:bg-white shadow-md hover:shadow-lg transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 text-[13px] font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
                     aria-label="Back to homepage"
                 >
                     <ArrowLeft className="h-4 w-4"  aria-hidden="true" />

@@ -262,6 +262,10 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // navigation lands on an authenticated session. Runs after the reflection
       // oracle is installed (it must precede every navigation, login included) and
       // before live-frame capture starts, so no frame can catch a filled password.
+      // Exploration base URL. For an authenticated run it is REPLACED by wherever
+      // login landed (below), so the engine explores the authenticated surface —
+      // not the login URL, which would just bounce it back to the public form.
+      let explorationUrl = targetUrl;
       if (targetAuth) {
         // Only a form login types literals into the page; a seeded session has no
         // value the target could echo back, so there is nothing to register.
@@ -279,17 +283,29 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
           };
         }
         this.activeEngine.recordAuthenticationMarker();
+        // Explore from the post-login landing page, not the login URL. Re-navigating
+        // to targetUrl (the login form) would abandon the authenticated session's
+        // location and strand exploration on the public login/registration pages —
+        // the exact "clean result for an untested surface" the fail path guards against.
+        // Fall back to targetUrl if the landing URL is unusable (e.g. about:blank).
+        const landedUrl = this.activePage.url();
+        if (landedUrl && /^https?:/i.test(landedUrl)) explorationUrl = landedUrl;
       }
 
       // Origins only — the auth config itself never crosses into the engine (least
-      // privilege), but a login host must stay approved so an SSO popup can complete.
-      const authOrigins =
-        targetAuth?.mode === 'credentials' && targetAuth.loginUrl
-          ? [new URL(targetAuth.loginUrl, targetUrl).origin]
-          : [];
+      // privilege), but the login host must stay approved (SSO popup, or a login URL
+      // on a different origin than the post-login landing page just adopted above).
+      const authOrigins = targetAuth
+        ? [
+            new URL(targetUrl).origin,
+            ...(targetAuth.mode === 'credentials' && targetAuth.loginUrl
+              ? [new URL(targetAuth.loginUrl, targetUrl).origin]
+              : []),
+          ]
+        : [];
 
       // Pass browserInfo to the engine for telemetry collection
-      result = await this.activeEngine.run(this.activePage, targetUrl, telemetry, 60, this.currentBrowserInfo, authOrigins);
+      result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins);
     } catch (err: unknown) {
       //  RACE CONDITION FIX: only treat this as an expected, graceful stop
       // when stop() actually tagged this run as cancelled. Previously this

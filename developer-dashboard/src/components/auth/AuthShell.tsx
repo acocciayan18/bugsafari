@@ -34,7 +34,7 @@ export default function AuthShell({
         type="button"
         onClick={() => navigate('/')}
         aria-label="Back to home"
-        className="fixed top-3 left-3 sm:top-4 sm:left-4 lg:top-6 lg:left-6 flex items-center gap-1.5 px-3 py-2 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-panel) text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--surface-app) transition-colors text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+        className="fixed top-3 left-3 sm:top-4 sm:left-4 lg:top-6 lg:left-6 flex items-center gap-1.5 px-3 py-2 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-panel) text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--surface-app) transition-colors text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
       >
         <Home className="w-4 h-4 shrink-0" strokeWidth={1.75} />
         Home

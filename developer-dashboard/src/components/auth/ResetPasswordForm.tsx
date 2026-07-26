@@ -51,7 +51,7 @@ export default function ResetPasswordForm() {
           </p>
           <Link
             to="/forgot-password"
-            className="inline-flex items-center text-sm text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+            className="inline-flex items-center text-[13px] text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
           >
             <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="ml-2">Request a new reset link</span>
@@ -135,7 +135,7 @@ export default function ResetPasswordForm() {
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-(--text-primary) mb-1.5">
+              <label htmlFor="password" className="block text-[13px] font-medium text-(--text-primary) mb-1.5">
                 New Password
               </label>
               <div className="relative">
@@ -151,7 +151,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedPassword(true)}
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -169,7 +169,7 @@ export default function ResetPasswordForm() {
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-(--text-primary) mb-1.5">
+              <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-(--text-primary) mb-1.5">
                 Confirm New Password
               </label>
               <div className="relative">
@@ -185,7 +185,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedConfirm(true)}
                   aria-invalid={!!confirmError}
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -208,7 +208,7 @@ export default function ResetPasswordForm() {
             {serverError && (
               <div className="flex items-start gap-2 p-3 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-(--radius-sm)">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm text-(--status-critical-fg)" role="alert">{serverError}</p>
+                <p className="text-[13px] text-(--status-critical-fg)" role="alert">{serverError}</p>
               </div>
             )}
 
@@ -222,7 +222,7 @@ export default function ResetPasswordForm() {
           <div className="mt-6 flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center text-sm text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+              className="inline-flex items-center text-[13px] text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
             >
               <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               <span className="ml-2">Back to sign in</span>

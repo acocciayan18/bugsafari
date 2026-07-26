@@ -89,7 +89,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
   return (
     <Modal isOpen={isOpen} onClose={onClose} titleId="compare-modal-title" maxWidthClassName="max-w-6xl">
       <div className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3">
-        <h3 id="compare-modal-title" className="text-sm font-semibold text-(--text-primary)">
+        <h3 id="compare-modal-title" className="text-[13px] font-semibold text-(--text-primary)">
           Compare Sessions ({sessionIds.length})
         </h3>
         <button
@@ -106,12 +106,12 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
         {isLoading ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--border-hairline) border-t-(--text-secondary)" />
-            <span className="text-sm text-(--text-secondary)">Loading sessions…</span>
+            <span className="text-[13px] text-(--text-secondary)">Loading sessions…</span>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center gap-2 py-12">
             <TriangleAlert className="h-10 w-10 text-(--status-critical-fg)" aria-hidden="true" />
-            <span className="text-sm font-medium text-(--status-critical-fg)">{error}</span>
+            <span className="text-[13px] font-medium text-(--status-critical-fg)">{error}</span>
           </div>
         ) : (
           <table className="w-full min-w-[560px] border-collapse text-[13px]">
@@ -152,7 +152,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
 
               {categories.length > 0 && (
                 <tr>
-                  <td colSpan={reports.length + 1} className="px-3 pt-5 pb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary)">
+                  <td colSpan={reports.length + 1} className="px-3 pt-5 pb-2 text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">
                     Defects by category
                   </td>
                 </tr>
@@ -177,7 +177,7 @@ export default function SessionComparisonModal({ isOpen, onClose, sessionIds }: 
               })}
 
               <tr>
-                <td colSpan={reports.length + 1} className="px-3 pt-5 pb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary)">
+                <td colSpan={reports.length + 1} className="px-3 pt-5 pb-2 text-xs font-bold uppercase tracking-wider text-(--text-tertiary)">
                   URLs visited
                 </td>
               </tr>

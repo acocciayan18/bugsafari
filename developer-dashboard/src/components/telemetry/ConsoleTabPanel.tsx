@@ -60,7 +60,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
             type="button"
             onClick={() => setFilter(level)}
             aria-pressed={filter === level}
-            className={`px-2 py-1.5 sm:py-0.5 rounded text-[11px] font-bold uppercase tracking-wide transition-colors ${
+            className={`px-2 py-1.5 sm:py-0.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
               filter === level
                 ? 'bg-(--surface-inset) text-(--text-primary)'
                 : 'text-(--text-tertiary) hover:text-(--text-secondary)'
@@ -98,7 +98,7 @@ export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanel
                   </span>
                 )}
                 {log.stackTrace && (
-                  <pre className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-4 text-(--text-tertiary) border-l-2 border-(--border-hairline) pl-2">
+                  <pre className="mt-1 whitespace-pre-wrap break-words text-xs leading-4 text-(--text-tertiary) border-l-2 border-(--border-hairline) pl-2">
                     {log.stackTrace}
                   </pre>
                 )}

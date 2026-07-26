@@ -104,9 +104,9 @@ export default function NetworkTabPanel({
                   {method} {statusCode || 'ERR'}
                 </span>
                 {count > 1 && (
-                  <span className="text-[11px] text-(--text-secondary)">×{count}</span>
+                  <span className="text-xs text-(--text-secondary)">×{count}</span>
                 )}
-                <span className="rounded bg-(--surface-inset) px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-(--text-tertiary)">
+                <span className="rounded bg-(--surface-inset) px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-(--text-tertiary)">
                   {routed.reasonCode.replace(/_/g, ' ').toLowerCase()}
                 </span>
               </div>
@@ -115,7 +115,7 @@ export default function NetworkTabPanel({
               {url}
             </div>
             {(message || aiDiagnostics) && (
-              <div className="px-3 py-2 text-[11px] text-(--text-secondary) border-t border-(--border-hairline)">
+              <div className="px-3 py-2 text-xs text-(--text-secondary) border-t border-(--border-hairline)">
                 {message}
                 <AiDiagnosticCard ai={aiDiagnostics} />
               </div>

@@ -69,11 +69,11 @@ export async function startRun(
         if (queued) useRunStore.setState((s) => ({ status: resolveStatus(s.status, 'QUEUED'), isInitializing: false }));
     } catch (error) {
         const raw = error instanceof Error ? error.message : String(error);
-        // The backend refuses authenticated runs on the distributed path so credentials
-        // never reach Redis. Surface that as guidance, not an opaque HTTP failure.
+        // The backend refuses authenticated runs only when its credential-encryption
+        // key is unset — a deployment misconfig, not a product limit. Surface the fix.
         const isAuthOnQueue = raw.includes('AUTH_UNSUPPORTED_ON_QUEUE');
         const message = isAuthOnQueue
-            ? 'Authenticated runs execute in-process only and cannot be queued. Retry without credentials, or run with the queue disabled.'
+            ? 'Authenticated runs need the server credential key (BUGSAFARI_AUTH_KEY) configured. Ask an operator to set it, or run with the queue disabled.'
             : raw;
         if (isAuthOnQueue) toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);

@@ -91,7 +91,7 @@ function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: {
   return (
     <div className="min-w-0">
       <div className="text-caption font-semibold uppercase tracking-wider text-(--text-secondary)">{label}</div>
-      <div className={`mt-0.5 text-sm font-bold tabular-nums ${valueClassName}`}>{value}</div>
+      <div className={`mt-0.5 text-[13px] font-bold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
 }
@@ -181,7 +181,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-[11px] text-(--text-secondary)">
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-xs text-(--text-secondary)">
               {routes.map((route, idx) => (
                 <li key={idx} className="truncate border-b border-(--border-hairline) py-1 last:border-0" title={route}>{route}</li>
               ))}
@@ -208,13 +208,13 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-[11px] font-semibold uppercase text-(--status-neutral-fg)">
+          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold uppercase text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
       </div>
       {aiAnalysis.rootCause && (
-        <p className="mt-3 text-sm leading-relaxed text-(--text-primary)">{aiAnalysis.rootCause}</p>
+        <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{aiAnalysis.rootCause}</p>
       )}
       {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
@@ -379,7 +379,7 @@ function VerifyFixControl({
   if (status.state === 'running') {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary)"
+        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-(--text-secondary)"
         aria-live="polite"
       >
         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -395,7 +395,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${meta.badge}`}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}
@@ -409,7 +409,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
@@ -441,12 +441,12 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
-          <span className="font-mono text-[11px] font-semibold text-(--status-critical-fg)">HTTP {signal.statusCode}</span>
+          <span className="font-mono text-xs font-semibold text-(--status-critical-fg)">HTTP {signal.statusCode}</span>
         )}
       </div>
       <div className="mt-1 break-words text-[13px] text-(--text-primary)">{signal.message}</div>
       {signal.url && (
-        <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={signal.url}>{signal.url}</div>
+        <div className="mt-1 truncate font-mono text-xs text-(--text-secondary)" title={signal.url}>{signal.url}</div>
       )}
     </li>
   );
@@ -470,13 +470,13 @@ function VerificationResultModal({
       <div className={`flex items-center gap-3 rounded-t-lg px-4 py-4 text-(--text-oninvert) sm:px-5 ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
+          <div className="text-xs font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
           <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
         </div>
       </div>
 
       <div className="bg-(--surface-panel) px-4 py-4 sm:px-5">
-        <p className="text-sm leading-relaxed text-(--text-primary)">{result.summary}</p>
+        <p className="text-[13px] leading-relaxed text-(--text-primary)">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
@@ -491,7 +491,7 @@ function VerificationResultModal({
 
         {result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-secondary)">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-(--text-secondary)">
               {result.verdict === 'STILL_ACTIVE' ? 'Reproduced Signals' : 'Uncorroborated Same-Class Signals'} ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -522,7 +522,7 @@ function VerificationResultModal({
 
         {result.otherSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-(--text-secondary)">
+            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-(--text-secondary)">
               Other Faults Observed — Different Class ({result.otherSignals.length})
             </div>
             <ul className="space-y-2">
@@ -609,7 +609,7 @@ function ReportFindingCard({
         index={index}
         theme={verdictMeta ?? BASE_FINDING_THEME}
         statusChip={verdictMeta && (
-          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
+          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
             {verdictMeta.label}
           </span>
@@ -644,7 +644,7 @@ function CleanRunCard() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
       <CircleCheckBig className="h-8 w-8 text-(--status-stable-fg)" strokeWidth={1.75} aria-hidden="true" />
-      <div className="text-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
+      <div className="text-[13px] font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
       <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
@@ -672,7 +672,7 @@ const CONSOLE_ERROR_TYPES = new Set(['CONSOLE_ERROR', 'CONSOLE_WARN', 'JS_EXCEPT
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-[11px] leading-none text-(--text-secondary)">
+    <span className="ml-1.5 rounded-full bg-(--surface-inset) px-1.5 py-0.5 font-mono text-xs leading-none text-(--text-secondary)">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -720,16 +720,16 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
         return (
           <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase text-(--text-oninvert)">{row.method}</span>
-              <span className={`font-mono text-[11px] font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
+              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold uppercase text-(--text-oninvert)">{row.method}</span>
+              <span className={`font-mono text-xs font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-[11px] uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
+                <span className="font-mono text-xs uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-[11px] text-(--text-secondary)">×{row.repeatCount}</span>
+                <span className="font-mono text-xs text-(--text-secondary)">×{row.repeatCount}</span>
               )}
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-(--text-secondary)" title={row.url}>{row.url}</div>
+            <div className="mt-1 truncate font-mono text-xs text-(--text-secondary)" title={row.url}>{row.url}</div>
             {row.message && !row.ok && <div className="mt-1 break-words text-[13px] text-(--text-primary)">{row.message}</div>}
           </li>
         );
@@ -766,7 +766,7 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
     )}
   </div>
   {row.message && (
-    <div className="mt-1 break-words font-mono text-sm text-(--text-primary)">
+    <div className="mt-1 break-words font-mono text-[13px] text-(--text-primary)">
       {row.message}
     </div>
   )}
@@ -883,7 +883,7 @@ export default function ForensicReport() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-(--surface-panel)">
         <div className="text-center">
-          <div className="text-sm font-semibold text-(--text-secondary)">Loading forensic report…</div>
+          <div className="text-[13px] font-semibold text-(--text-secondary)">Loading forensic report…</div>
           <div className="mt-2 text-[13px] text-(--text-tertiary)">Fetching the latest session details from the backend.</div>
         </div>
       </div>
@@ -894,7 +894,7 @@ export default function ForensicReport() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-(--surface-panel) px-6">
         <div className="max-w-md text-center">
-          <div className="text-sm font-semibold text-(--status-critical-fg)">Failed to load report</div>
+          <div className="text-[13px] font-semibold text-(--status-critical-fg)">Failed to load report</div>
           <div className="mt-2 text-[13px] text-(--text-tertiary)">{error || 'No report data was returned for this session.'}</div>
         </div>
       </div>
@@ -915,9 +915,9 @@ export default function ForensicReport() {
         </button>
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
         <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
-          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-[13px] font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
-          <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
+          <span className="text-[13px] font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>
       </header>
 

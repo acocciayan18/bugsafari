@@ -76,13 +76,13 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
       footer={
         <>
-          <div className="mt-8 text-center text-sm text-(--text-primary)">
+          <div className="mt-8 text-center text-[13px] text-(--text-primary)">
             Don't have an account?{' '}
             <Link to="/signup" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Sign Up</Link>
           </div>
 
           <div className="mt-3 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-sm text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-[13px] text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
               Continue As Guest
             </button>
           </div>
@@ -119,8 +119,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
             <div className="relative">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
-                <Link to="/forgot-password" className="text-sm font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
+                <label htmlFor="password" className="text-[13px] font-medium text-(--text-primary)">Password</label>
+                <Link to="/forgot-password" className="text-[13px] font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
               </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
@@ -134,7 +134,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   placeholder="••••••••"
                   aria-invalid={!!passwordError}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base sm:text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   required
                 />
                 <button
@@ -154,7 +154,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
             {authError && (
               <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-sm text-(--status-critical-fg)" role="alert">{authError}</p>
+                <p className="text-[13px] text-(--status-critical-fg)" role="alert">{authError}</p>
               </div>
             )}
 

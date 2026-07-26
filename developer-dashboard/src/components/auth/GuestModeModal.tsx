@@ -18,7 +18,7 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
         <div className="flex min-w-0 items-start gap-2.5">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-(--text-secondary)" strokeWidth={1.75} aria-hidden="true" />
           <div className="min-w-0">
-            <h3 id="guest-mode-title" className="text-sm font-semibold text-(--text-primary)">
+            <h3 id="guest-mode-title" className="text-[13px] font-semibold text-(--text-primary)">
               Continue as Guest?
             </h3>
             <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
@@ -43,13 +43,13 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
           {GUEST_LIMITATIONS.map((limitation) => (
             <li
               key={limitation}
-              className="list-disc text-sm leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
+              className="list-disc text-[13px] leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
             >
               {limitation}
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-sm leading-relaxed text-(--text-secondary)">
+        <p className="mt-4 text-[13px] leading-relaxed text-(--text-secondary)">
           Create a free account to keep your session history, revisit past findings, and export reports.
         </p>
       </div>

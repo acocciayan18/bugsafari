@@ -45,11 +45,11 @@ export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProp
           <TriangleAlert className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
         </div>
         <div className="max-w-md space-y-1">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-(--text-primary)">This panel hit an error</h2>
+          <h2 className="text-[13px] font-bold uppercase tracking-wider text-(--text-primary)">This panel hit an error</h2>
           <p className="text-[13px] text-(--text-secondary)">
             The rest of the app and your live session are still running. Reload the panel to recover the view.
           </p>
-          <p className="font-mono text-[11px] text-(--text-tertiary) break-words">{this.state.error.message}</p>
+          <p className="font-mono text-xs text-(--text-tertiary) break-words">{this.state.error.message}</p>
         </div>
         <button
           onClick={this.retry}

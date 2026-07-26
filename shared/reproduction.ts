@@ -87,8 +87,24 @@ export function elementNoun(tagName?: string, type?: string): string {
 
 // A raw CSS selector leaked into a label reads as engine noise in the playbook —
 // detected here so the step falls back to the control's noun instead.
-function isSelectorLike(value: string): boolean {
+export function isSelectorLike(value: string): boolean {
   return /^[#.[]/.test(value) || value.includes(':nth-') || value.includes('>');
+}
+
+// Concise semantic fallback for an element whose only identity is a raw CSS
+// selector — collapses a DOM path to its final control (`<button#submit>`,
+// `<input.email-field>`), stripping positional pseudos. Never returns a full path.
+export function semanticFallbackFromSelector(selector?: string): string {
+  const raw = collapse(selector);
+  if (!raw) return '<element>';
+  const last = raw.split('>').pop()!.trim().replace(/:nth-[a-z-]+\([^)]*\)/gi, '');
+  const tag = (/^[a-z][a-z0-9-]*/i.exec(last)?.[0] ?? '').toLowerCase();
+  const id = /#([\w-]+)/.exec(last)?.[1];
+  const cls = /\.([\w-]+)/.exec(last)?.[1];
+  const attr = /\[([\w-]+)(?:[~|^$*]?=["']?([^"'\]]+)["']?)?\]/.exec(last);
+  const name = attr ? attr[2] ?? attr[1] : undefined;
+  const qualifier = id ? `#${id}` : cls ? `.${cls}` : name ? `[${name}]` : '';
+  return `<${`${tag}${qualifier}` || 'element'}>`;
 }
 
 /** Name one control the way a step should read it — `the "Register" button`. */

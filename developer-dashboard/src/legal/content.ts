@@ -24,58 +24,53 @@ export const PRIVACY_NOTICE: LegalDoc = {
   id: 'privacy',
   title: 'Privacy Notice',
   summary: `Issued under the Data Privacy Act of 2012 (Republic Act No. 10173). Version ${POLICY_VERSION}, effective ${POLICY_EFFECTIVE_DATE}.`,
-  sections: [
-    {
-      heading: 'What we collect',
-      body: ['BugSafari collects only the data required to operate autonomous exploratory testing sessions.'],
-      bullets: [
-        'Account data — email address and a one-way hashed password.',
-        'Session data — target URLs you supply, testing configuration, and run timestamps.',
-        'Telemetry — DOM element traces, action sequences, and console and network errors captured from the application you test.',
-        'Technical data — browser and device information needed to serve the dashboard.',
-      ],
-    },
-    {
-      heading: 'How we use it',
-      body: ['Your data is processed to execute testing runs, render live telemetry, store your session history, and generate defect reports.'],
-      bullets: [
-        'We do not sell, rent, or trade personal information.',
-        'We do not use your data for advertising or profiling.',
-        'Aggregated, de-identified metrics may inform academic research findings.',
-      ],
-    },
-    {
-      heading: 'How we protect it',
-      body: ['Processing follows the security principles required by RA 10173.'],
-      bullets: [
-        'Passwords are hashed and never stored or transmitted in plain text.',
-        'Sessions are authenticated with signed, expiring tokens.',
-        'Records are isolated per account in a multi-tenant database; no account can query another account’s data.',
-        'Testing executes in an isolated container that cannot reach your local files.',
-        'Guest sessions are held in memory for the browser session only and are never written to the database.',
-      ],
-    },
-    {
-      heading: 'Your rights as a data subject',
-      body: ['Under RA 10173 you are entitled to the following, exercisable at any time through the support channel in this application.'],
-      bullets: [
-        'Right to be informed of how your data is collected and processed.',
-        'Right to access the personal data we hold about you.',
-        'Right to object to processing, and to withdraw consent.',
-        'Right to rectify inaccurate or outdated data.',
-        'Right to erasure or blocking of your data.',
-        'Right to data portability in a structured, machine-readable format.',
-        'Right to damages for violations of your data privacy rights.',
-        'Right to file a complaint with the National Privacy Commission (privacy.gov.ph).',
-      ],
-    },
-    {
-      heading: 'Retention',
-      body: [
-        'Session records and telemetry are retained while your account is active. Deleting your account removes the associated records. Guest data is discarded when the browser session ends.',
-      ],
-    },
-  ],
+ sections: [
+  {
+    heading: 'What we collect',
+    body: [
+      'BugSafari collects only the data required to operate autonomous exploratory testing sessions.',
+    ],
+    bullets: [
+      'We collect your account information (email and securely hashed password), testing session details (target URLs, configurations, and timestamps), telemetry generated during exploration (DOM interactions, action history, console and network errors), and the technical information necessary to operate the dashboard.',
+    ],
+  },
+  {
+    heading: 'How we use it',
+    body: [
+      'Your data is processed to execute testing runs, render live telemetry, store your session history, and generate defect reports.',
+    ],
+    bullets: [
+      'Your data is used solely to provide BugSafari’s testing services and improve academic research through aggregated, de-identified metrics; it is never sold, rented, traded, or used for advertising or profiling.',
+    ],
+  },
+  {
+    heading: 'How we protect it',
+    body: [
+      'Processing follows the security principles required by RA 10173.',
+    ],
+    bullets: [
+      'We protect your data using hashed passwords, signed and expiring authentication tokens, per-account data isolation, containerized test execution, and temporary in-memory guest sessions that are never stored in the database.',
+    ],
+  },
+  {
+    heading: 'Your rights as a data subject',
+    body: [
+      'Under RA 10173 you are entitled to the following, exercisable at any time through the support channel in this application.',
+    ],
+    bullets: [
+      'You have the right to be informed, access, object to processing, withdraw consent, correct inaccurate information, request deletion or blocking of your data, obtain a portable copy of your data, seek damages for privacy violations, and file a complaint with the National Privacy Commission.',
+    ],
+  },
+  {
+    heading: 'Retention',
+    body: [
+      'Session records and telemetry are retained while your account is active.',
+    ],
+    bullets: [
+      'Your session history and telemetry are retained only while your account remains active; deleting your account removes the associated records, while guest session data exists only for the current browser session and is automatically discarded afterward.',
+    ],
+  },
+],
 };
 
 export const TERMS_OF_USE: LegalDoc = {
@@ -83,41 +78,34 @@ export const TERMS_OF_USE: LegalDoc = {
   title: 'Terms of Use',
   summary: `Conditions governing your use of BugSafari. Version ${POLICY_VERSION}, effective ${POLICY_EFFECTIVE_DATE}.`,
   sections: [
-    {
-      heading: 'Authorized testing only',
-      body: [
-        'BugSafari actively interacts with the application you point it at — it clicks, submits forms, injects boundary and malformed input, and can create or modify data in that application.',
-      ],
-      bullets: [
-        'You may only test applications you own or for which you hold documented written authorization.',
-        'Testing third-party systems without permission may violate the Cybercrime Prevention Act of 2012 (RA 10175) and equivalent laws elsewhere.',
-        'Do not point BugSafari at production systems holding real personal data.',
-        'Use a dedicated staging environment with disposable test data.',
-      ],
-    },
-    {
-      heading: 'Your responsibilities',
-      body: ['By using this system you accept sole responsibility for the targets you select and the effects of testing on them.'],
-      bullets: [
-        'You warrant that you are authorized to test every target URL you submit.',
-        'You keep your account credentials confidential.',
-        'You do not use BugSafari to attack, disrupt, or gain unauthorized access to any system.',
-        'You do not submit credentials or data you are not permitted to disclose.',
-        'You back up any environment whose state you cannot afford to lose.',
-      ],
-    },
-    {
-      heading: 'System limitations',
-      body: ['BugSafari is an exploratory testing aid, not a guarantee of correctness or security.'],
-      bullets: [
-        'Exploration is heuristic and adaptive — coverage is not exhaustive and results vary between runs.',
-        'Absence of reported findings does not mean the application is free of defects or vulnerabilities.',
-        'Reported findings may include false positives and require human verification.',
-        'The system may not fully traverse applications relying on CAPTCHA, multi-factor authentication, or hardware devices.',
-        'The software is provided "as is", without warranty of any kind, to the maximum extent permitted by law.',
-      ],
-    },
-  ],
+  {
+    heading: 'Authorized testing only',
+    body: [
+      'BugSafari actively interacts with the application you point it at — it clicks, submits forms, injects boundary and malformed input, and can create or modify data in that application.',
+    ],
+    bullets: [
+      'You may only use BugSafari on applications you own or are explicitly authorized to test, always in a dedicated staging environment with disposable test data, as unauthorized testing or targeting production systems containing real personal data may violate the Cybercrime Prevention Act of 2012 (RA 10175) and other applicable laws.',
+    ],
+  },
+  {
+    heading: 'Your responsibilities',
+    body: [
+      'By using this system you accept sole responsibility for the targets you select and the effects of testing on them.',
+    ],
+    bullets: [
+      'You are responsible for ensuring you have authorization to test every submitted target, protecting your account credentials, using BugSafari only for lawful and authorized security testing, avoiding the disclosure of unauthorized credentials or sensitive data, and maintaining backups of any environment whose state is important.',
+    ],
+  },
+  {
+    heading: 'System limitations',
+    body: [
+      'BugSafari is an exploratory testing aid, not a guarantee of correctness or security.',
+    ],
+    bullets: [
+      'BugSafari uses heuristic, adaptive exploration, so coverage is not exhaustive and may vary between runs; the absence of findings does not guarantee an application is defect-free, reported findings may require human verification due to possible false positives, some authentication mechanisms such as CAPTCHA, MFA, or hardware tokens may limit exploration, and the software is provided "as is" without warranty to the fullest extent permitted by law.',
+    ],
+  },
+],
 };
 
 export const RESEARCH_DISCLAIMER: LegalDoc = {
@@ -162,11 +150,8 @@ export const ABOUT_BUGSAFARI: LegalDoc = {
       heading: 'How it works',
       body: ['Four mechanisms drive each run.'],
       bullets: [
-        'DOM traversal and interaction driven by Playwright in an isolated container.',
-        'Element prioritization by a single-layer perceptron trained online with the delta rule.',
-        'Loop prevention through structural DOM hashing and state clustering.',
-        'Crash forensics from a 20-step circular action buffer, replayable step by step.',
-      ],
+  'BugSafari performs automated DOM exploration using Playwright in an isolated container, prioritizes elements through an online-trained single-layer perceptron, prevents exploration loops with structural DOM hashing and state clustering, and captures crash forensics using a replayable related step circular action buffer.',
+],
     },
     {
       heading: 'Build',

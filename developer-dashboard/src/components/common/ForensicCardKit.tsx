@@ -65,9 +65,9 @@ export const ExpandableCodeBlock = ({
         onClick={onToggle}
         className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
       >
-        <span className="shrink-0 text-sm">{isExpanded ? '▼' : ''}</span>
+        <span className="shrink-0 text-[13px]">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>
-        <span className="ml-auto hidden shrink-0 text-[11px] opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
+        <span className="ml-auto hidden shrink-0 text-xs opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
         <div className={`custom-scrollbar px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
@@ -100,7 +100,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   return (
     <span
       title={`Backend-classified severity: ${style.label}`}
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${style.cls}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${style.cls}`}
     >
       {style.label}
     </span>

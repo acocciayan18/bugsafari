@@ -44,7 +44,7 @@ export function TerminationBadge({ outcome, status, reason, className = '' }: Te
 
   return (
     <span
-      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium sm:text-[13px] ${tone} ${className}`}
+      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium sm:text-[13px] ${tone} ${className}`}
       title={reason || copy.detail}
     >
       <span className="shrink-0" aria-hidden="true">{copy.icon}</span>

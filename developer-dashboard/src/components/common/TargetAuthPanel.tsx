@@ -6,8 +6,8 @@
 // cleared by the parent immediately after submission — nothing is persisted here,
 // and autoComplete is off so the browser does not offer to save them either.
 
-import { useState } from 'react';
-import { ChevronDown, KeyRound, ShieldCheck } from 'lucide-react';
+import { useId, useState } from 'react';
+import { ChevronDown, HelpCircle, KeyRound, ShieldCheck } from 'lucide-react';
 import type { TargetAuthConfig } from '../../types';
 
 export type TargetAuthMethod = 'credentials' | 'storageState';
@@ -106,6 +106,8 @@ const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string }> = [
 
 export default function TargetAuthPanel({ draft, onChange, disabled = false }: TargetAuthPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const helpId = useId();
   const set = <K extends keyof TargetAuthDraft>(key: K, value: TargetAuthDraft[K]): void =>
     onChange({ ...draft, [key]: value });
 
@@ -117,218 +119,269 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
       : { ...draft, method, username: '', password: '' });
 
   const incomplete = isTargetAuthIncomplete(draft);
+  // Config stays visible when auth is off, but every input is inert and grayed —
+  // the operator sees what they'd fill without being able to edit a dormant form.
+  const fieldsDisabled = disabled || !draft.enabled;
 
   return (
     <div className="rounded-lg border border-(--border-hairline) bg-(--surface-raised)">
-      <label
-        htmlFor="target-auth-enabled"
-        className={`flex items-center gap-2.5 px-4 py-2.5 select-none ${disabled ? 'opacity-50' : 'cursor-pointer'}`}
-      >
-        <input
-          id="target-auth-enabled"
-          type="checkbox"
-          checked={draft.enabled}
+      <div className={`flex items-center gap-3 px-4 py-3 ${disabled ? 'opacity-50' : ''}`}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={draft.enabled}
+          aria-label="Authenticate into target"
           disabled={disabled}
-          onChange={(e) => set('enabled', e.target.checked)}
-          className="rounded border-(--border-strong) hover:cursor-pointer text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
-        />
-        <KeyRound className="h-4 w-4 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
-        <span className="text-[11px] font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
-          Authenticate into target
-        </span>
-        <span className="text-[11px] text-(--text-tertiary) font-sans normal-case tracking-normal">
-          Explore past the login page
-        </span>
-      </label>
-
-      {draft.enabled && (
-        <div className="border-t border-(--border-hairline) px-4 py-3 space-y-3">
-          <div role="radiogroup" aria-label="Authentication method" className="flex gap-2">
-            {METHOD_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={draft.method === option.id}
-                disabled={disabled}
-                onClick={() => setMethod(option.id)}
-                className={`flex-1 h-9 rounded-lg border px-3 text-[11px] font-bold uppercase tracking-wider font-sans transition-colors disabled:opacity-50 ${
-                  draft.method === option.id
-                    ? 'border-(--border-focus) bg-(--surface-inset) text-(--text-primary)'
-                    : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {draft.method === 'credentials' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className={LABEL_CLASS} htmlFor="target-auth-username">Username / Email</label>
-                <input
-                  id="target-auth-username"
-                  type="text"
-                  autoComplete="off"
-                  value={draft.username}
-                  disabled={disabled}
-                  onChange={(e) => set('username', e.target.value)}
-                  className={FIELD_CLASS}
-                  placeholder="example@email.com"
-                />
-              </div>
-              <div>
-                <label className={LABEL_CLASS} htmlFor="target-auth-password">Password</label>
-                <input
-                  id="target-auth-password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={draft.password}
-                  disabled={disabled}
-                  onChange={(e) => set('password', e.target.value)}
-                  className={FIELD_CLASS}
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <label className={LABEL_CLASS} htmlFor="target-auth-storage-state">Playwright storageState JSON</label>
-              <textarea
-                id="target-auth-storage-state"
-                rows={5}
-                spellCheck={false}
-                autoComplete="off"
-                value={draft.storageState}
-                disabled={disabled}
-                onChange={(e) => set('storageState', e.target.value)}
-                className={`${FIELD_CLASS} h-auto py-2 font-mono text-[11px] resize-y`}
-                placeholder='{"cookies":[…],"origins":[…]}'
-              />
-              <p className="mt-1 text-[11px] text-(--text-tertiary) font-sans leading-relaxed">
-                Paste the output of <code>context.storageState()</code>. Use this for SSO, OAuth, MFA,
-                or captcha-guarded logins that a form fill cannot drive.
-              </p>
-              <div className="mt-3">
-                <label className={LABEL_CLASS} htmlFor="target-auth-state-success">Success indicator</label>
-                <input
-                  id="target-auth-state-success"
-                  type="text"
-                  value={draft.successIndicator}
-                  disabled={disabled}
-                  onChange={(e) => set('successIndicator', e.target.value)}
-                  className={FIELD_CLASS}
-                  placeholder="Optional — defaults to a login-wall check"
-                />
-              </div>
-            </div>
-          )}
-
-          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-(--text-tertiary) font-sans">
-            <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
-            <span>
-              Used once for this run and held in memory only — never saved to your history, reports,
-              logs, or the job queue. Re-enter them for each run. Use a dedicated test account.
-            </span>
+          onClick={() => set('enabled', !draft.enabled)}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-1 focus-visible:ring-offset-(--surface-raised) ${disabled ? '' : 'cursor-pointer'} ${draft.enabled ? 'bg-(--surface-invert)' : 'bg-(--border-strong)'}`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 rounded-full bg-(--surface-panel) shadow-sm transition-transform duration-150 ${draft.enabled ? 'translate-x-[20px]' : 'translate-x-0.5'}`}
+          />
+        </button>
+        <KeyRound className="h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold tracking-wider text-(--text-secondary) uppercase font-sans leading-tight">
+            Authenticate into target
           </p>
+          <p className="text-xs text-(--text-tertiary) font-sans leading-tight mt-0.5">
+            Explore past the login page
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowHelp((prev) => !prev)}
+          aria-expanded={showHelp}
+          aria-controls={helpId}
+          aria-label="How target authentication works"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--text-tertiary) hover:text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) cursor-pointer"
+        >
+          <HelpCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      </div>
 
-          {incomplete && (
-            <p className="text-[11px] font-semibold text-(--status-critical-fg) font-sans">
-              {draft.method === 'storageState'
-                ? 'Session state must be JSON with a non-empty "cookies" or "origins" array.'
-                : 'Both a username and a password are required to authenticate.'}
+      {showHelp && (
+        <div
+          id={helpId}
+          role="region"
+          aria-label="Target authentication help"
+          className="border-t border-(--border-hairline) bg-(--surface-inset) px-4 py-3 space-y-2.5 text-xs leading-relaxed text-(--text-secondary) font-sans"
+        >
+          <p>
+            Give BugSafari a way in so it can explore the pages behind your login, not just the sign-in
+            screen. Pick whichever method matches how your target authenticates.
+          </p>
+          <div>
+            <p className="font-bold text-(--text-primary)">Login form — email &amp; password</p>
+            <p className="text-(--text-tertiary)">
+              The engine opens the login page, fills the fields, and submits. Best for ordinary
+              username/password forms. Add custom selectors under Advanced only if auto-detection
+              misses the fields.
             </p>
-          )}
-
-          {/* Selector overrides drive the form fill only — a seeded session submits nothing. */}
-          {draft.method === 'credentials' && (
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((prev) => !prev)}
-            className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-(--text-tertiary) hover:text-(--text-secondary) transition-colors font-sans"
-          >
-            <ChevronDown
-              className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
-              strokeWidth={1.75}
-              aria-hidden="true"
-            />
-            Advanced — custom selectors
-          </button>
-          )}
-
-          {showAdvanced && draft.method === 'credentials' && (
-            <div className="space-y-3 pt-1">
-              <p className="text-[11px] text-(--text-tertiary) font-sans leading-relaxed">
-                Leave blank to auto-detect the login form. Set these when the form is multi-step or
-                built from custom components, where detection cannot find the fields.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL_CLASS} htmlFor="target-auth-login-url">Login page URL</label>
-                  <input
-                    id="target-auth-login-url"
-                    type="text"
-                    value={draft.loginUrl}
-                    disabled={disabled}
-                    onChange={(e) => set('loginUrl', e.target.value)}
-                    className={FIELD_CLASS}
-                    placeholder="Defaults to the target URL"
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS} htmlFor="target-auth-success">Success indicator</label>
-                  <input
-                    id="target-auth-success"
-                    type="text"
-                    value={draft.successIndicator}
-                    disabled={disabled}
-                    onChange={(e) => set('successIndicator', e.target.value)}
-                    className={FIELD_CLASS}
-                    placeholder="e.g. [data-testid='dashboard']"
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS} htmlFor="target-auth-user-sel">Username selector</label>
-                  <input
-                    id="target-auth-user-sel"
-                    type="text"
-                    value={draft.usernameSelector}
-                    disabled={disabled}
-                    onChange={(e) => set('usernameSelector', e.target.value)}
-                    className={FIELD_CLASS}
-                    placeholder="#email"
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS} htmlFor="target-auth-pass-sel">Password selector</label>
-                  <input
-                    id="target-auth-pass-sel"
-                    type="text"
-                    value={draft.passwordSelector}
-                    disabled={disabled}
-                    onChange={(e) => set('passwordSelector', e.target.value)}
-                    className={FIELD_CLASS}
-                    placeholder="#password"
-                  />
-                </div>
-                <div>
-                  <label className={LABEL_CLASS} htmlFor="target-auth-submit-sel">Submit selector</label>
-                  <input
-                    id="target-auth-submit-sel"
-                    type="text"
-                    value={draft.submitSelector}
-                    disabled={disabled}
-                    onChange={(e) => set('submitSelector', e.target.value)}
-                    className={FIELD_CLASS}
-                    placeholder="button[type='submit']"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
+          <div>
+            <p className="font-bold text-(--text-primary)">Session state — storageState JSON</p>
+            <p className="text-(--text-tertiary)">
+              Seed a session you already established out of band. Use this when a form fill can't drive
+              the login: SSO/OAuth redirects, MFA, or captcha. Export it with
+              {' '}<code>await context.storageState()</code> from a logged-in Playwright session.
+            </p>
+          </div>
+          <p className="text-(--text-tertiary)">
+            Either way the credentials are used once for this run and held in memory only. Use a
+            dedicated test account.
+          </p>
         </div>
       )}
+
+      <div className={`border-t border-(--border-hairline) px-4 py-3 space-y-3 ${!draft.enabled ? 'opacity-60' : ''}`}>
+        <div role="radiogroup" aria-label="Authentication method" className="grid grid-cols-2 gap-2">
+          {METHOD_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={draft.method === option.id}
+              disabled={fieldsDisabled}
+              onClick={() => setMethod(option.id)}
+              className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase tracking-wider font-sans transition-colors disabled:cursor-not-allowed enabled:cursor-pointer ${
+                draft.method === option.id
+                  ? 'border-(--border-focus) bg-(--surface-inset) text-(--text-primary)'
+                  : 'border-(--border-hairline) text-(--text-tertiary) enabled:hover:text-(--text-secondary)'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {draft.method === 'credentials' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL_CLASS} htmlFor="target-auth-username">Username / Email</label>
+              <input
+                id="target-auth-username"
+                type="text"
+                autoComplete="off"
+                value={draft.username}
+                disabled={fieldsDisabled}
+                onChange={(e) => set('username', e.target.value)}
+                className={FIELD_CLASS}
+                placeholder="example@email.com"
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLASS} htmlFor="target-auth-password">Password</label>
+              <input
+                id="target-auth-password"
+                type="password"
+                autoComplete="new-password"
+                value={draft.password}
+                disabled={fieldsDisabled}
+                onChange={(e) => set('password', e.target.value)}
+                className={FIELD_CLASS}
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className={LABEL_CLASS} htmlFor="target-auth-storage-state">Playwright storageState JSON</label>
+            <textarea
+              id="target-auth-storage-state"
+              rows={5}
+              spellCheck={false}
+              autoComplete="off"
+              value={draft.storageState}
+              disabled={fieldsDisabled}
+              onChange={(e) => set('storageState', e.target.value)}
+              className={`${FIELD_CLASS} h-auto py-2 font-mono text-xs resize-y`}
+              placeholder='{"cookies":[…],"origins":[…]}'
+            />
+            <p className="mt-1 text-xs text-(--text-tertiary) font-sans leading-relaxed">
+              Paste the output of <code>context.storageState()</code>. Use this for SSO, OAuth, MFA,
+              or captcha-guarded logins that a form fill cannot drive.
+            </p>
+            <div className="mt-3">
+              <label className={LABEL_CLASS} htmlFor="target-auth-state-success">Success indicator</label>
+              <input
+                id="target-auth-state-success"
+                type="text"
+                value={draft.successIndicator}
+                disabled={fieldsDisabled}
+                onChange={(e) => set('successIndicator', e.target.value)}
+                className={FIELD_CLASS}
+                placeholder="Optional — defaults to a login-wall check"
+              />
+            </div>
+          </div>
+        )}
+
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-(--text-tertiary) font-sans">
+          <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
+          <span>
+            Used once for this run and held in memory only — never saved to your history, reports,
+            logs, or the job queue. Re-enter them for each run. Use a dedicated test account.
+          </span>
+        </p>
+
+        {incomplete && (
+          <p role="alert" className="text-xs font-semibold text-(--status-critical-fg) font-sans">
+            {draft.method === 'storageState'
+              ? 'Session state must be JSON with a non-empty "cookies" or "origins" array.'
+              : 'Both a username and a password are required to authenticate.'}
+          </p>
+        )}
+
+        {/* Selector overrides drive the form fill only — a seeded session submits nothing. */}
+        {draft.method === 'credentials' && (
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((prev) => !prev)}
+          disabled={fieldsDisabled}
+          aria-expanded={showAdvanced}
+          className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-(--text-tertiary) enabled:hover:text-(--text-secondary) transition-colors font-sans disabled:cursor-not-allowed enabled:cursor-pointer"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
+          Advanced — custom selectors
+        </button>
+        )}
+
+        {showAdvanced && draft.method === 'credentials' && (
+          <div className="space-y-3 pt-1">
+            <p className="text-xs text-(--text-tertiary) font-sans leading-relaxed">
+              Leave blank to auto-detect the login form. Set these when the form is multi-step or
+              built from custom components, where detection cannot find the fields.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-login-url">Login page URL</label>
+                <input
+                  id="target-auth-login-url"
+                  type="text"
+                  value={draft.loginUrl}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('loginUrl', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="Defaults to the target URL"
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-success">Success indicator</label>
+                <input
+                  id="target-auth-success"
+                  type="text"
+                  value={draft.successIndicator}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('successIndicator', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="e.g. [data-testid='dashboard']"
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-user-sel">Username selector</label>
+                <input
+                  id="target-auth-user-sel"
+                  type="text"
+                  value={draft.usernameSelector}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('usernameSelector', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="#email"
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-pass-sel">Password selector</label>
+                <input
+                  id="target-auth-pass-sel"
+                  type="text"
+                  value={draft.passwordSelector}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('passwordSelector', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="#password"
+                />
+              </div>
+              <div>
+                <label className={LABEL_CLASS} htmlFor="target-auth-submit-sel">Submit selector</label>
+                <input
+                  id="target-auth-submit-sel"
+                  type="text"
+                  value={draft.submitSelector}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('submitSelector', e.target.value)}
+                  className={FIELD_CLASS}
+                  placeholder="button[type='submit']"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

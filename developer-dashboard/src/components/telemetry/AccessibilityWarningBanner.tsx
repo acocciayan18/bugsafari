@@ -16,19 +16,19 @@ export default function AccessibilityWarningBanner({ count, onDismiss }: Accessi
         </span>
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-bold text-(--status-warning-fg)">WCAG compliance at risk</span>
-            <span className="shrink-0 rounded-full bg-(--status-warning-border) px-2 py-0.5 font-mono text-[11px] font-bold text-(--status-warning-fg)">{count}+ issues</span>
+            <span className="text-[13px] font-bold text-(--status-warning-fg)">WCAG compliance at risk</span>
+            <span className="shrink-0 rounded-full bg-(--status-warning-border) px-2 py-0.5 font-mono text-xs font-bold text-(--status-warning-fg)">{count}+ issues</span>
           </div>
           <p className="text-[13px] leading-relaxed text-(--text-primary)">
             BugSafari detected {count}+ accessibility violations. Add alt text, form labels, accessible control names, unique ids, and a document <code className="font-mono">lang</code>/<code className="font-mono">title</code> to restore compliance.
           </p>
-          <p className="text-[11px] leading-relaxed text-(--text-secondary)">
+          <p className="text-xs leading-relaxed text-(--text-secondary)">
             These checks run live against the real DOM, so BugSafari's WCAG audit is a reliable signal for your accessibility posture.
           </p>
         </div>
         <button
           onClick={onDismiss}
-          className="shrink-0 rounded-md border border-(--status-warning-border) bg-(--surface-panel) px-2.5 py-1.5 text-[11px] font-semibold text-(--status-warning-fg) transition-colors hover:bg-(--surface-hover) sm:py-1"
+          className="shrink-0 rounded-md border border-(--status-warning-border) bg-(--surface-panel) px-2.5 py-1.5 text-xs font-semibold text-(--status-warning-fg) transition-colors hover:bg-(--surface-hover) sm:py-1"
         >
           Dismiss
         </button>

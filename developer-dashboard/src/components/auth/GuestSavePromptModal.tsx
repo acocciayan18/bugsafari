@@ -17,7 +17,7 @@ export function GuestSavePromptModal({ isOpen, onClose, onCreateAccount }: Guest
         <div className="flex min-w-0 items-start gap-2.5">
           <Save className="mt-0.5 h-4 w-4 shrink-0 text-(--text-secondary)" strokeWidth={1.75} aria-hidden="true" />
           <div className="min-w-0">
-            <h3 id="guest-save-title" className="text-sm font-semibold text-(--text-primary)">
+            <h3 id="guest-save-title" className="text-[13px] font-semibold text-(--text-primary)">
               Save runs to history
             </h3>
             <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
@@ -35,7 +35,7 @@ export function GuestSavePromptModal({ isOpen, onClose, onCreateAccount }: Guest
       </div>
 
       <div className="px-3 py-4 sm:px-5">
-        <p className="text-sm leading-relaxed text-(--text-secondary)">
+        <p className="text-[13px] leading-relaxed text-(--text-secondary)">
           Guest sessions are temporary and never written to the database. Create a free account to keep this
           session, revisit its findings, and export reports.
         </p>

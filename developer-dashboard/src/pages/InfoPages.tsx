@@ -70,7 +70,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
                 <p className="text-zinc-600 leading-relaxed">{description}</p>
                 <ul className="space-y-3 pt-2">
                     {bullets.map((b) => (
-                        <li key={b} className="flex gap-3 text-sm text-zinc-700">
+                        <li key={b} className="flex gap-3 text-[13px] text-zinc-700">
                             <span className="w-1.5 h-1.5 mt-2 rounded-full bg-black shrink-0" />
                             {b}
                         </li>
@@ -82,7 +82,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
                 {badge && (
                     <div className="absolute -bottom-6 -left-6 bg-black text-white rounded-xl p-5 shadow-xl hidden sm:block">
                         <div className="text-2xl font-extrabold">{badge.value}</div>
-                        <div className="text-[11px] font-mono uppercase tracking-wide text-zinc-400">{badge.label}</div>
+                        <div className="text-xs font-mono uppercase tracking-wide text-zinc-400">{badge.label}</div>
                     </div>
                 )}
             </div>
@@ -97,9 +97,9 @@ function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
                 <details key={it.q} className="group p-6">
                     <summary className="cursor-pointer list-none flex justify-between items-center gap-4 font-bold text-base">
                         {it.q}
-                        <span className="shrink-0 w-6 h-6 rounded-full border border-zinc-300 flex items-center justify-center text-sm group-open:rotate-45 transition-transform">+</span>
+                        <span className="shrink-0 w-6 h-6 rounded-full border border-zinc-300 flex items-center justify-center text-[13px] group-open:rotate-45 transition-transform">+</span>
                     </summary>
-                    <p className="pt-3 text-sm text-zinc-600 leading-relaxed">{it.a}</p>
+                    <p className="pt-3 text-[13px] text-zinc-600 leading-relaxed">{it.a}</p>
                 </details>
             ))}
         </div>
@@ -114,7 +114,7 @@ function DarkCta({ heading, sub }: { heading: string; sub: string }) {
             <p className="text-zinc-400 max-w-xl mx-auto">{sub}</p>
             <button
                 onClick={() => navigate('/login')}
-                className="px-8 py-3 font-mono text-sm font-semibold bg-white text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
+                className="px-8 py-3 font-mono text-[13px] font-semibold bg-white text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
             >
                 Start Testing Free
             </button>
@@ -147,7 +147,7 @@ function ProfileTabs() {
             </div>
             <div className="p-8">
                 <h4 className="font-bold text-lg mb-2">{INFILTRATION_PROFILES[active].name}</h4>
-                <p className="text-sm text-zinc-600 leading-relaxed max-w-2xl">{INFILTRATION_PROFILES[active].detail}</p>
+                <p className="text-[13px] text-zinc-600 leading-relaxed max-w-2xl">{INFILTRATION_PROFILES[active].detail}</p>
             </div>
         </div>
     );
@@ -174,8 +174,8 @@ function BugTaxonomyGrid() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {BUG_TAXONOMY.map(([name, cwe]) => (
                 <div key={name} className="flex items-center justify-between gap-3 px-4 py-3 border border-zinc-200 rounded-lg bg-zinc-50/50">
-                    <span className="text-sm font-semibold">{name}</span>
-                    <span className="font-mono text-[11px] text-zinc-400 shrink-0">{cwe}</span>
+                    <span className="text-[13px] font-semibold">{name}</span>
+                    <span className="font-mono text-xs text-zinc-400 shrink-0">{cwe}</span>
                 </div>
             ))}
         </div>
@@ -210,22 +210,22 @@ export function ExploreContent() {
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">01</div>
                         <h3 className="text-xl font-bold uppercase">Adaptive Risk Prioritization</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">Every candidate is scored as risk = heuristic × 0.6 + sigmoid(perceptron) × 100 × 0.4, minus penalties. A 24-feature single-layer perceptron learns live via a momentum-augmented delta rule, boosting login, payment, delete, and other state-changing controls above low-value noise.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Every candidate is scored as risk = heuristic × 0.6 + sigmoid(perceptron) × 100 × 0.4, minus penalties. A 24-feature single-layer perceptron learns live via a momentum-augmented delta rule, boosting login, payment, delete, and other state-changing controls above low-value noise.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">02</div>
                         <h3 className="text-xl font-bold uppercase">State Graph Navigation</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">StateGraphNavigator tracks every transition and chooses explore-edge, backtrack, or exhausted using a diversity-penalized selection with softmax exploration, biasing toward edges that lead somewhere new instead of somewhere already saturated.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">StateGraphNavigator tracks every transition and chooses explore-edge, backtrack, or exhausted using a diversity-penalized selection with softmax exploration, biasing toward edges that lead somewhere new instead of somewhere already saturated.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">03</div>
                         <h3 className="text-xl font-bold uppercase">Structural DOM Hashing</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">Each page state is fingerprinted into a structure signature (normalized skeleton, dynamic classes stripped) and an interactive signature (document-ordered element tokens), combined into one hash so the engine recognizes a state it has already visited.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Each page state is fingerprinted into a structure signature (normalized skeleton, dynamic classes stripped) and an interactive signature (document-ordered element tokens), combined into one hash so the engine recognizes a state it has already visited.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">04</div>
                         <h3 className="text-xl font-bold uppercase">Five-Layer Loop Prevention</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">Consecutive-repeat strikes, forward look-ahead, reactive ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking work together so the engine never spends its run clicking the same dead end.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Consecutive-repeat strikes, forward look-ahead, reactive ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking work together so the engine never spends its run clicking the same dead end.</p>
                     </div>
                 </div>
 
@@ -266,7 +266,7 @@ export function FeaturesContent() {
                         <div>
                             <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">AI</div>
                             <h3 className="text-xl font-bold uppercase mb-2">Scriptless Traversal</h3>
-                            <p className="text-sm text-zinc-600 leading-relaxed">A recursive DOM parser discovers every interactive candidate live, verifies visibility with elementFromPoint, and hands each one to the risk model — no manual test script or selector map required.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">A recursive DOM parser discovers every interactive candidate live, verifies visibility with elementFromPoint, and hands each one to the risk model — no manual test script or selector map required.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Zero Configuration</div>
                     </div>
@@ -275,7 +275,7 @@ export function FeaturesContent() {
                         <div>
                             <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">ML</div>
                             <h3 className="text-xl font-bold uppercase mb-2">Adaptive Intelligence</h3>
-                            <p className="text-sm text-zinc-600 leading-relaxed">A 24-feature single-layer perceptron scores every candidate and updates its weights after every observed outcome — a fault, a network call, a repeated state — via a momentum-augmented delta rule.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 24-feature single-layer perceptron scores every candidate and updates its weights after every observed outcome — a fault, a network call, a repeated state — via a momentum-augmented delta rule.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Self-Learning Core</div>
                     </div>
@@ -284,7 +284,7 @@ export function FeaturesContent() {
                         <div>
                             <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">RT</div>
                             <h3 className="text-xl font-bold uppercase mb-2">Real-Time Forensics</h3>
-                            <p className="text-sm text-zinc-600 leading-relaxed">A 20-step circular action buffer plus narrated reproduction steps capture exactly what happened, so any saved finding can be deterministically replayed to verify a fix.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 20-step circular action buffer plus narrated reproduction steps capture exactly what happened, so any saved finding can be deterministically replayed to verify a fix.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Verify Fix Replay</div>
                     </div>
@@ -319,28 +319,28 @@ export function FeaturesContent() {
                             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">01</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Provenance Attribution</h4>
-                                <p className="text-sm text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, network, or timing noise — so only real application defects ever get reported.</p>
+                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, network, or timing noise — so only real application defects ever get reported.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">02</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Deterministic Fault Classification</h4>
-                                <p className="text-sm text-zinc-600">One shared knowledge base resolves bug class, severity, and remediation from a runtime signal — the same signal always yields the same verdict, regardless of which detector saw it.</p>
+                                <p className="text-[13px] text-zinc-600">One shared knowledge base resolves bug class, severity, and remediation from a runtime signal — the same signal always yields the same verdict, regardless of which detector saw it.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">03</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Verify Fix Regression Replay</h4>
-                                <p className="text-sm text-zinc-600">Open a fresh isolated browser, restore the exact storage state, and replay a saved finding's own recorded actions to confirm whether it's resolved, still active, or inconclusive.</p>
+                                <p className="text-[13px] text-zinc-600">Open a fresh isolated browser, restore the exact storage state, and replay a saved finding's own recorded actions to confirm whether it's resolved, still active, or inconclusive.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">04</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Strict Boundary Lock</h4>
-                                <p className="text-sm text-zinc-600">A route interceptor plus an init-script sandbox neutralizes off-origin navigation, keeping exploration confined to the exact target URL when you need it to be.</p>
+                                <p className="text-[13px] text-zinc-600">A route interceptor plus an init-script sandbox neutralizes off-origin navigation, keeping exploration confined to the exact target URL when you need it to be.</p>
                             </div>
                         </div>
                     </div>
@@ -413,14 +413,14 @@ export function CommunityContent() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
-                        <div className="w-10 h-10 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-sm">01</div>
+                        <div className="w-10 h-10 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">01</div>
                         <h3 className="text-xl font-bold uppercase">Try Before You Sign Up</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">Guest mode runs the exact same exploration engine and live dashboard as a registered account. The only difference is that a guest run isn't written to history — it exists for the length of the session.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same exploration engine and live dashboard as a registered account. The only difference is that a guest run isn't written to history — it exists for the length of the session.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
-                        <div className="w-10 h-10 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-sm">02</div>
+                        <div className="w-10 h-10 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">02</div>
                         <h3 className="text-xl font-bold uppercase">Own Your Findings</h3>
-                        <p className="text-zinc-600 text-sm leading-relaxed">Every history query and forensic record is scoped to the owning account. Save a session once and it's yours to search, export, and re-verify whenever you come back to it.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Every history query and forensic record is scoped to the owning account. Save a session once and it's yours to search, export, and re-verify whenever you come back to it.</p>
                     </div>
                 </div>
 
@@ -468,20 +468,20 @@ export function AboutContent() {
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">Our Core Principles</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-sm tracking-wide">01. Type Safety First</h4>
-                            <p className="text-sm text-zinc-600">Strict TypeScript boundaries and explicit contracts across every package, enforced by one shared types layer the engine and dashboard both import from.</p>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">01. Type Safety First</h4>
+                            <p className="text-[13px] text-zinc-600">Strict TypeScript boundaries and explicit contracts across every package, enforced by one shared types layer the engine and dashboard both import from.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-sm tracking-wide">02. Deterministic Classification</h4>
-                            <p className="text-sm text-zinc-600">Every fault resolves through one shared knowledge base — the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">02. Deterministic Classification</h4>
+                            <p className="text-[13px] text-zinc-600">Every fault resolves through one shared knowledge base — the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-sm tracking-wide">03. Failure Isolation</h4>
-                            <p className="text-sm text-zinc-600">Runtime and browser failures are handled defensively so one crashing scenario or finder never takes the rest of a run down with it.</p>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">03. Failure Isolation</h4>
+                            <p className="text-[13px] text-zinc-600">Runtime and browser failures are handled defensively so one crashing scenario or finder never takes the rest of a run down with it.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-sm tracking-wide">04. Persistence Discipline</h4>
-                            <p className="text-sm text-zinc-600">Sessions, findings, action traces, and learned brain snapshots are Mongo-backed and scoped to the owning account, kept entirely out of domain logic.</p>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">04. Persistence Discipline</h4>
+                            <p className="text-[13px] text-zinc-600">Sessions, findings, action traces, and learned brain snapshots are Mongo-backed and scoped to the owning account, kept entirely out of domain logic.</p>
                         </div>
                     </div>
                 </div>
@@ -495,7 +495,7 @@ export function AboutContent() {
 
                 <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">Who We Build For</h2>
-                    <p className="text-sm text-zinc-600 leading-relaxed max-w-3xl">
+                    <p className="text-[13px] text-zinc-600 leading-relaxed max-w-3xl">
                         BugSafari's primary audience is student developers and independent engineers who need rapid feedback on unstable behavior before demos, submissions, or deployment milestones. It's designed to act as an automated resilience probe: one that surfaces high-impact failures early and leaves enough evidence behind to actually understand what happened, not just that something broke.
                     </p>
                 </div>

@@ -53,7 +53,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                 <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div className="relative z-10 space-y-6">
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-zinc-200 bg-zinc-50 rounded-full text-zinc-800 shadow-xs">
-                            <span className="font-mono text-[11px] uppercase tracking-widest font-bold">AI-Native Intelligence</span>
+                            <span className="font-mono text-xs uppercase tracking-widest font-bold">AI-Native Intelligence</span>
                         </div>
                         <h1 className="text-[48px] lg:text-[64px] leading-tight text-black font-extrabold uppercase">
                             Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
@@ -83,7 +83,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                     <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                     <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                 </div>
-                                <div className="flex-1 text-center font-mono text-[11px] text-zinc-500 font-bold">bug-safari-forensics-v2.trace</div>
+                                <div className="flex-1 text-center font-mono text-xs text-zinc-500 font-bold">bug-safari-forensics-v2.trace</div>
                             </div>
                             <div className="p-4 space-y-4 font-mono text-[13px] bg-white text-zinc-800">
                                 <div className="flex gap-4">
@@ -93,7 +93,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                 <div className="flex gap-4 bg-zinc-50 border-l-2 border-zinc-400 py-1.5 px-2 rounded-r items-center shadow-xs">
                                     <div className="w-10 text-zinc-600 font-bold text-right select-none">125</div>
                                     <div className="text-zinc-800">&nbsp; let result = <span className="font-bold text-indigo-600">await</span> forensicEngine.analyze(packet);</div>
-                                    <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-black text-white text-[10px] font-bold rounded">
+                                    <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-black text-white text-xs font-bold rounded">
                                         ANOMALY
                                     </div>
                                 </div>
@@ -104,21 +104,21 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                 <div className="pt-4 border-t border-zinc-200/80 mt-4">
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">CPU Usage</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">CPU Usage</div>
                                             <div className="text-[18px] font-bold">94.2%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-black rounded-full w-4/5"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Memory</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Memory</div>
                                             <div className="text-[18px] font-bold">2.4 GB</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-black rounded-full w-1/3"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Confidence</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Confidence</div>
                                             <div className="text-[18px] font-bold">98.4%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-black rounded-full w-11/12"></div>
@@ -157,11 +157,11 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         {featureCards.map((card) => (
                             <div key={card.title} className="p-8 border border-zinc-200/80 rounded-xl bg-white shadow-md shadow-zinc-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-default flex flex-col justify-between">
                                 <div>
-                                    <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-sm mb-6 shrink-0">
+                                    <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px] mb-6 shrink-0">
                                         {card.tag}
                                     </div>
                                     <h3 className="text-[20px] mb-3 font-bold uppercase">{card.title}</h3>
-                                    <p className="text-[14px] text-zinc-600 leading-relaxed">{card.description}</p>
+                                    <p className="text-[13px] text-zinc-600 leading-relaxed">{card.description}</p>
                                 </div>
                             </div>
                         ))}
@@ -178,10 +178,10 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <ul className="space-y-4">
                             {deepTraceChecks.map((item) => (
                                 <li key={item.title} className="flex items-start gap-3">
-                                    <span className="font-mono text-sm font-bold bg-black text-white w-5 h-5 rounded-full flex items-center justify-center mt-0.5">✓</span>
+                                    <span className="font-mono text-[13px] font-bold bg-black text-white w-5 h-5 rounded-full flex items-center justify-center mt-0.5">✓</span>
                                     <div>
                                         <h4 className="font-mono text-[13px] font-bold text-black uppercase">{item.title}</h4>
-                                        <p className="text-sm text-zinc-600">{item.description}</p>
+                                        <p className="text-[13px] text-zinc-600">{item.description}</p>
                                     </div>
                                 </li>
                             ))}
@@ -216,7 +216,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         </button>
                     </div>
                     <div className="pt-8">
-                        <p className="font-mono text-[11px] text-zinc-500 font-bold uppercase tracking-widest">No credit card required • 14-day free trial • Unlimited agents</p>
+                        <p className="font-mono text-xs text-zinc-500 font-bold uppercase tracking-widest">No credit card required • 14-day free trial • Unlimited agents</p>
                     </div>
                 </div>
             </section>
@@ -305,32 +305,32 @@ const LandingPage = () => {
                 <div className="w-full px-6 py-12 max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
                     <div className="space-y-4">
                         <div className="text-[20px] font-extrabold text-black uppercase tracking-tighter">BugSafari</div>
-                        <p className="text-[14px] text-zinc-500 font-medium max-w-xs">
+                        <p className="text-[13px] text-zinc-500 font-medium max-w-xs">
                             © 2026 BugSafari Inc. Forensic Debugging for Modern Systems.
                         </p>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 md:gap-12">
                         <div className="flex flex-col gap-3">
-                            <span className="font-mono text-[11px] font-extrabold text-black uppercase">Resources</span>
-                            <button onClick={() => goToSection('explore')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Documentation</button>
-                            <button onClick={() => goToSection('features')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">API Reference</button>
-                            <button onClick={() => goToSection('community')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Changelog</button>
+                            <span className="font-mono text-xs font-extrabold text-black uppercase">Resources</span>
+                            <button onClick={() => goToSection('explore')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Documentation</button>
+                            <button onClick={() => goToSection('features')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">API Reference</button>
+                            <button onClick={() => goToSection('community')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Changelog</button>
                         </div>
                         <div className="flex flex-col gap-3">
-                            <span className="font-mono text-[11px] font-extrabold text-black uppercase">Legal</span>
-                            <a className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors" href="#">Privacy Policy</a>
-                            <a className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors" href="#">Terms of Service</a>
-                            <a className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors" href="#">Security</a>
+                            <span className="font-mono text-xs font-extrabold text-black uppercase">Legal</span>
+                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Privacy Policy</a>
+                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Terms of Service</a>
+                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Security</a>
                         </div>
                         <div className="flex flex-col gap-3">
-                            <span className="font-mono text-[11px] font-extrabold text-black uppercase">Company</span>
-                            <button onClick={() => goToSection('about')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">About Us</button>
-                            <a className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors" href="#">Careers</a>
-                            <button onClick={() => goToSection('community')} className="font-mono text-[11px] text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Blog</button>
+                            <span className="font-mono text-xs font-extrabold text-black uppercase">Company</span>
+                            <button onClick={() => goToSection('about')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">About Us</button>
+                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Careers</a>
+                            <button onClick={() => goToSection('community')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Blog</button>
                         </div>
                         <div className="flex flex-col gap-3">
-                            <span className="font-mono text-[11px] font-extrabold text-black uppercase">Status</span>
-                            <a className="flex items-center gap-2 font-mono text-[11px] text-black font-bold hover:underline transition-all" href="#">
+                            <span className="font-mono text-xs font-extrabold text-black uppercase">Status</span>
+                            <a className="flex items-center gap-2 font-mono text-xs text-black font-bold hover:underline transition-all" href="#">
                                 <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
                                 ALL SYSTEMS OPERATIONAL
                             </a>
@@ -338,7 +338,7 @@ const LandingPage = () => {
                     </div>
                 </div>
                 <div className="max-w-[1440px] mx-auto px-6 py-6 border-t border-zinc-200 text-center md:text-left">
-                    <p className="font-mono text-[11px] text-zinc-500 font-bold">MADE WITH PRECISION FOR THE MODERN ENGINEERING STACK.</p>
+                    <p className="font-mono text-xs text-zinc-500 font-bold">MADE WITH PRECISION FOR THE MODERN ENGINEERING STACK.</p>
                 </div>
             </footer>
         </div>

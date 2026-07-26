@@ -27,18 +27,18 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             key={step.stepNumber}
             className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
           >
-            <span className="mt-px shrink-0 text-[11px] font-mono text-(--text-tertiary)">{step.stepNumber}</span>
-            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+            <span className="mt-px shrink-0 text-xs font-mono text-(--text-tertiary)">{step.stepNumber}</span>
+            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
               {chipLabel(kind)}
             </span>
             <div className="w-full min-w-0 sm:w-auto sm:flex-1">
               <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
               {payloadDisplay && (
-                <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-[11px] text-(--status-critical-fg)">
+                <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
                   {payloadDisplay}
                 </code>
               )}
-              <div className="mt-0.5 text-[11px] text-(--text-tertiary)">
+              <div className="mt-0.5 text-xs text-(--text-tertiary)">
                 {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
                 {formatReportTime(step.timestamp)}
               </div>
@@ -55,7 +55,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
 function BypassRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
       <div className="mt-0.5 text-[13px] leading-relaxed text-(--text-primary) break-words">{children}</div>
     </div>
   );
@@ -139,7 +139,7 @@ export default function FindingEvidence({ view, showBypass = true }: { view: Fin
       {view.resolvedStackTrace && (
         <div className="px-4 pt-3">
           <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Original source (via source maps)</div>
-          <pre className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
+          <pre className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
             {view.resolvedStackTrace}
           </pre>
         </div>

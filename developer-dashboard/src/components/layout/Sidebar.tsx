@@ -96,10 +96,10 @@ export default function Sidebar({
         </button>
 
         <div className={`overflow-hidden transition-all duration-200 ${isRail ? 'w-0 h-0' : 'w-auto h-auto flex-1 min-w-0'}`}>
-          <h1 className="font-sans font-bold text-[18px] uppercase tracking-wider text-(--text-primary) whitespace-nowrap leading-none">
+          <h1 className="font-sans font-bold text-md uppercase tracking-wider text-(--text-primary) whitespace-nowrap leading-none">
             BUGSAFARI
           </h1>
-          <p className="mt-0.5 font-sans font-medium text-[11px] text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
+          <p className="mt-0.5 font-sans font-medium text-xs text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
             TERMINAL ACCESS
           </p>
         </div>
@@ -130,12 +130,12 @@ export default function Sidebar({
           className={`flex items-center rounded-lg border border-(--border-hairline) bg-(--surface-raised) transition-all duration-200 ${isRail ? 'p-1.5 justify-center' : 'gap-2.5 p-2.5'}`}
         >
           {isLoggedIn && user && (
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--surface-invert) text-sm font-bold text-(--text-oninvert)">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--surface-invert) text-[13px] font-bold text-(--text-oninvert)">
               {(displayName || user.email).charAt(0).toUpperCase()}
             </div>
           )}
           <div className={`overflow-hidden transition-all duration-200 ${isRail ? 'w-0' : 'flex-1 min-w-0'}`}>
-            <div className="font-sans font-bold text-[11px] text-(--text-primary) truncate">
+            <div className="font-sans font-bold text-xs text-(--text-primary) truncate">
               {isLoggedIn && user ? displayName || 'ADMIN_01' : 'Guest User'}
             </div>
           </div>

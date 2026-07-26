@@ -145,11 +145,11 @@ export default function SavedEvaluationSafaris() {
       <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
         {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
         <div className="hidden min-w-0 items-center lg:flex">
-          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
+          <span className="text-[13px] font-bold tracking-wide text-[var(--text-primary)]">
             BUGSAFARI
           </span>
           <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="truncate text-sm font-semibold text-[var(--text-secondary)]">
+          <span className="truncate text-[13px] font-semibold text-[var(--text-secondary)]">
             AUTONOMOUS TESTING ENGINE
           </span>
         </div>
@@ -218,7 +218,7 @@ export default function SavedEvaluationSafaris() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="
                       ml-2 min-w-0 flex-1 bg-transparent
-                      text-base sm:text-sm text-[var(--text-primary)]
+                      text-base sm:text-[13px] text-[var(--text-primary)]
                       placeholder:text-[var(--text-tertiary)]
                       focus:outline-none
                     "
@@ -273,7 +273,7 @@ export default function SavedEvaluationSafaris() {
         {/* Bulk Action Toolbar */}
         {selectedCount > 0 && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-4 py-2 sm:px-6">
-            <span className="text-sm font-medium text-[var(--status-neutral-fg)]">
+            <span className="text-[13px] font-medium text-[var(--status-neutral-fg)]">
               {selectedCount} item{selectedCount > 1 ? 's' : ''} selected
             </span>
             <div className="flex items-center gap-2">
@@ -312,12 +312,12 @@ export default function SavedEvaluationSafaris() {
           {isLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-hairline)] border-t-[var(--text-secondary)]"></div>
-              <span className="text-sm text-[var(--text-secondary)]">Loading history...</span>
+              <span className="text-[13px] text-[var(--text-secondary)]">Loading history...</span>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
-              <span className="text-sm font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
+              <span className="text-[13px] font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
               <span className="text-[13px] text-[var(--text-secondary)]">{error}</span>
               <button
                 onClick={() => void fetchSessions(true)}
@@ -329,7 +329,7 @@ export default function SavedEvaluationSafaris() {
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <Lock className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-sm text-[var(--text-secondary)] font-medium">Please log in to view history</span>
+              <span className="text-[13px] text-[var(--text-secondary)] font-medium">Please log in to view history</span>
               <span className="text-[13px] text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
               <button
                 onClick={() => navigate('/login')}
@@ -341,7 +341,7 @@ export default function SavedEvaluationSafaris() {
           ) : view.page.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <ClipboardCheck className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-sm text-[var(--text-secondary)] font-medium">
+              <span className="text-[13px] text-[var(--text-secondary)] font-medium">
                 {view.totalCount === 0 ? 'No evaluation history yet' : 'No safaris match the current filters'}
               </span>
               <span className="text-[13px] text-[var(--text-secondary)]">

@@ -51,7 +51,7 @@ export function DeleteConfirmDialog({
             <h2 id="delete-confirm-title" className="text-base sm:text-lg font-semibold text-(--text-primary)">
               {title}
             </h2>
-            <p className="mt-1 text-sm text-(--text-secondary)">{message}</p>
+            <p className="mt-1 text-[13px] text-(--text-secondary)">{message}</p>
           </div>
         </div>
 

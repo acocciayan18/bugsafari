@@ -57,7 +57,7 @@ function SettingsCard({ icon, title, description, children }: {
           {icon}
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-(--text-primary)">{title}</h3>
+          <h3 className="text-[13px] font-semibold text-(--text-primary)">{title}</h3>
           <p className="text-[13px] text-(--text-secondary)">{description}</p>
         </div>
       </header>
@@ -131,7 +131,7 @@ function PasswordInputField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-(--text-secondary) mb-2">
+      <label htmlFor={id} className="block text-[13px] font-medium text-(--text-secondary) mb-2">
         {label}
       </label>
       <div className="relative">
@@ -143,7 +143,7 @@ function PasswordInputField({
           type={showPassword ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-3 pl-10 pr-10 text-sm text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
+          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-3 pl-10 pr-10 text-[13px] text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
             error
               ? 'border-(--status-critical-border) focus:border-(--status-critical-fg)'
               : 'border-(--border-hairline) focus:border-(--border-strong)'
@@ -186,7 +186,7 @@ const ToggleSwitch = memo(function ToggleSwitch({
       <div className="flex items-start gap-3">
         {icon && <div className="mt-0.5 text-(--text-tertiary)">{icon}</div>}
         <div>
-          <span className="text-sm font-medium text-(--text-secondary)">{label}</span>
+          <span className="text-[13px] font-medium text-(--text-secondary)">{label}</span>
           {description && (
             <p className="text-[13px] text-(--text-secondary) mt-0.5">{description}</p>
           )}
@@ -371,7 +371,7 @@ function SecuritySettingsSection() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-[13px] font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           <KeyRound className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Change Password
@@ -425,14 +425,14 @@ function SecuritySettingsSection() {
 
             {successMessage && (
               <div className="p-3 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-lg">
-                <p className="text-sm text-(--status-stable-fg)">{successMessage}</p>
+                <p className="text-[13px] text-(--status-stable-fg)">{successMessage}</p>
               </div>
             )}
 
             {/* Backend password errors — e.g. "current password incorrect" */}
             {passwordError && (
               <div className="p-3 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-lg">
-                <p className="text-sm text-(--status-critical-fg)">{passwordError}</p>
+                <p className="text-[13px] text-(--status-critical-fg)">{passwordError}</p>
               </div>
             )}
 
@@ -440,7 +440,7 @@ function SecuritySettingsSection() {
               <button
                 type="submit"
                 disabled={isPasswordChanging}
-                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-3 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-3 text-[13px] font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 {isPasswordChanging ? (
                   <span className="flex items-center justify-center gap-2">
@@ -455,7 +455,7 @@ function SecuritySettingsSection() {
                 type="button"
                 onClick={handleCancel}
                 disabled={isPasswordChanging}
-                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-[13px] font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 <X className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 Cancel
@@ -503,7 +503,7 @@ function AccountSection() {
             <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-(--text-primary)">Guest Session</p>
+            <p className="truncate text-[13px] font-medium text-(--text-primary)">Guest Session</p>
             <p className="truncate text-[13px] text-(--text-secondary)">Not signed in</p>
           </div>
         </div>
@@ -515,7 +515,7 @@ function AccountSection() {
         <div className="pt-4 border-t border-(--border-hairline)">
           <button
             onClick={logout}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-[13px] font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Exit Guest Mode
@@ -542,7 +542,7 @@ function AccountSection() {
           <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-(--text-primary)">
+          <p className="truncate text-[13px] font-medium text-(--text-primary)">
             {displayName || user?.email || 'User'}
           </p>
           <p className="truncate text-[13px] text-(--text-secondary)">{user?.email}</p>
@@ -550,18 +550,12 @@ function AccountSection() {
       </div>
 
       <dl className="divide-y divide-(--border-hairline) rounded-lg border border-(--border-hairline)">
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <User className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <dt className="text-[13px] text-(--text-secondary)">Display Name</dt>
-            <dd className="truncate text-sm text-(--text-primary)">{displayName || '—'}</dd>
-          </div>
-        </div>
+        
         <div className="flex items-center gap-3 px-3 py-2.5">
           <Mail className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <dt className="text-[13px] text-(--text-secondary)">Email</dt>
-            <dd className="truncate text-sm text-(--text-primary)">{user?.email || '—'}</dd>
+            <dd className="truncate text-[13px] text-(--text-primary)">{user?.email || '—'}</dd>
           </div>
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
@@ -576,17 +570,17 @@ function AccountSection() {
       <div className="pt-4 border-t border-(--border-hairline)">
         {showLogoutConfirm ? (
           <div className="space-y-3">
-            <p className="text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
+            <p className="text-[13px] text-(--text-secondary)">Are you sure you want to sign out?</p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleLogout}
-                className="rounded-lg bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="rounded-lg bg-(--status-critical-fg) px-4 py-2 text-[13px] font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Yes, Sign Out
               </button>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="rounded-lg border border-(--border-strong) px-4 py-2 text-[13px] font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
@@ -595,7 +589,7 @@ function AccountSection() {
         ) : (
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-sm font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-[13px] font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Sign Out
@@ -626,9 +620,9 @@ export default function Settings() {
       {/* Breadcrumb duplicates the compact top bar — desktop only. */}
       <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
         <div className="flex min-w-0 items-center">
-          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-[13px] font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
-          <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
+          <span className="text-[13px] font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
         {user && (
           <div className="flex min-w-0 items-center gap-2">
@@ -643,7 +637,7 @@ export default function Settings() {
       <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
         <div className="border-b border-(--border-hairline) px-4 py-4 sm:px-6">
           <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
-          <p className="mt-1 text-[13px] text-(--text-secondary) sm:text-sm">
+          <p className="mt-1 text-[13px] text-(--text-secondary) sm:text-[13px]">
             Manage your account preferences and application configuration
           </p>
         </div>

@@ -12,6 +12,10 @@ x-shared-env: &shared-env
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
   REDIS_URL: redis://redis:6379
+  # Shared by api + worker (single anchor guarantees an identical key across processes)
+  # so the worker can decrypt target credentials the api sealed. Required for
+  # authenticated queued runs; the api refuses them without it (AUTH_UNSUPPORTED_ON_QUEUE).
+  BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   # TTL is always on; keep the cascade reaper on so expired sessions don't orphan

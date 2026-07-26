@@ -58,6 +58,9 @@ services:
       # Route /api/start-test through the Redis queue to the worker fleet instead
       # of running Playwright in-process (prevents API-process memory exhaustion).
       - BUGSAFARI_USE_QUEUE=1
+      # Same value as the worker below (sourced from root .env) so the worker can
+      # decrypt target credentials the api sealed. Enables authenticated queued runs.
+      - BUGSAFARI_AUTH_KEY=${BUGSAFARI_AUTH_KEY}
       - JWT_SECRET=bugsafari-local-development-secret
       - JWT_EXPIRES_IN=7d
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
@@ -118,6 +121,9 @@ services:
       # alias host.docker.internal. Empty => use host.docker.internal (see extra_hosts).
       - BUGSAFARI_HOST_BRIDGE=${BUGSAFARI_HOST_BRIDGE:-}
       - REDIS_URL=redis://redis:6379
+      # Must match the api's key (root .env) — the worker decrypts credentials the
+      # api sealed into the AuthVault for this run.
+      - BUGSAFARI_AUTH_KEY=${BUGSAFARI_AUTH_KEY}
       - BUGSAFARI_WORKER_CONCURRENCY=1
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     # Same host-gateway mapping as the api service: queued jobs run Playwright here,

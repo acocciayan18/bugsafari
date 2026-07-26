@@ -13,6 +13,7 @@ import type {
   IncidentReport,
 } from '../types';
 import type { ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
+import { isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
 import { formatReportDateTime } from './datetime';
@@ -28,7 +29,10 @@ export interface FindingView {
   occurrences: number;
   timestamp?: string;
   url?: string;
+  // Raw selector kept internally for debugging only — never rendered.
   selector?: string;
+  // Human-readable name of the culprit control, shown in place of the selector.
+  elementLabel?: string;
   payloadUsed?: string;
   stackTrace?: string;
   resolvedStackTrace?: string;
@@ -62,6 +66,37 @@ export function resolveCulprit(
   return undefined;
 }
 
+// A recorded step, from any surface, that may carry a human label for its control.
+type LabelledStep = { selector?: string; elementLabel?: string; label?: string };
+
+const stepLabel = (step: LabelledStep | undefined): string | undefined => {
+  const label = (step?.elementLabel ?? step?.label ?? '').trim();
+  return label && !isSelectorLike(label) ? label : undefined;
+};
+
+// Human name for the culprit control, resolved in the same priority the engine
+// uses: an explicit backend label → the recorded step matching the culprit
+// selector → the last recorded step with any label → a concise semantic fallback
+// derived from the selector. Never returns a raw DOM path.
+export function resolveCulpritLabel(
+  explicit: string | undefined,
+  selector: string | undefined,
+  steps: LabelledStep[] | undefined,
+): string | undefined {
+  const named = (explicit ?? '').trim();
+  if (named && !isSelectorLike(named)) return named;
+  if (selector) {
+    const match = steps?.find((s) => s.selector === selector);
+    const matched = stepLabel(match);
+    if (matched) return matched;
+  }
+  for (let i = (steps?.length ?? 0) - 1; i >= 0; i--) {
+    const label = stepLabel(steps![i]);
+    if (label) return label;
+  }
+  return selector ? semanticFallbackFromSelector(selector) : undefined;
+}
+
 // Plain-text export of ONE finding — the payload behind the card's Copy button.
 // Driven by the normalized view so a live fault and its saved counterpart copy
 // out byte-identically.
@@ -73,7 +108,7 @@ export function buildFindingSummary(view: FindingView, index: number): string {
   return [
     `Finding #${index + 1}: ${view.title}`,
     view.message ? `Message: ${view.message}` : '',
-    view.selector && view.selector !== 'N/A' ? `Selector: ${view.selector}` : '',
+    view.elementLabel ? `Element: ${view.elementLabel}` : '',
     view.payloadUsed ? `Payload: ${view.payloadUsed}` : '',
     `Detected: ${formatReportDateTime(view.timestamp)}`,
     view.advice ? `\nSuggested Fix:\n${view.advice}` : '',
@@ -92,6 +127,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     timestamp: inc.timestamp,
     url: inc.url,
     selector: resolveCulprit(inc.culpritSelector, inc.steps),
+    elementLabel: resolveCulpritLabel(inc.culpritLabel, resolveCulprit(inc.culpritSelector, inc.steps), inc.steps),
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
     reproductionSteps: inc.reproductionPlaybook ?? [],
@@ -111,6 +147,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     timestamp: rep.timestamp,
     url: rep.url,
     selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs),
+    elementLabel: resolveCulpritLabel(rep.culpritLabel, resolveCulprit(rep.culpritSelector, rep.breadcrumbs), rep.breadcrumbs),
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
     reproductionSteps: rep.reproductionPlaybook ?? [],
@@ -127,7 +164,8 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     severity: bug.severity,
     occurrences,
     timestamp: bug.timestamp,
-    selector: resolveCulprit(bug.selector, undefined),
+    selector: resolveCulprit(bug.selector, bug.actionSteps),
+    elementLabel: resolveCulpritLabel(undefined, resolveCulprit(bug.selector, bug.actionSteps), bug.actionSteps),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,

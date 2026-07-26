@@ -39,7 +39,7 @@ const TERMINAL_TABS = [
 function TabCount({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-(--status-neutral-bg) px-1.5 py-0.5 font-mono text-[11px] leading-none text-(--status-neutral-fg)">
+    <span className="ml-1.5 rounded-full bg-(--status-neutral-bg) px-1.5 py-0.5 font-mono text-xs leading-none text-(--status-neutral-fg)">
       {count > 999 ? '999+' : count}
     </span>
   );
@@ -243,7 +243,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-[13px] sm:text-sm font-bold tracking-[0.16em] sm:tracking-[0.2em] text-(--text-secondary) uppercase font-sans">
+          <h2 className="text-[13px] sm:text-[13px] font-bold tracking-[0.16em] sm:tracking-[0.2em] text-(--text-secondary) uppercase font-sans">
             COMMAND CENTER
           </h2>
 
@@ -261,7 +261,7 @@ export default function ClinicalForensicsDashboard({
             <span>Configuration</span>
             {/* The digest is the first thing to go when width is tight — the label carries the affordance. */}
             <span className="hidden text-(--border-strong) md:inline" aria-hidden="true">|</span>
-            <span className="hidden min-w-0 truncate text-[11px] font-normal text-(--text-tertiary) font-sans md:inline">{configSummary}</span>
+            <span className="hidden min-w-0 truncate text-xs font-normal text-(--text-tertiary) font-sans md:inline">{configSummary}</span>
             {/* Launch is blocked on incomplete credentials — surface it on the trigger,
                 otherwise the cause is hidden behind a closed dialog. */}
             {authIncomplete && !isActiveSession && (
@@ -434,7 +434,7 @@ export default function ClinicalForensicsDashboard({
           <div className="mx-3 mb-3 mt-1 flex shrink-0 items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-3 py-2 sm:mx-4 sm:mb-4 sm:px-4">
             <div className="flex min-w-0 items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold border ${testStatus === 'ACTIVE'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${testStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
                 : testStatus === 'PAUSED'
                   ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'

@@ -88,7 +88,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
     <Modal isOpen={isOpen} onClose={resetAndClose} titleId="support-modal-title">
       {/* Modal Header */}
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:px-4">
-        <h3 id="support-modal-title" className="min-w-0 text-sm font-semibold text-(--text-primary)">
+        <h3 id="support-modal-title" className="min-w-0 text-[13px] font-semibold text-(--text-primary)">
           {TITLES[mode]}
         </h3>
         <button
@@ -122,7 +122,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
         />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="support-description" className="text-sm font-medium text-(--text-secondary)">
+          <label htmlFor="support-description" className="text-[13px] font-medium text-(--text-secondary)">
             Description
           </label>
           <textarea
@@ -131,7 +131,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
             rows={4}
-            className="w-full rounded-md border border-(--border-strong) px-3 py-2.5 sm:px-4 sm:py-3 text-base sm:text-sm text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-y"
+            className="w-full rounded-md border border-(--border-strong) px-3 py-2.5 sm:px-4 sm:py-3 text-base sm:text-[13px] text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-y"
           />
         </div>
       </div>
