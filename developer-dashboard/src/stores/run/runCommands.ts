@@ -1,6 +1,6 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
-import { defaultOptimizationSettings } from '../../../../shared/types.js';
+import { defaultOptimizationSettings, isActionableNetworkStatus } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
@@ -143,6 +143,8 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
         const networkMap = new Map<string, { timestamp: string; method: string; url: string; statusCode?: number; durationMs?: number; ok: boolean; message?: string; repeatCount: number }>();
         for (const e of networkEvents) {
             if (e.type !== 'NETWORK') continue;
+            // Only actionable failures are saved — successes are noise (matches the live tab).
+            if (!isActionableNetworkStatus(e.meta?.statusCode)) continue;
             const method = e.meta?.method ?? 'GET';
             const url = e.meta?.url ?? '';
             const statusCode = e.meta?.statusCode;

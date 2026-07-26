@@ -42,6 +42,7 @@ import { CopyButton, SeverityBadge } from '../common/ForensicCardKit';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination } from '../../types';
+import { isActionableNetworkStatus } from '../../../../shared/types.js';
 import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
 import { caughtBugToFindingView } from '../../utils/findingView';
 import { Modal } from '../ui/Modal';
@@ -828,7 +829,7 @@ function statusTint(row: ForensicNetworkLog): { border: string; bg: string; stat
 }
 
 function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
-  if (!rows.length) return <EmptyTab message="No network requests were recorded for this session." />;
+  if (!rows.length) return <EmptyTab message="No network failures were recorded for this session." />;
   return (
     <ul className="flex flex-col gap-2">
       {rows.map((row, i) => {
@@ -968,7 +969,8 @@ export default function ForensicReport() {
   // streams; legacy sessions (no logs) fall back to the persisted fault rows.
   const reportErrors = useMemo(() => report?.errorLogs?.errors ?? [], [report]);
   const networkRows = useMemo<ForensicNetworkLog[]>(() => {
-    if (Array.isArray(report?.networkLog)) return report!.networkLog;
+    // Only failures render — filter guards legacy sessions saved with 2xx/3xx rows.
+    if (Array.isArray(report?.networkLog)) return report!.networkLog.filter((n) => isActionableNetworkStatus(n.statusCode));
     return reportErrors
       .filter((e) => e.type && NETWORK_ERROR_TYPES.has(e.type))
       .map((e) => ({ timestamp: e.createdAt ?? '', method: e.method ?? 'GET', url: e.endpoint || e.url || '', statusCode: e.statusCode, ok: false, message: e.message }));

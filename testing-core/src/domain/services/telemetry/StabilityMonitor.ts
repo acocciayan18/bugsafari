@@ -24,6 +24,7 @@ import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '.
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { classifyHttpStatus, isExpectedResourceNoise } from '../../scenarios/routeTrasher/routeTrashClassifier.js';
 import type { FaultSeverity, FindingAttribution } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import { VerificationPipeline, detectSoftFailBody, isBodyReadableResourceType, type VerificationCandidate } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
@@ -267,11 +268,13 @@ export class StabilityMonitor {
     return start !== undefined && duration !== undefined ? start + duration : Date.now();
   }
 
-  // Record one settled request into the full per-run network log (Network tab).
-  // Skips static-asset noise; never throws inside a page listener.
+  // Record one settled request into the per-run network log (Network tab). Only
+  // actionable rows persist (transport failures + HTTP >=400); 2xx/3xx successes
+  // are dropped. Skips static-asset noise; never throws inside a page listener.
   private recordNetworkLog(request: Request, statusCode: number | undefined, ok: boolean, message?: string): void {
     try {
       if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
+      if (!isActionableNetworkStatus(statusCode)) return;
       NetworkLogStore.push({
         timestamp: new Date().toISOString(),
         method: request.method(),
@@ -1070,19 +1073,8 @@ export class StabilityMonitor {
         }
       }
 
-      // Live parity: surface clean successful/redirect requests on the Network tab
-      // (failures are emitted by the fault/informational paths below).
-      if (status < 400 && !softFailBody && LOGGED_RESOURCE_TYPES.has(resourceType)) {
-        t.emit('NETWORK', {
-          statusCode: status,
-          url,
-          method,
-          durationMs: this.computeRequestDuration(response.request()),
-          message: `HTTP ${status} ${method} ${url}`,
-        });
-      }
-
-      // A clean success with no soft-fail body is not a fault — nothing to emit.
+      // A clean success with no soft-fail body is not actionable — never emitted,
+      // stored, or persisted. Only failures reach the Network tab (below).
       if (status < 400 && !softFailBody) {
         return;
       }

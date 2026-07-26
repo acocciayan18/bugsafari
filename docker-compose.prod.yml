@@ -5,6 +5,7 @@ name: bugsafari-prod
 # the host environment; nothing is hardcoded. Requires MONGODB_URI and JWT_SECRET to
 # be exported (the API hard-fails on boot without JWT_SECRET in production).
 
+
 x-shared-env: &shared-env
   NODE_ENV: production
   MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI}

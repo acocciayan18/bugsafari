@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 
@@ -25,12 +25,16 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   // broadcast behavior (no active run).
   private room: string | null = null;
   private recorder: TelemetryRecorder | null = null;
+  // Centralized suppression of consecutive-identical lines and repeat lifecycle
+  // handshakes (e.g. duplicate IDLEs). Reset per run so state never leaks across runs.
+  private readonly deduper: TelemetryDeduper = createTelemetryDeduper();
 
   constructor(private readonly io: RoomEmitter) { }
 
   /** Bind/clear the active run's room (set at run start, cleared at run end). */
   public setRoom(room: string | null): void {
     this.room = room;
+    this.deduper.reset();
   }
 
   /** Bind/clear the ring-buffer recorder for the active run. */
@@ -49,6 +53,8 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     const safe = event.meta?.message
       ? { ...event, meta: { ...event.meta, message: scrubCredentials(event.meta.message) } }
       : event;
+    // Suppress redundant lines before they reach the wire, replay buffer, or storage.
+    if (!this.deduper.accept(safe)) return;
     this.recorder?.record('telemetry', safe);
     this.channel().emit('telemetry', safe);
   }

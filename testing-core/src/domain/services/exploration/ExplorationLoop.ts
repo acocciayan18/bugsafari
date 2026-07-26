@@ -4,7 +4,6 @@ import {
   ACCESSIBILITY_BANNER_THRESHOLD,
   STOP_REASON_DETAIL,
   STOP_REASON_OUTCOME,
-  describeTermination,
 } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { normalizeRoutePath } from '../../../ml/domHasher.js';
@@ -187,7 +186,7 @@ export class ExplorationLoop {
       // ─────────────────────────────────────────────────────────────
       if (this.deps.checkTimebox()) {
         const reason = `Time budget of ${this.deps.getTimeboxMs() / 60000} min of active execution reached — exploration ended automatically.`;
-        telemetry.emitMilestone(describeTermination('timebox', reason));
+        // The authoritative terminal line is emitted once by StartExplorationUseCase.
         return { completed: false, reason, outcome: 'timebox' };
       }
 
@@ -551,8 +550,8 @@ export class ExplorationLoop {
     page: Page,
     ctx: RunContext,
   ): Promise<{ kind: 'continue' } | { kind: 'deadend' } | { kind: 'proceed'; ranked: InteractiveElement[] }> {
-    //  Prioritization (milestone comes right after parse/scoring)
-    this.deps.telemetry.emitMilestone('️ Vision Active');
+    //  Per-step scan status — drives the live "thinking" indicator, not the log.
+    this.deps.telemetry.emitSystemStatus('Vision Active');
 
     // Page-context validity + strict-lock confinement are enforced by the
     // per-iteration ensurePageHealth() gate in execute(); here we only wait for
@@ -1002,7 +1001,6 @@ export class ExplorationLoop {
     const limits = this.boundaryConstraints();
     if (limits.length === 0) {
       const reason = 'Graph Exhausted — full reachable application graph explored (post-recovery).';
-      this.deps.telemetry.emitMilestone(` ${reason}`);
       this.deps.telemetry.emit('ACTION', { actionExecuted: 'graph-exhausted', message: reason });
       return { completed: true, reason, outcome: 'completed' };
     }
@@ -1010,7 +1008,6 @@ export class ExplorationLoop {
     const reason =
       `Boundary Saturation Reached — configured scope fully explored (${limits.join('; ')}). ` +
       'The application graph beyond the boundary was not explored.';
-    this.deps.telemetry.emitMilestone(` ${reason}`);
     this.deps.telemetry.emit('ACTION', { actionExecuted: 'boundary-saturation', message: reason });
     return { completed: true, reason, outcome: 'boundary-saturated' };
   }
@@ -1581,7 +1578,8 @@ export class ExplorationLoop {
     const trigger = this.deps.getStopReason() ?? 'internal-shutdown';
     const outcome = STOP_REASON_OUTCOME[trigger];
     const reason = STOP_REASON_DETAIL[trigger];
-    this.deps.telemetry.emitMilestone(describeTermination(outcome));
+    // No termination milestone here — StartExplorationUseCase emits the single
+    // authoritative terminal line (engine-stopped) so it is never duplicated.
     return { completed: false, reason, outcome };
   }
 

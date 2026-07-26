@@ -1,6 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
-import { defaultOptimizationSettings, describeTermination } from '../../../../shared/types.js';
+import { defaultOptimizationSettings, describeTermination, isActionableNetworkStatus } from '../../../../shared/types.js';
 import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
@@ -450,9 +450,12 @@ export class StartExplorationUseCase {
                 const { consoleLogRepository } = await import('../../infrastructure/database/repositories/ConsoleLogRepository.js');
                 // Client-transferred streams are authoritative (run executes out-of-process
                 // under the queue); the in-process buffers are a same-process fallback.
-                const netEntries = options?.clientNetworkLog?.length
+                // Persist only actionable rows — successes are never stored (mirrors the
+                // live Network tab). Guards legacy client payloads that still carry 2xx/3xx.
+                const netEntries = (options?.clientNetworkLog?.length
                     ? options.clientNetworkLog.map((r) => this.mapNetworkEntry(r))
-                    : NetworkLogStore.snapshot();
+                    : NetworkLogStore.snapshot()
+                ).filter((e) => isActionableNetworkStatus(e.statusCode));
                 const conEntries = options?.clientConsoleLog?.length
                     ? options.clientConsoleLog.map((r) => this.mapConsoleEntry(r))
                     : ConsoleLogStore.snapshot();

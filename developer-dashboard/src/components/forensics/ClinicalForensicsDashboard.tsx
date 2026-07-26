@@ -22,6 +22,8 @@ import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
 import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
+import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
+import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
@@ -125,6 +127,8 @@ export default function ClinicalForensicsDashboard({
       tabRefs.current[next]?.focus();
     }
   };
+  // Off by default: hide per-step execution trace; flip to reveal the full log for debugging.
+  const [showVerbose, setShowVerbose] = useState(false);
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
@@ -139,9 +143,14 @@ export default function ClinicalForensicsDashboard({
     // so a row keeps its identity as the buffer slides (index-as-key re-associated an
     // expanded row to the wrong event when the window shifted).
     const seen = new Map<string, number>();
+    // Same central policy as the backend: collapse consecutive/repeat noise, then
+    // hide the per-step execution trace unless verbose mode is on. Findings/faults pass.
+    const deduper = createTelemetryDeduper();
     const events = Array.isArray(telemetry)
       ? telemetry
           .filter((event) => (typeof event === 'string' ? !event.includes('[NETWORK]') : event?.type !== 'NETWORK'))
+          .filter((event) => (typeof event === 'string' ? true : deduper.accept(event)))
+          .filter((event) => (typeof event === 'string' || showVerbose ? true : !isVerboseTelemetry(event)))
           .map((event) => {
             const base =
               typeof event === 'string'
@@ -152,20 +161,20 @@ export default function ClinicalForensicsDashboard({
             const key = `${base}#${n}`;
 
             if (typeof event === 'string') {
-              return { key, rawText: event, aiDiagnostics: null };
+              return { key, ...presentTelemetry(event), aiDiagnostics: null };
             }
             const type = event.type ?? 'EVENT';
             const message = event.meta?.message ?? event.meta?.actionExecuted ?? 'event';
 
             return {
               key,
-              rawText: `[${type}] ${message}`,
+              ...presentTelemetry(`[${type}] ${message}`),
               aiDiagnostics: event.meta?.aiDiagnostics || null
             };
           })
       : [];
     return events.slice(-100);
-  }, [telemetry]);
+  }, [telemetry, showVerbose]);
 
   // Badge reflects DISTINCT fault cards the Errors tab renders (mirrored crash
   // reports deduped, identical repeats collapsed), not the raw occurrence count.
@@ -473,7 +482,20 @@ export default function ClinicalForensicsDashboard({
               })}
             </div>
 
-            <TelemetryHelpModal activeTab={activeTab} />
+            <div className="flex shrink-0 items-center gap-1 pr-2">
+              {activeTab === 'telemetry' && (
+                <button
+                  type="button"
+                  onClick={() => setShowVerbose((v) => !v)}
+                  aria-pressed={showVerbose}
+                  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors ${showVerbose ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)' : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                >
+                  Verbose
+                </button>
+              )}
+              <TelemetryHelpModal activeTab={activeTab} />
+            </div>
           </div>
 
           {/* Core Logs Output Viewer Container */}
@@ -494,21 +516,18 @@ export default function ClinicalForensicsDashboard({
                   )}
                   {showSessionControls ? (
                     <>
-                      {formattedTelemetry.map((logObj) => (
+                      {formattedTelemetry.map((logObj) => {
+                        const s = telemetryToneStyle(logObj.tone);
+                        return (
                         <div key={logObj.key} className="py-1 border-b border-(--border-hairline)/50 last:border-0">
-                          <div
-                            className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
-                              ? 'text-(--text-secondary)'
-                              : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                                ? 'text-(--status-critical-fg) font-semibold'
-                                : 'text-(--text-primary)'
-                              }`}
-                          >
-                            {logObj.rawText}
+                          <div className="flex gap-2 leading-relaxed">
+                            <span aria-hidden="true" className={`select-none ${s.markerClass}`}>{s.marker}</span>
+                            <span className={`min-w-0 flex-1 whitespace-pre-wrap wrap-break-word ${s.textClass}`}>{logObj.text}</span>
                           </div>
                           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                         </div>
-                      ))}
+                        );
+                      })}
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
                           <span className="h-3 w-3 rounded-full bg-(--surface-invert) animate-ping"></span>
@@ -524,21 +543,18 @@ export default function ClinicalForensicsDashboard({
                     </div>
                   ) : (
                     <>
-                      {formattedTelemetry.map((logObj) => (
+                      {formattedTelemetry.map((logObj) => {
+                        const s = telemetryToneStyle(logObj.tone);
+                        return (
                         <div key={logObj.key} className="py-1">
-                          <div
-                            className={`leading-relaxed whitespace-pre-wrap wrap-break-word ${logObj.rawText.includes('[SYSTEM]')
-                              ? 'text-(--text-secondary)'
-                              : logObj.rawText.includes('[ERROR]') || logObj.rawText.includes('[EXCEPTION]')
-                                ? 'text-(--status-critical-fg) font-semibold'
-                                : 'text-(--text-primary)'
-                              }`}
-                          >
-                            {logObj.rawText}
+                          <div className="flex gap-2 leading-relaxed">
+                            <span aria-hidden="true" className={`select-none ${s.markerClass}`}>{s.marker}</span>
+                            <span className={`min-w-0 flex-1 whitespace-pre-wrap wrap-break-word ${s.textClass}`}>{logObj.text}</span>
                           </div>
                           <AiDiagnosticCard ai={logObj.aiDiagnostics} />
                         </div>
-                      ))}
+                        );
+                      })}
                       <div className="py-2 text-(--text-primary)">
                         <span className="text-(--text-primary)">█</span> Ready for telemetry...
                       </div>

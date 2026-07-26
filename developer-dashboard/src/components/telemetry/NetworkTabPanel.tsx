@@ -1,4 +1,5 @@
 import type { TelemetryEvent } from '../../types';
+import { isActionableNetworkStatus } from '../../../../shared/types.js';
 import ReproductionChecklist from './ReproductionChecklist';
 import AiDiagnosticCard from './AiDiagnosticCard';
 
@@ -15,8 +16,7 @@ interface NetworkTabPanelProps {
 // successes are noise for this tab — they're still preserved in the raw
 // networkEvents buffer for saved-session history, just not shown live here.
 export function isActionableNetworkFailure(event: TelemetryEvent): boolean {
-  const status = event.meta?.statusCode;
-  return status === undefined || status >= 400;
+  return isActionableNetworkStatus(event.meta?.statusCode);
 }
 
 // Collapse NETWORK failure events by method+url+status (preserving first-seen
