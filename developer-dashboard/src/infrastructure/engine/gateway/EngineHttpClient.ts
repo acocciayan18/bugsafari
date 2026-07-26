@@ -1,4 +1,4 @@
-import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, TargetAuthConfig, ExplorationRunConfig } from '../../../types';
+import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, StopReason, TargetAuthConfig, ExplorationRunConfig } from '../../../types';
 import type { StartTestResult, StopRunResult } from '../../../application/ports/EngineGateway';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
@@ -158,14 +158,14 @@ export class EngineHttpClient {
    * The backend reports the real outcome, so the result is surfaced verbatim
    * instead of being assumed successful.
    */
-  public async stopRun(runId?: string | null): Promise<StopRunResult> {
+  public async stopRun(runId?: string | null, reason: StopReason = 'operator'): Promise<StopRunResult> {
     try {
       // The run token proves ownership server-side — required for guest runs,
       // which carry no authenticated identity to match against.
       const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/safari/stop`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runToken: runId ?? null }),
+        body: JSON.stringify({ runToken: runId ?? null, reason }),
       });
 
       const data = (await response.json().catch(() => ({}))) as Partial<StopRunResult>;

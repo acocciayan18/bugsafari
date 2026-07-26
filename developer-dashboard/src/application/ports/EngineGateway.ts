@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
 
 // Re-export the single shared console contract so existing port consumers
 // (runStore, gatewayBinding, SocketConnectionManager) keep their import path.
@@ -49,6 +49,8 @@ export interface EngineGateway {
   onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
   /** Live queue-position / lifecycle pushes for an enqueued (distributed) run. */
   onQueueUpdate(handler: (update: QueueUpdate) => void): void;
+  /** Authoritative timebox clock (~1 Hz) the frontend timer slaves to. */
+  onTimeSync(handler: (payload: TimeSyncPayload) => void): void;
   removeAllListeners(): void;
   /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
   setRunId(runId: string | null): void;
@@ -67,8 +69,9 @@ export interface EngineGateway {
   stopTest(): void;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
-  /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout */
-  forceStop(): Promise<void>;
+  /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout.
+   *  `reason` attributes the stop (default operator); the timebox timer passes 'timebox'. */
+  forceStop(reason?: StopReason): Promise<void>;
   /** Cancel a run that is still QUEUED (removes the BullMQ job before pickup). */
   cancelQueuedRun(): Promise<StopRunResult>;
 }

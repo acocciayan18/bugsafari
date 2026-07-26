@@ -107,6 +107,9 @@ interface ActiveRun {
   // A stop issued while STARTING has no engine to reach — remembered so beginRun
   // honours it the moment the real engine attaches (no zombie run).
   pendingStop: boolean;
+  // The reason carried by that deferred stop, replayed with it so a timebox/shutdown
+  // stop during boot is not silently re-attributed to the operator.
+  pendingStopReason: StopReason;
   // Replay ring buffers (bounded).
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
@@ -178,8 +181,11 @@ export class SessionManager implements TelemetryRecorder {
       // Placeholder control surface: a stop arriving during boot is recorded
       // rather than dropped, and replayed against the real engine in beginRun.
       engine: {
-        stop: () => {
-          if (this.run?.runToken === params.runToken) this.run.pendingStop = true;
+        stop: (reason?: StopReason) => {
+          if (this.run?.runToken === params.runToken) {
+            this.run.pendingStop = true;
+            this.run.pendingStopReason = reason ?? 'operator';
+          }
         },
         getElapsedActiveTimeMs: () => 0,
       },
@@ -220,7 +226,7 @@ export class SessionManager implements TelemetryRecorder {
       if (reserved.pendingStop) {
         reserved.pendingStop = false;
         console.log(`[SessionManager] Run ${params.runToken} had a stop pending from boot — applying now.`);
-        void this.stopByOperator();
+        void this.stopByOperator(reserved.pendingStopReason);
       }
       return;
     }
@@ -270,6 +276,7 @@ export class SessionManager implements TelemetryRecorder {
       graceTimer: null,
       reservationTimer: null,
       pendingStop: false,
+      pendingStopReason: 'operator',
       telemetry: [],
       reports: [],
       incidents: [],
@@ -568,21 +575,22 @@ export class SessionManager implements TelemetryRecorder {
   // Graceful stop: enter STOPPING and broadcast engine-stopping so the dashboard
   // shows "Stopping…". engine.stop() flushes pending writes before releasing the
   // browser; the run's own finally emits IDLE and invokes endRun() to settle state.
-  public async stopByOperator(): Promise<void> {
+  public async stopByOperator(reason: StopReason = 'operator'): Promise<void> {
     const run = this.run;
     if (!run || typeof run.engine.stop !== 'function') return;
     if (run.status === 'STOPPING') return; // idempotent against duplicate stop clicks
     // Booting: there is no engine to stop yet. Stay STARTING and record the intent
-    // so beginRun applies it the instant the engine attaches — changing status here
-    // would strand the run outside the reservation-upgrade path.
+    // (with its reason) so beginRun applies it the instant the engine attaches —
+    // changing status here would strand the run outside the reservation-upgrade path.
     if (run.status === 'STARTING') {
       run.pendingStop = true;
+      run.pendingStopReason = reason;
       this.emitEngineAction('engine-stopping', 'Stop requested during startup — Safari will terminate as soon as the engine comes up.');
       return;
     }
     run.status = 'STOPPING';
     this.emitEngineAction('engine-stopping', 'Stopping Safari — flushing telemetry and pending writes…');
-    await Promise.resolve(run.engine.stop('operator'));
+    await Promise.resolve(run.engine.stop(reason));
     // endRun() is invoked by the run's own finally block; status settles to IDLE there.
   }
 
@@ -593,12 +601,12 @@ export class SessionManager implements TelemetryRecorder {
 
   // Apply an operator control bridged from the API process, scoped to runId.
   // Ignored if this process holds no matching run (another worker owns it).
-  public applyOperatorControl(command: OperatorCommand, runId: string | null): void {
+  public applyOperatorControl(command: OperatorCommand, runId: string | null, reason?: StopReason): void {
     const run = this.run;
     if (!run || (runId !== null && runId !== run.runToken)) return;
     if (command === 'pause') void this.pauseByOperator();
     else if (command === 'resume') this.resumeByOperator();
-    else void this.stopByOperator();
+    else void this.stopByOperator(reason ?? 'operator');
   }
 
   // ── Target health handler (crash escalation only) ───────────────────────────

@@ -45,6 +45,7 @@ export type {
   ReproductionVerdict,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
+  TimeSyncPayload,
   SessionAttachRequest,
   SessionAttachAck,
   RunLifecycleStatus,
@@ -69,6 +70,7 @@ export {
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
+  TIME_SYNC_EVENT,
   ACCESSIBILITY_EVENT,
   ACCESSIBILITY_BANNER_THRESHOLD,
   REPRODUCTION_VERDICT_EVENT,

@@ -1,8 +1,8 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
-import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT } from '../../../../shared/types.js';
+import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType, TimeSyncPayload } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, TIME_SYNC_EVENT } from '../../../../shared/types.js';
 
 export class TelemetryHub {
   private readonly io: Server;
@@ -57,6 +57,10 @@ export class TelemetryHub {
 
 emitUrlChanged(url: string): void {
     this.io.emit('url-changed', url);
+  }
+
+  emitTimeSync(payload: TimeSyncPayload): void {
+    this.io.emit(TIME_SYNC_EVENT, payload);
   }
 
   // Legacy methods for backward compatibility

@@ -55,6 +55,7 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     gateway.onReconnectFailed(() => s().setReconnectFailed());
     gateway.onSessionSnapshot((snapshot) => s().hydrateFromSnapshot(snapshot));
     gateway.onQueueUpdate((update) => s().applyQueueUpdate(update));
+    gateway.onTimeSync((p) => s().applyTimeSync(p.elapsedActiveMs, p.timeboxMs));
     gateway.onAccessibility(() => s().incrementAccessibility());
     gateway.onForensicReport((report) => s().addReport(report));
     gateway.onIncidentReport((incident) => s().addIncident(incident));

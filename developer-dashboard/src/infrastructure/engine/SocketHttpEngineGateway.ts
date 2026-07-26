@@ -1,5 +1,5 @@
 import type { BrowserConsoleMessage, EngineGateway, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, TargetAuthConfig, TelemetryEvent, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -99,17 +99,17 @@ export class SocketHttpEngineGateway implements EngineGateway {
    * Force stop - sends stop command via socket with HTTP fallback.
    * Used for timeout cleanup to ensure backend terminates orphaned processes.
    */
-  public async forceStop(): Promise<void> {
-    console.log('[Gateway]  forceStop called - attempting cleanup');
+  public async forceStop(reason: StopReason = 'operator'): Promise<void> {
+    console.log(`[Gateway]  forceStop called (reason=${reason}) - attempting cleanup`);
 
     // First, try socket emit (most reliable when connected)
     if (this.connection.connectionState === 'connected') {
-      return this.connection.stopViaSocket();
+      return this.connection.stopViaSocket(reason);
     }
 
     // Fallback to HTTP POST if socket not connected. Best-effort by design: the
     // backend may already be stopped, so the outcome is logged, not thrown.
-    await this.http.stopRun(this.runId);
+    await this.http.stopRun(this.runId, reason);
   }
 
   /**
@@ -162,6 +162,9 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onQueueUpdate(handler: (update: QueueUpdate) => void): void {
     this.connection.onQueueUpdate(handler);
+  }
+  public onTimeSync(handler: (payload: TimeSyncPayload) => void): void {
+    this.connection.onTimeSync(handler);
   }
   public removeAllListeners(): void {
     this.connection.removeAllListeners();

@@ -17,7 +17,8 @@ import {
   describeNavigation,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
-import { classifyInteractionScope } from './interactionScope.js';
+import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
+import type { HighlightAction } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import { decideEscalation } from './escalationDecision.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
@@ -27,6 +28,16 @@ import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
+
+// Interaction scope → active-indicator color group.
+const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {
+  'attack-vector': 'input',
+  file: 'input',
+  toggle: 'hover',
+  dropdown: 'hover',
+  clickable: 'click',
+  inert: 'click',
+};
 
 /**
  * Per-target action and fuzzing dispatch. Resolves the operator-gated stress
@@ -64,8 +75,9 @@ export class ActionExecutor {
     ranked: InteractiveElement[],
     revisitedPage: boolean,
   ): Promise<void> {
-    // Highlight the element the navigator chose to traverse.
-    await this.deps.highlighter.flashHighlight(page, target.selector);
+    // Classify first so the gliding active-indicator can color by interaction kind.
+    const scope = classifyInteractionScope(target);
+    await this.deps.highlighter.moveHighlight(page, target.selector, HIGHLIGHT_ACTION[scope] ?? 'click');
 
     // Route the element to its coordinated interaction scope. This is the single
     // decision point that keeps ATTACK VECTORS (fuzzable text fields) and the
@@ -74,7 +86,6 @@ export class ActionExecutor {
     // to the text-fuzz path, so checkboxes were never checked, dropdowns never got
     // a valid option, and submit-inputs were relabelled instead of clicked, leaving
     // forms unable to complete (repeated states → rollback loops).
-    const scope = classifyInteractionScope(target);
 
     // ATTACK VECTORS — fuzzable text fields. Payload injection (which strips
     // constraints, injects a context-aware payload, and commits via submission) IS

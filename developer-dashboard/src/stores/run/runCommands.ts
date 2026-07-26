@@ -6,7 +6,7 @@ import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID } from './types';
+import { RUN_ID_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
 
 function writeStorage(key: string, value: string | null): void {
     try {
@@ -66,7 +66,7 @@ export async function startRun(
         // Queued runs haven't launched an engine yet: drop into standby and disarm the
         // 30s no-frame watchdog. The queued toast comes from the backend push, which is
         // the single source of truth for it.
-        if (queued) useRunStore.setState({ status: 'QUEUED', isInitializing: false });
+        if (queued) useRunStore.setState((s) => ({ status: resolveStatus(s.status, 'QUEUED'), isInitializing: false }));
     } catch (error) {
         const raw = error instanceof Error ? error.message : String(error);
         // The backend refuses authenticated runs on the distributed path so credentials
@@ -115,7 +115,9 @@ export async function stopRun(): Promise<void> {
         return;
     }
 
-    if (status === 'ACTIVE' || status === 'PAUSED') {
+    // STARTING included: the engine may be booting; the backend defers the stop
+    // (pendingStop) and applies it the instant the engine attaches.
+    if (status === 'ACTIVE' || status === 'PAUSED' || status === 'STARTING') {
         gateway.stopTest();
     }
 }

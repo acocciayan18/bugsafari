@@ -905,19 +905,20 @@ export default function ForensicReport() {
     <div className="flex h-full w-full flex-col bg-(--surface-app)">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-4">
-        {/* Breadcrumb duplicates the compact top bar — desktop only; Back always stays. */}
-        <div className="hidden min-w-0 items-center lg:flex">
-          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
-          <span className="mx-3 text-(--text-tertiary)">/</span>
-          <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
-        </div>
+        {/* Back leads the header (left) for intuitive back-navigation flow. */}
         <button
           onClick={() => window.history.back()}
-          className="flex shrink-0 items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover) lg:ml-auto"
+          className="flex shrink-0 items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
          <ArrowLeft className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
          Back to History
         </button>
+        {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
+        <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
+          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="mx-3 text-(--text-tertiary)">/</span>
+          <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
+        </div>
       </header>
 
       {/* Report Body */}

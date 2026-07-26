@@ -31,6 +31,15 @@ export type SessionOwnerType = 'authenticated' | 'guest';
 // ── Socket event names (shared so client/server can never drift) ──────────────
 export const SESSION_ATTACH_EVENT = 'session-attach' as const;
 export const SESSION_SNAPSHOT_EVENT = 'session-snapshot' as const;
+export const TIME_SYNC_EVENT = 'time-sync' as const;
+
+/** Authoritative timebox clock streamed by the engine (~1 Hz). The frontend timer
+ *  is a display slaved to this; it never runs an independent countdown. `elapsedActiveMs`
+ *  excludes paused time. Bypasses the capped telemetry buffer. */
+export interface TimeSyncPayload {
+  elapsedActiveMs: number;
+  timeboxMs: number;
+}
 
 /** Everything a returning client needs to rebuild the live dashboard verbatim. */
 export interface ActiveSessionSnapshot {

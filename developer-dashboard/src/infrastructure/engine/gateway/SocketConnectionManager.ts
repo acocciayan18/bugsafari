@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, TelemetryEvent } from '../../../types';
-import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT } from '../../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, StopReason, TelemetryEvent, TimeSyncPayload } from '../../../types';
+import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, TIME_SYNC_EVENT } from '../../../types';
 import { logger } from '../../../utils/logger';
 
 type ConnectedHandler = (connected: boolean) => void;
@@ -17,6 +17,7 @@ type ReconnectingHandler = (attempt: number) => void;
 type ReconnectFailedHandler = () => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
 type QueueUpdateHandler = (update: QueueUpdate) => void;
+type TimeSyncHandler = (payload: TimeSyncPayload) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -55,6 +56,7 @@ export class SocketConnectionManager {
   private reconnectFailedHandler: ReconnectFailedHandler | null = null;
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
   private queueUpdateHandler: QueueUpdateHandler | null = null;
+  private timeSyncHandler: TimeSyncHandler | null = null;
   // Invoked when every attach retry failed — the coordinator falls back to the
   // HTTP snapshot so a run we own is never lost to a room we couldn't join.
   private attachExhaustedHandler: (() => void) | null = null;
@@ -186,6 +188,7 @@ export class SocketConnectionManager {
     this.socket.on('browser-console', this.handleBrowserConsole);
     this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
     this.socket.on(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
+    this.socket.on(TIME_SYNC_EVENT, this.handleTimeSync);
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
     this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
@@ -217,6 +220,7 @@ export class SocketConnectionManager {
     this.socket.off('browser-console', this.handleBrowserConsole);
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
     this.socket.off(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
+    this.socket.off(TIME_SYNC_EVENT, this.handleTimeSync);
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.io.off('reconnect', this.handleReconnect);
     this.socket.io.off('reconnect_failed', this.handleReconnectFailed);
@@ -241,10 +245,10 @@ export class SocketConnectionManager {
    * Emit stop over the socket (used by the coordinator's forceStop when
    * connected). Resolves after a short window so the emit reaches the wire.
    */
-  public stopViaSocket(): Promise<void> {
+  public stopViaSocket(reason: StopReason = 'operator'): Promise<void> {
     logger.debug('[Gateway] Attempting stop via socket...');
     return new Promise((resolve) => {
-      this.socket.emit('stop-test');
+      this.socket.emit('stop-test', { reason });
       // Give socket time to send before resolving
       setTimeout(() => {
         logger.debug('[Gateway] Socket stop sent');
@@ -329,6 +333,10 @@ export class SocketConnectionManager {
     this.sessionSnapshotHandler?.(snapshot);
   };
 
+  private readonly handleTimeSync = (payload: TimeSyncPayload): void => {
+    this.timeSyncHandler?.(payload);
+  };
+
   private readonly handleQueueUpdate = (update: QueueUpdate): void => {
     // Drop tracking only on a terminal outcome. We deliberately keep the
     // subscription through 'active' so a mid-run reconnect re-joins run:${runId}
@@ -377,6 +385,9 @@ export class SocketConnectionManager {
   }
   public onQueueUpdate(handler: QueueUpdateHandler): void {
     this.queueUpdateHandler = handler;
+  }
+  public onTimeSync(handler: TimeSyncHandler): void {
+    this.timeSyncHandler = handler;
   }
   public onAttachExhausted(handler: () => void): void {
     this.attachExhaustedHandler = handler;

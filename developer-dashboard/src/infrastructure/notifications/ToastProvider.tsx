@@ -4,11 +4,15 @@ import { Toaster, toast as sonnerToast, type ToasterProps, type ExternalToast } 
 import { useThemeStore } from '../../stores/themeStore';
 import { TOAST_ID } from './toastId';
 
+// Dedicated slot for generic network-error toasts — separate from the run-status
+// shared slot so the two never overwrite each other.
+const NETWORK_TOAST_ID = 'bugsafari-network-toast';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Toast Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type ToastVariant = 'success' | 'telemetry' | 'error';
+export type ToastVariant = 'success' | 'telemetry' | 'error' | 'network';
 
 export interface ToastOptions {
   variant?: ToastVariant;
@@ -78,8 +82,10 @@ let activeSlotMessage: string | null = null;
 // a stale render bleeding through (the failure of mixing custom + title paths).
 function renderToast(options: RenderToastOptions): string | undefined {
   const { message, variant = 'telemetry', onDismiss } = options;
-  const targetId = options.id ?? TOAST_ID;
-  const duration = options.duration ?? (variant === 'error' ? 5000 : 2000);
+  // Generic network errors get their own slot + tint so they read as distinct from
+  // run-status telemetry and never clobber (or get clobbered by) the shared slot.
+  const targetId = options.id ?? (variant === 'network' ? NETWORK_TOAST_ID : TOAST_ID);
+  const duration = options.duration ?? (variant === 'error' || variant === 'network' ? 5000 : 2000);
   const isSharedSlot = targetId === TOAST_ID;
 
   // Duplicate suppression: same message already occupying the slot → no-op.
@@ -95,7 +101,7 @@ function renderToast(options: RenderToastOptions): string | undefined {
   // must dismiss by that id.
   const toastId = sonnerToast.custom(
     (id) => <CustomToast message={message} onClose={() => sonnerToast.dismiss(id)} />,
-    { id: targetId, duration, onDismiss: releaseSlot, onAutoClose: releaseSlot, unstyled: true, className: 'toast-custom' },
+    { id: targetId, duration, onDismiss: releaseSlot, onAutoClose: releaseSlot, unstyled: true, className: variant === 'network' ? 'toast-custom toast-network' : 'toast-custom' },
   );
 
   return toastId !== undefined ? String(toastId) : undefined;
@@ -216,19 +222,23 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
 // toast.success and a component's toast.error never stack or fight over the id.
 // Callers may still pass an explicit `id`/`duration` in `data` (e.g. run status).
 const emit = (message: string, variant: ToastVariant, data?: ExternalToast) =>
-  renderToast({ message, variant, id: data?.id, duration: data?.duration, onDismiss: data?.onDismiss });
+  renderToast({ message, variant, id: data?.id, duration: data?.duration, onDismiss: data?.onDismiss as (() => void) | undefined });
 
 export const toast = Object.assign(
   (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
   {
     success: (message: string, data?: ExternalToast) => emit(message, 'success', data),
     error: (message: string, data?: ExternalToast) => emit(message, 'error', data),
+    // Generic transient network/connectivity error — distinct from the persistent
+    // connection chip, which owns live Connected/Reconnecting/Offline/Slow status.
+    network: (message: string, data?: ExternalToast) => emit(message, 'network', data),
     info: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     warning: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     message: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     loading: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     custom: (jsx: Parameters<typeof sonnerToast.custom>[0], data?: ExternalToast) =>
       sonnerToast.custom(jsx, { ...data, id: data?.id ?? TOAST_ID }),
+    promise: sonnerToast.promise,
     dismiss: sonnerToast.dismiss,
   },
 );

@@ -83,6 +83,12 @@ html.dark {
   display: none;
 }
 
+/* Generic network-error variant — a distinct amber left-rail so connectivity
+   errors are visually separate from run-status telemetry and the connection chip. */
+.toast-custom.toast-network {
+  border-left: 3px solid #f59e0b;
+}
+
 /* Dismiss button */
 .toast-custom .toast-dismiss-btn {
   display: flex;

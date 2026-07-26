@@ -29,6 +29,7 @@ import {
     ENGINE_STOPPING_ACTIONS,
     lifecycleToStatus,
     lifecycleIsLive,
+    resolveStatus,
     type TestSessionStatus,
     type QueueUpdate,
 } from './types';
@@ -38,8 +39,14 @@ import {
 export const runRefs = {
     runStarted: false,
     runStartWallClock: 0,
-    runDeadline: 0,
-    pausedRemaining: 0,
+    // Authoritative timebox clock, streamed by the engine. The frontend timer is a
+    // display slaved to this — no independent countdown. serverElapsedMs is the last
+    // engine-reported active elapsed; serverElapsedAt is the client wall-clock when it
+    // landed; timeSyncSeeded gates interpolation so boot/queue time is never counted
+    // (the display stays frozen at full timebox until the engine's clock actually starts).
+    serverElapsedMs: 0,
+    serverElapsedAt: 0,
+    timeSyncSeeded: false,
     queuePhase: 'idle' as 'idle' | 'waiting' | 'active' | 'done',
     cancelInFlight: false,
 };
@@ -120,6 +127,7 @@ export interface RunState {
     hydrateFromSnapshot: (snapshot: ActiveSessionSnapshot) => void;
     handleTimeLimitExceeded: () => void;
     tick: (remainingTimeMs: number, elapsedTimeMs: number) => void;
+    applyTimeSync: (elapsedActiveMs: number, timeboxMs: number) => void;
     resetForLaunch: (timeboxMs: number, resolvedUrl: string) => void;
     resetAfterCancel: () => void;
     markLaunchFailed: (message: string) => void;
@@ -210,10 +218,28 @@ export const useRunStore = create<RunState>((set, get) => ({
 
     setLiveFrame: (frame) => {
         const dataUrl = `data:image/jpeg;base64,${frame}`;
-        set({ liveFrame: dataUrl, latestFrame: dataUrl, isThinking: false, isInitializing: false });
+        // First frame is the authoritative "engine is running" signal for in-process
+        // runs (which get no queue 'active' push) — promote STARTING→ACTIVE here.
+        set((s) => ({
+            liveFrame: dataUrl, latestFrame: dataUrl, isThinking: false, isInitializing: false,
+            status: s.status === 'STARTING' ? 'ACTIVE' : s.status,
+        }));
     },
 
     tick: (remainingTimeMs, elapsedTimeMs) => set({ remainingTimeMs, elapsedTimeMs }),
+
+    // Authoritative clock landed — reset the interpolation baseline and correct the
+    // display immediately (snaps a paused/frozen timer to the exact engine elapsed).
+    applyTimeSync: (elapsedActiveMs, timeboxMs) => {
+        runRefs.serverElapsedMs = elapsedActiveMs;
+        runRefs.serverElapsedAt = Date.now();
+        runRefs.timeSyncSeeded = true;
+        set({
+            activeTimeboxMs: timeboxMs,
+            elapsedTimeMs: elapsedActiveMs,
+            remainingTimeMs: Math.max(0, timeboxMs - elapsedActiveMs),
+        });
+    },
 
     handleTimeLimitExceeded: () =>
         set({ hasTimeLimitExceeded: true, isTestRunning: false, status: 'FINISHED', hasRunCompleted: true }),
@@ -247,15 +273,20 @@ export const useRunStore = create<RunState>((set, get) => ({
             patch.hasRunCompleted = true;
             patch.liveFrame = null;
             patch.isInitializing = false;
-            patch.remainingTimeMs = get().activeTimeboxMs;
+            // Freeze the timer at its true final value (≈0 on a timebox finish) so the
+            // terminal state matches the engine — no snap back to the full timebox.
+            patch.remainingTimeMs = Math.max(0, get().activeTimeboxMs - get().elapsedTimeMs);
             // elapsedTimeMs is preserved so it can ride along in the manual save payload
         }
 
         if (event.type === 'ACTION' && action) {
-            if (ENGINE_PAUSING_ACTIONS.has(action)) patch.status = 'PAUSING';
-            if (ENGINE_PAUSE_ACTIONS.has(action)) patch.status = 'PAUSED';
-            if (ENGINE_STOPPING_ACTIONS.has(action)) patch.status = 'STOPPING';
-            if (ENGINE_RESUME_ACTIONS.has(action)) patch.status = 'ACTIVE';
+            // Guard transitional writes through the state machine so an out-of-order
+            // engine signal can never drive an invalid transition.
+            const cur = get().status;
+            if (ENGINE_PAUSING_ACTIONS.has(action)) patch.status = resolveStatus(cur, 'PAUSING');
+            if (ENGINE_PAUSE_ACTIONS.has(action)) patch.status = resolveStatus(cur, 'PAUSED');
+            if (ENGINE_STOPPING_ACTIONS.has(action)) patch.status = resolveStatus(cur, 'STOPPING');
+            if (ENGINE_RESUME_ACTIONS.has(action)) patch.status = resolveStatus(cur, 'ACTIVE');
             if (action === 'url-changed' && event.meta.message) patch.currentUrl = event.meta.message;
             if (action === 'system-status' && event.meta.message) patch.currentEngineAction = event.meta.message;
 
@@ -293,6 +324,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             // Out-of-order guard: a stale position racing in after the worker picked the
             // job up must not resurrect queued state.
             if (runRefs.queuePhase === 'active' || runRefs.queuePhase === 'done') return;
+            // State-machine guard: never regress a run that already reached ACTIVE.
+            if (resolveStatus(get().status, 'QUEUED') !== 'QUEUED') return;
             runRefs.queuePhase = 'waiting';
             set({
                 isQueued: true,
@@ -313,9 +346,12 @@ export const useRunStore = create<RunState>((set, get) => ({
             // Anchor the countdown to when execution actually begins, so queued wait
             // time is never counted as run time.
             runRefs.runStartWallClock = Date.now();
-            runRefs.runDeadline = Date.now() + get().activeTimeboxMs;
-            runRefs.pausedRemaining = 0;
-            set({ isQueued: false, queuePosition: null, status: 'ACTIVE', isInitializing: true });
+            // Engine hasn't booted yet — leave the clock unseeded so the display stays
+            // at full timebox until the engine streams its first authoritative sync.
+            runRefs.serverElapsedMs = 0;
+            runRefs.serverElapsedAt = Date.now();
+            runRefs.timeSyncSeeded = false;
+            set({ isQueued: false, queuePosition: null, status: resolveStatus(get().status, 'ACTIVE'), isInitializing: true });
             return;
         }
 
@@ -356,8 +392,11 @@ export const useRunStore = create<RunState>((set, get) => ({
         const snapshotRemaining = Math.max(0, snapshot.timeboxMs - snapshot.elapsedTimeMs);
 
         runRefs.runStarted = true;
-        runRefs.runDeadline = Date.now() + snapshotRemaining;
-        runRefs.pausedRemaining = 0;
+        // Re-seed the authoritative baseline from the snapshot's engine elapsed; the
+        // next time-sync corrects within ~1s. Interpolate only for a live run.
+        runRefs.serverElapsedMs = snapshot.elapsedTimeMs;
+        runRefs.serverElapsedAt = Date.now();
+        runRefs.timeSyncSeeded = live;
         runRefs.queuePhase = queued ? 'waiting' : live ? 'active' : 'done';
         if (!queued) toast.dismiss(STATUS_TOAST_ID);
 
@@ -404,8 +443,11 @@ export const useRunStore = create<RunState>((set, get) => ({
     resetForLaunch: (timeboxMs, resolvedUrl) => {
         runRefs.runStarted = true;
         runRefs.runStartWallClock = Date.now();
-        runRefs.runDeadline = Date.now() + timeboxMs;
-        runRefs.pausedRemaining = 0;
+        // Unseeded until the engine streams its first sync — display holds full timebox
+        // through boot instead of counting it.
+        runRefs.serverElapsedMs = 0;
+        runRefs.serverElapsedAt = Date.now();
+        runRefs.timeSyncSeeded = false;
         // Fresh submission opens a new queue lifecycle for the phase guard
         runRefs.queuePhase = 'idle';
         toast.dismiss(STATUS_TOAST_ID);
@@ -415,7 +457,9 @@ export const useRunStore = create<RunState>((set, get) => ({
             isThinking: true,
             isLaunching: true,
             isTestRunning: true,
-            status: 'ACTIVE',
+            // Neutral launch state — server promotes it to QUEUED or ACTIVE. No
+            // optimistic ACTIVE, so there is no ACTIVE→QUEUED→ACTIVE flicker.
+            status: 'STARTING',
             isInitializing: true,
             liveFrame: null,
             telemetry: [],

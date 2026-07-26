@@ -37,6 +37,7 @@ import {
   type StateFingerprint,
   type ActionRecord,
   type RunTerminationOutcome,
+  coerceClientStopReason,
   parseStorageState,
 } from '../../../../shared/types.js';
 
@@ -253,7 +254,9 @@ export function registerRoutes(
   app.post('/api/safari/stop', writeLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const knownRunToken = typeof request.body?.runToken === 'string' && request.body.runToken ? request.body.runToken : undefined;
     const userId = request.userId ?? null;
-    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ?? 'n/a'})`);
+    // Client may assert operator/timebox only; anything else coerces to operator.
+    const stopReason = coerceClientStopReason(request.body?.reason);
+    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ?? 'n/a'}, reason=${stopReason})`);
 
     // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
     if (taskQueue && runRegistry && (knownRunToken || userId)) {
@@ -280,7 +283,7 @@ export function registerRoutes(
             if (!removed && observed === 'active') {
               // Raced a worker between the state read and the removal — fall through
               // to the running path rather than reporting a cancel that didn't happen.
-              controlPublisher?.publish('stop', entry.runToken);
+              controlPublisher?.publish('stop', entry.runToken, stopReason);
               response.json({ ok: true, stopping: true, message: 'Run started before cancellation; stop dispatched to the worker.' });
               return;
             }
@@ -303,8 +306,8 @@ export function registerRoutes(
               response.status(503).json({ ok: false, error: 'Stop channel to the worker fleet is unavailable.' });
               return;
             }
-            controlPublisher.publish('stop', entry.runToken);
-            console.log(`[API]  Stop bridged to worker for run ${entry.runToken}`);
+            controlPublisher.publish('stop', entry.runToken, stopReason);
+            console.log(`[API]  Stop bridged to worker for run ${entry.runToken} (reason=${stopReason})`);
             response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
             return;
           }
@@ -337,7 +340,7 @@ export function registerRoutes(
     }
 
     try {
-      await sessionManager.stopByOperator();
+      await sessionManager.stopByOperator(stopReason);
       console.log('[API] Engine stopped successfully via HTTP endpoint');
       response.json({ ok: true, stopped: true, message: 'Safari session stopped.' });
     } catch (error) {

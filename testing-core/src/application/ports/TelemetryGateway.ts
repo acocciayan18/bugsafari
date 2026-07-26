@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent } from '../../../../shared/types.js';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TimeSyncPayload } from '../../../../shared/types.js';
 
 export type { BrowserConsoleLevel, BrowserConsoleMessage };
 
@@ -18,6 +18,10 @@ export interface TelemetryGateway {
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;
+
+  /** Authoritative timebox clock (~1 Hz). The single source of truth the frontend
+   *  timer slaves to; bypasses the capped telemetry buffer. */
+  emitTimeSync?(payload: TimeSyncPayload): void;
 
   /** Emit browser console message from target page */
   emitBrowserConsole?(message: BrowserConsoleMessage): void;

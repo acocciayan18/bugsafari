@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 
@@ -62,6 +62,12 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitUrlChanged(url: string): void {
     this.recorder?.record('url-changed', url);
     this.channel().emit('url-changed', url);
+  }
+
+  // Authoritative timebox clock. Not recorded — the reconnect snapshot already
+  // carries the engine's elapsed, so a returning client re-seeds from there.
+  public emitTimeSync(payload: TimeSyncPayload): void {
+    this.channel().emit(TIME_SYNC_EVENT, payload);
   }
 
   public emitTargets(targets: DiscoveredElement[]): void {

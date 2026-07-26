@@ -484,6 +484,8 @@ export class ExplorationEngine {
     // Record the snapshot of elapsed time when pausing
     this.pauseSnapshotTimeMs = this.elapsedActiveTimeMs;
     this.isPaused = true;
+    // Sync the frozen baseline so the client stops interpolating at the exact elapsed.
+    this.emitTimeSync();
     console.log(`[ExplorationEngine] Session PAUSED at ${this.pauseSnapshotTimeMs}ms elapsed`);
   }
 
@@ -493,6 +495,9 @@ export class ExplorationEngine {
     const remainingTimeMs = Math.max(0, this.timeboxMs - this.elapsedActiveTimeMs);
     this.dynamicDeadline = Date.now() + remainingTimeMs;
     this.isPaused = false;
+    this.lastTickTimestamp = Date.now();
+    // Resume the client's countdown from the exact authoritative baseline.
+    this.emitTimeSync();
     console.log(`[ExplorationEngine] Session RESUMED with ${remainingTimeMs}ms remaining (elapsed: ${this.elapsedActiveTimeMs}ms)`);
   }
 
@@ -540,6 +545,12 @@ export class ExplorationEngine {
    */
   public getElapsedActiveTimeMs(): number {
     return this.elapsedActiveTimeMs;
+  }
+
+  // Push the authoritative timebox clock to the dashboard. The frontend timer is a
+  // display slaved to this — it never runs an independent countdown.
+  private emitTimeSync(): void {
+    this.activeGateway?.emitTimeSync?.({ elapsedActiveMs: this.elapsedActiveTimeMs, timeboxMs: this.timeboxMs });
   }
 
   /**
@@ -593,6 +604,10 @@ export class ExplorationEngine {
   private startTimingInterval(_telemetry: TelemetryGateway): void {
     this.elapsedActiveTimeMs = 0;
     this.lastTickTimestamp = Date.now();
+    let sinceSyncMs = 0;
+    // Immediate baseline so the client's timer locks onto the authoritative clock
+    // from the first frame instead of running its own countdown.
+    this.emitTimeSync();
 
     this.timingInterval = setInterval(() => {
       if (!this.isPaused && !this.isStopRequested) {
@@ -600,6 +615,11 @@ export class ExplorationEngine {
         const delta = now - this.lastTickTimestamp;
         this.elapsedActiveTimeMs += delta;
         this.lastTickTimestamp = now;
+        sinceSyncMs += delta;
+        if (sinceSyncMs >= 1000) {
+          sinceSyncMs = 0;
+          this.emitTimeSync();
+        }
       } else {
         // When paused or stopped, just update tick reference without accumulating
         this.lastTickTimestamp = Date.now();

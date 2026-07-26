@@ -139,7 +139,6 @@ export default function SavedEvaluationSafaris() {
     setCompareIds(idsToCompare);
   };
 
-  const progressSegments = [0, 1, 2, 3, 4];
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">

@@ -1,8 +1,47 @@
 import type { RunLifecycleStatus } from '../../types';
 import { TOAST_ID } from '../../infrastructure/notifications/toastId';
 
-// Unified Test Session Status Type for the visibility matrix
-export type TestSessionStatus = 'IDLE' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
+// Unified Test Session Status Type for the visibility matrix. STARTING is the
+// neutral launch state shown before the server decides QUEUED vs ACTIVE — it
+// replaces the old optimistic ACTIVE that flickered ACTIVE→QUEUED→ACTIVE.
+export type TestSessionStatus = 'IDLE' | 'STARTING' | 'QUEUED' | 'ACTIVE' | 'PAUSING' | 'PAUSED' | 'STOPPING' | 'STOPPED' | 'FINISHED';
+
+// Deterministic control-state machine: the only forward transitions the UI may
+// apply from a racing socket/queue push. Authoritative writes (launch reset,
+// snapshot hydrate, terminal, explicit IDLE) bypass this and set status directly.
+const STATUS_TRANSITIONS: Record<TestSessionStatus, readonly TestSessionStatus[]> = {
+    IDLE: ['STARTING', 'QUEUED', 'ACTIVE', 'STOPPED', 'FINISHED'],
+    STARTING: ['QUEUED', 'ACTIVE', 'PAUSING', 'PAUSED', 'STOPPING', 'STOPPED', 'FINISHED', 'IDLE'],
+    QUEUED: ['ACTIVE', 'STOPPING', 'STOPPED', 'FINISHED', 'IDLE'],
+    ACTIVE: ['PAUSING', 'PAUSED', 'STOPPING', 'STOPPED', 'FINISHED', 'IDLE'],
+    PAUSING: ['PAUSED', 'ACTIVE', 'STOPPING', 'STOPPED', 'FINISHED', 'IDLE'],
+    PAUSED: ['ACTIVE', 'PAUSING', 'STOPPING', 'STOPPED', 'FINISHED', 'IDLE'],
+    STOPPING: ['STOPPED', 'FINISHED', 'IDLE'],
+    STOPPED: ['IDLE', 'STARTING', 'QUEUED', 'ACTIVE'],
+    FINISHED: ['IDLE', 'STARTING', 'QUEUED', 'ACTIVE'],
+};
+
+// Returns `next` if it is a valid transition from `current`, else `current` —
+// so a stale/out-of-order push (e.g. ACTIVE→QUEUED) is dropped, never rendered.
+export function resolveStatus(current: TestSessionStatus, next: TestSessionStatus): TestSessionStatus {
+    if (current === next) return current;
+    return STATUS_TRANSITIONS[current].includes(next) ? next : current;
+}
+
+// Authoritative-clock display: elapsed = last engine-reported elapsed + wall-clock
+// since, but ONLY while ACTIVE and seeded. Before the first sync (boot/queue) or
+// while paused it stays frozen, so boot/queue/pause time is never counted. Pure so
+// the frontend timer never runs an independent countdown.
+export function interpolateElapsedMs(
+    status: TestSessionStatus,
+    seeded: boolean,
+    serverElapsedMs: number,
+    serverElapsedAt: number,
+    now: number,
+): number {
+    if (status !== 'ACTIVE' || !seeded) return serverElapsedMs;
+    return serverElapsedMs + Math.max(0, now - serverElapsedAt);
+}
 
 export interface QueueUpdate {
     state: 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled';
@@ -44,6 +83,7 @@ export function lifecycleToStatus(status: RunLifecycleStatus): TestSessionStatus
         case 'QUEUED':
             return 'QUEUED';
         case 'STARTING':      // room reserved, engine booting — the run is ours already
+            return 'STARTING';
         case 'RUNNING':
         case 'INTERRUPTED':   // engine still alive inside the grace window
             return 'ACTIVE';

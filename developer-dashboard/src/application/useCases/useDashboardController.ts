@@ -125,7 +125,7 @@ function useInitializationWatchdog(
 // and Stop re-delivers STOP — the two never cross, so a slow pause can never become a
 // stop — and neither raises an error: the engine WILL reach a terminal state (its
 // run() finally always emits IDLE). Genuine unrecoverability is a lost connection,
-// which ConnectionStatusOverlay surfaces with a reload prompt, not a transition timer.
+// which ConnectionStatusChip surfaces with a reload prompt, not a transition timer.
 function useTransitionRedelivery(status: TestSessionStatus): void {
     useEffect(() => {
         if (status !== 'PAUSING' && status !== 'STOPPING') return;

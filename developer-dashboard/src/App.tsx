@@ -20,7 +20,7 @@ import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
-import ConnectionStatusOverlay from './components/common/ConnectionStatusOverlay';
+import ConnectionStatusChip from './components/common/ConnectionStatusChip';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
@@ -122,14 +122,8 @@ function AuthAppContent() {
 
   return (
     <ThemeProvider>
-      <ConnectionStatusOverlay
-        isConnected={state.isConnected}
-        isReconnecting={state.isReconnecting}
-        reconnectAttempt={state.reconnectAttempt}
-        reconnectGaveUp={state.reconnectGaveUp}
-        isRestoring={state.isRestoring}
-      />
-      
+      <ConnectionStatusChip />
+
       <Routes>
         <Route
           path="/dashboard"

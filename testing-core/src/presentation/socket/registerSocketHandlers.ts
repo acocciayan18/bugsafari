@@ -12,6 +12,8 @@ import {
   type VerifyFixRequest,
   type VerifyFixResult,
   type VerifyFixProgress,
+  type StopReason,
+  coerceClientStopReason,
 } from '../../../../shared/types.js';
 import { verifyTokenSync } from '../authentication/authConfig.js';
 import { RegressionPlaybookVerifier } from '../../domain/services/regression/RegressionPlaybookVerifier.js';
@@ -184,14 +186,14 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       return activeUserId !== null && activeUserId === socketUserId(socket);
     };
 
-    const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void): Promise<void> => {
+    const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void, reason?: StopReason): Promise<void> => {
       if (controlPublisher) {
         const runToken = socketRunToken();
         if (!(await ownsQueuedRun(runToken))) {
           console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runToken ?? '(none)'}`);
           return;
         }
-        controlPublisher.publish(command, runToken);
+        controlPublisher.publish(command, runToken, reason);
         return;
       }
       if (!ownsActiveRun()) {
@@ -204,7 +206,10 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
 
     socket.on('pause-test', () => void applyControl('PAUSED', 'pause', () => void sessionManager.pauseByOperator()));
     socket.on('resume-test', () => void applyControl('RESUMED', 'resume', () => sessionManager.resumeByOperator()));
-    socket.on('stop-test', () => void applyControl('STOPPED', 'stop', () => void sessionManager.stopByOperator()));
+    socket.on('stop-test', (payload?: { reason?: unknown }) => {
+      const reason = coerceClientStopReason(payload?.reason);
+      void applyControl('STOPPED', 'stop', () => void sessionManager.stopByOperator(reason), reason);
+    });
 
     // Automated Regression Verification: replay a saved finding's recorded timeline
     // and report RESOLVED / STILL_ACTIVE. Uses an ack callback so the result is

@@ -87,7 +87,7 @@ export async function createSafariWorker(
   // Reverse of the telemetry bridge: apply operator pause/resume/stop clicks that
   // the API process publishes to this worker's live run.
   const controlSubscriber = new ControlBridgeSubscriber(
-    (command, runToken) => sessionManager.applyOperatorControl(command, runToken),
+    (command, runToken, reason) => sessionManager.applyOperatorControl(command, runToken, reason),
     redisUrl,
   );
   await controlSubscriber.start();
@@ -267,6 +267,10 @@ async (job) => {
   return {
     worker,
     async close(): Promise<void> {
+      // Attribute a mid-run system shutdown as internal-shutdown (→ graceful-shutdown)
+      // so the in-flight run settles with the right outcome instead of being stranded
+      // Running when the process exits.
+      await sessionManager.stopByOperator('internal-shutdown').catch(() => undefined);
       await worker.close();
       await controlSubscriber.close();
       await runRegistry.close();
