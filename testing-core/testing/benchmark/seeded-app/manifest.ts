@@ -15,6 +15,7 @@ export const SEEDED_DEFECTS: readonly SeededDefect[] = [
   { id: 'load-report', label: 'Load report → console error', expectedBugClass: 'RUNTIME_STABILITY_EXCEPTION' },
   { id: 'pay-now', label: 'Pay now → HTTP 500', expectedBugClass: 'BOUNDARY_STRESS_FAILURE' },
   { id: 'login-btn', label: 'Login → NoSQL error body', expectedBugClass: 'NOSQL_INJECTION' },
+  { id: 'login-btn', label: 'Login → unguarded double-submit (no disable-on-submit)', expectedBugClass: 'SPA_STATE_RACE_CONDITION' },
   { id: 'search', label: 'Search → reflected XSS (innerHTML)', expectedBugClass: 'FUZZ_VULNERABILITY_LEAK' },
 ];
 

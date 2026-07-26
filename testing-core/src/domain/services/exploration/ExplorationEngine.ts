@@ -943,6 +943,10 @@ export class ExplorationEngine {
         return;
       }
       if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
+      // An off-target scenario (bombing / sibling concurrent clicks) severs the
+      // element↔request link: the xhr/fetch was not caused by the acted target,
+      // so it must not reward it.
+      if (ActiveScenarioTracker.isOffTargetScenarioActive()) return;
       // Only reward network activity plausibly caused by this action: within a short
       // causal window and under a per-action cap. Background SPA chatter (socket.io
       // polling, lazy assets) outside these bounds would otherwise flood the acting
@@ -1305,6 +1309,11 @@ export class ExplorationEngine {
   private interactionContextAt(atMs: number): InteractionContext | null {
     const target = this.lastActedTarget;
     if (!target || this.lastActedAtMs <= 0) return null;
+    // An off-target scenario (coordinate bombing / sibling concurrent clicks) drives
+    // controls other than the acted element, so a fault at that instant belongs to no
+    // single acted element — decline rather than misattribute. Time-based so an async
+    // report after the window closed is still vetoed.
+    if (ActiveScenarioTracker.wasOffTargetScenarioAt(atMs, NETWORK_ATTRIBUTION_WINDOW_MS)) return null;
     const sinceActionMs = atMs - this.lastActedAtMs;
     if (sinceActionMs < 0 || sinceActionMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
     return {

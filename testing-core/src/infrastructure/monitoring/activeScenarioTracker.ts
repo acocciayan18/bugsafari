@@ -13,6 +13,12 @@ const MAX_SCENARIO_OBSERVATIONS = 8;
 // action a developer reproduces. They must never seed a reproduction playbook.
 const INTERNAL_SCENARIOS: ReadonlySet<string> = new Set(['AdaptiveRecovery']);
 
+// Off-target scenarios drive controls OTHER than the step's acted element:
+// CoordinateBombing/RouteTrasher fire raw viewport coordinates, ConcurrentClicker
+// clicks sibling controls. A fault triggered while one runs cannot be attributed to
+// the acted element — it may have landed on a wholly different control. Decline instead.
+const OFF_TARGET_SCENARIOS: ReadonlySet<string> = new Set(['CoordinateBombing', 'RouteTrasher', 'ConcurrentClicker']);
+
 /**
  * An active scenario recording window. Holds the deliberate, payload-specific
  * steps a single stress scenario performs while it is executing.
@@ -51,6 +57,11 @@ export class ActiveScenarioTracker {
   private static active: ScenarioWindow | null = null;
   /** Retained briefly so a fault firing just AFTER a scenario closes still flushes its intent. */
   private static lastClosed: ScenarioWindow | null = null;
+  /** Span of the most recent off-target window (bombing / sibling concurrent clicks):
+   *  attribution of any fault whose time falls inside it must be vetoed, even when the
+   *  fault is REPORTED later (async pageerror/response) once the window has closed. */
+  private static offTargetOpenedAtMs = 0;
+  private static offTargetClosedAtMs: number | undefined;
 
   /** Open an active recording window for a scenario. */
   public static begin(scenario: string, targetUrl: string): void {
@@ -72,6 +83,10 @@ export class ActiveScenarioTracker {
       observations: [],
       openedAt: Date.now(),
     };
+    if (OFF_TARGET_SCENARIOS.has(scenario)) {
+      ActiveScenarioTracker.offTargetOpenedAtMs = Date.now();
+      ActiveScenarioTracker.offTargetClosedAtMs = undefined; // open span
+    }
   }
 
   /** Append a deliberate, human-readable step to the active window (no-op if none open). */
@@ -93,6 +108,9 @@ export class ActiveScenarioTracker {
   /** Close the active window, retaining it as the most-recently-closed window. */
   public static end(): void {
     if (ActiveScenarioTracker.active) {
+      if (OFF_TARGET_SCENARIOS.has(ActiveScenarioTracker.active.scenario)) {
+        ActiveScenarioTracker.offTargetClosedAtMs = Date.now();
+      }
       ActiveScenarioTracker.lastClosed = ActiveScenarioTracker.active;
       ActiveScenarioTracker.active = null;
     }
@@ -100,6 +118,26 @@ export class ActiveScenarioTracker {
 
   public static isActive(): boolean {
     return ActiveScenarioTracker.active !== null;
+  }
+
+  /**
+   * True only while an off-target scenario (bombing / sibling concurrent clicks) is
+   * CURRENTLY executing — checks the active window alone, never the last-closed one.
+   * Used to veto a live network REWARD: the xhr/fetch belongs to no acted element.
+   */
+  public static isOffTargetScenarioActive(): boolean {
+    return ActiveScenarioTracker.active !== null && OFF_TARGET_SCENARIOS.has(ActiveScenarioTracker.active.scenario);
+  }
+
+  /**
+   * True when `atMs` falls inside the most recent off-target span (open, or closed
+   * within `graceMs` ago). A fault at that instant was triggered by a click on a
+   * control other than the acted element, so it cannot be attributed to it — decided
+   * by fault TIME so an async report after the window closed is still vetoed correctly.
+   */
+  public static wasOffTargetScenarioAt(atMs: number, graceMs: number): boolean {
+    if (ActiveScenarioTracker.offTargetOpenedAtMs <= 0 || atMs < ActiveScenarioTracker.offTargetOpenedAtMs) return false;
+    return ActiveScenarioTracker.offTargetClosedAtMs === undefined || atMs <= ActiveScenarioTracker.offTargetClosedAtMs + graceMs;
   }
 
   /**
@@ -129,6 +167,8 @@ export class ActiveScenarioTracker {
   public static reset(): void {
     ActiveScenarioTracker.active = null;
     ActiveScenarioTracker.lastClosed = null;
+    ActiveScenarioTracker.offTargetOpenedAtMs = 0;
+    ActiveScenarioTracker.offTargetClosedAtMs = undefined;
   }
 
   /**

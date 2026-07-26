@@ -71,16 +71,29 @@ export async function triggerFormSubmission(page: Page, elementSelector: string)
     // Element may be detached/non-focusable — fall through to button discovery.
   }
 
-  // Step 2 — locate and click a submit control inside the parent form subtree.
+  // Step 2 — locate and click a submit control within the field's OWN grouping.
   const clicked = await page
     .evaluate(({ sel, tokens }) => {
       const node = document.querySelector(sel);
-      const form: ParentNode = node?.closest('form') ?? document;
-      const explicit = form.querySelector(
+      if (!node) return false;
+      // Resolve the submit control's scope: the parent <form>, else the nearest
+      // ancestor (never <body>/<html>) that actually contains a submit-like control.
+      // A formless field commits via its OWN grouping and never cross-wires to a
+      // page-wide button — a search box must not fire the login endpoint.
+      let scope: Element | null = node.closest('form');
+      if (!scope) {
+        let a = node.parentElement;
+        while (a && a !== document.body && a.tagName !== 'HTML') {
+          if (a.querySelector('button, [role="button"], input[type="button"], input[type="submit"], [type="submit"]')) { scope = a; break; }
+          a = a.parentElement;
+        }
+      }
+      if (!scope) return false;
+      const explicit = scope.querySelector(
         'button[type="submit"], input[type="submit"], [type="submit"]',
       ) as HTMLElement | null;
       const candidates = Array.from(
-        form.querySelectorAll('button, [role="button"], input[type="button"]'),
+        scope.querySelectorAll('button, [role="button"], input[type="button"]'),
       ) as HTMLElement[];
       const semantic = candidates.find((el) => {
         const label = (el.textContent ?? (el as HTMLInputElement).value ?? '').toLowerCase();
@@ -134,12 +147,23 @@ export async function concurrentDoubleSubmit(
     .evaluate(
       ({ sel, tokens, n }) => {
         const node = document.querySelector(sel);
-        const form: ParentNode = node?.closest('form') ?? document;
-        const explicit = form.querySelector(
+        if (!node) return 0;
+        // Same bounded scope as triggerFormSubmission: never fall back to the whole
+        // document, so a formless field's race probe can't spam a page-wide button.
+        let scope: Element | null = node.closest('form');
+        if (!scope) {
+          let a = node.parentElement;
+          while (a && a !== document.body && a.tagName !== 'HTML') {
+            if (a.querySelector('button, [role="button"], input[type="button"], input[type="submit"], [type="submit"]')) { scope = a; break; }
+            a = a.parentElement;
+          }
+        }
+        if (!scope) return 0;
+        const explicit = scope.querySelector(
           'button[type="submit"], input[type="submit"], [type="submit"]',
         ) as HTMLElement | null;
         const candidates = Array.from(
-          form.querySelectorAll('button, [role="button"], input[type="button"]'),
+          scope.querySelectorAll('button, [role="button"], input[type="button"]'),
         ) as HTMLElement[];
         const semantic = candidates.find((el) => {
           const label = (el.textContent ?? (el as HTMLInputElement).value ?? '').toLowerCase();

@@ -124,15 +124,6 @@ export function sanitizeException(error: Error | string): { message: string; sta
 // classifier (see classifyAndAttribute); the former buildRemediation() helper was
 // removed to keep remediation single-sourced.
 
-// Monotonic sequence guaranteeing every confirmed-bug id is unique even when
-// many errors fire within the same millisecond — required so identity-only
-// dedup retains every distinct instance instead of merging same-timestamp ones.
-let confirmedBugSeq = 0;
-function nextBugSeq(): number {
-  confirmedBugSeq += 1;
-  return confirmedBugSeq;
-}
-
 /**
  * Checks if the error is a browser/context closed error that occurs when operator
  * manually stops the test. These should be treated as graceful shutdown, not fatal errors.
@@ -235,6 +226,11 @@ export class StabilityMonitor {
   // Parks network failures that routed to the Network tab; a runtime fault landing
   // inside the correlation window claims them back as genuine findings.
   private readonly networkArbiter = new NetworkFaultArbiter<NetworkFaultEvidence>();
+
+  // Collapse repeats of the same network-fault signature (method+endpoint+status) into
+  // one finding with an occurrence count — mirrors the runtime/duplicate/hang finders.
+  // Maps bugId → times seen this run; every raw instance still lives on the Network tab.
+  private readonly reportedNetworkFaults = new Map<string, number>();
 
   // Two-phase double-submit detector: opens candidates on overlapping identical requests,
   // judges them once the responses settle (one per run).
@@ -1122,11 +1118,29 @@ export class StabilityMonitor {
 
     const reportUrl = this.deps.getLastKnownUrl() || evidence.page.url();
     const headline = `${faultMessage} — ${routing.reason}`;
-    // Stable id for a masked security finding (collapses repeats on one endpoint);
-    // a sequenced id for plain failures so every instance stays distinct.
+    // Stable id keyed on the fault signature (class/status + method + endpoint), so
+    // every repeat of the same failing endpoint collapses into ONE finding instead of
+    // flooding the ledger with per-request instances (raw instances stay on the Network tab).
+    const endpointKey = `${evidence.method}-${evidence.url.split('?')[0]}`;
     const bugId = isSecurityBugClass(complete.attribution.bugClass)
-      ? `softfail-${complete.attribution.bugClass}-${evidence.method}-${evidence.url.split('?')[0]}`
-      : `${isHttpFault ? `http-${evidence.statusCode}` : 'network-failed'}-${Date.now()}-${nextBugSeq()}`;
+      ? `softfail-${complete.attribution.bugClass}-${endpointKey}`
+      : `${isHttpFault ? `http-${evidence.statusCode}` : 'network-failed'}-${endpointKey}`;
+
+    // Collapse: only the first sighting of a signature becomes a finding. Repeats bump
+    // an occurrence count and emit a throttled recurrence heartbeat, keeping the Errors/
+    // Findings surfaces quiet while the Network tab still records each raw request.
+    const priorOccurrence = this.reportedNetworkFaults.get(bugId);
+    const occurrence = (priorOccurrence ?? 0) + 1;
+    this.reportedNetworkFaults.set(bugId, occurrence);
+    if (priorOccurrence !== undefined) {
+      if (occurrence === 2 || occurrence % 25 === 0) {
+        t.emit('ACTION', {
+          actionExecuted: 'network-fault-recurred',
+          message: ` ${headline} — recurred ${occurrence}× this run`,
+        });
+      }
+      return;
+    }
 
     t.emit('NETWORK', {
       statusCode: evidence.statusCode,

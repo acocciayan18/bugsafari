@@ -42,6 +42,8 @@ const HTML = `<!doctype html>
     document.getElementById('pay-now').addEventListener('click', function () {
       fetch('/api/pay').catch(function () {});
     });
+    // SEEDED: no disable-on-submit guard — rapid re-clicks fire overlapping POSTs
+    // (SPA_STATE_RACE_CONDITION), plus the 200 soft-fail body (NOSQL_INJECTION).
     document.getElementById('login-btn').addEventListener('click', function () {
       fetch('/api/login', { method: 'POST' }).catch(function () {});
     });
