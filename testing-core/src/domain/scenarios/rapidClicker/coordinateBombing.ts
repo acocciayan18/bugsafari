@@ -21,7 +21,7 @@ import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/i
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
-import { describeCoordinateBombing } from '../../services/forensics/narration.js';
+import { describeCoordinateBombing, resolveElementLabel } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/forensics/metadataRecorder.js';
 
 /**
@@ -78,7 +78,8 @@ export const coordinateBombing = {
     // can't be replayed by selector, but {count,width,height} regenerates them exactly).
     ActionRecorder.recordStep({
       actionType: 'MACRO',
-      humanIdentifier: target?.innerText?.trim() || 'viewport grid',
+      humanIdentifier: target ? resolveElementLabel(target) : '',
+      elementKind: 'page area',
       selector: target?.selector ?? 'viewport',
       url: page.url(),
       macro: {

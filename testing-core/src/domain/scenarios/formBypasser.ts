@@ -3,7 +3,7 @@ import type { InteractiveElement } from '../../domain/entities/InteractiveElemen
 import type { StressScenario } from './types.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel, describeConstraintBypass } from '../services/forensics/narration.js';
+import { resolveElementLabel, elementNoun, describeConstraintBypass } from '../services/forensics/narration.js';
 
 /**
  * Attributes stripped by FormBypasser to force interactions.
@@ -292,17 +292,19 @@ export const formBypasser: StressScenario = {
 
       // Record to ActionBuffer for reproduction playbook
       const pageUrl = page.url();
-      const bypassLabel = target ? resolveElementLabel(target) : 'input field';
+      const bypassLabel = target ? resolveElementLabel(target) : '';
+      const bypassKind = elementNoun(target?.tagName, target?.type);
       ActionRecorder.recordStep({
         actionType: 'SUBMIT',
         humanIdentifier: bypassLabel,
+        elementKind: bypassKind,
         selector: result.selector,
         url: pageUrl,
         strippedAttributes: result.strippedAttributes,
         affectedCount: result.affectedCount,
       });
       ActiveScenarioTracker.record(
-        describeConstraintBypass(bypassLabel, result.strippedAttributes, result.affectedCount),
+        describeConstraintBypass(bypassLabel, result.strippedAttributes, result.affectedCount, bypassKind),
       );
 
       // Emit detailed telemetry

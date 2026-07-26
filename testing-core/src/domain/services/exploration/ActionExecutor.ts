@@ -10,6 +10,7 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import {
   resolveElementLabel,
+  elementNoun,
   humanizeElement,
   describeConstraintBypass,
   describeInputInjection,
@@ -159,11 +160,7 @@ export class ActionExecutor {
     if (this.deps.gate.isEnabled('concurrency')) {
       ActiveScenarioTracker.begin('ConcurrentClicker', page.url() ?? this.deps.getTargetOrigin());
       try {
-        await this.deps.simulator.concurrentClicker(
-          page,
-          ranked.slice(1, 6).map((item) => item.selector),
-          this.deps.fuzzManager,
-        );
+        await this.deps.simulator.concurrentClicker(page, ranked.slice(1, 6), this.deps.fuzzManager);
       } finally {
         ActiveScenarioTracker.end();
       }
@@ -178,7 +175,8 @@ export class ActionExecutor {
    */
   private async navigateTarget(page: Page, target: InteractiveElement): Promise<void> {
     const label = resolveElementLabel(target);
-    this.deps.telemetry.emitMilestone(describeNavigation(label));
+    const kind = elementNoun(target.tagName, target.type);
+    this.deps.telemetry.emitMilestone(describeNavigation(label, kind));
     // Record AFTER the click so the step carries its observed outcome: the URL it
     // was clicked on plus where it navigated (if anywhere). An empty outcome clause
     // otherwise leaves every click looking inert in the reproduction playbook.
@@ -198,6 +196,7 @@ export class ActionExecutor {
         {
           actionType: 'CLICK',
           humanIdentifier: label,
+          elementKind: kind,
           url: beforeUrl,
           outcome,
         },
@@ -258,6 +257,7 @@ export class ActionExecutor {
       {
         actionType: 'CLICK',
         humanIdentifier: label,
+        elementKind: elementNoun(target.tagName, target.type),
       },
     );
 
@@ -332,8 +332,11 @@ export class ActionExecutor {
         score: Number(target.riskScore.toFixed(4)),
       },
       {
-        actionType: 'CLICK',
+        // INPUT (not CLICK) so the step reads "Select "X" from the "Country" dropdown".
+        actionType: 'INPUT',
         humanIdentifier: label,
+        elementKind: 'dropdown',
+        value: selected && value !== null ? value : undefined,
       },
     );
 
@@ -384,7 +387,7 @@ export class ActionExecutor {
 
     this.deps.recordActionTrace(
       { timestamp: new Date().toISOString(), selector: target.selector, action: 'file-upload', score: Number(target.riskScore.toFixed(4)) },
-      { actionType: 'CLICK', humanIdentifier: label },
+      { actionType: 'CLICK', humanIdentifier: label, elementKind: 'file picker' },
     );
 
     this.deps.telemetry.emit('ACTION', {
@@ -425,6 +428,7 @@ export class ActionExecutor {
       {
         actionType: 'CLICK',
         humanIdentifier: resolveElementLabel(target),
+        elementKind: elementNoun(target.tagName, target.type),
       },
     );
 
@@ -611,6 +615,7 @@ export class ActionExecutor {
       {
         actionType: 'TYPE',
         humanIdentifier: label,
+        elementKind: elementNoun(target.tagName, target.type),
         value: payload,
         redactValue,
       },
@@ -760,7 +765,13 @@ export class ActionExecutor {
           payload: value,
           score: Number(target.riskScore.toFixed(4)),
         },
-        { actionType: 'INPUT', humanIdentifier: label, value, redactValue },
+        {
+          actionType: 'INPUT',
+          humanIdentifier: label,
+          elementKind: elementNoun(target.tagName, target.type),
+          value,
+          redactValue,
+        },
       );
       const submissionMethod = await triggerFormSubmission(page, target.selector);
       this.deps.formFuzz.recordAttempt(target.formKey ?? '');

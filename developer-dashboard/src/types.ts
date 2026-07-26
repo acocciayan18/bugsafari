@@ -80,7 +80,7 @@ export {
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
-import type { ConstraintBypassDetail, FindingAttribution, ReplayMacro, RunTerminationOutcome } from '../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, ReplayMacro, RunTerminationOutcome } from '../../shared/types.js';
 
 // Browser console contract lives once in shared/types/console.ts — re-exported here
 // so frontend consumers keep importing it from the local barrel without shadowing it.
@@ -127,12 +127,22 @@ export interface ForensicActionStep {
   macro?: ReplayMacro;
   /** Human-readable element label, preferred over the raw selector in step text. */
   elementLabel?: string;
+  /** Persisted label field name on saved reports (backend `ActionStepTrace.label`). */
+  label?: string;
+  /** Plain-English control type (button, link, field…) used to name the target. */
+  elementKind?: string;
+  /** Identical rapid repeats collapsed into this step (>1 ⇒ "repeated N times"). */
+  repeatCount?: number;
   /** Validation attributes stripped on a bypass step (required, maxlength, pattern, …). */
   strippedAttributes?: string[];
   /** Count of elements a bypass step affected. */
   affectedCount?: number;
   /** True ⇒ mask the payload value in step text (auth/password fields). */
   redactValue?: boolean;
+  /** Page URL the step ran on — the destination shown on a navigation step. */
+  url?: string;
+  /** What was observed right after the step (navigation, HTTP status, DOM change). */
+  outcome?: ActionOutcome;
 }
 
 // Full per-run network row (every request, incl. successful) — mirrors live Network tab.

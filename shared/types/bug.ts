@@ -59,9 +59,23 @@ export type FaultSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
  */
 export interface ReplayMacro {
   scenario: 'CoordinateBombing' | 'RouteTrasher' | 'ConcurrentSiblingBurst';
-  params: { count?: number; width?: number; height?: number; repetitions?: number; selectors?: string[] };
+  params: {
+    count?: number;
+    width?: number;
+    height?: number;
+    repetitions?: number;
+    selectors?: string[];
+    /** Human descriptors of the burst elements, index-aligned with `selectors`. */
+    targets?: StepTarget[];
+  };
   /** Human-readable one-line summary — reused as the narration fallback. */
   summary: string;
+}
+
+/** A named UI control as a developer sees it — `{ label: 'Register', kind: 'button' }`. */
+export interface StepTarget {
+  label: string;
+  kind: string;
 }
 
 /** What actually happened after an action ran — appended to the step as an outcome clause. */
@@ -83,6 +97,8 @@ export interface ActionRecord {
   fallbackLabel?: string;
   /** Human-readable element label resolved at record time (preferred over fallbackLabel). */
   elementLabel?: string;
+  /** Plain-English control type resolved at record time — button, link, field, dropdown… */
+  elementKind?: string;
   /** Consecutive identical repeats collapsed into this record (>1 ⇒ "repeat N times"). */
   repeatCount?: number;
   /** Real execution time of the action in ms (measured in the executor). */

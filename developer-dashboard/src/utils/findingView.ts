@@ -3,9 +3,9 @@
 // ForensicCrashReport) and the saved report (ForensicCaughtBug) map into, so the
 // field-rename divergence (reasonmessage, reproductionPlaybookreproductionSteps,
 // breadcrumbs/stepsactionSteps) is resolved once here instead of in every renderer.
-// The shared <FindingEvidence> component renders a FindingView; each card keeps its
-// own header/chrome (live: incident/console header; saved: number badge
-// + Verify-Fix control).
+// The shared <FindingCard> (header, metadata, message grid) and <FindingEvidence>
+// (reproduction, fix, stack) both render a FindingView, so the only surface-specific
+// chrome left is the report's Verify-Fix control and the live tab's AI diagnosis.
 import type {
   ForensicActionStep,
   ForensicCaughtBug,
@@ -14,6 +14,8 @@ import type {
 } from '../types';
 import type { ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
 import { liveFaultSignature } from './errorDeduplication';
+import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
+import { formatReportDateTime } from './datetime';
 
 export interface FindingView {
   /** Shared fault identity (same signature used for dedup + grouping). */
@@ -40,15 +42,44 @@ export interface FindingView {
   bypass?: ConstraintBypassDetail;
 }
 
-// The element the fault attaches to = the last real selector in the timeline
-// (navigation / page-level steps carry no selector).
-function culpritSelector(steps: Array<{ selector?: string }> | undefined): string | undefined {
-  if (!steps) return undefined;
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const s = steps[i]?.selector;
-    if (s && s.trim() && s !== 'N/A') return s;
+const isRealSelector = (s: string | undefined): s is string => Boolean(s && s.trim() && s !== 'N/A');
+
+// The element the fault attaches to. Prefer the backend-resolved culprit (the
+// interaction active at fault time) — authoritative over the last timeline step,
+// which lags an async fault and points at a later/burst action. Falls back to the
+// last real selector in the timeline for events with no resolved culprit.
+// Shared by the live views and the save path so a card's Selector never changes
+// when the session is persisted.
+export function resolveCulprit(
+  explicit: string | undefined,
+  steps: Array<{ selector?: string }> | undefined,
+): string | undefined {
+  if (isRealSelector(explicit)) return explicit;
+  for (let i = (steps?.length ?? 0) - 1; i >= 0; i--) {
+    const s = steps![i]?.selector;
+    if (isRealSelector(s)) return s;
   }
   return undefined;
+}
+
+// Plain-text export of ONE finding — the payload behind the card's Copy button.
+// Driven by the normalized view so a live fault and its saved counterpart copy
+// out byte-identically.
+export function buildFindingSummary(view: FindingView, index: number): string {
+  const { steps: narrativeSteps, observations } = splitObservations(view.reproductionSteps);
+  const repro = view.actionSteps?.length
+    ? actionStepsToMarkdown(view.actionSteps)
+    : toMarkdownChecklist(narrativeSteps, []);
+  return [
+    `Finding #${index + 1}: ${view.title}`,
+    view.message ? `Message: ${view.message}` : '',
+    view.selector && view.selector !== 'N/A' ? `Selector: ${view.selector}` : '',
+    view.payloadUsed ? `Payload: ${view.payloadUsed}` : '',
+    `Detected: ${formatReportDateTime(view.timestamp)}`,
+    view.advice ? `\nSuggested Fix:\n${view.advice}` : '',
+    repro ? `\nReproduction Steps:\n${repro}` : '',
+    observations.length ? `\nObserved:\n${observations.map((o) => `> ${o}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occurrences ?? 1): FindingView {
@@ -60,7 +91,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     occurrences,
     timestamp: inc.timestamp,
     url: inc.url,
-    selector: culpritSelector(inc.steps),
+    selector: resolveCulprit(inc.culpritSelector, inc.steps),
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
     reproductionSteps: inc.reproductionPlaybook ?? [],
@@ -79,7 +110,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     occurrences,
     timestamp: rep.timestamp,
     url: rep.url,
-    selector: culpritSelector(rep.breadcrumbs),
+    selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs),
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
     reproductionSteps: rep.reproductionPlaybook ?? [],
@@ -96,7 +127,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     severity: bug.severity,
     occurrences,
     timestamp: bug.timestamp,
-    selector: bug.selector,
+    selector: resolveCulprit(bug.selector, undefined),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,

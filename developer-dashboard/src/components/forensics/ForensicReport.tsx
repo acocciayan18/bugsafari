@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Bug, Info, Calendar, Hash } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -32,18 +32,15 @@ import type {
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
-import {
-  actionStepsToMarkdown,
-  splitObservations,
-  toMarkdownChecklist,
-} from '../../utils/reproductionFormat';
+import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
 import { CoverageDisplay } from '../history/CoverageProgressBar';
-import { CopyButton, SeverityBadge } from '../common/ForensicCardKit';
+import { CopyButton } from '../common/ForensicCardKit';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination } from '../../types';
 import { isActionableNetworkStatus } from '../../../../shared/types.js';
-import FindingEvidence, { ActionStepList } from '../common/FindingEvidence';
+import { ActionStepList } from '../common/FindingEvidence';
+import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import { caughtBugToFindingView } from '../../utils/findingView';
 import { Modal } from '../ui/Modal';
 import {
@@ -117,7 +114,9 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
     <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
-          <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Target</div>
+          <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">
+            <Globe className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
+          </div>
           <div className="mt-1 truncate text-lg font-bold text-(--text-primary)" title={report.url}>{report.url || 'N/A'}</div>
          <div className="flex flex-wrap items-center gap-2 text-xs text-(--text-secondary)">
     {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
@@ -242,24 +241,6 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
 // ActionStepList (the structured, per-step trace) is shared with the live Errors
 // tab via ../common/FindingEvidence — imported above, reused here in the appendix.
 
-function buildBugSummaryText(bug: ForensicCaughtBug, index: number): string {
-  const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
-  const { steps: narrativeSteps, observations } = splitObservations(bug.reproductionSteps ?? []);
-  const reproMarkdown = bug.actionSteps?.length
-    ? actionStepsToMarkdown(bug.actionSteps)
-    : toMarkdownChecklist(narrativeSteps, []);
-  return [
-    `Finding #${index + 1}: ${bugClass}`,
-    bug.message ? `Message: ${bug.message}` : '',
-    bug.selector ? `Selector: ${bug.selector}` : '',
-    bug.payloadUsed ? `Payload: ${bug.payloadUsed}` : '',
-    `Detected: ${formatReportDateTime(bug.timestamp)}`,
-    bug.advice ? `\nSuggested Fix:\n${bug.advice}` : '',
-    reproMarkdown ? `\nReproduction Steps:\n${reproMarkdown}` : '',
-    observations.length ? `\nObserved:\n${observations.map((o) => `> ${o}`).join('\n')}` : '',
-  ].filter(Boolean).join('\n');
-}
-
 // ─────────────────────────────────────────────────────────────
 // Verify Fix — per-finding regression replay control + result modal.
 // The control renders the whole lifecycle: an idle trigger → a live
@@ -369,15 +350,6 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   LEGACY_TIMELINE:
     'This finding predates per-finding timelines; the session-wide replay may never reach the faulting state, so a clean run is not proof.',
   REPLAY_ERROR: 'The target could not be replayed — this verdict says nothing about the bug. Try again.',
-};
-
-// Base (unverified) finding theme — the existing "confirmed bug" look, mapped to critical status tokens.
-const BASE_CARD = {
-  cardBorder: 'border-(--status-critical-border)',
-  cardHeaderBg: 'bg-(--status-critical-bg) border-(--status-critical-border)',
-  cardTitle: 'text-(--status-critical-fg)',
-  cardSub: 'text-(--status-critical-fg)',
-  numberBg: 'bg-(--status-critical-fg)',
 };
 
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
@@ -585,47 +557,10 @@ function VerificationResultModal({
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Standardized finding metadata — a fixed, consistently-ordered row of
-// labeled pills rendered identically for every bug type (methodology, CWE,
-// verification status, fault step). Absent values are skipped but never
-// reorder, so cards stay visually aligned regardless of which fields exist.
-// ─────────────────────────────────────────────────────────────
-
-function MetaPill({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <span
-      title={title}
-      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
-    >
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
-      <span className="text-[11px] font-semibold text-(--text-primary)">{value}</span>
-    </span>
-  );
-}
-
-function FindingMetaBar({ bug }: { bug: ForensicCaughtBug }) {
-  const attribution = bug.attribution;
-  const methodology = attribution?.scenario || attribution?.testingType;
-  const verification = attribution?.verificationStatus
-    ? `${attribution.verificationStatus.replace(/_/g, ' ')}${typeof attribution.confidenceScore === 'number' ? ` ${Math.round(attribution.confidenceScore * 100)}%` : ''}`
-    : undefined;
-
-  const pills: Array<{ label: string; value: string; title?: string }> = [];
-  if (methodology) pills.push({ label: 'Methodology', value: methodology, title: 'Scenario that provoked the fault' });
-  if (attribution?.cwe) pills.push({ label: 'CWE', value: attribution.cwe, title: 'MITRE CWE identifier' });
-  if (verification) pills.push({ label: 'Status', value: verification, title: 'Finding-verification pipeline verdict' });
-  if (typeof attribution?.stepIndex === 'number') pills.push({ label: 'Step', value: String(attribution.stepIndex), title: 'Execution step at fault time' });
-
-  if (pills.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {pills.map((pill) => <MetaPill key={pill.label} {...pill} />)}
-    </div>
-  );
-}
-
-function FindingCard({
+// Saved-report wrapper around the shared <FindingCard>: adds the Verify Fix
+// lifecycle (verdict theme, status chip, control, result modal). Everything else
+// is the shared card, so the saved view cannot drift from the live Errors tab.
+function ReportFindingCard({
   bug,
   index,
   occurrences = 1,
@@ -641,11 +576,8 @@ function FindingCard({
   onVerify: (request: VerifyFixRequest) => void;
 }) {
   const [showResult, setShowResult] = useState(false);
-  const bugClass = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
-  const summaryText = useMemo(() => buildBugSummaryText(bug, index), [bug, index]);
-  // Normalized view — the shared <FindingEvidence> renders the reproduction /
-  // resolved-frames / suggested-fix / stack sections identically to
-  // the live Errors tab.
+  // Normalized view — the shared <FindingCard> renders identity, metadata and
+  // evidence exactly as the live Errors tab does.
   const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
 
   // A verifiable finding needs both a persisted session id and a stable bugId.
@@ -659,7 +591,6 @@ function FindingCard({
   // Settled verdict drives both the card theme and the header status chip.
   const settled = status.state === 'done' ? status.result : null;
   const verdictMeta = settled ? verdictMetaOf(settled.verdict) : null;
-  const theme = verdictMeta ?? BASE_CARD;
 
   const triggerVerify = (): void => {
     if (canVerify && sessionId) onVerify({ sessionId, bugId: bug.bugId });
@@ -672,36 +603,18 @@ function FindingCard({
   }, [settled]);
 
   return (
-    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
-      {/* Header */}
-      <div className={`flex items-center justify-between gap-3 border-b ${theme.cardHeaderBg} px-4 py-3`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-(--text-oninvert)`}>
-            <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{bugClass}</span>
-              <SeverityBadge severity={bug.severity} />
-              {occurrences > 1 && (
-                <span
-                  title={`This fault occurred ${occurrences} times this session`}
-                  className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold leading-none text-(--text-oninvert)"
-                >
-                  ×{occurrences}
-                </span>
-              )}
-              {verdictMeta && (
-                <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
-                  {verdictMeta.label}
-                </span>
-              )}
-            </div>
-            <div className={`text-[11px] opacity-75 ${theme.cardSub}`}>{formatReportDateTime(bug.timestamp)}</div>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    <>
+      <FindingCard
+        view={view}
+        index={index}
+        theme={verdictMeta ?? BASE_FINDING_THEME}
+        statusChip={verdictMeta && (
+          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
+            {verdictMeta.label}
+          </span>
+        )}
+        actions={
           <VerifyFixControl
             status={status}
             disabled={!canVerify || status.state === 'running'}
@@ -709,38 +622,8 @@ function FindingCard({
             onVerify={triggerVerify}
             onOpenResult={() => setShowResult(true)}
           />
-          <CopyButton text={summaryText} label="Finding" />
-        </div>
-      </div>
-
-      {/* Standardized metadata — identical row across every bug type */}
-      <div className="px-4 pt-3">
-        <FindingMetaBar bug={bug} />
-      </div>
-
-      {/* Message / Selector / Payload grid */}
-      <div className="grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Message</div>
-          <div className="mt-0.5 text-sm text-(--text-primary)">{bug.message || 'No details provided'}</div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
-          <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={bug.selector}>{bug.selector || 'N/A'}</div>
-        </div>
-        {bug.payloadUsed && (
-          <div className="min-w-0">
-            <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Payload Used</div>
-            <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={bug.payloadUsed}>{bug.payloadUsed}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Shared evidence: reproduction, resolved source frames, suggested
-          fix, and stack trace — rendered identically to the live Errors tab. */}
-      <div className="pb-2">
-        <FindingEvidence view={view} />
-      </div>
+        }
+      />
 
       {/* Dedicated verification outcome surface (auto-opens on completion) */}
       {settled && showResult && (
@@ -753,7 +636,7 @@ function FindingCard({
           onClose={() => setShowResult(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -872,15 +755,27 @@ function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
     <ul className="flex flex-col gap-2">
       {rows.map((row, i) => (
         <li key={i} className="rounded-md border border-(--border-hairline) bg-(--surface-panel) p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>{row.level}</span>
-            {row.url && <span className="truncate font-mono text-[11px] text-(--text-tertiary)" title={row.url}>{row.url}</span>}
-          </div>
-          {row.message && <div className="mt-1 break-words font-mono text-[11px] text-(--text-primary)">{row.message}</div>}
-          {row.stackTrace && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-[11px] leading-relaxed text-(--text-primary)">{row.stackTrace}</pre>
-          )}
-        </li>
+  <div className="flex flex-wrap items-center gap-2">
+    <span className={`rounded px-1.5 py-0.5 font-mono text-xs font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>
+      {row.level}
+    </span>
+    {row.url && (
+      <span className="truncate font-mono text-xs text-(--text-tertiary)" title={row.url}>
+        {row.url}
+      </span>
+    )}
+  </div>
+  {row.message && (
+    <div className="mt-1 break-words font-mono text-sm text-(--text-primary)">
+      {row.message}
+    </div>
+  )}
+  {row.stackTrace && (
+    <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-xs leading-relaxed text-(--text-primary)">
+      {row.stackTrace}
+    </pre>
+  )}
+</li>
       ))}
     </ul>
   );
@@ -1044,7 +939,7 @@ export default function ForensicReport() {
               runtimeBugs.length > 0 ? (
                 <div className="flex flex-col gap-4">
                   {runtimeBugs.map((bug, index) => (
-                    <FindingCard
+                    <ReportFindingCard
                       key={bug.bugId || index}
                       bug={bug}
                       index={index}

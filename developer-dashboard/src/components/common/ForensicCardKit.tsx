@@ -7,8 +7,6 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react';
-import type { FindingAttribution } from '../../types';
-import { Badge } from '../ui/Badge';
 import { Copy } from 'lucide-react';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
@@ -65,14 +63,14 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-3 sm:px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
+        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
       >
         <span className="shrink-0 text-sm">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>
         <span className="ml-auto hidden shrink-0 text-[11px] opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
-        <div className={`custom-scrollbar px-3 sm:px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
+        <div className={`custom-scrollbar px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
           <pre className="text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>
@@ -106,48 +104,6 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
     >
       {style.label}
     </span>
-  );
-};
-
-/**
- * Deterministic classification + scenario/step attribution for a finding, bound
- * directly to the knowledge-base FaultClassifier output persisted with the bug.
- * Renders nothing when attribution is absent (older records remain valid).
- */
-export const AttributionBadges = ({ attribution }: { attribution?: FindingAttribution }) => {
-  if (!attribution?.bugClass) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Badge variant="danger" className="uppercase tracking-wide">
-        <span title="Knowledge-base bug class">{attribution.bugClass}</span>
-      </Badge>
-      {attribution.scenario && (
-        <Badge variant="default" className="uppercase tracking-wide">
-          <span title="Scenario that provoked the fault">{attribution.scenario}</span>
-        </Badge>
-      )}
-      {attribution.cwe && (
-        <Badge variant="default" className="uppercase tracking-wide">
-          <span title="MITRE CWE identifier">{attribution.cwe}</span>
-        </Badge>
-      )}
-      {typeof attribution.stepIndex === 'number' && (
-        <Badge variant="default" title="Execution step at fault time">
-          Step {attribution.stepIndex}
-        </Badge>
-      )}
-      {attribution.verificationStatus && (
-        <Badge
-          variant={attribution.verificationStatus === 'CONFIRMED' ? 'danger' : 'default'}
-          className="uppercase tracking-wide"
-        >
-          <span title="Terminal state of the finding-verification pipeline">
-            {attribution.verificationStatus.replace(/_/g, ' ')}
-            {typeof attribution.confidenceScore === 'number' && ` ${Math.round(attribution.confidenceScore * 100)}%`}
-          </span>
-        </Badge>
-      )}
-    </div>
   );
 };
 

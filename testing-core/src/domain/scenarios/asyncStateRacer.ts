@@ -28,7 +28,7 @@ import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, AsyncRaceMetadata } from '../chaos/index.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel } from '../services/forensics/narration.js';
+import { resolveElementLabel, elementNoun, describeTarget } from '../services/forensics/narration.js';
 
 /** Bounded number of interruption cycles — deterministic and efficient. */
 const RACE_CYCLES = 3;
@@ -163,17 +163,20 @@ export const asyncStateRacer = {
       metadata.resultingState = page.isClosed() ? 'error' : stillPresent ? 'settled' : 'detached';
 
       // Record the race as ONE reproduction step so the 20-slot playbook is not flooded.
+      const raceTarget = describeTarget(label, elementNoun(target?.tagName, target?.type));
       ActionRecorder.recordStep({
         actionType: 'CLICK',
-        humanIdentifier: target?.innerText?.trim() || label,
-        value: `Async interruption race ×${RACE_CYCLES} (Escape + concurrent re-trigger @${INTERRUPT_DELAY_MS}ms in-flight)`,
+        humanIdentifier: label,
+        elementKind: elementNoun(target?.tagName, target?.type),
         selector,
         url: page.url(),
+        repeatCount: RACE_CYCLES,
       });
       ActiveScenarioTracker.record(
-        `Interrupted the in-flight async operation on "${label}" ${RACE_CYCLES}× ` +
-          `(Escape + concurrent re-trigger); observed ${rejections} unhandled rejection(s), ` +
-          `heap Δ ${metadata.heapGrowthBytes}B, node Δ ${metadata.nodeGrowth}, ended '${metadata.resultingState}'.`,
+        `Click ${raceTarget} and press Escape ${INTERRUPT_DELAY_MS}ms later while it is still working, ` +
+          `then click it again immediately — repeated ${RACE_CYCLES} times; ` +
+          `saw ${rejections} unhandled error(s), memory grew ${metadata.heapGrowthBytes} bytes, ` +
+          `${metadata.nodeGrowth} extra page elements left behind, ended '${metadata.resultingState}'.`,
       );
 
       console.log(

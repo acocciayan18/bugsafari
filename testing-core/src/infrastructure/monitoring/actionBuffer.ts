@@ -21,7 +21,10 @@ export interface ActionStepInput {
   
   /** Clear readable text label, DOM button inner text, or explicit element selector path */
   humanIdentifier: string;
-  
+
+  /** Plain-English control type (button, link, field…) — narration reads it as the noun. */
+  elementKind?: string;
+
   /** The exact text payload or fuzz string injected (if applicable) */
   value?: string;
   
@@ -36,6 +39,9 @@ export interface ActionStepInput {
 
   /** Re-expandable stress-scenario descriptor (set only for a MACRO step). */
   macro?: ReplayMacro;
+
+  /** Identical rapid repeats collapsed into this one step (>1 ⇒ "repeated N times"). */
+  repeatCount?: number;
 
   /** Validation attributes stripped by a bypass/SUBMIT step. */
   strippedAttributes?: string[];
@@ -121,6 +127,8 @@ export class ActionRecorder {
       payload: step.value,
       fallbackLabel: step.humanIdentifier,
       elementLabel: step.humanIdentifier,
+      elementKind: step.elementKind,
+      repeatCount: step.repeatCount,
       macro: step.macro,
       strippedAttributes: step.strippedAttributes,
       affectedCount: step.affectedCount,

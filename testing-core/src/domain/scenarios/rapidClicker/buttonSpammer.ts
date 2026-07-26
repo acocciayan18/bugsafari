@@ -22,7 +22,7 @@ import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import {
   resolveElementLabel,
-  genericElementLabel,
+  elementNoun,
   describeConcurrentBurst,
 } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
@@ -72,15 +72,16 @@ export const buttonSpammer = {
 
       // Record the burst as a SINGLE reproduction step so the 20-slot playbook
       // buffer is not flooded with redundant rapid-click entries.
+      const label = target ? resolveElementLabel(target) : '';
+      const kind = elementNoun(target?.tagName, target?.type);
       ActionRecorder.recordStep({
         actionType: 'CLICK',
-        humanIdentifier: target?.innerText?.trim() || selector,
-        value: `Concurrent zero-wait burst ×${CLICK_COUNT}`,
+        humanIdentifier: label,
+        elementKind: kind,
         selector,
         url: page.url(),
+        repeatCount: CLICK_COUNT,
       });
-      const label = target ? resolveElementLabel(target) : 'button';
-      const kind = genericElementLabel(target?.tagName, target?.type);
       ActiveScenarioTracker.record(describeConcurrentBurst(result, label, kind));
 
       console.log(

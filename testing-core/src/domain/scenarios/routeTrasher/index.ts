@@ -123,7 +123,8 @@ export const routeTrasher = {
     // per-nav step would replay as a selector click and reproduce nothing.
     ActionRecorder.recordStep({
       actionType: 'MACRO',
-      humanIdentifier: 'route traversal',
+      humanIdentifier: '',
+      elementKind: 'browser history',
       selector: targetSelector,
       url: originPath,
       macro: {
@@ -226,9 +227,7 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_back', backSnap.toUrl);
-          ActiveScenarioTracker.record(
-            describeRouteTrashNavigation(i + 1, 'back', recorder.historyIndex, backSnap.toUrl),
-          );
+          ActiveScenarioTracker.record(describeRouteTrashNavigation(i + 1, 'back', backSnap.toUrl));
         }
         await wait(INTER_ACTION_DELAY_MS);
 
@@ -241,9 +240,7 @@ export const routeTrasher = {
         if (ran) {
           completed++;
           recorder.record('history_forward', fwdSnap.toUrl);
-          ActiveScenarioTracker.record(
-            describeRouteTrashNavigation(i + 1, 'forward', recorder.historyIndex, fwdSnap.toUrl),
-          );
+          ActiveScenarioTracker.record(describeRouteTrashNavigation(i + 1, 'forward', fwdSnap.toUrl));
         }
         await wait(INTER_ACTION_DELAY_MS);
 

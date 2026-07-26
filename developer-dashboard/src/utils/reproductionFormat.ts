@@ -8,7 +8,9 @@ import {
   classifyNarrativeLine as sharedClassify,
   describeConstraintBypass,
   describeInputInjection,
+  describeOutcome,
   describeReplayMacro,
+  describeTarget,
   maskPayload,
   type StepKind,
 } from '../../../shared/reproduction.js';
@@ -36,22 +38,28 @@ const CHIP_LABEL: Record<StepKind, string> = {
   click: 'click',
   input: 'type',
   bypass: 'bypass',
-  macro: 'replay',
+  macro: 'rapid',
   step: 'step',
 };
 
 export const chipLabel = (kind: StepKind): string => CHIP_LABEL[kind];
 
-// A human-readable target for a structured step: its resolved label, else selector.
-function target(step: ForensicActionStep, kind: StepKind): string {
-  const label = (step.elementLabel ?? '').trim();
-  if (label) return label;
-  const s = (step.selector ?? '').trim();
-  if (s && s !== 'N/A') return s;
-  if (kind === 'navigation') return 'the next page';
-  if (kind === 'input' || kind === 'bypass') return 'the input field';
-  return 'the element';
-}
+// Fallback control noun when the engine recorded no element kind for the step.
+const DEFAULT_NOUN: Record<StepKind, string> = {
+  navigation: 'page',
+  click: 'control',
+  input: 'field',
+  bypass: 'field',
+  macro: 'control',
+  step: 'element',
+};
+
+// Element name and control noun for a step. A raw CSS selector is never surfaced —
+// describeTarget falls back to the noun alone when no label was recorded.
+const stepLabel = (step: ForensicActionStep): string => (step.elementLabel ?? step.label ?? '').trim();
+
+const stepNoun = (step: ForensicActionStep, kind: StepKind): string =>
+  (step.elementKind ?? '').trim() || DEFAULT_NOUN[kind];
 
 // Map an actionType to the shared step kind.
 function kindFor(actionType: string): StepKind {
@@ -66,24 +74,28 @@ function kindFor(actionType: string): StepKind {
 }
 
 // Imperative instruction from a structured step, phrased by the shared narrator so
-// it matches the backend's live/history playbook voice. The payload value is shown
-// in a separate chip (see payloadDisplay), so the input instruction omits it.
+// it matches the backend's live/history playbook voice: what was acted on, what was
+// done, and what followed. The payload value is shown in a separate chip (see
+// payloadDisplay), so the input instruction omits it.
 export function humanizeActionStep(
   step: ForensicActionStep,
 ): { kind: StepKind; instruction: string; payloadDisplay: string } {
   const kind = kindFor(step.actionType);
+  const observed = describeOutcome(step.outcome);
   if (kind === 'macro') {
-    const instruction = step.macro ? describeReplayMacro(step.macro) : 'Replay recorded stress-scenario burst';
-    return { kind, instruction, payloadDisplay: '' };
+    const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
+    return { kind, instruction: `${action}${observed}`, payloadDisplay: '' };
   }
-  const t = target(step, kind);
-  const instruction =
-    kind === 'navigation' ? `Go to ${t}`
-    : kind === 'input' ? describeInputInjection(t)
-    : kind === 'bypass' ? describeConstraintBypass(t, step.strippedAttributes, step.affectedCount)
-    : kind === 'click' ? `Click ${t}`
-    : t;
-  return { kind, instruction, payloadDisplay: maskPayload(step.payloadText, step.redactValue) };
+  const label = stepLabel(step);
+  const noun = stepNoun(step, kind);
+  const action =
+    kind === 'navigation' ? `Open ${step.url ?? describeTarget(label, noun)}`
+    : kind === 'input' ? describeInputInjection(label, undefined, step.redactValue, noun)
+    : kind === 'bypass' ? describeConstraintBypass(label, step.strippedAttributes, step.affectedCount, noun)
+    : `Click ${describeTarget(label, noun)}`;
+  const repeats = step.repeatCount ?? 1;
+  const repeated = repeats > 1 ? `${action}, repeated ${repeats} times in quick succession` : action;
+  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue) };
 }
 
 // Guess a chip kind for a pre-rendered narrative line (string fallback path).

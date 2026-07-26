@@ -7,12 +7,18 @@
  */
 
 import type { Page } from 'playwright';
+import type { StepTarget } from '../../../../../shared/types.js';
+import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
 import { wait } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
-import { describeConcurrentBurstSiblings } from '../../services/forensics/narration.js';
+import {
+  describeConcurrentBurstSiblings,
+  elementNoun,
+  resolveElementLabel,
+} from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
 /**
@@ -51,19 +57,28 @@ export class InteractionSimulator {
    * execution metadata so any fault during the burst is attributed and
    * reproducible. The caller owns the ActiveScenarioTracker window.
    *
+   * Takes the scanned elements (not bare selectors) so the recorded step can name
+   * the controls a developer sees — "the "Save" button, the "Cancel" button" —
+   * instead of dumping CSS selectors into the reproduction playbook.
+   *
    * @param page Playwright Page object
-   * @param selectors Array of CSS selectors to click concurrently
+   * @param elements Sibling elements to click concurrently
    * @param chaosManager Optional shared transaction manager for live tracking
    */
   public async concurrentClicker(
     page: Page,
-    selectors: string[],
+    elements: InteractiveElement[],
     chaosManager?: ChaosTransactionManager<StressClickMetadata> | null,
   ): Promise<void> {
-    const targetSelectors = selectors.slice(0, 5).filter(Boolean);
+    const targets = elements.slice(0, 5).filter((element) => Boolean(element?.selector));
+    const targetSelectors = targets.map((element) => element.selector);
     if (targetSelectors.length === 0) {
       return;
     }
+    const named: StepTarget[] = targets.map((element) => ({
+      label: resolveElementLabel(element),
+      kind: elementNoun(element.tagName, element.type),
+    }));
 
     const manager = chaosManager ?? null;
     const metadata: StressClickMetadata = {
@@ -81,18 +96,20 @@ export class InteractionSimulator {
     try {
       const result = await executeConcurrentBurst(page, targetSelectors);
       recorder.record(result);
-      const burstSummary = describeConcurrentBurstSiblings(result);
+      const burstSummary = describeConcurrentBurstSiblings(result, named);
       // Re-expandable MACRO carrying the resolved sibling selectors so regression
       // replay re-fires the exact concurrent burst (not param-derivable, unlike the
       // coordinate/route macros — the selectors must travel with the finding).
+      // `targets` rides alongside so the playbook names the controls, not selectors.
       ActionRecorder.recordStep({
         actionType: 'MACRO',
-        humanIdentifier: targetSelectors[0],
+        humanIdentifier: named[0].label,
+        elementKind: named[0].kind,
         selector: targetSelectors[0],
         url: page.url(),
         macro: {
           scenario: 'ConcurrentSiblingBurst',
-          params: { selectors: targetSelectors },
+          params: { selectors: targetSelectors, targets: named },
           summary: burstSummary,
         },
       });

@@ -160,6 +160,7 @@ function recordSabotage(mode: SabotageMode, targetUrl: string, pageUrl: string):
     ActionRecorder.recordStep({
       actionType: 'NETWORK',
       humanIdentifier: mode,
+      elementKind: 'network request',
       value: targetUrl,
       selector: 'network',
       url: pageUrl,

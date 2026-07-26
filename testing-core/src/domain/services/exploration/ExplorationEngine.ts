@@ -1240,6 +1240,7 @@ export class ExplorationEngine {
       payload: clean?.value ?? trace.payload,
       fallbackLabel: clean?.humanIdentifier,
       elementLabel: clean?.humanIdentifier,
+      elementKind: clean?.elementKind,
       durationMs,
       strippedAttributes: clean?.strippedAttributes,
       affectedCount: clean?.affectedCount,

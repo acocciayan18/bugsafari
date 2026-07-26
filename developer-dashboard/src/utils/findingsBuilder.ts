@@ -7,6 +7,9 @@ import type { ForensicCrashReport, IncidentReport } from '../types';
 import type { SaveFindingPayload } from '../services/historyService';
 import { mapIncidentStepsToPlaybook, mapForensicReportToPlaybook, type PlaybookStep } from './semanticInstructionMapper';
 import { dedupeReportsAgainstIncidents } from './errorDeduplication';
+// Same culprit resolution the live cards render, so the saved Selector is the one
+// the operator already saw.
+import { resolveCulprit } from './findingView';
 
 // ── Live → History parity helpers ───────────────────────────────────────────
 // Serialize a playbook into a sequentially numbered, human-readable checklist,
@@ -37,19 +40,6 @@ function classifyFinding(statusCode?: number): string {
   return typeof statusCode === 'number' && statusCode >= 400 ? 'NETWORK' : 'EXCEPTION';
 }
 
-// The element the fault attaches to. Prefer the backend-resolved culprit (the
-// interaction active at fault time) — authoritative over the last timeline step,
-// which lags an async fault and points at a later/burst action. Falls back to the
-// last real selector in the timeline for legacy events with no resolved culprit.
-function resolveCulprit(explicit: string | undefined, steps: Array<{ selector?: string }>): string {
-  if (explicit && explicit.trim() && explicit !== 'N/A') return explicit;
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const s = steps[i]?.selector;
-    if (s && s.trim() && s !== 'N/A') return s;
-  }
-  return '';
-}
-
 // Build the complete, uncompressed findings array from the exact incidents and
 // crash reports the operator saw live — no dedup, no filter, no truncation.
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
@@ -62,7 +52,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       bugId: `incident-${i + 1}`,
       type,
       message: inc.reason,
-      selector: resolveCulprit(inc.culpritSelector, inc.steps ?? []),
+      selector: resolveCulprit(inc.culpritSelector, inc.steps) ?? '',
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
@@ -91,7 +81,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       bugId: `report-${i + 1}`,
       type,
       message: rep.reason,
-      selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs ?? []),
+      selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs) ?? '',
       payloadUsed: '',
       stackTrace: rep.stackTrace ?? '',
       reproductionSteps: checklist,

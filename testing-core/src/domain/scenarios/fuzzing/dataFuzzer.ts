@@ -5,7 +5,7 @@ import type { StressScenario } from '../types.js';
 import { classifyInputElement, FieldCategory } from './elementClassifier.js';
 import { ChaosTransactionManager } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
-import { resolveElementLabel } from '../../services/forensics/narration.js';
+import { resolveElementLabel, elementNoun } from '../../services/forensics/narration.js';
 import { describeConstraintBypass, describeInputInjection } from '../../services/forensics/narration.js';
 import { triggerFormSubmission, concurrentDoubleSubmit } from '../../services/exploration/formSubmitter.js';
 import { stripConstraintsSilently } from '../formBypasser.js';
@@ -245,6 +245,7 @@ export const dataFuzzer: StressScenario = {
     const category = classifyInputElement(target);
     console.log(` [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
     const fuzzLabel = resolveElementLabel(target);
+    const fuzzKind = elementNoun(target.tagName, target.type);
 
     console.log(`[StressScenario:DataFuzzer] Starting adaptive fuzzing on '${selector}' (${tagName})`);
 
@@ -307,11 +308,12 @@ export const dataFuzzer: StressScenario = {
           const strip = await stripConstraintsSilently(page, selector);
           if (!bypassNarrated) {
             ActiveScenarioTracker.record(
-              describeConstraintBypass(fuzzLabel, strip.strippedAttributes, strip.affectedCount),
+              describeConstraintBypass(fuzzLabel, strip.strippedAttributes, strip.affectedCount, fuzzKind),
             );
             ActionRecorder.recordStep({
               actionType: 'SUBMIT',
               humanIdentifier: fuzzLabel,
+              elementKind: fuzzKind,
               selector,
               url: page.url(),
               strippedAttributes: strip.strippedAttributes,
@@ -323,12 +325,13 @@ export const dataFuzzer: StressScenario = {
           if (!injected) {
             console.warn(`[StressScenario:DataFuzzer] Injection reported failure for '${selector}' at L${level}`);
           }
-          ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload, redactValue));
+          ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload, redactValue, fuzzKind));
           // Structured reproduction buffer: record the fuzz injection as a TYPE
           // step so the idle-fallback playbook mirrors the live scenario window.
           ActionRecorder.recordStep({
             actionType: 'TYPE',
             humanIdentifier: fuzzLabel,
+            elementKind: fuzzKind,
             value: payload,
             selector,
             url: page.url(),

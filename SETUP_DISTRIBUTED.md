@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "not sure if these files are working"
-git checkout -b 7-26-Ayan
-git push --set-upstream origin 7-26-Ayan
+git commit -m "files after improving the rappid clicker message"
+git checkout -b 7-26-Ayan-1
+git push --set-upstream origin 7-26-Ayan-1
 

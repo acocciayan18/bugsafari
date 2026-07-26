@@ -2,9 +2,8 @@
 // FindingEvidence - the shared evidence body for ONE finding.
 // Renders reproduction, resolved source frames, suggested
 // fix, and stack trace identically for the live Errors tab and the
-// saved Forensic Report, driven by a normalized FindingView. Each
-// caller keeps its own header/chrome; only this evidence block is
-// single-sourced, so the two views can never drift in field handling.
+// saved Forensic Report, driven by a normalized FindingView. Mounted
+// by the shared <FindingCard>, which owns the header/metadata above it.
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, type ReactNode } from 'react';
@@ -117,26 +116,28 @@ function Reproduction({ view }: { view: FindingView }) {
   );
 }
 
-export default function FindingEvidence({ view }: { view: FindingView }) {
+// `showBypass` is presentation-only: the live Errors tab suppresses the bypass grid
+// to stay compact during a run — the data is untouched and the saved report shows it.
+export default function FindingEvidence({ view, showBypass = true }: { view: FindingView; showBypass?: boolean }) {
   const [stackExpanded, setStackExpanded] = useState(false);
 
   return (
     <>
       {/* Structured bypass evidence — constraint-bypass findings only */}
-      {view.bypass && (
-        <div className="px-3 pt-3 sm:px-4">
+      {showBypass && view.bypass && (
+        <div className="px-4 pt-3">
           <BypassDetails bypass={view.bypass} />
         </div>
       )}
 
       {/* Human-executable reproduction */}
-      <div className="px-3 pt-3 sm:px-4">
+      <div className="px-4 pt-3">
         <Reproduction view={view} />
       </div>
 
       {/* Original source frames resolved from the target's source maps (best-effort) */}
       {view.resolvedStackTrace && (
-        <div className="px-3 pt-3 sm:px-4">
+        <div className="px-4 pt-3">
           <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Original source (via source maps)</div>
           <pre className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
             {view.resolvedStackTrace}
@@ -145,7 +146,7 @@ export default function FindingEvidence({ view }: { view: FindingView }) {
       )}
 
       {/* Suggested fix — bound to this finding's remediation */}
-      <div className="px-3 pt-3 sm:px-4">
+      <div className="px-4 pt-3">
         <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
         <SuggestedFixBlock advice={view.advice} />
       </div>

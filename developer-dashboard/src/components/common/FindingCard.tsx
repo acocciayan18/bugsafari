@@ -1,0 +1,149 @@
+// ═══════════════════════════════════════════════════════════════
+// FindingCard - the ONE card that renders a single finding, used by
+// the live Errors tab (unsaved incidents/crash reports) and the saved
+// Forensic Report (persisted caughtBugs). Both drive it with a
+// normalized FindingView, so identity, severity, metadata, message,
+// selector/payload and evidence are byte-identical before and after a
+// save. Callers only inject what is genuinely surface-specific: the
+// verdict theme + status chip and header actions (Verify Fix) on the
+// report, the AI diagnostic block on the live tab.
+// ═══════════════════════════════════════════════════════════════
+
+import type { ReactNode } from 'react';
+import { Bug } from 'lucide-react';
+import type { FindingAttribution } from '../../types';
+import { buildFindingSummary, type FindingView } from '../../utils/findingView';
+import { CopyButton, SeverityBadge } from './ForensicCardKit';
+import FindingEvidence from './FindingEvidence';
+
+export interface FindingCardTheme {
+  cardBorder: string;
+  cardHeaderBg: string;
+  cardTitle: string;
+  cardSub: string;
+  numberBg: string;
+}
+
+// Unverified finding theme — the confirmed-bug look, mapped to critical tokens.
+export const BASE_FINDING_THEME: FindingCardTheme = {
+  cardBorder: 'border-(--status-critical-border)',
+  cardHeaderBg: 'bg-(--status-critical-bg) border-(--status-critical-border)',
+  cardTitle: 'text-(--status-critical-fg)',
+  cardSub: 'text-(--status-critical-fg)',
+  numberBg: 'bg-(--status-critical-fg)',
+};
+
+function MetaPill({ label, value, title }: { label: string; value: string; title?: string }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
+      <span className="text-[11px] font-semibold text-(--text-primary)">{value}</span>
+    </span>
+  );
+}
+
+// Fixed, consistently-ordered metadata row rendered identically for every finding.
+// Absent values are skipped but never reorder, so cards stay visually aligned.
+// Detection time / methodology / fault step are deliberately absent — the report
+// header already carries the run's date and scenario, so repeating them per card
+// is noise. The data stays on `attribution`, it is simply not surfaced here.
+export function FindingMetaBar({ attribution }: { attribution?: FindingAttribution }) {
+  const verification = attribution?.verificationStatus
+    ? `${attribution.verificationStatus.replace(/_/g, ' ')}${typeof attribution.confidenceScore === 'number' ? ` ${Math.round(attribution.confidenceScore * 100)}%` : ''}`
+    : undefined;
+
+  const pills: Array<{ label: string; value: string; title?: string }> = [];
+  if (attribution?.cwe) pills.push({ label: 'CWE', value: attribution.cwe, title: 'MITRE CWE identifier' });
+  if (verification) pills.push({ label: 'Status', value: verification, title: 'Finding-verification pipeline verdict' });
+
+  if (pills.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {pills.map((pill) => <MetaPill key={pill.label} {...pill} />)}
+    </div>
+  );
+}
+
+export default function FindingCard({
+  view,
+  index,
+  theme = BASE_FINDING_THEME,
+  statusChip,
+  actions,
+  showBypass = true,
+  children,
+}: {
+  view: FindingView;
+  index: number;
+  theme?: FindingCardTheme;
+  statusChip?: ReactNode;
+  actions?: ReactNode;
+  showBypass?: boolean;
+  children?: ReactNode;
+}) {
+  // FindingView already drops placeholder selectors ('', 'N/A'), so presence here
+  // means real evidence — an absent one takes its whole cell out of the grid.
+  const selector = view.selector;
+
+  return (
+    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
+      <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b ${theme.cardHeaderBg} px-4 py-2.5`}>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-(--text-oninvert)`}>
+            <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={`truncate text-sm font-bold ${theme.cardTitle}`}>{view.title}</span>
+            <SeverityBadge severity={view.severity} />
+            {view.occurrences > 1 && (
+              <span
+                title={`This fault occurred ${view.occurrences} times this session`}
+                className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-[11px] font-bold leading-none text-(--text-oninvert)"
+              >
+                ×{view.occurrences}
+              </span>
+            )}
+            {statusChip}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          <CopyButton text={buildFindingSummary(view, index)} label="Finding" />
+        </div>
+      </div>
+
+      {/* Facts block — a null meta bar collapses its own gap, so no empty band appears */}
+      <div className="flex flex-col gap-3 px-4 pt-3">
+        <FindingMetaBar attribution={view.attribution} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Message</div>
+            <div className="mt-0.5 break-words text-sm text-(--text-primary)">{view.message || 'No details provided'}</div>
+          </div>
+          {selector && (
+            <div className="min-w-0">
+              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Selector</div>
+              <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={selector}>{selector}</div>
+            </div>
+          )}
+          {view.payloadUsed && (
+            <div className="min-w-0">
+              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Payload Used</div>
+              <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={view.payloadUsed}>{view.payloadUsed}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Surface-specific enrichment (live AI diagnosis) sits between the facts and the evidence */}
+      {children && <div className="px-4">{children}</div>}
+
+      <div className="pb-3">
+        <FindingEvidence view={view} showBypass={showBypass} />
+      </div>
+    </div>
+  );
+}

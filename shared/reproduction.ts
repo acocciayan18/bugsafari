@@ -3,10 +3,11 @@
 // drawer) render steps through these pure builders so every surface reads in one
 // voice. No runtime deps: types only.
 
-import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from './types/bug.js';
+import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro, StepTarget } from './types/bug.js';
 
 const MAX_LABEL_LENGTH = 60;
 const MAX_PAYLOAD_LENGTH = 80;
+const MAX_NAMED_TARGETS = 5;
 const REDACTED = '«redacted»';
 
 export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | 'step';
@@ -61,6 +62,53 @@ export function resolveElementLabel(element: ElementLabelSource): string {
   return genericElementLabel(element.tagName, element.type);
 }
 
+/**
+ * Plain-English noun a developer would use for a control ("button", "link",
+ * "email field"). Finer-grained than {@link genericElementLabel}, which stays the
+ * structural fallback LABEL; this is the noun the reproduction steps read with.
+ */
+export function elementNoun(tagName?: string, type?: string): string {
+  const tag = (tagName ?? '').toLowerCase();
+  const elementType = (type ?? '').toLowerCase();
+  if (tag === 'a') return 'link';
+  if (tag === 'select') return 'dropdown';
+  if (tag === 'textarea') return 'text box';
+  if (tag === 'button' || elementType === 'button' || elementType === 'submit' || elementType === 'reset') {
+    return 'button';
+  }
+  if (tag === 'input') {
+    if (elementType === 'checkbox') return 'checkbox';
+    if (elementType === 'radio') return 'radio button';
+    if (elementType === 'file') return 'file picker';
+    return 'field';
+  }
+  return tag ? 'control' : 'element';
+}
+
+// A raw CSS selector leaked into a label reads as engine noise in the playbook —
+// detected here so the step falls back to the control's noun instead.
+function isSelectorLike(value: string): boolean {
+  return /^[#.[]/.test(value) || value.includes(':nth-') || value.includes('>');
+}
+
+/** Name one control the way a step should read it — `the "Register" button`. */
+export function describeTarget(label?: string, kind?: string): string {
+  const noun = collapse(kind) || 'element';
+  const name = collapse(label);
+  return name && !isSelectorLike(name) ? `the "${truncate(name, MAX_LABEL_LENGTH)}" ${noun}` : `the ${noun}`;
+}
+
+/** Name a set of controls, capped so a wide burst stays one readable line. */
+export function describeTargetList(targets: StepTarget[]): string {
+  const named = targets.filter((target) => collapse(target.label) || collapse(target.kind));
+  if (named.length === 0) return '';
+  const shown = named.slice(0, MAX_NAMED_TARGETS).map((target) => describeTarget(target.label, target.kind));
+  const hidden = named.length - shown.length;
+  if (hidden > 0) shown.push(`${hidden} more`);
+  if (shown.length === 1) return shown[0];
+  return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
+}
+
 // Capitalized element kind for operator-facing descriptions (Button/Input/Link).
 function elementKind(tagName?: string, type?: string): string {
   const tag = (tagName ?? '').toLowerCase();
@@ -91,9 +139,6 @@ export function humanizeElement(element: ElementLabelSource): string {
   return label ? `${kind}: "${label}"${idPart}` : `${kind}${idPart}`;
 }
 
-const defaultLabelForType = (type: ActionType): string =>
-  type === 'TYPE' || type === 'INPUT' || type === 'SUBMIT' ? 'input field' : 'element';
-
 // Redaction-aware payload rendering; truncation lives here only.
 function renderPayload(payload?: string, redact?: boolean): string {
   if (!payload) return '';
@@ -113,34 +158,46 @@ export function maskPayload(payload?: string, redact?: boolean): string {
  * Constraint-stripping / form-bypass step. Names the exact validation attributes
  * removed when known, so a developer sees which guard was defeated on which field.
  */
-export function describeConstraintBypass(label: string, attributes?: string[], affectedCount?: number): string {
+export function describeConstraintBypass(
+  label: string,
+  attributes?: string[],
+  affectedCount?: number,
+  kind?: string,
+): string {
+  const target = describeTarget(label, kind ?? 'field');
   const attrs = (attributes ?? []).filter(Boolean);
   if (attrs.length === 0) {
-    return `Remove client-side validation on "${label}", then submit`;
+    return `Remove the browser validation from ${target}, then submit the form`;
   }
-  const scope = affectedCount && affectedCount > 1 ? ` across ${affectedCount} fields` : '';
-  return `Remove ${attrs.join(', ')} from "${label}"${scope}, then submit`;
+  const scope = affectedCount && affectedCount > 1 ? ` (and ${affectedCount - 1} more field${affectedCount === 2 ? '' : 's'})` : '';
+  return `Remove the ${attrs.join(', ')} validation from ${target}${scope}, then submit the form`;
 }
 
 /** Payload-injection step. Redacts auth/password values; truncation lives here only. */
-export function describeInputInjection(label: string, payload?: string, redact?: boolean): string {
+export function describeInputInjection(label: string, payload?: string, redact?: boolean, kind?: string): string {
+  const target = describeTarget(label, kind ?? 'field');
   const value = renderPayload(payload, redact);
-  return value ? `Type "${value}" into "${label}"` : `Enter data into "${label}"`;
+  if (collapse(kind) === 'dropdown') {
+    return value ? `Select "${value}" from ${target}` : `Choose an option from ${target}`;
+  }
+  return value ? `Type "${value}" into ${target}` : `Enter a value into ${target}`;
 }
 
 /** Single-element zero-wait concurrent burst (ButtonSpammer). */
 export function describeConcurrentBurst(outcome: BurstSummary, label: string, kind: string): string {
   return (
-    `Click the ${kind} "${label}" ${outcome.attempted}× rapidly, no wait ` +
-    `(${outcome.completed}/${outcome.attempted} landed, ${outcome.durationMs}ms)`
+    `Click ${describeTarget(label, kind)} ${outcome.attempted} times as fast as possible ` +
+    `(${outcome.completed} of ${outcome.attempted} clicks registered in ${outcome.durationMs}ms)`
   );
 }
 
 /** Multi-sibling zero-wait concurrent burst (InteractionSimulator.concurrentClicker). */
-export function describeConcurrentBurstSiblings(outcome: BurstSummary): string {
+export function describeConcurrentBurstSiblings(outcome: BurstSummary, targets?: StepTarget[]): string {
+  const named = describeTargetList(targets ?? []);
+  const list = named ? `: ${named}` : '';
   return (
-    `Click ${outcome.attempted} sibling elements at once, no wait ` +
-    `(${outcome.completed}/${outcome.attempted} landed, ${outcome.durationMs}ms)`
+    `Click ${outcome.attempted} controls at the same time${list} ` +
+    `(${outcome.completed} of ${outcome.attempted} clicks registered in ${outcome.durationMs}ms)`
   );
 }
 
@@ -154,88 +211,101 @@ export function describeReplayMacro(macro: ReplayMacro): string {
   const params = macro.params ?? {};
   switch (macro.scenario) {
     case 'ConcurrentSiblingBurst': {
-      const selectors = (params.selectors ?? []).filter(Boolean);
-      const count = selectors.length || params.count || 0;
-      const named = selectors.length ? ` — ${selectors.join(', ')}` : '';
-      return `Rapidly click ${count} sibling element${count === 1 ? '' : 's'} at the same time, no delay${named}`;
+      const targets = params.targets ?? [];
+      const count = targets.length || (params.selectors ?? []).filter(Boolean).length || params.count || 0;
+      const named = describeTargetList(targets);
+      const list = named ? `: ${named}` : '';
+      return `Click ${count} control${count === 1 ? '' : 's'} at the same time${list}`;
     }
     case 'CoordinateBombing': {
       const count = params.count ?? 0;
-      const dims = params.width && params.height ? ` across the ${params.width}×${params.height} viewport` : '';
-      return `Fire ${count} rapid clicks at fixed grid coordinates${dims}`;
+      const dims = params.width && params.height ? ` of the ${params.width}×${params.height} window` : '';
+      return `Click ${count} points spread evenly across the visible area${dims}`;
     }
     case 'RouteTrasher': {
       const reps = params.repetitions ?? 0;
-      return `Trash navigation history ${reps}× — rapid back/forward traversal`;
+      return `Press the browser Back and Forward buttons ${reps} time${reps === 1 ? '' : 's'} in a row`;
     }
     default:
-      return macro.summary || 'Replay recorded stress-scenario burst';
+      return macro.summary || 'Repeat the recorded rapid-interaction burst';
   }
 }
 
 /** Deterministic coordinate-bombing step (CoordinateBombing). */
 export function describeCoordinateBombing(count: number, width: number, height: number): string {
-  return `Fire ${count} deterministic grid coordinate clicks across the ${width}x${height} viewport`;
+  return `Click ${count} points spread evenly across the visible area of the ${width}×${height} window`;
 }
 
 /** RouteTrasher opening step. */
 export function describeRouteTrashStart(repetitions: number, originPath: string): string {
-  return `Trash navigation from ${originPath} (${repetitions}×): rapid history traversal and native back/forward validation`;
+  return `Starting from ${originPath}, press the browser Back and Forward buttons ${repetitions} times in a row`;
+}
+
+// Engine navigation identifiers rendered as what the developer would actually do.
+const NAVIGATION_LABELS: Record<string, string> = {
+  rapid_history: 'Rapid Back/Forward presses',
+  history_back: 'Pressing browser Back',
+  history_forward: 'Pressing browser Forward',
+  history_navigation: 'Browser history navigation',
+};
+
+/** Plain-English name for an engine navigation identifier. */
+export function navigationLabel(navType: string): string {
+  return NAVIGATION_LABELS[navType] ?? navType.replace(/_/g, ' ');
 }
 
 /** RouteTrasher history back/forward step. `iteration` is 1-based. */
 export function describeRouteTrashNavigation(
   iteration: number,
   direction: 'back' | 'forward',
-  index: number,
   url: string,
 ): string {
-  return `Iteration ${iteration}: history ${direction} (index ${index}) → ${url}`;
+  return `Round ${iteration}: press browser ${direction === 'back' ? 'Back' : 'Forward'} → ${url}`;
 }
 
 /** RouteTrasher inconsistency: the URL changed but the DOM did not update to match. */
 export function describeRouteInconsistency(fromUrl: string, toUrl: string): string {
-  return `Navigation inconsistency: URL changed ${fromUrl} → ${toUrl} with no corresponding DOM update.`;
+  return `The address changed from ${fromUrl} to ${toUrl}, but the page content never updated.`;
 }
 
 /** RouteTrasher drift-restore step. */
 export function describeRouteTrashDrift(landed: string, originPath: string): string {
-  return `Route bursts drifted to ${landed}; restoring to origin ${originPath}.`;
+  return `Back/Forward presses ended on ${landed}; returning to ${originPath}.`;
 }
 
 /** RouteTrasher: a mutation provoked one or more backend 5xx failures (MEDIUM). */
 export function describeRouteTrashServerError(navType: string, count: number, url: string): string {
-  return `[MEDIUM] ${navType} triggered ${count} backend server error(s) (HTTP 5xx) at ${url} — likely unvalidated route/parameter input.`;
+  return `[MEDIUM] ${navigationLabel(navType)} caused ${count} server error(s) (HTTP 5xx) at ${url} — the route or its parameters are likely unvalidated.`;
 }
 
 /** RouteTrasher: expected defensive 4xx responses, handled gracefully (INFORMATIONAL). */
 export function describeRouteTrashDefensive(navType: string, count: number, url: string): string {
-  return `[INFO] ${navType} met ${count} defensive response(s) (HTTP 4xx) at ${url} — request rejected gracefully, no finding.`;
+  return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${url} — handled correctly, no bug.`;
 }
 
 /** RouteTrasher: an unhandled client-side exception fired during a mutation (CRITICAL). */
 export function describeRouteTrashClientCrash(navType: string, count: number, url: string): string {
-  return `[CRITICAL] ${navType} caused ${count} unhandled client-side exception(s) at ${url} — reproducible finding captured.`;
+  return `[CRITICAL] ${navigationLabel(navType)} caused ${count} unhandled JavaScript error(s) at ${url}.`;
 }
 
 /** RouteTrasher: a mutation left the app on a white/blank screen (CRITICAL). */
 export function describeRouteTrashWhiteScreen(navType: string, url: string): string {
-  return `[CRITICAL] ${navType} left the application white-screened at ${url} — render/routing failure.`;
+  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${url} — the view failed to render.`;
 }
 
 /** NetworkSaboteur step. */
 export function describeNetworkSabotage(mode: string): string {
-  return `Sabotage the next API/XHR request (${mode} mode) to test error resilience`;
+  return `Make the next API request fail (${collapse(mode).toLowerCase() || 'aborted'}) to test the app's error handling`;
 }
 
 /** Navigation traversal step — clicking a navigation control to discover new state. */
-export function describeNavigation(label: string): string {
-  return `Navigate via control "${label}" to discover a new application state`;
+export function describeNavigation(label: string, kind?: string): string {
+  return `Click ${describeTarget(label, kind ?? 'control')} to reach a new part of the app`;
 }
 
 /** Adaptive recovery round after apparent graph exhaustion. */
 export function describeRecovery(requeued: number): string {
-  return `Adaptive recovery: re-queued ${requeued} candidate path${requeued === 1 ? '' : 's'} after apparent exhaustion`;
+  return `Retrying ${requeued} unexplored path${requeued === 1 ? '' : 's'} after the app appeared fully explored`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -246,9 +316,9 @@ export function describeRecovery(requeued: number): string {
 export function describeOutcome(outcome?: ActionOutcome): string {
   if (!outcome) return '';
   const parts: string[] = [];
-  if (outcome.navigatedTo) parts.push(`navigated to ${outcome.navigatedTo}`);
-  if (typeof outcome.httpStatus === 'number') parts.push(`HTTP ${outcome.httpStatus}`);
-  if (parts.length === 0 && outcome.domChanged === false) parts.push('no visible change');
+  if (outcome.navigatedTo) parts.push(`the app moved to ${outcome.navigatedTo}`);
+  if (typeof outcome.httpStatus === 'number') parts.push(`the server responded HTTP ${outcome.httpStatus}`);
+  if (parts.length === 0 && outcome.domChanged === false) parts.push('nothing on the page changed');
   return parts.length ? ` → ${parts.join(', ')}` : '';
 }
 
@@ -275,10 +345,10 @@ export function kindForRecord(type: ActionType): StepKind {
 /** Guess a chip kind for a pre-rendered narrative line (string fallback path). */
 export function classifyNarrativeLine(text: string): StepKind {
   const s = text.trim();
-  if (/^Go to /i.test(s)) return 'navigation';
-  if (/^(Type |Enter data)/i.test(s)) return 'input';
+  if (/^(Open|Go to) /i.test(s)) return 'navigation';
+  if (/^(Type |Enter a value|Select )/i.test(s)) return 'input';
   if (/^Remove /i.test(s)) return 'bypass';
-  if (/^(Click|Hover|Navigate via)/i.test(s)) return 'click';
+  if (/^(Click|Hover|Press|Starting from)/i.test(s)) return 'click';
   return 'step';
 }
 
@@ -293,40 +363,44 @@ export function classifyNarrativeLine(text: string): StepKind {
 export function describeActionRecord(record: ActionRecord): string {
   const base = describeSingleAction(record);
   const repeats = record.repeatCount ?? 1;
-  const withRepeat = repeats > 1 ? `${base} (repeat ${repeats}× rapidly)` : base;
+  const withRepeat = repeats > 1 ? `${base}, repeated ${repeats} times in quick succession` : base;
   return `${withRepeat}${describeOutcome(record.outcome)}`;
 }
 
 function describeSingleAction(record: ActionRecord): string {
+  // An absent label is fine: describeTarget falls back to the control's noun
+  // ("the field") rather than inventing a placeholder name.
   const rawLabel = collapse(record.elementLabel) || collapse(record.fallbackLabel);
-  const label = rawLabel || defaultLabelForType(record.type);
+  const kind = collapse(record.elementKind);
 
   switch (record.type) {
     case 'NAVIGATE':
     case 'NAVIGATION':
-      return record.url ? `Go to ${record.url}` : 'Go to the starting page';
+      return record.url ? `Open ${record.url}` : 'Open the starting page';
 
     case 'TYPE':
     case 'INPUT':
-      return describeInputInjection(label, record.payload, record.redactValue);
+      return describeInputInjection(rawLabel, record.payload, record.redactValue, kind);
 
     case 'SUBMIT':
-      return describeConstraintBypass(label, record.strippedAttributes, record.affectedCount);
+      return describeConstraintBypass(rawLabel, record.strippedAttributes, record.affectedCount, kind);
 
     case 'MACRO':
-      return record.macro?.summary || rawLabel || 'Replay recorded stress-scenario burst';
+      return record.macro
+        ? describeReplayMacro(record.macro)
+        : 'Repeat the recorded rapid-interaction burst';
 
     case 'NETWORK':
       return record.payload
-        ? `${describeNetworkSabotage(label)} — target ${record.payload}`
-        : describeNetworkSabotage(label);
+        ? `${describeNetworkSabotage(rawLabel)} — affected request: ${record.payload}`
+        : describeNetworkSabotage(rawLabel);
 
     case 'HOVER':
-      return rawLabel ? `Hover over "${rawLabel}"` : 'Hover over an element';
+      return `Hover over ${describeTarget(rawLabel, kind || 'element')}`;
 
     case 'CLICK':
     default:
-      return rawLabel ? `Click "${rawLabel}"` : 'Click an element';
+      return `Click ${describeTarget(rawLabel, kind || 'element')}`;
   }
 }
 

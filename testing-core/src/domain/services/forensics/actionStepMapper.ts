@@ -30,9 +30,19 @@ export function buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
     timestamp:          record.timestamp,
     actionType:         mapActionType(record.type),
     selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
+    // Human descriptors travel WITH the step so the saved report reads the same
+    // named controls the live playbook did, never a bare CSS selector.
+    label:              record.elementLabel || record.fallbackLabel,
+    elementKind:        record.elementKind,
     payloadText:        record.payload,
     resultingStateHash: '',
     durationMs:         record.durationMs,
+    repeatCount:        record.repeatCount,
+    strippedAttributes: record.strippedAttributes,
+    affectedCount:      record.affectedCount,
+    redactValue:        record.redactValue,
+    url:                record.url,
+    outcome:            record.outcome,
     macro:              record.macro,
   }));
 }

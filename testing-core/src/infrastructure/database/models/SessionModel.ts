@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import type { ConstraintBypassDetail, ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
 
@@ -78,10 +78,24 @@ export interface ActionStepTrace {
   selector: string;
   /** Human-readable element label (text/aria/name/id) — shown instead of the raw selector. */
   label?: string;
+  /** Plain-English control type (button, link, field…) read by the step narrator. */
+  elementKind?: string;
   payloadText?: string;
   resultingStateHash: string;
   /** Real execution time of this step in ms (measured in the executor). */
   durationMs?: number;
+  /** Identical rapid repeats collapsed into this step (>1 ⇒ "repeated N times"). */
+  repeatCount?: number;
+  /** Validation attributes stripped on a bypass step (required, maxlength, pattern…). */
+  strippedAttributes?: string[];
+  /** Count of elements a bypass step affected. */
+  affectedCount?: number;
+  /** True ⇒ mask the payload value in step text (auth/password fields). */
+  redactValue?: boolean;
+  /** Page URL the step ran on — rendered as the destination of a navigation step. */
+  url?: string;
+  /** What was observed right after the step (navigation, HTTP status, DOM change). */
+  outcome?: ActionOutcome;
   /** Present only on a 'macro' step — the re-expandable stress-scenario descriptor. */
   macro?: ReplayMacro;
 }
@@ -101,8 +115,39 @@ const MacroSchemaField = {
     height:      { type: Number, required: false, default: null },
     repetitions: { type: Number, required: false, default: null },
     selectors:   { type: [String], required: false, default: undefined },
+    // Human descriptors of the burst elements, index-aligned with `selectors`.
+    targets:     { type: [{ label: String, kind: String }], required: false, default: undefined },
   },
   summary: { type: String, default: '' },
+};
+
+// One replayable step of the reproduction timeline. Shared by the session-global
+// timeline and each finding's minimized timeline so both persist identical fields.
+const ActionStepSchemaFields = {
+  stepNumber:         { type: Number, required: true, min: 1 },
+  timestamp:          { type: String, required: true },
+  actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass', 'macro'] },
+  selector:           { type: String, required: true, default: '' },
+  label:              { type: String, required: false, default: null },
+  elementKind:        { type: String, required: false, default: null },
+  payloadText:        { type: String, required: false, default: null },
+  resultingStateHash: { type: String, required: false, default: '' },
+  durationMs:         { type: Number, required: false, default: null },
+  repeatCount:        { type: Number, required: false, default: null },
+  strippedAttributes: { type: [String], required: false, default: undefined },
+  affectedCount:      { type: Number, required: false, default: null },
+  redactValue:        { type: Boolean, required: false, default: null },
+  url:                { type: String, required: false, default: null },
+  outcome: {
+    type: {
+      navigatedTo: { type: String, required: false, default: null },
+      httpStatus:  { type: Number, required: false, default: null },
+      domChanged:  { type: Boolean, required: false, default: null },
+    },
+    required: false,
+    default: null,
+  },
+  macro:              { type: MacroSchemaField, required: false, default: null },
 };
 
 // Bounded client-state snapshot restored before regression replay.
@@ -296,16 +341,7 @@ const sessionSchema = new Schema(
           // Minimized replayable timeline for THIS finding — the causal steps only,
           // consumed per-finding by the regression verifier.
           actionSteps: {
-            type: [{
-              stepNumber:         { type: Number, required: true, min: 1 },
-              timestamp:          { type: String, required: true },
-              actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass', 'macro'] },
-              selector:           { type: String, required: true, default: '' },
-              payloadText:        { type: String, required: false, default: null },
-              resultingStateHash: { type: String, required: false, default: '' },
-              durationMs:         { type: Number, required: false, default: null },
-              macro:              { type: MacroSchemaField, required: false, default: null },
-            }],
+            type: [ActionStepSchemaFields],
             default: [],
           },
           // Deterministic knowledge-base classification + scenario/step attribution,
@@ -347,20 +383,7 @@ const sessionSchema = new Schema(
       default: { finalBreadcrumbSteps: [], caughtBugs: [] },
     },
     actionSteps: {
-      type: [{
-        stepNumber:         { type: Number, required: true, min: 1 },
-        timestamp:          { type: String, required: true },
-        actionType: {
-          type: String,
-          required: true,
-          enum: ['click', 'input', 'navigation', 'bypass', 'macro'],
-        },
-        selector:           { type: String, required: true, default: '' },
-        payloadText:        { type: String, required: false, default: null },
-        resultingStateHash: { type: String, required: false, default: '' },
-        durationMs:         { type: Number, required: false, default: null },
-        macro:              { type: MacroSchemaField, required: false, default: null },
-      }],
+      type: [ActionStepSchemaFields],
       required: false,
       default: [],
       validate: {

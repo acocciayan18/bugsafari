@@ -125,6 +125,8 @@ export interface ForensicErrorParams {
 export interface CleanActionStep {
   actionType: ActionType;
   humanIdentifier?: string;
+  /** Plain-English control type (button, link, field…) read by the step narrator. */
+  elementKind?: string;
   value?: string;
   url?: string;
   strippedAttributes?: string[];

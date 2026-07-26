@@ -59,7 +59,8 @@ function collapseRepeats(records: ActionRecord[]): ActionRecord[] {
   for (const record of records) {
     const previous = collapsed[collapsed.length - 1];
     if (previous && isSameAction(previous, record)) {
-      previous.repeatCount = (previous.repeatCount ?? 1) + 1;
+      // Additive: a record may already stand for a burst (repeatCount > 1).
+      previous.repeatCount = (previous.repeatCount ?? 1) + (record.repeatCount ?? 1);
       continue;
     }
     collapsed.push({ ...record });

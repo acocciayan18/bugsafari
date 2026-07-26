@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, BugPlay, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
+import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
   emptyTargetAuthDraft,
@@ -485,14 +485,19 @@ export default function ClinicalForensicsDashboard({
             <div className="flex shrink-0 items-center gap-1 pr-2">
               {activeTab === 'telemetry' && (
                 <button
-                  type="button"
-                  onClick={() => setShowVerbose((v) => !v)}
-                  aria-pressed={showVerbose}
-                  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
-                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors ${showVerbose ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)' : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'}`}
-                >
-                  Verbose
-                </button>
+  type="button"
+  onClick={() => setShowVerbose((v) => !v)}
+  aria-pressed={showVerbose}
+  aria-label="Toggle verbose execution trace"
+  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
+  className={`inline-flex items-center justify-center rounded-md border p-1.5 transition-colors ${
+    showVerbose
+      ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
+      : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'
+  }`}
+>
+  <Workflow className="h-3.5 w-3.5" aria-hidden="true" />
+</button>
               )}
               <TelemetryHelpModal activeTab={activeTab} />
             </div>
