@@ -439,6 +439,13 @@ export class StartExplorationUseCase {
 
             let source = 'update-in-place';
             if (!savedDocument) {
+                // The update can miss two ways: the document does not exist, or it
+                // exists under another owner. Only the first is safe to create into —
+                // re-creating over a live id would collide on _id and, if it somehow
+                // succeeded, would hand one user another's forensic children.
+                if (originalSessionId && (await SessionModel.exists({ _id: originalSessionId }))) {
+                    return { success: false, message: 'This run belongs to a different account and cannot be saved here.' };
+                }
                 // No engine doc existed: stamp the run's own public RUN- code when we
                 // have it so the created doc's runId matches what the operator saw live.
                 const runCodeField = this.lastRunCode ? { runId: this.lastRunCode } : {};

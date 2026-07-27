@@ -10,7 +10,6 @@ import { ForensicAnalysisModel } from './models/ForensicAnalysisModel.js';
 import { ConsoleLogModel } from './models/ConsoleLogModel.js';
 import { NetworkLogModel } from './models/NetworkLogModel.js';
 import { BrainConfigModel } from './models/BrainConfigModel.js';
-import { FindingModel } from './models/FindingModel.js';
 import { UserModel } from './models/UserModel.js';
 import { SupportTicketModel } from './models/SupportTicketModel.js';
 import { RefreshTokenModel } from './models/RefreshTokenModel.js';
@@ -23,7 +22,8 @@ export const INDEXED_MODELS: Model<unknown>[] = [
   ConsoleLogModel,
   NetworkLogModel,
   BrainConfigModel,
-  FindingModel,
+  // `findings` is deprecated and has no model: nothing writes or reads it, so
+  // syncing its indexes only bought write cost. retentionReaper still sweeps it.
   UserModel,
   SupportTicketModel,
   RefreshTokenModel,

@@ -190,6 +190,13 @@ export class ExplorationEngine {
   private forensicErrorsPersisted = 0;
   private forensicFlushChain: Promise<void> = Promise.resolve();
 
+  // Serializes the one-row-per-run telemetry upsert. Both call sites are
+  // fire-and-forget, and forensic_telemetry has no unique index on forensicRunId,
+  // so two overlapping upserts would each miss the other's insert and leave the
+  // duplicate rows the upsert exists to prevent. Chaining also fixes the write
+  // order, so the final metrics can never be overwritten by the earlier probe.
+  private telemetryUpsertChain: Promise<void> = Promise.resolve();
+
   // Accumulative active time tracking for timebox (only counts when NOT paused)
   private elapsedActiveTimeMs: number = 0;
   private timingInterval: ReturnType<typeof setInterval> | null = null;
@@ -1509,15 +1516,16 @@ export class ExplorationEngine {
     cpuUsage?: number;
   }): Promise<void> {
     if (!this.sessionId) return;
+    const runId = new Types.ObjectId(this.sessionId);
 
-    try {
-      await forensicTelemetryRepository.upsertForRun({
-        forensicRunId: new Types.ObjectId(this.sessionId),
-        ...params,
-      });
-    } catch (error) {
-      console.error('[ExplorationEngine] Failed to persist forensic telemetry:', error);
-    }
+    this.telemetryUpsertChain = this.telemetryUpsertChain.then(async () => {
+      try {
+        await forensicTelemetryRepository.upsertForRun({ forensicRunId: runId, ...params });
+      } catch (error) {
+        console.error('[ExplorationEngine] Failed to persist forensic telemetry:', error);
+      }
+    });
+    return this.telemetryUpsertChain;
   }
 
   // Strict-lock drift detection + recovery now lives in PageHealthGuard (which

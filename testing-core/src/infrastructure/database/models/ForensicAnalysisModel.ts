@@ -64,10 +64,10 @@ const forensicAnalysisSchema = new Schema(
   }
 );
 
-// Compound indexes for efficient querying
+// The only read shapes: findByRunId and the tenant-scoped findLatestForRuns, both
+// filtering forensicRunId and sorting createdAt desc. Risk level/score are never
+// queried across runs — a global leaderboard would be cross-tenant by nature.
 forensicAnalysisSchema.index({ forensicRunId: 1, createdAt: -1 });
-forensicAnalysisSchema.index({ riskScore: -1 });
-forensicAnalysisSchema.index({ riskLevel: 1, createdAt: -1 });
 
 export interface IForensicAnalysis extends Document {
   forensicRunId: Types.ObjectId;

@@ -62,7 +62,7 @@ No Critical (data-loss-on-the-happy-path or auth-bypass) defect was found, but t
 
 Each: **Severity · Module/file:line · Root cause · Impact · Fix · Priority.**
 
-### A. Persistence write & lifecycle (database)
+### A. Persistence write & lifecycle (database) (PINAGWA KO NA TO)
 
 > Corrects prior D1. The schema *shape* is good and read shapes are indexed, but the **write and lifecycle boundaries** are the weakest layer in the system.
 

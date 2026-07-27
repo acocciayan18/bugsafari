@@ -130,40 +130,6 @@ export class ForensicErrorRepository {
   }
 
   /**
-   * Find errors by type for a forensic run
-   */
-  async findByType(
-    forensicRunId: string | Types.ObjectId,
-    type: ForensicErrorType,
-  ): Promise<IForensicError[]> {
-    return ForensicErrorModel.find({
-      forensicRunId: new Types.ObjectId(forensicRunId),
-      type,
-    })
-      .sort({ createdAt: -1 })
-      .limit(MAX_FORENSIC_ROWS)
-      .lean<IForensicError[]>()
-      .exec();
-  }
-
-  /**
-   * Find errors by severity for a forensic run
-   */
-  async findBySeverity(
-    forensicRunId: string | Types.ObjectId,
-    severity: ForensicErrorSeverity,
-  ): Promise<IForensicError[]> {
-    return ForensicErrorModel.find({
-      forensicRunId: new Types.ObjectId(forensicRunId),
-      severity,
-    })
-      .sort({ createdAt: -1 })
-      .limit(MAX_FORENSIC_ROWS)
-      .lean<IForensicError[]>()
-      .exec();
-  }
-
-  /**
    * Get error count by type for a forensic run
    */
   async getCountByType(forensicRunId: string | Types.ObjectId): Promise<Record<string, number>> {
@@ -186,49 +152,9 @@ export class ForensicErrorRepository {
     return countMap;
   }
 
-  /**
-   * Get error count by severity for a forensic run
-   */
-  async getCountBySeverity(
-    forensicRunId: string | Types.ObjectId,
-  ): Promise<Record<ForensicErrorSeverity, number>> {
-    const results = await ForensicErrorModel.aggregate([
-      {
-        $match: { forensicRunId: new Types.ObjectId(forensicRunId) },
-      },
-      {
-        $group: {
-          _id: '$severity',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const countMap: Record<ForensicErrorSeverity, number> = {
-      [ForensicErrorSeverity.CRITICAL]: 0,
-      [ForensicErrorSeverity.HIGH]: 0,
-      [ForensicErrorSeverity.MEDIUM]: 0,
-      [ForensicErrorSeverity.LOW]: 0,
-      [ForensicErrorSeverity.INFO]: 0,
-    };
-
-    for (const result of results) {
-      if (result._id in countMap) {
-        countMap[result._id as ForensicErrorSeverity] = result.count;
-      }
-    }
-    return countMap;
-  }
-
-  /**
-   * Delete all errors for a forensic run
-   */
-  async deleteByRunId(forensicRunId: string | Types.ObjectId): Promise<number> {
-    const result = await ForensicErrorModel.deleteMany({
-      forensicRunId: new Types.ObjectId(forensicRunId),
-    });
-    return result.deletedCount;
-  }
+  // Cascade deletes live in retentionReaper's CHILD_COLLECTIONS table — the one
+  // mechanism shared by the on-demand delete and the orphan sweep. A per-repo
+  // deleteByRunId would be a second place to forget a collection.
 }
 
 // Export singleton instance

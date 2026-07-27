@@ -131,13 +131,15 @@ const forensicErrorSchema = new Schema(
   }
 );
 
-// Compound indexes for efficient querying
-forensicErrorSchema.index({ forensicRunId: 1, type: 1 });
-forensicErrorSchema.index({ forensicRunId: 1, severity: 1 });
+// Indexes are declared only for shapes something actually queries — every extra
+// one is paid on every insert, and this collection is the highest-volume write
+// path in the system. `severity` and `bugClass` are projected into the report but
+// never filtered or grouped on, so they carry no index.
 // createdAt, not timestamp — the schema has no timestamp path, and the repository
 // reads sort by createdAt descending.
 forensicErrorSchema.index({ forensicRunId: 1, createdAt: -1 });
-forensicErrorSchema.index({ forensicRunId: 1, bugClass: 1 });
+// Serves getCountByType's $match forensicRunId + $group by type.
+forensicErrorSchema.index({ forensicRunId: 1, type: 1 });
 
 export interface IForensicError extends Document {
   forensicRunId: Types.ObjectId;

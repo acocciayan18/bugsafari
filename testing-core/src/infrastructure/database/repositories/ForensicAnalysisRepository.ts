@@ -54,16 +54,6 @@ export class ForensicAnalysisRepository {
   }
 
   /**
-   * Find the latest analysis (most recent)
-   */
-  async findLatest(limit = 10): Promise<IForensicAnalysis[]> {
-    return ForensicAnalysisModel.find({})
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec();
-  }
-
-  /**
    * Tenant-scoped: most recent analysis whose run belongs to the caller's own sessions.
    * runIds are the caller's SafariSession _ids — never trust an unfiltered latest.
    */
@@ -76,86 +66,8 @@ export class ForensicAnalysisRepository {
       .exec();
   }
 
-  /**
-   * Find analyses by risk level
-   */
-  async findByRiskLevel(
-    riskLevel: ForensicAnalysisRiskLevel,
-    limit = 10,
-  ): Promise<IForensicAnalysis[]> {
-    return ForensicAnalysisModel.find({ riskLevel })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec();
-  }
-
-  /**
-   * Get high-risk analyses (HIGH or CRITICAL)
-   */
-  async findHighRisk(limit = 10): Promise<IForensicAnalysis[]> {
-    return ForensicAnalysisModel.find({
-      riskLevel: { $in: [ForensicAnalysisRiskLevel.HIGH, ForensicAnalysisRiskLevel.CRITICAL] },
-    })
-      .sort({ riskScore: -1, createdAt: -1 })
-      .limit(limit)
-      .exec();
-  }
-
-  /**
-   * Delete analysis by forensic run ID
-   */
-  async deleteByRunId(forensicRunId: string | Types.ObjectId): Promise<number> {
-    const result = await ForensicAnalysisModel.deleteMany({
-      forensicRunId: new Types.ObjectId(forensicRunId),
-    });
-    return result.deletedCount;
-  }
-
-  /**
-   * Get analysis statistics
-   */
-  async getStats(): Promise<{
-    total: number;
-    byLevel: Record<ForensicAnalysisRiskLevel, number>;
-    avgRiskScore: number;
-  }> {
-    const total = await ForensicAnalysisModel.countDocuments().exec();
-
-    const byLevelGroup = await ForensicAnalysisModel.aggregate([
-      {
-        $group: {
-          _id: '$riskLevel',
-          count: { $sum: 1 },
-        },
-      },
-    ]).exec();
-
-    const byLevel: Record<ForensicAnalysisRiskLevel, number> = {
-      [ForensicAnalysisRiskLevel.CRITICAL]: 0,
-      [ForensicAnalysisRiskLevel.HIGH]: 0,
-      [ForensicAnalysisRiskLevel.MEDIUM]: 0,
-      [ForensicAnalysisRiskLevel.LOW]: 0,
-    };
-
-    for (const item of byLevelGroup) {
-      if (item._id in byLevel) {
-        byLevel[item._id as ForensicAnalysisRiskLevel] = item.count;
-      }
-    }
-
-    const avgResult = await ForensicAnalysisModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          avgScore: { $avg: '$riskScore' },
-        },
-      },
-    ]).exec();
-
-    const avgRiskScore = avgResult[0]?.avgScore ?? 0;
-
-    return { total, byLevel, avgRiskScore: Math.round(avgRiskScore * 10) / 10 };
-  }
+  // Cascade deletes live in retentionReaper's CHILD_COLLECTIONS table — see the
+  // note in ForensicErrorRepository for why this repo has no deleteByRunId.
 }
 
 // Export singleton instance
