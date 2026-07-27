@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "files after we prevenet system to click logout, dsetrcutive wuth target auth"
-git checkout -b 7-26-Ayan-4
-git push --set-upstream origin 7-26-Ayan-4
+git commit -m "improved authentication error handling and user feedback"
+git checkout -b 7-27-Ayan
+git push --set-upstream origin 7-27-Ayan
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { toast } from '../infrastructure/notifications/ToastProvider';
+import { AUTH_SUCCESS, authEventToast, authSuccessToast } from '../infrastructure/notifications/authToasts';
+import { buildFeedback, postAuth, type AuthFeedback } from '../utils/authFeedback';
 import { isTokenExpired } from '../utils/tokenUtils';
 import {
     refreshAuthToken,
@@ -13,18 +14,18 @@ import { navigateTo } from './authBridge';
 import type { AuthUser, LoginCredentials, SignupCredentials } from '../context/AuthContext';
 
 interface AuthResponse {
-    token: string;
-    refreshToken: string;
-    user: AuthUser;
-    error?: string;
+    token?: string;
+    refreshToken?: string;
+    user?: AuthUser;
 }
 
 interface AuthState {
     user: AuthUser | null;
     token: string | null;
     isLoading: boolean;
-    emailError: string;
-    authError: string;
+    // Single failure channel. `field` inside the feedback routes it to a control;
+    // a second `emailError` string only ever let the two disagree.
+    authError: AuthFeedback | null;
     isGuestMode: boolean;
 
     login: (credentials: LoginCredentials) => Promise<boolean>;
@@ -32,7 +33,6 @@ interface AuthState {
     continueAsGuest: () => void;
     logout: () => void;
     refreshToken: () => Promise<boolean>;
-    clearEmailError: () => void;
     clearAuthError: () => void;
     setSession: (token: string | null, user: AuthUser | null) => void;
 }
@@ -69,112 +69,73 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: readStoredUser(),
     token: readStoredToken(),
     isLoading: false,
-    emailError: '',
-    authError: '',
+    authError: null,
     isGuestMode: localStorage.getItem('bugsafari_guest') === 'true',
 
     setSession: (token, user) => set({ token, user }),
 
     login: async (credentials) => {
-        set({ isLoading: true, authError: '' });
+        set({ isLoading: true, authError: null });
 
-        try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
-            });
+        const result = await postAuth<AuthResponse>('/api/auth/login', {
+            email: credentials.email.trim(),
+            password: credentials.password,
+        });
 
-            if (!response.ok) {
-                console.error(`[authStore] Server returned status code: ${response.status}`);
-                set({ authError: `Server connection failed (${response.status}). Please try again in a moment.`, isLoading: false });
-                return false;
-            }
-
-            const data: AuthResponse = await response.json();
-
-            if (data.token && data.refreshToken && data.user) {
-                // React state first so an immediate re-login never reads a stale cache
-                set({ token: data.token, user: data.user, isGuestMode: false, isLoading: false });
-                persistSession(data.token, data.refreshToken, data.user);
-                localStorage.removeItem('bugsafari_guest');
-                console.log('[authStore] Login successful:', data.user.email);
-                navigateTo('/dashboard');
-                return true;
-            }
-
-            set({ authError: 'Login failed - unexpected response from server.', isLoading: false });
-            console.error('[authStore] Login failed - unexpected response:', data);
-            return false;
-        } catch (error) {
-            const isNetworkError = error instanceof TypeError && error.message.includes('Failed to fetch');
-            if (isNetworkError) console.warn('[authStore] API gateway server on port 3000 is unreachable or hot-reloading.');
-            const message = isNetworkError
-                ? 'Cannot reach the BugSafari server. Check your connection and try again.'
-                : error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
-            set({ authError: message, isLoading: false });
-            console.error('[authStore] Login error:', error);
+        if (!result.ok) {
+            set({ authError: result.feedback, isLoading: false });
             return false;
         }
+
+        const { token, refreshToken, user } = result.data;
+        if (!token || !refreshToken || !user) {
+            console.error('[authStore] Login accepted but the token pair was incomplete:', result.data);
+            set({ authError: buildFeedback('UNEXPECTED_RESPONSE'), isLoading: false });
+            return false;
+        }
+
+        // React state first so an immediate re-login never reads a stale cache
+        set({ token, user, isGuestMode: false, isLoading: false });
+        persistSession(token, refreshToken, user);
+        localStorage.removeItem('bugsafari_guest');
+        console.log('[authStore] Login successful:', user.email);
+        navigateTo('/dashboard');
+        return true;
     },
 
     signup: async (credentials) => {
-        set({ isLoading: true, authError: '', emailError: '' });
-        let isDuplicateEmail = false;
+        set({ isLoading: true, authError: null });
 
-        try {
-            const response = await fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
-            });
+        const result = await postAuth<AuthResponse>('/api/auth/register', {
+            email: credentials.email.trim(),
+            password: credentials.password,
+        });
 
-            if (!response.ok) {
-                console.error('[authStore] Signup response not OK:', response.status, response.statusText);
-            }
-
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                console.error('[authStore] Non-JSON response received:', contentType);
-                throw new Error(response.ok ? 'Invalid server response' : `Server error: ${response.status} ${response.statusText}`);
-            }
-
-            const data: AuthResponse & { error?: string } = await response.json();
-
-            if (!response.ok) {
-                if (response.status === 409) {
-                    const message = data.error ?? 'An account with this email already exists.';
-                    isDuplicateEmail = true;
-                    set({ emailError: message });
-                    throw new Error(message);
-                }
-                throw new Error(data.error ?? `Signup failed: ${response.status}`);
-            }
-
-            if (data.token && data.refreshToken && data.user) {
-                set({ token: data.token, user: data.user });
-                persistSession(data.token, data.refreshToken, data.user);
-
-                console.log('[authStore] Signup successful:', data.user.email);
-                console.log(' [SIGNUP SUCCESS]: Account successfully provisioned in the container database cluster.');
-                toast.success('Account created! Redirecting to sign in...');
-
-                // Graceful delay before bouncing to sign-in
-                setTimeout(() => {
-                    navigateTo('/login');
-                    set({ isLoading: false });
-                }, 2000);
-
-                return true;
-            }
-
-            throw new Error('Unexpected response from server');
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
-            console.error('[authStore] Signup error:', message);
-            set({ isLoading: false, ...(isDuplicateEmail ? {} : { authError: message }) });
+        if (!result.ok) {
+            set({ authError: result.feedback, isLoading: false });
             return false;
         }
+
+        const { token, refreshToken, user } = result.data;
+        if (!token || !refreshToken || !user) {
+            console.error('[authStore] Signup accepted but the token pair was incomplete:', result.data);
+            set({ authError: buildFeedback('UNEXPECTED_RESPONSE'), isLoading: false });
+            return false;
+        }
+
+        persistSession(token, refreshToken, user);
+        console.log('[authStore] Signup successful:', user.email);
+        authSuccessToast(AUTH_SUCCESS.accountCreated);
+
+        // Session is persisted immediately but published to the store only when
+        // the bounce lands, so the signup screen never renders as signed-in for
+        // the 2s it is still visible. isLoading holds the form locked meanwhile.
+        setTimeout(() => {
+            set({ token, user, isLoading: false });
+            navigateTo('/login');
+        }, 2000);
+
+        return true;
     },
 
     // A guest session must never inherit a stale identity, or the backend would
@@ -207,7 +168,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem('bugsafari_guest_settings');
         localStorage.removeItem('bugsafari_displayName');
 
-        toast.info('Signed out successfully');
+        authSuccessToast(AUTH_SUCCESS.signedOut);
         console.log('[authStore] User logged out');
     },
 
@@ -222,8 +183,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         return true;
     },
 
-    clearEmailError: () => set({ emailError: '' }),
-    clearAuthError: () => set({ authError: '' }),
+    clearAuthError: () => set({ authError: null }),
 }));
 
 let initialized = false;
@@ -246,11 +206,11 @@ export function initAuthStore(): void {
     // Refreshes triggered by non-hook modules (historyService, EngineHttpClient)
     onTokenRefreshed(({ token, user }) => setSession(token, user));
 
+    // The only auth failure with no form to render into — hence the only one that
+    // is allowed to toast.
     onSessionRevoked((reason) => {
         setSession(null, null);
-        if (reason === 'SESSION_REVOKED') {
-            toast.error('Your session was ended for security reasons. Please sign in again.');
-        }
+        if (reason === 'SESSION_REVOKED') authEventToast(buildFeedback('SESSION_REVOKED'));
     });
 
     // Proactive renewal so in-flight requests and socket handshakes never carry a dead token

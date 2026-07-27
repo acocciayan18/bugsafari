@@ -2,6 +2,14 @@ import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
 import { sanitizeString } from './authValidation.js';
+import type { AuthErrorBody } from '../../../../shared/types.js';
+
+// Wrong-email and wrong-password answer identically — telling them apart would
+// turn the login route into an account enumeration oracle.
+const CREDENTIAL_REJECTION: AuthErrorBody = {
+  error: 'Invalid email or password',
+  code: 'INVALID_CREDENTIALS',
+};
 
 /**
  * POST /api/auth/login
@@ -21,9 +29,12 @@ export async function handleLogin(
     const sanitizedPassword = sanitizeString(password, 'password');
 
     if (!sanitizedEmail || !sanitizedPassword) {
-      response.status(400).json({
+      const body: AuthErrorBody = {
         error: 'Email and password are required and must be valid strings',
-      });
+        code: 'VALIDATION_FAILED',
+        field: !sanitizedEmail ? 'email' : 'password',
+      };
+      response.status(400).json(body);
       return;
     }
 
@@ -39,18 +50,14 @@ export async function handleLogin(
       // This prevents any bypass where user could be null/undefined
       if (!user) {
         console.log(`[AUTH FAILED]: No user document matched for input criteria.`);
-        response.status(401).json({
-          error: 'Invalid email or password',
-        });
+        response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
 
       // Additional guard: Verify user object has required properties
       if (!user._id || !user.email || !user.password) {
         console.error(`[AUTH FAILED]: User document missing required properties.`);
-        response.status(401).json({
-          error: 'Invalid email or password',
-        });
+        response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
 
@@ -58,9 +65,7 @@ export async function handleLogin(
       const isValidPassword = await user.comparePassword(sanitizedPassword);
       if (!isValidPassword) {
         console.warn(`[Auth] Invalid password attempt for: ${trimmedEmail}`);
-        response.status(401).json({
-          error: 'Invalid email or password',
-        });
+        response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
 

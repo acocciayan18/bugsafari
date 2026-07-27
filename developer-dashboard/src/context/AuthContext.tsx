@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, selectIsAuthenticated, selectIsAuthLoading } from '../stores/authStore';
 import { setNavigateCallback } from '../stores/authBridge';
+import type { AuthFeedback } from '../utils/authFeedback';
 
 // ============================================================================
 // Types
@@ -29,8 +30,9 @@ export interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  emailError: string;
-  authError: string;
+  // Sole failure channel — `authError.field` routes it to a control when the
+  // failure belongs to one.
+  authError: AuthFeedback | null;
 
   // Computed
   isAuthenticated: boolean;
@@ -43,7 +45,6 @@ export interface AuthContextValue {
   continueAsGuest: () => void;
   refreshToken: () => Promise<boolean>;
   logout: () => void;
-  clearEmailError: () => void;
   clearAuthError: () => void;
 
   // Navigation callback injection - allows components to provide navigate function
@@ -60,12 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth(): AuthContextValue {
-  const { user, token, isLoading, emailError, authError, isGuestMode } = useAuthStore(
+  const { user, token, isLoading, authError, isGuestMode } = useAuthStore(
     useShallow((s) => ({
       user: s.user,
       token: s.token,
       isLoading: s.isLoading,
-      emailError: s.emailError,
       authError: s.authError,
       isGuestMode: s.isGuestMode,
     })),
@@ -83,7 +83,6 @@ export function useAuth(): AuthContextValue {
       continueAsGuest: s.continueAsGuest,
       refreshToken: s.refreshToken,
       logout: s.logout,
-      clearEmailError: s.clearEmailError,
       clearAuthError: s.clearAuthError,
       setNavigate: setNavigateCallback,
     };
@@ -93,7 +92,6 @@ export function useAuth(): AuthContextValue {
     user,
     token,
     isLoading,
-    emailError,
     authError,
     isAuthenticated,
     isGuestMode,

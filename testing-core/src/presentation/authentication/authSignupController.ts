@@ -2,6 +2,13 @@ import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
 import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
+import type { AuthErrorBody } from '../../../../shared/types.js';
+
+const EMAIL_TAKEN: AuthErrorBody = {
+  error: 'An account with this email already exists',
+  code: 'EMAIL_TAKEN',
+  field: 'email',
+};
 
 /**
  * POST /api/auth/signup
@@ -20,9 +27,12 @@ export async function handleSignup(
     const sanitizedPassword = sanitizeString(password, 'password');
 
     if (!sanitizedEmail || !sanitizedPassword) {
-      response.status(400).json({
+      const body: AuthErrorBody = {
         error: 'Email and password are required and must be valid strings',
-      });
+        code: 'VALIDATION_FAILED',
+        field: !sanitizedEmail ? 'email' : 'password',
+      };
+      response.status(400).json(body);
       return;
     }
 
@@ -31,20 +41,24 @@ export async function handleSignup(
 
     // Additional validation
     if (trimmedEmail.length < 5 || !trimmedEmail.includes('@')) {
-      response.status(400).json({
+      const body: AuthErrorBody = {
         error: 'Please enter a valid email address',
-      });
+        code: 'VALIDATION_FAILED',
+        field: 'email',
+      };
+      response.status(400).json(body);
       return;
     }
 
     // Defense-in-Depth: Run server-side mirror verification
     // Early-Abort Rejection: If bot bypasses frontend controls, halt execution
-    // Recreated identical string complexity regex pattern lookup tool
     const complexityError = validatePasswordComplexity(trimmedPassword);
     if (complexityError) {
-      response.status(400).json({
-        error: 'Security validation failure: Input credentials parameters violate complexity guidelines.',
-      });
+      // The unmet rule is echoed verbatim — it is the caller's own input, so it
+      // reveals nothing, and a vague "complexity guidelines" string left the
+      // operator with no way to fix the password.
+      const body: AuthErrorBody = { error: complexityError, code: 'PASSWORD_WEAK', field: 'password' };
+      response.status(400).json(body);
       return;
     }
 
@@ -52,9 +66,7 @@ export async function handleSignup(
       // Check if user already exists
       const existingUser = await UserModel.findOne({ email: trimmedEmail });
       if (existingUser) {
-        response.status(409).json({
-          error: 'An account with this email already exists',
-        });
+        response.status(409).json(EMAIL_TAKEN);
         return;
       }
 
@@ -81,7 +93,7 @@ export async function handleSignup(
     } catch (dbError) {
       // Duplicate key from the unique email index races the existence check above.
       if ((dbError as { code?: number }).code === 11000) {
-        response.status(409).json({ error: 'An account with this email already exists' });
+        response.status(409).json(EMAIL_TAKEN);
         return;
       }
       next(dbError);

@@ -5,6 +5,15 @@ import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
+import type { AuthErrorBody } from '../../../../shared/types.js';
+
+// Unknown email, wrong token and expired token are indistinguishable to the
+// caller — any split would leak which reset links exist.
+const RESET_TOKEN_REJECTION: AuthErrorBody = {
+  error: 'Invalid or expired reset token',
+  code: 'RESET_TOKEN_INVALID',
+  field: 'token',
+};
 
 // Email transporter configuration
 // Using environment variables for SMTP settings
@@ -166,9 +175,8 @@ export async function handleForgotPassword(
     const sanitizedEmail = sanitizeString(email, 'email');
 
     if (!sanitizedEmail) {
-      response.status(400).json({
-        error: 'Email is required',
-      });
+      const body: AuthErrorBody = { error: 'Email is required', code: 'VALIDATION_FAILED', field: 'email' };
+      response.status(400).json(body);
       return;
     }
 
@@ -176,9 +184,12 @@ export async function handleForgotPassword(
 
     // Additional validation
     if (trimmedEmail.length < 5 || !trimmedEmail.includes('@')) {
-      response.status(400).json({
+      const body: AuthErrorBody = {
         error: 'Please enter a valid email address',
-      });
+        code: 'VALIDATION_FAILED',
+        field: 'email',
+      };
+      response.status(400).json(body);
       return;
     }
 
@@ -237,9 +248,18 @@ export async function handleResetPassword(
     const sanitizedPassword = sanitizeString(newPassword, 'newPassword');
 
     if (!sanitizedEmail || !sanitizedToken || !sanitizedPassword) {
-      response.status(400).json({
-        error: 'Email, token, and new password are required',
-      });
+      // A missing email/token means a mangled link, not a form mistake — route it
+      // to the link-expired copy instead of blaming the password field.
+      if (!sanitizedEmail || !sanitizedToken) {
+        response.status(400).json(RESET_TOKEN_REJECTION);
+        return;
+      }
+      const body: AuthErrorBody = {
+        error: 'A new password is required',
+        code: 'VALIDATION_FAILED',
+        field: 'password',
+      };
+      response.status(400).json(body);
       return;
     }
 
@@ -250,9 +270,8 @@ export async function handleResetPassword(
     // Validate password complexity
     const complexityError = validatePasswordComplexity(trimmedPassword);
     if (complexityError) {
-      response.status(400).json({
-        error: 'Security validation failure: New password does not meet complexity requirements.',
-      });
+      const body: AuthErrorBody = { error: complexityError, code: 'PASSWORD_WEAK', field: 'password' };
+      response.status(400).json(body);
       return;
     }
 
@@ -260,9 +279,7 @@ export async function handleResetPassword(
     const user = await UserModel.findOne({ email: trimmedEmail });
 
     if (!user) {
-      response.status(400).json({
-        error: 'Invalid or expired reset token',
-      });
+      response.status(400).json(RESET_TOKEN_REJECTION);
       return;
     }
 
@@ -276,9 +293,7 @@ export async function handleResetPassword(
       user.resetPasswordExpires < new Date()
     ) {
       console.warn(`[RESET PASSWORD] Invalid or expired token for: ${trimmedEmail}`);
-      response.status(400).json({
-        error: 'Invalid or expired reset token',
-      });
+      response.status(400).json(RESET_TOKEN_REJECTION);
       return;
     }
 

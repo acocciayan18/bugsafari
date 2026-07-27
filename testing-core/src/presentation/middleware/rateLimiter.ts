@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { AuthErrorBody } from '../../../../shared/types.js';
 
 // In-process sliding-window limiter. No external dep (project constraint) and no
 // always-on Redis requirement — budgets are therefore per API process. Running
@@ -54,10 +55,12 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
       const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
       console.warn(`[RATE LIMIT] ${name} tripped for ${clientIp(request)} (${bucket.hits.length}/${max})`);
       response.setHeader('Retry-After', String(retryAfterSec));
-      response.status(429).json({
+      const body: AuthErrorBody = {
         error: message ?? 'Too many requests. Please slow down and try again shortly.',
+        code: 'RATE_LIMITED',
         retryAfterSeconds: retryAfterSec,
-      });
+      };
+      response.status(429).json(body);
       return;
     }
 

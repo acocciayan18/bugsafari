@@ -25,7 +25,7 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
         <button
           onClick={onClose}
           aria-label="Close"
-          className="touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          className="touch-target flex h-8 w-8 shrink-0 items-center cursor-pointer  justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
         >
           <X className="h-5 w-5 shrink-0" aria-hidden="true" />
         </button>

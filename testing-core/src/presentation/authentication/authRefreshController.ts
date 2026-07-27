@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { rotateRefreshToken, revokeToken, type RotationFailure } from './refreshTokenService.js';
+import type { AuthErrorBody } from '../../../../shared/types.js';
 
 // A failed rotation always reads the same to the client — distinguishing "unknown
 // token" from "replayed token" would tell an attacker which of their values landed.
@@ -25,10 +26,11 @@ export async function handleTokenRefresh(
 
     if (!result.ok) {
       console.warn(`[Auth] Refresh rejected: ${result.reason}`);
-      response.status(statusFor(result.reason)).json({
+      const body: AuthErrorBody = {
         error: GENERIC_FAILURE,
         code: result.reason === 'REUSE_DETECTED' ? 'SESSION_REVOKED' : 'REFRESH_INVALID',
-      });
+      };
+      response.status(statusFor(result.reason)).json(body);
       return;
     }
 

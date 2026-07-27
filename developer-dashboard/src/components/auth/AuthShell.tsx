@@ -2,16 +2,10 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Home } from 'lucide-react';
 
-type StatusTone = 'idle' | 'busy' | 'error' | 'success';
-
-
-
 interface AuthShellProps {
   eyebrow: string;
   title: string;
   subtitle?: string;
-  statusLabel?: string;
-  statusTone?: StatusTone;
   maxWidth?: string;
   children: ReactNode;
   footer?: ReactNode;

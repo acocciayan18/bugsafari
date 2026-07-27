@@ -93,7 +93,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
         </h3>
         <button
           onClick={resetAndClose}
-          className="touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="touch-target flex h-8 w-8 shrink-0 items-center cursor-pointer  justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           aria-label="Close"
         >
           <X className="h-5 w-5 shrink-0" aria-hidden="true" />

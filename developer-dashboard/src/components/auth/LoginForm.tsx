@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { AlertCircle,  User, Lock, Eye, EyeOff, } from 'lucide-react';
+import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
+import AuthAlert from './AuthAlert';
 import GuestModeModal from './GuestModeModal';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
@@ -36,6 +37,12 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
     setAuthNavigate(navigate);
   }, [navigate, setAuthNavigate]);
 
+  // authError is one shared store field, so a failure left behind by /signup would
+  // still be mounted here. Each auth screen starts from a clean slate.
+  useEffect(() => {
+    clearAuthError();
+  }, [clearAuthError]);
+
   // Guest mode must be enabled through the context (React state + storage flag)
   // before navigating — navigating alone leaves the guards seeing a dead session.
   const confirmGuestAccess = () => {
@@ -47,6 +54,10 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
   const emailError = (touchedEmail || submitted) && !email.trim() ? 'Email is required.' : '';
   const passwordError = (touchedPassword || submitted) && !password ? 'Password is required.' : '';
+
+  // Wrong credentials are not attributable to one field, so both are marked —
+  // and the wording lives once, in the alert.
+  const credentialsRejected = authError?.code === 'INVALID_CREDENTIALS';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -106,13 +117,14 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                 ref={emailRef}
                 id="email"
                 label="Email"
-                type="text"
+                type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); if (authError) clearAuthError(); }}
                 onBlur={() => setTouchedEmail(true)}
                 placeholder="example@email.com"
-                className="pl-10 "
+                className="pl-10 w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base  text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0"
                 error={emailError || undefined}
+                invalid={credentialsRejected || authError?.field === 'email'}
                 required
               />
             </div>
@@ -129,12 +141,12 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); if (authError) clearAuthError(); }}
                   onBlur={() => setTouchedPassword(true)}
                   placeholder="••••••••"
-                  aria-invalid={!!passwordError}
+                  aria-invalid={!!passwordError || credentialsRejected || authError?.field === 'password'}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || credentialsRejected || authError?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   required
                 />
                 <button
@@ -151,12 +163,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
            
 
-            {authError && (
-              <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-[13px] text-(--status-critical-fg)" role="alert">{authError}</p>
-              </div>
-            )}
+            <AuthAlert feedback={authError} />
 
             <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}

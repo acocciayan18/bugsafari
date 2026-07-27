@@ -1,17 +1,16 @@
 import { useState, useRef, type FormEvent } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CircleX, Eye, EyeOff, Lock, AlertCircle } from 'lucide-react';
-import { toast } from '../../infrastructure/notifications/ToastProvider';
+import { ArrowLeft, CircleX, Eye, EyeOff, Lock } from 'lucide-react';
+import { AUTH_SUCCESS, authSuccessToast } from '../../infrastructure/notifications/authToasts';
+import { buildFeedback, postAuth, type AuthFeedback } from '../../utils/authFeedback';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
+import AuthAlert from './AuthAlert';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
-
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
 
 interface ResetPasswordResponse {
   ok?: boolean;
   message?: string;
-  error?: string;
 }
 
 export default function ResetPasswordForm() {
@@ -25,7 +24,7 @@ export default function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [serverError, setServerError] = useState('');
+  const [feedback, setFeedback] = useState<AuthFeedback | null>(null);
   const [touchedPassword, setTouchedPassword] = useState(false);
   const [touchedConfirm, setTouchedConfirm] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -39,8 +38,6 @@ export default function ResetPasswordForm() {
       <AuthShell
         eyebrow="TOKEN REJECTED"
         title="Invalid reset link"
-        statusLabel="LINK EXPIRED"
-        statusTone="error"
       >
         <div className="text-center">
           <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
@@ -79,7 +76,7 @@ export default function ResetPasswordForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    setServerError('');
+    setFeedback(null);
 
     if (!passwordValid) {
       passwordRef.current?.focus();
@@ -91,37 +88,29 @@ export default function ResetPasswordForm() {
     }
 
     setIsLoading(true);
+    const result = await postAuth<ResetPasswordResponse>('/api/auth/reset-password', {
+      email: emailParam,
+      token,
+      newPassword: password,
+    });
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: emailParam,
-          token: token,
-          newPassword: password,
-        }),
-      });
-
-      const data: ResetPasswordResponse = await response.json();
-
-      if (response.ok && data.ok) {
-        toast.success('Password reset successfully!');
-        // Redirect to login after short delay
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      } else {
-        const errorMessage = data.error ?? 'Failed to reset password. Please request a new reset link.';
-        setServerError(errorMessage);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
-      setServerError(errorMessage);
-      console.error('[ResetPassword] Error:', error);
-    } finally {
+    if (!result.ok) {
       setIsLoading(false);
+      setFeedback(result.feedback);
+      return;
     }
+
+    if (!result.data.ok) {
+      setIsLoading(false);
+      console.error('[ResetPassword] 200 response without an ok flag:', result.data);
+      setFeedback(buildFeedback('UNEXPECTED_RESPONSE'));
+      return;
+    }
+
+    // Stay disabled through the bounce — the password is already rotated, so a
+    // second submit would only fail against a now-consumed token.
+    authSuccessToast(AUTH_SUCCESS.passwordReset);
+    setTimeout(() => navigate('/login'), 2000);
   };
 
   return (
@@ -129,8 +118,6 @@ export default function ResetPasswordForm() {
       eyebrow="CREDENTIAL RESET"
       title="Reset password"
       subtitle="Enter your new password below."
-      statusLabel={isLoading ? 'REWRITING' : serverError ? 'REJECTED' : 'AWAITING INPUT'}
-      statusTone={isLoading ? 'busy' : serverError ? 'error' : 'idle'}
     >
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Password Field */}
@@ -147,11 +134,11 @@ export default function ResetPasswordForm() {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); if (feedback) setFeedback(null); }}
                   onBlur={() => setTouchedPassword(true)}
-                  aria-invalid={!!passwordError}
+                  aria-invalid={!!passwordError || feedback?.field === 'password'}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || feedback?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -204,13 +191,7 @@ export default function ResetPasswordForm() {
             {/* Password Requirements */}
             <PasswordRequirements password={password} />
 
-            {/* Server Error */}
-            {serverError && (
-              <div className="flex items-start gap-2 p-3 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-(--radius-sm)">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-                <p className="text-[13px] text-(--status-critical-fg)" role="alert">{serverError}</p>
-              </div>
-            )}
+            <AuthAlert feedback={feedback} />
 
             {/* Submit Button */}
             <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>

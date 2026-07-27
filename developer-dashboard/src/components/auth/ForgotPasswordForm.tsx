@@ -1,24 +1,23 @@
 import { useState, useRef, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Check, Mail, AlertCircle } from 'lucide-react';
-import { toast } from '../../infrastructure/notifications/ToastProvider';
+import { ArrowLeft, Check, Mail } from 'lucide-react';
+import { AUTH_SUCCESS, authSuccessToast } from '../../infrastructure/notifications/authToasts';
+import { buildFeedback, postAuth, type AuthFeedback } from '../../utils/authFeedback';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import AuthShell from './AuthShell';
-
-const API_BASE_URL = import.meta.env.VITE_BUGSAFARI_API_URL ?? 'http://localhost:3000';
+import AuthAlert from './AuthAlert';
 
 interface ForgotPasswordResponse {
   ok?: boolean;
   message?: string;
-  error?: string;
 }
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [serverError, setServerError] = useState('');
+  const [feedback, setFeedback] = useState<AuthFeedback | null>(null);
   const [touched, setTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -33,7 +32,7 @@ export default function ForgotPasswordForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    setServerError('');
+    setFeedback(null);
 
     if (!emailFormatValid) {
       emailRef.current?.focus();
@@ -41,30 +40,24 @@ export default function ForgotPasswordForm() {
     }
 
     setIsLoading(true);
+    const result = await postAuth<ForgotPasswordResponse>('/api/auth/forgot-password', { email: email.trim() });
+    setIsLoading(false);
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-
-      const data: ForgotPasswordResponse = await response.json();
-
-      if (response.ok && data.ok) {
-        setEmailSent(true);
-        toast.success('Password reset link sent! Check server console for the reset link.');
-      } else {
-        const errorMessage = data.error ?? 'Failed to send reset link. Please try again.';
-        setServerError(errorMessage);
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unable to connect to server. Please try again.';
-      setServerError(errorMessage);
-      console.error('[ForgotPassword] Error:', error);
-    } finally {
-      setIsLoading(false);
+    if (!result.ok) {
+      setFeedback(result.feedback);
+      return;
     }
+
+    // The route answers 200 for unknown emails too (anti-enumeration) — `ok`
+    // missing therefore means a malformed payload, not a rejected address.
+    if (!result.data.ok) {
+      console.error('[ForgotPassword] 200 response without an ok flag:', result.data);
+      setFeedback(buildFeedback('UNEXPECTED_RESPONSE'));
+      return;
+    }
+
+    setEmailSent(true);
+    authSuccessToast(AUTH_SUCCESS.resetLinkSent);
   };
 
   // Show success message after email is sent
@@ -73,8 +66,6 @@ export default function ForgotPasswordForm() {
       <AuthShell
         eyebrow="RECOVERY DISPATCHED"
         title="Check your inbox"
-        statusLabel="LINK SENT"
-        statusTone="success"
       >
         <div className="text-center">
           <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-4">
@@ -84,7 +75,7 @@ export default function ForgotPasswordForm() {
             If an account exists with that email, a password reset link has been sent.
           </p>
           <p className="text-[13px] text-(--text-tertiary) mb-6">
-            In development, check the server console for the reset link.
+            The link expires in 1 hour. Check your spam folder if it hasn't arrived.
           </p>
           <Link
             to="/login"
@@ -103,8 +94,6 @@ export default function ForgotPasswordForm() {
       eyebrow="PASSWORD RECOVERY"
       title="Forgot password?"
       subtitle="Enter your email and we'll send you a link to reset your password."
-      statusLabel={isLoading ? 'DISPATCHING' : serverError ? 'REQUEST FAILED' : 'AWAITING INPUT'}
-      statusTone={isLoading ? 'busy' : serverError ? 'error' : 'idle'}
     >
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
         {/* Email Field */}
@@ -118,22 +107,17 @@ export default function ForgotPasswordForm() {
             label="Email Address"
             type="email"
             value={email}
-            onChange={(e) => { setEmail(e.target.value); if (serverError) setServerError(''); }}
+            onChange={(e) => { setEmail(e.target.value); if (feedback) setFeedback(null); }}
             onBlur={() => setTouched(true)}
             className="pl-10"
             placeholder="Enter your email"
             error={emailFieldError || undefined}
+            invalid={feedback?.field === 'email'}
             required
           />
         </div>
 
-        {/* Server Error */}
-        {serverError && (
-          <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-            <p className="text-[13px] text-(--status-critical-fg)" role="alert">{serverError}</p>
-          </div>
-        )}
+        <AuthAlert feedback={feedback} />
 
         {/* Submit Button */}
         <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>

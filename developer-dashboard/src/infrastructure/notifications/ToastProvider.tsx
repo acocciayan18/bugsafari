@@ -18,6 +18,9 @@ export interface ToastOptions {
   variant?: ToastVariant;
   message: string;
   duration?: number;
+  // Opt-in leading glyph. Telemetry toasts stay icon-less by design; only
+  // surfaces that need a severity cue at a glance (auth) pass one.
+  icon?: ReactNode;
   // Fired whichever way the toast goes away (✕, swipe, timeout) so callers can
   // release the id they are holding.
   onDismiss?: () => void;
@@ -38,14 +41,16 @@ export interface ToastContextValue {
 
 interface CustomToastProps {
   message: string;
+  icon?: ReactNode;
   onClose: () => void;
 }
 
 // The sonner wrapper already carries `.toast-custom` from TOAST_OPTIONS — rendering
 // another shell here would nest a second border inside it.
-function CustomToast({ message, onClose }: CustomToastProps) {
+function CustomToast({ message, icon, onClose }: CustomToastProps) {
   return (
     <div className="flex items-center justify-between w-full gap-3">
+      {icon && <span className="shrink-0 flex items-center" aria-hidden="true">{icon}</span>}
       <div className="toast-content flex-1 min-w-0">
         <span className="toast-message break-words">{message}</span>
       </div>
@@ -70,6 +75,7 @@ interface RenderToastOptions {
   variant?: ToastVariant;
   duration?: number;
   id?: string | number;
+  icon?: ReactNode;
   onDismiss?: () => void;
 }
 
@@ -81,7 +87,7 @@ let activeSlotMessage: string | null = null;
 // new call replaces the old one in place — never a second stacked toast, and never
 // a stale render bleeding through (the failure of mixing custom + title paths).
 function renderToast(options: RenderToastOptions): string | undefined {
-  const { message, variant = 'telemetry', onDismiss } = options;
+  const { message, variant = 'telemetry', icon, onDismiss } = options;
   // Generic network errors get their own slot + tint so they read as distinct from
   // run-status telemetry and never clobber (or get clobbered by) the shared slot.
   const targetId = options.id ?? (variant === 'network' ? NETWORK_TOAST_ID : TOAST_ID);
@@ -100,7 +106,7 @@ function renderToast(options: RenderToastOptions): string | undefined {
   // sonner hands the render callback the toast id, not a close handler — the ✕
   // must dismiss by that id.
   const toastId = sonnerToast.custom(
-    (id) => <CustomToast message={message} onClose={() => sonnerToast.dismiss(id)} />,
+    (id) => <CustomToast message={message} icon={icon} onClose={() => sonnerToast.dismiss(id)} />,
     { id: targetId, duration, onDismiss: releaseSlot, onAutoClose: releaseSlot, unstyled: true, className: variant === 'network' ? 'toast-custom toast-network' : 'toast-custom' },
   );
 
@@ -222,7 +228,7 @@ export function ToastProvider({ children, toasterProps }: ToastProviderProps) {
 // toast.success and a component's toast.error never stack or fight over the id.
 // Callers may still pass an explicit `id`/`duration` in `data` (e.g. run status).
 const emit = (message: string, variant: ToastVariant, data?: ExternalToast) =>
-  renderToast({ message, variant, id: data?.id, duration: data?.duration, onDismiss: data?.onDismiss as (() => void) | undefined });
+  renderToast({ message, variant, id: data?.id, duration: data?.duration, icon: data?.icon, onDismiss: data?.onDismiss as (() => void) | undefined });
 
 export const toast = Object.assign(
   (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),

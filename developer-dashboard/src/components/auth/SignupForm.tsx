@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
+import AuthAlert from './AuthAlert';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
@@ -33,13 +34,19 @@ export default function SignupForm() {
   const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
-  const { signup, isLoading, emailError, authError, clearEmailError, clearAuthError, setNavigate: setAuthNavigate } = useAuth();
+  const { signup, isLoading, authError, clearAuthError, setNavigate: setAuthNavigate } = useAuth();
 
   useEffect(() => {
     if (setAuthNavigate) {
       setAuthNavigate(navigate);
     }
   }, [navigate, setAuthNavigate]);
+
+  // authError is one shared store field, so a failure left behind by /login would
+  // still be mounted here. Each auth screen starts from a clean slate.
+  useEffect(() => {
+    clearAuthError();
+  }, [clearAuthError]);
 
   const markTouched = (field: keyof TouchedState) => () => setTouched((t) => ({ ...t, [field]: true }));
 
@@ -52,7 +59,6 @@ export default function SignupForm() {
     : (touched.email || submitted) && email.trim().length === 0
     ? 'Email is required.'
     : '';
-  const emailErrorMessage = emailError || showEmailError;
 
   const showPasswordError = (touched.password || submitted) && password.length > 0 && !passwordValid
     ? 'Password does not meet all requirements below.'
@@ -73,7 +79,6 @@ export default function SignupForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    if (clearEmailError) clearEmailError();
     if (clearAuthError) clearAuthError();
 
     if (!emailFormatValid) {
@@ -105,8 +110,6 @@ export default function SignupForm() {
       eyebrow="NEW USER REGISTRATION"
       title="Create account"
       subtitle="Register credentials to start streaming evaluation safaris."
-      statusLabel={isLoading ? 'PROVISIONING' : authError || emailError ? 'REGISTRATION FAILED' : 'AWAITING INPUT'}
-      statusTone={isLoading ? 'busy' : authError || emailError ? 'error' : 'idle'}
       footer={
         <>
           <div className="mt-5 text-center text-[13px] text-(--text-primary)">
@@ -128,14 +131,15 @@ export default function SignupForm() {
             label="Email"
             type="email"
             value={email}
-            onChange={(e) => { 
-              setEmail(e.target.value); 
-              if (emailError && clearEmailError) clearEmailError(); 
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (authError) clearAuthError();
             }}
             onBlur={markTouched('email')}
             placeholder="example@email.com"
             className="pl-10 font-(--font-sans)"
-            error={emailErrorMessage || undefined}
+            error={showEmailError || undefined}
+            invalid={authError?.field === 'email'}
             required
           />
         </div>
@@ -150,11 +154,12 @@ export default function SignupForm() {
             label="Password"
             type={showPassword ? 'text' : 'password'}
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => { setPassword(e.target.value); if (authError) clearAuthError(); }}
             onBlur={markTouched('password')}
             placeholder="••••••••"
             className="pl-10 pr-10"
             error={showPasswordError || undefined}
+            invalid={authError?.field === 'password'}
             required
           />
           <button
@@ -229,12 +234,7 @@ export default function SignupForm() {
           )}
         </div>
 
-        {(authError || emailError) && (
-          <div className="flex items-start gap-2 rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-3 py-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
-            <p className="text-[13px] text-(--status-critical-fg)" role="alert">{authError || emailError}</p>
-          </div>
-        )}
+        <AuthAlert feedback={authError} />
 
         <Button
           type="submit"
