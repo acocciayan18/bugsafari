@@ -155,6 +155,10 @@ export interface StabilityMonitorDeps {
   breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[];
   persistForensicError(params: ForensicErrorParams): void;
   registerConfirmedBug(bug: ConfirmedBug): void;
+  /** Upgrade an already-registered finding's culprit selector when a later, better-attributed
+   *  sighting arrives (the first sighting was off-target collateral with no selector). No-op
+   *  unless the stored finding currently has an empty selector. */
+  upgradeFindingCulprit(bugId: string, selector: string): void;
   /** Freeze action-trace recording at the moment of a crash. */
   setFreeze(): void;
   /** Last navigated URL captured by the engine's framenavigated handler. */

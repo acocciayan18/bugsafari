@@ -16,7 +16,7 @@
 // headless sessions or grow memory without limit.
 
 import type { Browser, BrowserContext } from 'playwright';
-import type { ActionRecord, RegressionSignal, StateFingerprint } from '../../../../../shared/types.js';
+import type { ActionRecord, FaultSeverity, RegressionSignal, StateFingerprint } from '../../../../../shared/types.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { buildActionSteps } from '../forensics/actionStepMapper.js';
 import { runReplaySession } from '../regression/ReplaySession.js';
@@ -27,6 +27,37 @@ const MAX_QUEUED = 12;
 // A replay that has not settled by now is wedged; abandon it so the queue drains.
 const PROBE_TIMEOUT_MS = 45_000;
 
+// Severity ordering for backpressure. Under a fault storm the queue is the scarce
+// resource, so it must serve the findings a developer cares about first: a CRITICAL
+// evicts a queued LOW rather than being tail-dropped behind it, and draining picks the
+// highest severity next (FIFO within a severity so per-severity causal order holds).
+const SEVERITY_RANK: Record<FaultSeverity, number> = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+const rankOf = (s: FaultSeverity): number => SEVERITY_RANK[s] ?? SEVERITY_RANK.MEDIUM;
+
+/** Index of the highest-severity item (earliest among ties), or -1 when empty. Pure. */
+export function highestSeverityIndex(queue: readonly { severity: FaultSeverity }[]): number {
+  let best = -1;
+  for (let i = 0; i < queue.length; i++) {
+    if (best === -1 || rankOf(queue[i].severity) > rankOf(queue[best].severity)) best = i;
+  }
+  return best;
+}
+
+/** Index of the lowest-severity item (earliest among ties), or -1 when empty. Pure. */
+export function lowestSeverityIndex(queue: readonly { severity: FaultSeverity }[]): number {
+  let worst = -1;
+  for (let i = 0; i < queue.length; i++) {
+    if (worst === -1 || rankOf(queue[i].severity) < rankOf(queue[worst].severity)) worst = i;
+  }
+  return worst;
+}
+
+/** True when `incoming` should displace the current lowest-severity item in a full queue. Pure. */
+export function shouldEvictFor(queue: readonly { severity: FaultSeverity }[], incoming: FaultSeverity): boolean {
+  const victim = lowestSeverityIndex(queue);
+  return victim >= 0 && rankOf(incoming) > rankOf(queue[victim].severity);
+}
+
 export interface ReproductionRequest {
   bugId: string;
   targetUrl: string;
@@ -34,6 +65,8 @@ export interface ReproductionRequest {
   actions: ActionRecord[];
   bugClass: string;
   faultType: FaultType;
+  /** Finding severity — drives queue admission/eviction and drain order under load. */
+  severity: FaultSeverity;
   /** Original fault message — corroborates same-class matches during replay. */
   originalMessage?: string;
   /** Scenario active at fault time, threaded into replay classification. */
@@ -72,12 +105,26 @@ export class ReproductionProbe {
     if (request.actions.length === 0) return;
 
     if (this.queue.length >= MAX_QUEUED) {
-      console.warn(`[ReproductionProbe] queue full (${MAX_QUEUED}) — skipping repro for ${request.bugId}`);
-      return;
+      // Severity-aware shedding: evict the lowest-severity queued finding when this one
+      // outranks it, so a CRITICAL is never tail-dropped behind a queue full of LOWs.
+      // Only when nothing queued is less important do we drop the newcomer.
+      if (shouldEvictFor(this.queue, request.severity)) {
+        const [victim] = this.queue.splice(lowestSeverityIndex(this.queue), 1);
+        console.warn(`[ReproductionProbe] queue full — evicting ${victim.severity} ${victim.bugId} for ${request.severity} ${request.bugId}`);
+      } else {
+        console.warn(`[ReproductionProbe] queue full (${MAX_QUEUED}) — skipping ${request.severity} repro for ${request.bugId}`);
+        return;
+      }
     }
     this.seen.add(request.bugId);
     this.queue.push(request);
     void this.drain();
+  }
+
+  /** Remove and return the highest-severity queued request (earliest among ties). */
+  private takeNext(): ReproductionRequest | undefined {
+    const best = highestSeverityIndex(this.queue);
+    return best === -1 ? undefined : this.queue.splice(best, 1)[0];
   }
 
   /** Await the in-flight replay and the queued backlog. Called at run teardown. */
@@ -101,7 +148,7 @@ export class ReproductionProbe {
 
   private async drainLoop(): Promise<void> {
     while (!this.disposed) {
-      const request = this.queue.shift();
+      const request = this.takeNext();
       if (!request) return;
       const outcome = await this.probe(request);
       if (outcome && !this.disposed) {

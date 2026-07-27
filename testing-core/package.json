@@ -14,6 +14,7 @@
     "test": "node scripts/run-tests.mjs",
     "bench": "tsx scripts/accuracy-bench.ts",
     "bench:e2e": "tsx scripts/e2e-bench.ts",
+    "bench:e2e:deep": "tsx scripts/e2e-bench-deep.ts",
     "db:sync-indexes": "tsx scripts/sync-indexes.ts",
     "db:migrate:log-timestamps": "tsx scripts/migrate-log-timestamps.ts",
     "db:purge:network-successes": "tsx scripts/purge-network-successes.ts",

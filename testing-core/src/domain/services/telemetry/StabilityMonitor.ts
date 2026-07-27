@@ -471,6 +471,10 @@ export class StabilityMonitor {
     // Collapse: a repeat of an already-reported signature never re-registers a bug.
     // Surface it as a throttled informational note so the recurrence stays visible.
     if (!isNew) {
+      // If the first sighting was off-target collateral (no selector), let this better-
+      // attributed recurrence name the culprit the dedup would otherwise keep blank.
+      const culprit = this.culpritSelectorAt(faultAtMs);
+      if (culprit) this.deps.upgradeFindingCulprit(finding.bugId, culprit);
       if (finding.occurrence === 2 || finding.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'runtime-fault-recurred',
@@ -1133,6 +1137,9 @@ export class StabilityMonitor {
     const occurrence = (priorOccurrence ?? 0) + 1;
     this.reportedNetworkFaults.set(bugId, occurrence);
     if (priorOccurrence !== undefined) {
+      // A later, better-attributed sighting can fill a culprit the first (off-target
+      // collateral) sighting left empty — first-wins dedup otherwise locks in the blank.
+      if (evidence.culpritSelector) this.deps.upgradeFindingCulprit(bugId, evidence.culpritSelector);
       if (occurrence === 2 || occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'network-fault-recurred',

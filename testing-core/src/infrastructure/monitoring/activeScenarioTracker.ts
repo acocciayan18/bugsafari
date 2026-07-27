@@ -130,14 +130,23 @@ export class ActiveScenarioTracker {
   }
 
   /**
-   * True when `atMs` falls inside the most recent off-target span (open, or closed
-   * within `graceMs` ago). A fault at that instant was triggered by a click on a
-   * control other than the acted element, so it cannot be attributed to it — decided
-   * by fault TIME so an async report after the window closed is still vetoed correctly.
+   * Should a fault at `atMs`, otherwise attributable to an element acted at
+   * `actedAtMs`, be DECLINED because it is causally inside a blind off-target span?
+   *
+   * True only when: the fault time is at/after the span opened, AND the candidate
+   * element did NOT supersede the span — i.e. it was acted during or before the span,
+   * not as a fresh action after the span closed. This keeps blind coordinate/sibling
+   * collateral from being pinned to the nominal target, while letting a genuine click
+   * that happened AFTER the span (whose own fault merely lands within 2s of the close)
+   * attribute normally. Decided by TIME so an async report after close still resolves.
    */
-  public static wasOffTargetScenarioAt(atMs: number, graceMs: number): boolean {
-    if (ActiveScenarioTracker.offTargetOpenedAtMs <= 0 || atMs < ActiveScenarioTracker.offTargetOpenedAtMs) return false;
-    return ActiveScenarioTracker.offTargetClosedAtMs === undefined || atMs <= ActiveScenarioTracker.offTargetClosedAtMs + graceMs;
+  public static offTargetVetoes(atMs: number, actedAtMs: number): boolean {
+    const opened = ActiveScenarioTracker.offTargetOpenedAtMs;
+    if (opened <= 0 || atMs < opened) return false;
+    const closed = ActiveScenarioTracker.offTargetClosedAtMs;
+    // A fresh action noted after the span closed supersedes it — trust that element.
+    if (closed !== undefined && actedAtMs > closed) return false;
+    return true;
   }
 
   /**

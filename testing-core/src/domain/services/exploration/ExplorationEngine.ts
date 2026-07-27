@@ -86,6 +86,9 @@ const BUG_FINDER_BUDGET = 25;
 // not train the model on the acting element.
 const NETWORK_ATTRIBUTION_WINDOW_MS = 2000;
 const MAX_NETWORK_REWARDS_PER_ACTION = 3;
+// Depth of the acted-element history for time-keyed fault attribution. A fault's causal
+// window is 2s, so a handful of recent actions is ample; bounded so it never grows.
+const ACTED_HISTORY_CAP = 32;
 // Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
 const FORENSIC_FLUSH_THRESHOLD = 50;
 
@@ -140,6 +143,11 @@ export class ExplorationEngine {
   // Element most recently acted on — lets async signals (network xhr/fetch,
   // confirmed faults) attribute compound learning rewards to the right element.
   private lastActedTarget: InteractiveElement | null = null;
+  // Time-ordered history of recently acted elements. A network/runtime fault reports
+  // asynchronously and carries its causal (request-START / fault) time; resolving that
+  // against a single "latest" slot misattributes to whatever was clicked since. Look up
+  // by fault time so a slow request settles onto the element that actually fired it.
+  private readonly actedHistory: Array<{ target: InteractiveElement; actedAtMs: number }> = [];
   /** Set once the run authenticates into the target — guards against self-logout. */
   private authenticatedRun = false;
   // Timestamp + counter bounding causal network-signal attribution to the current action.
@@ -405,6 +413,20 @@ export class ExplorationEngine {
     }
   }
 
+  /**
+   * Upgrade a registered finding's culprit selector when a later sighting names the
+   * control the first (off-target collateral) sighting could not. First-wins dedup
+   * otherwise locks in the empty selector forever — this lets a correctly-attributed
+   * recurrence fill it, without disturbing a selector that is already set.
+   */
+  public upgradeFindingCulprit(bugId: string, selector: string): void {
+    if (!selector) return;
+    const index = this.confirmedBugsMemory.findIndex((b) => b.bugId === bugId);
+    if (index >= 0 && !this.confirmedBugsMemory[index].selector) {
+      this.confirmedBugsMemory[index] = { ...this.confirmedBugsMemory[index], selector };
+    }
+  }
+
   /** Queue a newly registered finding for one deterministic replay. */
   private enqueueReproduction(bug: ConfirmedBug): void {
     const bugClass = bug.attribution?.bugClass;
@@ -416,6 +438,7 @@ export class ExplorationEngine {
       actions: bug.reproductionActions ?? [],
       bugClass,
       faultType: normalizeFaultType(bug.type),
+      severity: bug.severity ?? 'MEDIUM',
       originalMessage: bug.message,
       scenario: bug.attribution?.scenario,
       stateFingerprint: bug.stateFingerprint,
@@ -778,6 +801,7 @@ export class ExplorationEngine {
       breadcrumbsToActionRecords: (b) => this.breadcrumbsToActionRecords(b),
       persistForensicError: (params) => this.bufferForensicError(params),
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
+      upgradeFindingCulprit: (bugId, selector) => this.upgradeFindingCulprit(bugId, selector),
       setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
@@ -855,6 +879,7 @@ export class ExplorationEngine {
     // StateGraphNavigator handles its own state management - no clear() needed
     await this.persistBrainSnapshot('start');
     this.lastActedTarget = null;
+    this.actedHistory.length = 0;
 
     // Session-preservation restore coordinator — inert unless the run authenticated
     // AND a restore callback was injected (guest/unauth runs pass none).
@@ -1159,7 +1184,14 @@ export class ExplorationEngine {
         // 404 from a previous page can never be attributed to a fresh render.
         getMainFrameStatus: (routePath) =>
           lastMainFrameStatus && lastMainFrameStatus.path === routePath ? lastMainFrameStatus.status : null,
-        noteActedTarget: (t) => { this.lastActedTarget = t; this.lastActedAtMs = Date.now(); this.networkRewardsThisAction = 0; },
+        noteActedTarget: (t) => {
+          const now = Date.now();
+          this.lastActedTarget = t;
+          this.lastActedAtMs = now;
+          this.networkRewardsThisAction = 0;
+          this.actedHistory.push({ target: t, actedAtMs: now });
+          if (this.actedHistory.length > ACTED_HISTORY_CAP) this.actedHistory.shift();
+        },
         getTargetOrigin: () => this.targetOrigin,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => this.freezeRecording(),
@@ -1307,20 +1339,26 @@ export class ExplorationEngine {
   // causal window used for network reward attribution — outside it, background SPA chatter
   // would be misattributed to an unrelated element.
   private interactionContextAt(atMs: number): InteractionContext | null {
-    const target = this.lastActedTarget;
-    if (!target || this.lastActedAtMs <= 0) return null;
-    // An off-target scenario (coordinate bombing / sibling concurrent clicks) drives
-    // controls other than the acted element, so a fault at that instant belongs to no
-    // single acted element — decline rather than misattribute. Time-based so an async
-    // report after the window closed is still vetoed.
-    if (ActiveScenarioTracker.wasOffTargetScenarioAt(atMs, NETWORK_ATTRIBUTION_WINDOW_MS)) return null;
-    const sinceActionMs = atMs - this.lastActedAtMs;
-    if (sinceActionMs < 0 || sinceActionMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
-    return {
-      selector: target.selector,
-      label: resolveElementLabel(target),
-      actedAtMs: this.lastActedAtMs,
-    };
+    // Resolve the element actually being actuated AT the fault's instant: the newest
+    // history entry acted at or before atMs and still inside the causal window. Scanning
+    // the history (not just the latest slot) recovers a slow request's true culprit when
+    // a later action has since replaced the "latest" pointer (async-lag attribution).
+    for (let i = this.actedHistory.length - 1; i >= 0; i--) {
+      const entry = this.actedHistory[i];
+      if (entry.actedAtMs > atMs) continue;
+      if (atMs - entry.actedAtMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
+      // Off-target scenarios (coordinate bombing / sibling concurrent clicks) drive
+      // controls OTHER than this entry. Decline only when the fault is causally inside
+      // such a span AND this entry did not supersede it (i.e. was acted during/before the
+      // span, not as a fresh action after it) — so a genuine post-span click still attributes.
+      if (ActiveScenarioTracker.offTargetVetoes(atMs, entry.actedAtMs)) return null;
+      return {
+        selector: entry.target.selector,
+        label: resolveElementLabel(entry.target),
+        actedAtMs: entry.actedAtMs,
+      };
+    }
+    return null;
   }
 
   // Records an executed action into the in-memory breadcrumb + reproduction buffers only.

@@ -31,12 +31,27 @@ check('NoSQL error body during DataFuzzer → NOSQL_INJECTION', () => {
   assert.equal(c.stepIndex, 3);
 });
 
-check('Reflected XSS during DataFuzzer → FUZZ_VULNERABILITY_LEAK / CRITICAL', () => {
+check('Unconfirmed client XSS-content under DataFuzzer is NOT auto-promoted to a security verdict', () => {
+  // Tag presence alone (an unconfirmed <script> in a console message) must not label a
+  // client fault FUZZ_VULNERABILITY_LEAK — that is the deprecated heuristic the reflection
+  // oracle replaced, and it mislabelled plain runtime crashes (whose stack trips XSS/leak
+  // patterns) as injection leaks. A client-fault security verdict now requires confirmation.
   const c = classifyFault({
     faultType: 'CONSOLE',
     message: 'reflected value',
     content: '<script>alert(1)</script>',
     scenario: 'DataFuzzer',
+  });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+});
+
+check('Oracle-CONFIRMED reflected XSS during DataFuzzer → FUZZ_VULNERABILITY_LEAK / CRITICAL', () => {
+  const c = classifyFault({
+    faultType: 'CONSOLE',
+    message: 'reflected value',
+    content: '<script>alert(1)</script>',
+    scenario: 'DataFuzzer',
+    confirmed: true,
   });
   assert.equal(c.bugClass, 'FUZZ_VULNERABILITY_LEAK');
   assert.equal(c.severity, 'CRITICAL');

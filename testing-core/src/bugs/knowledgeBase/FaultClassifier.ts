@@ -129,6 +129,20 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
   QUERY_MUTATION: ['ROUTE_MUTATION_FAILURE'],
 };
 
+// Client-render signal categories: a JavaScript crash / module-resolution failure
+// in the PAGE. A NETWORK response fault must never be classified from these — a 5xx
+// body routinely echoes a server-side JS stack ("Cannot read properties of undefined
+// … at /srv/app/x.js"), which otherwise mislabels the backend failure a client crash.
+const CLIENT_RENDER_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['CLIENT_CRASH', 'COMPONENT_FAIL']);
+
+// Injection/leak signal categories — evidence of a SECURITY defect. They are only
+// trustworthy against a network RESPONSE (leaked body, reflected DOM). A client
+// exception's own stack trace routinely trips INFO_LEAK (`at fn (url:line:col)`) and
+// XSS_REFLECTION, which — under a security scenario's expectation bias — mislabels a
+// plain runtime crash a FUZZ/injection leak. So for a client fault they count only when
+// an oracle positively CONFIRMED the injection (mirrors the CLIENT_RENDER guard above).
+const SECURITY_SIGNAL_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['XSS_REFLECTION', 'NOSQL_ERROR', 'INFO_LEAK']);
+
 /** Deterministic priority order in which matched categories are considered. */
 const CATEGORY_PRIORITY: SignalCategory[] = [
   'NOSQL_ERROR',
@@ -161,6 +175,13 @@ function matchedCategories(input: FaultInput): SignalCategory[] {
   const text = [input.message, input.content].filter(Boolean).join('\n');
 
   return CATEGORY_PRIORITY.filter((category) => {
+    // A network-response fault cannot be a client-render crash — its body merely
+    // echoed one. Skip the client-render categories so the server/leak/boundary
+    // verdict wins instead of a spurious RUNTIME_STABILITY_EXCEPTION.
+    if (input.faultType === 'NETWORK' && CLIENT_RENDER_CATEGORIES.has(category)) return false;
+    // A client fault's own stack is not injection evidence — only an oracle-confirmed
+    // injection promotes a security verdict for it (else a JS crash reads as a leak).
+    if (input.faultType !== 'NETWORK' && !input.confirmed && SECURITY_SIGNAL_CATEGORIES.has(category)) return false;
     const source = CATEGORY_SOURCE[category];
     if (source === 'url') return matchesCategory(category, url);
     if (source === 'text') return matchesCategory(category, text);
@@ -199,8 +220,14 @@ function resolveBugClass(
     return { bugClass: expectedBugs[0], confidence: 'CONFIRMED' };
   }
   // 4. No signal, no confirmation: NEVER promote a security/injection class from
-  //    scenario expectation alone. Prefer the scenario's first non-security
-  //    expected bug; else the raw fault-type default. Confidence is INFERRED.
+  //    scenario expectation alone. For a NETWORK response fault the HTTP semantics
+  //    are a stronger prior than a stress scenario's nominal expected bug, so use the
+  //    fault-type default directly rather than inheriting a client/navigation class
+  //    the scenario merely lists. Other fault kinds prefer the scenario's first
+  //    non-security expected bug, else the raw fault-type default. Confidence INFERRED.
+  if (input.faultType === 'NETWORK') {
+    return { bugClass: FAULT_TYPE_DEFAULT.NETWORK, confidence: 'INFERRED' };
+  }
   const nonSecurityExpected = expectedBugs.find((bug) => !SECURITY_BUGCLASSES.has(bug));
   if (nonSecurityExpected) return { bugClass: nonSecurityExpected, confidence: 'INFERRED' };
   return { bugClass: FAULT_TYPE_DEFAULT[input.faultType], confidence: 'INFERRED' };
