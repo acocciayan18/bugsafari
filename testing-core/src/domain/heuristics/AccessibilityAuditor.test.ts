@@ -17,6 +17,7 @@ function check(name: string, fn: () => void): void {
 const v = (rule: string, selector: string): A11yViolation => ({
   rule,
   selector,
+  elementName: `<${selector}>`,
   wcag: '4.1.2',
   impact: 'serious',
   description: 'test',

@@ -1,9 +1,11 @@
-// Self-executing checks for semanticFallbackFromSelector — the last-resort
-// element name when no human label exists. Never a full DOM path.
+// Self-executing checks for the centralized element-naming layer:
+// semanticFallbackFromSelector (last-resort name), resolveControlName (THE
+// user-facing namer) and scrubSelectors (the wire-boundary net). None of them
+// may ever emit a full DOM path.
 // Run with `npx tsx "shared/reproduction.test.ts"` or `npm test -w shared`.
 
 import assert from 'node:assert/strict';
-import { semanticFallbackFromSelector } from './reproduction.js';
+import { resolveControlName, scrubSelectors, semanticFallbackFromSelector } from './reproduction.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -41,6 +43,41 @@ check('never leaks the > path separator', () => {
 check('empty selector yields a generic fallback', () => {
   assert.equal(semanticFallbackFromSelector(''), '<element>');
   assert.equal(semanticFallbackFromSelector(undefined), '<element>');
+});
+
+check('resolveControlName prefers a human label', () => {
+  assert.equal(
+    resolveControlName({ label: 'Register', selector: 'body > div:nth-of-type(1) > a:nth-of-type(1)' }),
+    'Register',
+  );
+});
+
+check('resolveControlName rejects a selector masquerading as a label', () => {
+  assert.equal(resolveControlName({ label: 'body > div > a', selector: 'a.nav-link' }), '<a.nav-link>');
+});
+
+check('resolveControlName falls back to the tag when nothing else is known', () => {
+  assert.equal(resolveControlName({ tagName: 'BUTTON' }), '<button>');
+  assert.equal(resolveControlName({}), '<element>');
+});
+
+check('scrubSelectors rewrites the reported dead-navigation DOM path', () => {
+  const leaked =
+    'Dead navigation control "body > div:nth-of-type(1) > div:nth-of-type(1) > p:nth-of-type(2) > a:nth-of-type(1)" — links to /pages/2.html';
+  const out = scrubSelectors(leaked);
+  assert.ok(!out.includes('nth-of-type'), out);
+  assert.ok(!out.includes('body >'), out);
+  assert.ok(out.includes('<a>'), out);
+  assert.ok(out.includes('/pages/2.html'), out);
+});
+
+check('scrubSelectors catches a lone positional token', () => {
+  assert.equal(scrubSelectors('stuck on li:nth-child(4) still'), 'stuck on <li> still');
+});
+
+check('scrubSelectors leaves ordinary prose and URLs untouched', () => {
+  const prose = 'Route /a → /b returned HTTP 500 at http://app.test/pages/2.html; Step 1 > Step 2 skipped';
+  assert.equal(scrubSelectors(prose), prose);
 });
 
 console.log(`\n${passed} checks passed`);

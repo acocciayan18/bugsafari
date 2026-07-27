@@ -165,7 +165,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     occurrences,
     timestamp: bug.timestamp,
     selector: resolveCulprit(bug.selector, bug.actionSteps),
-    elementLabel: resolveCulpritLabel(undefined, resolveCulprit(bug.selector, bug.actionSteps), bug.actionSteps),
+    elementLabel: resolveCulpritLabel(bug.elementLabel, resolveCulprit(bug.selector, bug.actionSteps), bug.actionSteps),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,

@@ -69,7 +69,10 @@ export interface ConfirmedBug {
   bugId: string;
   type: string;
   message: string;
+  /** Raw selector — internal only (replay, dedup, culprit upgrade); never rendered. */
   selector: string;
+  /** Human name of the culprit control, rendered wherever the selector used to be. */
+  elementLabel?: string;
   payloadUsed: string;
   advice: string;
   timestamp: Date;

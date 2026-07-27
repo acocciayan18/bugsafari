@@ -195,7 +195,10 @@ export interface ForensicCaughtBug {
   bugId: string;
   type: string;
   message: string;
+  /** Raw selector — internal only (replay/dedup); never rendered. */
   selector: string;
+  /** Human name of the culprit control, rendered in place of the selector. */
+  elementLabel?: string;
   /** How many times this identical fault fired this session (deduped at save). */
   occurrences?: number;
   payloadUsed: string;

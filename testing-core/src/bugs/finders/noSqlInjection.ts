@@ -2,6 +2,7 @@ import type { Page, Response } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { fuzzTextWithAttackSurface } from '../scenarioAdapters.js';
 import { matchesCategory } from '../knowledgeBase/signalPatterns.js';
+import { describeTarget, elementNoun, resolveElementLabel } from '../../../../shared/reproduction.js';
 
 // Text-bearing controls whose value plausibly reaches a Mongo query.
 const QUERYABLE_CLUE_RE = /(search|query|filter|email|username|account|id)/;
@@ -94,7 +95,7 @@ export const noSqlInjectionFinder: BugFinder = {
         severity: evidence.operatorLeak ? 'CRITICAL' : 'HIGH',
         title: 'NoSQL operator fragment mishandled by the backend',
         evidence: {
-          message: `${detail}. Injected into ${element.selector}. Payload prefix: ${payload.slice(0, 80)}`,
+          message: `${detail}. Injected into ${describeTarget(resolveElementLabel(element), elementNoun(element.tagName, element.type))}. Payload prefix: ${payload.slice(0, 80)}`,
           selector: element.selector,
           actionExecuted: 'fuzz-nosql-injection',
           stateHash: ctx.stateHash,

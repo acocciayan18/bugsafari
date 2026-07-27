@@ -6,6 +6,7 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, ConstraintBypassDetail, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../shared/faultSignature.js';
+import { resolveControlName } from '../../../../shared/reproduction.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { generateRunCode } from '../../infrastructure/database/runCodeGenerator.js';
@@ -50,6 +51,8 @@ export interface ClientFinding {
     type?: string;
     message?: string;
     selector?: string;
+    /** Human name of the culprit control, resolved client-side alongside the selector. */
+    culpritLabel?: string;
     payloadUsed?: string;
     advice?: string;
     stackTrace?: string;
@@ -146,7 +149,11 @@ export class StartExplorationUseCase {
 
     private buildBreadcrumbSteps(records: ActionRecord[]): string[] {
         return records.map((record, index) => {
-            const target = record.fallbackLabel ? `${record.selector} (${record.fallbackLabel})` : record.selector;
+            const target = resolveControlName({
+                label: record.elementLabel ?? record.fallbackLabel,
+                selector: record.selector,
+                tagName: record.elementKind,
+            });
             const payloadPart = record.payload ? ` with payload "${record.payload.slice(0, 80)}"` : '';
             return `Step ${index + 1}: ${record.type} ${target} at ${record.url}${payloadPart}`;
         });
@@ -250,6 +257,7 @@ export class StartExplorationUseCase {
                 type: string;
                 message: string;
                 selector: string;
+                elementLabel?: string;
                 payloadUsed: string;
                 advice: string;
                 timestamp: Date;
@@ -266,6 +274,7 @@ export class StartExplorationUseCase {
                 type: bug.type,
                 message: bug.message,
                 selector: bug.selector,
+                elementLabel: bug.elementLabel ?? '',
                 payloadUsed: bug.payloadUsed,
                 advice: bug.advice,
                 stackTrace: bug.stackTrace ?? '',
@@ -285,6 +294,7 @@ export class StartExplorationUseCase {
                 type: finding.type ?? 'EXCEPTION',
                 message: finding.message ?? '',
                 selector: finding.selector ?? '',
+                elementLabel: finding.culpritLabel ?? '',
                 payloadUsed: finding.payloadUsed ?? '',
                 advice: finding.advice ?? '',
                 stackTrace: finding.stackTrace ?? '',

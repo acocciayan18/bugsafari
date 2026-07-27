@@ -35,7 +35,10 @@ export interface AccessibilityFinding {
   rule: string;
   wcag: string;
   impact: A11yImpact;
+  /** Raw selector — internal locator for debugging only; never rendered. */
   selector: string;
+  /** Human name of the offending element (tag + id/class, or its text). */
+  elementName: string;
   description: string;
   suggestedFix: string;
 }

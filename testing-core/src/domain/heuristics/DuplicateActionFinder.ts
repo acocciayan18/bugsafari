@@ -1,4 +1,5 @@
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
+import { resolveControlName } from '../../../../shared/reproduction.js';
 
 // State-changing verbs only; reads (GET/HEAD/OPTIONS) can repeat safely and are ignored.
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -308,7 +309,7 @@ export class DuplicateActionFinder {
         : `The repeat was issued ${intervalMs}ms after the first settled — inside the debounce window a guarded control would cover`,
     ];
     if (interaction) {
-      evidence.push(`Triggering control: ${interaction.label} (${interaction.selector})`);
+      evidence.push(`Triggering control: ${resolveControlName({ label: interaction.label, selector: interaction.selector })}`);
     }
     if (second.idempotencyKey) {
       evidence.push(`Both requests carried the same idempotency key (${second.idempotencyKey}) — the backend can dedupe, the client still cannot`);

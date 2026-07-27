@@ -6,7 +6,7 @@ import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '../../../../s
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ChaosInjectionRegistry } from '../../infrastructure/monitoring/chaosInjectionRegistry.js';
-import { describeNetworkSabotage } from '../services/forensics/narration.js';
+import { describeNetworkSabotage, resolveControlName } from '../services/forensics/narration.js';
 import { FREEZE_SELECTORS, INPUT_BLOCK_SELECTORS } from '../../bugs/knowledgeBase/index.js';
 import { scenarioRandom } from './seededRandom.js';
 
@@ -206,7 +206,7 @@ function emitFreezeTelemetry(telemetry: TelemetryGateway | undefined, isFrozen: 
       type: 'NETWORK' as TelemetryType,
       meta: {
         message: isFrozen
-          ? `UI appears frozen - stuck selector: ${selector}`
+          ? `UI appears frozen — blocking indicator ${resolveControlName({ label: selector, selector })} is still present`
           : 'UI appears responsive',
         selector: selector,
       },

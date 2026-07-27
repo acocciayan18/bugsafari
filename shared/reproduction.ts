@@ -91,12 +91,14 @@ export function isSelectorLike(value: string): boolean {
   return /^[#.[]/.test(value) || value.includes(':nth-') || value.includes('>');
 }
 
+const GENERIC_FALLBACK = '<element>';
+
 // Concise semantic fallback for an element whose only identity is a raw CSS
 // selector — collapses a DOM path to its final control (`<button#submit>`,
 // `<input.email-field>`), stripping positional pseudos. Never returns a full path.
 export function semanticFallbackFromSelector(selector?: string): string {
   const raw = collapse(selector);
-  if (!raw) return '<element>';
+  if (!raw) return GENERIC_FALLBACK;
   const last = raw.split('>').pop()!.trim().replace(/:nth-[a-z-]+\([^)]*\)/gi, '');
   const tag = (/^[a-z][a-z0-9-]*/i.exec(last)?.[0] ?? '').toLowerCase();
   const id = /#([\w-]+)/.exec(last)?.[1];
@@ -105,6 +107,50 @@ export function semanticFallbackFromSelector(selector?: string): string {
   const name = attr ? attr[2] ?? attr[1] : undefined;
   const qualifier = id ? `#${id}` : cls ? `.${cls}` : name ? `[${name}]` : '';
   return `<${`${tag}${qualifier}` || 'element'}>`;
+}
+
+/** Everything a producer knows about one control when it needs to name it. */
+export interface ControlIdentity {
+  /** Pre-resolved human label (resolveElementLabel output), when available. */
+  label?: string;
+  /** Raw CSS selector — used ONLY to distil a semantic fallback, never rendered. */
+  selector?: string;
+  tagName?: string;
+  type?: string;
+}
+
+/**
+ * THE resolver every user-facing surface names a control with. Priority: an
+ * explicit human label → a semantic fallback distilled from the selector's final
+ * segment → the element's tag. Guarantees a structural DOM path never reaches
+ * Telemetry, Findings, Forensics, Playbooks, exports, or any API payload.
+ */
+export function resolveControlName(identity: ControlIdentity): string {
+  const label = collapse(identity.label);
+  if (label && !isSelectorLike(label)) return truncate(label, MAX_LABEL_LENGTH);
+  const fromSelector = semanticFallbackFromSelector(identity.selector);
+  if (fromSelector !== GENERIC_FALLBACK) return fromSelector;
+  const tag = collapse(identity.tagName).toLowerCase();
+  return tag ? `<${tag}>` : GENERIC_FALLBACK;
+}
+
+// A structural DOM path inside free text: three-plus selector tokens joined by
+// `>`, or a single token carrying a positional pseudo. Case-sensitive, gap-free
+// and depth-gated by design, so ordinary prose ("Step 1 > Step 2", "a > b",
+// "A → B") is never rewritten.
+const DOM_PATH_CHAIN =
+  /(?:[a-z][\w-]*|[#.][\w-]+|\*)(?:[#.][\w-]+|\[[^\]]*\]|:[a-z-]+(?:\([^)]*\))?)*(?:\s*>\s*(?:[a-z][\w-]*|[#.][\w-]+|\*)(?:[#.][\w-]+|\[[^\]]*\]|:[a-z-]+(?:\([^)]*\))?)*){2,}/g;
+const POSITIONAL_TOKEN = /(?:[a-z][\w-]*|[#.][\w-]+)(?:[#.][\w-]+|\[[^\]]*\])*:nth-[a-z-]+\([^)]*\)/g;
+
+/**
+ * Last-mile net for operator-facing free text: rewrites any structural DOM path
+ * left in a message to its semantic fallback. Producers should name controls via
+ * {@link resolveControlName}; this makes the wire safe regardless of who emits.
+ */
+export function scrubSelectors(text: string): string {
+  return text
+    .replace(DOM_PATH_CHAIN, (match) => semanticFallbackFromSelector(match))
+    .replace(POSITIONAL_TOKEN, (match) => semanticFallbackFromSelector(match));
 }
 
 /** Name one control the way a step should read it — `the "Register" button`. */

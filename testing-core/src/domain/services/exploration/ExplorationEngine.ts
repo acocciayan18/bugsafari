@@ -499,6 +499,7 @@ export class ExplorationEngine {
       advice: bug.advice,
       attribution: bug.attribution,
       culpritSelector: bug.selector || undefined,
+      culpritLabel: bug.elementLabel || undefined,
       bypass: bug.bypass,
     };
     this.activeGateway.emitIncidentReport(incident);
@@ -775,6 +776,7 @@ export class ExplorationEngine {
           type: 'NAVIGATION',
           message: defect.message,
           selector: defect.selector,
+          elementLabel: defect.elementLabel,
           payloadUsed: '',
           advice: defect.advice,
           timestamp: new Date(),

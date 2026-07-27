@@ -29,7 +29,10 @@ export interface ICaughtBug {
   bugId: string;
   type: string;
   message: string;
+  /** Raw selector — internal only (replay/dedup); never rendered in the report. */
   selector: string;
+  /** Human name of the culprit control, shown in the report instead of the selector. */
+  elementLabel?: string;
   /** How many times this identical fault fired this session (dedup at save). */
   occurrences?: number;
   payloadUsed: string;
@@ -329,6 +332,7 @@ const sessionSchema = new Schema(
           type: { type: String, default: '' },
           message: { type: String, default: '' },
           selector: { type: String, default: '' },
+          elementLabel: { type: String, default: '' },
           // How many times this identical fault fired this session (dedup at save).
           occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },

@@ -10,7 +10,7 @@ import { dedupeReportsAgainstIncidents } from './errorDeduplication';
 import { reportableIncidents, reportableReports } from './findingRouting';
 // Same culprit resolution the live cards render, so the saved Selector is the one
 // the operator already saw.
-import { resolveCulprit } from './findingView';
+import { resolveCulprit, resolveCulpritLabel } from './findingView';
 
 // ── Live → History parity helpers ───────────────────────────────────────────
 // Serialize a playbook into a sequentially numbered, human-readable checklist,
@@ -57,6 +57,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       type,
       message: inc.reason,
       selector: resolveCulprit(inc.culpritSelector, inc.steps) ?? '',
+      culpritLabel: resolveCulpritLabel(inc.culpritLabel, resolveCulprit(inc.culpritSelector, inc.steps), inc.steps),
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
@@ -86,6 +87,7 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       type,
       message: rep.reason,
       selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs) ?? '',
+      culpritLabel: resolveCulpritLabel(rep.culpritLabel, resolveCulprit(rep.culpritSelector, rep.breadcrumbs), rep.breadcrumbs),
       payloadUsed: '',
       stackTrace: rep.stackTrace ?? '',
       reproductionSteps: checklist,

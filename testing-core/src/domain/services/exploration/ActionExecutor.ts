@@ -12,6 +12,7 @@ import {
   resolveElementLabel,
   elementNoun,
   humanizeElement,
+  describeTarget,
   describeConstraintBypass,
   describeInputInjection,
   describeNavigation,
@@ -704,7 +705,7 @@ export class ActionExecutor {
         };
         const leaks = await fuzzGuard.run(ctx);
         for (const leak of leaks) {
-          await this.registerFuzzFinding(leak, payload, target.selector, page);
+          await this.registerFuzzFinding(leak, payload, target, page);
         }
       } catch (error) {
         console.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
@@ -1015,7 +1016,9 @@ export class ActionExecutor {
    * it. `confirmed: true` lets the classifier promote the security verdict on hard
    * evidence (see FaultClassifier), and the payload content resolves the exact class.
    */
-  private async registerFuzzFinding(finding: BugFinding, payload: string, selector: string, page: Page): Promise<void> {
+  private async registerFuzzFinding(finding: BugFinding, payload: string, target: InteractiveElement, page: Page): Promise<void> {
+    const selector = target.selector;
+    const elementLabel = resolveElementLabel(target);
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.title,
@@ -1029,6 +1032,7 @@ export class ActionExecutor {
       type: 'FUZZ',
       message: finding.evidence?.message ?? finding.title,
       selector,
+      elementLabel,
       payloadUsed: payload,
       advice: classification.advice,
       timestamp: new Date(),
@@ -1044,7 +1048,7 @@ export class ActionExecutor {
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',
       selector,
-      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${selector}`,
+      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${describeTarget(elementLabel, elementNoun(target.tagName, target.type))}`,
     });
   }
 

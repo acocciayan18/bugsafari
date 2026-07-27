@@ -57,7 +57,10 @@ export interface SaveFindingPayload {
   bugId?: string;
   type?: string;
   message?: string;
+  /** Raw selector — internal only (replay/dedup); never rendered. */
   selector?: string;
+  /** Human name of the culprit control, persisted so the report never derives it from the selector. */
+  culpritLabel?: string;
   payloadUsed?: string;
   advice?: string;
   stackTrace?: string;

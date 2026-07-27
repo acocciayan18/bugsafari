@@ -2,6 +2,12 @@ import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, Inci
 import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
+import { scrubSelectors } from '../../../../shared/reproduction.js';
+
+// Operator-facing free text leaving the engine: credentials the target echoed back
+// and any raw DOM path a producer left in a message are both rewritten here, so no
+// single emitter can leak either onto the wire, the replay buffer, or storage.
+const safeText = (text: string): string => scrubSelectors(scrubCredentials(text));
 
 /** Room-capable event sink. Socket.IO's Server satisfies it, as does the worker's
  *  Redis publisher — so the same gateway drives either transport unchanged. */
@@ -49,9 +55,11 @@ export class SocketTelemetryGateway implements TelemetryGateway {
 
   public emitTelemetry(event: TelemetryEvent): void {
     // Last line of defense: a target app can echo a submitted credential into an
-    // error message that a content scan then lifts into telemetry.
+    // error message that a content scan then lifts into telemetry, and a producer
+    // can leave a raw DOM path in one. meta.selector is left intact — it is the
+    // internal replay/debug handle, never rendered.
     const safe = event.meta?.message
-      ? { ...event, meta: { ...event.meta, message: scrubCredentials(event.meta.message) } }
+      ? { ...event, meta: { ...event.meta, message: safeText(event.meta.message) } }
       : event;
     // Suppress redundant lines before they reach the wire, replay buffer, or storage.
     if (!this.deduper.accept(safe)) return;
@@ -79,7 +87,8 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     this.channel().emit('live-frame', base64Jpeg);
   }
 
-  public emitForensicReport(report: ForensicCrashReport): void {
+  public emitForensicReport(raw: ForensicCrashReport): void {
+    const report = this.sanitizeNarrative(raw);
     this.recorder?.record('forensic-report', report);
     this.channel().emit('forensic-report', report);
     this.emitIncidentReport({
@@ -104,12 +113,25 @@ export class SocketTelemetryGateway implements TelemetryGateway {
       attribution: report.attribution,
       severity: report.severity,
       culpritSelector: report.culpritSelector,
+      culpritLabel: report.culpritLabel,
     });
   }
 
-  public emitIncidentReport(report: IncidentReport): void {
+  public emitIncidentReport(raw: IncidentReport): void {
+    const report = this.sanitizeNarrative(raw);
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
+  }
+
+  // Scrub the operator-facing narrative of a finding (fault text + playbook).
+  // Structural fields (culpritSelector, per-step selectors) stay raw — they drive
+  // Verify Fix replay and are never rendered.
+  private sanitizeNarrative<T extends { reason: string; reproductionPlaybook?: string[] }>(report: T): T {
+    return {
+      ...report,
+      reason: safeText(report.reason),
+      reproductionPlaybook: report.reproductionPlaybook?.map(safeText),
+    };
   }
 
   // Buffered: the verdict lands seconds after its finding, so a client that

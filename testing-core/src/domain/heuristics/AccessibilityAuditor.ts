@@ -12,6 +12,8 @@ export interface A11yViolation {
   impact: A11yImpact;
   /** Best-effort CSS selector locating the offending element (empty for page-level rules). */
   selector: string;
+  /** Human name of the offending element — what the operator sees instead of the selector. */
+  elementName: string;
   /** What is wrong and why it matters for assistive tech. */
   description: string;
   /** Concrete remediation for this violation. */
@@ -129,6 +131,19 @@ export class AccessibilityAuditor {
         return (el.textContent || '').trim();
       };
 
+      // Operator-facing name: the element's own accessible text when it has one,
+      // otherwise a semantic tag descriptor (`<input#email>`) — never a DOM path.
+      const nameFor = (el: Element): string => {
+        const named = accessibleName(el).replace(/\s+/g, ' ').trim();
+        if (named) return named.length > 60 ? `${named.slice(0, 60)}…` : named;
+        const tag = el.tagName.toLowerCase();
+        if (el.id) return `<${tag}#${el.id}>`;
+        const cls = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean)[0];
+        const nameAttr = el.getAttribute('name');
+        if (cls) return `<${tag}.${cls}>`;
+        return nameAttr ? `<${tag}[${nameAttr}]>` : `<${tag}>`;
+      };
+
       // 1.1.1 Non-text content: <img> missing an alt attribute entirely.
       // (alt="" is valid for decorative images and is intentionally NOT flagged.)
       document.querySelectorAll('img:not([alt])').forEach((el) => {
@@ -137,6 +152,7 @@ export class AccessibilityAuditor {
           wcag: '1.1.1',
           impact: 'serious',
           selector: selectorFor(el),
+          elementName: nameFor(el),
           description: 'Image has no alt attribute — screen readers cannot describe it.',
           suggestedFix: 'Add alt text (or alt="" if the image is purely decorative).',
         });
@@ -155,6 +171,7 @@ export class AccessibilityAuditor {
             wcag: '4.1.2',
             impact: 'critical',
             selector: selectorFor(el),
+            elementName: nameFor(el),
             description: 'Form control has no associated label or accessible name.',
             suggestedFix: 'Add a <label for>, a wrapping <label>, or an aria-label.',
           });
@@ -169,6 +186,7 @@ export class AccessibilityAuditor {
             wcag: '4.1.2',
             impact: 'serious',
             selector: selectorFor(el),
+            elementName: nameFor(el),
             description: 'Interactive control has no accessible name (empty text, no aria-label/title) — screen-reader users hear only its role.',
             suggestedFix: 'Add visible text, an aria-label, or a title attribute.',
           });
@@ -184,6 +202,7 @@ export class AccessibilityAuditor {
             wcag: '2.4.3',
             impact: 'moderate',
             selector: selectorFor(el),
+            elementName: nameFor(el),
             description: `tabindex="${ti}" forces a manual focus order that diverges from the DOM.`,
             suggestedFix: 'Use tabindex="0" and restructure the DOM to reflect the intended order.',
           });
@@ -203,6 +222,7 @@ export class AccessibilityAuditor {
             wcag: '4.1.1',
             impact: 'minor',
             selector: `#${CSS.escape(id)}`,
+            elementName: `#${id}`,
             description: `id "${id}" is used ${count} times — duplicate ids break label[for]/aria-* references and are invalid HTML.`,
             suggestedFix: 'Make every id unique on the page.',
           });
@@ -217,6 +237,7 @@ export class AccessibilityAuditor {
           wcag: '3.1.1',
           impact: 'serious',
           selector: 'html',
+          elementName: 'the page',
           description: 'Document has no lang attribute — assistive tech cannot pick the right pronunciation.',
           suggestedFix: 'Add a language to the root element, e.g. <html lang="en">.',
         });
@@ -229,6 +250,7 @@ export class AccessibilityAuditor {
           wcag: '2.4.2',
           impact: 'serious',
           selector: '',
+          elementName: 'the page',
           description: 'Document has no <title> — users cannot identify the page in tabs/history.',
           suggestedFix: 'Add a concise, descriptive <title>.',
         });

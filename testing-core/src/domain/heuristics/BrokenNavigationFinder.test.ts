@@ -242,4 +242,45 @@ check('totalFound counts distinct defects across kinds', () => {
   assert.equal(f.totalFound(), 2);
 });
 
+console.log('\nBrokenNavigationFinder — element naming (no raw selectors in operator text)');
+
+const DOM_PATH = 'body > div:nth-of-type(1) > p:nth-of-type(2) > a:nth-of-type(1)';
+const pathClick = (over: Partial<InteractionObservation> = {}) =>
+  deadClick({ selector: DOM_PATH, elementKind: 'link', ...over });
+
+check('a labelled control is named by its visible text, never its DOM path', () => {
+  const f = new BrokenNavigationFinder();
+  const [defect] = f.observeInteraction(
+    pathClick({ elementLabel: 'Register', probedRoute: '/pages/2.html' }),
+  );
+  assert.equal(defect.elementLabel, '"Register"');
+  assert.ok(defect.message.includes('"Register"'), defect.message);
+  assert.ok(!defect.message.includes('nth-of-type'), defect.message);
+  assert.ok(defect.evidence.every((e) => !e.includes('nth-of-type')), defect.evidence.join('|'));
+  // The raw selector survives for replay + dedup keying.
+  assert.equal(defect.selector, DOM_PATH);
+});
+
+check('an unlabelled control degrades to a semantic fallback, not a DOM path', () => {
+  const f = new BrokenNavigationFinder();
+  const [defect] = f.observeInteraction(pathClick({ probedRoute: '/pages/2.html' }));
+  assert.equal(defect.elementLabel, '<a>');
+  assert.ok(!defect.message.includes(' > '), defect.message);
+  assert.ok(!defect.message.includes('nth-of-type'), defect.message);
+});
+
+check('a broken-route defect names the control that navigated there', () => {
+  const f = new BrokenNavigationFinder();
+  f.observeInteraction(pathClick({ elementLabel: 'Register', traversalOk: true, toRoute: '/pages/2.html' }));
+  const [defect] = f.observeErrorState({
+    route: '/pages/2.html',
+    url: `${ORIGIN}/pages/2.html`,
+    statusCode: 404,
+    reason: 'HTTP 404',
+  });
+  assert.ok(defect.message.includes('"Register"'), defect.message);
+  assert.ok(!defect.message.includes('nth-of-type'), defect.message);
+  assert.equal(defect.elementLabel, '"Register"');
+});
+
 console.log(`\n${passed} passed`);

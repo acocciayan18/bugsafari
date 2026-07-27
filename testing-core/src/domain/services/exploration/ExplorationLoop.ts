@@ -16,7 +16,7 @@ import type {
 } from '../DIrectedPathFinder.js';
 import { networkSaboteur } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
-import { describeRecovery, humanizeElement } from '../forensics/narration.js';
+import { describeRecovery, elementNoun, humanizeElement, resolveElementLabel } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, settle } from './types.js';
 import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
@@ -896,6 +896,7 @@ export class ExplorationLoop {
           wcag: v.wcag,
           impact: v.impact,
           selector: v.selector,
+          elementName: v.elementName,
           description: v.description,
           suggestedFix: v.suggestedFix,
         });
@@ -919,6 +920,8 @@ export class ExplorationLoop {
       const url = page.isClosed() ? '' : page.url();
       const defects = this.deps.navigationFinder.observeInteraction({
         selector: target.selector,
+        elementLabel: resolveElementLabel(target),
+        elementKind: elementNoun(target.tagName, target.type),
         fromStructure: compound.structure,
         fromRoute: compound.routePath,
         toRoute: normalizeRoutePath(url),

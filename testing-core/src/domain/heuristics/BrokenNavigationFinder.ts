@@ -1,5 +1,6 @@
 import { normalizeRoutePath } from '../../ml/domHasher.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
+import { resolveControlName } from '../../../../shared/reproduction.js';
 
 export type NavigationDefectKind = 'DEAD_INTERACTION' | 'BROKEN_ROUTE' | 'REDIRECT_LOOP';
 
@@ -21,7 +22,10 @@ export interface NavigationDefect {
   severity: 'HIGH' | 'MEDIUM';
   cwe: string;
   message: string;
+  /** Raw selector — internal only (replay + dedup keying); never rendered. */
   selector: string;
+  /** Human name of the culprit control, rendered in place of the selector. */
+  elementLabel: string;
   url: string;
   route: string;
   statusCode?: number;
@@ -35,6 +39,10 @@ export interface NavigationDefect {
 /** Post-action outcome for one interaction, built from signals the loop already computes. */
 export interface InteractionObservation {
   selector: string;
+  /** Pre-resolved human label for the control (engine passes resolveElementLabel). */
+  elementLabel?: string;
+  /** Plain-English control noun ("link", "button") used to phrase the defect. */
+  elementKind?: string;
   fromStructure: string;
   fromRoute: string;
   toRoute: string;
@@ -90,7 +98,7 @@ export class BrokenNavigationFinder {
   private readonly deadClickStrikes = new Map<string, number>();
   private redirectWindow: RedirectHop[] = [];
   private urlWindow: Array<{ route: string; timestampMs: number }> = [];
-  private lastInteraction: { selector: string; fromRoute: string } | null = null;
+  private lastInteraction: { selector: string; name: string; kind: string; fromRoute: string } | null = null;
   private lastNavCause: 'interaction' | 'engine' | 'none' = 'none';
 
   /** Mark an engine-initiated navigation (restore/backtrack/recovery) — suppresses FPs. */
@@ -103,8 +111,10 @@ export class BrokenNavigationFinder {
 
   /** Dead-interaction oracle: nav-intent control that repeatedly changes nothing. */
   public observeInteraction(o: InteractionObservation): NavigationDefect[] {
+    const name = this.controlName(o.selector, o.elementLabel);
+    const kind = (o.elementKind ?? '').trim() || 'control';
     this.lastNavCause = 'interaction';
-    this.lastInteraction = { selector: o.selector, fromRoute: o.fromRoute };
+    this.lastInteraction = { selector: o.selector, name, kind, fromRoute: o.fromRoute };
     const key = `${o.fromStructure}::${o.selector}`;
     if (o.traversalOk || o.toRoute !== o.fromRoute || o.networkActivity) {
       // A control that ever works is never dead — clear its strike history.
@@ -122,9 +132,9 @@ export class BrokenNavigationFinder {
     if (!declaredElsewhere && strikes < DEAD_CLICK_STRIKES) return [];
 
     const evidence = [
-      `Control "${o.selector}" on route ${o.fromRoute} produced no DOM, URL, or network change`,
+      `The ${kind} ${name} on route ${o.fromRoute} produced no DOM, URL, or network change`,
       declaredElsewhere
-        ? `Element statically declares destination ${o.probedRoute} but never navigates`
+        ? `It statically declares destination ${o.probedRoute} but never navigates`
         : `${strikes} consecutive no-op attempts on the same structural shell`,
     ];
     return this.emitOnce({
@@ -134,9 +144,10 @@ export class BrokenNavigationFinder {
       severity: 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: declaredElsewhere
-        ? `Dead navigation control "${o.selector}" — links to ${o.probedRoute} but nothing happens on click`
-        : `Dead navigation control "${o.selector}" — ${strikes} clicks produced no observable change`,
+        ? `Dead navigation ${kind}: ${name} — links to ${o.probedRoute} but nothing happens on click`
+        : `Dead navigation ${kind}: ${name} — ${strikes} clicks produced no observable change`,
       selector: o.selector,
+      elementLabel: name,
       url: o.url,
       route: o.fromRoute,
       evidence,
@@ -149,20 +160,21 @@ export class BrokenNavigationFinder {
   public observeErrorState(o: ErrorStateObservation): NavigationDefect[] {
     if (this.lastNavCause !== 'interaction' || !this.lastInteraction) return [];
     if (o.statusCode === null || o.statusCode < 400) return [];
-    const { selector, fromRoute } = this.lastInteraction;
+    const { selector, name, kind, fromRoute } = this.lastInteraction;
     return this.emitOnce({
       kind: 'BROKEN_ROUTE',
       bugId: `nav-broken-route-${o.statusCode}-${o.route}`,
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: o.statusCode >= 500 ? 'HIGH' : 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
-      message: `Broken route: "${selector}" navigated ${fromRoute} → ${o.route} (HTTP ${o.statusCode})`,
+      message: `Broken route: the ${kind} ${name} navigated ${fromRoute} → ${o.route} (HTTP ${o.statusCode})`,
       selector,
+      elementLabel: name,
       url: o.url,
       route: o.route,
       statusCode: o.statusCode,
       evidence: [
-        `Interaction with "${selector}" navigated ${fromRoute} → ${o.route}`,
+        `Interaction with the ${kind} ${name} navigated ${fromRoute} → ${o.route}`,
         `Main-frame document responded HTTP ${o.statusCode}`,
         `Route verdict: ${o.reason}`,
       ],
@@ -202,6 +214,7 @@ export class BrokenNavigationFinder {
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: `Redirect loop: HTTP redirect chain revisited ${h.route} ${sightings}× within ${REDIRECT_WINDOW_MS}ms`,
       selector: this.lastInteraction?.selector ?? '',
+      elementLabel: this.lastInteraction?.name ?? '',
       url: h.url,
       route: h.route,
       statusCode: h.status,
@@ -238,6 +251,7 @@ export class BrokenNavigationFinder {
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: `Redirect loop: client-side route oscillation revisited ${route} ${sightings}× in rapid succession`,
       selector: this.lastInteraction?.selector ?? '',
+      elementLabel: this.lastInteraction?.name ?? '',
       url: c.url,
       route,
       evidence: [`Rapid route oscillation: ${chain}`],
@@ -250,6 +264,13 @@ export class BrokenNavigationFinder {
   /** Total distinct navigation defects reported this run (for run-summary telemetry). */
   public totalFound(): number {
     return this.reported.size;
+  }
+
+  // Quoted human name for a control, or a semantic fallback (`<a.nav-link>`) when
+  // the engine had no readable label. Never a structural DOM path.
+  private controlName(selector: string, label?: string): string {
+    const name = resolveControlName({ label, selector });
+    return name.startsWith('<') ? name : `"${name}"`;
   }
 
   private bumpStrike(map: Map<string, number>, key: string): number {
