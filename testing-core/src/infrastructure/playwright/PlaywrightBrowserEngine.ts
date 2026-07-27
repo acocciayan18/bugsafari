@@ -1,4 +1,4 @@
-import { chromium, type BrowserContextOptions } from 'playwright';
+import { chromium, type Browser, type BrowserContextOptions } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { OptimizationSettings, StopReason, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
@@ -8,8 +8,11 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import type { RunResult } from '../../domain/services/exploration/types.js';
 import { installReflectionOracle } from '../../bugs/finders/reflectionOracle.js';
 import { TargetAuthenticator } from './TargetAuthenticator.js';
+import { installCredentialMask } from './credentialMask.js';
 import type { SessionRestoreFn } from '../../domain/services/exploration/SessionPreservationGuard.js';
 import { setScrubValues, clearScrubValues } from '../../domain/services/telemetry/credentialScrub.js';
+import { TelemetryEmitter } from '../../domain/services/telemetry/TelemetryEmitter.js';
+import { AuthNarrator } from '../../domain/services/auth/AuthNarrator.js';
 
 /**
  * Browser and system information captured at launch
@@ -150,33 +153,38 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       },
     });
 
+    // Both attempts are bounded. An untimed fallback could hang forever, and a
+    // hung launch produces NO terminal handshake — run() never returns, so
+    // execute()'s catch never fires and the dashboard has nothing to reconcile
+    // against. Bounding it guarantees every boot ends in a verdict the client can see.
+    const launchBounded = async (args: string[], label: string): Promise<Browser> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          chromium.launch({ headless: true, args }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Browser launch timeout: ${label} launch failed to start within ${browserLaunchTimeoutMs}ms`)),
+              browserLaunchTimeoutMs,
+            );
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+
     try {
-      this.activeBrowser = await Promise.race([
-        chromium.launch({
-          headless: true,
-          args: [
-            '--start-maximized',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-sandbox',
-          ],
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Browser launch timeout: browser failed to start within ${browserLaunchTimeoutMs}ms`)),
-            browserLaunchTimeoutMs,
-          ),
-        ),
-      ]);
+      this.activeBrowser = await launchBounded(
+        ['--start-maximized', '--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
+        'primary',
+      );
     } catch (launchError) {
       console.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
       console.log('[PlaywrightBrowserEngine] Attempting fallback launch with minimal args...');
 
       try {
-        this.activeBrowser = await chromium.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
+        this.activeBrowser = await launchBounded(['--no-sandbox', '--disable-setuid-sandbox'], 'fallback');
       } catch (fallbackError) {
         console.error('[PlaywrightBrowserEngine] Fallback browser launch failed:', fallbackError);
         throw fallbackError;
@@ -211,6 +219,20 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // injected XSS payload that fires an event handler can positively prove
     // execution (the raw-reflection check works regardless of this).
     await installReflectionOracle(this.activePage);
+
+    // Same constraint: an init script only reaches documents created after it is
+    // registered, and the login flow navigates before the exploration engine does.
+    await installCredentialMask(this.activePage);
+
+    // Telemetry channel for the pre-exploration window. The engine builds its own
+    // emitter later; until then this one carries the login narration and starts the
+    // frame loop immediately, so the dashboard streams the target from about:blank
+    // onward instead of showing "establishing telemetry stream" through the login.
+    const bootEmitter = new TelemetryEmitter(telemetry, {
+      isPaused: () => false,
+      isStopRequested: () => this.isStopping,
+    });
+    bootEmitter.startFrameCaptureLoop(this.activePage);
 
     // Capture browser info and system details for telemetry
     const platformInfo = await this.activePage.evaluate(() => {
@@ -261,8 +283,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       
       //  Authenticate into the target BEFORE exploration, so the engine's own
       // navigation lands on an authenticated session. Runs after the reflection
-      // oracle is installed (it must precede every navigation, login included) and
-      // before live-frame capture starts, so no frame can catch a filled password.
+      // oracle and the credential mask are installed — both must precede every
+      // navigation, login included. Frames stream throughout: the mask renders the
+      // credential fields as bullets, so no frame can carry a readable value.
       // Exploration base URL. For an authenticated run it is REPLACED by wherever
       // login landed (below), so the engine explores the authenticated surface —
       // not the login URL, which would just bounce it back to the public form.
@@ -271,13 +294,19 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // re-authenticate in place after a session loss. The engine receives this
       // opaque callback only — never the credentials/state (least privilege).
       let restoreSession: SessionRestoreFn | undefined;
+      let authOriginsVisited: string[] = [];
       if (targetAuth) {
         // Only a form login types literals into the page; a seeded session has no
         // value the target could echo back, so there is nothing to register.
         if (targetAuth.mode === 'credentials') {
           setScrubValues([targetAuth.username, targetAuth.password]);
         }
-        const auth = await new TargetAuthenticator().authenticate(this.activePage, targetAuth, targetUrl);
+        // Narrates every phase to the Live Feed and records the replayable steps
+        // into the playbook. The engine exists but has not started, so its trace
+        // buffers are already scoped to this run and accept the login steps first.
+        const narrator = new AuthNarrator(bootEmitter, (step) => this.activeEngine?.recordAuthStep(step));
+        const auth = await new TargetAuthenticator().authenticate(this.activePage, targetAuth, targetUrl, narrator);
+        authOriginsVisited = auth.originsVisited ?? [];
         if (auth.status !== 'authenticated') {
           // Deliberately NOT continuing unauthenticated: the engine would explore the
           // login page, find nothing, and report a clean run — a silently wrong result.
@@ -300,7 +329,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
                 seededState.cookies as Parameters<import('playwright').BrowserContext['addCookies']>[0],
               );
             }
-            const result = await new TargetAuthenticator().authenticate(restorePage, authConfig, targetUrl);
+            const result = await new TargetAuthenticator().authenticate(restorePage, authConfig, targetUrl, narrator);
             return result.status === 'authenticated';
           } catch {
             return false;
@@ -312,20 +341,34 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         // the exact "clean result for an untested surface" the fail path guards against.
         // Fall back to targetUrl if the landing URL is unusable (e.g. about:blank).
         const landedUrl = this.activePage.url();
-        if (landedUrl && /^https?:/i.test(landedUrl)) explorationUrl = landedUrl;
+        if (landedUrl && /^https?:/i.test(landedUrl)) {
+          explorationUrl = landedUrl;
+          // An SSO round-trip can land on a different host than the run started on
+          // (www.app.com → idp → app.com); approve wherever the session actually is.
+          authOriginsVisited = [...authOriginsVisited, new URL(landedUrl).origin];
+        }
       }
 
       // Origins only — the auth config itself never crosses into the engine (least
       // privilege), but the login host must stay approved (SSO popup, or a login URL
       // on a different origin than the post-login landing page just adopted above).
+      // authOriginsVisited covers wherever the login actually went — including an
+      // identity provider a Sign In control redirected to, which no static config
+      // could have named up front.
       const authOrigins = targetAuth
-        ? [
+        ? [...new Set([
             new URL(targetUrl).origin,
             ...(targetAuth.mode === 'credentials' && targetAuth.loginUrl
               ? [new URL(targetAuth.loginUrl, targetUrl).origin]
               : []),
-          ]
+            ...authOriginsVisited,
+          ])]
         : [];
+
+      // Hand the frame stream over: TabWindowManager starts the engine's own 33ms
+      // loop on a DIFFERENT emitter instance, so ours must be stopped or its
+      // interval outlives the boot window and double-broadcasts for the whole run.
+      bootEmitter.stopFrameCaptureLoop();
 
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins, restoreSession);
@@ -342,6 +385,9 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // Re-throw unexpected errors
       throw err;
     } finally {
+      // Idempotent — covers the early returns (cancellation, auth failure) that
+      // never reach the hand-over above.
+      bootEmitter.stopFrameCaptureLoop();
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       this.capturedVisitedRoutes = this.activeEngine?.getVisitedRoutes() ?? this.capturedVisitedRoutes;
       clearScrubValues();

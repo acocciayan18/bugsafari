@@ -29,22 +29,28 @@ import { defaultOptimizationSettings } from '../../shared/types.js';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 
-function AuthAppContent() {
+interface WorkspaceProps {
+  user: ReturnType<typeof useAuth>['user'];
+  isAuthenticated: boolean;
+  isGuestMode: boolean;
+  activeView: ViewType;
+}
+
+/**
+ * The signed-in (or guest) workspace. Everything that opens a socket or issues a
+ * protected request lives BELOW this boundary, because `useDashboardController`
+ * is what boots the run session — and it used to be called from the router shell,
+ * unconditionally, before the landing / auth / info early-returns. That meant
+ * simply loading `/` or `/login` connected Socket.IO and fetched authenticated
+ * history, producing the startup 401 and the repeated attach rejections. React
+ * forbids conditional hooks, so the gate has to be a component boundary: this is
+ * only ever rendered once a session exists.
+ */
+function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: WorkspaceProps) {
   const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
   const [showGuestSavePrompt, setShowGuestSavePrompt] = useState(false);
-
-  const { user, isAuthenticated, isGuestMode, logout } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const handler = () => logout();
-    window.addEventListener('bugsafari:session-expired', handler);
-    return () => window.removeEventListener('bugsafari:session-expired', handler);
-  }, [logout]);
-  
   const location = useLocation();
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
-  const isInfoRoute = location.pathname === '/explore' || location.pathname === '/features' || location.pathname === '/community' || location.pathname === '/about';
+  const navigate = useNavigate();
 
   const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, dismissAccessibilityBanner } =
     useDashboardController();
@@ -69,56 +75,8 @@ function AuthAppContent() {
     );
   };
 
-  const activeView: ViewType = location.pathname.startsWith('/history')
-    ? 'history'
-    : location.pathname.startsWith('/settings')
-      ? 'settings'
-      : 'dashboard';
-
-  if (location.pathname === '/') {
-    return (
-      <ThemeProvider>
-        <LandingPage />
-      </ThemeProvider>
-    );
-  }
-
-  if (isInfoRoute) {
-    return (
-      <ThemeProvider>
-        <Routes>
-          <Route path="/explore" element={<ExplorePage />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/community" element={<CommunityPage />} />
-          <Route path="/about" element={<AboutPage />} />
-        </Routes>
-      </ThemeProvider>
-    );
-  }
-
-  const hasValidSession = isAuthenticated || isGuestMode;
-
   // Identity props shared by every protected route's nav shell.
   const shellProps = { user, isAuthenticated, activeView };
-
-  if (isAuthRoute || !hasValidSession) {
-    return (
-      <ThemeProvider>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginForm />} />
-          <Route path="/signup" element={<SignupForm />} />
-          <Route path="/forgot-password" element={<ForgotPasswordForm />} />
-          <Route path="/reset-password" element={<ResetPasswordForm />} />
-          <Route path="/explore" element={<ExplorePage />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/community" element={<CommunityPage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </ThemeProvider>
-    );
-  }
 
   return (
     <ThemeProvider>
@@ -196,16 +154,7 @@ function AuthAppContent() {
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/community" element={<CommunityPage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route
-          path="*"
-          element={
-            hasValidSession ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
 
       <GuestSavePromptModal
@@ -217,6 +166,84 @@ function AuthAppContent() {
         }}
       />
     </ThemeProvider>
+  );
+}
+
+/**
+ * Public shell: routing + auth gating only. Holds no run state and mounts no
+ * gateway, so an unauthenticated visit never touches a protected endpoint.
+ */
+function AuthAppContent() {
+  const { user, isAuthenticated, isGuestMode, isAuthLoading, logout } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener('bugsafari:session-expired', handler);
+    return () => window.removeEventListener('bugsafari:session-expired', handler);
+  }, [logout]);
+
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isInfoRoute = location.pathname === '/explore' || location.pathname === '/features' || location.pathname === '/community' || location.pathname === '/about';
+
+  const activeView: ViewType = location.pathname.startsWith('/history')
+    ? 'history'
+    : location.pathname.startsWith('/settings')
+      ? 'settings'
+      : 'dashboard';
+
+  if (location.pathname === '/') {
+    return (
+      <ThemeProvider>
+        <LandingPage />
+      </ThemeProvider>
+    );
+  }
+
+  if (isInfoRoute) {
+    return (
+      <ThemeProvider>
+        <Routes>
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/community" element={<CommunityPage />} />
+          <Route path="/about" element={<AboutPage />} />
+        </Routes>
+      </ThemeProvider>
+    );
+  }
+
+  // A stored token whose user has not been restored yet is neither signed in nor
+  // a guest. Mounting the workspace here would fire protected calls against a
+  // half-initialized session, so the public shell holds until auth settles.
+  const hasValidSession = (isAuthenticated || isGuestMode) && !isAuthLoading;
+
+  if (isAuthRoute || !hasValidSession) {
+    return (
+      <ThemeProvider>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/signup" element={<SignupForm />} />
+          <Route path="/forgot-password" element={<ForgotPasswordForm />} />
+          <Route path="/reset-password" element={<ResetPasswordForm />} />
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/community" element={<CommunityPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ThemeProvider>
+    );
+  }
+
+  return (
+    <DashboardWorkspace
+      user={user}
+      isAuthenticated={isAuthenticated}
+      isGuestMode={isGuestMode}
+      activeView={activeView}
+    />
   );
 }
 

@@ -10,6 +10,10 @@ import type { TelemetryEvent } from './telemetry.js';
 
 // ACTION codes emitted on (nearly) every step — high-volume execution trace with
 // low standalone value. Hidden from the default log; revealed by verbose mode.
+//
+// The `auth-*` codes are deliberately NOT listed: target-app login is a handful of
+// events per run that an operator must be able to audit by default. Adding one
+// here would make the login silent again.
 export const VERBOSE_ACTION_CODES: ReadonlySet<string> = new Set([
   'element-selected',
   'dom-elements-parsed',

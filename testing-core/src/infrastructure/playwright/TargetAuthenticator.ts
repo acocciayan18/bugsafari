@@ -5,30 +5,27 @@ import type {
   TargetCredentialsAuth,
   TargetStorageStateAuth,
 } from '../../../../shared/types.js';
+import { resolveControlName } from '../../../../shared/reproduction.js';
+import type { AuthNarrator } from '../../domain/services/auth/AuthNarrator.js';
+import { LoginFormLocator, type ResolvedSelectors } from './LoginFormLocator.js';
+import { maskField } from './credentialMask.js';
 
 const NAV_TIMEOUT_MS = 20000;
 const FIELD_TIMEOUT_MS = 8000;
 const SUCCESS_TIMEOUT_MS = 12000;
 
-const USERNAME_HINT_RE = /user|email|login|account|identifier/i;
-const SUBMIT_TEXT_RE = /log\s?in|sign\s?in|continue|submit/i;
 const AUTH_ERROR_RE = /invalid|incorrect|failed|try again|wrong|unauthori[sz]ed/i;
 
 const ERROR_AFFORDANCE_SELECTORS = ['[role="alert"]', '.error', '.invalid-feedback', '[aria-invalid="true"]'];
-
-interface ResolvedSelectors {
-  username: string;
-  password: string;
-  submit: string;
-}
 
 /**
  * Logs the engine into the application under test so exploration can reach
  * authenticated surface.
  *
  * Stateless by design: credentials are passed per call and never retained here.
- * Emits no telemetry — every reason string below is a fixed literal, so no
- * credential material can reach a log or socket through this class.
+ * Every phase is narrated through the injected {@link AuthNarrator}, and every
+ * `reason` string below is a fixed literal, so the login is fully observable
+ * without any credential material reaching a log, a socket, or the playbook.
  */
 export class TargetAuthenticator {
   /** Route to the form-login driver or the seeded-session probe. */
@@ -36,10 +33,17 @@ export class TargetAuthenticator {
     page: Page,
     config: TargetAuthConfig,
     targetUrl: string,
+    narrator?: AuthNarrator,
   ): Promise<TargetAuthResult> {
-    return config.mode === 'storageState'
-      ? this.verifySeededSession(page, config, targetUrl)
-      : this.loginWithCredentials(page, config, targetUrl);
+    narrator?.started(config.mode);
+    const result =
+      config.mode === 'storageState'
+        ? await this.verifySeededSession(page, config, targetUrl)
+        : await this.loginWithCredentials(page, config, targetUrl, narrator);
+
+    if (result.status === 'authenticated') narrator?.succeeded(page.url());
+    else narrator?.failed(result.reason);
+    return result;
   }
 
   /**
@@ -79,23 +83,32 @@ export class TargetAuthenticator {
     page: Page,
     config: TargetCredentialsAuth,
     targetUrl: string,
+    narrator?: AuthNarrator,
   ): Promise<TargetAuthResult> {
+    // loginUrl is a hint, not a requirement: it only decides where the search for
+    // the form starts. The locator takes over from there.
+    const entryUrl = config.loginUrl ?? targetUrl;
+    narrator?.navigating(entryUrl);
     try {
-      await page.goto(config.loginUrl ?? targetUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: NAV_TIMEOUT_MS,
-      });
+      await page.goto(entryUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
     } catch {
-      return { status: 'failed', reason: 'the login page could not be loaded' };
+      return { status: 'failed', reason: 'the entry page could not be loaded' };
     }
 
-    const resolved = await this.resolveSelectors(page, config);
-    if (!resolved) {
+    // Fresh per login: the locator accumulates visited origins/tried controls.
+    const location = await new LoginFormLocator().locate(page, config, targetUrl, narrator);
+    if (!location) {
       return {
         status: 'failed',
-        reason: 'no login form was found — supply usernameSelector/passwordSelector explicitly',
+        reason:
+          'no login form was found on the target, behind any Login/Sign In control, or at a conventional auth route — supply loginUrl or usernameSelector/passwordSelector, or use session-state mode for SSO/MFA logins',
       };
     }
+
+    const resolved = location.selectors;
+    // Mask the username before a single character is typed: the password input
+    // hides itself, the username renders in plaintext into every live frame.
+    await maskField(page, resolved.username);
 
     try {
       await page.fill(resolved.username, config.username, { timeout: FIELD_TIMEOUT_MS });
@@ -103,92 +116,31 @@ export class TargetAuthenticator {
     } catch {
       return { status: 'failed', reason: 'the resolved login fields could not be filled' };
     }
+    narrator?.credentialsEntered(page.url());
 
+    // Name and URL are read before the click: submitting usually navigates, and
+    // the step should read as the form we acted on, not wherever it landed.
+    const submitName = await this.submitName(page, resolved);
+    const formUrl = page.url();
     await this.submit(page, resolved);
+    narrator?.submitted(submitName, formUrl);
 
     // Clear the password field immediately: any screenshot taken after a FAILED
     // login would otherwise capture the filled control.
     await page.fill(resolved.password, '', { timeout: 2000 }).catch(() => undefined);
 
-    return this.verify(page, config, resolved);
+    narrator?.verifying();
+    const verdict = await this.verify(page, config, resolved);
+    return verdict.status === 'authenticated'
+      ? { ...verdict, originsVisited: location.originsVisited }
+      : verdict;
   }
 
-  /** Explicit selectors win; otherwise detect the form around the password field. */
-  private async resolveSelectors(
-    page: Page,
-    config: TargetCredentialsAuth,
-  ): Promise<ResolvedSelectors | null> {
-    if (config.usernameSelector && config.passwordSelector) {
-      return {
-        username: config.usernameSelector,
-        password: config.passwordSelector,
-        submit: config.submitSelector ?? '',
-      };
-    }
-
-    const detected = await page
-      .evaluate(
-        ([usernameHint, submitText]: [string, string]) => {
-          const cssPath = (el: Element): string => {
-            if (el.id) return `#${CSS.escape(el.id)}`;
-            const parts: string[] = [];
-            let node: Element | null = el;
-            while (node && node.tagName !== 'HTML' && parts.length < 6) {
-              const parent: Element | null = node.parentElement;
-              if (!parent) break;
-              const siblings = Array.from(parent.children).filter((c) => c.tagName === node!.tagName);
-              const index = siblings.indexOf(node) + 1;
-              parts.unshift(`${node.tagName.toLowerCase()}:nth-of-type(${index})`);
-              node = parent;
-            }
-            return parts.join(' > ');
-          };
-
-          const visible = (el: Element): boolean => {
-            const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
-          };
-
-          const password = Array.from(
-            document.querySelectorAll('input[type="password"]'),
-          ).find(visible);
-          if (!password) return null;
-
-          // Scope to the enclosing form — this is what makes username detection reliable.
-          const scope = password.closest('form') ?? document.body;
-          const userRe = new RegExp(usernameHint, 'i');
-          const username = Array.from(scope.querySelectorAll('input')).find((input) => {
-            if (input === password || !visible(input)) return false;
-            const type = (input.getAttribute('type') ?? 'text').toLowerCase();
-            if (!['text', 'email', 'tel', ''].includes(type)) return false;
-            const hints = `${input.name} ${input.id} ${input.getAttribute('autocomplete') ?? ''} ${
-              input.getAttribute('placeholder') ?? ''
-            }`;
-            return userRe.test(hints) || type === 'email';
-          });
-          if (!username) return null;
-
-          const submitRe = new RegExp(submitText, 'i');
-          const submit =
-            scope.querySelector('button[type="submit"], input[type="submit"]') ??
-            Array.from(scope.querySelectorAll('button')).find((b) => submitRe.test(b.textContent ?? ''));
-
-          return {
-            username: cssPath(username),
-            password: cssPath(password),
-            submit: submit ? cssPath(submit) : '',
-          };
-        },
-        [USERNAME_HINT_RE.source, SUBMIT_TEXT_RE.source] as [string, string],
-      )
-      .catch(() => null);
-
-    if (!detected) return null;
-    return {
-      username: config.usernameSelector ?? detected.username,
-      password: config.passwordSelector ?? detected.password,
-      submit: config.submitSelector ?? detected.submit,
-    };
+  /** Name of the submit control for narration, or null when Enter will be used. */
+  private async submitName(page: Page, resolved: ResolvedSelectors): Promise<string | null> {
+    if (!resolved.submit) return null;
+    const label = await page.textContent(resolved.submit, { timeout: 2000 }).catch(() => null);
+    return resolveControlName({ label: label ?? undefined, selector: resolved.submit });
   }
 
   /** Click submit when one was resolved, else press Enter in the password field. */

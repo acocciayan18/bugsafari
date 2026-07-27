@@ -2,6 +2,9 @@ import type { EngineGateway, BrowserConsoleMessage } from '../../application/por
 import type { TelemetryEvent } from '../../types';
 import { useRunStore } from './runStore';
 import { RUN_ID_STORAGE_KEY, TELEMETRY_CAP, CONSOLE_BUFFER_CAP } from './types';
+import { shouldFetchHistory, shouldRestoreSession, type SessionBootstrap } from './sessionBootstrap';
+
+export type { SessionBootstrap } from './sessionBootstrap';
 
 // Throttle window for the high-frequency streams. Socket callbacks fire per event
 // (~15 fps frames, ACTION/HEURISTIC/NETWORK bursts) and each store set() re-renders
@@ -83,24 +86,44 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     });
 }
 
-// Seed the run token from a prior page-load BEFORE connecting so the socket's first
-// attach emit carries it (guest cross-refresh recovery).
-export function connectAndRestore(gateway: EngineGateway): void {
-    const store = useRunStore.getState();
-
-    let storedRunId: string | null = null;
+function readStoredRunId(): string | null {
     try {
-        storedRunId = window.localStorage.getItem(RUN_ID_STORAGE_KEY);
+        return window.localStorage.getItem(RUN_ID_STORAGE_KEY);
     } catch {
-        // Storage unavailable
+        return null; // Storage unavailable
     }
+}
+
+/**
+ * One deterministic startup sequence. Order matters and is the fix for the bare
+ * 401 seen at boot: the auth token is installed on the HTTP client BEFORE any
+ * request leaves, where it used to be set in a later effect than the one issuing
+ * them. Every protected call is then gated on a session actually existing.
+ */
+export function connectAndRestore(gateway: EngineGateway, bootstrap: SessionBootstrap): void {
+    // 1. Identity first — nothing below may run unauthenticated by accident.
+    gateway.setAuthToken(bootstrap.authToken);
+
+    // 2. Seed the run token from a prior page-load so the socket's first attach
+    //    emit carries it (guest cross-refresh recovery).
+    const storedRunId = readStoredRunId();
     if (storedRunId) gateway.setRunId(storedRunId);
 
+    // 3. Open the wire. The socket only attaches when it has a run token or an
+    //    identity to prove — see SocketConnectionManager.reattach.
     gateway.connect();
-    void gateway.fetchSessionHistory(60).then(store.setSessionHistory).catch(() => undefined);
 
-    // Independently of the socket, ask the backend whether this client owns an
-    // active run and rebuild the dashboard if so.
+    // 4. Protected reads, only once a valid session exists.
+    if (shouldFetchHistory(bootstrap)) {
+        void gateway.fetchSessionHistory(60)
+            .then(useRunStore.getState().setSessionHistory)
+            .catch(() => undefined);
+    }
+
+    // 5. Independently of the socket, ask the backend whether this client owns an
+    //    active run and rebuild the dashboard if so.
+    if (!shouldRestoreSession(bootstrap, storedRunId)) return;
+    const store = useRunStore.getState();
     store.setRestoring(true);
     void gateway.fetchActiveSession()
         .then((snapshot) => {

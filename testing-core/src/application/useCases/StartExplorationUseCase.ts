@@ -6,7 +6,7 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, ConstraintBypassDetail, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../shared/faultSignature.js';
-import { resolveControlName } from '../../../../shared/reproduction.js';
+import { maskPayload, resolveControlName } from '../../../../shared/reproduction.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
 import { generateRunCode } from '../../infrastructure/database/runCodeGenerator.js';
@@ -154,7 +154,10 @@ export class StartExplorationUseCase {
                 selector: record.selector,
                 tagName: record.elementKind,
             });
-            const payloadPart = record.payload ? ` with payload "${record.payload.slice(0, 80)}"` : '';
+            // maskPayload, not a raw slice: this string is persisted to MongoDB, and
+            // an auth/credential field's record carries redactValue for exactly this.
+            const payload = maskPayload(record.payload, record.redactValue);
+            const payloadPart = payload ? ` with payload "${payload}"` : '';
             return `Step ${index + 1}: ${record.type} ${target} at ${record.url}${payloadPart}`;
         });
     }

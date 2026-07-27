@@ -54,6 +54,9 @@ export interface EngineGateway {
   removeAllListeners(): void;
   /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
   setRunId(runId: string | null): void;
+  /** Install the access token used by every protected HTTP call. Must be set
+   *  before the first such call, or it goes out bare and 401s. */
+  setAuthToken(token: string | null): void;
   /** Ask the backend whether the requester owns an active run; null if none. */
   fetchActiveSession(): Promise<ActiveSessionSnapshot | null>;
   /** Re-join a restored distributed run's queue-position + run rooms (post-refresh). */

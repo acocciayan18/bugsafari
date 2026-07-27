@@ -45,6 +45,7 @@ import type { PathfinderMode } from '../DIrectedPathFinder.js';
 import { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
 import { scrubCredentials } from '../telemetry/credentialScrub.js';
+import type { AuthPlaybookStep } from '../auth/authNarration.js';
 import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
@@ -327,25 +328,34 @@ export class ExplorationEngine {
   }
 
   /**
-   * Note in the reproduction playbook that this run started authenticated, without
-   * recording any credential. The step carries NO `value`, so there is nothing for
-   * the regression replayer to type back and nothing to persist — which is exactly
-   * why the login is a marker rather than a real recorded action.
+   * Record one narrated login step into the reproduction playbook. Steps carry NO
+   * `value` and are always redacted, so the playbook shows how the engine signed in
+   * without giving the regression replayer a credential to type back.
    */
-  public recordAuthenticationMarker(): void {
-    this.authenticatedRun = true;
+  public recordAuthStep(step: AuthPlaybookStep): void {
     this.recordActionTrace(
       {
         timestamp: new Date().toISOString(),
         selector: '(login form)',
-        action: 'authenticate',
+        action: step.action,
       },
       {
-        actionType: 'INPUT',
-        humanIdentifier: 'the target application login form (authenticated before exploration began)',
+        actionType: step.actionType,
+        humanIdentifier: step.humanIdentifier,
+        elementKind: step.elementKind,
+        url: step.url,
         redactValue: true,
       },
     );
+  }
+
+  /**
+   * Mark the run as authenticated once the login succeeded. The individual steps
+   * are recorded by {@link recordAuthStep} as they happen; this only flips the flag
+   * the session-preservation guard reads.
+   */
+  public recordAuthenticationMarker(): void {
+    this.authenticatedRun = true;
   }
 
   // Distinct routes/URLs visited this run — the session-global page set for history metadata.

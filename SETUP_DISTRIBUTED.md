@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "remove raw CSS selectors from user-facing findings"
+git commit -m "observable-target-authentication"
 git checkout -b 7-27-Ayan
 git push --set-upstream origin 7-27-Ayan
 

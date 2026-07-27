@@ -3,6 +3,7 @@ import type { BrowserConsoleMessage } from '../../../application/ports/EngineGat
 import type { AccessibilityFinding, ActiveSessionSnapshot, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, StopReason, TelemetryEvent, TimeSyncPayload } from '../../../types';
 import { ACCESSIBILITY_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, TIME_SYNC_EVENT } from '../../../types';
 import { logger } from '../../../utils/logger';
+import { canAttach, storedAuthToken } from './attachEligibility';
 
 type ConnectedHandler = (connected: boolean) => void;
 type TelemetryHandler = (event: TelemetryEvent) => void;
@@ -83,7 +84,7 @@ export class SocketConnectionManager {
       // Present the JWT on every (re)connect so the backend can bind an
       // authenticated run's room. Function form re-reads the (possibly rotated)
       // token each handshake; guests send undefined and fall to possession-proof.
-      auth: (cb) => cb({ token: localStorage.getItem('bugsafari_token') ?? undefined }),
+      auth: (cb) => cb({ token: storedAuthToken() ?? undefined }),
     });
   }
 
@@ -101,9 +102,18 @@ export class SocketConnectionManager {
    * Present the owned run token and (re)join its room. Called on every connect
    * and explicitly right after a fresh run starts — the socket may already be
    * connected then, so it wouldn't otherwise pick up the newly-created room.
+   *
+   * No-ops when there is nothing to attach to (no run token AND no identity):
+   * the backend has no way to match such a socket to a run, so the emit could
+   * only ever come back `no-active-session`. That is the normal state of a fresh
+   * page load, and attaching anyway is what filled the console with rejections.
    */
   public reattach(attempt = 0): void {
     const runId = this.runId;
+    if (!canAttach(runId, storedAuthToken())) {
+      logger.debug('[Gateway] No run token or identity — skipping session attach.');
+      return;
+    }
     this.socket.emit(SESSION_ATTACH_EVENT, { runToken: runId ?? undefined }, (ack: SessionAttachAck) => {
       if (ack?.attached) {
         if (ack.snapshot) this.sessionSnapshotHandler?.(ack.snapshot);
@@ -113,6 +123,12 @@ export class SocketConnectionManager {
       // the run room for the rest of the session. Retry briefly: the run may be
       // moments from existing (or, in queue mode, still being handed to a worker).
       if (!runId || ack?.reason === 'not-owner') {
+        // Identity-only probe finding no run of ours is the expected answer for a
+        // signed-in operator with nothing running — not a fault worth warning about.
+        if (!runId && ack?.reason === 'no-active-session') {
+          logger.debug('[Gateway] No active run owned by this identity.');
+          return;
+        }
         console.warn('[Gateway] Attach rejected:', ack?.reason ?? 'unknown');
         return;
       }

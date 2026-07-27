@@ -18,7 +18,11 @@
 /** Form login driven by the engine against the target's own login page. */
 export interface TargetCredentialsAuth {
   mode: 'credentials';
-  /** Page hosting the login form. Defaults to the run's target URL. */
+  /**
+   * Where to start looking for the login form. A hint, not a requirement — the
+   * engine discovers the form from here (in-page, behind a Login/Sign In control,
+   * or at a conventional auth route). Defaults to the run's target URL.
+   */
   loginUrl?: string;
   /** Explicit selectors; omitted fields fall back to DOM auto-detection. */
   usernameSelector?: string;
@@ -73,4 +77,10 @@ export interface TargetAuthResult {
   reason: string;
   /** Which selector resolved each field — for operator debugging, never values. */
   resolution?: { username: string; password: string; submit: string };
+  /**
+   * Origins the login traversed, including any identity provider a Sign In control
+   * redirected to. The engine unions these into its boundary allow-list so a
+   * mid-run bounce back to the IdP is not treated as leaving the target.
+   */
+  originsVisited?: string[];
 }

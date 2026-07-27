@@ -80,7 +80,6 @@ export interface RunState {
     hasTimeLimitExceeded: boolean;
     currentEngineAction: string;
     isInitializing: boolean;
-    isCleaningUp: boolean;
     liveFrame: string | null;
     latestFrame: string | null;
     remainingTimeMs: number;
@@ -113,7 +112,6 @@ export interface RunState {
     setCurrentUrl: (url: string) => void;
     setLiveFrame: (frame: string) => void;
     setSessionHistory: (history: SessionHistoryEntry[]) => void;
-    setCleaningUp: (cleaningUp: boolean) => void;
     pushTelemetry: (event: TelemetryEvent) => void;
     incrementAccessibility: () => void;
     dismissAccessibilityBanner: () => void;
@@ -131,6 +129,7 @@ export interface RunState {
     resetForLaunch: (timeboxMs: number, resolvedUrl: string) => void;
     resetAfterCancel: () => void;
     markLaunchFailed: (message: string) => void;
+    releaseOrphanedRun: (message: string) => void;
     setSavingSession: (saving: boolean) => void;
     markSessionSaved: () => void;
 }
@@ -148,7 +147,6 @@ export const useRunStore = create<RunState>((set, get) => ({
     hasTimeLimitExceeded: false,
     currentEngineAction: '',
     isInitializing: false,
-    isCleaningUp: false,
     liveFrame: null,
     latestFrame: null,
     remainingTimeMs: INITIAL_TIMEBOX_MS,
@@ -184,7 +182,6 @@ export const useRunStore = create<RunState>((set, get) => ({
     setRestoring: (isRestoring) => set({ isRestoring }),
     setCurrentUrl: (currentUrl) => set({ currentUrl }),
     setSessionHistory: (sessionHistory) => set({ sessionHistory }),
-    setCleaningUp: (isCleaningUp) => set({ isCleaningUp }),
     setSavingSession: (isSavingSession) => set({ isSavingSession }),
     markSessionSaved: () => set({ isSessionSaved: true }),
     dismissAccessibilityBanner: () => set({ accessibilityBannerDismissed: true }),
@@ -425,9 +422,12 @@ export const useRunStore = create<RunState>((set, get) => ({
             isQueued: queued,
             queuePosition: queued ? snapshot.queuePosition ?? null : null,
             queueDepth: queued ? snapshot.queueDepth ?? 0 : 0,
-            // Only clear the launch spinner once a frame exists — a snapshot taken at
-            // run-start must not disable the 30s no-frame watchdog.
-            ...(frame ? { liveFrame: frame, latestFrame: frame, isInitializing: false, isThinking: false } : {}),
+            // Deterministic init flag, derived from the snapshot rather than left as
+            // whatever the local state happened to hold: a frame means the feed is up,
+            // a live-but-frameless run is still booting, and queued/terminal is not.
+            ...(frame
+                ? { liveFrame: frame, latestFrame: frame, isInitializing: false, isThinking: false }
+                : { isInitializing: live && !queued, isThinking: false }),
         });
 
         if (snapshot.jobId && live) {
@@ -495,6 +495,31 @@ export const useRunStore = create<RunState>((set, get) => ({
             isQueued: false, queuePosition: null, queueDepth: 0, isTestRunning: false,
             isLaunching: false, isInitializing: false, isThinking: false, status: 'IDLE',
         });
+    },
+
+    // The backend confirmed (repeatedly) that it owns no run for this client, so
+    // the local live state is orphaned. Same teardown as a failed launch — clearing
+    // the tokens matters most: leaving them behind is what desynced the dashboard
+    // from a backend that had already moved on.
+    releaseOrphanedRun: (message) => {
+        runRefs.queuePhase = 'done';
+        runRefs.runStarted = false;
+        toast.dismiss(STATUS_TOAST_ID);
+        getEngineGateway().setRunId(null);
+        writeStorage(RUN_ID_STORAGE_KEY, null);
+        writeStorage(JOB_ID_STORAGE_KEY, null);
+        set((s) => ({
+            isInitializing: false,
+            isThinking: false,
+            isLaunching: false,
+            isTestRunning: false,
+            isQueued: false,
+            queuePosition: null,
+            queueDepth: 0,
+            liveFrame: null,
+            status: 'IDLE',
+            telemetry: appendCapped(s.telemetry, exceptionEvent(message), TELEMETRY_CAP),
+        }));
     },
 
     // A failed launch owns no run — drop the tokens too, or the next start sends a

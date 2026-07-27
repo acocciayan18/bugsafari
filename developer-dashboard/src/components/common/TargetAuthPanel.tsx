@@ -314,8 +314,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         {showAdvanced && draft.method === 'credentials' && (
           <div className="space-y-3 pt-1">
             <p className="text-xs text-(--text-tertiary) font-sans leading-relaxed">
-              Leave blank to auto-detect the login form. Set these when the form is multi-step or
-              built from custom components, where detection cannot find the fields.
+              Leave blank to auto-detect. The engine finds the login form on the target, behind a
+              Login/Sign In control, or at a common auth route. Set these when the form is
+              multi-step or built from custom components, where detection cannot find the fields.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -327,7 +328,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                   disabled={fieldsDisabled}
                   onChange={(e) => set('loginUrl', e.target.value)}
                   className={FIELD_CLASS}
-                  placeholder="Defaults to the target URL"
+                  placeholder="Optional — where to start looking"
                 />
               </div>
               <div>

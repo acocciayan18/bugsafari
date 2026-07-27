@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useAuthStore } from '../../stores/authStore';
+import { useAuthStore, selectIsAuthenticated } from '../../stores/authStore';
 import { useRunStore } from '../../stores/run/runStore';
 import { initRunTimer } from '../../stores/run/runTimer';
 import { bindGatewayToRunStore, connectAndRestore } from '../../stores/run/gatewayBinding';
 import { startRun, pauseRun, resumeRun, stopRun, saveRun, refreshHistory } from '../../stores/run/runCommands';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
+import { classifyProbe, decideProbeAction, nextMissCount } from '../../stores/run/engineLiveness';
 import { logger } from '../../utils/logger';
 
 import type { TestSessionStatus } from '../../stores/run/types';
@@ -13,7 +14,11 @@ import type { TestSessionStatus } from '../../stores/run/types';
 export type { TestSessionStatus } from '../../stores/run/types';
 export type { RunState as DashboardState } from '../../stores/run/runStore';
 
-const INITIALIZATION_TIMEOUT_MS = 30000;
+// How long a frameless run is left alone before the client starts asking the
+// backend about it, and how often it asks after that. Neither bounds the boot —
+// they only set how quickly the dashboard reconciles with the backend's truth.
+const LIVENESS_PROBE_GRACE_MS = 15000;
+const LIVENESS_PROBE_INTERVAL_MS = 10000;
 // Idempotent re-delivery cadence for a stalled PAUSING/STOPPING transition. The
 // backend guards duplicate pause/stop, so a re-issued command is a safe keep-alive
 // against a control emit dropped on a flaky socket — never an escalation.
@@ -22,7 +27,17 @@ const TRANSITION_REDELIVER_MS = 15000;
 // Ref-counted so StrictMode's synthetic unmount never disconnects a live socket
 let mountCount = 0;
 let bound = false;
+// Module-scoped alongside `bound`: the effect instance that binds is not
+// necessarily the one whose cleanup tears down (StrictMode remounts), so the
+// unsubscribe cannot live in an effect closure or it leaks.
+let unsubscribeAuth: (() => void) | null = null;
 
+// ONE effect owns the whole session bootstrap. It used to be two, and React runs
+// them in declaration order — so the connect/restore effect fired its first
+// protected request before the auth effect had handed the token to the HTTP
+// client, and that request went out bare (the startup 401). Keeping the token
+// install and the requests in a single ordered sequence removes the race by
+// construction rather than by timing.
 function useRunSession(): void {
     useEffect(() => {
         mountCount += 1;
@@ -32,7 +47,18 @@ function useRunSession(): void {
             bound = true;
             initRunTimer();
             bindGatewayToRunStore(gateway);
-            connectAndRestore(gateway);
+
+            const auth = useAuthStore.getState();
+            connectAndRestore(gateway, {
+                authToken: auth.token,
+                isAuthenticated: selectIsAuthenticated(auth),
+            });
+
+            // Keep the singleton's token current for the rest of the session
+            // (rotation, login in another tab, logout).
+            unsubscribeAuth = useAuthStore.subscribe((state, prev) => {
+                if (state.token !== prev.token) gateway.setAuthToken(state.token);
+            });
         }
 
         return () => {
@@ -41,78 +67,90 @@ function useRunSession(): void {
             // would deafen the socket for the rest of the session.
             if (mountCount > 0) return;
             bound = false;
+            unsubscribeAuth?.();
+            unsubscribeAuth = null;
             gateway.disconnect();
             gateway.removeAllListeners();
         };
     }, []);
-
-    // Keep the singleton's auth token current or authenticated HTTP calls go out bare
-    useEffect(() => {
-        const gateway = getEngineGateway();
-        gateway.setAuthToken(useAuthStore.getState().token);
-        return useAuthStore.subscribe((state, prev) => {
-            if (state.token !== prev.token) gateway.setAuthToken(state.token);
-        });
-    }, []);
 }
 
-// Watchdog: no live frame within 30s means the engine never came up. Dispatch a
-// backend stop so orphaned processes die, then release the UI.
-//
-// The arming condition MUST mirror what LiveFeed uses to show its spinner. When
-// it keyed on isInitializing alone, any backend EXCEPTION cleared that flag and
-// disarmed the watchdog while the spinner — which also checks !liveFrame — kept
-// running forever with nothing left to time it out.
-function useInitializationWatchdog(
+/**
+ * Liveness probe for a run that is up but has not painted its first frame yet.
+ *
+ * The frontend has no way to tell a slow boot from a dead engine: a cold
+ * container plus Playwright's own 30s launch race (and its untimed fallback)
+ * routinely pushes the first frame well past any client-side budget, and a queued
+ * run adds worker pickup on top. The previous watchdog assumed failure on a flat
+ * 30s timer and force-stopped the backend — which is why a perfectly healthy run
+ * was reported as failed and then reappeared, still running, after a refresh.
+ *
+ * So the client never decides. Once the wait looks long it ASKS the backend, on
+ * an interval, and reconciles with whatever it answers:
+ *   live     → hydrate and keep waiting (this is the boot path; never a failure)
+ *   terminal → hydrate; the backend really did end the run, and its snapshot says how
+ *   absent   → only after MISSES_BEFORE_RELEASE consecutive misses, release the UI
+ *
+ * Nothing here stops the engine. A live run is left alone, and an absent one has
+ * nothing left to stop. The backend owns every terminal verdict: the reservation
+ * timer, failRun, the queue's failed state, and the IDLE its run() finally always
+ * emits. The arming condition mirrors LiveFeed's spinner, so the probe covers
+ * exactly the window in which the operator is staring at a loading feed.
+ */
+function useEngineLivenessProbe(
     isInitializing: boolean,
     isTestRunning: boolean,
     hasLiveFrame: boolean,
     status: TestSessionStatus,
 ): void {
-    const dispatchedRef = useRef(false);
     // A queued job has no engine yet; its wait is bounded by the queue, not by us.
     const armed = isTestRunning && status !== 'QUEUED' && (isInitializing || !hasLiveFrame);
 
     useEffect(() => {
-        if (!armed) {
-            dispatchedRef.current = false;
-            return;
-        }
+        if (!armed) return;
 
-        const timeout = setTimeout(async () => {
-            if (dispatchedRef.current) return;
-            dispatchedRef.current = true;
+        let cancelled = false;
+        let misses = 0;
+        let timer: ReturnType<typeof setTimeout>;
 
-            logger.warn('[useDashboardController] Initialization timeout reached - dispatching cleanup to backend');
-            useRunStore.getState().setCleaningUp(true);
-
+        const probe = async (): Promise<void> => {
             try {
-                const gateway = getEngineGateway() as unknown as { forceStop?: () => Promise<void> };
-                if (typeof gateway.forceStop === 'function') {
-                    await gateway.forceStop();
-                    logger.debug('[useDashboardController] Cleanup dispatched to backend');
+                const snapshot = await getEngineGateway().fetchActiveSession();
+                if (cancelled) return;
+
+                const outcome = classifyProbe(snapshot);
+                misses = nextMissCount(outcome, misses);
+                const current = useRunStore.getState();
+                const action = decideProbeAction(outcome, misses, {
+                    status: current.status,
+                    hasLiveFrame: current.liveFrame !== null,
+                });
+
+                if (action === 'hydrate' && outcome.kind !== 'absent') {
+                    // Restores the live feed, telemetry, timer baseline and controls in
+                    // one authoritative write — the same path a refresh takes.
+                    useRunStore.getState().hydrateFromSnapshot(outcome.snapshot);
+                    logger.debug(`[useDashboardController] Liveness probe: backend reports ${outcome.snapshot.status}`);
+                } else if (action === 'release') {
+                    logger.warn('[useDashboardController] Liveness probe: backend owns no run for this client — releasing local state.');
+                    useRunStore.getState().releaseOrphanedRun(
+                        'Session ended: the backend no longer reports an active run for this client. Nothing was left running.',
+                    );
+                    return;
                 }
             } catch (error) {
-                logger.error('[useDashboardController] Cleanup dispatch failed:', error);
+                // A failed probe proves nothing about the engine — keep waiting.
+                if (cancelled) return;
+                logger.error('[useDashboardController] Liveness probe failed:', error);
             }
+            if (!cancelled) timer = setTimeout(() => void probe(), LIVENESS_PROBE_INTERVAL_MS);
+        };
 
-            useRunStore.setState({
-                isThinking: false,
-                isInitializing: false,
-                isCleaningUp: false,
-                isTestRunning: false,
-                status: 'IDLE',
-            });
-            useRunStore.getState().pushTelemetry({
-                timestamp: new Date().toISOString(),
-                type: 'EXCEPTION',
-                meta: { message: 'Engine initialization timeout: No live frame received within 30 seconds. Backend cleanup dispatched.' },
-            });
-        }, INITIALIZATION_TIMEOUT_MS);
+        timer = setTimeout(() => void probe(), LIVENESS_PROBE_GRACE_MS);
 
         return () => {
-            clearTimeout(timeout);
-            dispatchedRef.current = false;
+            cancelled = true;
+            clearTimeout(timer);
         };
     }, [armed]);
 }
@@ -169,7 +207,6 @@ export function useDashboardController() {
             hasTimeLimitExceeded: s.hasTimeLimitExceeded,
             currentEngineAction: s.currentEngineAction,
             isInitializing: s.isInitializing,
-            isCleaningUp: s.isCleaningUp,
             liveFrame: s.liveFrame,
             telemetry: s.telemetry,
             networkEvents: s.networkEvents,
@@ -193,7 +230,7 @@ export function useDashboardController() {
         })),
     );
 
-    useInitializationWatchdog(state.isInitializing, state.isTestRunning, state.liveFrame !== null, state.status);
+    useEngineLivenessProbe(state.isInitializing, state.isTestRunning, state.liveFrame !== null, state.status);
     useTransitionRedelivery(state.status);
 
     const actions = useMemo(() => ({
