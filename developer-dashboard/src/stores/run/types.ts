@@ -47,6 +47,10 @@ export interface QueueUpdate {
     state: 'waiting' | 'active' | 'completed' | 'failed' | 'cancelled';
     position: number | null;
     queueDepth: number;
+    // Runs executing on the fleet right now, and the slots it exposes (one per
+    // worker replica). workerCount is null when Redis cannot report it.
+    activeCount: number;
+    workerCount: number | null;
     message?: string;
 }
 

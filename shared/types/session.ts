@@ -72,6 +72,10 @@ export interface ActiveSessionSnapshot {
   jobId?: string | null;
   queuePosition?: number | null;
   queueDepth?: number;
+  /** Fleet occupancy at restore time, so a refreshed queued client shows the same
+   *  standby detail as a client that stayed subscribed to QUEUE_UPDATE. */
+  queueActiveCount?: number;
+  queueWorkerCount?: number | null;
 }
 
 /** Client → server attach request presented on every (re)connection. */

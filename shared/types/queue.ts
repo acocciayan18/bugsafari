@@ -25,5 +25,9 @@ export interface QueueUpdate {
   position: number | null; // 1-based place among waiting jobs; null once not waiting
   queueDepth: number;       // total jobs still waiting
   activeCount: number;      // jobs currently executing on the fleet
+  // Concurrent execution slots the fleet exposes right now — one per connected
+  // worker replica, since per-worker concurrency is clamped to 1. Null when Redis
+  // refuses CLIENT LIST (managed tiers), which must degrade the UI, not break it.
+  workerCount: number | null;
   message?: string;         // failure reason or human-facing note
 }

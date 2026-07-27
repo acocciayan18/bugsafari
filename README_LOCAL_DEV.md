@@ -148,7 +148,25 @@ Expected result:
 - `bugsafari-redis` is running and healthy.
 - `bugsafari-mongodb` is running and healthy.
 - `bugsafari-api` is running.
-- `bugsafari-worker` is running.
+- Two worker replicas are running (`bugsafari-local-worker-1`, `bugsafari-local-worker-2`).
+
+The `worker` service is replicated, so it has no fixed container name. Fleet
+capacity — the number of safaris that can execute at the same time — equals the
+replica count, because each replica owns its own process, Chromium, and forensic
+buffers. Change it with `WORKER_REPLICAS` in `.env`, or per-invocation:
+
+```bash
+docker compose -f docker-compose.local.yml up -d --scale worker=3
+```
+
+Budget roughly 700 MB of RAM per replica. In-process concurrency stays pinned at
+1 (`BUGSAFARI_WORKER_CONCURRENCY`); see `CONCURRENCY_BLOCKERS` in
+`testing-core/src/infrastructure/workers/SafariWorker.ts` for why. Address a single
+replica by index when you need one specifically:
+
+```bash
+docker compose -f docker-compose.local.yml logs --follow --index 2 worker
+```
 
 ### Verify Redis Is Reachable
 
@@ -558,8 +576,10 @@ $env:HOST = "0.0.0.0"; npm start
 
 Confirm the engine container can actually reach your dev server before running a safari:
 
+`exec` targets replica 1 of the `worker` service; any replica proves the mapping.
+
 ```bash
-docker compose -f docker-compose.local.yml exec worker \
+docker compose -f docker-compose.local.yml exec --index 1 worker \
   node -e "fetch('http://host.docker.internal:5173').then(r=>console.log('OK',r.status)).catch(e=>console.log('FAIL',e.message))"
 ```
 

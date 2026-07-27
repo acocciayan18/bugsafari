@@ -20,8 +20,10 @@ import {
 import { triggerFormSubmission } from './formSubmitter.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
+import { trustedClick, type ClickOutcome } from './trustedClick.js';
+import { setFieldValue, setSelectValue, setToggleChecked, resolveMeaningfulOption, type InputOutcome } from './frameworkInput.js';
 import type { HighlightAction } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
-import { decideEscalation } from './escalationDecision.js';
+import { decideEscalation, resolveResistance } from './escalationDecision.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
@@ -30,6 +32,26 @@ import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
+
+// A form control the sibling pass decided to drive. Tagged in-page, actuated from
+// Node so every write goes through the framework-safe primitives.
+interface FormSibling {
+  kind: 'text' | 'toggle' | 'select';
+  tmp: string;
+  type: string;
+  id: string;
+  name: string;
+  placeholder: string;
+  tagName: string;
+  optionValue?: string;
+}
+
+// Controls that commit state — the only place an unguarded double-submit exists.
+// Left-anchored on a word boundary and matched against human-facing text only:
+// an unanchored substring over className would read Tailwind's `border` as
+// "order" and promote the burst on essentially every button.
+const COMMIT_CONTROL =
+  /\b(submit|log[\s_-]?in|sign[\s_-]?in|sign[\s_-]?up|register|pay|checkout|order|purchase|save|send|confirm|apply|transfer|delete|remove|update)/i;
 
 // Interaction scope → active-indicator color group.
 const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {
@@ -194,8 +216,9 @@ export class ActionExecutor {
     // was clicked on plus where it navigated (if anywhere). An empty outcome clause
     // otherwise leaves every click looking inert in the reproduction playbook.
     const beforeUrl = page.url();
+    let click: ClickOutcome = { rung: 'unresolved', actuated: false, reason: '' };
     try {
-      await this.safeButtonSpammer(page, target);
+      click = await this.actuateClick(page, target);
     } finally {
       const afterUrl = page.url();
       const outcome = afterUrl && afterUrl !== beforeUrl ? { navigatedTo: afterUrl } : undefined;
@@ -203,7 +226,9 @@ export class ActionExecutor {
         {
           timestamp: new Date().toISOString(),
           selector: target.selector,
-          action: 'navigate',
+          // An unresolved click never actuated — the trace must not read as a
+          // performed navigation, or a "no-op" verdict downstream is unfalsifiable.
+          action: click.actuated ? 'navigate' : 'navigate-unresolved',
           score: Number(target.riskScore.toFixed(4)),
         },
         {
@@ -239,26 +264,7 @@ export class ActionExecutor {
       }, target.selector)
       .catch(() => undefined);
 
-    let checked = false;
-    try {
-      await page.check(target.selector, { timeout: 2000 });
-      checked = true;
-    } catch {
-      // Obscured / detached / non-standard control — force the state directly and
-      // fire the events SPA frameworks bind to.
-      checked = await page
-        .evaluate((sel) => {
-          const el = document.querySelector(sel) as HTMLInputElement | null;
-          if (!el) return false;
-          if (!el.checked) {
-            el.checked = true;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          return el.checked;
-        }, target.selector)
-        .catch(() => false);
-    }
+    const checked = await setToggleChecked(page, target.selector, true);
 
     this.deps.recordActionTrace(
       {
@@ -304,38 +310,8 @@ export class ActionExecutor {
       .catch(() => undefined);
 
     // Resolve a deterministic, meaningful option value inside the page context.
-    const value = await page
-      .$eval(target.selector, (node) => {
-        const select = node as HTMLSelectElement;
-        const options = Array.from(select.options).filter((option) => !option.disabled);
-        if (options.length === 0) return null;
-        const last = options[options.length - 1];
-        const pick = last.value === select.value && options.length > 1 ? options[options.length - 2] : last;
-        return pick.value;
-      })
-      .catch(() => null);
-
-    let selected = false;
-    if (value !== null) {
-      try {
-        await page.selectOption(target.selector, { value }, { timeout: 2000 });
-        selected = true;
-      } catch {
-        selected = await page
-          .evaluate(
-            ({ sel, chosen }: { sel: string; chosen: string }) => {
-              const el = document.querySelector(sel) as HTMLSelectElement | null;
-              if (!el) return false;
-              el.value = chosen;
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-              return el.value === chosen;
-            },
-            { sel: target.selector, chosen: value },
-          )
-          .catch(() => false);
-      }
-    }
+    const value = await resolveMeaningfulOption(page, target.selector);
+    const selected = value !== null && (await setSelectValue(page, target.selector, value));
 
     this.deps.recordActionTrace(
       {
@@ -574,6 +550,17 @@ export class ActionExecutor {
     if (authRelevant) candidates.unshift(storageTamperScenario);
     else candidates.push(storageTamperScenario);
 
+    // A control that COMMITS state is the only place an unguarded double-submit
+    // can exist, and the burst is the only probe that surfaces one — so it leads
+    // there instead of waiting for its rotation slot. While traversal itself was
+    // a 30x flood (audit P3-01) every click probed this implicitly; now that
+    // traversal is a single trusted click, the probe has to be scheduled.
+    const commitSource = `${target.innerText} ${target.id} ${target.type}`;
+    if (buttonLike && COMMIT_CONTROL.test(commitSource)) {
+      const spammerIndex = candidates.findIndex((candidate) => candidate.name === buttonSpammer.name);
+      if (spammerIndex > 0) candidates.unshift(...candidates.splice(spammerIndex, 1));
+    }
+
     // Keep only enabled candidates, preserving heuristic priority order.
     const enabled = candidates.filter((candidate) => this.deps.gate.isScenarioEnabled(candidate.name));
     if (enabled.length === 0) return null;
@@ -645,6 +632,9 @@ export class ActionExecutor {
     };
     this.deps.fuzzManager.startTransaction(target.selector, 'FUZZ', metadata);
 
+    // Set inside the forensic step below; read by the escalation feedback after it.
+    let injection: InputOutcome = { method: 'none', delivered: false };
+
     try {
       // Reset the per-injection execution witness so a confirmed leak below is
       // attributed to THIS payload, not a prior injection on another field.
@@ -666,8 +656,15 @@ export class ActionExecutor {
             describeConstraintBypass(label, strip.strippedAttributes, strip.affectedCount),
           );
 
-          await this.injectPayload(page, target.selector, payload);
+          injection = await this.injectPayload(page, target.selector, payload);
           ActiveScenarioTracker.record(describeInputInjection(label, payload, redactValue));
+          if (!injection.delivered) {
+            t.emit('ACTION', {
+              actionExecuted: 'payload-injection-rejected',
+              selector: target.selector,
+              message: ` ${humanizeElement(target)} did not take the L${level} payload (field rejected the value) — treating as resistance.`,
+            });
+          }
 
           await this.fillEmptyFormSiblings(page, target.selector);
           const submissionMethod = await triggerFormSubmission(page, target.selector);
@@ -728,9 +725,16 @@ export class ActionExecutor {
       const faulted =
         snapshot.apiResponses.some((r) => r.status >= 400) ||
         snapshot.consoleAnomalies.some((a) => a.type === 'error' || a.type === 'pageerror');
-      const resistance = fieldStillPresent
+      const domResistance = fieldStillPresent
         ? await this.detectInputResistance(page, target.selector, payload)
         : { resisted: false, reason: 'field vanished' };
+
+      const resistance = resolveResistance({
+        fieldStillPresent,
+        payloadDelivered: injection.delivered,
+        dom: domResistance,
+        appReacted: snapshot.stateChanged,
+      });
 
       const outcome = decideEscalation({ fieldStillPresent, faulted, resisted: resistance.resisted });
       if (outcome === 'reset') {
@@ -801,12 +805,13 @@ export class ActionExecutor {
   }
 
   /**
-   * Probe whether the app RESISTED the injected payload. Reads the field back
-   * after inject+submit: resistance = the field no longer holds the payload
-   * (cleared/reverted by the app's validation) OR a client-side validation error
-   * surfaced. A retained, valid value means the payload was accepted — not
-   * resistance. Never throws: an unreadable/detached field reports no resistance
-   * (the caller's fieldStillPresent/reset path already handles a vanished field).
+   * DOM half of the resistance oracle. Reads the field back after inject+submit:
+   * resistance = the field no longer holds the payload (cleared/reverted by the
+   * app's validation) OR a client-side validation error surfaced. A retained
+   * value is NOT acceptance on its own — `resolveResistance` corroborates it
+   * against delivery and an observable app reaction. Never throws: an
+   * unreadable/detached field reports no resistance (the caller's
+   * fieldStillPresent/reset path already handles a vanished field).
    */
   private async detectInputResistance(
     page: Page,
@@ -834,44 +839,40 @@ export class ActionExecutor {
     }
   }
 
-  private async safeButtonSpammer(page: Page, target: InteractiveElement): Promise<void> {
-    try {
-      await this.deps.simulator.buttonSpammer(page, target.selector);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (
-        message.includes('Node is detached from document') ||
-        message.includes('Element is not attached to the DOM') ||
-        message.includes('is not clickable') ||
-        message.includes('element is not visible') ||
-        message.includes('obscured')
-      ) {
-        this.deps.telemetry.emit('ACTION', {
-          actionExecuted: 'target-obscured-or-detached',
-          selector: target.selector,
-          message: `Target skipped due to interaction obstruction: ${message}`,
-        });
-        return;
-      }
+  /**
+   * Single trusted traversal click through the actuation ladder. Reports which
+   * rung fired so a downstream "no state change" verdict can tell *did not
+   * respond* from *could not be clicked* — the two used to be indistinguishable
+   * because the in-page click silently no-opped on a missing/obscured node.
+   */
+  private async actuateClick(page: Page, target: InteractiveElement): Promise<ClickOutcome> {
+    const outcome = await trustedClick(page, target.selector);
 
-      throw error;
+    if (outcome.rung === 'unresolved') {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'target-obscured-or-detached',
+        selector: target.selector,
+        message: `Target skipped due to interaction obstruction: ${outcome.reason}`,
+      });
+    } else if (outcome.rung !== 'trusted') {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'click-fallback-used',
+        selector: target.selector,
+        message: `${humanizeElement(target)} was not trust-clickable (${outcome.reason}) — actuated via ${outcome.rung} fallback.`,
+      });
     }
+
+    return outcome;
   }
 
-  private async injectPayload(page: Page, selector: string, payload: string): Promise<void> {
-    await page
-      .evaluate(
-        ({ sel, value }: { sel: string; value: string }) => {
-          const node = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null;
-          if (!node) return;
-          node.focus();
-          node.value = value;
-          node.dispatchEvent(new Event('input', { bubbles: true }));
-          node.dispatchEvent(new Event('change', { bubbles: true }));
-        },
-        { sel: selector, value: payload },
-      )
-      .catch(() => undefined);
+  /**
+   * Framework-safe payload delivery. Direct `.value` assignment is discarded by
+   * controlled React/Vue inputs, so the value must land through Playwright's
+   * trusted fill or the native prototype setter; the outcome tells the caller
+   * whether the field actually took the payload.
+   */
+  private async injectPayload(page: Page, selector: string, payload: string): Promise<InputOutcome> {
+    return setFieldValue(page, selector, payload);
   }
 
   /**
@@ -886,16 +887,20 @@ export class ActionExecutor {
    * option for required-but-empty dropdowns — so a fuzzed form can actually clear
    * its client gates and submit, instead of being trapped one control short of the
    * backend and re-rendering the identical state.
+   *
+   * The in-page pass only *decides and tags*; every write goes through the shared
+   * framework-safe primitives from Node, so controlled React/Vue siblings receive
+   * the value the same way the anchor does (audit P3-02).
    */
   private async fillEmptyFormSiblings(page: Page, anchorSelector: string): Promise<void> {
     const siblings = await page
       .evaluate((sel) => {
         const anchor = document.querySelector(sel);
         const form = anchor?.closest('form');
-        if (!form) return [] as Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }>;
+        if (!form) return [] as FormSibling[];
 
         const skip = new Set(['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset']);
-        const out: Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }> = [];
+        const out: FormSibling[] = [];
         let i = 0;
         form.querySelectorAll('input, textarea, select').forEach((el) => {
           const node = el as HTMLInputElement;
@@ -906,6 +911,7 @@ export class ActionExecutor {
           const tmp = `bsib-${i++}`;
           node.setAttribute('data-bugsafari-sib', tmp);
           out.push({
+            kind: 'text',
             tmp,
             type: node.type ?? '',
             id: node.id ?? '',
@@ -915,48 +921,71 @@ export class ActionExecutor {
           });
         });
 
-        // Satisfy required non-text controls so the form can pass validation.
-        // Events dispatched inline (no nested helper) so this body survives
-        // serialization into the page context under any bundler/transform.
+        // Tag the REQUIRED non-text controls that still block validation. The
+        // group/emptiness reasoning has to run in-page; the actuation does not.
+        // Radio groups are tagged once: the writes happen later, so members would
+        // otherwise all read as "group unchecked" and each overwrite the last.
+        const taggedRadioGroups = new Set<string>();
         form.querySelectorAll('input[required], select[required]').forEach((el) => {
           const node = el as HTMLInputElement;
           if (node === anchor) return;
+          if (node.hasAttribute('data-bugsafari-sib')) return;
           const type = (node.type ?? '').toLowerCase();
           const tag = node.tagName.toLowerCase();
+
+          let kind: 'toggle' | 'select' | null = null;
+          let optionValue = '';
           if (type === 'checkbox') {
-            if (!node.checked) {
-              node.checked = true;
-              node.dispatchEvent(new Event('input', { bubbles: true }));
-              node.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+            if (!node.checked) kind = 'toggle';
           } else if (type === 'radio') {
+            if (taggedRadioGroups.has(node.name)) return;
             const group = Array.from(form.querySelectorAll('input[type="radio"]')).filter(
               (radio) => (radio as HTMLInputElement).name === node.name,
             );
             if (!group.some((radio) => (radio as HTMLInputElement).checked)) {
-              node.checked = true;
-              node.dispatchEvent(new Event('input', { bubbles: true }));
-              node.dispatchEvent(new Event('change', { bubbles: true }));
+              kind = 'toggle';
+              taggedRadioGroups.add(node.name);
             }
           } else if (tag === 'select') {
             const select = node as unknown as HTMLSelectElement;
             if (!select.value) {
               const options = Array.from(select.options).filter((option) => !option.disabled && option.value);
               if (options.length > 0) {
-                select.value = options[options.length - 1].value;
-                select.dispatchEvent(new Event('input', { bubbles: true }));
-                select.dispatchEvent(new Event('change', { bubbles: true }));
+                kind = 'select';
+                optionValue = options[options.length - 1].value;
               }
             }
           }
+          if (!kind) return;
+
+          const tmp = `bsib-${i++}`;
+          node.setAttribute('data-bugsafari-sib', tmp);
+          out.push({
+            kind,
+            tmp,
+            optionValue,
+            type,
+            id: node.id ?? '',
+            name: node.name ?? '',
+            placeholder: '',
+            tagName: tag,
+          });
         });
 
         return out;
       }, anchorSelector)
-      .catch(() => [] as Array<{ tmp: string; type: string; id: string; name: string; placeholder: string; tagName: string }>);
+      .catch(() => [] as FormSibling[]);
 
     for (const sibling of siblings) {
       const selector = `[data-bugsafari-sib="${sibling.tmp}"]`;
+      if (sibling.kind === 'toggle') {
+        await setToggleChecked(page, selector, true);
+        continue;
+      }
+      if (sibling.kind === 'select') {
+        await setSelectValue(page, selector, sibling.optionValue ?? '');
+        continue;
+      }
       const siblingCategory = classifyInputElement(sibling);
       const siblingLevel = this.deps.escalationTracker.getLevel(selector, siblingCategory);
       const payload = synthesizeEscalatedPayload(

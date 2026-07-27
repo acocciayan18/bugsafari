@@ -33,3 +33,36 @@ export function decideEscalation(inputs: EscalationInputs): EscalationOutcome {
   if (inputs.resisted) return 'escalate';
   return 'hold';
 }
+
+/** Resistance verdict read back from the DOM after inject + submit. */
+export interface DomResistance {
+  resisted: boolean;
+  reason: string;
+}
+
+export interface ResistanceInputs {
+  /** The fuzzed field still exists after inject + submit. */
+  fieldStillPresent: boolean;
+  /** The injection primitive confirmed the field actually holds the payload. */
+  payloadDelivered: boolean;
+  /** DOM read-back verdict (payload retained / client validation error). */
+  dom: DomResistance;
+  /** The app reacted at all this step: DOM moved, backend answered, or it errored. */
+  appReacted: boolean;
+}
+
+/**
+ * Audit P3-02: a retained DOM value is NOT evidence that the app accepted the
+ * payload. The old direct-`.value` injection never reached a controlled
+ * React/Vue field's state, yet the read-back always found the payload retained
+ * and reported "accepted" — a self-confirming false negative that pinned every
+ * field at L0. Acceptance now needs the value to have landed AND the app to have
+ * reacted; a payload that produced nothing observable was never delivered.
+ */
+export function resolveResistance(inputs: ResistanceInputs): DomResistance {
+  if (!inputs.fieldStillPresent) return inputs.dom;
+  if (!inputs.payloadDelivered) return { resisted: true, reason: 'field rejected the payload' };
+  if (inputs.dom.resisted) return inputs.dom;
+  if (!inputs.appReacted) return { resisted: true, reason: 'no observable delivery' };
+  return inputs.dom;
+}

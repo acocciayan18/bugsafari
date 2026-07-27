@@ -729,6 +729,12 @@ export class StabilityMonitor {
     // A recurrence is already a known finding — refresh the ledger, but keep the live
     // feed quiet beyond a periodic heartbeat so a burst can never flood it.
     if (!isNew) {
+      // A later, better-correlated pair fills a culprit the first sighting left
+      // blank — first-wins dedup otherwise locks in the empty selector. The
+      // runtime- and network-fault paths already do this; the duplicate path
+      // did not, so a double-submit first seen during an uncorrelated burst
+      // (path replay, a finder driving the page) stayed permanently unattributed.
+      if (defect.selector) this.deps.upgradeFindingCulprit(defect.bugId, defect.selector);
       if (defect.occurrence === 3 || defect.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'duplicate-action-recurred',

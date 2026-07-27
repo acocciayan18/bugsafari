@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
-import type { TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
+import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
@@ -219,8 +219,11 @@ export function registerRoutes(
   // Lifecycle states in which the run is still live (controls stay bound to it).
   const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
 
+  // Backlog ceiling for the distributed path, read once at wiring time.
+  const maxQueueDepth = readMaxQueueDepth();
+
   // Minimal QUEUED snapshot for a job still in line (no engine, no buffers yet).
-  const queuedSnapshot = (entry: RunRegistryEntry, position: number | null, queueDepth: number) => ({
+  const queuedSnapshot = (entry: RunRegistryEntry, position: number | null, queueDepth: number, fleet?: { activeCount: number; workerCount: number | null }) => ({
     runId: entry.runCode,
     runToken: entry.runToken,
     jobId: entry.jobId,
@@ -238,6 +241,8 @@ export function registerRoutes(
     lastFrame: null,
     queuePosition: position,
     queueDepth,
+    queueActiveCount: fleet?.activeCount ?? 0,
+    queueWorkerCount: fleet?.workerCount ?? null,
   });
 // Health check - public
   app.get('/api/health', (_request: Request, response: Response) => {
@@ -431,6 +436,21 @@ export function registerRoutes(
           }
         }
 
+        // Bounded backlog. Without a ceiling one burst pins every job payload in
+        // Redis and hands later operators a wait no UI can honestly display; the
+        // duplicate-submission guard above already let this requester resume, so
+        // anyone reaching here is genuinely adding to the line.
+        const waiting = await taskQueue.waitingCount();
+        if (waiting >= maxQueueDepth) {
+          console.warn(`[API] Queue full: ${waiting}/${maxQueueDepth} waiting — rejecting launch for ${targetUrl}`);
+          response.status(503).json({
+            error: 'QUEUE_FULL',
+            message: `The testing fleet is saturated (${waiting} runs already waiting). Please retry shortly.`,
+            queueDepth: waiting,
+          });
+          return;
+        }
+
         // Issue the run token AND the public code up front so the registry entry and
         // the sealed credentials both exist BEFORE a worker can possibly claim the job.
         const queuedRunToken = randomUUID();
@@ -594,9 +614,9 @@ export function registerRoutes(
 
       const state = await taskQueue.getJobState(entry.jobId).catch(() => 'unknown');
       if (WAITING_STATES.has(state)) {
-        const { order, queueDepth } = await taskQueue.positions();
+        const { order, queueDepth, activeCount, workerCount } = await taskQueue.positions();
         const index = order.indexOf(entry.jobId);
-        response.json({ snapshot: queuedSnapshot(entry, index >= 0 ? index + 1 : null, queueDepth) });
+        response.json({ snapshot: queuedSnapshot(entry, index >= 0 ? index + 1 : null, queueDepth, { activeCount, workerCount }) });
         return;
       }
       if (state === 'active') {

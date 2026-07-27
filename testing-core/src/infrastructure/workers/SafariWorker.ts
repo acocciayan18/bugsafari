@@ -1,4 +1,5 @@
 import { Worker, type Job } from 'bullmq';
+import { hostname } from 'node:os';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { MongoFindingRepository } from '../database/repositories/MongoFindingRepository.js';
 import { connectDatabase } from '../database/mongooseClient.js';
@@ -18,10 +19,17 @@ export interface SafariWorkerRuntime {
 }
 
 /**
- * CONCURRENCY_BLOCKERS — why this is pinned to 1.
+ * CONCURRENCY MODEL — one run per worker process; scale by replicas.
  *
- * Run state that is still process-wide, not per-job. Each must become per-run
- * before MAX_SAFE_WORKER_CONCURRENCY can be raised:
+ * Fleet capacity is the number of worker replicas (WORKER_REPLICAS in the compose
+ * files), NOT this in-process concurrency. Each replica owns its own Node process,
+ * Chromium, SessionManager, and forensic buffers, so runs are isolated by the OS
+ * rather than by convention — no shared static can leak between them, and the
+ * per-run seeded PRNG keeps each run independently reproducible.
+ *
+ * CONCURRENCY_BLOCKERS — why in-process concurrency stays pinned to 1. Run state
+ * that is still process-wide, not per-job. Each must become per-run before
+ * MAX_SAFE_WORKER_CONCURRENCY could be raised:
  *   1. sessionManager singleton (services/SessionManager.ts) — beginRun() tears
  *      down any live run and repoints the shared telemetry room.
  *   2. Six static forensic stores reset per-run in StartExplorationUseCase:
@@ -33,6 +41,10 @@ export interface SafariWorkerRuntime {
  *
  * Resolved: the scenario PRNG is now AsyncLocalStorage-scoped per run
  * (domain/scenarios/seededRandom.ts), so it is no longer a blocker.
+ *
+ * A concurrent run needs its own Chromium either way, so raising this buys one
+ * saved Node runtime in exchange for the whole class of cross-run buffer
+ * contamination above — which corrupts findings silently. Add replicas instead.
  */
 const MAX_SAFE_WORKER_CONCURRENCY = 1;
 
@@ -47,8 +59,9 @@ function readWorkerConcurrency(): number {
   if (parsed > MAX_SAFE_WORKER_CONCURRENCY) {
     console.warn(
       `[SafariWorker] BUGSAFARI_WORKER_CONCURRENCY=${parsed} requested but clamped to ` +
-        `${MAX_SAFE_WORKER_CONCURRENCY}. Shared in-process run state is not yet isolated — ` +
-        `see CONCURRENCY_BLOCKERS in this file before raising the cap.`,
+        `${MAX_SAFE_WORKER_CONCURRENCY}. Shared in-process run state is not isolated — ` +
+        `see CONCURRENCY_BLOCKERS in this file. To raise fleet capacity, add worker ` +
+        `replicas instead (WORKER_REPLICAS=${parsed} / docker compose up --scale worker=${parsed}).`,
     );
   }
 
@@ -219,7 +232,9 @@ async (job) => {
   );
 
   worker.on('ready', () => {
-    console.log(`[SafariWorker] ready queue=${SAFARI_TASK_QUEUE_NAME} redis=${redisUrl}`);
+    // Replica identity: with a fleet of N, log lines are otherwise indistinguishable
+    // and there is no way to confirm which process claimed a given run.
+    console.log(`[SafariWorker] ready replica=${hostname()}/${process.pid} queue=${SAFARI_TASK_QUEUE_NAME} redis=${redisUrl}`);
   });
 
   worker.on('active', (job) => {

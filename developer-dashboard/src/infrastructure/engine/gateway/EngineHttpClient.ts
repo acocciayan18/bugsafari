@@ -3,6 +3,19 @@ import type { StartTestResult, StopRunResult } from '../../../application/ports/
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
 
+// Pull the operator-facing prose out of a JSON error body, or null if the response
+// wasn't JSON (proxy HTML, empty body) so the caller keeps its raw fallback.
+function readServerMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    if (typeof parsed.message === 'string' && parsed.message) return parsed.message;
+    if (typeof parsed.error === 'string' && parsed.error) return parsed.error;
+  } catch {
+    // Not JSON — fall through.
+  }
+  return null;
+}
+
 /**
  * REST/HTTP routines for the engine gateway. Owns the auth token and every
  * fetch-based call (start/save/history) plus the HTTP fallback used by the
@@ -74,7 +87,10 @@ export class EngineHttpClient {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[Gateway]  Start failed: ${response.status} - ${errorText}`);
-        throw new Error(`Server returned ${response.status} - ${errorText}`);
+        // The API answers rejections (QUEUE_FULL, AUTH_CONFIG_INVALID, target
+        // routing) with a JSON body carrying operator-facing prose. Surface that
+        // instead of the raw payload, which reached the toast verbatim.
+        throw new Error(readServerMessage(errorText) ?? `Server returned ${response.status} - ${errorText}`);
       }
 
       // Capture the server-issued run token so a later refresh / reconnect can

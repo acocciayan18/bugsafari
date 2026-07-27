@@ -65,8 +65,29 @@ const defaultJobOptions: JobsOptions = {
   },
 };
 
+// getWorkersCount() issues a Redis CLIENT LIST, which is O(connections) — cached
+// because positions() runs on every queue transition, not once per request.
+const WORKER_COUNT_TTL_MS = 5_000;
+// Backlog ceiling. Unbounded enqueue lets one burst pin every Redis job payload
+// in memory and hand later operators a wait time no UI can honestly display.
+const DEFAULT_MAX_QUEUE_DEPTH = 50;
+
+export function readMaxQueueDepth(): number {
+  const parsed = Number.parseInt(process.env.BUGSAFARI_MAX_QUEUE_DEPTH ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_QUEUE_DEPTH;
+}
+
+export interface QueuePositions {
+  order: string[];
+  queueDepth: number;
+  activeCount: number;
+  // Concurrent execution slots the fleet currently exposes; null when unavailable.
+  workerCount: number | null;
+}
+
 export class TaskQueue {
   private readonly queue: Queue<SafariTaskPayload>;
+  private workerCountCache: { value: number | null; at: number } = { value: null, at: 0 };
 
   constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
     this.queue = new Queue<SafariTaskPayload>(SAFARI_TASK_QUEUE_NAME, {
@@ -104,18 +125,36 @@ export class TaskQueue {
     };
   }
 
+  // Connected worker replicas = concurrent execution slots (per-worker concurrency
+  // is clamped to 1). Cached, and never throws: managed Redis tiers disable CLIENT
+  // LIST, and a missing capacity figure must degrade the display, not the queue.
+  public async workerCount(): Promise<number | null> {
+    const now = Date.now();
+    if (now - this.workerCountCache.at < WORKER_COUNT_TTL_MS) return this.workerCountCache.value;
+    const value = await this.queue.getWorkersCount().catch(() => null);
+    this.workerCountCache = { value, at: now };
+    return value;
+  }
+
   // Live waiting/active snapshot used to compute each job's queue position. Waiting
   // jobs come back FIFO, so array index + 1 is the 1-based place in line.
-  public async positions(): Promise<{ order: string[]; queueDepth: number; activeCount: number }> {
-    const [waiting, activeCount] = await Promise.all([
+  public async positions(): Promise<QueuePositions> {
+    const [waiting, activeCount, workerCount] = await Promise.all([
       this.queue.getWaiting(),
       this.queue.getActiveCount(),
+      this.workerCount(),
     ]);
     return {
       order: waiting.map((job) => String(job.id)),
       queueDepth: waiting.length,
       activeCount,
+      workerCount,
     };
+  }
+
+  /** Waiting-job count only — the cheap pre-enqueue backlog check. */
+  public async waitingCount(): Promise<number> {
+    return this.queue.getWaitingCount();
   }
 
   // Authoritative BullMQ state of one job — drives recovery + initial pushes.

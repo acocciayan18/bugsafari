@@ -22,12 +22,12 @@ function makeExecutor(gate: ScenarioGate): ActionExecutor {
   return new ActionExecutor({ gate } as unknown as ActionExecutorDeps);
 }
 
-function buttonLike(selector: string): InteractiveElement {
+function buttonLike(selector: string, innerText = 'Do it'): InteractiveElement {
   return {
     tagName: 'button',
     id: '',
     className: '',
-    innerText: 'Do it',
+    innerText,
     selector,
     type: 'button',
   } as unknown as InteractiveElement;
@@ -67,6 +67,36 @@ check('distinct selectors rotate independently', () => {
   const a = pick(exec, buttonLike('#a'));
   const b = pick(exec, buttonLike('#b'));
   assert.equal(a, b, 'each selector starts its own cursor at index 0 → same first scenario');
+});
+
+check('a state-committing control leads with the double-submit burst', () => {
+  // Traversal is a single trusted click now (P3-01), so the burst is the ONLY
+  // probe that can surface an unguarded double-submit — it must not depend on
+  // the timebox happening to revisit the control a second time.
+  const exec = makeExecutor(new ScenarioGate());
+  assert.equal(pick(exec, buttonLike('#login-btn', 'Log in')), 'ButtonSpammer');
+  assert.equal(pick(exec, buttonLike('#submit-order', 'Submit order')), 'ButtonSpammer');
+});
+
+check('a non-committing control keeps its original scenario order', () => {
+  const exec = makeExecutor(new ScenarioGate());
+  assert.notEqual(pick(exec, buttonLike('#toggle-theme', 'Toggle theme')), 'ButtonSpammer');
+});
+
+check('a utility class name cannot masquerade as a commit control', () => {
+  // Unanchored substring matching over className reads Tailwind's `border` as
+  // "order" — that would promote the burst on nearly every button and quietly
+  // restore the flood-every-click behaviour P3-01 removed.
+  const exec = makeExecutor(new ScenarioGate());
+  const styled = {
+    tagName: 'button',
+    id: '',
+    className: 'border rounded px-4 buyer-list',
+    innerText: 'Show more',
+    selector: '#more',
+    type: 'button',
+  } as unknown as InteractiveElement;
+  assert.notEqual(pick(exec, styled), 'ButtonSpammer');
 });
 
 check('returns null when every applicable scenario is gated off', () => {

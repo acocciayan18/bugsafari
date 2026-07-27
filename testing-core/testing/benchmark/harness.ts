@@ -128,6 +128,11 @@ export async function runAndScore(app: BenchApp, manifest: BenchManifest, opts: 
     console.log(`  ${hit ? '✓' : '✗'} ${`#${defect.id}`.padEnd(18)} ${tag}${defect.expectedBugClass}`);
   }
 
+  // Every finding as reported, so an attribution miss above can be diagnosed
+  // without re-running the engine to find out which selector it actually named.
+  console.log('\nAll findings as reported (class → selector):');
+  for (const f of findings) console.log(`  ${f.bugClass.padEnd(30)} ${f.selector || '(no selector)'}`);
+
   if (falsePos.length > 0) {
     console.log('\nFalse positives (unexpected class or benign control):');
     for (const f of falsePos) console.log(`  ✗ [${f.bugClass}] ${f.selector || '(no selector)'} — ${f.message.slice(0, 80)}`);

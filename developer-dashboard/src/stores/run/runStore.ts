@@ -104,6 +104,10 @@ export interface RunState {
     isQueued: boolean;
     queuePosition: number | null;
     queueDepth: number;
+    // Fleet occupancy shown alongside the place in line, so a waiting operator can
+    // see progress even while their own position is unchanged.
+    queueActiveCount: number;
+    queueWorkerCount: number | null;
 
     setConnected: (connected: boolean) => void;
     setReconnecting: (attempt: number) => void;
@@ -170,6 +174,8 @@ export const useRunStore = create<RunState>((set, get) => ({
     isQueued: false,
     queuePosition: null,
     queueDepth: 0,
+    queueActiveCount: 0,
+    queueWorkerCount: null,
 
     setConnected: (connected) =>
         set(connected
@@ -328,11 +334,15 @@ export const useRunStore = create<RunState>((set, get) => ({
                 isQueued: true,
                 queuePosition: update.position,
                 queueDepth: update.queueDepth,
+                queueActiveCount: update.activeCount ?? 0,
+                queueWorkerCount: update.workerCount ?? null,
                 isTestRunning: true,
                 status: 'QUEUED',
                 isInitializing: false,
             });
-            // Shared id makes repeated waiting pushes update in place instead of stacking
+            // Shared id makes repeated waiting pushes update in place instead of stacking.
+            // The live place in line rides the chip, not the toast — a toast body that
+            // changes every push re-announces itself to screen readers on each tick.
             toast('Session queued — waiting for an available worker. Execution starts automatically.', { id: STATUS_TOAST_ID, duration: Infinity });
             return;
         }
@@ -422,6 +432,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             isQueued: queued,
             queuePosition: queued ? snapshot.queuePosition ?? null : null,
             queueDepth: queued ? snapshot.queueDepth ?? 0 : 0,
+            queueActiveCount: queued ? snapshot.queueActiveCount ?? 0 : 0,
+            queueWorkerCount: queued ? snapshot.queueWorkerCount ?? null : null,
             // Deterministic init flag, derived from the snapshot rather than left as
             // whatever the local state happened to hold: a frame means the feed is up,
             // a live-but-frameless run is still booting, and queued/terminal is not.
@@ -480,6 +492,10 @@ export const useRunStore = create<RunState>((set, get) => ({
             isQueued: false,
             queuePosition: null,
             queueDepth: 0,
+            // Fleet counts are per-run context; a relaunch must not show the prior
+            // run's occupancy in the gap before the first queue push lands.
+            queueActiveCount: 0,
+            queueWorkerCount: null,
         });
     },
 

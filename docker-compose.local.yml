@@ -96,8 +96,16 @@ services:
 
 
   worker:
-    container_name: bugsafari-worker
+    # No container_name: a fixed name pins the service to exactly one container and
+    # makes `--scale` / replicas fail. Containers are named bugsafari-local-worker-N.
     restart: unless-stopped
+    # Fleet capacity == replica count. Each replica is its own process + Chromium +
+    # forensic buffers, so concurrent runs are isolated by the OS rather than by
+    # convention (in-process concurrency stays clamped to 1 — see SafariWorker.ts).
+    # Budget ~700MB per replica. Override: WORKER_REPLICAS=3, or
+    # `podman compose -f docker-compose.local.yml up --scale worker=3`.
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
     build:
       context: .
       dockerfile_inline: |

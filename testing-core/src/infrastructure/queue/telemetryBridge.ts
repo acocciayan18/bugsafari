@@ -8,7 +8,7 @@ import type { RoomEmitter } from '../socket/SocketTelemetryGateway.js';
 export const TELEMETRY_BRIDGE_CHANNEL = 'safari:telemetry';
 
 interface BridgeMessage {
-  room: string | null; // run:${runToken} room, or null for a legacy broadcast
+  room: string; // always run:${runToken} — an unrouted worker emit is never bridged
   event: string;
   args: unknown[];
 }
@@ -22,13 +22,25 @@ function redisClient(redisUrl: string): Redis {
  *  a dead process-local Socket.IO server. Room scoping is preserved verbatim. */
 export class RedisTelemetryPublisher implements RoomEmitter {
   private readonly pub: Redis;
+  private droppedUnrouted = 0;
 
   constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
     this.pub = redisClient(redisUrl);
   }
 
-  public emit(event: string, ...args: unknown[]): boolean {
-    this.publish(null, event, args);
+  /**
+   * Unrouted emit — the gateway holds no room, which happens only outside a run
+   * (before reserve, after teardown). A worker has no legitimate fleet-wide
+   * audience: bridging this would re-emit one run's frame to EVERY connected
+   * dashboard, so a late settling emit from a finished run would land in another
+   * operator's live session. Dropped, not broadcast.
+   */
+  public emit(event: string, ..._args: unknown[]): boolean {
+    this.droppedUnrouted += 1;
+    // Rate-limited: a stuck producer must not flood the log with one line per frame.
+    if (this.droppedUnrouted === 1 || this.droppedUnrouted % 100 === 0) {
+      console.warn(`[TelemetryBridge] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
+    }
     return true;
   }
 
@@ -41,7 +53,7 @@ export class RedisTelemetryPublisher implements RoomEmitter {
     };
   }
 
-  private publish(room: string | null, event: string, args: unknown[]): void {
+  private publish(room: string, event: string, args: unknown[]): void {
     const message: BridgeMessage = { room, event, args };
     void this.pub.publish(TELEMETRY_BRIDGE_CHANNEL, JSON.stringify(message)).catch((error) => {
       console.error('[TelemetryBridge] publish failed:', error instanceof Error ? error.message : error);
@@ -54,7 +66,8 @@ export class RedisTelemetryPublisher implements RoomEmitter {
 }
 
 /** API-side subscriber: re-emits each bridged frame into the browser-facing io,
- *  scoped to the same run room the worker wrote to (or broadcast when null). */
+ *  always scoped to the run room the worker wrote to — never a broadcast, so
+ *  concurrent runs on different replicas cannot bleed into each other's rooms. */
 export class TelemetryBridgeSubscriber {
   private readonly sub: Redis;
 
@@ -67,8 +80,13 @@ export class TelemetryBridgeSubscriber {
     this.sub.on('message', (_channel, raw) => {
       try {
         const { room, event, args } = JSON.parse(raw) as BridgeMessage;
-        const target = room ? this.io.to(room) : this.io;
-        target.emit(event, ...args);
+        // Defensive: an older worker build could still publish room:null. Drop it
+        // rather than fanning one run's telemetry out to every dashboard.
+        if (typeof room !== 'string' || !room) {
+          console.warn(`[TelemetryBridge] dropped unrouted frame '${event}' from the fleet.`);
+          return;
+        }
+        this.io.to(room).emit(event, ...args);
       } catch (error) {
         console.error('[TelemetryBridge] drop malformed frame:', error instanceof Error ? error.message : error);
       }

@@ -50,6 +50,8 @@ services:
       # Route start-test through Redis to the worker fleet — mandatory for prod
       # so the API process never launches Playwright in-process (SC2).
       BUGSAFARI_USE_QUEUE: "1"
+      # Backlog ceiling; enqueue past this returns 503 QUEUE_FULL.
+      BUGSAFARI_MAX_QUEUE_DEPTH: ${BUGSAFARI_MAX_QUEUE_DEPTH:-50}
       BUGSAFARI_PORT: "3000"
       BUGSAFARI_API_PORT: "3000"
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
@@ -69,19 +71,24 @@ services:
       - bugsafari-prod
 
   worker:
-    container_name: bugsafari-prod-worker
+    # No container_name: a fixed name pins the service to one container and makes
+    # replicas/--scale fail. Containers are named bugsafari-prod-worker-N.
     restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
     environment:
       <<: *shared-env
-      # Keep at 1 until run state is de-singletoned (SC1). Scale out with replicas.
+      # Stays 1: in-process run state is not isolated (SC1 / CONCURRENCY_BLOCKERS in
+      # SafariWorker.ts). Fleet capacity comes from replicas below, where the OS
+      # isolates each run's process, browser, and forensic buffers.
       BUGSAFARI_WORKER_CONCURRENCY: ${BUGSAFARI_WORKER_CONCURRENCY:-1}
     command: ["npm", "run", "start:worker", "--workspace", "testing-core"]
-    # Scale the fleet horizontally: docker compose -f docker-compose.prod.yml up --scale worker=3
+    # Concurrent-run capacity == replica count. Budget ~700MB (Node + Chromium) per
+    # replica. Scale further: WORKER_REPLICAS=4, or
+    # docker compose -f docker-compose.prod.yml up --scale worker=4
     deploy:
-      replicas: ${WORKER_REPLICAS:-1}
+      replicas: ${WORKER_REPLICAS:-2}
     depends_on:
       redis:
         condition: service_healthy

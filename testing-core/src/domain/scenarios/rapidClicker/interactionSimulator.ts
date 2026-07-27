@@ -1,16 +1,19 @@
 /**
  * Interaction Simulator
  *
- * Provides methods for simulating rapid click operations:
- * - buttonSpammer: baseline rapid single-element clicking (exploratory baseline)
  * - concurrentClicker: true zero-wait concurrent clicking across sibling elements
+ *
+ * The former `buttonSpammer` method (a 300 ms loop of in-page `node.click()`)
+ * was the exploratory BASELINE interaction, so every traversal click was an
+ * untrusted ~30x burst (audit P3-01). Traversal now uses the trusted single
+ * click in `exploration/trustedClick.ts`; click-flooding is once again reachable
+ * only through the operator-gated ButtonSpammer scenario.
  */
 
 import type { Page } from 'playwright';
 import type { StepTarget } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/index.js';
-import { wait } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
@@ -25,31 +28,6 @@ import { StressClickMetadataRecorder } from '../../services/forensics/metadataRe
  * Interaction Simulator for executing rapid click operations.
  */
 export class InteractionSimulator {
-  /**
-   * Performs rapid baseline button clicking on a single selector via in-page
-   * dispatch. This is the exploratory-baseline interaction, not the concurrent
-   * stress path (see {@link concurrentClicker}).
-   *
-   * @param page Playwright Page object
-   * @param selector CSS selector to spam clicks on
-   */
-  public async buttonSpammer(page: Page, selector: string): Promise<void> {
-    const durationMs = 300;
-    const start = Date.now();
-
-    while (Date.now() - start < durationMs) {
-      await page
-        .evaluate((sel) => {
-          const node = document.querySelector(sel) as HTMLElement | null;
-          if (node) {
-            node.click();
-          }
-        }, selector)
-        .catch(() => undefined);
-      await wait(10);
-    }
-  }
-
   /**
    * Fires a true zero-wait concurrent burst across up to 5 sibling selectors to
    * expose overlapping-update race conditions. When a ChaosTransactionManager is
