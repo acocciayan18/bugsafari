@@ -12,14 +12,10 @@ import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
 import { deleteRecord as deleteSafariRecord, exportRecord } from '../../services/historyService';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
-import SessionComparisonModal from './SessionComparisonModal';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChartColumnBig, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, Trash2, TriangleAlert, Upload } from 'lucide-react';
-
-// Upper bound on side-by-side comparison columns before the table stops being readable.
-const MAX_COMPARE = 4;
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
 
 export default function SavedEvaluationSafaris() {
   const navigate = useNavigate();
@@ -27,7 +23,7 @@ export default function SavedEvaluationSafaris() {
 
   const {
     isLoading, error, searchQuery, activeFilter, sortConfig,
-    fetchSessions, removeSessions, setSearchQuery, setActiveFilter, setSortConfig, setCurrentPage,
+    fetchSessions, removeSession, setSearchQuery, setActiveFilter, setSortConfig, setCurrentPage,
   } = useHistoryStore(
     useShallow((s) => ({
       isLoading: s.isLoading,
@@ -36,7 +32,7 @@ export default function SavedEvaluationSafaris() {
       activeFilter: s.activeFilter,
       sortConfig: s.sortConfig,
       fetchSessions: s.fetchSessions,
-      removeSessions: s.removeSessions,
+      removeSession: s.removeSession,
       setSearchQuery: s.setSearchQuery,
       setActiveFilter: s.setActiveFilter,
       setSortConfig: s.setSortConfig,
@@ -46,10 +42,7 @@ export default function SavedEvaluationSafaris() {
 
   const view = useHistoryView();
 
-  // Selection and dialogs are component-scoped and ephemeral — no consumer outside this view.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [bulkDeleteState, setBulkDeleteState] = useState({ isOpen: false, count: 0, isDeleting: false });
+  // The delete dialog is component-scoped and ephemeral — no consumer outside this view.
   const [deleteState, setDeleteState] = useState<{ isOpen: boolean; recordId: string | null; targetUrl: string; isDeleting: boolean }>({
     isOpen: false, recordId: null, targetUrl: '', isDeleting: false,
   });
@@ -71,7 +64,7 @@ export default function SavedEvaluationSafaris() {
     setDeleteState((prev) => ({ ...prev, isDeleting: true }));
     try {
       await deleteSafariRecord(recordId);
-      removeSessions([recordId]);
+      removeSession(recordId);
       toast.success('Record deleted successfully');
       setDeleteState({ isOpen: false, recordId: null, targetUrl: '', isDeleting: false });
     } catch (err) {
@@ -90,55 +83,6 @@ export default function SavedEvaluationSafaris() {
       toast.error(err instanceof Error ? err.message : 'Failed to export record');
     }
   };
-
-  const deselectAll = () => setSelectedIds(new Set());
-
-  const selectedCount = selectedIds.size;
-  const isAllSelected = view.sorted.length > 0 && view.sorted.every((item) => selectedIds.has(item.id));
-
-  const handleBulkDeleteConfirm = async () => {
-    setBulkDeleteState((prev) => ({ ...prev, isDeleting: true }));
-
-    const idsToDelete = Array.from(selectedIds);
-    const settled = await Promise.allSettled(idsToDelete.map((id) => deleteSafariRecord(id)));
-    const deletedIds = idsToDelete.filter((_, index) => settled[index].status === 'fulfilled');
-    const failedCount = idsToDelete.length - deletedIds.length;
-
-    if (deletedIds.length > 0) {
-      removeSessions(deletedIds);
-      toast.success(`Deleted ${deletedIds.length} record${deletedIds.length > 1 ? 's' : ''}`);
-    }
-    if (failedCount > 0) toast.error(`Failed to delete ${failedCount} record${failedCount > 1 ? 's' : ''}`);
-
-    setBulkDeleteState({ isOpen: false, count: 0, isDeleting: false });
-    deselectAll();
-  };
-
-  const handleBulkExport = async () => {
-    const idsToExport = Array.from(selectedIds);
-    const settled = await Promise.allSettled(idsToExport.map((id) => exportRecord(id)));
-    const exportedCount = settled.filter((r) => r.status === 'fulfilled').length;
-    const failedCount = settled.length - exportedCount;
-
-    if (exportedCount > 0) toast.success(`Exported ${exportedCount} record${exportedCount > 1 ? 's' : ''}`);
-    if (failedCount > 0) toast.error(`Failed to export ${failedCount} record${failedCount > 1 ? 's' : ''}`);
-  };
-
-  // Comparison is only meaningful between 2+ runs, and more than 4 columns stops
-  // being readable — bound it here rather than rendering an unusable table.
-  const handleBulkCompare = () => {
-    const idsToCompare = Array.from(selectedIds);
-    if (idsToCompare.length < 2) {
-      toast.info('Select at least two safaris to compare.');
-      return;
-    }
-    if (idsToCompare.length > MAX_COMPARE) {
-      toast.info(`Compare supports up to ${MAX_COMPARE} safaris at a time.`);
-      return;
-    }
-    setCompareIds(idsToCompare);
-  };
-
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
@@ -176,23 +120,6 @@ export default function SavedEvaluationSafaris() {
               <h2 className="text-h2 font-bold text-[var(--text-primary)]">
                 SAVED EVALUATION SAFARIS
               </h2>
-              {/* Select All checkbox - selects ALL filtered records */}
-              {view.sorted.length > 0 && (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isAllSelected}
-                    onChange={() => {
-                      if (isAllSelected) deselectAll();
-                      else setSelectedIds(new Set(view.sorted.map((item) => item.id)));
-                    }}
-                    className="h-5 w-5 rounded border-[var(--border-strong)] text-[var(--text-secondary)] focus:ring-[var(--border-focus)]"
-                  />
-                  <span className="text-[13px] text-[var(--text-secondary)] font-medium">
-                    {isAllSelected ? 'Deselect All' : 'Select All'}
-                  </span>
-                </label>
-              )}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 xl:gap-6">
               <div className="relative min-w-0 sm:w-56 xl:w-72">
@@ -269,44 +196,6 @@ export default function SavedEvaluationSafaris() {
             </div>
           </div>
         </div>
-
-        {/* Bulk Action Toolbar */}
-        {selectedCount > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--border-hairline)] bg-[var(--status-neutral-bg)] px-4 py-2 sm:px-6">
-            <span className="text-[13px] font-medium text-[var(--status-neutral-fg)]">
-              {selectedCount} item{selectedCount > 1 ? 's' : ''} selected
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setBulkDeleteState({ isOpen: true, count: selectedCount, isDeleting: false })}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-[13px] font-medium text-[var(--status-critical-fg)] bg-[var(--surface-app)] border border-[var(--status-critical-border)] hover:bg-[var(--status-critical-bg)] transition-colors"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete
-              </button>
-              <button
-                onClick={handleBulkExport}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-[13px] font-medium text-[var(--status-stable-fg)] bg-[var(--surface-app)] border border-[var(--status-stable-border)] hover:bg-[var(--status-stable-bg)] transition-colors"
-              >
-                <Upload className="h-4 w-4" />
-                Export
-              </button>
-              <button
-                onClick={handleBulkCompare}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-[13px] font-medium text-[var(--text-primary)] bg-[var(--surface-app)] border border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
-              >
-                <ChartColumnBig className="h-4 w-4" />
-                Compare
-              </button>
-              <button
-                onClick={deselectAll}
-                className="flex items-center gap-1 rounded px-3 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] bg-[var(--surface-app)] border border-[var(--border-hairline)] hover:bg-[var(--surface-hover)] transition-colors"
-              >
-                Clear Selection
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className="divide-y divide-[var(--border-hairline)]">
           {isLoading ? (
@@ -457,8 +346,6 @@ export default function SavedEvaluationSafaris() {
         </div>
       </main>
 
-      
-
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmDialog
         isOpen={deleteState.isOpen}
@@ -468,24 +355,6 @@ export default function SavedEvaluationSafaris() {
         message={`Are you sure you want to delete this evaluation record for ${deleteState.targetUrl}? This action cannot be undone.`}
         confirmLabel="Delete"
         isLoading={deleteState.isDeleting}
-      />
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <DeleteConfirmDialog
-        isOpen={bulkDeleteState.isOpen}
-        onConfirm={handleBulkDeleteConfirm}
-        onClose={() => setBulkDeleteState({ isOpen: false, count: 0, isDeleting: false })}
-        title="Delete Multiple Records?"
-        message={`Are you sure you want to delete ${bulkDeleteState.count} evaluation record${bulkDeleteState.count > 1 ? 's' : ''}? This action cannot be undone.`}
-        confirmLabel="Delete All"
-        isLoading={bulkDeleteState.isDeleting}
-      />
-
-      {/* Side-by-side session comparison */}
-      <SessionComparisonModal
-        isOpen={compareIds.length > 0}
-        onClose={() => setCompareIds([])}
-        sessionIds={compareIds}
       />
     </div>
   );

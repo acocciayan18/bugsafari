@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
 import { CopyButton } from '../common/ForensicCardKit';
 
@@ -20,7 +20,7 @@ const ROW_ACCENTS: Partial<Record<BrowserConsoleLevel, string>> = {
 };
 
 const FILTERS = ['all', 'error', 'warning', 'info', 'debug', 'log'] as const;
-type Filter = (typeof FILTERS)[number];
+export type ConsoleFilter = (typeof FILTERS)[number];
 
 function formatTime(timestamp: string): string {
   const date = new Date(timestamp);
@@ -28,50 +28,65 @@ function formatTime(timestamp: string): string {
   return `${date.toLocaleTimeString('en-GB', { hour12: false })}.${String(date.getMilliseconds()).padStart(3, '0')}`;
 }
 
-interface ConsoleTabPanelProps {
+interface ConsoleFilterBarProps {
   browserConsole: BrowserConsoleMessage[];
+  filter: ConsoleFilter;
+  onFilterChange: (filter: ConsoleFilter) => void;
 }
 
-// Flat, high-density log list. The parent tab body owns scrolling and the
-// jump-to-bottom affordance, so this panel adds no container of its own.
-export default function ConsoleTabPanel({ browserConsole = [] }: ConsoleTabPanelProps) {
-  const [filter, setFilter] = useState<Filter>('all');
-
-  const visible = useMemo(
-    () => (filter === 'all' ? browserConsole : browserConsole.filter((log) => log.level === filter)),
-    [browserConsole, filter],
-  );
-
+// Rendered by the terminal header, not inside the scroll body — it belongs to the
+// fixed chrome under the tab strip, so no sticky offset or padding cancellation is needed.
+export function ConsoleFilterBar({ browserConsole = [], filter, onFilterChange }: ConsoleFilterBarProps) {
   const counts = useMemo(() => {
-    const tally: Partial<Record<Filter, number>> = { all: browserConsole.length };
+    const tally: Partial<Record<ConsoleFilter, number>> = { all: browserConsole.length };
     for (const log of browserConsole) {
-      const key = log.level as Filter;
+      const key = log.level as ConsoleFilter;
       if (FILTERS.includes(key)) tally[key] = (tally[key] ?? 0) + 1;
     }
     return tally;
   }, [browserConsole]);
 
   return (
-    <div className="-mx-3 -mt-3 sm:-mx-4 sm:-mt-4">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1.5 px-3 py-2 sm:px-4 bg-(--surface-panel) border-b border-(--border-hairline)">
-        {FILTERS.map((level) => (
-          <button
-            key={level}
-            type="button"
-            onClick={() => setFilter(level)}
-            aria-pressed={filter === level}
-            className={`px-2 py-1.5 sm:py-0.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
-              filter === level
-                ? 'bg-(--surface-inset) text-(--text-primary)'
-                : 'text-(--text-tertiary) hover:text-(--text-secondary)'
-            }`}
-          >
-            {level}
-            {counts[level] ? <span className="ml-1 opacity-60">{counts[level]}</span> : null}
-          </button>
-        ))}
-      </div>
+    <div
+      role="group"
+      aria-label="Console severity filters"
+      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-2 sm:px-4"
+    >
+      {FILTERS.map((level) => (
+        <button
+          key={level}
+          type="button"
+          onClick={() => onFilterChange(level)}
+          aria-pressed={filter === level}
+          className={`px-2 py-1.5 sm:py-0.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+            filter === level
+              ? 'bg-(--surface-inset) text-(--text-primary)'
+              : 'text-(--text-tertiary) hover:text-(--text-secondary)'
+          }`}
+        >
+          {level}
+          {counts[level] ? <span className="ml-1 opacity-60">{counts[level]}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
 
+interface ConsoleTabPanelProps {
+  browserConsole: BrowserConsoleMessage[];
+  filter: ConsoleFilter;
+}
+
+// Flat, high-density log list. The parent tab body owns scrolling and the
+// jump-to-bottom affordance, so this panel adds no container of its own.
+export default function ConsoleTabPanel({ browserConsole = [], filter }: ConsoleTabPanelProps) {
+  const visible = useMemo(
+    () => (filter === 'all' ? browserConsole : browserConsole.filter((log) => log.level === filter)),
+    [browserConsole, filter],
+  );
+
+  return (
+    <div className="-mx-3 -mt-3 sm:-mx-4 sm:-mt-4">
       {visible.length === 0 ? (
         <div className="text-(--text-tertiary) italic text-[13px] py-6 px-3">
           {browserConsole.length === 0 ? 'No browser console logs captured yet.' : `No ${filter} logs in this session.`}

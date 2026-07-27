@@ -19,7 +19,7 @@ import SessionTimerLive from '../common/SessionTimerLive';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
-import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
+import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, ConsoleFilterBar, AiDiagnosticCard, TelemetryHelpModal, type ConsoleFilter } from '../telemetry';
 import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
@@ -129,6 +129,8 @@ export default function ClinicalForensicsDashboard({
   };
   // Off by default: hide per-step execution trace; flip to reveal the full log for debugging.
   const [showVerbose, setShowVerbose] = useState(false);
+  // Owned here so the Console filter bar can render in the fixed header instead of the scroll body.
+  const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all');
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [strictBoundary, setStrictBoundary] = useState(false);
@@ -503,8 +505,17 @@ export default function ClinicalForensicsDashboard({
             </div>
           </div>
 
+          {/* Console severity filters — part of the fixed header block, so the log rows scroll under it. */}
+          {activeTab === 'console' && (
+            <ConsoleFilterBar
+              browserConsole={browserConsole}
+              filter={consoleFilter}
+              onFilterChange={setConsoleFilter}
+            />
+          )}
+
           {/* Core Logs Output Viewer Container */}
-          <div className="relative flex-1 overflow-hidden">
+          <div className="relative min-h-0 flex-1 overflow-hidden">
             <div
               ref={logContainerRef}
               role="tabpanel"
@@ -570,7 +581,7 @@ export default function ClinicalForensicsDashboard({
 
               {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
               {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
-              {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} />}
+              {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} filter={consoleFilter} />}
             </div>
             <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
           </div>

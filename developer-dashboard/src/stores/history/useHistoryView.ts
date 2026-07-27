@@ -16,7 +16,6 @@ function compare(a: EvaluationSafari, b: EvaluationSafari, { field }: SortConfig
 }
 
 export interface HistoryView {
-    sorted: EvaluationSafari[];
     page: EvaluationSafari[];
     /** Clamped page — the raw index can outlive the list it was valid for. */
     safePage: number;
@@ -60,7 +59,6 @@ export function useHistoryView(): HistoryView {
         const startIdx = (safePage - 1) * ITEMS_PER_PAGE;
 
         return {
-            sorted,
             page: sorted.slice(startIdx, startIdx + ITEMS_PER_PAGE),
             safePage,
             totalPages,

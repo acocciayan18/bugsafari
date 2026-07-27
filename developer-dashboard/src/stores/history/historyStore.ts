@@ -32,7 +32,7 @@ export interface HistoryState {
     reportCache: Record<string, ForensicReportResponse>;
 
     fetchSessions: (force?: boolean) => Promise<void>;
-    removeSessions: (ids: string[]) => void;
+    removeSession: (id: string) => void;
     loadReport: (sessionId: string) => Promise<ForensicReportResponse>;
     setSearchQuery: (searchQuery: string) => void;
     setActiveFilter: (activeFilter: SeverityFilter) => void;
@@ -89,12 +89,11 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     },
 
     // Optimistic removal so the list settles without a second round-trip; the stale
-    // report entries go with it, and the page index is clamped to the shrunk list.
-    removeSessions: (ids) => {
-        const removed = new Set(ids);
-        const sessions = get().sessions.filter((item) => !removed.has(item.id));
+    // report entry goes with it, and the page index is clamped to the shrunk list.
+    removeSession: (id) => {
+        const sessions = get().sessions.filter((item) => item.id !== id);
         const reportCache = { ...get().reportCache };
-        ids.forEach((id) => delete reportCache[id]);
+        delete reportCache[id];
         const lastPage = Math.max(1, Math.ceil(sessions.length / ITEMS_PER_PAGE));
         set({ sessions, reportCache, currentPage: Math.min(get().currentPage, lastPage) });
     },
