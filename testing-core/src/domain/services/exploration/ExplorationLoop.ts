@@ -27,8 +27,10 @@ import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
 
-// Upper bound on the per-run visited-hash Set so long runs can't grow memory without limit.
+// Upper bounds on the per-run visited sets so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
+const MAX_VISITED_ROUTES = 2000;
+const MAX_VISITED_STRUCTURES = 2000;
 
 // Empty-DOM tolerance: allow this many retries (waiting for delayed SPA render)
 // before declaring a page a Structural Dead-End on the next consecutive empty check.
@@ -66,6 +68,30 @@ const NON_NAV_HREF_RE = /^\s*(#|javascript:|mailto:|tel:|sms:|$)/i;
 
 type LoopResult = RunResult;
 type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; result: LoopResult };
+
+/**
+ * Route identity used by every per-run visited/revealed set: origin + normalized
+ * route path, query string dropped — the same normalization the graph's node
+ * identity uses. Storing raw `page.url()` let cache-busters and pagination params
+ * fragment the set, so revisit detection silently degraded to hash-only and the
+ * set grew without bound on query-volatile SPAs.
+ */
+function visitedRouteKey(url: string): string {
+  try {
+    return new URL(url).origin + normalizeRoutePath(url);
+  } catch {
+    return url;
+  }
+}
+
+/** Bound an insertion-ordered Set by evicting its oldest entries. */
+function boundSet(set: Set<string>, cap: number): void {
+  while (set.size > cap) {
+    const oldest = set.values().next().value;
+    if (oldest === undefined) return;
+    set.delete(oldest);
+  }
+}
 
 /** Per-run tunables (fixed at loop start) plus the counters they evolve across iterations. */
 interface RunContext {
@@ -108,6 +134,8 @@ interface StepFingerprint {
   currentUrl: string;
   revisitedPage: boolean;
   stagnationScore: number;
+  /** Exact-state repeat AND a coverage stall — the backtrack can no longer be deferred. */
+  hardStagnation: boolean;
 }
 
 /**
@@ -224,9 +252,11 @@ export class ExplorationLoop {
         // long page are found before the engine can navigate away.
         const stepUrl = page.url();
         if (stepUrl !== ctx.lastStepUrl) {
-          const revisiting = this.deps.visitedUrls.has(stepUrl);
-          if (revisiting || !ctx.firstVisitRevealed.has(stepUrl)) {
-            ctx.firstVisitRevealed.add(stepUrl);
+          const routeKey = visitedRouteKey(stepUrl);
+          const revisiting = this.deps.visitedUrls.has(routeKey);
+          if (revisiting || !ctx.firstVisitRevealed.has(routeKey)) {
+            ctx.firstVisitRevealed.add(routeKey);
+            boundSet(ctx.firstVisitRevealed, MAX_VISITED_ROUTES);
             await this.revealLazyContent(page);
           }
         }
@@ -838,17 +868,19 @@ export class ExplorationLoop {
       message: `DOM fingerprint captured. stagnationScore=${stagnation.stagnationScore} (shell x${stagnation.structureFamiliarity}${stagnation.combinedRepeated ? ', exact-repeat' : ''})`,
     });
 
-    const revisitedPage = this.deps.visitedUrls.has(currentUrl) || this.deps.visitedHashes.has(currentHash);
-    this.deps.visitedUrls.add(currentUrl);
+    // Route-normalized so query-volatile SPAs can't defeat the URL half of the
+    // revisit check (or report thousands of near-duplicate "visited routes").
+    const currentRouteKey = visitedRouteKey(currentUrl);
+    const revisitedPage = this.deps.visitedUrls.has(currentRouteKey) || this.deps.visitedHashes.has(currentHash);
+    this.deps.visitedUrls.add(currentRouteKey);
     this.deps.visitedHashes.add(currentHash);
     // Record the structural shell so the structure-gated novelty reward can tell a
     // genuinely new region from the same page reloaded (distinct shells stay few).
     this.deps.visitedStructures.add(compound.structure);
-    if (this.deps.visitedHashes.size > MAX_VISITED_HASHES) {
-      // Bound memory: evict the oldest observed hash (insertion-ordered Set).
-      const oldest = this.deps.visitedHashes.values().next().value;
-      if (oldest !== undefined) this.deps.visitedHashes.delete(oldest);
-    }
+    // Bound memory: evict the oldest entries (insertion-ordered Sets).
+    boundSet(this.deps.visitedHashes, MAX_VISITED_HASHES);
+    boundSet(this.deps.visitedUrls, MAX_VISITED_ROUTES);
+    boundSet(this.deps.visitedStructures, MAX_VISITED_STRUCTURES);
 
     // Tick down any active escape window each step.
     if (ctx.penaltyStepsRemaining > 0) {
@@ -872,7 +904,18 @@ export class ExplorationLoop {
 
     return {
       kind: 'ok',
-      fingerprint: { compound, currentHash, currentUrl, revisitedPage, stagnationScore: stagnation.stagnationScore },
+      fingerprint: {
+        compound,
+        currentHash,
+        currentUrl,
+        revisitedPage,
+        stagnationScore: stagnation.stagnationScore,
+        // Unambiguously stuck: the EXACT same state came back AND no new coverage
+        // has been reached for the whole stall window. Deliberately not a threshold
+        // on stagnationScore — shell familiarity alone saturates that score on any
+        // legitimately single-shell SPA, which would force-abandon live frontier.
+        hardStagnation: stagnation.combinedRepeated && coverageStagnant,
+      },
     };
   }
 
@@ -983,13 +1026,19 @@ export class ExplorationLoop {
       boundingBox: el.boundingBox,
     }));
 
+    // Soft pressure is deferrable in coverage-first modes; the hard ceiling is not,
+    // so the graduated stagnation apparatus still governs the backtrack decision.
+    const forcedBacktrack =
+      ctx.penaltyStepsRemaining > 0 || fingerprint.stagnationScore >= ctx.stagnationForceBacktrack;
+
     // Only valid, traversable states reach here — error states are excluded
     // upstream (handleErrorState) before ever being registered as a graph node.
     return this.deps.pathNavigator.registerStateAndDecide(
       fingerprint.currentHash,
       fingerprint.currentUrl,
       pathfinderElements,
-      ctx.penaltyStepsRemaining > 0 || fingerprint.stagnationScore >= ctx.stagnationForceBacktrack,
+      forcedBacktrack,
+      fingerprint.hardStagnation,
     );
   }
 

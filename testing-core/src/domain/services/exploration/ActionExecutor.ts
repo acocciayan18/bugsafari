@@ -18,6 +18,7 @@ import {
   describeNavigation,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
+import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
 import type { HighlightAction } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import { decideEscalation } from './escalationDecision.js';
@@ -1028,7 +1029,7 @@ export class ActionExecutor {
     });
     const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
-      bugId: `fuzz-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      bugId: deriveStableBugId(`fuzz-${classification.bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
       type: 'FUZZ',
       message: finding.evidence?.message ?? finding.title,
       selector,
@@ -1069,7 +1070,12 @@ export class ActionExecutor {
     // Capture the (tampered) storage state so replay re-seeds it before the app boots.
     const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
-      bugId: `storage-${classification.bugClass}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      bugId: deriveStableBugId(`storage-${classification.bugClass}`, [
+        finding.selector,
+        finding.message,
+        finding.evidence,
+        safeRoutePath(page),
+      ]),
       type: 'STORAGE_TAMPER',
       message: finding.evidence,
       selector: finding.selector,

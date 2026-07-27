@@ -113,6 +113,8 @@ export class ExplorationEngine {
   private readonly scorer = new RiskScorer();
   private readonly highlighter = new BoundingBoxHighlighter();
   private readonly actions = new CircularBuffer<ActionBreadcrumb>(20);
+  // Route-normalized (origin + pathname + hash, query dropped) and bounded by the
+  // loop, so query-volatile SPAs neither defeat revisit detection nor grow memory.
   private readonly visitedUrls = new Set<string>();
   private readonly visitedHashes = new Set<string>();
   // Structure sub-hashes seen this run — novelty reward is gated on a NEW shell,
@@ -365,7 +367,8 @@ export class ExplorationEngine {
     this.authenticatedRun = true;
   }
 
-  // Distinct routes/URLs visited this run — the session-global page set for history metadata.
+  // Distinct routes visited this run (origin + normalized path, query dropped) —
+  // the session-global page set for history metadata.
   public getVisitedRoutes(): string[] {
     return [...this.visitedUrls];
   }

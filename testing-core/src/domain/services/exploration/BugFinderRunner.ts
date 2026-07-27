@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import type { BugClass, BugContext, BugFinder, BugFinding } from '../../../bugs/types.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
-import { normalizeRoutePath } from '../../../ml/domHasher.js';
+import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
@@ -122,21 +121,11 @@ export class BugFinderRunner {
  * the same defect on a different state stays a distinct finding.
  */
 function deriveBugId(finding: BugFinding, ctx: BugContext): string {
-  const parts = [
+  return deriveStableBugId(`finder-${finding.bugClass}`, [
     finding.bugClass,
     finding.title,
-    finding.evidence?.selector ?? '',
+    finding.evidence?.selector,
     ctx.stateHash,
     safeRoutePath(ctx.page),
-  ].join('|');
-  const digest = createHash('sha1').update(parts).digest('hex').slice(0, 16);
-  return `finder-${finding.bugClass}-${digest}`;
-}
-
-function safeRoutePath(page: BugContext['page']): string {
-  try {
-    return page.isClosed() ? '' : normalizeRoutePath(page.url());
-  } catch {
-    return '';
-  }
+  ]);
 }

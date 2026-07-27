@@ -209,7 +209,7 @@ export interface ExplorationLoopDeps {
   hashManager: DomHasher;
   pathNavigator: StateGraphNavigator;
   clusterRegistry: StateClusterRegistry;
-  /** Consecutive defensive/error-route detector (URL-aware error-state handling). */
+  /** Defensive/error-route detector (URL-aware error-state handling). */
   routeExhaustion: RouteExhaustionTracker;
   /** Session-wide structural-transition repeat counter (SPA navigation-loop cap). */
   edgeRepeat: EdgeRepeatTracker;
@@ -218,6 +218,7 @@ export interface ExplorationLoopDeps {
   /** Max fuzz submissions per form before it is excluded (0 disables). */
   formFuzzCap: number;
   gate: ScenarioGate;
+  /** Route keys visited this run (origin + normalized path, query dropped); bounded by the loop. */
   visitedUrls: Set<string>;
   visitedHashes: Set<string>;
   /** Structure sub-hashes seen this run — drives the structure-gated novelty reward. */

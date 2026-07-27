@@ -104,21 +104,19 @@ export class StateGraphNavigator {
    * @param currentUrl   page.url() at the moment of capture
    * @param elements     Scored elements from RiskScorer (already ranked)
    * @param forcedBacktrack  Pass true when the engine's own stagnation
-   *                     counter has independently fired — causes immediate
-   *                     backtrack regardless of edge availability.
-   * @param routeExhausted  Pass true when the engine has observed repeated
-   *                     defensive/error responses (HTTP ≥400 or an identical
-   *                     error template re-rendered across consecutive distinct
-   *                     routes). Blocks this branch's frontier + its entry edge
-   *                     and redirects to a productive ancestor instead of
-   *                     oscillating between structurally identical error pages.
+   *                     counter has independently fired. Deferrable: in
+   *                     coverage-first modes an unvisited edge is explored first.
+   * @param hardBacktrack  Pass true when the engine is unambiguously stuck (the
+   *                     exact state recurred AND coverage has stalled). Overrides
+   *                     the coverage-first defer, which would otherwise make the
+   *                     stagnation apparatus inert in the default modes.
    */
   public registerStateAndDecide(
     currentHash: StateHash,
     currentUrl: string,
     elements: PathfinderElement[],
     forcedBacktrack = false,
-    routeExhausted = false,
+    hardBacktrack = false,
   ): PathfinderDecision {
     // 1. Update consecutive-repeat counter
     this.traversalStack.updateRepeatCounter(currentHash);
@@ -155,13 +153,6 @@ export class StateGraphNavigator {
       return this.handleDeadEnd(node, false);
     }
 
-    // 4a. Route exhaustion overrides normal selection. Runs AFTER syncEdges (so
-    // the freshly re-added frontier is the one we block) and BEFORE the boredom /
-    // best-first scan, so a defensive branch never re-emits an explore-edge.
-    if (routeExhausted) {
-      return this.handleRouteExhaustion(node);
-    }
-
     // 5. Single Best-First scan: the highest-scored unvisited edge AND its score
     // in one linear pass (no sort), reused for both the boredom check and the
     // edge pick below.
@@ -194,9 +185,11 @@ export class StateGraphNavigator {
     // the state-space oscillation where the engine pops to a parent and re-descends
     // to re-run the same sequence. In coverage-first modes, defer the forced
     // backtrack and explore the next unvisited edge instead. True loop-strikes
-    // (3 identical consecutive hashes) and genuine node exhaustion still unwind.
+    // (3 identical consecutive hashes), genuine node exhaustion, and a hard
+    // stagnation ceiling still unwind.
     const deferForcedBacktrack =
       forcedBacktrack &&
+      !hardBacktrack &&
       this.config.prioritizeUnvisitedOverBoredom &&
       nextEdge !== null &&
       !loopDetected &&
@@ -208,9 +201,15 @@ export class StateGraphNavigator {
         currentHash,
         `Forced backtrack deferred — unvisited control "${nextEdge!.selector}" remains on this layout; exploring it before unwinding.`,
       );
+    } else if (hardBacktrack) {
+      this.eventLog.recordEvent(
+        'boredom-triggered-backtrack',
+        currentHash,
+        `Hard stagnation on ${shortHash(currentHash)} (exact-state repeat with stalled coverage) — unwinding regardless of remaining unvisited controls.`,
+      );
     }
 
-    if ((forcedBacktrack && !deferForcedBacktrack) || loopDetected || node.exhausted || boredForcesBacktrack) {
+    if (((forcedBacktrack || hardBacktrack) && !deferForcedBacktrack) || loopDetected || node.exhausted || boredForcesBacktrack) {
       return this.handleDeadEnd(node, loopDetected);
     }
 
@@ -394,41 +393,6 @@ export class StateGraphNavigator {
   // ───────────────────────────────────────────────────────────────────────────
   // Dead-end / backtracking logic
   // ───────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Terminal handling for a route the engine has flagged as exhausted after
-   * repeated defensive/error responses. Rather than backtracking and immediately
-   * re-descending the same edge (the oscillation this replaces), it:
-   *   1. Blocks the entire frontier of the defensive node (branch penalty).
-   *   2. Marks the edge that led INTO this route cyclic on the parent, so it is
-   *      never re-selected — the branch is closed at its entry point.
-   *   3. Delegates to the standard dead-end walk, which unwinds to the nearest
-   *      ancestor that still has unvisited controls (registration links, other
-   *      pending interactive elements) so meaningful exploration continues.
-   */
-  private handleRouteExhaustion(node: GraphNode): PathfinderDecision {
-    // 1. Its frontier leads nowhere useful — block every remaining edge.
-    this.graphStore.blockCurrentBranch(node.hash);
-
-    // 2. Close the branch at its entry: the edge we arrived through is cyclic.
-    const frame = this.traversalStack.currentFrame();
-    const parent = this.traversalStack.parentFrame();
-    if (frame?.arrivedViaEdge && parent) {
-      this.graphStore.markEdgeCyclic(parent.nodeHash, frame.arrivedViaEdge);
-    }
-
-    this.eventLog.recordEvent(
-      'route-exhausted',
-      node.hash,
-      `Route exhausted (repeated defensive/error responses). Frontier + entry edge blocked; redirecting to the nearest ancestor with unexplored controls.`,
-    );
-
-    // Reset the repeat counter so the ancestor we return to gets a clean slate.
-    this.traversalStack.resetRepeatCounter();
-
-    // 3. Unwind to the nearest ancestor with an unvisited edge (or exhausted).
-    return this.handleDeadEnd(node, false);
-  }
 
   /**
    * Terminal handling for a Structural Dead-End: a state with NO interactive

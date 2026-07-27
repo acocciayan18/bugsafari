@@ -88,11 +88,6 @@ export class TraversalStack {
     return this.stack[this.stack.length - 1] ?? null;
   }
 
-  /** The frame directly beneath the top — the parent we arrived from — or null. */
-  parentFrame(): TraversalFrame | null {
-    return this.stack[this.stack.length - 2] ?? null;
-  }
-
   /** Pop the current (top) frame — used by dead-end/backtrack handling. */
   pop(): TraversalFrame | undefined {
     return this.stack.pop();

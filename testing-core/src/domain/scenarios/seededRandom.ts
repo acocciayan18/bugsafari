@@ -1,7 +1,7 @@
 /**
  * Shared seeded PRNG for reproducible scenario/fuzz randomness (mulberry32 —
- * same algorithm as SeededRandomGenerator / EdgeSelector, so the whole engine
- * shares one deterministic family). One run seeds it once, and every fuzz
+ * same algorithm as EdgeSelector's inline stream, so the whole engine shares one
+ * deterministic family). One run seeds it once, and every fuzz
  * strategy / saboteur draws from the same stream so "same seed + target → same
  * payload sequence".
  *

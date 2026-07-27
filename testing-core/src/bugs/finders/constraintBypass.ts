@@ -39,6 +39,53 @@ function sameOrigin(url: string, origin: string): boolean {
   return origin !== '' && safeOrigin(url) === origin;
 }
 
+function safePathname(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * What the fuzzed field's submission is expected to hit. Without this the finder
+ * accepted the FIRST state-changing 2xx in the observation window — a concurrent
+ * autosave or telemetry write manufactured a CLIENT_SIDE_CONSTRAINT_BYPASS.
+ */
+interface SubmissionTarget {
+  /** Pathname of the parent form's resolved action, or null for a formless/SPA field. */
+  actionPath: string | null;
+  /** The field's wire name (`name`, else `id`), or null when it has neither. */
+  fieldName: string | null;
+}
+
+async function resolveSubmissionTarget(page: Page, selector: string): Promise<SubmissionTarget> {
+  return page
+    .evaluate((sel) => {
+      const el = document.querySelector(sel) as HTMLInputElement | null;
+      if (!el) return { actionPath: null, fieldName: null };
+      const form = el.closest('form');
+      const action = form ? form.getAttribute('action') ?? location.href : null;
+      return {
+        actionPath: action ? new URL(action, location.href).pathname : null,
+        fieldName: el.getAttribute('name') || el.id || null,
+      };
+    }, selector)
+    .catch(() => ({ actionPath: null, fieldName: null }));
+}
+
+/**
+ * Is this response the answer to OUR submission? Accepted only on positive
+ * evidence: the request body carries the payload we injected, it carries the
+ * field's own name, or it went to the parent form's action. A response that
+ * satisfies none of these is unrelated traffic and is ignored.
+ */
+function correlatesToSubmission(body: string, url: string, payload: string, target: SubmissionTarget): boolean {
+  if (payload !== '' && (body.includes(payload) || body.includes(encodeURIComponent(payload)))) return true;
+  if (target.fieldName !== null && body.includes(target.fieldName)) return true;
+  return target.actionPath !== null && safePathname(url) === target.actionPath;
+}
+
 // Type-based constraints (email/number/url) come from the element snapshot captured
 // at parse time, so they survive an earlier action stripping the live DOM attributes.
 function planFromType(element: InteractiveElement): ViolationPlan | null {
@@ -105,7 +152,8 @@ async function stripAndInject(page: Page, selector: string, violating: string): 
 /**
  * Confirms client-only validation: strips a field's client constraint, submits a
  * value the browser would reject, and reports ONLY when the backend accepts it
- * (a 2xx on a state-changing same-origin request). A server that rejects the value
+ * (a 2xx on a state-changing same-origin request that CORRELATES to this
+ * submission — see {@link correlatesToSubmission}). A server that rejects the value
  * (4xx / error) is correctly enforcing the rule and yields no finding — so a silent
  * acceptance, the most common form of this bug, is no longer invisible.
  */
@@ -142,16 +190,20 @@ export const constraintBypassFinder: BugFinder = {
     if (!plan) return []; // no enforceable client constraint → nothing to bypass
 
     const origin = safeOrigin(ctx.targetUrl);
+    // Resolved BEFORE the constraints are stripped, so the form action and field
+    // name are read while the DOM still reflects the untouched control.
+    const target = await resolveSubmissionTarget(ctx.page, element.selector);
     // Holder object (not a bare let) so TS doesn't narrow the closure-mutated value.
     const captured: { hit: { status: number; url: string; method: string } | null } = { hit: null };
     const onResponse = (response: Response): void => {
       if (captured.hit) return;
       try {
-        const method = response.request().method();
+        const request = response.request();
+        const method = request.method();
         const stateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
-        if (stateChanging && response.status() < 400 && sameOrigin(response.url(), origin)) {
-          captured.hit = { status: response.status(), url: response.url(), method };
-        }
+        if (!stateChanging || response.status() >= 400 || !sameOrigin(response.url(), origin)) return;
+        if (!correlatesToSubmission(request.postData() ?? '', response.url(), plan.violating, target)) return;
+        captured.hit = { status: response.status(), url: response.url(), method };
       } catch {
         // response detached — ignore
       }
