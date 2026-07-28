@@ -13,6 +13,7 @@ import { sessionManager } from '../../application/services/SessionManager.js';
 import { randomUUID } from 'node:crypto';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
+import { generateRemediation } from '../../infrastructure/ai/GeminiRemediationAdvisor.js';
 import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
@@ -39,6 +40,8 @@ import {
   type RunTerminationOutcome,
   coerceClientStopReason,
   parseStorageState,
+  type SuggestFixRequest,
+  type SuggestFixResponse,
 } from '../../../../shared/types.js';
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
@@ -1086,6 +1089,19 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       console.error('[API] Error in /api/forensic/analyze:', error);
       response.status(500).json({ error: 'Failed to generate the analysis.', analysis: null });
     }
+  });
+
+  // On-demand AI remediation for a single saved finding. Returns an LLM fix, or the
+  // caller-supplied deterministic advice as fallback — never fails the UI.
+  app.post('/api/findings/suggest-fix', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    const body = (request.body ?? {}) as SuggestFixRequest;
+    const fallback = typeof body.fallbackAdvice === 'string' ? body.fallbackAdvice : '';
+
+    const ai = await generateRemediation(body);
+    const result: SuggestFixResponse = ai
+      ? { advice: ai, source: 'ai' }
+      : { advice: fallback, source: 'fallback' };
+    response.json(result);
   });
 
 

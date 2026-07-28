@@ -7,7 +7,9 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, Sparkles, Loader2 } from 'lucide-react';
+import type { SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
+import { requestSuggestedFix } from '../../services/historyService';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
   try {
@@ -108,25 +110,72 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
 };
 
 /**
- * Per-finding remediation, bound directly to `finding.advice` (the buildRemediation
- * output also persisted on the saved confirmed bug). Rendered as a copyable code
- * block so the Suggested Fix is identical wherever the finding is shown.
+ * Per-finding remediation. Default source is the deterministic `advice` (the
+ * buildRemediation output persisted on the saved bug). When `context` is supplied
+ * (saved Forensic Report only) an on-demand "Generate AI Fix" button requests a
+ * tailored remediation from the model; the deterministic advice stays the fallback.
  */
-export const SuggestedFixBlock = ({ advice }: { advice: string | undefined }) => {
-  if (!advice) {
+export const SuggestedFixBlock = ({ advice, context }: { advice: string | undefined; context?: SuggestFixRequest }) => {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [source, setSource] = useState<SuggestFixSource | null>(null);
+
+  const displayed = aiAdvice ?? advice;
+
+  const generate = async () => {
+    if (!context) return;
+    setStatus('loading');
+    try {
+      const result = await requestSuggestedFix({ ...context, fallbackAdvice: advice });
+      setAiAdvice(result.advice || advice || null);
+      setSource(result.source);
+      setStatus('idle');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  if (!displayed && !context) {
     return (
       <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-[13px] italic text-(--text-tertiary)">
         No remediation advisory generated for this fault.
       </div>
     );
   }
+
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
-      {/* Copy sits above the text rather than absolutely overlaying it, which clipped wrapped lines when narrow. */}
-      <div className="mb-1 flex justify-end">
-        <CopyButton text={advice} label="Suggested Fix" />
+      {/* Header row: AI action (saved report only) on the left, copy on the right. */}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        {context ? (
+          <button
+            type="button"
+            onClick={generate}
+            disabled={status === 'loading'}
+            className="inline-flex items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+          >
+            {status === 'loading'
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {aiAdvice ? 'Regenerate AI Fix' : 'Generate AI Fix'}</>}
+          </button>
+        ) : <span />}
+        {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
       </div>
-      <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{advice}</pre>
+
+      {source && (
+        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">
+          {source === 'ai' ? '✦ AI-generated remediation' : 'Model unavailable — showing knowledge-base remediation'}
+        </div>
+      )}
+      {status === 'error' && (
+        <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
+          Couldn’t reach the model — showing the knowledge-base fix.
+        </div>
+      )}
+
+      {displayed
+        ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
+        : <div className="text-[13px] italic text-(--text-tertiary)">No remediation advisory generated for this fault — generate one above.</div>}
     </div>
   );
 };

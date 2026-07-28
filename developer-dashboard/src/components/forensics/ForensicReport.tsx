@@ -607,6 +607,7 @@ function ReportFindingCard({
       <FindingCard
         view={view}
         index={index}
+        aiFix
         theme={verdictMeta ?? BASE_FINDING_THEME}
         statusChip={verdictMeta && (
           <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${verdictMeta.chip}`}>

@@ -4,7 +4,7 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
-import type { ActionRecord, StateFingerprint } from '../../../shared/types.js';
+import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { refreshAuthToken } from '../utils/authRefresh';
@@ -229,6 +229,19 @@ export async function fetchForensicReport(sessionId: string): Promise<ForensicRe
     throw new Error('Report payload missing from server response');
   }
   return data.report;
+}
+
+/**
+ * Request an on-demand AI remediation for one saved finding. The server returns an
+ * LLM-generated fix, or `fallbackAdvice` back with source 'fallback' when the model
+ * is unavailable — so the caller always renders something.
+ */
+export async function requestSuggestedFix(payload: SuggestFixRequest): Promise<SuggestFixResponse> {
+  const response = await fetchWithAuthRetry('/api/findings/suggest-fix', getFetchOptions('POST', payload));
+  if (!response.ok) {
+    throw new Error(`Could not generate a suggested fix (${response.status})`);
+  }
+  return (await response.json()) as SuggestFixResponse;
 }
 
 /**

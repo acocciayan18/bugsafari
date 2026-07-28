@@ -8,6 +8,7 @@
 
 import { useState, type ReactNode } from 'react';
 import type { ForensicActionStep } from '../../types';
+import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, splitObservations } from '../../utils/reproductionFormat';
 import { formatReportTime } from '../../utils/datetime';
@@ -116,9 +117,24 @@ function Reproduction({ view }: { view: FindingView }) {
   );
 }
 
+// Fault context for the on-demand AI remediation call — derived once from the view.
+function toSuggestFixContext(view: FindingView): SuggestFixRequest {
+  return {
+    bugClass: view.attribution?.bugClass ?? view.title,
+    message: view.message,
+    severity: view.severity,
+    cwe: view.attribution?.cwe,
+    elementLabel: view.elementLabel,
+    stackTrace: view.resolvedStackTrace ?? view.stackTrace,
+    payloadUsed: view.payloadUsed,
+    reproductionSteps: view.reproductionSteps,
+  };
+}
+
 // `showBypass` is presentation-only: the live Errors tab suppresses the bypass grid
 // to stay compact during a run — the data is untouched and the saved report shows it.
-export default function FindingEvidence({ view, showBypass = true }: { view: FindingView; showBypass?: boolean }) {
+// `aiFix` gates the on-demand AI remediation button — enabled on the saved report only.
+export default function FindingEvidence({ view, showBypass = true, aiFix = false }: { view: FindingView; showBypass?: boolean; aiFix?: boolean }) {
   const [stackExpanded, setStackExpanded] = useState(false);
 
   return (
@@ -148,7 +164,7 @@ export default function FindingEvidence({ view, showBypass = true }: { view: Fin
       {/* Suggested fix — bound to this finding's remediation */}
       <div className="px-4 pt-3">
         <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
-        <SuggestedFixBlock advice={view.advice} />
+        <SuggestedFixBlock advice={view.advice} context={aiFix ? toSuggestFixContext(view) : undefined} />
       </div>
 
       {/* Stack trace — disclosure since it's verbose/noisy evidence, not primary narrative */}

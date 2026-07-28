@@ -68,6 +68,10 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - APP_NAME=BugSafari
+      # On-demand AI Suggested Fix (POST /api/findings/suggest-fix). Empty => the
+      # endpoint returns the deterministic knowledge-base advice as fallback.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
     ports:
       - "3000:3000"
     # Resolve host.docker.internal to the host gateway so a loopback target URL
