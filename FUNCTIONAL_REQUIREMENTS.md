@@ -130,11 +130,11 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 
 **FR-4.5 AsyncStateRacer** — Fires an async action without awaiting, then interrupts mid-flight (Escape + concurrent re-trigger) and records lifecycle deltas. Backs off during failure bursts.
 
-**FR-4.6 NetworkSaboteur** — Intercepts `**/api/**`, GraphQL, and versioned patterns (xhr/fetch only, static assets excluded) in Delayed (10–15 s) / Aborted / Mutated modes, then probes freeze and input-block selectors.
+**FR-4.6 NetworkSaboteur** — Intercepts `**/api/**`, GraphQL, and versioned patterns (xhr/fetch only, static assets excluded) in Delayed (10–15 s) / Aborted / Mutated modes, then probes freeze and input-block selectors. Armed via `armNetworkSabotage()` *around* the step's interaction (`ExplorationLoop.executeAndVerifyAction`) and disarmed in a `finally`, so the sabotaged request is one the interaction actually caused. One request per window; all later traffic in the window is continued untouched. The freeze probe runs only when a request was actually sabotaged.
 
-**FR-4.7 StorageTamper** — Snapshots privileged-UI baseline, forges role/admin/isAuthenticated flags, re-mints the JWT with `alg: none` and `role: admin`, reloads the same URL, and applies a strict positive-delta oracle. Originals are restored and the page reloaded afterwards.
+**FR-4.7 StorageTamper** — Snapshots privileged-UI baseline, forges role/admin/isAuthenticated flags, re-mints the JWT with `alg: none` and `role: admin`, reloads the same URL, and applies a strict positive-delta oracle. Originals are restored and the page reloaded afterwards. Offered at most **once per route** (`ActionExecutor.tamperedRoutes`) — the oracle is page-scoped, so re-forging on every control only repeated the verdict at the cost of two more reloads per step.
 
-**FR-4.8 RouteTrasher** — **Disabled engine-wide.** Omitted from the scenario registry and explicitly excluded in `ActionExecutor.ts:536`. Its module is retained for back-compat forensics; its `classifyHttpStatus` / `isExpectedResourceNoise` helpers now delegate to the shared routing tree (`shared/types/telemetryRouting.ts`), which is the single source of truth for network-vs-finding routing across the engine and the dashboard.
+**FR-4.8 RouteTrasher** — **Disabled engine-wide.** Omitted from `stressScenarioMap` and explicitly excluded from the `pickStressScenario` candidate list. Its module is retained for back-compat forensics; its `classifyHttpStatus` / `isExpectedResourceNoise` helpers now delegate to the shared routing tree (`shared/types/telemetryRouting.ts`), which is the single source of truth for network-vs-finding routing across the engine and the dashboard. Because nothing opens a `ROUTE_TRASH` transaction, `structuralProbeFinder` (which self-gates on one) is **not** in `BUG_FINDERS` — listing it advertised a `ROUTE_MUTATION_FAILURE` class the run could never detect.
 
 ---
 
@@ -360,14 +360,14 @@ Modules: Authentication · Run Configuration & Lifecycle · Autonomous Explorati
 ### Feature gaps
 29. **No authentication support for target apps.** There is no credentials field, so any application behind a login wall can only be explored to its login page.
 30. **No timebox or step-budget control in the UI.** Duration is hardcoded to 10 minutes.
-31. **No per-scenario toggles** — only the five bundled profiles.
+31. **No per-scenario toggles** — only the five bundled profiles. The retired `CUSTOM_STRATEGY_PROFILE` and its `customScenarios` field have been removed from the contract; an old payload carrying that id resolves through the unknown-profile → all-on fallback.
 32. **No PDF / CSV / Markdown file export** (FR-12.4).
 33. **`bugs/finders/` registry has no runner** — four finder modules are entirely unreachable (FR-5.5).
-34. **RouteTrasher is disabled engine-wide** despite ~690 lines of live scenario code (FR-4.8).
+34. **RouteTrasher is disabled engine-wide** despite ~690 lines of live scenario code (FR-4.8). Consequently `ROUTE_MUTATION_FAILURE` is undetectable, and `structuralProbeFinder` has been dropped from `BUG_FINDERS` rather than left advertising a class it can never report.
 35. **`VerificationCandidate.reproduced` is never set in-run**, so its ±0.15 confidence branch is unreachable.
 36. **Landing page is non-functional** — every nav link, CTA, and footer link except "Try BugSafari" is a dead `href="#"`.
 37. **Notifications and Auto-Save settings have no consumers** (FR-14.2, FR-14.3).
-38. **~14 dashboard components are dead code** (`InfiltrationProfileSelector`, `TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set).
+38. **~13 dashboard components are dead code** (`TelemetryStream`, `TelemetryLogStream`, `ReproductionTrail`, `ForensicTrail`, `AuthGuard`, `SlidingAuthForm`, and the `designs/components/*` set). `InfiltrationProfileSelector` was listed here in error — it is live via `TestingConfigModal` → `ClinicalForensicsDashboard`.
 
 ---
 

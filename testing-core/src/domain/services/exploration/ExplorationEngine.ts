@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings } from '../../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings, resolveProfileFromTestingTypes } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.js';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
@@ -256,14 +256,14 @@ export class ExplorationEngine {
    * - No selection / all enabled → 'exploration' (broadest coverage)
    * - Exclusively form-centric scenarios (formBypass / dataFuzzing) → 'coverage'
    *   (boredom nearly disabled so sparse input forms are fully swept)
-   * - Navigation or exploratory scenarios present → 'exploration'
+   * - Navigation scenarios present → 'exploration'
    * - Mixed/other selections → 'probe' (neutral, original behaviour)
    */
   private static derivePathfinderMode(selected?: TestingTypeId[]): PathfinderMode {
     if (!selected || selected.length === 0) return 'exploration';
     const formFocused = selected.every((s) => s === 'formBypass' || s === 'dataFuzzing');
     if (formFocused) return 'coverage';
-    if (selected.includes('navigation') || selected.includes('exploratory')) return 'exploration';
+    if (selected.includes('navigation')) return 'exploration';
     return 'probe';
   }
 
@@ -1385,11 +1385,17 @@ export class ExplorationEngine {
     }
 
     try {
+      // Profile is derived from the gate, not from the request, so the record
+      // states what actually ran (an unknown profile that fell back to all-on
+      // is stored as the full-spectrum profile, which is what executed).
+      const activeTestingTypes = this.gate.activeCategories();
       return await this.findingRepo.createSession({
         targetUrl,
         startedAt: new Date().toISOString(),
         userId: this.userId,
         runId: this.runCode,
+        infiltrationProfile: resolveProfileFromTestingTypes(activeTestingTypes),
+        activeTestingTypes,
       });
     } catch (error) {
       console.error('[ExplorationEngine] Failed to create Safari session:', error);

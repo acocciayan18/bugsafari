@@ -213,8 +213,12 @@ export default function ClinicalForensicsDashboard({
   // Backend settling in-flight tasks — lock every control until it confirms completion.
   const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
 
+  // Falls back to the default profile's own label rather than a hardcoded string,
+  // so renaming a profile in the shared catalog can never leave a stale name here.
   const currentProfileName =
-    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === selectedProfile)?.label ?? 'Chaos Infiltration';
+    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === selectedProfile)?.label ??
+    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === DEFAULT_INFILTRATION_PROFILE)?.label ??
+    '';
 
   // Trigger-button digest so the collapsed settings stay discoverable at a glance.
   const configSummary = [

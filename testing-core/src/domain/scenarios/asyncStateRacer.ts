@@ -104,8 +104,11 @@ export const asyncStateRacer = {
     // 1) Surface swallowed async failures for the always-on console monitor.
     await installRejectionBridge(page);
 
-    // 2) Baseline lifecycle sample.
+    // 2) Baseline lifecycle sample. The rejection counter is cumulative per page
+    // (the bridge installs once), so this race's count is a DELTA — reading the
+    // raw total re-reported every earlier race's rejections as if they were new.
     const baseline = await sampleLifecycle(page);
+    const rejectionsBefore = await readRejections(page);
 
     // The same metadata object is exposed by reference via getActiveMetadata(), so
     // the post-race mutations below flow straight into the live transaction.
@@ -152,7 +155,9 @@ export const asyncStateRacer = {
     } finally {
       // 3) Post-race lifecycle deltas → recorded on the transaction as diagnostics.
       const after = await sampleLifecycle(page);
-      const rejections = await readRejections(page);
+      // A navigation mid-race resets the page counter — clamp so the delta never
+      // goes negative and reads as a nonsensical "-3 unhandled errors".
+      const rejections = Math.max(0, (await readRejections(page)) - rejectionsBefore);
       const stillPresent = target
         ? await page.$(selector).then((el) => el !== null).catch(() => false)
         : true;

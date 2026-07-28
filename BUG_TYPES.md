@@ -76,7 +76,7 @@ Source: `BrokenNavigationFinder.ts`, `routeTrasher/*`.
 | Redirect loop (HTTP) | 3xx chain revisits the same route | `/login → /home → /login` | Same route seen 3× within a 4s redirect window |
 | Redirect loop (SPA) | Rapid client-side route oscillation | Router guard bouncing A→B→A | Same route 3× across ≥2 distinct routes within 1.5s gaps; engine-initiated navigations suppressed |
 | Back-navigation state loss | `history.back()` lands on the wrong route | Back from a modal exits to `/` instead of the list | Expected vs. landed route mismatch, twice for the same pair |
-| Malformed route mutation | Query/history mutation breaks resolution | `?page=undefined`, `%3D` artifacts, white screen | `RouteTrasher` mutation + `isWhiteScreenFailure` render probe + status/console tiering |
+| Malformed route mutation | Query/history mutation breaks resolution | `?page=undefined`, `%3D` artifacts, white screen | **Not detected.** Required `RouteTrasher`, which is disabled engine-wide, so no `ROUTE_TRASH` transaction is ever opened and `structuralProbeFinder` is not registered (FR-4.8). |
 
 ## 6. UI Stability
 

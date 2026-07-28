@@ -14,7 +14,12 @@ import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
+import { INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
+
+// Operator-facing profile label, or '' when the row predates profile recording.
+const profileLabel = (id?: InfiltrationProfileId): string =>
+  INFILTRATION_PROFILE_CATALOG.find((option) => option.id === id)?.label ?? '';
 
 export default function SavedEvaluationSafaris() {
   const navigate = useNavigate();
@@ -273,6 +278,13 @@ export default function SavedEvaluationSafaris() {
 
                         <span aria-hidden="true">•</span>
                         <span>{evalItem.steps} steps</span>
+                        {/* Which profile produced these findings — absent on rows saved before it was recorded. */}
+                        {profileLabel(evalItem.infiltrationProfile) && (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <span className="truncate">{profileLabel(evalItem.infiltrationProfile)}</span>
+                          </>
+                        )}
                         <span aria-hidden="true">•</span>
                         <TerminationBadge outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
                       </div>

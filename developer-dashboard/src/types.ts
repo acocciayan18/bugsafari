@@ -99,6 +99,8 @@ export interface SessionHistoryEntry {
   endedReason?: string;
   /** Precise termination taxonomy. Absent on sessions saved before it was tracked. */
   outcome?: RunTerminationOutcome;
+  /** Infiltration profile the run executed. Absent on sessions saved before it was tracked. */
+  infiltrationProfile?: InfiltrationProfileId;
   savedManually: boolean;
   findingCount: number;
   actionTraceCount: number;
@@ -228,6 +230,8 @@ export interface ForensicReportResponse {
   /** Precise termination taxonomy; absent on reports predating it. */
   outcome?: RunTerminationOutcome;
   endedReason?: string;
+  /** Infiltration profile the run executed; absent on reports predating it. */
+  infiltrationProfile?: InfiltrationProfileId;
   duration: number; // milliseconds
   riskScore: number;
   findings: {

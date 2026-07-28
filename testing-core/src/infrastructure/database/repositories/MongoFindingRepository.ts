@@ -63,7 +63,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     }
     const userIdToUse = new Types.ObjectId(input.userId);
 
-    const session = await this.createSessionDoc(userIdToUse, input.targetUrl, new Date(input.startedAt), input.runId);
+    const session = await this.createSessionDoc(userIdToUse, new Date(input.startedAt), input);
     console.log(`[MongoFindingRepository] Session created: ${session._id} (runId=${session.runId}) for userId: ${userIdToUse}`);
     return session._id.toString();
   }
@@ -71,9 +71,16 @@ public async createSession(input: CreateSessionInput): Promise<string> {
   // Create the run's session doc, retrying on a duplicate-key collision of the
   // provided runId code (E11000) by regenerating a fresh code. Only the caller-
   // supplied code can collide; the schema default is already collision-checked.
-  private async createSessionDoc(userId: Types.ObjectId, targetUrl: string, startedAt: Date, runId?: string) {
-    const base = { userId, targetUrl, status: SessionStatus.RUNNING, startedAt };
-    let code = runId;
+  private async createSessionDoc(userId: Types.ObjectId, startedAt: Date, input: CreateSessionInput) {
+    const base = {
+      userId,
+      targetUrl: input.targetUrl,
+      status: SessionStatus.RUNNING,
+      startedAt,
+      infiltrationProfile: input.infiltrationProfile,
+      activeTestingTypes: input.activeTestingTypes,
+    };
+    let code = input.runId;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await SessionModel.create(code ? { ...base, runId: code } : base);
@@ -279,6 +286,7 @@ public async listSessionHistory(
           targetUrl: session.targetUrl ?? '',
           status: HISTORY_STATUS[session.status] ?? 'Running',
           outcome: session.outcome ?? undefined,
+          infiltrationProfile: session.infiltrationProfile ?? undefined,
           startedAt: session.startedAt?.toISOString() ?? new Date().toISOString(),
           finishedAt: session.finishedAt ? session.finishedAt.toISOString() : undefined,
           endedReason: session.endedReason ?? undefined,

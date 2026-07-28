@@ -14,8 +14,7 @@ import {
   decideStorageVerdict,
   matchesAuthKey,
 } from './storageTamper.js';
-import { createStressScenarioRegistry } from './index.js';
-import { ChaosTransactionManager } from '../chaos/index.js';
+import { stressScenarioMap } from './index.js';
 import { ScenarioGate } from '../services/scenarioGate.js';
 import {
   resolveScenarioAttribution,
@@ -131,9 +130,8 @@ check('full-spectrum CHAOS_INFILTRATION profile now includes authState', () => {
   assert.ok(resolveInfiltrationProfile({ profile: 'CHAOS_INFILTRATION' }).includes('authState'));
 });
 
-check('the shared-manager stress registry includes a StorageTamper scenario', () => {
-  const registry = createStressScenarioRegistry(new ChaosTransactionManager());
-  assert.ok(registry.some((scenario) => scenario.name === 'StorageTamper'));
+check('the by-name scenario map exposes StorageTamper', () => {
+  assert.equal(stressScenarioMap.StorageTamper?.name, 'StorageTamper');
 });
 
 console.log(`\nStorageTamper wiring: ${passed} checks passed.`);

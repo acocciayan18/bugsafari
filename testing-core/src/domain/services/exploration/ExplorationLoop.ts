@@ -14,7 +14,7 @@ import type {
   ExploreEdgeDecision,
   BacktrackDecision,
 } from '../DIrectedPathFinder.js';
-import { networkSaboteur } from '../../scenarios/index.js';
+import { armNetworkSabotage, type ArmedSabotage } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeRecovery, elementNoun, humanizeElement, resolveElementLabel } from '../forensics/narration.js';
 import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
@@ -263,8 +263,6 @@ export class ExplorationLoop {
           return { completed: false, reason: serverCrashReason, outcome: 'exception' };
         }
 
-        await this.maybeSabotageNetwork(page, ctx);
-
         // Surface lazy-loaded / infinite-scroll / IntersectionObserver content
         // BEFORE parsing, so newly rendered controls are discovered instead of
         // leaving the page with a hidden frontier. Fires when the URL changed since
@@ -392,6 +390,7 @@ export class ExplorationLoop {
         // and the parent is restored locally (never collapses the graph).
         const { traversalOk, childHash, childStructure, landedInvalid, actionThrew } = await this.executeAndVerifyAction(
           page,
+          ctx,
           step,
           target,
           ranked,
@@ -480,23 +479,31 @@ export class ExplorationLoop {
     return { kind: 'proceed' };
   }
 
-  private async maybeSabotageNetwork(page: Page, ctx: RunContext): Promise<void> {
-    //  Network Sabotage (NetworkSaboteur): gated by the 'navigation' testing
-    // type, so it runs only under profiles that select it (CHAOS + High-Frequency
-    // Concurrency Strain) and never leaks into data/async/auth profiles. Fires on
-    // a deterministic cadence (every Nth step) so execution stays reproducible.
-    if (!this.deps.gate.isEnabled('navigation')) return;
+  /**
+   * Network Sabotage (NetworkSaboteur): gated by the 'navigation' testing type,
+   * so it runs only under profiles that select it (CHAOS + High-Frequency
+   * Concurrency Strain) and never leaks into data/async/auth profiles. Fires on a
+   * deterministic cadence (every Nth step) so execution stays reproducible.
+   *
+   * Returns an armed window the caller must disarm AROUND the step's interaction.
+   * Arming without an action in flight cannot sabotage anything — the loop is a
+   * single await chain, so nothing requests while we wait.
+   *
+   * The cadence counter now advances per ACTUATED step rather than per loop
+   * iteration (it is read from the action path, not the top of the loop), so
+   * iterations that parse and skip without interacting no longer consume budget.
+   */
+  private async armSabotageIfDue(page: Page, ctx: RunContext): Promise<ArmedSabotage | null> {
+    if (!this.deps.gate.isEnabled('navigation')) return null;
     ctx.sabotageStepCounter += 1;
-    const sabotageThisStep = ctx.sabotageStepCounter % ctx.sabotageCadence === 0;
-    if (sabotageThisStep) {
-      
-      this.deps.telemetry.emit('ACTION', {
-        actionExecuted: 'network-sabotage',
-        message: ' Chaos Mode: Sabotaging network requests for this step...',
-      });
-      // Execute the network sabotage - note: this remains active for subsequent interactions
-      await networkSaboteur.execute(page);
-    }
+    if (ctx.sabotageStepCounter % ctx.sabotageCadence !== 0) return null;
+
+    const armed = await armNetworkSabotage(page, this.deps.telemetry.gateway);
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'network-sabotage',
+      message: ` Network sabotage armed (${armed.mode}) — the next API call this step is intercepted.`,
+    });
+    return armed;
   }
 
   /**
@@ -825,9 +832,8 @@ export class ExplorationLoop {
         .sort((left, right) => right.riskScore - left.riskScore);
     }
 
-    // Deep Semantic Data Attack prioritization: when an input-actuating profile
-    // (data-fuzzing or exploratory) is
-    // active, fuzzable attack vectors must be selected BEFORE any navigation
+    // Deep Semantic Data Attack prioritization: when data-fuzzing is active,
+    // fuzzable attack vectors must be selected BEFORE any navigation
     // control, otherwise high-keyword buttons (login=82, checkout, pay…) win the
     // best-first pick and the engine clicks submit on an empty form — inputs are
     // never fuzzed. A fixed additive boost can't beat an arbitrary keyword sum, so
@@ -839,7 +845,7 @@ export class ExplorationLoop {
     // forever (each payload mutates the input value → a fresh graph node → the boost
     // would otherwise re-lift it). Gated — the scorer/perceptron stay
     // profile-agnostic; only data-attack runs shift.
-    if (this.deps.gate.isEnabled('dataFuzzing') || this.deps.gate.isEnabled('exploratory')) {
+    if (this.deps.gate.isEnabled('dataFuzzing')) {
       const isFreshAttackVector = (element: InteractiveElement): boolean =>
         attackTargetBoost(element) > 0 &&
         !triggered(element.selector) &&
@@ -1566,6 +1572,7 @@ export class ExplorationLoop {
 
   private async executeAndVerifyAction(
     page: Page,
+    ctx: RunContext,
     step: number,
     target: InteractiveElement,
     ranked: InteractiveElement[],
@@ -1584,6 +1591,9 @@ export class ExplorationLoop {
     let childHash = currentHash;
     let childStructure = '';
     let actionThrew = false;
+    // Armed across the action AND its verification, so the intercepted request is
+    // one this interaction actually caused and a delayed response can still land.
+    const armed = await this.armSabotageIfDue(page, ctx);
     try {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
@@ -1603,6 +1613,20 @@ export class ExplorationLoop {
         '[ExplorationLoop] Traversal action failed:',
         actionErr instanceof Error ? actionErr.message : String(actionErr),
       );
+    } finally {
+      if (armed) {
+        await armed.disarm();
+        // Report whether the window actually caught anything. A step that issues
+        // no API call is a legitimate miss, not a failure — but it has to be
+        // distinguishable from a sabotage that landed.
+        const hit = armed.wasSabotaged();
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: hit ? 'network-sabotage-hit' : 'network-sabotage-idle',
+          message: hit
+            ? ` Network sabotage (${armed.mode}) intercepted a live API call during this step.`
+            : ` Network sabotage (${armed.mode}) disarmed — this step issued no API call to intercept.`,
+        });
+      }
     }
 
     // A click that drove the main page into an invalid context (about:blank /

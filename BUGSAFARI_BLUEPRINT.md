@@ -109,7 +109,7 @@ BugSafari's autonomy is driven by five major functional pillars.
 **Execution model:**
 
 1. Execute rapid interaction scenarios such as `buttonSpammer` and `coordinateBombing` (`domain/scenarios/rapidClicker/`).
-2. Apply route churn through `routeTrasher`, gated by `routeTrashGating` and throttled by `RouteTrashThrottle`.
+2. Sabotage the API call an interaction triggers via `networkSaboteur`, armed around the action for the duration of the step. (Route churn through `routeTrasher` is **disabled engine-wide** — see FR-4.8.)
 3. Interrupt in-flight async work via `asyncStateRacer` to surface teardown races and swallowed rejections.
 4. Mix deterministic and stochastic action patterns to broaden coverage, reproducible per-run via the shared `seededRandom`/`SeededRandomGenerator` PRNG family.
 5. Use Playwright browser automation through the `BrowserEngine` port; continue safely with guarded error handling where possible.

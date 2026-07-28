@@ -34,8 +34,14 @@ let chaosManagerInstance: ChaosTransactionManager<FuzzMetadata> | null = null;
 
 /**
  * Sets the chaos transaction manager instance.
- * Used by createStressScenarioRegistry factory to inject unified manager.
- * 
+ *
+ * NOTE: nothing on the live path calls this any more. The engine fuzzes through
+ * `ActionExecutor.executeInputFuzzing`, which opens its own FUZZ transaction on
+ * the run's shared manager; the removed scenario-registry factory was this
+ * setter's only caller. `dataFuzzer.execute` below is therefore off the live
+ * dispatch path — `fuzzTextInput` (used by the NoSQL finder) is the part that
+ * still runs. Kept as a usable standalone scenario, not as engine wiring.
+ *
  * @param manager - The ChaosTransactionManager instance to use
  */
 export function setChaosManager(manager: ChaosTransactionManager<FuzzMetadata>): void {

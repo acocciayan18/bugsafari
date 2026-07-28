@@ -14,9 +14,16 @@ import type { BugClass } from '../types.js';
 import type { TestingTypeId } from '../../../../shared/types.js';
 import type { SignalCategory } from './signalPatterns.js';
 
+/**
+ * Attribution bucket for a fault: a real operator-gated category, or the synthetic
+ * 'exploratory' baseline for faults caught while no stress scenario was active.
+ * 'exploratory' is NOT a TestingTypeId — it gates nothing and cannot be selected.
+ */
+export type AttributionTestingType = TestingTypeId | 'exploratory';
+
 export interface ScenarioDefinition {
-  /** Operator-selectable category that gates this scenario. */
-  testingType: TestingTypeId;
+  /** Category that gates this scenario, or the exploratory attribution bucket. */
+  testingType: AttributionTestingType;
   /** Bug classes this scenario is designed to provoke, in priority order. */
   expectedBugs: BugClass[];
   /** Runtime signal categories that confirm this scenario's expected bugs. */
@@ -51,7 +58,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     testingType: 'concurrency',
     expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],
     signalCategories: ['CLIENT_CRASH'],
-    description: 'Fires deterministic grid clicks to hit overlays/hidden hit-test edges.',
+    description: 'Fires a deterministic sequential grid of viewport clicks to hit overlays/hidden hit-test edges.',
   },
   AsyncStateRacer: {
     testingType: 'asyncRace',
@@ -64,6 +71,8 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     signalCategories: ['CLIENT_CRASH', 'SERVER_ERROR'],
     description: 'Interrupts in-flight async operations to surface teardown races, swallowed rejections, and state desync.',
   },
+  // Disabled engine-wide — retained so findings persisted by older runs still
+  // resolve their attribution instead of falling back to EXPLORATORY.
   RouteTrasher: {
     testingType: 'navigation',
     expectedBugs: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
@@ -74,7 +83,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     testingType: 'navigation',
     expectedBugs: ['BOUNDARY_STRESS_FAILURE'],
     signalCategories: ['SERVER_ERROR', 'DEAD_END'],
-    description: 'Delays or aborts an API call to test network-fault resilience.',
+    description: 'Delays, aborts, or corrupts the API call an interaction triggers, to test network-fault resilience.',
   },
   StorageTamper: {
     testingType: 'authState',
@@ -95,7 +104,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
 /** Resolve a scenario `name` to its structured attribution, defaulting to EXPLORATORY. */
 export function resolveScenarioAttribution(
   scenarioName?: string,
-): { scenario: string; testingType: TestingTypeId } {
+): { scenario: string; testingType: AttributionTestingType } {
   const key = scenarioName && SCENARIO_CATALOG[scenarioName] ? scenarioName : EXPLORATORY_SCENARIO;
   return { scenario: key, testingType: SCENARIO_CATALOG[key].testingType };
 }

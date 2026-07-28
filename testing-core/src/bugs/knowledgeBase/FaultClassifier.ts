@@ -9,12 +9,12 @@
 // consistent platform-wide.
 
 import type { BugClass } from '../types.js';
-import type { TestingTypeId } from '../../../../shared/types.js';
 import { BUG_CATALOG, type Severity } from './bugCatalog.js';
 import {
   SCENARIO_CATALOG,
   EXPLORATORY_SCENARIO,
   resolveScenarioAttribution,
+  type AttributionTestingType,
 } from './scenarioCatalog.js';
 import { matchesCategory, type SignalCategory } from './signalPatterns.js';
 
@@ -71,7 +71,7 @@ export interface FaultClassification {
   title: string;
   advice: string;
   scenario: string;
-  testingType: TestingTypeId;
+  testingType: AttributionTestingType;
   stepIndex?: number;
   /** Evidence strength behind {@link bugClass}; see {@link FaultConfidence}. */
   confidence: FaultConfidence;

@@ -5,6 +5,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
+import type { Page } from 'playwright';
 import { ActionExecutor } from './ActionExecutor.js';
 import { ScenarioGate } from '../scenarioGate.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
@@ -17,9 +18,23 @@ function check(name: string, fn: () => void): void {
   console.log(`  ✓ ${name}`);
 }
 
-// pickStressScenario only reads deps.gate; the rest is stubbed.
+// Awaited variant — an async body passed to `check` would swallow its assertion
+// failures into an unhandled rejection instead of failing the run.
+async function checkAsync(name: string, fn: () => Promise<void>): Promise<void> {
+  await fn();
+  passed += 1;
+  console.log(`  ✓ ${name}`);
+}
+
+// pickStressScenario reads deps.gate, deps.telemetry (skip narration) and the
+// page's URL (per-route storage-tamper budget); the rest is stubbed.
 function makeExecutor(gate: ScenarioGate): ActionExecutor {
-  return new ActionExecutor({ gate } as unknown as ActionExecutorDeps);
+  return new ActionExecutor({ gate, telemetry: { emit() {} } } as unknown as ActionExecutorDeps);
+}
+
+// Minimal page stub — only isClosed()/url() are reached via safeRoutePath.
+function fakePage(url = 'https://app.test/dashboard'): Page {
+  return { isClosed: () => false, url: () => url } as unknown as Page;
 }
 
 function buttonLike(selector: string, innerText = 'Do it'): InteractiveElement {
@@ -34,11 +49,20 @@ function buttonLike(selector: string, innerText = 'Do it'): InteractiveElement {
 }
 
 // Private-method access for the rotation under test.
-function pick(exec: ActionExecutor, el: InteractiveElement): string | null {
+function pick(exec: ActionExecutor, el: InteractiveElement, page: Page = fakePage()): string | null {
   const scenario = (exec as unknown as {
-    pickStressScenario(t: InteractiveElement): { name: string } | null;
-  }).pickStressScenario(el);
+    pickStressScenario(p: Page, t: InteractiveElement): { name: string } | null;
+  }).pickStressScenario(page, el);
   return scenario?.name ?? null;
+}
+
+// Running a picked scenario is what marks a route as tampered; the executor's
+// adapter does that before delegating, so invoking it is enough here.
+async function run(exec: ActionExecutor, el: InteractiveElement, page: Page): Promise<void> {
+  const scenario = (exec as unknown as {
+    pickStressScenario(p: Page, t: InteractiveElement): { name: string; execute(p: Page, t: InteractiveElement): Promise<void> } | null;
+  }).pickStressScenario(page, el);
+  await scenario?.execute(page, el).catch(() => undefined);
 }
 
 console.log('ActionExecutor — per-selector stress-scenario rotation');
@@ -104,6 +128,32 @@ check('returns null when every applicable scenario is gated off', () => {
   const exec = makeExecutor(new ScenarioGate(['navigation']));
   const result = pick(exec, buttonLike('#a'));
   assert.equal(result, null, 'no enabled candidate → null');
+});
+
+// ── Per-route storage-tamper budget ──────────────────────────────────────────
+// The tamper oracle is page-scoped (forge → reload → compare privileged surface),
+// so re-forging on every control could only repeat the first verdict — at two
+// full page reloads per step, which also wiped the SPA state under exploration.
+
+await checkAsync('an authState-only profile forges a route once, then has nothing left to run', async () => {
+  const exec = makeExecutor(new ScenarioGate(['authState']));
+  const page = fakePage('https://app.test/account');
+  assert.equal(pick(exec, buttonLike('#a'), page), 'StorageTamper');
+  await run(exec, buttonLike('#a'), page);
+  assert.equal(pick(exec, buttonLike('#b'), page), null, 'route already forged → no candidate');
+});
+
+await checkAsync('a different route is still forged', async () => {
+  const exec = makeExecutor(new ScenarioGate(['authState']));
+  await run(exec, buttonLike('#a'), fakePage('https://app.test/account'));
+  assert.equal(pick(exec, buttonLike('#a'), fakePage('https://app.test/admin')), 'StorageTamper');
+});
+
+await checkAsync('a spent route does not starve the other scenarios under full-spectrum', async () => {
+  const exec = makeExecutor(new ScenarioGate());
+  const page = fakePage('https://app.test/account');
+  await run(exec, buttonLike('#login-btn', 'Log in'), page);
+  assert.ok(pick(exec, buttonLike('#other', 'Toggle theme'), page), 'other families stay available');
 });
 
 console.log(`\nAll ${passed} checks passed.`);

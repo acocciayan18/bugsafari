@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SECTION_META } from './sectionMeta';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE } from '../types';
 
 const PageShell = ({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) => {
     const navigate = useNavigate();
@@ -122,32 +123,30 @@ function DarkCta({ heading, sub }: { heading: string; sub: string }) {
     );
 }
 
-const INFILTRATION_PROFILES = [
-    { name: 'Chaos Infiltration', detail: 'Full-spectrum assault — every testing scenario enabled simultaneously. The default profile.' },
-    { name: 'Deep Semantic Data Attack', detail: 'Data-focused — context-aware fuzzing and constraint/form bypass only, escalating payloads across five encoding levels.' },
-    { name: 'High-Frequency Concurrency Strain', detail: 'Concurrency-focused — rapid concurrent clicking paired with network sabotage to surface double-submit and race defects.' },
-    { name: 'Async Lifecycle Assault', detail: 'Async-focused — interrupts in-flight requests and transitions to expose race conditions, teardown crashes, swallowed rejections, and state desync.' },
-    { name: 'Auth-State Subversion', detail: 'Broken-access-control focused — forges client-trusted auth state (localStorage/sessionStorage/JWT) and checks whether privileged UI unlocks without server authorization.' },
-];
-
+// Rendered straight from the shared catalog the engine gates on — a local copy
+// silently drifted from what the profiles actually do.
 function ProfileTabs() {
     const [active, setActive] = useState(0);
+    const profile = INFILTRATION_PROFILE_CATALOG[active];
     return (
         <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white">
             <div className="flex overflow-x-auto border-b border-zinc-200 scroll-rail">
-                {INFILTRATION_PROFILES.map((p, i) => (
+                {INFILTRATION_PROFILE_CATALOG.map((p, i) => (
                     <button
-                        key={p.name}
+                        key={p.id}
                         onClick={() => setActive(i)}
                         className={`px-5 py-4 font-mono text-xs font-semibold uppercase whitespace-nowrap border-b-2 transition-colors bg-transparent cursor-pointer ${active === i ? 'border-black text-black' : 'border-transparent text-zinc-400 hover:text-zinc-700'}`}
                     >
-                        {p.name}
+                        {p.label}
                     </button>
                 ))}
             </div>
             <div className="p-8">
-                <h4 className="font-bold text-lg mb-2">{INFILTRATION_PROFILES[active].name}</h4>
-                <p className="text-[13px] text-zinc-600 leading-relaxed max-w-2xl">{INFILTRATION_PROFILES[active].detail}</p>
+                <h4 className="font-bold text-lg mb-2">{profile.label}</h4>
+                <p className="text-[13px] text-zinc-600 leading-relaxed max-w-2xl">
+                    {profile.description}
+                    {profile.id === DEFAULT_INFILTRATION_PROFILE ? ' The default profile.' : ''}
+                </p>
             </div>
         </div>
     );
@@ -164,7 +163,6 @@ const BUG_TAXONOMY = [
     ['Fuzz Vulnerability Leak', 'CWE-79'],
     ['Security Vulnerability Leak', 'CWE-200'],
     ['Cascading State Failure', 'CWE-754'],
-    ['Route Mutation Failure', 'CWE-835'],
     ['Client Trust Boundary Violation', 'CWE-602'],
     ['Infinite Loading', 'CWE-400'],
 ];
@@ -349,8 +347,8 @@ export function FeaturesContent() {
                 <div className="space-y-6">
                     <div className="space-y-2">
                         <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">Bug Taxonomy</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">13 Deterministic Bug Classes</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every finding maps to one of thirteen classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
+                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">12 Deterministic Bug Classes</h2>
+                        <p className="text-zinc-600 max-w-2xl">Every finding maps to one of twelve classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
                     </div>
                     <BugTaxonomyGrid />
                 </div>
@@ -487,7 +485,7 @@ export function AboutContent() {
                 </div>
 
                 <StatRow items={[
-                    { value: '13', label: 'Bug Classes' },
+                    { value: '12', label: 'Bug Classes' },
                     { value: '5', label: 'Infiltration Profiles' },
                     { value: '3', label: 'Monorepo Packages' },
                     { value: '1', label: 'Shared Contract Layer' },

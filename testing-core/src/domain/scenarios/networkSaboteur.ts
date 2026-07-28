@@ -46,9 +46,14 @@ const DEFAULT_CONFIG: InterceptionConfig = {
     '.js', '.mjs',
     '.map',
   ],
-  // Timeout for waiting for API request
+  // Standalone-path wait for the page's own traffic. The engine path arms around
+  // a real interaction instead and never uses this.
   interceptionTimeoutMs: 5000,
 };
+
+// Settle window before the freeze probe, so a sabotaged request has time to
+// leave the UI in whatever state it ends up in.
+const SETTLE_AFTER_SABOTAGE_MS = 1200;
 
 // Freeze-detection selectors (STUCK_SELECTORS) and input-block selectors are
 // sourced from the centralized knowledge base (knowledgeBase/signalPatterns.ts)
@@ -278,192 +283,182 @@ async function safeContinue(route: Route): Promise<void> {
   }
 }
 
+/** Live interception window returned by {@link armNetworkSabotage}. */
+export interface ArmedSabotage {
+  readonly mode: SabotageMode;
+  /** Whether a real API request was intercepted while the window was open. */
+  wasSabotaged(): boolean;
+  /** Tear down the interceptors and run the freeze / input-block probe. */
+  disarm(): Promise<void>;
+}
+
 /**
- * Network Saboteur scenario.
- * Narrows interception scope to API endpoints only.
- * Pre-filters static assets to bypass node event loop.
- * Randomly delays or aborts one request.
- * Hooks live transaction state instead of triggering page reload.
- * Checks for System Locked or frozen UI signals.
- * Emits structured NETWORK telemetry events.
+ * Arm the API interceptors and hand back a disposer.
+ *
+ * The caller drives a real interaction while the window is open, so the request
+ * that gets delayed/aborted/mutated is one the APPLICATION issued in response to
+ * a user action. The previous arm-and-idle flow slept 5s with nothing in flight
+ * (the engine loop is a single await chain), so it could only ever catch
+ * incidental background traffic and usually sabotaged nothing at all.
  */
-export const networkSaboteur: StressScenario = {
-  name: 'NetworkSaboteur',
+export async function armNetworkSabotage(
+  page: Page,
+  telemetry?: TelemetryGateway,
+): Promise<ArmedSabotage> {
+  const config = DEFAULT_CONFIG;
+  const mode = chooseMode();
+  let sabotaged = false;
+  let sabotagedUrl = 'unknown-url';
 
-  async execute(page: Page, _target?: InteractiveElement, _telemetry?: TelemetryGateway): Promise<void> {
-    const config = DEFAULT_CONFIG;
-    const mode = chooseMode();
-    let sabotaged = false;
-    let sabotagedUrl = 'unknown-url';
+  ActiveScenarioTracker.record(describeNetworkSabotage(mode));
 
-    ActiveScenarioTracker.record(describeNetworkSabotage(mode));
+  const handler = async (route: Route, request: Request): Promise<void> => {
+    if (sabotaged) {
+      // One request per window. Subsequent traffic MUST still be resolved —
+      // returning without handling the route leaves it unanswered, which would
+      // stall every follow-up API call for as long as the window is armed.
+      await safeContinue(route);
+      return;
+    }
 
-    const handler = async (route: Route, request: Request): Promise<void> => {
-      if (sabotaged) {
-        // Already sabotaged a request, let subsequent requests pass through
-        return;
-      }
+    const requestUrl = request.url();
+    const resourceType = request.resourceType();
 
-      const requestUrl = request.url();
-      const resourceType = request.resourceType();
+    // Pre-filter: Skip static assets BEFORE route handler processing overhead
+    if (shouldExcludeRequest(requestUrl, config.excludeExtensions)) {
+      await safeContinue(route);
+      return;
+    }
 
-      // Pre-filter: Skip static assets BEFORE route handler processing overhead
-      if (shouldExcludeRequest(requestUrl, config.excludeExtensions)) {
-        await safeContinue(route);
-        return;
-      }
+    // Only sabotage target resource types (xhr/fetch), NOT document
+    if (!config.targetResourceTypes.includes(resourceType as 'xhr' | 'fetch')) {
+      await safeContinue(route);
+      return;
+    }
 
-      // Only sabotage target resource types (xhr/fetch), NOT document
-      if (!config.targetResourceTypes.includes(resourceType as 'xhr' | 'fetch')) {
-        await safeContinue(route);
-        return;
-      }
+    // Mark as sabotaged - capture first API request only
+    sabotaged = true;
+    sabotagedUrl = requestUrl;
 
-      // Mark as sabotaged - capture first API request only
-      sabotaged = true;
-      sabotagedUrl = requestUrl;
+    // Record the sabotage to the rolling reproduction buffer so it lands in
+    // the idle-fallback playbook even when no scenario window is flushed.
+    recordSabotage(mode, sabotagedUrl, page.url());
 
-      // Record the sabotage to the rolling reproduction buffer so it lands in
-      // the idle-fallback playbook even when no scenario window is flushed.
-      recordSabotage(mode, sabotagedUrl, page.url());
-
-      const telemetry = _telemetry;
-
-      if (mode === 'Delayed') {
-        const delay = randomDelayMs();
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        await safeContinue(route);
-
-        if (telemetry) {
-          buildNetworkTelemetryEvent(
-            telemetry,
-            'Delayed',
-            sabotagedUrl,
-            `Network Saboteur: Intentionally Delayed API call to ${sabotagedUrl} to test error resilience.`,
-          );
-        }
-        return;
-      }
-
-      if (mode === 'Mutated') {
-        const surface = await safeMutate(route, request);
-
-        if (telemetry) {
-          buildNetworkTelemetryEvent(
-            telemetry,
-            'Mutated',
-            sabotagedUrl,
-            `Network Saboteur: Mutated ${surface} payload for ${sabotagedUrl} to test malformed-data resilience.`,
-          );
-        }
-        return;
-      }
-
-      // Aborted mode
-      await safeAbort(route);
+    if (mode === 'Delayed') {
+      const delay = randomDelayMs();
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      await safeContinue(route);
 
       if (telemetry) {
         buildNetworkTelemetryEvent(
           telemetry,
-          'Aborted',
+          'Delayed',
           sabotagedUrl,
-          `Network Saboteur: Intentionally Aborted API call to ${sabotagedUrl} to test error resilience.`,
+          `Network Saboteur: Intentionally Delayed API call to ${sabotagedUrl} to test error resilience.`,
         );
       }
-    };
+      return;
+    }
 
-    try {
-      // Set up interception with primary pattern
-      await page.route(config.pattern, handler);
+    if (mode === 'Mutated') {
+      const surface = await safeMutate(route, request);
 
-      // Register additional patterns for broader API coverage
-      for (const additionalPattern of config.additionalPatterns) {
-        // Use a separate handler wrapper to track the same sabotage state
-        // This prevents duplicate interception while catching more API patterns
-        await page.route(additionalPattern, async (route: Route, request: Request): Promise<void> => {
-          // Delegate to main handler logic - it checks sabotaged flag
-          await handler(route, request);
-        }).catch(() => {
-          // Silently ignore patterns that don't match anything
-          // This is expected for patterns that don't exist in the app
-        });
-      }
-
-      // Hook live transaction state: wait briefly for exploratory engine's action
-      // (button click, form submission, etc.) to trigger an API request
-      // instead of triggering our own page.reload() which is an anti-pattern
-      await page.waitForTimeout(config.interceptionTimeoutMs).catch(() => undefined);
-
-      // Small settling window for UI state after sabotage
-      await page.waitForTimeout(1200).catch(() => undefined);
-
-      // Check for freeze state using expanded sticky selectors
-      const frozenSelector = await checkForFreezeState(page);
-
-      // Check for aria-disabled input fields (multi-iteration check for stuck state)
-      const inputsDisabled = await checkInputFieldsDisabled(page);
-
-      const isFrozen = frozenSelector !== '' || inputsDisabled;
-
-      // Emit freeze detection telemetry
-      const telemetry = _telemetry;
       if (telemetry) {
-        emitFreezeTelemetry(telemetry, isFrozen, frozenSelector || (inputsDisabled ? 'aria-disabled-inputs' : ''));
+        buildNetworkTelemetryEvent(
+          telemetry,
+          'Mutated',
+          sabotagedUrl,
+          `Network Saboteur: Mutated ${surface} payload for ${sabotagedUrl} to test malformed-data resilience.`,
+        );
       }
-    } catch (error) {
-      // Emit error telemetry if available
-      const telemetry = _telemetry;
-      if (telemetry && error instanceof Error) {
-        const event: TelemetryEvent = {
-          timestamp: new Date().toISOString(),
-          type: 'NETWORK' as TelemetryType,
-          meta: {
-            message: isNonFatalError(error)
-              ? `Non-fatal error ignored: ${error.message}`
-              : `Failed during network sabotage: ${error.message}`,
-          },
-        };
-        telemetry.emitTelemetry(event);
-      } else if (error instanceof Error && !isNonFatalError(error)) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        // Fallback to console for critical errors if no telemetry
-        console.error(`[StressScenario:NetworkSaboteur] Failed during network sabotage: ${message}`);
-      }
-    } finally {
-      // Clean up route handlers to prevent leaked interceptors
+      return;
+    }
+
+    // Aborted mode
+    await safeAbort(route);
+
+    if (telemetry) {
+      buildNetworkTelemetryEvent(
+        telemetry,
+        'Aborted',
+        sabotagedUrl,
+        `Network Saboteur: Intentionally Aborted API call to ${sabotagedUrl} to test error resilience.`,
+      );
+    }
+  };
+
+  try {
+    await page.route(config.pattern, handler);
+    // Additional patterns share the same handler (and its one-shot flag) so a
+    // GraphQL/versioned endpoint is covered without double-sabotaging.
+    for (const additionalPattern of config.additionalPatterns) {
+      await page.route(additionalPattern, handler).catch(() => undefined);
+    }
+  } catch (error) {
+    reportSabotageError(telemetry, error, 'Failed to arm network sabotage');
+  }
+
+  return {
+    mode,
+    wasSabotaged: () => sabotaged,
+    async disarm(): Promise<void> {
       try {
         await page.unroute(config.pattern, handler);
-      } catch (error) {
-        // Emit cleanup error telemetry if available
-        const telemetry = _telemetry;
-        if (telemetry && error instanceof Error && !isNonFatalError(error)) {
-          const event: TelemetryEvent = {
-            timestamp: new Date().toISOString(),
-            type: 'NETWORK' as TelemetryType,
-            meta: {
-              message: `Failed to clean up route handler: ${error.message}`,
-            },
-          };
-          telemetry.emitTelemetry(event);
-        } else if (!(error instanceof Error) || !isNonFatalError(error)) {
-          console.error(
-            `[StressScenario:NetworkSaboteur] Failed to clean up route handler: ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }`
-          );
+        for (const additionalPattern of config.additionalPatterns) {
+          await page.unroute(additionalPattern, handler).catch(() => undefined);
         }
+      } catch (error) {
+        reportSabotageError(telemetry, error, 'Failed to clean up route handler');
       }
 
-      // Clean up additional patterns
-      for (const additionalPattern of config.additionalPatterns) {
-        try {
-          // Note: We use the same handler reference for additional patterns
-          // since they share the sabotage state
-          await page.unroute(additionalPattern);
-        } catch {
-          // Silently ignore cleanup errors for additional patterns
-        }
-      }
+      // A freeze verdict is only meaningful once a fault was actually injected —
+      // probing an untouched page produced a steady stream of "UI appears
+      // responsive" noise every cadence step.
+      if (!sabotaged) return;
+
+      await page.waitForTimeout(SETTLE_AFTER_SABOTAGE_MS).catch(() => undefined);
+      const frozenSelector = await checkForFreezeState(page);
+      const inputsDisabled = await checkInputFieldsDisabled(page);
+      emitFreezeTelemetry(
+        telemetry,
+        frozenSelector !== '' || inputsDisabled,
+        frozenSelector || (inputsDisabled ? 'aria-disabled-inputs' : ''),
+      );
+    },
+  };
+}
+
+/** Route/teardown failures are forensics, never fatal to the run. */
+function reportSabotageError(telemetry: TelemetryGateway | undefined, error: unknown, context: string): void {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  const nonFatal = error instanceof Error && isNonFatalError(error);
+  if (telemetry) {
+    const event: TelemetryEvent = {
+      timestamp: new Date().toISOString(),
+      type: 'NETWORK' as TelemetryType,
+      meta: { message: nonFatal ? `Non-fatal error ignored: ${message}` : `${context}: ${message}` },
+    };
+    telemetry.emitTelemetry(event);
+    return;
+  }
+  if (!nonFatal) console.error(`[StressScenario:NetworkSaboteur] ${context}: ${message}`);
+}
+
+/**
+ * Network Saboteur scenario — standalone form used by the by-name scenario map.
+ * Arms the interceptors, waits for the page's own traffic, then disarms. The
+ * engine loop uses {@link armNetworkSabotage} directly so the window spans a real
+ * interaction instead of an idle wait.
+ */
+export const networkSaboteur: StressScenario = {
+  name: 'NetworkSaboteur',
+
+  async execute(page: Page, _target?: InteractiveElement, telemetry?: TelemetryGateway): Promise<void> {
+    const armed = await armNetworkSabotage(page, telemetry);
+    try {
+      await page.waitForTimeout(DEFAULT_CONFIG.interceptionTimeoutMs).catch(() => undefined);
+    } finally {
+      await armed.disarm();
     }
   },
 };

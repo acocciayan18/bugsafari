@@ -80,6 +80,14 @@ export class ActionExecutor {
   // eventually fires. Counter-based (no RNG) so seeded runs stay reproducible.
   private readonly scenarioRotation = new Map<string, number>();
 
+  // Routes whose client auth-state has already been forged this run. StorageTamper
+  // is a PAGE-level probe — its oracle compares privileged-surface markers across a
+  // reload, so the verdict depends on the route + storage, never on which control
+  // was clicked. Under an authState-only profile it was the sole enabled candidate,
+  // so it re-fired on every control: two full reloads per step, wiping the SPA state
+  // and the traversal it was supposed to observe.
+  private readonly tamperedRoutes = new Set<string>();
+
   constructor(private readonly deps: ActionExecutorDeps) {}
 
   public logHighImpact(target: InteractiveElement): void {
@@ -186,7 +194,7 @@ export class ActionExecutor {
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
     //    this element (if any) AFTER navigation, so scenario-specific actions
     //    execute on the freshly discovered state rather than replacing traversal.
-    const scenario = this.pickStressScenario(target);
+    const scenario = this.pickStressScenario(page, target);
     if (scenario) {
       await this.runStressScenario(page, target, scenario);
     }
@@ -426,27 +434,23 @@ export class ActionExecutor {
     ActiveScenarioTracker.begin(scenario.name, page.url() ?? this.deps.getTargetOrigin());
 
     try {
-      // For security scenarios on text inputs, strip constraints first.
-      if (scenario.name === 'FormBypasser') {
-        try {
-          // Target-scoped strip: the acting field + its siblings + its parent form.
-          await stripConstraintsSilently(page, target.selector);
-          t.emit('ACTION', {
-            actionExecuted: 'security-constraints-stripped',
-            selector: target.selector,
-            message: ` Stripped HTML5 constraints from ${humanizeElement(target)} before security injection.`,
-          });
-        } catch (error) {
-          console.warn('[ActionExecutor] Constraint stripping failed before security scenario:', error);
-        }
+      await scenario.execute(page, target);
 
+      // FormBypasser IS the constraint strip, so it runs first and the security
+      // payloads layer onto the now-unconstrained field. The executor used to strip
+      // the identical selector itself immediately before invoking the scenario,
+      // which then stripped it a second time for no additional effect.
+      if (scenario.name === 'FormBypasser') {
+        t.emit('ACTION', {
+          actionExecuted: 'security-constraints-stripped',
+          selector: target.selector,
+          message: ` Stripped HTML5 constraints from ${humanizeElement(target)} before security injection.`,
+        });
         // Enhance security testing with data fuzzer payloads (gated by Data Fuzzing).
         if (this.deps.gate.isEnabled('dataFuzzing')) {
           await this.executeSecurityFuzzerPayloads(page, target);
         }
       }
-
-      await scenario.execute(page, target);
     } finally {
       ActiveScenarioTracker.end();
     }
@@ -490,10 +494,13 @@ export class ActionExecutor {
    * opens a real STORAGE_TAMPER transaction and lets the scenario's privileged-
    * surface oracle self-assert a CLIENT_TRUST_BOUNDARY_VIOLATION finding.
    */
-  private buildStorageTamperScenario(): StressScenario {
+  private buildStorageTamperScenario(routeKey: string): StressScenario {
     return {
       name: storageTamper.name,
       execute: async (page: Page, target?: InteractiveElement): Promise<void> => {
+        // Marked before the run, not after: a forge that throws mid-way still
+        // reloaded the page, so retrying it on the next control is pure cost.
+        this.tamperedRoutes.add(routeKey);
         await storageTamper.execute(page, target, {
           chaosManager: this.deps.fuzzManager,
           registerFinding: (finding) => void this.registerStorageFinding(finding, page),
@@ -510,6 +517,7 @@ export class ActionExecutor {
    * every applicable scenario has been deactivated for this run.
    */
   private pickStressScenario(
+    page: Page,
     target: InteractiveElement,
   ): StressScenario | null {
     const tag = target.tagName.toLowerCase();
@@ -550,11 +558,17 @@ export class ActionExecutor {
     // Auth-state / storage tampering — page-level broken-access-control probe. On an
     // auth-relevant control (login/logout/account/admin/session) it leads so the
     // client-trust check runs even under full-spectrum CHAOS; elsewhere it trails as a
-    // catch-all so the dedicated authState profile still exercises every control.
-    const authRelevant = /(log[\s_-]?in|log[\s_-]?out|sign[\s_-]?in|sign[\s_-]?out|sign[\s_-]?up|account|profile|\bauth|admin|session|dashboard|member|\brole)/i.test(source);
-    const storageTamperScenario = this.buildStorageTamperScenario();
-    if (authRelevant) candidates.unshift(storageTamperScenario);
-    else candidates.push(storageTamperScenario);
+    // catch-all so the dedicated authState profile still exercises every route.
+    // Offered at most once per route: the oracle reads the route's privileged surface,
+    // so a second forge on the same route can only repeat the first verdict at the
+    // cost of two more reloads.
+    const routeKey = safeRoutePath(page);
+    if (!this.tamperedRoutes.has(routeKey)) {
+      const authRelevant = /(log[\s_-]?in|log[\s_-]?out|sign[\s_-]?in|sign[\s_-]?out|sign[\s_-]?up|account|profile|\bauth|admin|session|dashboard|member|\brole)/i.test(source);
+      const storageTamperScenario = this.buildStorageTamperScenario(routeKey);
+      if (authRelevant) candidates.unshift(storageTamperScenario);
+      else candidates.push(storageTamperScenario);
+    }
 
     // A control that COMMITS state is the only place an unguarded double-submit
     // can exist, and the burst is the only probe that surfaces one — so it leads
@@ -569,7 +583,18 @@ export class ActionExecutor {
 
     // Keep only enabled candidates, preserving heuristic priority order.
     const enabled = candidates.filter((candidate) => this.deps.gate.isScenarioEnabled(candidate.name));
-    if (enabled.length === 0) return null;
+    if (enabled.length === 0) {
+      // Under an authState-only profile the tamper is the sole candidate, so a
+      // spent route leaves nothing to run. Say so rather than skipping silently.
+      if (this.tamperedRoutes.has(routeKey) && this.deps.gate.isEnabled('authState')) {
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'storage-tamper-route-spent',
+          selector: target.selector,
+          message: `Client auth-state already forged on this route — no further tampering on ${humanizeElement(target)}.`,
+        });
+      }
+      return null;
+    }
 
     // Rotate deterministically per control: the Nth scenario run on this selector
     // takes slot N mod len, so repeated selections exercise every applicable attack

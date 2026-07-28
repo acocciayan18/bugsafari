@@ -10,8 +10,7 @@
 
 import assert from 'node:assert/strict';
 import { asyncStateRacer } from './asyncStateRacer.js';
-import { createStressScenarioRegistry } from './index.js';
-import { ChaosTransactionManager } from '../chaos/index.js';
+import { stressScenarioMap } from './index.js';
 import { ScenarioGate } from '../services/scenarioGate.js';
 import {
   resolveScenarioAttribution,
@@ -102,9 +101,8 @@ check('full-spectrum CHAOS_INFILTRATION profile now includes asyncRace', () => {
   assert.ok(resolveInfiltrationProfile({ profile: 'CHAOS_INFILTRATION' }).includes('asyncRace'));
 });
 
-check('the shared-manager stress registry includes an AsyncStateRacer scenario', () => {
-  const registry = createStressScenarioRegistry(new ChaosTransactionManager());
-  assert.ok(registry.some((scenario) => scenario.name === 'AsyncStateRacer'));
+check('the by-name scenario map exposes AsyncStateRacer', () => {
+  assert.equal(stressScenarioMap.AsyncStateRacer?.name, 'AsyncStateRacer');
 });
 
 console.log(`\nAsyncStateRacer wiring: ${passed} checks passed.`);

@@ -36,7 +36,7 @@ import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
 import { CopyButton } from '../common/ForensicCardKit';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
-import { isCleanTermination } from '../../types';
+import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
 import { isActionableNetworkStatus } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
@@ -48,6 +48,11 @@ import {
   IDLE_VERIFY_STATUS,
   type VerifyStatus,
 } from '../../application/useCases/useRegressionVerifier';
+
+// Operator-facing profile label, or '' when the report predates profile recording.
+function reportProfileLabel(id?: InfiltrationProfileId): string {
+  return INFILTRATION_PROFILE_CATALOG.find((option) => option.id === id)?.label ?? '';
+}
 
 function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return 'N/A';
@@ -169,6 +174,10 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       </div>
 
       <div className="mt-5 grid grid-flow-col auto-cols-max gap-6 border-t border-(--border-hairline) pt-4 justify-start">
+  {/* Which profile produced these findings — absent on reports predating the field. */}
+  {reportProfileLabel(report.infiltrationProfile) && (
+    <StatBlock label="Profile" value={reportProfileLabel(report.infiltrationProfile)} />
+  )}
   <StatBlock label="Duration" value={formatDuration(report.duration)} />
   <StatBlock
     label="Findings"

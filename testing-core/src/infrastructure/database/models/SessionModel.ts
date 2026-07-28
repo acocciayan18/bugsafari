@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import type { ActionOutcome, ConstraintBypassDetail, ReplayMacro, RunTerminationOutcome, StateFingerprint } from '../../../../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome, StateFingerprint, TestingTypeId } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
 
@@ -228,6 +228,20 @@ const sessionSchema = new Schema(
       type: String,
       required: false,
       default: null,
+    },
+    // Infiltration profile this run actually executed, plus the testing-type
+    // categories its gate enforced. Without these a saved safari could not say
+    // which run configuration produced its findings. Optional — sessions written
+    // before the fields existed still load.
+    infiltrationProfile: {
+      type: String,
+      required: false,
+      default: null,
+    },
+    activeTestingTypes: {
+      type: [String],
+      required: false,
+      default: undefined,
     },
     findingCount: {
       type: Number,
@@ -470,6 +484,10 @@ export interface ISession extends Document {
   savedManually: boolean;
   endedReason?: string;
   outcome?: RunTerminationOutcome;
+  /** Infiltration profile this run executed; absent on sessions predating the field. */
+  infiltrationProfile?: InfiltrationProfileId;
+  /** Testing-type categories the run's ScenarioGate enforced. */
+  activeTestingTypes?: TestingTypeId[];
   findingCount: number;
   actionTraceCount: number;
   brainSnapshotCount: number;

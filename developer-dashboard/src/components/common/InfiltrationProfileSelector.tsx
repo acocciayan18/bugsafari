@@ -25,7 +25,8 @@ function InfiltrationProfileSelectorImpl({
       </span>
 
       {/* Profile cards — single-choice radio group, responsive grid. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2" role="radiogroup" aria-label="Infiltration Matrix">
+      {/* Column counts track the catalog size — a 4-up grid left the fifth card orphaned on its own row. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2" role="radiogroup" aria-label="Infiltration Matrix">
         {INFILTRATION_PROFILE_CATALOG.map((option) => {
           const isSelected = option.id === profile;
           return (

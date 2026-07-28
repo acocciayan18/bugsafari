@@ -28,6 +28,7 @@ import { parsePagination, buildPage, isPaginatedRequest } from './pagination.js'
 import { deleteSessionCascade } from '../../infrastructure/database/retentionReaper.js';
 import {
   INFILTRATION_PROFILE_CATALOG,
+  DEFAULT_INFILTRATION_PROFILE,
   resolveInfiltrationProfile,
   type TestingTypeId,
   type InfiltrationProfileId,
@@ -74,22 +75,23 @@ async function ensureRunId(doc: { _id: Types.ObjectId; runId?: string | null }):
 }
 
 /**
- * Interpret the client-supplied Unified Infiltration Profile into the concrete
- * TestingTypeId[] the ScenarioGate consumes. An unknown/absent profile resolves
- * to the all-enabled default; a CUSTOM profile honors its individual selection.
+ * Interpret the client-supplied Unified Infiltration Profile. Returns the profile
+ * itself (recorded on the session so a finding can be traced back to the run
+ * configuration that produced it) alongside the concrete TestingTypeId[] the
+ * ScenarioGate consumes. An unknown/absent profile — including the retired
+ * CUSTOM_STRATEGY_PROFILE from an older client — resolves to the all-enabled default.
  */
-function parseSelectedScenarios(body: unknown): TestingTypeId[] {
+function parseInfiltration(body: unknown): {
+  profile: InfiltrationProfileId;
+  selectedScenarios: TestingTypeId[];
+} {
   const raw = (body as { infiltration?: unknown })?.infiltration as Partial<ExplorationRunConfig> | undefined;
-  const knownProfiles = new Set<string>(INFILTRATION_PROFILE_CATALOG.map((profile) => profile.id));
+  const knownProfiles = new Set<string>(INFILTRATION_PROFILE_CATALOG.map((option) => option.id));
   const profile = typeof raw?.profile === 'string' && knownProfiles.has(raw.profile)
     ? (raw.profile as InfiltrationProfileId)
-    : undefined;
+    : DEFAULT_INFILTRATION_PROFILE;
 
-  if (!profile) return resolveInfiltrationProfile(undefined);
-  const customScenarios = Array.isArray(raw?.customScenarios)
-    ? (raw!.customScenarios as TestingTypeId[])
-    : undefined;
-  return resolveInfiltrationProfile({ profile, customScenarios });
+  return { profile, selectedScenarios: resolveInfiltrationProfile({ profile }) };
 }
 
 /**
@@ -155,6 +157,8 @@ interface SessionReportData {
   status?: string;
   outcome?: RunTerminationOutcome;
   endedReason?: string;
+  /** Infiltration profile the run executed; absent on sessions predating the field. */
+  infiltrationProfile?: InfiltrationProfileId;
   coveragePercentage?: number;
   metrics?: {
     totalActions?: number;
@@ -376,8 +380,8 @@ export function registerRoutes(
     // Resolve the operator-selected Unified Infiltration Profile into gated scenario
     // categories BEFORE the queue branch, so a distributed run carries the same gate
     // as a synchronous one (otherwise the worker defaults to all testing types).
-    const selectedScenarios = parseSelectedScenarios(request.body);
-    console.log(`[API] Infiltration profile resolved to:`, selectedScenarios);
+    const { profile: infiltrationProfile, selectedScenarios } = parseInfiltration(request.body);
+    console.log(`[API] Infiltration profile ${infiltrationProfile} resolved to:`, selectedScenarios);
 
     // Run token the client already holds from a previous launch (localStorage) —
     // possession proves ownership, letting a refreshed client (incl. guests)
@@ -1206,6 +1210,7 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         status: sessionDoc.status,
         outcome: sessionDoc.outcome,
         endedReason: sessionDoc.endedReason,
+        infiltrationProfile: sessionDoc.infiltrationProfile,
         coveragePercentage: sessionDoc.stats?.coveragePercentage,
         metrics: {
           totalActions: sessionDoc.stats?.actionsExecuted || 0,
@@ -1374,6 +1379,7 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         status: session.status,
         outcome: session.outcome,
         endedReason: session.endedReason,
+        infiltrationProfile: session.infiltrationProfile,
         coverage: session.coveragePercentage ?? 0,
         duration: session.timeElapsed,
         riskScore: effectiveRiskScore,

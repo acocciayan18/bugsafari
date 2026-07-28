@@ -1,4 +1,9 @@
-import type { PaginationParams, RunTerminationOutcome } from '../../../../shared/types.js';
+import type {
+  InfiltrationProfileId,
+  PaginationParams,
+  RunTerminationOutcome,
+  TestingTypeId,
+} from '../../../../shared/types.js';
 
 export interface CreateSessionInput {
   targetUrl: string;
@@ -6,6 +11,10 @@ export interface CreateSessionInput {
   userId?: string;  // Optional - will be required for authenticated sessions
   // Public RUN- code minted at run-start; stamped so live + history share one id. Schema default mints one when absent.
   runId?: string;
+  // Run configuration, recorded so a finding can be traced back to the profile
+  // that produced it. Derived from the gate, so it reflects what actually ran.
+  infiltrationProfile?: InfiltrationProfileId;
+  activeTestingTypes?: TestingTypeId[];
 }
 
 export interface SaveBrainConfigInput {
@@ -33,6 +42,8 @@ export interface SessionHistoryRecord {
   endedReason?: string;
   /** Precise termination taxonomy. Absent on sessions recorded before it was tracked. */
   outcome?: RunTerminationOutcome;
+  /** Infiltration profile the run executed. Absent on sessions predating the field. */
+  infiltrationProfile?: InfiltrationProfileId;
   savedManually: boolean;
   findingCount: number;
   actionTraceCount: number;

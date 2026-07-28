@@ -70,9 +70,15 @@ export const defaultOptimizationSettings: OptimizationSettings = {
 // backend execution gating, so the two can never drift. Each strategy
 // category maps to one or more backend stress-scenario `name`s.
 
-/** Strategy categories an operator can toggle before launching a run. */
+/**
+ * Strategy categories an operator can toggle before launching a run.
+ *
+ * There is deliberately no 'exploratory' member: ordinary navigation and clicking
+ * are unconditional (ActionExecutor always traverses the navigator-chosen edge),
+ * so a category gating zero scenarios could never change a run's behavior. It
+ * survives only as the default ATTRIBUTION bucket — see EXPLORATORY_SCENARIO.
+ */
 export type TestingTypeId =
-  | 'exploratory'
   | 'formBypass'
   | 'dataFuzzing'
   | 'concurrency'
@@ -98,15 +104,9 @@ export interface TestingTypeOption {
  */
 export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
   {
-    id: 'exploratory',
-    label: 'Client-Side Exploratory Testing',
-    description: 'DOM-aware targeting & scorer-driven normal interaction (payload injection + ordinary clicks).',
-    scenarios: [],
-  },
-  {
     id: 'formBypass',
     label: 'Constraint Stripping & Form Bypass',
-    description: 'Strips client-side validation/hardening to force interactions (FormBypasser).',
+    description: 'Strips client-side validation/hardening (FormBypasser), then confirms whether the server re-validates by submitting a value the browser would have rejected.',
     scenarios: ['FormBypasser'],
   },
   {
@@ -118,13 +118,13 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
   {
     id: 'concurrency',
     label: 'Overlapping Concurrency Stress',
-    description: 'Rapid concurrent clicks & coordinate bombing to trigger race conditions.',
+    description: 'Zero-wait concurrent click bursts to trigger race conditions and double-submits, plus blind grid clicking to reach overlay and hit-test edges.',
     scenarios: ['ButtonSpammer', 'CoordinateBombing'],
   },
   {
     id: 'navigation',
     label: 'Navigational Path Infiltration & Traversal',
-    description: 'Network sabotage during navigational traversal (NetworkSaboteur).',
+    description: 'Delays, aborts, or corrupts the API call an interaction triggers, to test network-fault resilience (NetworkSaboteur).',
     scenarios: ['NetworkSaboteur'],
   },
   {
@@ -159,8 +159,7 @@ export type InfiltrationProfileId =
   | 'DEEP_SEMANTIC_DATA_ATTACK'
   | 'HIGH_FREQUENCY_CONCURRENCY_STRAIN'
   | 'ASYNC_LIFECYCLE_ASSAULT'
-  | 'AUTH_STATE_SUBVERSION'
-  | 'CUSTOM_STRATEGY_PROFILE';
+  | 'AUTH_STATE_SUBVERSION';
 
 export interface InfiltrationProfileOption {
   /** Stable identifier transmitted in the run payload. */
@@ -169,10 +168,8 @@ export interface InfiltrationProfileOption {
   label: string;
   /** Short description of the profile's focus. */
   description: string;
-  /** Testing-type categories this profile activates (ignored for custom). */
+  /** Testing-type categories this profile activates. */
   testingTypes: TestingTypeId[];
-  /** When true the profile defers to operator-selected individual scenarios. */
-  custom?: boolean;
 }
 
 /**
@@ -190,13 +187,13 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {
     id: 'DEEP_SEMANTIC_DATA_ATTACK',
     label: 'Deep Semantic Data Attack',
-    description: 'Data-focused — context-aware fuzzing and constraint/form bypass only.',
+    description: 'Data-focused — context-aware fuzzing and constraint/form bypass only, escalating payloads across five levels from base cases to polyglot amplification.',
     testingTypes: ['dataFuzzing', 'formBypass'],
   },
   {
     id: 'HIGH_FREQUENCY_CONCURRENCY_STRAIN',
     label: 'High-Frequency Concurrency Strain',
-    description: 'Concurrency-focused — rapid concurrent clicking paired with network sabotage.',
+    description: 'Concurrency-focused — zero-wait concurrent clicking paired with network sabotage, to surface double-submit and race defects.',
     testingTypes: ['concurrency', 'navigation'],
   },
   {
@@ -208,11 +205,9 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {
     id: 'AUTH_STATE_SUBVERSION',
     label: 'Auth-State Subversion',
-    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/ sessionStorage/ JWT) and checks whether privileged UI unlocks without server authorization.',
+    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/ sessionStorage/ JWT) once per route and checks whether privileged UI unlocks without server authorization.',
     testingTypes: ['authState'],
   },
-  // CUSTOM_STRATEGY_PROFILE retired — BugSafari runs only automated profiles.
-  // Union member + resolve custom-branch kept for backward-compat payloads.
 ];
 
 /** Default profile when none is supplied — full-spectrum, matches legacy all-on. */
@@ -220,31 +215,42 @@ export const DEFAULT_INFILTRATION_PROFILE: InfiltrationProfileId = 'CHAOS_INFILT
 
 /**
  * Structured run-configuration payload sent with an exploration start request.
- * The operator picks a `profile`; `customScenarios` is only meaningful for the
- * CUSTOM_STRATEGY_PROFILE and is ignored otherwise.
+ * BugSafari runs only the named automated profiles — the retired
+ * CUSTOM_STRATEGY_PROFILE and its per-category selection are gone. A payload
+ * still carrying the old id resolves through the unknown-profile branch below.
  */
 export interface ExplorationRunConfig {
   profile: InfiltrationProfileId;
-  customScenarios?: TestingTypeId[];
 }
 
 /**
  * Resolve an infiltration config into the concrete `TestingTypeId[]` the engine
- * gate consumes. Unknown/undefined config or an empty custom selection falls back
- * to the all-enabled default (backward compatible with the previous behavior).
+ * gate consumes. Unknown/undefined config falls back to the all-enabled default
+ * (backward compatible with the previous behavior).
  */
 export function resolveInfiltrationProfile(config?: ExplorationRunConfig): TestingTypeId[] {
   if (!config) return [...ALL_TESTING_TYPE_IDS];
   const option = INFILTRATION_PROFILE_CATALOG.find((profile) => profile.id === config.profile);
   if (!option) return [...ALL_TESTING_TYPE_IDS];
-
-  if (option.custom) {
-    const allowed = new Set<string>(ALL_TESTING_TYPE_IDS);
-    const custom = (config.customScenarios ?? []).filter(
-      (value): value is TestingTypeId => typeof value === 'string' && allowed.has(value),
-    );
-    return custom.length > 0 ? custom : [...ALL_TESTING_TYPE_IDS];
-  }
-
   return [...option.testingTypes];
+}
+
+/**
+ * Reverse-resolve the profile a run ACTUALLY executed from the testing types its
+ * gate enforced. Recording this on the session (rather than echoing the requested
+ * field) means history reports what ran: a legacy/unknown profile id that fell back
+ * to all-on is reported as CHAOS_INFILTRATION, which is the truth.
+ *
+ * Every catalog profile has a distinct `testingTypes` set, so the match is exact.
+ * Returns undefined only if a future profile duplicates another's set or the gate
+ * was handed an ad-hoc selection.
+ */
+export function resolveProfileFromTestingTypes(
+  types: readonly TestingTypeId[],
+): InfiltrationProfileId | undefined {
+  const key = [...types].sort().join('|');
+  const matches = INFILTRATION_PROFILE_CATALOG.filter(
+    (option) => [...option.testingTypes].sort().join('|') === key,
+  );
+  return matches.length === 1 ? matches[0].id : undefined;
 }

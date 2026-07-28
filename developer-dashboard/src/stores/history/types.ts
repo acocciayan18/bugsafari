@@ -1,4 +1,4 @@
-import type { RunTerminationOutcome, SessionHistoryEntry } from '../../types';
+import type { InfiltrationProfileId, RunTerminationOutcome, SessionHistoryEntry } from '../../types';
 
 export interface CaughtBug {
     bugId: string;
@@ -31,6 +31,8 @@ export interface EvaluationSafari {
     status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED';
     /** Precise termination taxonomy; drives the displayed reason when present. */
     outcome?: RunTerminationOutcome;
+    /** Infiltration profile the run executed; absent on rows saved before it was tracked. */
+    infiltrationProfile?: InfiltrationProfileId;
     endedReason?: string;
     timeElapsed: number;
     bugsByCategory: Record<string, number>;
@@ -105,6 +107,7 @@ export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]):
         severityCount: session.findingCount,
         status: SESSION_STATUS_MAP[session.status] ?? 'HALTED',
         outcome: session.outcome,
+        infiltrationProfile: session.infiltrationProfile,
         endedReason: session.endedReason,
         timeElapsed: session.runtimeMs ?? 0,
         bugsByCategory: {},
