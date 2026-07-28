@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -42,6 +42,7 @@ import { isActionableNetworkStatus } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import { caughtBugToFindingView } from '../../utils/findingView';
+import { requestAiInsights } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
 import {
   useRegressionVerifier,
@@ -199,12 +200,51 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
 // into the finding cards below).
 // ─────────────────────────────────────────────────────────────
 
-function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['aiAnalysis'] }) {
-  if (!aiAnalysis || (!aiAnalysis.rootCause && !aiAnalysis.recommendations?.length)) return null;
+function AiInsightsPanel({
+  aiAnalysis,
+  sessionId,
+  findings,
+}: {
+  aiAnalysis: ForensicReportResponse['aiAnalysis'];
+  sessionId?: string;
+  findings: ForensicCaughtBug[];
+}) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [override, setOverride] = useState<{ rootCause: string; recommendations: string[] } | null>(null);
+
+  const rootCause = override?.rootCause ?? aiAnalysis?.rootCause;
+  const recommendations = override?.recommendations ?? aiAnalysis?.recommendations ?? [];
+  const aiGenerated = Boolean(override) || Boolean(aiAnalysis?.aiGenerated);
+  const canGenerate = Boolean(sessionId) && findings.length > 0;
+
+  const generate = async () => {
+    if (!sessionId) return;
+    setStatus('loading');
+    try {
+      const result = await requestAiInsights({
+        sessionId,
+        riskLevel: aiAnalysis?.riskLevel,
+        fallbackRootCause: aiAnalysis?.rootCause,
+        fallbackRecommendations: aiAnalysis?.recommendations,
+        findings: findings.map((b) => ({
+          bugClass: b.attribution?.bugClass ?? b.type,
+          severity: b.severity,
+          message: b.message,
+          elementLabel: b.elementLabel,
+        })),
+      });
+      if (result.source === 'ai') setOverride({ rootCause: result.rootCause, recommendations: result.recommendations });
+      setStatus(result.source === 'ai' ? 'idle' : 'error');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  if (!aiAnalysis || (!rootCause && !recommendations.length && !canGenerate)) return null;
 
   return (
     <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
-      <div className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-(--status-neutral-fg)">
+      <div className="flex flex-wrap items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-(--status-neutral-fg)">
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
@@ -212,13 +252,31 @@ function AiInsightsPanel({ aiAnalysis }: { aiAnalysis: ForensicReportResponse['a
             {aiAnalysis.riskLevel} risk
           </span>
         )}
+        {aiGenerated && (
+          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold normal-case text-(--status-neutral-fg)">✦ AI-generated</span>
+        )}
+        {canGenerate && (
+          <button
+            type="button"
+            onClick={generate}
+            disabled={status === 'loading'}
+            className="ml-auto inline-flex items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+          >
+            {status === 'loading'
+              ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {aiGenerated ? 'Regenerate with AI' : 'Generate with AI'}</>}
+          </button>
+        )}
       </div>
-      {aiAnalysis.rootCause && (
-        <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{aiAnalysis.rootCause}</p>
+      {status === 'error' && (
+        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">Couldn’t reach the model — showing the deterministic analysis.</p>
       )}
-      {aiAnalysis.recommendations && aiAnalysis.recommendations.length > 0 && (
+      {rootCause && (
+        <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
+      )}
+      {recommendations.length > 0 && (
         <ul className="mt-3 space-y-1.5">
-          {aiAnalysis.recommendations.map((recommendation, idx) => (
+          {recommendations.map((recommendation, idx) => (
             <li key={idx} className="flex gap-2 text-[13px] text-(--text-secondary)">
               <span className="text-(--status-neutral-fg)">→</span>
               <span>{recommendation}</span>
@@ -608,6 +666,7 @@ function ReportFindingCard({
         view={view}
         index={index}
         aiFix
+        sessionId={sessionId}
         theme={verdictMeta ?? BASE_FINDING_THEME}
         statusChip={verdictMeta && (
           <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
@@ -927,7 +986,7 @@ export default function ForensicReport() {
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
           <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={runtimeBugs.length} />
 
-          <AiInsightsPanel aiAnalysis={report.aiAnalysis} />
+          <AiInsightsPanel aiAnalysis={report.aiAnalysis} sessionId={sessionId} findings={runtimeBugs} />
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>

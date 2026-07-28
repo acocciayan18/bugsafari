@@ -13,7 +13,7 @@ import { sessionManager } from '../../application/services/SessionManager.js';
 import { randomUUID } from 'node:crypto';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
-import { generateRemediation } from '../../infrastructure/ai/GeminiRemediationAdvisor.js';
+import { generateRemediation, generateInsights } from '../../infrastructure/ai/GeminiRemediationAdvisor.js';
 import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
@@ -42,6 +42,8 @@ import {
   parseStorageState,
   type SuggestFixRequest,
   type SuggestFixResponse,
+  type SuggestInsightsRequest,
+  type SuggestInsightsResponse,
 } from '../../../../shared/types.js';
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
@@ -1092,7 +1094,9 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
   });
 
   // On-demand AI remediation for a single saved finding. Returns an LLM fix, or the
-  // caller-supplied deterministic advice as fallback — never fails the UI.
+  // caller-supplied deterministic advice as fallback — never fails the UI. When
+  // sessionId + bugId are present, an AI result is persisted onto the finding so it
+  // survives a refresh (owner-scoped positional update; failure is non-fatal).
   app.post('/api/findings/suggest-fix', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     const body = (request.body ?? {}) as SuggestFixRequest;
     const fallback = typeof body.fallbackAdvice === 'string' ? body.fallbackAdvice : '';
@@ -1101,6 +1105,57 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
     const result: SuggestFixResponse = ai
       ? { advice: ai, source: 'ai' }
       : { advice: fallback, source: 'fallback' };
+
+    if (ai && request.userId && typeof body.sessionId === 'string' && typeof body.bugId === 'string') {
+      const selector = resolveSessionSelector(body.sessionId);
+      if (selector) {
+        try {
+          await SessionModel.updateOne(
+            { ...selector, userId: new Types.ObjectId(request.userId), 'forensicTrace.caughtBugs.bugId': body.bugId },
+            { $set: { 'forensicTrace.caughtBugs.$.aiAdvice': ai } },
+          );
+        } catch (error) {
+          console.error('[API] suggest-fix persist failed:', error instanceof Error ? error.message : error);
+        }
+      }
+    }
+    response.json(result);
+  });
+
+  // On-demand session-level AI Insights for a saved run. Returns an LLM root-cause +
+  // recommendations, or the caller-supplied deterministic analysis as fallback.
+  // Persists an AI result onto the session so it survives a refresh.
+  app.post('/api/forensic/insights', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    const userId = request.userId;
+    const body = (request.body ?? {}) as SuggestInsightsRequest;
+    const fbRootCause = typeof body.fallbackRootCause === 'string' ? body.fallbackRootCause : '';
+    const fbRecommendations = Array.isArray(body.fallbackRecommendations) ? body.fallbackRecommendations : [];
+
+    if (!userId || typeof body.sessionId !== 'string') {
+      response.status(400).json({ error: 'sessionId is required.' });
+      return;
+    }
+    const selector = resolveSessionSelector(body.sessionId);
+    if (!selector) {
+      response.status(400).json({ error: 'Invalid session ID format.' });
+      return;
+    }
+
+    const ai = await generateInsights(body);
+    const result: SuggestInsightsResponse = ai
+      ? { rootCause: ai.rootCause || fbRootCause, recommendations: ai.recommendations.length ? ai.recommendations : fbRecommendations, source: 'ai' }
+      : { rootCause: fbRootCause, recommendations: fbRecommendations, source: 'fallback' };
+
+    if (ai) {
+      try {
+        await SessionModel.updateOne(
+          { ...selector, userId: new Types.ObjectId(userId) },
+          { $set: { aiInsights: { rootCause: result.rootCause, recommendations: result.recommendations } } },
+        );
+      } catch (error) {
+        console.error('[API] insights persist failed:', error instanceof Error ? error.message : error);
+      }
+    }
     response.json(result);
   });
 
@@ -1293,11 +1348,15 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         ? `${caughtBugs.length} issue${caughtBugs.length === 1 ? '' : 's'} detected; most severe: ${topBug.type} (${(topBug.severity ?? 'MEDIUM').toUpperCase()}).`
         : null;
 
+      // Persisted on-demand AI Insights take precedence over the deterministic analysis.
+      const aiInsights = sessionDoc.aiInsights;
+      const hasAiInsights = Boolean(aiInsights && (aiInsights.rootCause || aiInsights.recommendations?.length));
       const formattedAnalysis = (analysis || caughtBugs.length > 0) ? {
-        rootCause: caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? ''),
+        rootCause: hasAiInsights ? aiInsights!.rootCause : (caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? '')),
         riskScore: effectiveRiskScore,
         riskLevel: effectiveRiskLevel,
-        recommendations: analysis?.recommendations ?? [],
+        recommendations: hasAiInsights && aiInsights!.recommendations?.length ? aiInsights!.recommendations : (analysis?.recommendations ?? []),
+        aiGenerated: hasAiInsights,
         errorCount: analysis?.errorCount ?? caughtBugs.length,
         apiFailureCount: analysis?.apiFailureCount ?? 0,
         criticalErrorCount: analysis?.criticalErrorCount ?? caughtBugs.filter(b => (b.severity ?? '').toUpperCase() === 'CRITICAL').length,

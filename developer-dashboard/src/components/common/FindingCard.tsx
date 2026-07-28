@@ -75,6 +75,7 @@ export default function FindingCard({
   actions,
   showBypass = true,
   aiFix = false,
+  sessionId,
   children,
 }: {
   view: FindingView;
@@ -84,6 +85,7 @@ export default function FindingCard({
   actions?: ReactNode;
   showBypass?: boolean;
   aiFix?: boolean;
+  sessionId?: string;
   children?: ReactNode;
 }) {
   // Human-readable culprit name, never the raw selector. Absent ⇒ cell is dropped.
@@ -143,7 +145,7 @@ export default function FindingCard({
       {children && <div className="px-4">{children}</div>}
 
       <div className="pb-3">
-        <FindingEvidence view={view} showBypass={showBypass} aiFix={aiFix} />
+        <FindingEvidence view={view} showBypass={showBypass} aiFix={aiFix} sessionId={sessionId} />
       </div>
     </div>
   );

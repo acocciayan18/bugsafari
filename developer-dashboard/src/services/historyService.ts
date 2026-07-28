@@ -4,7 +4,7 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
-import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse } from '../../../shared/types.js';
+import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { refreshAuthToken } from '../utils/authRefresh';
@@ -242,6 +242,19 @@ export async function requestSuggestedFix(payload: SuggestFixRequest): Promise<S
     throw new Error(`Could not generate a suggested fix (${response.status})`);
   }
   return (await response.json()) as SuggestFixResponse;
+}
+
+/**
+ * Request on-demand session-level AI Insights for a saved run. Returns an LLM
+ * root-cause + recommendations (persisted server-side), or the caller's deterministic
+ * analysis back with source 'fallback' when the model is unavailable.
+ */
+export async function requestAiInsights(payload: SuggestInsightsRequest): Promise<SuggestInsightsResponse> {
+  const response = await fetchWithAuthRetry('/api/forensic/insights', getFetchOptions('POST', payload));
+  if (!response.ok) {
+    throw new Error(`Could not generate AI insights (${response.status})`);
+  }
+  return (await response.json()) as SuggestInsightsResponse;
 }
 
 /**

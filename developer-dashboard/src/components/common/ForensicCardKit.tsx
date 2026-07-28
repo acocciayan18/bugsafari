@@ -115,10 +115,11 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
  * (saved Forensic Report only) an on-demand "Generate AI Fix" button requests a
  * tailored remediation from the model; the deterministic advice stays the fallback.
  */
-export const SuggestedFixBlock = ({ advice, context }: { advice: string | undefined; context?: SuggestFixRequest }) => {
+export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: string | undefined; context?: SuggestFixRequest; savedAiAdvice?: string }) => {
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
-  const [source, setSource] = useState<SuggestFixSource | null>(null);
+  // Seed from a persisted AI fix so a saved remediation shows immediately on load.
+  const [aiAdvice, setAiAdvice] = useState<string | null>(savedAiAdvice || null);
+  const [source, setSource] = useState<SuggestFixSource | null>(savedAiAdvice ? 'ai' : null);
 
   const displayed = aiAdvice ?? advice;
 

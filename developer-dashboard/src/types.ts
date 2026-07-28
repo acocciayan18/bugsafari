@@ -203,6 +203,8 @@ export interface ForensicCaughtBug {
   occurrences?: number;
   payloadUsed: string;
   advice: string;
+  /** On-demand LLM remediation persisted from the report — takes precedence over `advice` when present. */
+  aiAdvice?: string;
   timestamp: string;
   /** Backend-classified severity (CRITICAL/HIGH/MEDIUM/LOW/INFO). */
   severity?: string;
@@ -249,6 +251,8 @@ export interface ForensicReportResponse {
     rootCause?: string;
     recommendations?: string[];
     riskLevel?: string;
+    /** True when rootCause/recommendations came from the on-demand LLM, not the templated analysis. */
+    aiGenerated?: boolean;
   } | null;
   metrics: {
     totalActions: number;

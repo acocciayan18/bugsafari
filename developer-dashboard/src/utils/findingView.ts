@@ -41,6 +41,10 @@ export interface FindingView {
   /** Structured, replayable trace — present on saved findings only. */
   actionSteps?: ForensicActionStep[];
   advice?: string;
+  /** Persisted on-demand LLM remediation (saved findings only) — seeds the report's fix block. */
+  aiAdvice?: string;
+  /** Stable saved-finding id — drives AI-fix persistence. Absent on live faults. */
+  bugId?: string;
   attribution?: FindingAttribution;
   /** Structured constraint-bypass evidence — drives the finding card's metadata grid. */
   bypass?: ConstraintBypassDetail;
@@ -172,6 +176,8 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     reproductionSteps: bug.reproductionSteps ?? [],
     actionSteps: bug.actionSteps,
     advice: bug.advice,
+    aiAdvice: bug.aiAdvice,
+    bugId: bug.bugId,
     attribution: bug.attribution,
     bypass: bug.bypass,
   };

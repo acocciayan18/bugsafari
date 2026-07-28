@@ -37,6 +37,8 @@ export interface ICaughtBug {
   occurrences?: number;
   payloadUsed: string;
   advice: string;
+  /** LLM-generated remediation, persisted on demand from the report — survives refresh. */
+  aiAdvice?: string;
   timestamp: Date;
   /** Backend-classified severity (CRITICAL/HIGH/MEDIUM/LOW/INFO) — drives the report badge. */
   severity?: string;
@@ -337,6 +339,8 @@ const sessionSchema = new Schema(
           occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },
           advice: { type: String, default: '' },
+          // On-demand LLM remediation, persisted from the report so it survives refresh.
+          aiAdvice: { type: String, default: '' },
           severity: { type: String, default: null },
           timestamp: { type: Date, default: Date.now },
           // Full stack trace + per-finding checklist — stored uncompressed for
@@ -408,6 +412,16 @@ const sessionSchema = new Schema(
         message: 'visitedRoutes cannot exceed the 500-route limit.',
       },
     },
+    // On-demand session-level AI Insights, persisted from the report so they survive
+    // refresh. Absent until the operator generates one; deterministic analysis is the fallback.
+    aiInsights: {
+      type: {
+        rootCause: { type: String, default: '' },
+        recommendations: { type: [String], default: [] },
+      },
+      required: false,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -467,6 +481,7 @@ export interface ISession extends Document {
   forensicTrace: IForensicTrace;
   actionSteps: ActionStepTrace[];
   visitedRoutes: string[];
+  aiInsights?: { rootCause: string; recommendations: string[] };
   error?: {
     message?: string;
     stackTrace?: string;

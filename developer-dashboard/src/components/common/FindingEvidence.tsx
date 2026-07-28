@@ -118,7 +118,8 @@ function Reproduction({ view }: { view: FindingView }) {
 }
 
 // Fault context for the on-demand AI remediation call — derived once from the view.
-function toSuggestFixContext(view: FindingView): SuggestFixRequest {
+// sessionId + bugId let the server persist an AI result so it survives a refresh.
+function toSuggestFixContext(view: FindingView, sessionId?: string): SuggestFixRequest {
   return {
     bugClass: view.attribution?.bugClass ?? view.title,
     message: view.message,
@@ -128,13 +129,15 @@ function toSuggestFixContext(view: FindingView): SuggestFixRequest {
     stackTrace: view.resolvedStackTrace ?? view.stackTrace,
     payloadUsed: view.payloadUsed,
     reproductionSteps: view.reproductionSteps,
+    sessionId,
+    bugId: view.bugId,
   };
 }
 
 // `showBypass` is presentation-only: the live Errors tab suppresses the bypass grid
 // to stay compact during a run — the data is untouched and the saved report shows it.
 // `aiFix` gates the on-demand AI remediation button — enabled on the saved report only.
-export default function FindingEvidence({ view, showBypass = true, aiFix = false }: { view: FindingView; showBypass?: boolean; aiFix?: boolean }) {
+export default function FindingEvidence({ view, showBypass = true, aiFix = false, sessionId }: { view: FindingView; showBypass?: boolean; aiFix?: boolean; sessionId?: string }) {
   const [stackExpanded, setStackExpanded] = useState(false);
 
   return (
@@ -164,7 +167,7 @@ export default function FindingEvidence({ view, showBypass = true, aiFix = false
       {/* Suggested fix — bound to this finding's remediation */}
       <div className="px-4 pt-3">
         <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
-        <SuggestedFixBlock advice={view.advice} context={aiFix ? toSuggestFixContext(view) : undefined} />
+        <SuggestedFixBlock advice={view.advice} savedAiAdvice={view.aiAdvice} context={aiFix ? toSuggestFixContext(view, sessionId) : undefined} />
       </div>
 
       {/* Stack trace — disclosure since it's verbose/noisy evidence, not primary narrative */}

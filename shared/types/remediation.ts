@@ -14,11 +14,31 @@ export interface SuggestFixRequest {
   reproductionSteps?: string[];
   // Deterministic remediation already shown for this finding — the guaranteed fallback.
   fallbackAdvice?: string;
+  // When both are present the AI result is persisted onto the saved finding (survives refresh).
+  sessionId?: string;
+  bugId?: string;
 }
 
 export type SuggestFixSource = 'ai' | 'fallback';
 
 export interface SuggestFixResponse {
   advice: string;
+  source: SuggestFixSource;
+}
+
+// Session-level AI Insights — on-demand LLM summary of a saved run, persisted so it
+// survives refresh. Falls back to the deterministic templated analysis on failure.
+export interface SuggestInsightsRequest {
+  sessionId: string;
+  riskLevel?: string;
+  fallbackRootCause?: string;
+  fallbackRecommendations?: string[];
+  // Compact finding set the model reasons over.
+  findings?: Array<{ bugClass?: string; severity?: string; message?: string; elementLabel?: string }>;
+}
+
+export interface SuggestInsightsResponse {
+  rootCause: string;
+  recommendations: string[];
   source: SuggestFixSource;
 }
