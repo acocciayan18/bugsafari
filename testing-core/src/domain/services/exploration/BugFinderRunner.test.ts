@@ -111,7 +111,10 @@ async function main(): Promise<void> {
     assert.equal(registered.length, 0, 'an inapplicable finder registers nothing');
   });
 
-  await check('a throwing finder is quarantined and never retried', async () => {
+  await check('a deterministically failing finder is quarantined after N strikes', async () => {
+    // Audit P3-11: quarantine used to fire on the FIRST throw. Finders that drive
+    // the page throw routinely on ordinary mid-flight navigation, so one transient
+    // permanently disabled that bug class for the rest of the run.
     let runs = 0;
     const { runner, registered } = makeRunner([
       alwaysFinder({
@@ -124,8 +127,23 @@ async function main(): Promise<void> {
     await runner.sweep(fakeContext());
     await runner.sweep(fakeContext());
     await runner.sweep(fakeContext());
-    assert.equal(runs, 1, 'quarantined after the first throw');
+    await runner.sweep(fakeContext());
+    assert.equal(runs, 3, 'retried until the failure proves deterministic, then quarantined');
     assert.equal(registered.length, 0);
+  });
+
+  await check('a transient page-lifecycle error is retried every sweep, never quarantined', async () => {
+    let runs = 0;
+    const { runner } = makeRunner([
+      alwaysFinder({
+        run: async () => {
+          runs += 1;
+          throw new Error('Execution context was destroyed, most likely because of a navigation');
+        },
+      }),
+    ]);
+    for (let i = 0; i < 5; i++) await runner.sweep(fakeContext());
+    assert.equal(runs, 5, 'a navigation-timing error must not disable the bug class');
   });
 
   await check('a throwing isApplicable is also isolated', async () => {
@@ -140,6 +158,34 @@ async function main(): Promise<void> {
     const { runner, registered } = makeRunner([alwaysFinder()], { budget: 2 });
     for (let i = 0; i < 6; i += 1) await runner.sweep(fakeContext({ stateHash: `s${i}` }));
     assert.equal(registered.length, 2);
+  });
+
+  await check('a chatty finder exhausts only its OWN class, never the others', async () => {
+    // Audit P3-11: the budget was global, so whichever detector was noisiest consumed
+    // it and silently switched every other one off for the rest of the run.
+    const chatty = alwaysFinder({
+      bugClass: 'RUNTIME_STABILITY_EXCEPTION',
+      run: async () => [finding({ bugClass: 'RUNTIME_STABILITY_EXCEPTION' })],
+    });
+    const quiet = alwaysFinder({
+      bugClass: 'NOSQL_INJECTION',
+      run: async () => [finding({ bugClass: 'NOSQL_INJECTION' })],
+    });
+    const { runner, registered } = makeRunner([chatty, quiet], { budget: 2 });
+    for (let i = 0; i < 6; i += 1) await runner.sweep(fakeContext({ stateHash: `s${i}` }));
+
+    const perClass = registered.reduce<Record<string, number>>((acc, bug) => {
+      const key = bug.attribution?.bugClass ?? 'unknown';
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    assert.equal(perClass.RUNTIME_STABILITY_EXCEPTION, 2, 'chatty class capped at its own budget');
+    assert.equal(perClass.NOSQL_INJECTION, 2, 'the quiet class still got its full budget');
+    assert.deepEqual(
+      runner.coverageReport().truncatedClasses.sort(),
+      ['NOSQL_INJECTION', 'RUNTIME_STABILITY_EXCEPTION'],
+      'truncation is reported, not silent',
+    );
   });
 
   await check('a budget of 0 disables the runner entirely', async () => {

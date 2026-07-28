@@ -5,6 +5,15 @@ import type { StateRestorerDeps } from './types.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { NavigationStep } from '../DIrectedPathFinder.js';
 
+// Bound on the client state carried across a fallback restore.
+const MAX_RESTORED_STORAGE_KEYS = 32;
+
+/** localStorage + sessionStorage carried across a document-load restore. */
+interface ClientStorageSnapshot {
+  local: Record<string, string>;
+  session: Record<string, string>;
+}
+
 /**
  * SPA-friendly navigation, traversal verification, and state-recovery logic.
  * Owns the cheap static lookahead probe, post-click traversal verification, and
@@ -270,9 +279,17 @@ export class StateRestorer {
       }
     }
 
+    // Rungs B and C are DOCUMENT loads: they reset the SPA's in-memory store, so the
+    // cart/wizard/session the run had built up is gone and any multi-step flow becomes
+    // reachable only by an uninterrupted lucky streak (audit P3-13). Only rung A
+    // preserves client state. Snapshot the storage the app currently holds so the
+    // fallback rungs can hand it back instead of restoring to a blank store.
+    const clientState = await this.captureClientStorage(page);
+
     // Strategy B — deep-link route jump to the cached parent URL.
     try {
       await page.goto(safeTargetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await this.reseedClientStorage(page, clientState);
       console.log('[StateRestorer] restore strategy B (deep-link) succeeded');
       this.deps.telemetry.emitSystemStatus('Restored via deep-link jump.');
       this.recordRestoreTrace(safeTargetUrl, 'deep-link');
@@ -288,6 +305,7 @@ export class StateRestorer {
     try {
       const rootUrl = this.deps.getTargetOrigin() ?? targetUrl;
       await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await this.reseedClientStorage(page, clientState);
       console.log('[StateRestorer] restore strategy C (root reload) succeeded');
       this.deps.telemetry.emitSystemStatus('Restored via hard root reload.');
       this.recordRestoreTrace(rootUrl, 'root-reload');
@@ -298,6 +316,58 @@ export class StateRestorer {
         err instanceof Error ? err.message : String(err),
       );
       return false;
+    }
+  }
+
+  /**
+   * Bounded snapshot of the app's client-side storage. Null when there is nothing
+   * worth carrying, so an app that keeps no client state pays no extra work.
+   */
+  private async captureClientStorage(page: Page): Promise<ClientStorageSnapshot | null> {
+    const snapshot = await page
+      .evaluate((limit: number) => {
+        const dump = (store: Storage): Record<string, string> => {
+          const out: Record<string, string> = {};
+          try {
+            for (let i = 0; i < store.length && i < limit; i++) {
+              const key = store.key(i);
+              if (key === null) continue;
+              const value = store.getItem(key);
+              if (value !== null && value.length <= 4096) out[key] = value;
+            }
+          } catch {
+            // storage blocked (sandboxed / disabled cookies)
+          }
+          return out;
+        };
+        return { local: dump(window.localStorage), session: dump(window.sessionStorage) };
+      }, MAX_RESTORED_STORAGE_KEYS)
+      .catch(() => null);
+
+    if (!snapshot) return null;
+    const hasState = Object.keys(snapshot.local).length > 0 || Object.keys(snapshot.session).length > 0;
+    return hasState ? snapshot : null;
+  }
+
+  /**
+   * Write a captured storage snapshot back and reload, so the app BOOTS with the
+   * state rather than reading an empty store on mount. Skipped entirely when there
+   * was no state to restore, which is the common case and keeps restores cheap.
+   */
+  private async reseedClientStorage(page: Page, snapshot: ClientStorageSnapshot | null): Promise<void> {
+    if (!snapshot) return;
+    try {
+      await page.evaluate((state: ClientStorageSnapshot) => {
+        try {
+          for (const [key, value] of Object.entries(state.local)) window.localStorage.setItem(key, value);
+        } catch { /* storage blocked */ }
+        try {
+          for (const [key, value] of Object.entries(state.session)) window.sessionStorage.setItem(key, value);
+        } catch { /* storage blocked */ }
+      }, snapshot);
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+    } catch {
+      // Best-effort: a failed re-seed leaves the ordinary blank-store restore intact.
     }
   }
 

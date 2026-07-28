@@ -14,9 +14,39 @@ const MAX_TRACKED_FIELDS = 500;
  */
 export class EscalationTracker {
   private readonly levels = new Map<string, number>();
+  // Encounters per field, so repeated visits sweep the vector corpus instead of
+  // re-firing one vector per level (audit P3-16). Separate from `levels` because a
+  // level reset must not rewind corpus coverage.
+  private readonly encounters = new Map<string, number>();
+  // Structural shell the tracked fields belong to. A bare selector is not a unique
+  // field identity (audit P3-07): `#email` on the login form and `#email` on
+  // profile-edit are different inputs, and before scoping the second one inherited
+  // the first one's escalation level — so a fresh field could start at L4 (or a
+  // resisted field could be reset by an unrelated namesake).
+  private scope = '';
+
+  /** Bind subsequent lookups to a structural shell; set once per ranking pass. */
+  public setScope(structureHash: string): void {
+    this.scope = structureHash ?? '';
+  }
 
   private key(selector: string, category: string): string {
-    return `${category}::${selector}`;
+    return `${this.scope}::${category}::${selector}`;
+  }
+
+  /**
+   * Advance and return this field's vector cursor. Bounded by the same map cap as
+   * levels; survives a level reset so the corpus is swept, not replayed.
+   */
+  public nextVectorCursor(selector: string, category: string): number {
+    const key = this.key(selector, category);
+    const next = (this.encounters.get(key) ?? 0) + 1;
+    this.encounters.set(key, next);
+    if (this.encounters.size > MAX_TRACKED_FIELDS) {
+      const oldestKey = this.encounters.keys().next().value;
+      if (oldestKey !== undefined && oldestKey !== key) this.encounters.delete(oldestKey);
+    }
+    return next;
   }
 
   /** Current escalation level for this field (0 if never encountered). */
@@ -44,5 +74,6 @@ export class EscalationTracker {
   /** Run-scoped reset — call once per Safari run. */
   public resetAll(): void {
     this.levels.clear();
+    this.encounters.clear();
   }
 }

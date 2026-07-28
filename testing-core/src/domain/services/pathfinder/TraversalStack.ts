@@ -98,6 +98,9 @@ export class TraversalStack {
    * stack, unwind to it (it becomes the top); otherwise clear the stack so a
    * cross-branch jump never leaves stale ancestors that would false-trip
    * cyclic-loop detection. The next sync() re-roots the path at the target.
+   *
+   * Clearing the stack no longer blinds loop detection: the recency trail is
+   * independent of the breadcrumb and survives the re-root (audit P3-14).
    */
   alignTo(hash: StateHash): void {
     const index = this.stack.findIndex((f) => f.nodeHash === hash);
@@ -132,6 +135,25 @@ export class TraversalStack {
       if (this.stack[i]?.nodeHash === hash) return true;
     }
     return false;
+  }
+
+  /**
+   * Re-root the breadcrumb on a frontier jump using the BFS route the frontier
+   * decision already computed (audit P3-14).
+   *
+   * alignTo() clears the stack when the jump target is off it — and a cross-branch
+   * target is by definition usually off it — so the ancestor list was emptied on
+   * essentially every dead-end resolution, blinding BOTH loop guards until a new
+   * path was rebuilt. Seeding the ancestry from the planned route restores the
+   * substrate without inventing a broader "recently visited" notion: everything
+   * here is a genuine predecessor of where we are about to stand, so the permanent
+   * cyclic-block those guards apply stays proportionate.
+   */
+  reseedFrom(hashes: readonly StateHash[], urlOf: (hash: StateHash) => string | undefined): void {
+    if (this.stack.length > 0 || hashes.length === 0) return;
+    for (const hash of hashes.slice(-this.maxStackDepth)) {
+      this.stack.push({ nodeHash: hash, url: urlOf(hash) ?? '', arrivedViaEdge: null });
+    }
   }
 
   /** Ordered array of hashes, oldest → newest. */

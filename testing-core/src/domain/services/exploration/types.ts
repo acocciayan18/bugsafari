@@ -174,6 +174,9 @@ export interface StabilityMonitorDeps {
   getInteractionContext(atMs: number): InteractionContext | null;
   /** Origin of the app under test — provenance uses it to separate first- from third-party failures. */
   getTargetOrigin(): string;
+  /** Operator escape hatch: cancel every native dialog instead of confirming it, so a
+   *  run against a shared/production-like environment never executes a destructive branch. */
+  dialogReadOnly(): boolean;
 }
 
 export interface StateRestorerDeps {
@@ -270,6 +273,8 @@ export interface ExplorationLoopDeps {
   hadNetworkActivitySinceAction(): boolean;
   /** Sink for confirmed findings (shared with StabilityMonitor) — a11y violations land here too. */
   registerConfirmedBug(bug: ConfirmedBug): void;
+  /** Shared with ActionExecutor — the loop binds its shell scope once per ranking pass. */
+  escalationTracker: EscalationTracker;
   /** Post-action sweep of the bugs/finders registry (gated, isolated, budgeted). */
   bugFinderRunner: BugFinderRunner;
   /** True when the run authenticated into the target — demotes session-exit controls. */

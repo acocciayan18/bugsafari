@@ -61,7 +61,7 @@ function makeHarness(options: {
       stopFrameCaptureLoop: () => { trace.push('frame-stop'); },
     },
     stabilityMonitor: {
-      attachDialogAutoDismiss: () => { /* no-op */ },
+      attachDialogHandler: () => { /* no-op */ },
       attachExceptionMonitoring: () => { /* no-op */ },
       attachCrashMonitoring: () => { /* no-op */ },
       attachNetworkMonitoring: () => { /* no-op */ },

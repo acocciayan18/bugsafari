@@ -171,6 +171,39 @@ less informative than it looks.
 
 ## High
 
+> **Status: all five High findings are RESOLVED** (branch `7-27-Ayan-3`). Every one was re-verified as still
+> present before being changed.
+>
+> - **P3-03** — dialog handling is now an exploration policy (`exploration/dialogPolicy.ts`), consulted by
+>   `StabilityMonitor.attachDialogHandler`: `confirm`/`alert` are accepted so the branch behind them runs,
+>   `prompt` is answered with a payload from the fuzz pipeline, `beforeunload` is still dismissed, and the
+>   branch taken is recorded as a reproduction step. New `dialog-read-only` setting restores cancel-everything.
+> - **P3-04** — the in-page stability wait is bounded (max wait + verdict) and the whole scan carries an
+>   8 s deadline, so it degrades to "snapshot anyway" instead of parking inside `page.evaluate`. A page that
+>   never settles now registers a `CLIENT_RENDER_FREEZE` finding (new bug class + catalog entry), once per route.
+> - **P3-05** — `deepTraverse` replaced by boundary-only traversal: each root's light DOM is queried ONCE,
+>   recursion crosses only shadow roots and same-origin frames, results are keyed by element identity, the
+>   candidate rect is measured once and reused, and the O(k²) ancestor filter is a single O(k·depth) pass.
+>   This also fixes an unbounded recursion: the light-DOM branch recursed with `depth` unchanged, so
+>   `MAX_TRAVERSE_DEPTH` never bounded it.
+> - **P3-06** — eviction is genuine LRU (`visitedAt` refreshed on revisit), breadcrumb ancestors are
+>   eviction-protected, evicted hashes are tombstoned via a dedicated ledger so they are never re-explored as
+>   fresh frontier, and a run that hit the cap reports Boundary Saturation instead of claiming Graph Exhausted.
+> - **P3-07** — coverage, penalties and payload-escalation levels are keyed by `(structural shell, selector)`
+>   instead of the bare selector. Demotion is graded: hard for a control triggered on THIS shell, soft
+>   (`CROSS_SHELL_TRIGGERED_DEMOTION`) for a namesake proven elsewhere, none for one never touched — purely
+>   shell-scoped identity made every template instance look brand new and cost exploration depth.
+>
+> **Also fixed en route** (adjacent, found while rewriting the same code): **P3-08** — `filterVolatileClasses`
+> split on `/s+/` because the evaluate body is a template literal; now correctly `/\\s+/`.
+>
+> **Measured** (`bench:e2e` + `bench:e2e:deep`, seed 42): recall / precision / F1 100% on both fixtures, and
+> selector attribution 100% on both (deep 7/7, flat 6/6) — above the pre-change band of 85.7–100%.
+> Two regressions were caught by the deep bench during this work and fixed rather than shipped: keying the
+> tombstone off `seenHashes` (which `confirmEdgeTraversal` also writes for not-yet-created children) marked
+> every freshly discovered state skipped on arrival, and reading the shell hash pre-parse while
+> `markTriggered`/`observe` write it post-parse silently queried an empty cluster.
+
 ### P3-03 — Every native dialog is dismissed, so confirm-gated destructive flows never run
 
 - **Module:** `domain/services/telemetry/StabilityMonitor.ts:408-417` (`attachDialogAutoDismiss`).
@@ -285,6 +318,55 @@ less informative than it looks.
 ---
 
 ## Medium
+
+> **Status: all Medium and Low findings are RESOLVED.** Each was re-verified as still present first.
+>
+> - **P3-08** — fixed during the High pass (`/\\s+/` in the evaluate template).
+> - **P3-09** — `isDisabled` now flows parser → `InteractiveElement` → `buildFeatureVectorFromElement`, so the
+>   perceptron's `isDisabled` weight is live instead of dead (`RiskScorer` hard-coded `disabled: false`).
+> - **P3-10** — `spaRaceConditionsFinder` no longer re-queries the DOM: it drives the loop's ranked set
+>   (already session-guard and overlay filtered), fills from the seeded payload pipeline instead of
+>   `Math.random()`, and restores the pre-burst URL so it cannot corrupt the graph mid-step.
+> - **P3-11** — finding budget is per `bugClass` (a chatty finder can only silence itself), quarantine is a
+>   3-strike counter that distinguishes transient page-lifecycle errors from deterministic failures, and
+>   `coverageReport()` exposes per-class counts + truncated classes so a halted sweep is not silent.
+> - **P3-12** — `faultDetected` reward now resolves its culprit through the SAME causal window network
+>   rewards use, instead of crediting `lastActedTarget` with no time bound. *(The selection-tiers half is
+>   deliberately NOT done — see below.)*
+> - **P3-13** — client storage is snapshotted before the document-load restore rungs and re-seeded after, so
+>   backtracking no longer returns a multi-step flow to a blank store. Skipped when there is no state to carry.
+> - **P3-14** — `alignTo` still clears a stale stack, but the breadcrumb is now re-rooted from the BFS route
+>   the frontier decision already computed. *(A broader "recently visited" substrate was tried first and
+>   reverted: both consumers respond with a PERMANENT `markEdgeCyclic`, so it over-blocked and cost depth.)*
+> - **P3-15** — cross-boundary (shadow/iframe) elements are flagged in the parser and excluded, so they stop
+>   inflating the coverage denominator with controls whose light-DOM selector can never resolve.
+> - **P3-16** — encoding is a placement VARIANT, not an escalation stage: percent-encoding is reserved for
+>   `url` placement, a typed field escalates through context-breaking mutations instead. Plus a per-field
+>   vector cursor so revisits sweep the corpus rather than replaying one vector per level.
+> - **P3-17** — added a transport-independent client error-view oracle (`clientErrorOracle.ts`), and observed
+>   document statuses are now kept in a bounded per-ROUTE map instead of one last-write slot.
+> - **P3-18** — instance-aware: a saturated shell still admits a few UNSEEN route instances before skipping,
+>   and the snapshot reports shells AND instances so template coverage is distinguishable from data coverage.
+> - **P3-19** — word-boundary keyword matching, `className` dropped from the keyword surface, and a bounded
+>   asymptotic tail replacing the hard cap (linear below 80, so ordinary ranking is untouched and only the
+>   saturation ties are broken).
+> - **P3-20** — `buttonLike` derived from the parsed `role`/`type`/`tagName`; the old string match for
+>   `role="button"` was dead code, so every `<div role="button">` skipped the button scenarios entirely.
+> - **P3-21** — ledger eviction drops the most-duplicated class's least-severe entry (never the last of a
+>   class, never blindly the oldest) and counts what it dropped; `deadEndUrls` is route-normalized.
+>
+> **Measurement note — correcting the High-pass claim.** The deep bench's *selector attribution* metric is
+> high-variance: identical builds score 57.1–100%. The High-pass summary reported 100% from a single run;
+> the median for that build was ~71%. Measured properly here (3 sequential runs each, no concurrent load):
+> class-level **recall / precision / F1 are 100% on every run of both fixtures**, deep attribution 57.1 /
+> 71.4 / 71.4%, flat attribution 83.3 / 83.3%. That is unchanged from the High-pass build — these fixes are
+> attribution-neutral. Only class-level metrics should be treated as a regression signal on one run.
+>
+> **Deliberately not done.** `P3-12`'s ordered-selection-tiers rewrite. It replaces the arithmetic demotion
+> margins with partitioned candidate tiers — a wholesale change to ranking semantics that the audit itself
+> says should be evaluated against the `__accuracy__` ranking corpus, not by inspection. Shipping it on the
+> strength of a metric with this much run-to-run spread would be guesswork. The causal-window half, which is
+> independently correct and low-risk, IS done.
 
 ### P3-08 — `filterVolatileClasses` splits on the letter "s", not on whitespace
 

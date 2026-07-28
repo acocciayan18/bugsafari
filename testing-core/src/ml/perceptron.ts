@@ -254,7 +254,7 @@ function includesKeyword(value: string, keywords: string[]): boolean {
 
 // Precompiled word-boundary matchers so 'login' doesn't fire on 'blogger' (value is pre-lowercased).
 const boundaryRegexCache = new Map<string, RegExp>();
-function wordBoundaryMatch(value: string, keyword: string): boolean {
+export function wordBoundaryMatch(value: string, keyword: string): boolean {
   let re = boundaryRegexCache.get(keyword);
   if (!re) {
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

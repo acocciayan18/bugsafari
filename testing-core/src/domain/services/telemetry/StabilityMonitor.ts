@@ -1,5 +1,6 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { decideDialog } from '../exploration/dialogPolicy.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { setupStabilityMonitoring } from '../../../infrastructure/monitoring/stabilityMonitor.js';
 import { setupBrowserConsoleListener } from '../../../infrastructure/monitoring/browserConsoleListener.js';
@@ -404,15 +405,33 @@ export class StabilityMonitor {
     return resolver;
   }
 
-  /** Auto-dismiss native dialogs so they never block exploration. */
-  public attachDialogAutoDismiss(page: Page): void {
+  /**
+   * Answer native dialogs so they never block exploration. The DECISION is a
+   * policy of the exploration layer (see dialogPolicy): confirm/alert are accepted
+   * so the branch behind them actually runs, prompt is answered with a payload
+   * from the fuzz pipeline, and beforeunload is still dismissed so the run is not
+   * navigated away from its own state. The branch taken is recorded so a finding's
+   * reproduction is unambiguous.
+   */
+  public attachDialogHandler(page: Page): void {
     const t = this.deps.telemetry;
     page.on('dialog', async (dialog: Dialog) => {
+      const type = dialog.type();
+      const message = dialog.message();
+      const verdict = decideDialog(type, message, this.deps.dialogReadOnly());
+
+      if (verdict.decision === 'accept') {
+        await dialog.accept(verdict.promptText || undefined).catch(() => undefined);
+      } else {
+        await dialog.dismiss().catch(() => undefined);
+      }
+
+      const narrative = `Dialog (${type}): "${message}" — ${verdict.reason}`;
+      ActiveScenarioTracker.record(narrative);
       t.emit('ACTION', {
-        actionExecuted: 'dialog-auto-dismiss',
-        message: `Auto-dismissed ${dialog.type()} dialog`,
+        actionExecuted: verdict.decision === 'accept' ? 'dialog-accepted' : 'dialog-dismissed',
+        message: narrative,
       });
-      await dialog.dismiss().catch(() => undefined);
     });
   }
 
@@ -626,7 +645,7 @@ export class StabilityMonitor {
    * single-page-scoped on the main run page).
    */
   public async attachSecondaryPage(page: Page): Promise<void> {
-    this.attachDialogAutoDismiss(page);
+    this.attachDialogHandler(page);
     this.attachExceptionMonitoring(page);
     this.attachCrashMonitoring(page);
     await setupBrowserConsoleListener(page, this.deps.telemetry.gateway);

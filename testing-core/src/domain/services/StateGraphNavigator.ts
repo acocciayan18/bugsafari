@@ -85,7 +85,11 @@ export class StateGraphNavigator {
     this.traversalStack = new TraversalStack(this.config.maxStackDepth, (hash) =>
       this.findMostRecentTraversingEdge(hash),
     );
-    this.graphStore = new GraphStore(this.config.maxNodes, this.eventLog);
+    // Breadcrumb ancestors are eviction-protected: dropping one strands the BFS
+    // paths and backtrack frames that reference it (audit P3-06).
+    this.graphStore = new GraphStore(this.config.maxNodes, this.eventLog, (hash) =>
+      this.traversalStack.ancestorHashes().includes(hash),
+    );
     this.edgeSelector = new EdgeSelectorEngine(this.config, this.eventLog, this.graphStore);
   }
 
@@ -371,6 +375,11 @@ export class StateGraphNavigator {
     return this.graphStore.edgeCount();
   }
 
+  /** Whether the node cap forced evictions — "graph exhausted" is not full coverage once it has. */
+  public graphCapStatus(): { reached: boolean; evictions: number; maxNodes: number } {
+    return this.graphStore.capStatus();
+  }
+
   /**
    * Diagnostic snapshot for engine telemetry payloads.
    */
@@ -552,6 +561,16 @@ export class StateGraphNavigator {
 
       const path = shortestPath(this.graphStore, abandoned.hash, frontier.node.hash);
       this.traversalStack.alignTo(frontier.node.hash);
+      // alignTo empties the stack when the target is off it — which, for a
+      // cross-branch frontier jump, is the normal case. Re-root the ancestry from
+      // the route we just planned so the cycle guards are not blind until a new
+      // path is walked (audit P3-14). No-op when alignTo kept an existing stack.
+      if (path) {
+        this.traversalStack.reseedFrom(
+          path.map((hop) => hop.fromHash),
+          (hash) => this.graphStore.get(hash)?.url,
+        );
+      }
 
       this.eventLog.recordEvent(
         'frontier-selected',

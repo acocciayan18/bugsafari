@@ -4,6 +4,7 @@ import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import {
   SingleLayerPerceptron,
   buildFeatureVectorFromElement,
+  wordBoundaryMatch,
   type RewardSignals,
 } from '../../ml/perceptron.js';
 import type { FeatureVector } from '../../types.js';
@@ -76,9 +77,37 @@ const SATURATED_DESTINATION_FLOOR = 1_000_000;
 // Keeps heuristicScore on the same 0-100 scale as mlScore (sigmoid-bounded) so stacked keyword matches can't dominate combinedScore.
 const HEURISTIC_SCORE_CAP = 100;
 
+// Below this the score is LINEAR — identical to the previous hard-cap behaviour for
+// the great majority of elements, so ranking is not perturbed. Only the saturation
+// zone above it is compressed.
+const HEURISTIC_LINEAR_LIMIT = 80;
+
+/**
+ * Bound the heuristic score without creating ties (audit P3-19).
+ *
+ * Clamping at 100 made any element matching two strong keywords saturate and TIE,
+ * handing the decision to the pathfinder's positional tie-breaker on exactly the
+ * controls the heuristic cares most about. An asymptotic tail keeps the ordering
+ * strict all the way up while never exceeding the cap — and leaves everything below
+ * HEURISTIC_LINEAR_LIMIT scored exactly as before, so this fixes the ties without
+ * quietly re-weighting the heuristic-vs-ML blend for ordinary controls.
+ */
+function squashToCap(raw: number): number {
+  if (raw <= HEURISTIC_LINEAR_LIMIT) return raw;
+  const headroom = HEURISTIC_SCORE_CAP - HEURISTIC_LINEAR_LIMIT;
+  return HEURISTIC_LINEAR_LIMIT + headroom * (1 - Math.exp(-(raw - HEURISTIC_LINEAR_LIMIT) / headroom));
+}
+
 export class RiskScorer {
   private readonly perceptron = new SingleLayerPerceptron();
   private readonly penalties = new Map<string, number>();
+  // Structural shell the current ranking pass belongs to. Penalties are keyed by
+  // (shell, selector) because a CSS selector is not a globally unique control
+  // identity (audit P3-07) — `#email` on login and `#email` on profile-edit are
+  // different controls, and a positional path repeats verbatim across every
+  // instance of one template. Without the shell, penalising one namesake sank all
+  // of them. Empty string = unscoped (backward compatible for direct callers).
+  private scope = '';
   // Selectors whose look-ahead navigation destination is a saturated state.
   // Refreshed by the loop each ranking pass from the navigator's graph memory;
   // scored to the floor so they are ineligible without mutating graph edges.
@@ -109,7 +138,7 @@ export class RiskScorer {
         className: element.className,
         type: element.type,
         text: element.innerText,
-        disabled: false,
+        disabled: element.isDisabled ?? false,
         boundingBox: element.boundingBox,
         placeholder: element.placeholder ?? '',
         ariaLabel: element.ariaLabel ?? '',
@@ -127,7 +156,7 @@ export class RiskScorer {
       // Combine scores with weighted formula: 60% heuristic + 40% ML
       const combinedScore = heuristicScore * this.heuristicWeight + mlScore * this.mlWeight;
       
-      const penalty = this.penalties.get(element.selector) ?? 0;
+      const penalty = this.penalties.get(this.penaltyKey(element.selector)) ?? 0;
       // Look-ahead suppression: a control navigating to an already-saturated
       // destination is floored so it is never picked over an eligible control.
       const suppression = this.suppressedSelectors.has(element.selector) ? SATURATED_DESTINATION_FLOOR : 0;
@@ -151,22 +180,27 @@ export class RiskScorer {
     // aria-label / name / role), not just id+class+text — otherwise an icon button
     // whose only signal is aria-label="Delete" or an input whose keyword lives in
     // its placeholder is under-scored heuristically while the ML model sees it.
-    const text = `${element.id} ${element.className} ${element.innerText} ${element.type} ${element.placeholder ?? ''} ${element.ariaLabel ?? ''} ${element.name ?? ''} ${element.role ?? ''}`.toLowerCase();
-    
+    // className is deliberately EXCLUDED (audit P3-19): utility classes are not
+    // human-facing labels, and substring matching over them inflated every element
+    // ('search-bar' → +36, 'payment-panel' → +78, 'save-icon' → +44).
+    const text = `${element.id} ${element.innerText} ${element.type} ${element.placeholder ?? ''} ${element.ariaLabel ?? ''} ${element.name ?? ''} ${element.role ?? ''}`.toLowerCase();
+
     // Tag weights
     score += TAG_WEIGHTS.get(element.tagName.toLowerCase()) ?? 4;
-    
+
     // Type weights
     score += TYPE_WEIGHTS.get(element.type.toLowerCase()) ?? 0;
-    
-    // Keyword weights
+
+    // Keyword weights. Word-boundary matched (the same rule the perceptron's own
+    // keyword extraction uses) so 'login' cannot fire on 'blogger'.
+    let keywordScore = 0;
     for (const [keyword, weight] of KEYWORD_WEIGHTS.entries()) {
-      if (text.includes(keyword)) {
-        score += weight;
+      if (wordBoundaryMatch(text, keyword)) {
+        keywordScore += weight;
       }
     }
 
-    return Math.min(score, HEURISTIC_SCORE_CAP);
+    return squashToCap(score + keywordScore);
   }
 
   /**
@@ -193,9 +227,23 @@ export class RiskScorer {
    * deprioritize a control without driving its score permanently negative.
    */
   penalize(selector: string, magnitude = 1): void {
+    const key = this.penaltyKey(selector);
     const capped = Math.min(Math.abs(magnitude), RiskScorer.PENALTY_CALL_CAP);
-    const current = this.penalties.get(selector) ?? 0;
-    this.penalties.set(selector, Math.min(current + capped, RiskScorer.PENALTY_ACCUMULATION_CAP));
+    const current = this.penalties.get(key) ?? 0;
+    this.penalties.set(key, Math.min(current + capped, RiskScorer.PENALTY_ACCUMULATION_CAP));
+  }
+
+  /**
+   * Bind subsequent scoring/penalty bookkeeping to a structural shell, so the same
+   * selector on two different screens is two different controls. Called once per
+   * ranking pass by the exploration loop.
+   */
+  setScope(structureHash: string): void {
+    this.scope = structureHash ?? '';
+  }
+
+  private penaltyKey(selector: string): string {
+    return `${this.scope}::${selector}`;
   }
 
   /**

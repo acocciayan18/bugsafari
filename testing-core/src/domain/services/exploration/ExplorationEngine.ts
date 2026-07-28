@@ -79,7 +79,14 @@ const MAX_CONFIRMED_BUGS = 500;
 // Steps between sweeps of 'cadenced' finders — matches the network-sabotage cadence.
 const BUG_FINDER_CADENCE = 10;
 // Per-run ceiling on finder-produced findings, so a chatty finder can't dominate the ledger.
-const BUG_FINDER_BUDGET = 25;
+// Per-BUG-CLASS finding budget. Was a single global 25 shared by every finder, so
+// whichever detector was chattiest consumed it and silently switched off all the
+// others for the rest of the run (audit P3-11). Per-class, a noisy detector can
+// only silence itself.
+const BUG_FINDER_BUDGET = 10;
+
+// Bound on the per-route document-status memory (query-volatile SPAs mint routes).
+const MAX_ROUTE_STATUSES = 500;
 
 // Causal attribution bounds for async network-signal rewards: a click's own
 // xhr/fetch fires within a beat and only a few times, so signals outside this
@@ -171,6 +178,9 @@ export class ExplorationEngine {
   // Strict Page Boundary Lock: when true the launch URL is the immutable
   // reference state and any drift is reverted (resolved in the constructor).
   private readonly strictUrlLock: boolean;
+  // Read-only dialog mode: cancel native dialogs instead of confirming them, so a
+  // run against a shared environment never executes a confirm-gated destructive branch.
+  private readonly dialogReadOnly: boolean;
   // Session-wide transition-repeat budget (resolved in the constructor).
   private readonly transitionRepeatBudget: number;
   // Per-form fuzz cap (resolved in the constructor).
@@ -277,6 +287,7 @@ export class ExplorationEngine {
     // Resolve the Strict Page Boundary Lock flag (defaults off / backward-compatible).
     this.strictUrlLock = optimizationSettings?.strictUrlLock ?? false;
     console.log(`[ExplorationEngine] Strict URL Lock:`, this.strictUrlLock);
+    this.dialogReadOnly = optimizationSettings?.['dialog-read-only'] ?? false;
 
     // Resolve the session-wide transition-repeat budget (default 3; 0 disables).
     this.transitionRepeatBudget = optimizationSettings?.['transition-repeat-budget']
@@ -403,16 +414,25 @@ export class ExplorationEngine {
     if (!isDuplicate) {
       this.confirmedBugsMemory.push(bug);
 
-      // Task 3A: Enforce memory cap to prevent resource exhaustion
-      // Use circular buffer approach - remove oldest entry when cap is reached
+      // Memory cap. Was shift() — evicting the EARLIEST findings, i.e. the ones
+      // discovered on the first, cleanest interactions and most likely to be root
+      // causes, while retaining later noise (audit P3-21). Evict the lowest-value
+      // duplicate class instead: the finding whose bugClass is already most
+      // represented, and among those the least severe, so breadth is preserved.
       while (this.confirmedBugsMemory.length > MAX_CONFIRMED_BUGS) {
-        this.confirmedBugsMemory.shift();
+        this.evictLowestValueFinding();
       }
 
       // Strongest compound reward: the element acted on just surfaced a real
       // fault/vulnerability, so its feature signature should gain weight.
-      if (this.lastActedTarget) {
-        this.scorer.applyCompoundReward(this.lastActedTarget, { faultDetected: true });
+      //
+      // Attributed through the SAME causal window network rewards already use
+      // (audit P3-12). It used to credit `lastActedTarget` with no time bound at
+      // all, so a fault surfacing from a background poll or a delayed API hang
+      // trained the model on whatever happened to be clicked most recently.
+      const culprit = this.interactionCulpritFor(bug.timestamp);
+      if (culprit) {
+        this.scorer.applyCompoundReward(culprit, { faultDetected: true });
       }
 
       // Surface arsenal-discovered bugs (fuzzing/injection/stress/storage) on the
@@ -431,6 +451,48 @@ export class ExplorationEngine {
       // ledger here, already carrying its minimized timeline and bug class.
       this.enqueueReproduction(bug);
     }
+  }
+
+  // Findings dropped by the ledger cap this run — surfaced so a truncated result
+  // set is never mistaken for the complete one.
+  private droppedFindings = 0;
+
+  /** How many findings the ledger cap discarded this run (0 = nothing truncated). */
+  public truncatedFindingCount(): number {
+    return this.droppedFindings;
+  }
+
+  /**
+   * Evict one finding when the ledger is over cap: the most-duplicated bug class
+   * first, and within it the least severe. Keeps one representative of every class
+   * so the report never loses a whole defect category to a chatty finder.
+   */
+  private evictLowestValueFinding(): void {
+    const perClass = new Map<string, number>();
+    for (const bug of this.confirmedBugsMemory) {
+      const key = bug.attribution?.bugClass ?? bug.type;
+      perClass.set(key, (perClass.get(key) ?? 0) + 1);
+    }
+
+    const rank: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+    let victim = -1;
+    let victimScore = Infinity;
+    for (let i = 0; i < this.confirmedBugsMemory.length; i++) {
+      const bug = this.confirmedBugsMemory[i];
+      const key = bug.attribution?.bugClass ?? bug.type;
+      const count = perClass.get(key) ?? 1;
+      if (count <= 1) continue; // never drop the last instance of a class
+      // Lower is more evictable: least severe within the most crowded class.
+      const score = (rank[String(bug.severity ?? 'MEDIUM')] ?? 2) * 1000 - count;
+      if (score < victimScore) {
+        victimScore = score;
+        victim = i;
+      }
+    }
+
+    // Every class is a singleton — fall back to dropping the oldest.
+    this.confirmedBugsMemory.splice(victim >= 0 ? victim : 0, 1);
+    this.droppedFindings += 1;
   }
 
   /**
@@ -740,6 +802,9 @@ export class ExplorationEngine {
     // Reassigned on page recreation via the shared `page` binding, exactly like
     // lastKnownUrl, so it survives the deepest recovery rung.
     let lastMainFrameStatus: { path: string; status: number } | null = null;
+    // Observed document status per normalized route — stable across client
+    // navigations, unlike the single last-write slot above.
+    const routeStatuses = new Map<string, number>();
 
     // Run-scoped passive navigation-defect analyzer (dead links, broken routes,
     // redirect loops, back-nav state loss) — fed from the observation hooks below.
@@ -830,6 +895,7 @@ export class ExplorationEngine {
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
       getTargetOrigin: () => this.targetOrigin,
+      dialogReadOnly: () => this.dialogReadOnly,
     });
 
     const stateRestorer = new StateRestorer({
@@ -1022,11 +1088,21 @@ export class ExplorationEngine {
     // response bodies. The document/main-frame filtering happens in TabWindowManager,
     // which owns the per-page listener and knows which page the response belongs to.
     const onDocumentResponse = (url: string, status: number): void => {
-      lastMainFrameStatus = { path: normalizeRoutePath(url), status };
+      const path = normalizeRoutePath(url);
+      lastMainFrameStatus = { path, status };
+      // Also remember it BY ROUTE (audit P3-17). A single last-write slot meant a
+      // route that legitimately returned 4xx on a hard load lost that verdict as soon
+      // as any other document loaded, so the same page was excluded once and admitted
+      // later. Bounded, so a query-volatile SPA cannot grow it without limit.
+      routeStatuses.set(path, status);
+      if (routeStatuses.size > MAX_ROUTE_STATUSES) {
+        const oldest = routeStatuses.keys().next().value;
+        if (oldest !== undefined) routeStatuses.delete(oldest);
+      }
       void reportNavigationDefects(navigationFinder.observeRedirectHop({
         url,
-        route: lastMainFrameStatus.path,
-        status: lastMainFrameStatus.status,
+        route: path,
+        status,
         timestampMs: Date.now(),
       }));
     };
@@ -1183,6 +1259,7 @@ export class ExplorationEngine {
         hashManager: this.hashManager,
         pathNavigator: this.pathNavigator,
         clusterRegistry: this.clusterRegistry,
+        escalationTracker: this.escalationTracker,
         routeExhaustion: this.routeExhaustion,
         edgeRepeat: this.edgeRepeat,
         formFuzz: this.formFuzz,
@@ -1204,8 +1281,9 @@ export class ExplorationEngine {
         getLastKnownUrl: () => lastKnownUrl,
         // Only surface the status when it matches the current route, so a stale
         // 404 from a previous page can never be attributed to a fresh render.
-        getMainFrameStatus: (routePath) =>
-          lastMainFrameStatus && lastMainFrameStatus.path === routePath ? lastMainFrameStatus.status : null,
+        // Route-keyed, so a route's own observed status survives later navigations
+        // instead of being overwritten by whatever loaded last.
+        getMainFrameStatus: (routePath) => routeStatuses.get(routePath) ?? null,
         noteActedTarget: (t) => {
           const now = Date.now();
           this.lastActedTarget = t;
@@ -1360,6 +1438,24 @@ export class ExplorationEngine {
   // StabilityMonitor can be attributed to its triggering interaction. Bounded by the same
   // causal window used for network reward attribution — outside it, background SPA chatter
   // would be misattributed to an unrelated element.
+  /**
+   * The element actually being actuated at `at`, for LEARNING attribution — the
+   * same causal window that guards network rewards. Falls back to the latest acted
+   * target only when the fault carries no usable timestamp.
+   */
+  private interactionCulpritFor(at: Date | undefined): InteractiveElement | null {
+    const atMs = at instanceof Date ? at.getTime() : Number.NaN;
+    if (!Number.isFinite(atMs)) return this.lastActedTarget;
+
+    for (let i = this.actedHistory.length - 1; i >= 0; i--) {
+      const entry = this.actedHistory[i];
+      if (entry.actedAtMs > atMs) continue;
+      if (atMs - entry.actedAtMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
+      return entry.target;
+    }
+    return null;
+  }
+
   private interactionContextAt(atMs: number): InteractionContext | null {
     // Resolve the element actually being actuated AT the fault's instant: the newest
     // history entry acted at or before atMs and still inside the causal window. Scanning

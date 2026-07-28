@@ -184,6 +184,19 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Clear the loading flag in a finally block so every path (success/error) exits loading',
     ),
   },
+  CLIENT_RENDER_FREEZE: {
+    title: 'Client render loop / frozen view',
+    description: 'The DOM never stopped mutating (or the renderer stopped responding), so the view never reached a stable state.',
+    defaultSeverity: 'HIGH',
+    cwe: 'CWE-835',
+    remediation: remediation(
+      'Suggested remediation — render loop / frozen view',
+      '1. Check for a state update inside render/useEffect with no dependency guard (setState → render → setState)',
+      '2. Look for a subscription or observer that re-adds nodes on every mutation (toasts, live feeds, infinite scroll)',
+      '3. Memoize derived values so a new object identity per render cannot retrigger the effect',
+      '4. Move long synchronous work off the main thread so the view can paint',
+    ),
+  },
   SESSION_SYNC_FAULT: {
     title: 'Session synchronization fault',
     description: 'The authenticated session was lost mid-exploration — a control or redirect bounced the app back to a login page without an explicit sign-out.',

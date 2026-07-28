@@ -15,6 +15,14 @@ export interface ParsedElement {
   placeholder: string;
   ariaLabel: string;
   isDisabled: boolean;
+  /**
+   * Element lives inside a shadow root or a frame. Its `selector` is a LIGHT-DOM
+   * path built by walking parentElement, which terminates at the shadow boundary —
+   * so `document.querySelector` in the main document cannot resolve it and every
+   * action against it silently hits null or the wrong node (audit P3-15). Flagged
+   * here so it stops inflating the coverage denominator while it is unactuable.
+   */
+  crossBoundary: boolean;
   boundingBox: BoundingBox;
   featureSignature: string;
   opensLayer: boolean;
@@ -26,6 +34,20 @@ export interface ParsedElement {
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
 const MAX_DROPDOWN_REVEALS_PER_PARSE = 3;
 
+// Hard ceiling on one in-page scan. The in-page stability wait is itself bounded,
+// so this only fires when the renderer is wedged badly enough that `page.evaluate`
+// cannot complete at all — the case that used to hang the run outright (P3-04).
+const SCAN_DEADLINE_MS = 8000;
+
+/** Raw shape returned by the in-page scan: the elements plus whether the DOM ever settled. */
+interface RawScanResult {
+  elements: ParsedElement[];
+  domSettled: boolean;
+}
+
+/** Why a scan produced no usable snapshot, for the freeze oracle in the loop. */
+export type ScanHealth = 'ok' | 'unsettled' | 'timeout';
+
 /**
  * Backward-compatible wrapper class that provides the same interface as the removed RecursiveDomParser.
  * Uses the advanced scanInteractiveElements() which supports Shadow DOM, IFrames, and Z-index overlay checks.
@@ -34,10 +56,30 @@ export class RecursiveDomParser {
   // Trigger selectors already hover-revealed this run, so they aren't re-probed every parse() call.
   private readonly probedTriggers = new Set<string>();
 
+  // Health of the most recent parse(), read by the loop's client-freeze oracle.
+  private lastScanHealth: ScanHealth = 'ok';
+
+  /**
+   * Whether the last parse() got a trustworthy snapshot. `unsettled` = the DOM
+   * node count never stopped changing (render loop / endless toast or feed);
+   * `timeout` = the scan itself could not complete (wedged renderer).
+   */
+  public scanHealth(): ScanHealth {
+    return this.lastScanHealth;
+  }
+
   public async parse(page: Page): Promise<InteractiveElement[]> {
     const parsedElements = await this.scanWithDropdownReveal(page);
 
-    return parsedElements.map((element) => ({
+    // Shadow-DOM / iframe elements are DISCOVERED but not ADDRESSABLE: the selector
+    // built for them is a light-DOM path the main document cannot resolve, so every
+    // action against one no-ops and is then recorded as "triggered" (audit P3-15).
+    // Until the parser emits structured locators (frame path + shadow-host chain),
+    // excluding them keeps them out of the coverage denominator instead of reporting
+    // web-component UIs as covered when they were never touched.
+    const addressable = parsedElements.filter((element) => !element.crossBoundary);
+
+    return addressable.map((element) => ({
       selector: element.selector,
       id: element.id,
       className: element.className,
@@ -57,6 +99,7 @@ export class RecursiveDomParser {
       opensLayer: element.opensLayer,
       inActiveLayer: element.inActiveLayer,
       isDismiss: element.isDismiss,
+      isDisabled: element.isDisabled,
       formKey: element.formKey,
       href: element.href,
     }));
@@ -64,8 +107,13 @@ export class RecursiveDomParser {
 
   // Dropdown items are hidden until their trigger is hovered, so hover each new opensLayer trigger and rescan (Issue #1).
   private async scanWithDropdownReveal(page: Page): Promise<ParsedElement[]> {
-    const baseline = await scanInteractiveElements(page);
+    const first = await scanBounded(page);
+    this.lastScanHealth = first.health;
+    const baseline = first.elements;
     const merged = new Map(baseline.map((element) => [element.selector, element]));
+
+    // A wedged or never-settling page must not pay the extra hover/rescan rounds.
+    if (first.health !== 'ok') return Array.from(merged.values());
 
     const unprobedTriggers = baseline.filter(
       (element) => element.opensLayer && !this.probedTriggers.has(element.selector),
@@ -79,7 +127,7 @@ export class RecursiveDomParser {
         continue; // trigger not hoverable (detached/obscured) — nothing to reveal
       }
       await page.waitForTimeout(150); // let CSS/JS-driven reveal settle before rescan
-      const revealed = await scanInteractiveElements(page).catch(() => [] as ParsedElement[]);
+      const revealed = (await scanBounded(page)).elements;
       for (const element of revealed) {
         if (!merged.has(element.selector)) merged.set(element.selector, element);
       }
@@ -89,30 +137,66 @@ export class RecursiveDomParser {
   }
 }
 
-export async function scanInteractiveElements(page: Page): Promise<ParsedElement[]> {
+/**
+ * One scan with a hard wall-clock deadline. `page.evaluate` has no default
+ * timeout, so without this a renderer that never yields keeps the step (and in
+ * distributed mode the whole job) parked indefinitely. On expiry the abandoned
+ * evaluate is simply discarded — it holds no locks and its result is unused.
+ */
+async function scanBounded(page: Page): Promise<{ elements: ParsedElement[]; health: ScanHealth }> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), SCAN_DEADLINE_MS);
+  });
+
+  try {
+    const raw = await Promise.race([scanInteractiveElements(page).catch(() => null), deadline]);
+    if (!raw) return { elements: [], health: 'timeout' };
+    return { elements: raw.elements ?? [], health: raw.domSettled ? 'ok' : 'unsettled' };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function scanInteractiveElements(page: Page): Promise<RawScanResult> {
   // We MUST use a string here so the 'tsx' compiler doesn't inject '__name' helpers 
   // that crash the headless browser context.
   // CHANGED: Upgraded to an async IIFE to support the new Visual Stability await
-  return page.evaluate<ParsedElement[]>(`
+  return page.evaluate<RawScanResult>(`
     (async () => {
       // 4. THE "LOADING STATE" RACE CONDITION FIX (Visual Stability Check)
-      // Waits until the DOM node count stops changing for at least 200ms before taking a snapshot
-      await new Promise((resolve) => {
+      // Waits until the DOM node count stops changing for STABLE_MS before snapshotting.
+      // HARD-BOUNDED (audit P3-04): a page whose node count never settles — toast queue,
+      // spinner, live feed, infinite-scroll observer, or a genuine render loop — used to
+      // park this promise forever inside page.evaluate (which has no default timeout),
+      // hanging the whole run. It now degrades to "snapshot anyway" and reports that the
+      // DOM never settled, so a freeze becomes a FINDING instead of a hung engine.
+      const domSettled = await new Promise((resolve) => {
+        const POLL_MS = 50;
+        const STABLE_MS = 200;
+        const MAX_WAIT_MS = 2000;
         let lastCount = -1;
         let stableTime = 0;
+        let waited = 0;
         const interval = setInterval(() => {
           const currentCount = document.querySelectorAll('*').length;
           if (currentCount === lastCount) {
-            stableTime += 50;
-            if (stableTime >= 200) {
+            stableTime += POLL_MS;
+            if (stableTime >= STABLE_MS) {
               clearInterval(interval);
-              resolve();
+              resolve(true);
+              return;
             }
           } else {
             lastCount = currentCount;
             stableTime = 0;
           }
-        }, 50);
+          waited += POLL_MS;
+          if (waited >= MAX_WAIT_MS) {
+            clearInterval(interval);
+            resolve(false);
+          }
+        }, POLL_MS);
       });
 
       const query = [
@@ -241,7 +325,10 @@ const isDisabled = (element) => {
       const filterVolatileClasses = (className) => {
         if (!className) return '';
         
-        const classes = className.split(/\s+/);
+        // Double-escaped: this whole body is a template literal, so a single \\s
+        // reaches the browser as a bare "s" and the split runs on the LETTER s
+        // (audit P3-08) — every prefix/state check below then sees garbage tokens.
+        const classes = className.split(/\\s+/);
         // Patterns that indicate volatile/state-dependent classes
         const volatilePrefixes = [
           'hover:', 'focus:', 'active:', 'focus-within:', 'focus-visible:',
@@ -304,73 +391,70 @@ const isDisabled = (element) => {
         }
       };
       
-      // Deep recursive traversal - treats shadow boundary crossing as PRIMARY operation
-      // This is a pure recursive pattern, not iterative with recursion
-      const deepTraverse = (root, depth = 0, path = 'document') => {
-        const results = [];
-        
-        // Safety check: prevent infinite recursion
+      // Boundary-only traversal (audit P3-05).
+      //
+      // The previous version called root.querySelectorAll(query) — which already
+      // returns the WHOLE subtree — and then recursed into every light-DOM child
+      // with the same query, so an element at depth d was collected d+1 times and
+      // the query cost was quadratic in DOM size. Worse, the light-DOM recursion
+      // passed depth unchanged, so MAX_TRAVERSE_DEPTH never bounded it at all.
+      //
+      // A root's light DOM is now queried exactly ONCE; recursion happens only
+      // across shadow/frame boundaries (where a separate query genuinely is
+      // required), and results are keyed by element identity so a duplicate can
+      // never enter the layout/filter pipeline.
+      const rawElements = [];
+      const seenElements = new Set();
+
+      const collectFrom = (root, depth, path) => {
         if (depth > MAX_TRAVERSE_DEPTH) {
-          console.warn('[domParser] Max traversal depth reached at:', path);
-          return results;
+          console.warn('[domParser] Max boundary depth reached at:', path);
+          return;
         }
-        
-        // 1. Collect interactive elements from current context
-        if (root.querySelectorAll) {
-          try {
-            const elements = Array.from(root.querySelectorAll(query));
-            for (const el of elements) {
-              results.push({ element: el, depth, path });
-            }
-          } catch (e) {
-            // Ignore query errors in certain contexts
-          }
+
+        // 1. Every interactive element in this root's own tree — one query.
+        try {
+          root.querySelectorAll(query).forEach((el) => {
+            if (seenElements.has(el)) return;
+            seenElements.add(el);
+            rawElements.push({ element: el, depth, path, crossBoundary: depth > 0 });
+          });
+        } catch (e) {
+          // Ignore query errors in exotic roots
         }
-        
-        // 2. Recursively traverse into boundaries (PRIMARY operation)
-        const children = root.children || [];
-        for (const child of children) {
-          const tag = (child.tagName || '').toLowerCase();
-          
-          // Handle Shadow DOM - both open AND closed (PRIMARY boundary handling)
-          const shadowRoot = getShadowRoot(child);
+
+        // 2. Descend ONLY through boundaries the query above cannot see into.
+        let hosts;
+        try {
+          hosts = root.querySelectorAll('*');
+        } catch (e) {
+          return;
+        }
+        hosts.forEach((el) => {
+          const shadowRoot = getShadowRoot(el);
           if (shadowRoot) {
             try {
-              results.push(...deepTraverse(shadowRoot, depth + 1, path + ' > shadow-root'));
+              collectFrom(shadowRoot, depth + 1, path + ' > shadow-root');
             } catch (e) {
               // Error-isolate each shadow boundary crossing
             }
-            continue;
+            return;
           }
-          
-          // Handle iframes
+          const tag = (el.tagName || '').toLowerCase();
           if (tag === 'iframe' || tag === 'frame') {
             try {
-              if (child.contentDocument) {
-                results.push(...deepTraverse(child.contentDocument, depth + 1, path + ' > iframe'));
+              if (el.contentDocument) {
+                collectFrom(el.contentDocument, depth + 1, path + ' > iframe');
               }
             } catch (e) {
               // Ignore cross-origin frame blocking
             }
-            continue;
           }
-          
-          // Continue recursion for nested elements in light DOM
-          if (depth < MAX_TRAVERSE_DEPTH) {
-            try {
-              results.push(...deepTraverse(child, depth, path));
-            } catch (e) {
-              // Error-isolate each element traversal
-            }
-          }
-        }
-        
-        return results;
+        });
       };
-      
-// Execute deep recursive traversal starting from document
-      const rawElements = deepTraverse(document);
-      
+
+      collectFrom(document, 0, 'document');
+
 // IMPROVED VISIBILITY & 2. THE HIDDEN OVERLAY (Z-INDEX) BLOCK FIX
       const getSafeBoundingRect = (node) => {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
@@ -385,13 +469,16 @@ const isDisabled = (element) => {
         }
       };
 
-      // Filter out non-element nodes that don't expose layout APIs safely
+      // Filter out non-element nodes that don't expose layout APIs safely.
+      // The measured rect is cached on the wrapper so the element-data pass below
+      // reuses it instead of forcing a second layout read per surviving element.
       const candidates = rawElements.filter(wrapped => {
         const el = wrapped.element;
 
         const rect = getSafeBoundingRect(el);
         if (!rect) return false;
-        
+        wrapped.rect = rect;
+
         // Skip elements with no physical dimensions
         if (rect.width === 0 || rect.height === 0) return false;
 
@@ -415,14 +502,21 @@ const isDisabled = (element) => {
         return true;
       });
 
-// Anti-Weight Expansion Filter
-      const specificElements = candidates.filter(wrapped => {
-        const parent = wrapped.element;
-        const hasInteractiveChild = candidates.some(childWrapper => 
-          childWrapper.element !== parent && parent.contains(childWrapper.element)
-        );
-        return !hasInteractiveChild; 
-      });
+// Anti-Weight Expansion Filter — keep only the innermost interactive element.
+      // Was candidates.some(parent.contains(child)) inside a filter: O(k^2) DOM
+      // containment tests. Walking each candidate's ancestor chain once and marking
+      // any ancestor that is itself a candidate is the same predicate in O(k*depth)
+      // (parentElement stops at a shadow boundary, exactly as contains() did).
+      const candidateSet = new Set(candidates.map(wrapped => wrapped.element));
+      const hasInteractiveDescendant = new Set();
+      for (const wrapped of candidates) {
+        let ancestor = wrapped.element.parentElement;
+        while (ancestor) {
+          if (candidateSet.has(ancestor)) hasInteractiveDescendant.add(ancestor);
+          ancestor = ancestor.parentElement;
+        }
+      }
+      const specificElements = candidates.filter(wrapped => !hasInteractiveDescendant.has(wrapped.element));
 
       // Active-layer detection: collect visible overlay containers currently on
       // screen. Strong ARIA/dialog roots are trusted outright; class-hook roots
@@ -454,7 +548,8 @@ const isDisabled = (element) => {
       // First pass: collect elements with their extracted text (no slicing)
       const elementData = specificElements.flatMap((wrapped) => {
         const element = wrapped.element;
-        const rect = getSafeBoundingRect(element);
+        // Reuse the rect measured during candidate filtering (no second layout read).
+        const rect = wrapped.rect || getSafeBoundingRect(element);
         if (!rect) return [];
 
         const tagName = element.tagName.toLowerCase();
@@ -502,6 +597,7 @@ const isDisabled = (element) => {
           inActiveLayer,
           isDismiss,
           isDisabled: isDisabled(element),
+          crossBoundary: !!wrapped.crossBoundary,
           boundingBox: {
             x: rect.x,
             y: rect.y,
@@ -520,7 +616,7 @@ const isDisabled = (element) => {
       );
 
       // Third pass: build final results with hashes
-      return elementData.map((data, index) => {
+      const elements = elementData.map((data, index) => {
         const stableClassName = filterVolatileClasses(data.className);
         // Use the computed hash instead of truncated text
         const textHash = textHashes[index];
@@ -547,6 +643,7 @@ const isDisabled = (element) => {
           placeholder: data.placeholder,
           ariaLabel: data.ariaLabel,
           isDisabled: data.isDisabled,
+          crossBoundary: data.crossBoundary,
           boundingBox: data.boundingBox,
           featureSignature,
           opensLayer: data.opensLayer,
@@ -554,6 +651,8 @@ const isDisabled = (element) => {
           isDismiss: data.isDismiss
         };
       });
+
+      return { elements, domSettled };
     })();
   `);
 }

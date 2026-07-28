@@ -25,6 +25,11 @@ export interface InteractiveElement {
   inActiveLayer?: boolean;
   // Close/dismiss control (postponed until the layer is otherwise explored)
   isDismiss?: boolean;
+  // Control is disabled/aria-disabled. The parser has always computed this; it used
+  // to be dropped here, so the scorer hard-coded `disabled: false`, the perceptron's
+  // isDisabled weight could never fire, and dead controls were ranked, clicked and
+  // then marked covered like live ones (audit P3-09).
+  isDisabled?: boolean;
   // Resolved anchor href ('' for non-anchors) — lets ranking demote real route
   // transitions below untriggered in-page controls without a live probe.
   href?: string;

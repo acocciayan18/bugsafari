@@ -106,7 +106,7 @@ export default function SavedEvaluationSafaris() {
           >
             <RefreshCcw className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
+          <button className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
             <CircleQuestionMark className="h-5 w-5 text-[var(--text-secondary)]" />
           </button>
         </div>

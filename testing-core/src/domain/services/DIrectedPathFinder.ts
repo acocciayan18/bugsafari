@@ -80,8 +80,9 @@ export interface GraphNode {
   /** Human-readable URL at the moment of first visit */
   readonly url: string;
 
-  /** Wall-clock timestamp of first visit (ms since epoch) */
-  readonly visitedAt: number;
+  /** Wall-clock timestamp of the LAST visit (ms since epoch) — refreshed on every
+   *  revisit so cap eviction is genuine LRU rather than evict-first-seen. */
+  visitedAt: number;
 
   /**
    * All edges (interactive elements) discovered in this state,

@@ -1,6 +1,9 @@
 import type { Page } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
+import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import { FREEZE_SELECTORS, matchesCategory } from '../knowledgeBase/signalPatterns.js';
+import { classifyInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
+import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../domain/scenarios/fuzzing/payloadEscalator.js';
 
 // Grace period for the burst's async work to resolve before judging the UI stuck.
 const SETTLE_MS = 1500;
@@ -23,60 +26,71 @@ export interface ConcurrentStressResult {
  */
 export async function burstConcurrentStress(
   page: Page,
-  step: number
+  step: number,
+  rankedTargets?: readonly InteractiveElement[],
 ): Promise<ConcurrentStressResult> {
-  const maxTargets = 12;
   const maxConcurrent = 5;
-  
-  // Find clickable elements
-  const locator = page.locator('button, a[href], input[type="submit"], input[type="button"], [role="button"]');
-  const elements = await locator.all();
-  
-  if (elements.length === 0) {
+  const maxInputs = 3;
+
+  // Targets come from the loop's ranked set (audit P3-10). Re-querying the DOM
+  // force-clicked whatever was first in the document — bypassing the session guard
+  // that the loop uses to veto Sign-out on an authenticated run, and bypassing the
+  // parser's overlay reasoning so occluded controls were actuated too.
+  const candidates = (rankedTargets ?? []).filter((element) => element.selector);
+  if (candidates.length === 0) {
     return { attempted: 0, completed: 0 };
   }
-  
-  // Limit to first maxTargets elements
-  const targets = elements.slice(0, maxTargets);
-  
-  // Fire concurrent clicks with varying strategies
+
+  const clickable = candidates.filter((element) => !isFillableInput(element)).slice(0, maxConcurrent);
+  const fillable = candidates.filter(isFillableInput).slice(0, maxInputs);
+
   const promises: Promise<boolean>[] = [];
-  
-  // Strategy 1: Rapid sequential clicks
-  for (let i = 0; i < Math.min(maxConcurrent, targets.length); i++) {
+
+  for (const element of clickable) {
     promises.push(
-      targets[i].click({ force: true, noWaitAfter: true, timeout: 500 })
+      page
+        .locator(element.selector)
+        .first()
+        .click({ force: true, noWaitAfter: true, timeout: 500 })
         .then(() => true)
-        .catch(() => false)
+        .catch(() => false),
     );
   }
-  
-  // Strategy 2: Type events on inputs (if available)
-  const inputs = await page.locator('input:not([type="hidden"]), textarea').all();
-  for (const input of inputs.slice(0, 3)) {
+
+  // Seeded, replayable values — Math.random() broke the seeded-run guarantee the
+  // rest of the engine maintains (EdgeSelector.nextRandom / deriveFuzzSeed).
+  for (const element of fillable) {
+    const category = classifyInputElement(element);
+    const value = synthesizeEscalatedPayload(
+      category,
+      0,
+      deriveFuzzSeed(`race:${element.selector}:${step}`, category),
+    ).value;
     promises.push(
-      input.fill(Math.random().toString(36).substring(7))
+      page
+        .locator(element.selector)
+        .first()
+        .fill(value, { timeout: 500 })
         .then(() => true)
-        .catch(() => false)
+        .catch(() => false),
     );
   }
-  
-  // Strategy 3: Navigation events (if links available)
-  const links = await page.locator('a[href]').all();
-  for (const link of links.slice(0, 2)) {
-    promises.push(
-      link.click({ force: true, timeout: 300 })
-        .then(() => true)
-        .catch(() => false)
-    );
-  }
-  
+
   const results = await Promise.all(promises);
-  
+
   return {
     attempted: promises.length,
     completed: results.filter(Boolean).length,
   };
+}
+
+/** Text-ish inputs the burst types into rather than clicks. */
+function isFillableInput(element: InteractiveElement): boolean {
+  const tag = element.tagName?.toLowerCase() ?? '';
+  const type = element.type?.toLowerCase() ?? '';
+  if (tag === 'textarea') return true;
+  if (tag !== 'input') return false;
+  return !['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(type);
 }
 
 /** Post-burst damage signals: a crash, a leaked error surface, or a stuck loader. */
@@ -124,12 +138,16 @@ export const spaRaceConditionsFinder: BugFinder = {
     };
 
     const wasStuckBefore = await isStuckLoading(ctx.page);
+    // The burst can navigate the page away mid-step. Left uncorrected, the loop's
+    // confirmed child hash and the next parse describe different places — graph
+    // corruption attributable to this finder (audit P3-10).
+    const urlBefore = ctx.page.url();
     ctx.page.on('pageerror', onPageError);
     ctx.page.on('console', onConsole);
 
     let result: ConcurrentStressResult;
     try {
-      result = await burstConcurrentStress(ctx.page, ctx.step);
+      result = await burstConcurrentStress(ctx.page, ctx.step, ctx.rankedTargets);
       await ctx.page.waitForTimeout(SETTLE_MS);
       // Only a loader that appeared during the burst is evidence — a spinner that was
       // already there belongs to whatever was in flight before we touched anything.
@@ -137,6 +155,11 @@ export const spaRaceConditionsFinder: BugFinder = {
     } finally {
       ctx.page.off('pageerror', onPageError);
       ctx.page.off('console', onConsole);
+      if (ctx.page.url() !== urlBefore) {
+        await ctx.page
+          .goto(urlBefore, { waitUntil: 'domcontentloaded', timeout: 5000 })
+          .catch(() => undefined);
+      }
     }
 
     if (damage.crashes.length === 0 && !damage.stuckLoading) return [];

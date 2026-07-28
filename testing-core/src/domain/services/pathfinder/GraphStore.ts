@@ -11,8 +11,13 @@ import { shortHash } from './utils.js';
  */
 export class GraphStore {
   private readonly nodes = new Map<StateHash, GraphNode>();
-  // Hashes of every node we have ever seen (survives node eviction).
+  // Hashes of every node we have ever seen (survives node eviction). NOTE: this is
+  // also written for a child hash confirmed before its node exists, so "seen" does
+  // NOT mean "was explored then evicted" — tombstoning reads evictedHashes instead.
   private readonly seenHashes = new Set<StateHash>();
+  // Hashes of nodes the cap actually evicted. Read by ensureNode so a state that was
+  // already explored comes back as a tombstone rather than as fresh frontier.
+  private readonly evictedHashes = new Set<StateHash>();
   // Look-ahead destination memory: last-known child hash reached by traversing a
   // NAVIGATION selector (anchor), keyed by selector so the same navbar link on a
   // different node inherits it. Anchor-only because a link's target is stable
@@ -22,10 +27,23 @@ export class GraphStore {
   // edge add/score/status change deletes the entry (invalidateEdgeIndex).
   private readonly edgeIndexCache = new Map<StateHash, { bestSelector: string | null }>();
 
+  // True once the node cap has forced at least one eviction — lets the run report
+  // distinguish "graph exhausted" from "ran out of node budget".
+  private capReached = false;
+  private evictions = 0;
+
   constructor(
     private readonly maxNodes: number,
     private readonly eventLog: EventLog,
+    /** Hashes that must never be evicted — currently the breadcrumb ancestors, whose
+     *  loss would strand every BFS path and backtrack target that references them. */
+    private readonly isProtected: (hash: StateHash) => boolean = () => false,
   ) {}
+
+  /** Whether the node cap forced evictions this run, and how many. */
+  capStatus(): { reached: boolean; evictions: number; maxNodes: number } {
+    return { reached: this.capReached, evictions: this.evictions, maxNodes: this.maxNodes };
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Reads
@@ -97,13 +115,24 @@ export class GraphStore {
     const existing = this.nodes.get(hash);
     if (existing) {
       existing.visitCount += 1;
+      // Genuine LRU: visitedAt was stamped once at creation and never refreshed, so
+      // "evict oldest by visitedAt" evicted the FIRST-SEEN node — normally the entry
+      // /home state, which is the hub of the BFS path graph and the most common
+      // backtrack target (audit P3-06).
+      existing.visitedAt = Date.now();
       return existing;
     }
 
-    // Evict oldest node if cap reached
+    // Evict least-recently-visited node if cap reached
     if (this.nodes.size >= this.maxNodes) {
-      this.evictOldestNode();
+      this.evictLeastRecentlyUsed();
     }
+
+    // Re-admitting a hash the cap actually evicted: it comes back as a TOMBSTONE,
+    // not fresh frontier. Eviction used to leave no readable trace at all, so an
+    // evicted state returned as a brand-new `discovered` node with an empty edge
+    // map and the engine re-clicked every edge it had already exhausted.
+    const evicted = this.evictedHashes.has(hash);
 
     const node: GraphNode = {
       hash,
@@ -111,31 +140,56 @@ export class GraphStore {
       visitedAt: Date.now(),
       edges: new Map(),
       visitCount: 1,
-      exhausted: false,
+      exhausted: evicted,
       backtracksFromHere: 0,
       backtracksTo: 0,
-      status: 'discovered',
+      status: evicted ? 'skipped' : 'discovered',
     };
 
     this.nodes.set(hash, node);
     this.seenHashes.add(hash);
 
-    this.eventLog.recordEvent('node-registered', hash, `New state registered: ${shortHash(hash)} @ ${url}`);
+    this.eventLog.recordEvent(
+      'node-registered',
+      hash,
+      evicted
+        ? `Previously evicted state re-admitted as a tombstone (not re-explored): ${shortHash(hash)} @ ${url}`
+        : `New state registered: ${shortHash(hash)} @ ${url}`,
+    );
     return node;
   }
 
-  private evictOldestNode(): void {
-    let oldest: GraphNode | null = null;
+  /**
+   * Evict the least-recently-visited node, never one on the breadcrumb path —
+   * losing an ancestor strands every BFS path and backtrack frame that references
+   * it, which surfaces as premature exhaustion. If every node is protected the
+   * global LRU is evicted anyway, so the cap always holds.
+   */
+  private evictLeastRecentlyUsed(): void {
+    let victim: GraphNode | null = null;
+    let fallback: GraphNode | null = null;
+
     for (const node of this.nodes.values()) {
-      if (!oldest || node.visitedAt < oldest.visitedAt) {
-        oldest = node;
-      }
+      if (!fallback || node.visitedAt < fallback.visitedAt) fallback = node;
+      if (this.isProtected(node.hash)) continue;
+      if (!victim || node.visitedAt < victim.visitedAt) victim = node;
     }
-    if (oldest) {
-      this.nodes.delete(oldest.hash);
-      this.edgeIndexCache.delete(oldest.hash);
-      // Note: seenHashes intentionally keeps the hash so we never re-register it
-    }
+
+    const evicted = victim ?? fallback;
+    if (!evicted) return;
+
+    this.nodes.delete(evicted.hash);
+    this.edgeIndexCache.delete(evicted.hash);
+    // Record the eviction so ensureNode re-admits this state as a tombstone rather
+    // than as unexplored frontier.
+    this.evictedHashes.add(evicted.hash);
+    this.capReached = true;
+    this.evictions += 1;
+    this.eventLog.recordEvent(
+      'node-registered',
+      evicted.hash,
+      `Node cap ${this.maxNodes} reached — evicted least-recently-visited state ${shortHash(evicted.hash)}.`,
+    );
   }
 
   blockNodePermanently(node: GraphNode): void {

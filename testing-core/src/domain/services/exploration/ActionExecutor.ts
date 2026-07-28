@@ -514,12 +514,18 @@ export class ActionExecutor {
   ): StressScenario | null {
     const tag = target.tagName.toLowerCase();
     const source = `${target.id} ${target.className} ${target.innerText} ${target.selector}`.toLowerCase();
+    // Derived from the PARSED role/type/tag (audit P3-20). The old check looked for
+    // the literal string 'role="button"' inside id+class+text+selector — attribute
+    // markup appears in none of those and buildSelector never emits a role selector,
+    // so it was dead code and every <div role="button"> skipped FormBypasser,
+    // ButtonSpammer and AsyncStateRacer entirely.
+    const role = (target.role ?? '').toLowerCase();
+    const type = target.type.toLowerCase();
     const buttonLike =
       tag === 'button' ||
-      source.includes('role="button"') ||
-      source.includes('[role="button"]') ||
-      target.type.toLowerCase() === 'button' ||
-      target.type.toLowerCase() === 'submit';
+      role === 'button' ||
+      type === 'button' ||
+      type === 'submit';
 
     // Check for text input fields (input[type="text"], textarea, input[type="password"])
     const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';
@@ -600,7 +606,16 @@ export class ActionExecutor {
     // Auth/financial/identifier fields: mask the value in narration, keep it verbatim for replay.
     const redactValue = category === 'DATABASE_AUTH' || isSensitiveInputElement(target);
     const level = this.deps.escalationTracker.getLevel(target.selector, category);
-    const synth = synthesizeEscalatedPayload(category, level, deriveFuzzSeed(target.selector, category));
+    // Encounter cursor sweeps the vector corpus across revisits; 'field' placement
+    // keeps L2+ potent (a percent-encoded payload typed into an input is inert).
+    const cursor = this.deps.escalationTracker.nextVectorCursor(target.selector, category);
+    const synth = synthesizeEscalatedPayload(
+      category,
+      level,
+      deriveFuzzSeed(target.selector, category),
+      cursor,
+      'field',
+    );
     const payload = synth.value;
 
     // Breadcrumb trail (technical) for the forensic crash report.

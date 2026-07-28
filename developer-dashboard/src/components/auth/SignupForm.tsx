@@ -217,11 +217,11 @@ export default function SignupForm() {
               <label htmlFor="accept-policies" className="cursor-pointer">
                 I have read and agree to the
               </label>{' '}
-              <button type="button" onClick={() => setOpenDocId('privacy')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+              <button type="button" onClick={() => setOpenDocId('privacy')} className="font-medium text-(--text-primary) cursor-pointer underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
                 Privacy Notice
               </button>{' '}
               and{' '}
-              <button type="button" onClick={() => setOpenDocId('terms')} className="font-medium text-(--text-primary) underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
+              <button type="button" onClick={() => setOpenDocId('terms')} className="font-medium text-(--text-primary) cursor-pointer underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)">
                 Terms of Use
               </button>
               , and confirm I will only test systems I am authorized to test.

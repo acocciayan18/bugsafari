@@ -33,7 +33,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <div className="min-w-0 text-xs font-black uppercase tracking-wider text-(--text-secondary)">
+        <div className="min-w-0 text-xs font-bold uppercase tracking-wider text-(--text-secondary)">
            Reproduction Playbook
         </div>
         {steps.length > 0 && (

@@ -16,6 +16,7 @@ export type BugClass =
   | 'ROUTE_MUTATION_FAILURE'
   | 'CLIENT_TRUST_BOUNDARY_VIOLATION'
   | 'INFINITE_LOADING'
+  | 'CLIENT_RENDER_FREEZE'
   | 'SESSION_SYNC_FAULT';
 
 export interface BugFinding {
@@ -48,6 +49,14 @@ export interface BugContext {
   stateHash: string;
   crashHalted: boolean;
   element?: InteractiveElement;
+  /**
+   * This step's ranked controls, already filtered by the session-preservation guard
+   * and the parser's overlay/visibility reasoning. A page-mutating finder must drive
+   * THESE rather than re-querying the DOM itself (audit P3-10) — a raw query returns
+   * whatever is first in the document, which on an authenticated run is typically the
+   * header, typically including Sign-out.
+   */
+  rankedTargets?: readonly InteractiveElement[];
 }
 
 export interface BugFinder {

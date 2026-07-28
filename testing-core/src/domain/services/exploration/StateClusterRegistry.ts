@@ -40,6 +40,8 @@ export interface ClusterMetrics {
 /** Immutable coverage summary for telemetry / run metrics. */
 export interface ClusterCoverageSnapshot {
   readonly clusters: number;
+  /** Distinct route instances across all shells — data coverage, not template coverage. */
+  readonly instances: number;
   readonly discovered: number;
   readonly triggered: number;
   readonly unexploredControls: number;
@@ -58,9 +60,19 @@ export interface PageSaturationConfig {
   maxVisits: number;
   /** Repeat actuations on a shell before it is Fully Explored. */
   maxInteractions: number;
+  /**
+   * Distinct route instances of one shell to explore before it can saturate
+   * (audit P3-18). Clusters are keyed by the NORMALIZED structure hash, which
+   * deliberately strips ids and digit-runs — so `/products/1` and `/products/42`
+   * share a shell and, once the first saturated, the second was skipped before it
+   * was ever parsed. That is right for "have I covered this KIND of screen" but
+   * removes a high-yield defect class: the bug that only manifests for a particular
+   * record (a null field, an empty relation, an unusual price, a long name).
+   */
+  minInstances: number;
 }
 
-const DEFAULT_SATURATION: PageSaturationConfig = { maxVisits: 3, maxInteractions: 8 };
+const DEFAULT_SATURATION: PageSaturationConfig = { maxVisits: 3, maxInteractions: 8, minInstances: 3 };
 
 export class StateClusterRegistry {
   private readonly clusters = new Map<string, ClusterMetrics>();
@@ -96,6 +108,26 @@ export class StateClusterRegistry {
       if (cluster.redundantActuations >= interactionCap) return true;
     }
     return false;
+  }
+
+  /**
+   * Whether landing on `url` should be skipped as an already-Fully-Explored shell.
+   *
+   * Audit P3-18: the shell verdict alone is the right answer for "have I covered
+   * this KIND of screen", but it made the engine skip `/products/42` before it was
+   * ever parsed just because `/products/1` saturated — removing the whole class of
+   * defect that only manifests for a particular record (a null field, an empty
+   * relation, an unusual price, a long name). A saturated shell now still admits a
+   * few UNSEEN route instances so their data gets exercised; every route already
+   * visited, and everything past the quota, is skipped exactly as before.
+   */
+  public isSaturatedForRoute(structureHash: string, url: string): boolean {
+    if (!this.isSaturated(structureHash)) return false;
+    if (this.saturation.minInstances <= 1 || !url) return true;
+    const cluster = this.clusters.get(structureHash);
+    if (!cluster) return true;
+    const unseenInstance = !cluster.urls.has(url);
+    return !(unseenInstance && cluster.urls.size < this.saturation.minInstances);
   }
 
   /** Count of shells marked Fully Explored — telemetry / final summary. */
@@ -152,10 +184,33 @@ export class StateClusterRegistry {
   }
 
   /**
+   * True when `selector` has been triggered ON THIS STRUCTURAL SHELL this run.
+   *
+   * Audit P3-07: this used to scan every cluster, treating a CSS selector as a
+   * globally unique control identity — which it is not. Positional paths
+   * (`body > div:nth-of-type(1) > … > button:nth-of-type(1)`) are identical across
+   * two instances of one template, and `#id` / `[name]` selectors are routinely
+   * reused across distinct forms in a single SPA (`#email` on login AND on
+   * profile-edit, `button[name="submit"]` everywhere). The first control to claim
+   * a selector consumed the identity for all of them: every later namesake was
+   * demoted by 1,000, excluded from the fresh attack-vector boost, and counted as
+   * covered without ever being touched.
+   *
+   * Scoping to the cluster restores per-shell identity while keeping the property
+   * that mattered — clusters are keyed by the NORMALIZED structure hash, so this
+   * still survives the per-payload `combined`-hash churn that makes each fuzz look
+   * like a fresh graph node.
+   */
+  public isSelectorTriggered(structureHash: string, selector: string): boolean {
+    if (!structureHash || !selector) return false;
+    const cluster = this.clusters.get(structureHash);
+    return cluster ? cluster.triggered.has(selector) : false;
+  }
+
+  /**
    * True when `selector` has been triggered on ANY structural cluster this run.
-   * Keyed structurally, so it survives the per-payload `combined`-hash churn that
-   * makes each fuzz look like a fresh graph node — the loop uses this to stop
-   * re-boosting an already-fuzzed attack vector and advance to other controls.
+   * Retained only for genuinely cross-page controls (a persistent navbar), where
+   * sharing one identity across shells is the intended behaviour.
    */
   public isSelectorTriggeredAnywhere(selector: string): boolean {
     if (!selector) return false;
@@ -217,12 +272,17 @@ export class StateClusterRegistry {
   public snapshot(): ClusterCoverageSnapshot {
     let discovered = 0;
     let triggered = 0;
+    let instances = 0;
     for (const cluster of this.clusters.values()) {
       discovered += cluster.discovered.size;
       triggered += cluster.triggered.size;
+      instances += cluster.urls.size;
     }
     return {
       clusters: this.clusters.size,
+      // Reported alongside the shell count so "12 shells, 31 instances" distinguishes
+      // TEMPLATE coverage from DATA coverage (audit P3-18).
+      instances,
       discovered,
       triggered,
       unexploredControls: discovered - triggered,

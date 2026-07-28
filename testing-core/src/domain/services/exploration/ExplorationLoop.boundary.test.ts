@@ -19,10 +19,15 @@ function check(name: string, fn: () => void): void {
 console.log('ExplorationLoop — completion classification');
 
 const actions: string[] = [];
-function makeLoop(strictUrlLock: boolean, gate: ScenarioGate): ExplorationLoop {
+function makeLoop(
+  strictUrlLock: boolean,
+  gate: ScenarioGate,
+  cap = { reached: false, evictions: 0, maxNodes: 500 },
+): ExplorationLoop {
   return new ExplorationLoop({
     strictUrlLock,
     gate,
+    pathNavigator: { graphCapStatus: () => cap },
     telemetry: {
       emitMilestone: () => {},
       emit: (_type: string, meta: { actionExecuted?: string }) => { actions.push(meta.actionExecuted ?? ''); },
@@ -56,6 +61,21 @@ check('partial infiltration profile reports Boundary Saturation', () => {
   assert.match(partialResult.reason, /Boundary Saturation Reached/);
   assert.match(partialResult.reason, /partial infiltration profile/);
   assert.equal(partialResult.outcome, 'boundary-saturated');
+});
+
+// Node-cap eviction → states were dropped and never re-explored, so a claim of
+// full graph coverage would be false (audit P3-06).
+const capped = makeLoop(false, new ScenarioGate([...ALL_TESTING_TYPE_IDS]), {
+  reached: true,
+  evictions: 37,
+  maxNodes: 500,
+});
+const cappedResult = (capped as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
+check('a run that hit the node cap never claims Graph Exhausted', () => {
+  assert.match(cappedResult.reason, /Boundary Saturation Reached/);
+  assert.match(cappedResult.reason, /node cap reached/);
+  assert.match(cappedResult.reason, /37 evicted/);
+  assert.equal(cappedResult.outcome, 'boundary-saturated');
 });
 
 console.log(`\n${passed} checks passed.`);

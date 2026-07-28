@@ -117,21 +117,52 @@ function encodeLayer(value: string): string {
 }
 
 /**
+ * Where the payload will be placed. Percent-encoding is correct for a value the
+ * engine puts in a URL or JSON body; typed into a form field it becomes a literal,
+ * inert string that the transport then encodes AGAIN, so the server receives a
+ * double-encoded harmless value and the reflection oracle can never confirm a leak
+ * (audit P3-16). Escalation must move TOWARD potency, not away from it.
+ */
+export type PayloadPlacement = 'field' | 'url';
+
+/**
+ * Context-breaking mutations for a payload typed into a field — the field-side
+ * counterpart of the encoding layer. Each escapes a different sink context, so
+ * escalating sweeps the ways a value can break out rather than neutering it.
+ */
+const FIELD_MUTATORS: ReadonlyArray<(value: string) => string> = [
+  (value) => `">${value}`,                       // break out of a quoted attribute
+  (value) => `${value}" onmouseover="1`,          // graft an event handler
+  (value) => `{{7*7}}${value}`,                   // template-expression evaluation
+  (value) => value.replace(/</g, '＜').replace(/>/g, '＞'), // unicode-normalisation bypass
+];
+
+/**
  * Synthesize the payload for a given (category, level, seed).
  *
- * @param category - Classified input type; selects the base vector family.
- * @param level    - Escalation level in [0, MAX_ESCALATION_LEVEL]; clamped.
- * @param seed     - Stable per-field seed from {@link deriveFuzzSeed}.
+ * @param category  - Classified input type; selects the base vector family.
+ * @param level     - Escalation level in [0, MAX_ESCALATION_LEVEL]; clamped.
+ * @param seed      - Stable per-field seed from {@link deriveFuzzSeed}.
+ * @param cursor    - Encounter count for this field. Advances the base vector so
+ *                    repeated visits SWEEP the corpus; without it a field only ever
+ *                    saw one vector per level (~5 of the whole XSS/SQL/NoSQL set,
+ *                    and only if it escalated all the way) — audit P3-16.
+ * @param placement - Where the value will be put; decides whether the L2 layer is
+ *                    percent-encoding (URL) or a context-breaking mutation (field).
  */
 export function synthesizeEscalatedPayload(
   category: FieldCategory,
   level: number,
   seed: number,
+  cursor = 0,
+  placement: PayloadPlacement = 'field',
 ): EscalatedPayload {
   const lvl = Math.max(0, Math.min(MAX_ESCALATION_LEVEL, Math.floor(level)));
   const vectors = baseVectorsFor(category);
-  // Deterministic base pick; rotates with level so escalation also varies the seed vector.
-  const idx = vectors.length > 0 ? fnv1a(`${seed}:${lvl}`) % vectors.length : 0;
+  // Deterministic base pick; rotates with level AND with the per-field encounter
+  // cursor so re-visiting a field probes a different vector instead of replaying one.
+  const idx =
+    vectors.length > 0 ? (fnv1a(`${seed}:${lvl}`) + Math.max(0, Math.floor(cursor))) % vectors.length : 0;
   let value = vectors[idx] ?? '';
   const layers: string[] = [`base[${idx}]`];
 
@@ -140,8 +171,14 @@ export function synthesizeEscalatedPayload(
     layers.push('structure-breakers');
   }
   if (lvl >= 2) {
-    value = encodeLayer(value);
-    layers.push('encoded');
+    if (placement === 'url') {
+      value = encodeLayer(value);
+      layers.push('encoded');
+    } else {
+      const mutator = FIELD_MUTATORS[(idx + lvl) % FIELD_MUTATORS.length];
+      value = mutator(value);
+      layers.push('context-break');
+    }
   }
   if (lvl >= 3) {
     value = amplify(value, AMPLIFY_TARGET_LENGTHS[lvl] ?? 0);

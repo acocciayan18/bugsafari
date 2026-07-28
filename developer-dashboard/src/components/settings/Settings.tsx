@@ -589,7 +589,7 @@ function AccountSection() {
         ) : (
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-[13px] font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
+            className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-[13px] font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Sign Out

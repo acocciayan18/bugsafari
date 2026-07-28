@@ -325,7 +325,7 @@ export class TabWindowManager {
     page.on('close', onClose);
 
     if (role === 'primary') {
-      this.deps.stabilityMonitor.attachDialogAutoDismiss(page);
+      this.deps.stabilityMonitor.attachDialogHandler(page);
       this.deps.stabilityMonitor.attachExceptionMonitoring(page);
       this.deps.stabilityMonitor.attachCrashMonitoring(page);
       // Network monitoring is single-page-scoped by construction: its watchdog timer and

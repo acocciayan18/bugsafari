@@ -25,6 +25,9 @@ import type { ExplorationLoopDeps, RunResult } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
+import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
+import { detectClientErrorView } from './clientErrorOracle.js';
+import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
 
 // Upper bounds on the per-run visited sets so long runs can't grow memory without limit.
@@ -36,12 +39,23 @@ const MAX_VISITED_STRUCTURES = 2000;
 // before declaring a page a Structural Dead-End on the next consecutive empty check.
 const EMPTY_RETRY_LIMIT = 2;
 
-// Session-wide coverage bias: fixed margin subtracted from any control already
-// triggered ANYWHERE this run, so untested controls win best-first across page
-// reloads. Large enough to sink below any untriggered element's natural score;
+// Coverage bias: fixed margin subtracted from any control already triggered on
+// the CURRENT structural shell, so untested controls win best-first across page
+// reloads. Scoped per shell (audit P3-07) because a selector is not a unique
+// control identity — the same positional path or reused #id names a different
+// control on a different screen. Large enough to sink below any untriggered
+// element's natural score;
 // applied as a demotion (not removal) so a tested control is still selectable as
 // a last resort once the whole frontier is spent.
 const TRIGGERED_SELECTOR_DEMOTION = 1000;
+
+// Softer margin for a control whose selector was triggered on a DIFFERENT shell.
+// Purely shell-scoped identity makes every namesake look brand new, so the engine
+// re-explores each template instance from scratch and runs out of timebox before
+// reaching deep multi-step flows. A control already exercised elsewhere is not
+// unknown — it is just not proven for THIS instance, so it ranks below anything
+// never touched but well above a control already triggered right here.
+const CROSS_SHELL_TRIGGERED_DEMOTION = 250;
 
 // UI-layer awareness margins. Interior controls of an open overlay are lifted a
 // fixed margin above every background control so the layer is exhausted first;
@@ -115,6 +129,9 @@ interface RunContext {
   emptyCheckCount: number;
   // URLs already classified as Structural Dead-Ends this run — revisits skip the
   // retry wait and backtrack immediately (prevents re-stalling on a known empty page).
+  // Route-normalized (visitedRouteKey), like every other per-run set. Keyed by the
+  // raw URL it fragmented on cache-busters/pagination params, so a known dead end
+  // reached with a different query paid the full empty-render retry wait again.
   deadEndUrls: Set<string>;
   // URL at the start of the previous iteration — lets the loop reveal lazy content
   // only when we genuinely RETURN to a seen URL, not while parked on one.
@@ -125,6 +142,9 @@ interface RunContext {
   // URLs already scrolled for lazy/off-screen content on their FIRST landing, so
   // the first-visit reveal fires once per URL instead of every step parked on it.
   firstVisitRevealed: Set<string>;
+  // Routes already reported as a client render freeze — one finding per route,
+  // not one per step spent on a page that never settles.
+  freezeReported: Set<string>;
 }
 
 /** Per-step DOM/graph fingerprint computed once per iteration for a VALID state. */
@@ -194,6 +214,7 @@ export class ExplorationLoop {
       lastStepUrl: '',
       saturatedLogged: new Set<string>(),
       firstVisitRevealed: new Set<string>(),
+      freezeReported: new Set<string>(),
     };
 
     for (let step = 1; ; step++) {
@@ -268,7 +289,10 @@ export class ExplorationLoop {
         // URL lock — there is nowhere to advance to, and skipping interactions
         // would starve the only path (DOM mutation) to any new locked-page state.
         if (!this.deps.strictUrlLock) {
-          const saturationGate = await this.checkPageSaturation(page, ctx, step);
+          // Pre-parse gate: a shell already Fully Explored is skipped before any
+          // parse/score/interaction work, so it needs its own (cheap) hash here.
+          const preParse = await this.deps.hashManager.hashCompound(page);
+          const saturationGate = await this.checkPageSaturation(page, ctx, step, preParse);
           if (saturationGate.kind === 'return') return saturationGate.result;
           if (saturationGate.kind === 'continue') continue;
         }
@@ -282,9 +306,9 @@ export class ExplorationLoop {
           if (deadEndGate.kind === 'return') return deadEndGate.result;
           continue;
         }
-        const { ranked } = parseResult;
+        const { ranked, postParse } = parseResult;
 
-        const fpResult = await this.computeFingerprintAndStagnation(page, step, ctx, ranked);
+        const fpResult = await this.computeFingerprintAndStagnation(page, step, ctx, ranked, postParse);
         if (fpResult.kind === 'error') {
           // HTTP 4xx/5xx or a detected error template — never a traversable state.
           // Exclude it from the graph/backtracking history and recover to the
@@ -386,7 +410,7 @@ export class ExplorationLoop {
 
         //  Finder sweep on the DOM the interaction actually produced — before
         // applyTraversalOutcome, which may restore the parent and destroy it.
-        await this.runBugFinders(page, step, fingerprint.currentHash, target);
+        await this.runBugFinders(page, step, fingerprint.currentHash, target, ranked);
 
         await this.applyTraversalOutcome(
           page,
@@ -529,8 +553,11 @@ export class ExplorationLoop {
   private async scrollToRevealNewControls(
     page: Page,
     seen: InteractiveElement[],
+    shell: string,
   ): Promise<InteractiveElement[] | null> {
     const seenSelectors = new Set(seen.map((el) => el.selector));
+    const triggered = (selector: string): boolean =>
+      this.deps.clusterRegistry.isSelectorTriggered(shell, selector);
     try {
       for (let i = 0; i < MAX_FRONTIER_SCROLLS; i++) {
         // Advance one viewport; atBottom when the position no longer moved or the
@@ -543,7 +570,7 @@ export class ExplorationLoop {
         await settle(page);
         const reparsed = await this.deps.parser.parse(page);
         const hasNewUntriggered = reparsed.some(
-          (el) => !seenSelectors.has(el.selector) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector),
+          (el) => !seenSelectors.has(el.selector) && !triggered(el.selector),
         );
         if (hasNewUntriggered) return reparsed;
         for (const el of reparsed) seenSelectors.add(el.selector);
@@ -566,11 +593,20 @@ export class ExplorationLoop {
    * to normal exploration (the cheap extra hash on live pages is negligible beside
    * the parse/reveal/score work it guards).
    */
-  private async checkPageSaturation(page: Page, ctx: RunContext, step: number): Promise<StepGate> {
-    const { structure, combined } = await this.deps.hashManager.hashCompound(page);
-    if (!this.deps.clusterRegistry.isSaturated(structure)) return { kind: 'proceed' };
-
+  private async checkPageSaturation(
+    page: Page,
+    ctx: RunContext,
+    step: number,
+    preParse: CompoundStateHash,
+  ): Promise<StepGate> {
+    const { structure, combined } = preParse;
     const url = page.url();
+    // Instance-aware (audit P3-18): a saturated shell still admits a few unseen route
+    // instances, so a per-record defect on /products/42 is not skipped unparsed just
+    // because /products/1 was fully explored.
+    if (!this.deps.clusterRegistry.isSaturatedForRoute(structure, visitedRouteKey(url))) {
+      return { kind: 'proceed' };
+    }
     if (!ctx.saturatedLogged.has(structure)) {
       ctx.saturatedLogged.add(structure);
       this.deps.telemetry.emitMilestone(
@@ -590,10 +626,51 @@ export class ExplorationLoop {
     return this.finishDeadEnd(page, ctx, decision, step);
   }
 
+  /**
+   * Register a bounded-scan failure as a CLIENT_RENDER_FREEZE finding. `unsettled`
+   * means the DOM node count never stopped changing (render loop, endless toast
+   * queue, live feed); `timeout` means the scan could not complete at all. Reported
+   * once per route so a genuinely frozen page yields one finding, not one per step.
+   */
+  private async reportClientFreeze(page: Page, health: 'unsettled' | 'timeout', ctx: RunContext): Promise<void> {
+    const url = page.url();
+    const routeKey = visitedRouteKey(url);
+    if (ctx.freezeReported.has(routeKey)) return;
+    ctx.freezeReported.add(routeKey);
+    boundSet(ctx.freezeReported, MAX_VISITED_ROUTES);
+
+    const detail =
+      health === 'timeout'
+        ? 'the page stopped responding to script evaluation entirely'
+        : 'the DOM node count never stopped changing';
+    const message = `Client render freeze at ${safeRoutePath(page)} — ${detail}, so the view never reached a stable state.`;
+
+    this.deps.telemetry.emitMilestone(` ${message}`);
+    this.deps.registerConfirmedBug({
+      bugId: deriveStableBugId('client-render-freeze', [routeKey, health]),
+      type: 'EXCEPTION',
+      message,
+      selector: '',
+      payloadUsed: health,
+      advice: BUG_CATALOG.CLIENT_RENDER_FREEZE.remediation,
+      timestamp: new Date(),
+      attribution: {
+        bugClass: 'CLIENT_RENDER_FREEZE',
+        cwe: BUG_CATALOG.CLIENT_RENDER_FREEZE.cwe,
+        scenario: 'Exploratory',
+        testingType: 'exploratory',
+      },
+    });
+  }
+
   private async parseDomAndScore(
     page: Page,
     ctx: RunContext,
-  ): Promise<{ kind: 'continue' } | { kind: 'deadend' } | { kind: 'proceed'; ranked: InteractiveElement[] }> {
+  ): Promise<
+    | { kind: 'continue' }
+    | { kind: 'deadend' }
+    | { kind: 'proceed'; ranked: InteractiveElement[]; postParse: CompoundStateHash }
+  > {
     //  Per-step scan status — drives the live "thinking" indicator, not the log.
     this.deps.telemetry.emitSystemStatus('Vision Active');
 
@@ -604,6 +681,14 @@ export class ExplorationLoop {
 
     let elements = await this.deps.parser.parse(page);
 
+    // Client-freeze oracle (audit P3-04). The in-page stability wait and the scan
+    // itself are now bounded, so a page whose DOM never settles degrades to a
+    // partial snapshot instead of parking the run inside page.evaluate. A render
+    // loop or wedged view is one of the highest-value defects an exploratory
+    // tester can report — surface it rather than absorbing it as engine latency.
+    const scanHealth = this.deps.parser.scanHealth();
+    if (scanHealth !== 'ok') await this.reportClientFreeze(page, scanHealth, ctx);
+
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'dom-elements-parsed',
       message: `Parsed ${elements.length} interactive elements from DOM`,
@@ -612,7 +697,7 @@ export class ExplorationLoop {
     if (elements.length === 0) {
       const url = page.url();
       // Known dead-end this session — skip the retry wait, backtrack immediately.
-      if (ctx.deadEndUrls.has(url)) return { kind: 'deadend' };
+      if (ctx.deadEndUrls.has(visitedRouteKey(url))) return { kind: 'deadend' };
       // Reset the per-page counter when the empty page differs from the last one.
       if (ctx.emptyCheckUrl !== url) {
         ctx.emptyCheckUrl = url;
@@ -637,14 +722,24 @@ export class ExplorationLoop {
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 
+    // Shell identity for every coverage/penalty lookup below. Measured HERE, after
+    // the parse (which can itself mutate the page via hover-reveal), because this
+    // is the exact hash that markTriggered/observe will write to further down the
+    // step — reading a differently-timed hash silently queries an empty cluster,
+    // so nothing ever reads as triggered and the coverage bias stops working.
+    const postParse = await this.deps.hashManager.hashCompound(page);
+    const shell = postParse.structure;
+    const triggered = (selector: string): boolean =>
+      this.deps.clusterRegistry.isSelectorTriggered(shell, selector);
+
     // Frontier-exhaustion reveal: when every on-screen control has already been
-    // triggered somewhere this run, the visible frontier is spent. Before leaving
+    // triggered on this shell, the visible frontier is spent. Before leaving
     // the page, adaptively scroll — reparsing after each step — to surface lazy /
     // off-screen controls. New untriggered controls replace the parse and get
     // scored/interacted this step; reaching the bottom with nothing new means the
     // page is fully explored and the normal flow backtracks to an unexplored branch.
-    if (elements.every((el) => this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector))) {
-      const revealed = await this.scrollToRevealNewControls(page, elements);
+    if (elements.every((el) => triggered(el.selector))) {
+      const revealed = await this.scrollToRevealNewControls(page, elements, shell);
       if (revealed) {
         this.deps.telemetry.emitMilestone(' Frontier spent — adaptive scroll revealed new off-screen controls.');
         elements = revealed;
@@ -654,6 +749,12 @@ export class ExplorationLoop {
         );
       }
     }
+
+    // Bind penalties and payload-escalation levels to this shell so a control is
+    // only deprioritized (and a field only escalated) where it actually behaved
+    // that way — not everywhere its selector string happens to repeat.
+    this.deps.scorer.setScope(shell);
+    this.deps.escalationTracker.setScope(shell);
 
     // Fade accumulated penalties one step before ranking so transient stagnation/
     // no-op nudges recover over time instead of permanently suppressing controls.
@@ -671,19 +772,24 @@ export class ExplorationLoop {
 
     let ranked = this.deps.scorer.score(elements);
 
-    // Session-wide coverage bias: demote every control already triggered ANYWHERE
-    // this run by a large fixed margin so untested controls win best-first across
-    // page reloads. Non-decaying (recomputed from the registry each pass) — unlike
+    // Coverage bias: demote every control already triggered ON THIS SHELL by a
+    // large fixed margin so untested controls win best-first across page reloads.
+    // Non-decaying (recomputed from the registry each pass) — unlike
     // scorer penalties, which fade — so a tested element stays deprioritized instead
     // of recovering its rank and being re-selected. Demoted, not removed: still
     // selectable once the frontier is fully spent, and the pathfinder still explores
     // any unvisited edge from this node regardless of the demoted score.
+    // Graded by WHERE it was triggered: hard demotion on this shell, soft demotion
+    // for a namesake proven on another shell, none for a control never touched.
     ranked = ranked
-      .map((element) =>
-        this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector)
-          ? { ...element, riskScore: element.riskScore - TRIGGERED_SELECTOR_DEMOTION }
-          : element,
-      )
+      .map((element) => {
+        const margin = triggered(element.selector)
+          ? TRIGGERED_SELECTOR_DEMOTION
+          : this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector)
+            ? CROSS_SHELL_TRIGGERED_DEMOTION
+            : 0;
+        return margin > 0 ? { ...element, riskScore: element.riskScore - margin } : element;
+      })
       .sort((left, right) => right.riskScore - left.riskScore);
 
     // Session preservation: on an authenticated run, sink logout/sign-out controls
@@ -707,12 +813,12 @@ export class ExplorationLoop {
     const isNavEdge = (el: InteractiveElement): boolean =>
       el.tagName.toLowerCase() === 'a' && !!el.href && !NON_NAV_HREF_RE.test(el.href);
     const hasUntriggeredInPageControl = ranked.some(
-      (el) => !isNavEdge(el) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector),
+      (el) => !isNavEdge(el) && !triggered(el.selector),
     );
     if (hasUntriggeredInPageControl) {
       ranked = ranked
         .map((element) =>
-          isNavEdge(element) && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector)
+          isNavEdge(element) && !triggered(element.selector)
             ? { ...element, riskScore: element.riskScore - NAV_EDGE_DEMOTION }
             : element,
         )
@@ -736,7 +842,7 @@ export class ExplorationLoop {
     if (this.deps.gate.isEnabled('dataFuzzing') || this.deps.gate.isEnabled('exploratory')) {
       const isFreshAttackVector = (element: InteractiveElement): boolean =>
         attackTargetBoost(element) > 0 &&
-        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(element.selector) &&
+        !triggered(element.selector) &&
         // A form at its session fuzz cap loses the boost so unexplored controls win.
         !this.deps.formFuzz.isExhausted(element.formKey ?? '', this.deps.formFuzzCap);
       const otherScores = ranked.filter((el) => !isFreshAttackVector(el)).map((el) => el.riskScore);
@@ -760,7 +866,7 @@ export class ExplorationLoop {
       const isFreshLayerControl = (el: InteractiveElement): boolean =>
         !!el.inActiveLayer &&
         !el.isDismiss &&
-        !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector);
+        !triggered(el.selector);
       const baseline = ranked.filter((el) => !isFreshLayerControl(el)).map((el) => el.riskScore);
       const maxOther = baseline.length > 0 ? Math.max(...baseline) : 0;
       ranked = ranked
@@ -771,7 +877,7 @@ export class ExplorationLoop {
             return el;
           }
           const untriggeredTrigger =
-            !!el.opensLayer && !this.deps.clusterRegistry.isSelectorTriggeredAnywhere(el.selector);
+            !!el.opensLayer && !triggered(el.selector);
           return untriggeredTrigger ? { ...el, riskScore: el.riskScore + LAYER_TRIGGER_SCORE_BOOST } : el;
         })
         .sort((left, right) => right.riskScore - left.riskScore);
@@ -794,7 +900,7 @@ export class ExplorationLoop {
       })),
     );
 
-    return { kind: 'proceed', ranked };
+    return { kind: 'proceed', ranked, postParse };
   }
 
   private async computeFingerprintAndStagnation(
@@ -802,6 +908,7 @@ export class ExplorationLoop {
     step: number,
     ctx: RunContext,
     ranked: InteractiveElement[],
+    postParse: CompoundStateHash,
   ): Promise<FingerprintResult> {
     // Task 3: Emit granular status for dynamic UI - "Hashing DOM state..."
     this.deps.telemetry.emitSystemStatus('Hashing DOM state...');
@@ -811,7 +918,12 @@ export class ExplorationLoop {
     // combined = canonical node identity. combined is strictly finer-grained
     // than the old structure-only key, so states that differ only by a toggled
     // control are no longer conflated.
-    const compound = await this.deps.hashManager.hashCompound(page);
+    //
+    // Taken by parseDomAndScore at the end of the parse and reused verbatim: the
+    // shell that scoping READ from must be the shell that markTriggered/observe
+    // WRITE to, or the coverage bias silently queries a cluster that was never
+    // populated. Nothing mutates the page between there and here.
+    const compound = postParse;
     const currentHash = compound.combined;
     const currentUrl = page.url();
 
@@ -834,13 +946,33 @@ export class ExplorationLoop {
       return { kind: 'error', compound, mainFrameStatus, routeVerdict };
     }
 
+    // Client-rendered error view (audit P3-17). A client route change issues no
+    // document request, so mainFrameStatus is null for nearly every SPA state and
+    // the HTTP signal above effectively never fires after the first load. Judge the
+    // RENDERED view instead, so a "Not found" served under HTTP 200 is excluded from
+    // the graph and reported, rather than explored and counted as coverage.
+    if (mainFrameStatus === null) {
+      const clientError = await detectClientErrorView(page);
+      if (clientError.isErrorView) {
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'client-error-view-detected',
+          url: currentUrl,
+          stateHash: currentHash,
+          message: `Client-rendered error view at ${currentUrl} (${clientError.signal}) — excluded from the graph despite HTTP 200.`,
+        });
+        return { kind: 'error', compound, mainFrameStatus, routeVerdict };
+      }
+    }
+
     // --- Clustered state-space observation (valid states only) ---
     // Fold this state into its structural cluster (keyed by the normalized
     // structure sub-hash) BEFORE stagnation scoring, so coverage-gain markers
     // reflect controls discovered on this step.
     this.deps.clusterRegistry.observe(
       compound.structure,
-      currentUrl,
+      // Route-normalized, matching the key isSaturatedForRoute reads — and keeping
+      // the cluster's instance set from fragmenting on cache-busters/pagination.
+      visitedRouteKey(currentUrl),
       ranked.map((el) => el.selector),
       step,
     );
@@ -992,6 +1124,7 @@ export class ExplorationLoop {
     step: number,
     stateHash: string,
     target: InteractiveElement,
+    ranked: readonly InteractiveElement[],
   ): Promise<void> {
     try {
       await this.deps.bugFinderRunner.sweep({
@@ -1003,6 +1136,9 @@ export class ExplorationLoop {
         // crashHalted as evidence of a catastrophic failure.
         crashHalted: false,
         element: target,
+        // Page-mutating finders drive these instead of re-querying the DOM, so they
+        // inherit the session-guard veto and overlay filtering the loop applied.
+        rankedTargets: ranked,
       });
     } catch (finderErr) {
       console.warn(
@@ -1055,6 +1191,15 @@ export class ExplorationLoop {
       // A partial profile withholds interaction classes (fuzz/bypass/etc.), so states
       // reachable only through them were never actuated.
       limits.push(`partial infiltration profile — only ${active.join(', ')} active`);
+    }
+    // Node-budget exhaustion is a scope limit too: past the cap, evicted states are
+    // re-admitted as tombstones and never re-explored, so "graph exhausted" would
+    // otherwise claim full coverage the run never achieved (audit P3-06).
+    const cap = this.deps.pathNavigator.graphCapStatus();
+    if (cap.reached) {
+      limits.push(
+        `state-graph node cap reached (${cap.maxNodes} nodes; ${cap.evictions} evicted and not re-explored)`,
+      );
     }
     return limits;
   }
@@ -1144,7 +1289,7 @@ export class ExplorationLoop {
    */
   private async handleStructuralDeadEnd(page: Page, ctx: RunContext, step: number): Promise<StepGate> {
     const url = page.url();
-    ctx.deadEndUrls.add(url);
+    ctx.deadEndUrls.add(visitedRouteKey(url));
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 
@@ -1179,7 +1324,7 @@ export class ExplorationLoop {
     step: number,
   ): Promise<StepGate> {
     const url = page.url();
-    ctx.deadEndUrls.add(url);
+    ctx.deadEndUrls.add(visitedRouteKey(url));
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 

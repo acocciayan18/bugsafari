@@ -93,7 +93,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
           </div>
 
           <div className="mt-3 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-[13px] text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-[13px] text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
               Continue As Guest
             </button>
           </div>

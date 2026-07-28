@@ -41,6 +41,13 @@ export interface OptimizationSettings {
   // choice become deterministic (same seed + target → same action sequence) for
   // thesis-panel replays. Omitted (default) → Math.random, non-reproducible.
   'exploration-seed'?: number;
+  // Read-only dialogs: cancel every native confirm/alert/prompt instead of
+  // answering it. Default false — confirm-gated destructive branches (delete,
+  // destroy, pay) are the highest-scored controls in the heuristic, and cancelling
+  // them made that whole defect class unreachable while still counting the control
+  // as covered. Enable when running against an environment where those branches
+  // must not execute.
+  'dialog-read-only'?: boolean;
 }
 
 export const defaultOptimizationSettings: OptimizationSettings = {
@@ -53,6 +60,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'page-saturation-visits': 8,  // gain-less revisits to a shell → fully explored
   'page-saturation-interactions': 25,  // repeat actuations on a shell → fully explored
   'form-fuzz-cap': 2,  // 2 fuzz submissions per form → excluded from further fuzzing
+  'dialog-read-only': false,  // Answer dialogs so confirm-gated branches actually run
 };
 
 // ─────────────────────────────────────────────────────────────
