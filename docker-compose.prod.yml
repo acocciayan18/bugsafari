@@ -16,7 +16,9 @@ x-shared-env: &shared-env
   # so the worker can decrypt target credentials the api sealed. Required for
   # authenticated queued runs; the api refuses them without it (AUTH_UNSUPPORTED_ON_QUEUE).
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
-  RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD}
+  # Must be CLOUD_HOSTED or DOCKER_LOCAL — serverUtils.ts warns and falls back to
+  # DOCKER_LOCAL on anything else, which would rewrite targets to host.docker.internal.
+  RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   # TTL is always on; keep the cascade reaper on so expired sessions don't orphan
   # forensic children (DB3).
@@ -36,6 +38,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     networks:
       - bugsafari-prod
 
@@ -64,9 +70,26 @@ services:
       # On-demand AI Suggested Fix; empty => deterministic knowledge-base fallback.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-8000}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      REFRESH_TOKEN_TTL_MS: ${REFRESH_TOKEN_TTL_MS:-604800000}
+      BUGSAFARI_UNSAVED_SESSION_TTL_SECONDS: ${BUGSAFARI_UNSAVED_SESSION_TTL_SECONDS:-86400}
     command: ["npm", "run", "start", "--workspace", "testing-core"]
+    # Loopback-only: the API speaks plain HTTP. Terminate TLS in nginx/Caddy on the
+    # host and proxy to 127.0.0.1:3000 (TRUST_PROXY_HOPS=1 matches that one hop).
+    # Binding 0.0.0.0 would expose JWTs and run telemetry unencrypted.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     depends_on:
       redis:
         condition: service_healthy
@@ -92,6 +115,11 @@ services:
     # docker compose -f docker-compose.prod.yml up --scale worker=4
     deploy:
       replicas: ${WORKER_REPLICAS:-2}
+      # Ceiling per replica so one runaway Chromium can't OOM the droplet and take
+      # the api + redis with it. Node + Chromium idles ~700MB; 1.5g leaves headroom.
+      resources:
+        limits:
+          memory: 1536m
     depends_on:
       redis:
         condition: service_healthy

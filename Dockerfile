@@ -8,8 +8,9 @@ COPY package*.json ./
 COPY testing-core/package.json ./testing-core/package.json
 COPY shared/package.json ./shared/package.json
 
-# 2. Install ALL workspaces globally inside the container
-RUN npm ci
+# 2. Scoped install: developer-dashboard is a declared workspace but is never copied
+# into this image, so a bare `npm ci` fails resolving it.
+RUN npm ci --workspace testing-core --include-workspace-root
 
 # 3. Copy the rest of your local codebase into the container filesystem space
 COPY testing-core ./testing-core

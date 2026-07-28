@@ -1,0 +1,23 @@
+# Host artifacts that must never enter the image: Windows-native node_modules would
+# stomp the linux install from `npm ci`, stale dist/ would shadow the in-image build,
+# and a copied .env would bake secrets into a layer.
+node_modules
+**/node_modules
+dist
+**/dist
+.env
+**/.env
+*.local
+
+# Not built by this image (see Dockerfile: only testing-core + shared are copied)
+developer-dashboard
+
+.git
+.github
+.claude
+.blackboxcli
+.codemap
+codemaps
+*.md
+*.log
+logs
