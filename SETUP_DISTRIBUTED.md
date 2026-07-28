@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "resolved critical issue in 7_27_AUDIT.md"
-git checkout -b 7-27-Ayan-4
-git push --set-upstream origin 7-27-Ayan-4
+git commit -m "after fixing some UI"
+git checkout -b 7-28-Ayan-1
+git push --set-upstream origin 7-28-Ayan-1
 

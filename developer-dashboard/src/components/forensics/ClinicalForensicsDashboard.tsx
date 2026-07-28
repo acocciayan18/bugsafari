@@ -31,7 +31,7 @@ type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 // Ordered tab model — drives both render and the ARIA tabs roving-tabindex pattern.
 const TERMINAL_TABS = [
   { id: 'telemetry', label: 'Telemetry', Icon: Activity },
-  { id: 'errors', label: 'Errors', Icon: TriangleAlert },
+  { id: 'errors', label: 'Findings', Icon: TriangleAlert },
   { id: 'network', label: 'Network', Icon: Network },
   { id: 'console', label: 'Console', Icon: Terminal },
 ] as const;
@@ -433,7 +433,7 @@ export default function ClinicalForensicsDashboard({
           </div>
           
           {/* Internal Telemetry System Action Status Notification Strip */}
-          <div className="mx-3 mb-3 mt-1 flex shrink-0 items-center justify-between rounded-lg border border-(--border-hairline) bg-(--surface-panel) px-3 py-2 sm:mx-4 sm:mb-4 sm:px-4">
+          <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-between rounded-lg  bg-(--surface-panel) px-3 py-2 sm:mx-3 sm:mb-1 sm:px-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${testStatus === 'ACTIVE'
@@ -474,7 +474,7 @@ export default function ClinicalForensicsDashboard({
                     tabIndex={selected ? 0 : -1}
                     onClick={() => setActiveTab(id)}
                     onKeyDown={handleTabKeyDown}
-                    className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium tracking-wide sm:tracking-widest transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                     {label}
@@ -492,7 +492,7 @@ export default function ClinicalForensicsDashboard({
   aria-pressed={showVerbose}
   aria-label="Toggle verbose execution trace"
   title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
-  className={`inline-flex items-center justify-center rounded-md border p-1.5 transition-colors ${
+  className={`inline-flex items-center cursor-pointer justify-center rounded-md border p-1.5 transition-colors ${
     showVerbose
       ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
       : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'

@@ -34,9 +34,9 @@ export default function ErrorTabPanel({
   const reportGroups = groupBySignature<ForensicCrashReport>(errorReports, liveFaultSignature, (r) => r.occurrences ?? 1);
 
   return (
-    <div className="flex flex-col gap-4 p-2" role="log" aria-live="assertive" aria-relevant="additions" aria-label="Captured errors">
+    <div className="flex flex-col gap-4 p-2" role="log" aria-live="assertive" aria-relevant="additions" aria-label="Captured findings">
       {incidentGroups.length === 0 && reportGroups.length === 0 ? (
-        <div className="text-(--text-secondary) italic py-4">No errors captured yet.</div>
+        <div className="text-(--text-secondary) italic py-4">No findings captured yet.</div>
       ) : (
         <>
           {incidentGroups.map(({ item: incident, count }, idx) => (

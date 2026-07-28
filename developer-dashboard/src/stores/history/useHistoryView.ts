@@ -8,7 +8,6 @@ function compare(a: EvaluationSafari, b: EvaluationSafari, { field }: SortConfig
         // Sort on the underlying timestamp, never the formatted label —
         // "DEC 01, 2025" sorts before "JAN 02, 2026" alphabetically, which is wrong.
         case 'date': return a.startedAtMs - b.startedAtMs;
-        case 'coverage': return a.coverage - b.coverage;
         case 'severity': return (SEVERITY_ORDER[a.severity] ?? 0) - (SEVERITY_ORDER[b.severity] ?? 0);
         case 'status': return (STATUS_ORDER[a.status] ?? 0) - (STATUS_ORDER[b.status] ?? 0);
         default: return 0;

@@ -401,7 +401,7 @@ export function CommunityContent() {
                         <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
                             <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 03</span>
                             <h4 className="font-bold text-lg">Watch Live</h4>
-                            <p className="text-xs text-zinc-600">Telemetry, Errors, Network, and Console stream over sockets in real time as the engine explores.</p>
+                            <p className="text-xs text-zinc-600">Telemetry, Findings, Network, and Console stream over sockets in real time as the engine explores.</p>
                         </div>
                         <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
                             <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 04</span>

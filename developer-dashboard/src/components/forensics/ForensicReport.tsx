@@ -33,7 +33,6 @@ import type {
   RegressionSignal,
 } from '../../types';
 import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
-import { CoverageDisplay } from '../history/CoverageProgressBar';
 import { CopyButton } from '../common/ForensicCardKit';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
@@ -91,7 +90,7 @@ function riskTheme(score: number): string {
 function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-caption font-semibold uppercase tracking-wider text-(--text-secondary)">{label}</div>
+      <div className="text-caption font-medium   text-(--text-secondary)">{label}</div>
       <div className={`mt-0.5 text-[13px] font-bold tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
@@ -109,23 +108,30 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
     : (report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0);
 
   const routes = report.visitedRoutes ?? [];
-  const pagesVisited = report.pagesVisited ?? routes.length;
 
   return (
     <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
-          <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">
-            <Globe className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-1 truncate text-lg font-bold text-(--text-primary)" title={report.url}>{report.url || 'N/A'}</div>
-         <div className="flex flex-wrap items-center gap-2 text-xs text-(--text-secondary)">
-    {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
-    <span className="inline-flex items-center gap-1.5 py-0.5 rounded text-(--text-secondary) font-mono font-medium ">
-      <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-      <span>{runCode}</span>
-      <CopyButton text={runCode} label="Run ID" />
-    </span>
+          <div className="flex items-center gap-2">
+  <Globe
+    className="w-3.5 h-3.5 shrink-0 text-(--text-tertiary)"
+    aria-hidden="true"
+  />
+  <div
+    className="truncate text-lg font-bold text-(--text-primary)"
+    title={report.url}
+  >
+    {report.url || 'N/A'}
+  </div>
+</div>
+<div className="flex flex-wrap items-center gap-2 text-xs text-(--text-secondary)">
+          {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
+          <span className="inline-flex items-center gap-1.5 py-0.5 rounded text-(--text-secondary) font-mono font-medium ">
+            <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
+            <span>{runCode}</span>
+            <CopyButton text={runCode} label="Run ID" />
+          </span>
 
     {/* Vertical Hairline Divider */}
     <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
@@ -162,14 +168,23 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4 border-t border-(--border-hairline) pt-4 sm:grid-cols-3 lg:grid-cols-6">
-        <StatBlock label="Duration" value={formatDuration(report.duration)} />
-        <StatBlock label="Actions" value={report.metrics?.totalActions ?? 0} />
-        <StatBlock label="Findings" value={findingsTotal} valueClassName={findingsTotal > 0 ? 'text-(--status-critical-fg)' : 'text-(--status-stable-fg)'} />
-        <StatBlock label="Pages" value={pagesVisited} />
-        <StatBlock label="Risk Score" value={report.riskScore ?? 0} valueClassName={riskTheme(report.riskScore ?? 0)} />
-        <StatBlock label="Coverage" value={<CoverageDisplay percentage={report.coverage ?? 0} />} />
-      </div>
+      <div className="mt-5 grid grid-flow-col auto-cols-max gap-6 border-t border-(--border-hairline) pt-4 justify-start">
+  <StatBlock label="Duration" value={formatDuration(report.duration)} />
+  <StatBlock
+    label="Findings"
+    value={findingsTotal}
+    valueClassName={
+      findingsTotal > 0
+        ? "text-(--status-critical-fg)"
+        : "text-(--status-stable-fg)"
+    }
+  />
+  <StatBlock
+    label="Risk Score"
+    value={report.riskScore ?? 0}
+    valueClassName={riskTheme(report.riskScore ?? 0)}
+  />
+</div>
 
       {routes.length > 0 && (
         <div className="mt-4 border-t border-(--border-hairline) pt-3">
@@ -968,16 +983,16 @@ export default function ForensicReport() {
         {/* Back leads the header (left) for intuitive back-navigation flow. */}
         <button
           onClick={() => window.history.back()}
-          className="flex shrink-0 items-center gap-2 rounded px-3 py-1.5 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
          <ArrowLeft className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-         Back to History
+         Back
         </button>
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
         <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
-          <span className="text-[13px] font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
-          <span className="text-[13px] font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
+          <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>
       </header>
 

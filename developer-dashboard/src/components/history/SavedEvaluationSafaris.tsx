@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '../../hooks/useAuth';
-import { CoverageDisplay } from './CoverageProgressBar';
 import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
@@ -89,11 +88,11 @@ export default function SavedEvaluationSafaris() {
       <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
         {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
         <div className="hidden min-w-0 items-center lg:flex">
-          <span className="text-[13px] font-bold tracking-wide text-[var(--text-primary)]">
+          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
             BUGSAFARI
           </span>
           <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="truncate text-[13px] font-semibold text-[var(--text-secondary)]">
+          <span className="truncate text-sm font-semibold text-[var(--text-secondary)]">
             AUTONOMOUS TESTING ENGINE
           </span>
         </div>
@@ -104,10 +103,10 @@ export default function SavedEvaluationSafaris() {
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50"
             title="Refresh history"
           >
-            <RefreshCcw className={`h-5 w-5 text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCcw className={`h-4 w-4 cursor-pointer text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
-            <CircleQuestionMark className="h-5 w-5 text-[var(--text-secondary)]" />
+            <CircleQuestionMark className="h-4 w-4 text-[var(--text-secondary)]" />
           </button>
         </div>
       </header>
@@ -259,7 +258,7 @@ export default function SavedEvaluationSafaris() {
                       wrapper so a wrapped line never starts with a stray bullet. */}
                   <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[var(--text-primary)]">
+                      <div className="truncate text-base font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
@@ -272,18 +271,8 @@ export default function SavedEvaluationSafaris() {
                           <span>{evalItem.date}</span>
                         </span>
 
-                       
                         <span aria-hidden="true">•</span>
-                        <span>
-                          {evalItem.steps} steps,
-                          <CoverageDisplay percentage={evalItem.coverage} />
-                        </span>
-                        {typeof evalItem.pagesVisited === 'number' && (
-                          <>
-                            <span aria-hidden="true">•</span>
-                            <span>{evalItem.pagesVisited} pages</span>
-                          </>
-                        )}
+                        <span>{evalItem.steps} steps</span>
                         <span aria-hidden="true">•</span>
                         <TerminationBadge outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
                       </div>

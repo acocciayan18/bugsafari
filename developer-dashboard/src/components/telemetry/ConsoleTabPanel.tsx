@@ -58,7 +58,7 @@ export function ConsoleFilterBar({ browserConsole = [], filter, onFilterChange }
           type="button"
           onClick={() => onFilterChange(level)}
           aria-pressed={filter === level}
-          className={`px-2 py-1.5 sm:py-0.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+          className={`px-2 py-1.5 cursor-pointer sm:py-0.5 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
             filter === level
               ? 'bg-(--surface-inset) text-(--text-primary)'
               : 'text-(--text-tertiary) hover:text-(--text-secondary)'

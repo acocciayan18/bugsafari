@@ -27,7 +27,7 @@ const TOPICS: HelpTopic[] = [
   },
   {
     id: 'errors',
-    label: 'Errors',
+    label: 'Findings',
     icon: AlertTriangle,
     what: 'Crash reports and incidents captured when the target app throws or breaks unexpectedly.',
     collects: ['Uncaught exceptions and stack traces', 'The 20-step action buffer leading up to the crash', 'Deduplicated occurrence counts per fault'],
@@ -86,9 +86,9 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         title="What do these tabs show?"
-        className="touch-target mr-2 grid h-6 w-6 shrink-0 place-items-center rounded-full text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) sm:mr-3"
+        className="touch-target cursor-pointer mr-2 grid h-6 w-6 shrink-0 place-items-center rounded-full text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) sm:mr-3"
       >
-        <HelpCircle className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+        <HelpCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
       </button>
 
       {isOpen && (

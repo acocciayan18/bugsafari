@@ -104,9 +104,7 @@ export interface SessionHistoryEntry {
   actionTraceCount: number;
   brainSnapshots: number;
   runtimeMs?: number;
-  coveragePercentage?: number;
   maxActions?: number;
-  pagesVisited?: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -230,7 +228,6 @@ export interface ForensicReportResponse {
   /** Precise termination taxonomy; absent on reports predating it. */
   outcome?: RunTerminationOutcome;
   endedReason?: string;
-  coverage: number;
   duration: number; // milliseconds
   riskScore: number;
   findings: {
@@ -255,7 +252,6 @@ export interface ForensicReportResponse {
     aiGenerated?: boolean;
   } | null;
   metrics: {
-    totalActions: number;
     totalBugsFound: number;
     bugsByCategory: Record<string, number>;
   };
@@ -270,8 +266,6 @@ export interface ForensicReportResponse {
   consoleLog?: ForensicConsoleLog[];
   /** Distinct routes/URLs visited this run — session-global page set. */
   visitedRoutes?: string[];
-  /** Count of distinct pages visited (= visitedRoutes.length). */
-  pagesVisited?: number;
 }
 
 // ─────────────────────────────────────────────────────────────

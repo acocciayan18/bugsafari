@@ -26,7 +26,6 @@ export interface EvaluationSafari {
     /** Epoch ms of the run's start — the sortable truth behind the display `date`. */
     startedAtMs: number;
     steps: number;
-    coverage: number;
     severity: 'CRITICAL' | 'HIGH' | 'CLEAR';
     severityCount: number;
     status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED';
@@ -34,13 +33,12 @@ export interface EvaluationSafari {
     outcome?: RunTerminationOutcome;
     endedReason?: string;
     timeElapsed: number;
-    pagesVisited?: number;
     bugsByCategory: Record<string, number>;
     forensicTrace: ForensicTrace;
 }
 
 export type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'CLEAR';
-export type SortField = 'date' | 'coverage' | 'severity' | 'status';
+export type SortField = 'date' | 'severity' | 'status';
 export type SortDirection = 'asc' | 'desc';
 
 export interface SortConfig {
@@ -59,7 +57,6 @@ export const STATUS_ORDER: Record<string, number> = {
 
 export const SORT_FIELD_LABELS: Record<SortField, string> = {
     date: 'Date',
-    coverage: 'Coverage',
     severity: 'Severity',
     status: 'Status',
 };
@@ -104,14 +101,12 @@ export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]):
         date: formatDate(session.startedAt),
         startedAtMs: toEpochMs(session.startedAt),
         steps: session.actionTraceCount,
-        coverage: session.coveragePercentage ?? 0,
         severity: determineSeverity(session.findingCount),
         severityCount: session.findingCount,
         status: SESSION_STATUS_MAP[session.status] ?? 'HALTED',
         outcome: session.outcome,
         endedReason: session.endedReason,
         timeElapsed: session.runtimeMs ?? 0,
-        pagesVisited: session.pagesVisited,
         bugsByCategory: {},
         forensicTrace: { finalBreadcrumbSteps: [], caughtBugs: [] },
     }));
