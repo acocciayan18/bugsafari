@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 import { createRequire } from 'node:module'
+import path from 'node:path'
 
 const { version } = createRequire(import.meta.url)('./package.json')
 
@@ -9,6 +10,15 @@ const { version } = createRequire(import.meta.url)('./package.json')
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@bugsafari/shared': path.resolve(__dirname, '../shared/src'),
+    },
+  },
+  build: {
+    // Ensures build doesn't crash on minor Rolldown worker warnings
+    chunkSizeWarningLimit: 1600,
+  },
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 10)),
