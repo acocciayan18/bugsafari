@@ -3,7 +3,7 @@
 // Run with `npx tsx src/serverUtils.test.ts`. Exits non-zero on first failure.
 
 import assert from 'node:assert/strict';
-import { normalizeTargetUrl } from '../../shared/url.js';
+import { normalizeTargetUrl, isLocalTargetUrl } from '../../shared/url.js';
 import { parseTargetUrl } from './serverUtils.js';
 
 let passed = 0;
@@ -56,6 +56,32 @@ check('parseTargetUrl resolves the body url through the shared rule', () => {
   assert.equal(parseTargetUrl({ url: '' }), null);
   assert.equal(parseTargetUrl({}), null);
   assert.equal(parseTargetUrl(null), null);
+});
+
+check('local and LAN targets are flagged for rejection', () => {
+  for (const host of [
+    'localhost:3000', 'http://localhost/app', '127.0.0.1:8080', 'http://127.1.2.3/',
+    '0.0.0.0:3000', 'http://[::1]:5173/', 'http://dev.local/', '10.0.0.5',
+    '192.168.1.50:4200', '172.16.0.9', '169.254.1.1', 'http://[fe80::1]/',
+  ]) {
+    assert.equal(isLocalTargetUrl(host), true, `expected local: ${host}`);
+  }
+});
+
+check('public targets are not flagged', () => {
+  for (const host of [
+    'example.com', 'https://app.example.com/x', 'https://a.ngrok-free.app',
+    'https://x.trycloudflare.com', '8.8.8.8', 'https://172.15.0.1', 'https://192.169.1.1',
+  ]) {
+    assert.equal(isLocalTargetUrl(host), false, `expected public: ${host}`);
+  }
+});
+
+check('a local target is never rewritten — the URL is preserved verbatim', () => {
+  const typed = 'http://localhost:3000/app?x=1';
+  assert.equal(normalizeTargetUrl(typed), typed);
+  assert.equal(parseTargetUrl({ url: typed }), typed);
+  assert.equal(isLocalTargetUrl(typed), true);
 });
 
 console.log(`\nserverUtils: ${passed} checks passed.`);

@@ -419,9 +419,9 @@ export function registerRoutes(
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
-    // must not touch the synchronous use case's active flag. Target routing is left
-    // to the worker (resolveEngineTargetUrl runs there against the browser's own
-    // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
+    // must not touch the synchronous use case's active flag. The target was already
+    // validated above and travels to the worker unmodified. Guest runs (no userId)
+    // enqueue too; the worker persists nothing.
     if (taskQueue) {
       // Credentials never enter the job payload: BullMQ retains failed jobs in
       // Redis for 24h in plaintext. They travel through the AuthVault instead —

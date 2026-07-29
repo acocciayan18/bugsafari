@@ -449,142 +449,35 @@ Healthy integration indicators:
 - Worker logs show job pickup, processing, completion, or failure details.
 - The dashboard remains connected to the Socket.IO bridge without repeated reconnect loops.
 
-## Testing a Locally Hosted App (Container-to-Host Networking)
+## Testing a Locally Hosted App
 
-The Playwright engine runs **inside a container** (`api` + `worker`). When you point
-BugSafari at `http://localhost:5173`, that `localhost` resolves to the *container*, not
-your machine — so the engine cannot reach a dev server running on the host. Two things
-must line up: the engine must **rewrite** the target, and the container must **resolve**
-the host address it rewrites to.
+**BugSafari cannot test an app on your own machine or LAN.** The engine dials the exact
+URL you enter and never rewrites it, so `http://localhost:5173`, `127.0.0.1`, private
+ranges (`10.x`, `192.168.x`, `172.16-31.x`), and `.local` hostnames are **rejected** with
+a 422 before a run starts. Earlier builds silently rewrote loopback targets to
+`host.docker.internal`; that behaviour is gone, along with `RUN_ENVIRONMENT`,
+`BUGSAFARI_HOST_BRIDGE`, `HOST_GATEWAY_IP`, and the compose `extra_hosts` entries.
 
-### 1. Automatic target rewrite (already wired)
-
-`RUN_ENVIRONMENT` controls how the engine sanitizes target URLs before launch:
-
-| Mode | Behavior |
-| --- | --- |
-| `DOCKER_LOCAL` (default) | Rewrites loopback targets (`localhost`, `127.0.0.0/8`, `::1`, `0.0.0.0`) to `host.docker.internal`. All other hosts pass through unchanged. |
-| `CLOUD_HOSTED` | Preserves public URLs. Rejects private/local addresses with a message to expose them via a tunnel or reverse proxy. |
-
-Set it per environment (defaults to `DOCKER_LOCAL` if unset):
-
-```env
-RUN_ENVIRONMENT=DOCKER_LOCAL
-```
-
-So typing `http://localhost:5173` in the dashboard runs the engine against
-`http://host.docker.internal:5173` — no manual URL juggling needed.
-
-### 2. Resolve `host.docker.internal` inside the container
-
-`docker-compose.local.yml` maps the alias to the host gateway for both `api` and `worker`:
-
-```yaml
-extra_hosts:
-  - "host.docker.internal:${HOST_GATEWAY_IP:-host-gateway}"
-```
-
-`host-gateway` is a Docker keyword resolving to the host; it also works on Podman 4.1+.
-
-### 3. Podman + WSL2 fallback
-
-On Podman under WSL2, `host-gateway` resolves to the **Podman machine**, which is *not*
-the Windows host where your Vite/Next server runs — so `host.docker.internal` may point
-at the wrong place or fail to connect. Two fallbacks, in order of preference:
-
-**Fallback A — pin the gateway IP.** Find the reachable host IP, then set `HOST_GATEWAY_IP`:
-
-Inside the Podman/WSL2 machine, the default route gateway is usually the host:
+To test a local app, expose it through a public tunnel and use the URL the tunnel gives you.
 
 ```bash
-ip route | grep default
-# e.g. "default via 192.168.1.1 ..." — or use your Windows LAN IP (ipconfig)
+# ngrok
+ngrok http 5173
+# -> Forwarding  https://a1b2-203-0-113-7.ngrok-free.app -> http://localhost:5173
+
+# Cloudflare Tunnel
+cloudflared tunnel --url http://localhost:5173
+# -> https://random-words-here.trycloudflare.com
 ```
 
-```env
-# .env at the repo root
-HOST_GATEWAY_IP=192.168.1.50
-```
+Paste the **https://** forwarding URL into the dashboard. Notes:
 
-Restart the backend so Compose re-applies `extra_hosts`:
-
-```bash
-docker compose -f docker-compose.local.yml up -d --force-recreate api worker
-```
-
-**Fallback B — bypass the DNS alias entirely.** If the `extra_hosts` mapping cannot be
-made to work, have the engine rewrite loopback targets **directly** to a host IP:
-
-```env
-BUGSAFARI_HOST_BRIDGE=192.168.1.50
-```
-
-With this set, `http://localhost:5173` is rewritten to `http://192.168.1.50:5173`,
-skipping `host.docker.internal` completely.
-
-### 4. Bind your dev server to all interfaces (0.0.0.0)
-
-Most dev servers listen only on `127.0.0.1` by default. Even with correct host resolution,
-the container cannot connect unless the server also listens on `0.0.0.0` (all interfaces).
-Configure your framework accordingly:
-
-**Vite** — `vite.config.ts` (or `--host` flag):
-
-```ts
-// vite.config.ts
-export default defineConfig({
-  server: {
-    host: true, // listen on 0.0.0.0
-    port: 5173,
-  },
-});
-```
-
-```bash
-# or via CLI
-npm run dev -- --host 0.0.0.0
-```
-
-**Next.js** — pass the hostname flag (Next binds 0.0.0.0 with `-H`):
-
-```jsonc
-// package.json
-{
-  "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3001"
-  }
-}
-```
-
-**Create React App / react-scripts** — set `HOST` before starting:
-
-```bash
-# Git Bash / Linux
-HOST=0.0.0.0 npm start
-```
-
-```powershell
-# Windows PowerShell
-$env:HOST = "0.0.0.0"; npm start
-```
-
-> Windows Firewall may still block inbound connections from the container to the dev
-> server port. If connection times out after the steps above, allow the port (e.g. 5173)
-> for inbound traffic, or confirm the server is listening on `0.0.0.0` with `netstat -ano`.
-
-### 5. Verify container-to-host reachability
-
-Confirm the engine container can actually reach your dev server before running a safari:
-
-`exec` targets replica 1 of the `worker` service; any replica proves the mapping.
-
-```bash
-docker compose -f docker-compose.local.yml exec --index 1 worker \
-  node -e "fetch('http://host.docker.internal:5173').then(r=>console.log('OK',r.status)).catch(e=>console.log('FAIL',e.message))"
-```
-
-`OK 200` means networking is correct. `FAIL` means revisit the gateway mapping (step 3)
-or the dev-server bind address (step 4).
+- Bind your dev server to `0.0.0.0`, not `127.0.0.1`, or the tunnel has nothing to reach
+  (Vite: `npm run dev -- --host 0.0.0.0`).
+- Add the tunnel host to your dev server's allowed hosts if it rejects unknown Host
+  headers (Vite: `server.allowedHosts`; already set to `true` in this repo).
+- A free-tier tunnel URL changes on every restart — re-copy it each session.
+- The tunnel is publicly reachable while open. Shut it down when you are done.
 
 ## Common Debugging Commands
 

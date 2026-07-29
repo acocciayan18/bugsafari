@@ -58,9 +58,8 @@ const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TI
 // Consecutive failed probes before declaring a Critical Server Crash and terminating.
 const HEALTH_CRASH_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_CRASH_THRESHOLD, 3);
 // The health probe runs in the Node process, whose in-container network view can
-// differ from the Playwright browser's (loopback targets are bridged to
-// host.docker.internal for the BROWSER; Podman serves host.containers.internal;
-// DNS/binding differ). A Node probe that can't reach a target the browser CAN
+// differ from the Playwright browser's (proxy settings, DNS resolution, and
+// egress rules are not necessarily shared). A Node probe that can't reach a target the browser CAN
 // would falsely crash the run, so the kill-switch is OFF by default — genuine
 // server failures are still caught browser-side (5xx / requestfailed / pageerror).
 // Enable only where the engine process and the browser share the target's network.

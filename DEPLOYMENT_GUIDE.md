@@ -69,7 +69,7 @@ Operator browser
 
 | Concern | Local | Cloud | Why |
 |---|---|---|---|
-| `RUN_ENVIRONMENT` | `DOCKER_LOCAL` | `CLOUD_HOSTED` | Local rewrites loopback target URLs to `host.docker.internal` so the containerized engine can reach a dev server on your machine. Cloud keeps public URLs and rejects private addresses — there is no host app to reach. |
+| Target URLs | Used verbatim | Used verbatim | No difference by design. The engine dials exactly what the operator entered, in every environment; local/LAN targets are rejected rather than rewritten. |
 | Source code | Bind-mounted, `tsc-watch` recompiles on edit | Baked into the image at build | Local wants instant feedback. Prod wants an immutable, reproducible artifact. |
 | Build | `dockerfile_inline` in `docker-compose.local.yml` | root `Dockerfile` | Local installs dev deps and runs `npm run dev`. Prod runs the compiled `dist/`. |
 | `NODE_ENV` | `development` | `production` | Prod enables JWT boot guards and sets Mongo `autoIndex:false`. |
@@ -125,7 +125,6 @@ Minimum to get running:
 MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>/bugsafari?appName=Cluster0
 BUGSAFARI_AUTH_KEY=<64 hex chars>
 JWT_SECRET=bugsafari-local-development-secret
-RUN_ENVIRONMENT=DOCKER_LOCAL
 ```
 
 Generate the auth key:
@@ -182,26 +181,25 @@ npm run dev:server                          # api, tsc-watch + restart
 npm run dev:worker -w testing-core          # worker
 ```
 
-Set `REDIS_URL=redis://localhost:6379` and `RUN_ENVIRONMENT=LOCAL` in that shell. Stop the containerized api first or port 3000 collides.
+Set `REDIS_URL=redis://localhost:6379` in that shell. Stop the containerized api first or port 3000 collides.
 
 ### 2.7 Testing a locally-hosted target app
 
-The engine runs inside a container, so a target of `http://localhost:3001` means *the container itself*, not your machine. Under `RUN_ENVIRONMENT=DOCKER_LOCAL` the engine rewrites loopback targets to `host.docker.internal`, mapped via `extra_hosts` in the compose file.
+**Not supported directly.** A target URL is used exactly as entered and is never rewritten, so `localhost`, `127.0.0.1`, private ranges (`10.x`, `192.168.x`, `172.16-31.x`), and `.local` hosts are rejected with `422 TARGET_NOT_PUBLIC` before a run starts. The dashboard blocks them client-side too, with the same message.
 
-Two things break this:
-
-1. **Your dev server binds to 127.0.0.1 only.** Bind to `0.0.0.0` instead (Vite: `--host 0.0.0.0`).
-2. **`host-gateway` resolves to the Podman VM, not Windows.** Set an explicit IP in the root `.env`:
+Expose the app through a public tunnel and test the tunnel URL:
 
 ```bash
-HOST_GATEWAY_IP=192.168.1.50        # your LAN IP; or BUGSAFARI_HOST_BRIDGE=192.168.1.50
+ngrok http 5173
+# -> https://a1b2-203-0-113-7.ngrok-free.app
+
+cloudflared tunnel --url http://localhost:5173
+# -> https://random-words-here.trycloudflare.com
 ```
 
-Verify from inside a container:
+Bind your dev server to `0.0.0.0` (Vite: `--host 0.0.0.0`) or the tunnel has nothing to reach. Free-tier tunnel URLs rotate on restart, and the tunnel is publicly reachable while open — close it when finished.
 
-```bash
-podman exec -it bugsafari-api sh -c "curl -sS -o /dev/null -w '%{http_code}' http://host.docker.internal:3001"
-```
+> Removed in this change: `RUN_ENVIRONMENT`, `BUGSAFARI_HOST_BRIDGE`, `HOST_GATEWAY_IP`, and the compose `extra_hosts` entries. Earlier builds bridged loopback targets to `host.docker.internal`, which meant the address in your reports was not the address that was tested.
 
 ### 2.8 Database setup and migrations
 
@@ -255,7 +253,7 @@ Required — compose refuses to start without them (`${VAR:?}`):
 | `BUGSAFARI_AUTH_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `FRONTEND_URL` | `https://your-dashboard-domain` |
 
-> **Never copy the repo's root `.env` to the droplet.** Compose interpolation gives file values priority over the compose defaults, so its `DOCKER_LOCAL`, `localhost:5173`, and dev `JWT_SECRET` would win. With `NODE_ENV=production` that JWT secret is the exact string `authConfig.ts` fatals on — the api would refuse to boot.
+> **Never copy the repo's root `.env` to the droplet.** Compose interpolation gives file values priority over the compose defaults, so its `localhost:5173` and dev `JWT_SECRET` would win. With `NODE_ENV=production` that JWT secret is the exact string `authConfig.ts` fatals on — the api would refuse to boot.
 
 The api hard-fails at startup if `JWT_SECRET` is absent, equals the dev fallback, is shorter than 32 characters, or looks like a dev placeholder. That is intentional: a predictable signing key means forgeable sessions.
 
@@ -277,8 +275,8 @@ docker compose -f docker-compose.prod.yml up --build -d
 Verify the resolved environment before starting, because this is where a stray `.env` value shows up:
 
 ```bash
-docker compose -f docker-compose.prod.yml config | grep -E "RUN_ENVIRONMENT|NODE_ENV|FRONTEND_URL"
-# expect: CLOUD_HOSTED / production / https://<your domain>
+docker compose -f docker-compose.prod.yml config | grep -E "NODE_ENV|FRONTEND_URL"
+# expect: production / https://<your domain>
 ```
 
 Then sync indexes once (prod runs `autoIndex:false`):
@@ -468,8 +466,8 @@ Work top-down:
 4. Logs for `MongoServerError` / `MongooseServerSelectionError` — Atlas reachable, IP whitelisted?
 5. `docker stats` — anything pinned at its memory limit?
 6. `df -h` — disk full?
-7. `docker compose config | grep RUN_ENVIRONMENT` — resolved to `CLOUD_HOSTED`?
-8. Worker logs for Playwright launch failures.
+7. Worker logs for Playwright launch failures.
+8. Target actually reachable from the droplet? `docker compose exec worker node -e "fetch('<target>').then(r=>console.log(r.status)).catch(e=>console.log('FAIL',e.message))"`
 
 ---
 
@@ -566,14 +564,20 @@ A bare `npm ci` fails resolving the workspace that was never copied.
 
 `.dockerignore` must exclude `node_modules`, `dist`, and `.env`. Without it, Windows-native `node_modules` overwrite the Linux install from `npm ci`, stale `dist/` shadows the in-image build, and `testing-core/.env` gets baked into a layer.
 
-### Runs fail immediately with a navigation error (cloud)
+### `422 TARGET_NOT_PUBLIC` when starting a run
 
-Almost always `RUN_ENVIRONMENT`. Valid values are **only** `DOCKER_LOCAL` and `CLOUD_HOSTED`. Anything else — including the plausible-looking `CLOUD` — logs a warning and falls back to `DOCKER_LOCAL`, which rewrites every target to `host.docker.internal`. That host does not exist on a droplet.
+The target resolves to a local or private address. This is enforced, not advisory: the URL is never rewritten to reach a host app. Expose the target publicly (ngrok, Cloudflare Tunnel, reverse proxy) and submit the public URL. See §2.7.
+
+### Runs fail immediately with a navigation error
+
+The target passed the public-address check but is not reachable from the droplet. Confirm from inside a worker — this is the engine's actual network view:
 
 ```bash
-docker compose -f docker-compose.prod.yml config | grep RUN_ENVIRONMENT
-docker compose -f docker-compose.prod.yml logs api | grep "Unknown RUN_ENVIRONMENT"
+docker compose -f docker-compose.prod.yml exec --index 1 worker \
+  node -e "fetch('https://your-target').then(r=>console.log('OK',r.status)).catch(e=>console.log('FAIL',e.message))"
 ```
+
+Common causes: a tunnel that has since closed (free-tier URLs rotate on restart), DNS that resolves only inside your network, or the target firewalling the droplet's IP.
 
 ### Runs stay QUEUED forever
 
