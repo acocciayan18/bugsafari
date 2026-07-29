@@ -3,14 +3,14 @@ import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
 import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType, TimeSyncPayload } from '../../../../shared/types.js';
 import { ACCESSIBILITY_EVENT, TIME_SYNC_EVENT } from '../../../../shared/types.js';
-import { socketCorsOptions } from '../../presentation/middleware/corsPolicy.js';
 
 export class TelemetryHub {
   private readonly io: Server;
 
 
   constructor(server: HttpServer) {
-    this.io = new Server(server, { cors: socketCorsOptions });
+    // CORS headers come from Caddy (see deploy/Caddyfile), never from here.
+    this.io = new Server(server);
 
     this.io.on('connection', (socket) => {
       console.log(`[Socket] Dashboard connected: ${socket.id}`);

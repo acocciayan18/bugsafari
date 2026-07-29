@@ -1,0 +1,55 @@
+# BugSafari API reverse proxy — the ONLY emitter of Access-Control-* headers.
+# testing-core deliberately ships no CORS middleware (see testing-core/src/index.ts).
+# If you re-add CORS in Express, browsers will see duplicated headers and reject
+# every request; change it here instead.
+#
+# Deploy: /etc/caddy/Caddyfile on the API host, then `caddy validate` + `caddy reload`.
+
+bugsafari.duckdns.org {
+	# Allow-list. Group 1 is the exact production dashboard; group 2 covers Vercel
+	# preview deployments. Anchored at both ends so bugsafari.vercel.app.evil.com
+	# and http:// downgrades do not match. Add local origins here ONLY if you point
+	# a dev dashboard at this host — normal local dev goes through the Vite proxy
+	# same-origin and needs no CORS at all.
+	@allowed_origin header_regexp origin Origin ^https://(bugsafari\.vercel\.app|[a-z0-9-]+\.vercel\.app)$
+
+	# Preflight: answered by Caddy, never forwarded upstream. Both conditions must
+	# hold, so an OPTIONS from an unlisted origin falls through to the proxy and
+	# gets no CORS headers.
+	@preflight {
+		method OPTIONS
+		header_regexp origin Origin ^https://(bugsafari\.vercel\.app|[a-z0-9-]+\.vercel\.app)$
+	}
+	handle @preflight {
+		header {
+			Access-Control-Allow-Origin "{re.origin.0}"
+			Access-Control-Allow-Credentials "true"
+			Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+			Access-Control-Allow-Headers "Content-Type, Authorization"
+			Access-Control-Max-Age "86400"
+			Vary Origin
+		}
+		respond 204
+	}
+
+	handle {
+		# `defer` applies these after the upstream response is written, so the echoed
+		# origin wins over anything the app might emit. Credentials mode forbids the
+		# wildcard, hence the echo. Vary: Origin keeps caches from serving one
+		# origin's response to another.
+		header @allowed_origin {
+			Access-Control-Allow-Origin "{re.origin.0}"
+			Access-Control-Allow-Credentials "true"
+			Vary Origin
+			defer
+		}
+
+		# Caddy proxies WebSocket upgrades and forwards X-Forwarded-For by default —
+		# no header_up needed. Exploration runs are long-lived, hence the timeout.
+		reverse_proxy 127.0.0.1:3000 {
+			transport http {
+				read_timeout 600s
+			}
+		}
+	}
+}

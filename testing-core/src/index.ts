@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import { createServer } from 'node:http';
-import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { readPort } from './serverUtils.js';
@@ -19,7 +18,6 @@ import { reapExpiredSessionChildren } from './infrastructure/database/retentionR
 import { syncAllIndexes } from './infrastructure/database/indexSync.js';
 import { backfillRunIds } from './infrastructure/database/runIdBackfill.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
-import { corsOptions, socketCorsOptions, allowedOrigins } from './presentation/middleware/corsPolicy.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
@@ -35,14 +33,17 @@ const app = express();
 // Rate limits key on req.ip, so the proxy hop count must be declared explicitly —
 // a blanket `true` would let a client forge X-Forwarded-For and evade its budget.
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
-// Explicit env-driven allow-list (CORS_ALLOWED_ORIGINS / FRONTEND_URL). The
-// dashboard sends credentials, which a wildcard origin cannot serve.
-app.use(cors(corsOptions));
+// No CORS middleware here by design: the Caddy reverse proxy owns origin
+// validation and every Access-Control-* header (see deploy/Caddyfile). A second
+// emitter would duplicate the headers, which browsers reject. Locally the Vite
+// dev proxy makes /api same-origin, so no CORS is involved at all.
 // Default 100kb is too small for /api/history/save-session's findings array (stack traces + reproduction steps accumulate across a run and were observed hitting 413).
 app.use(express.json({ limit: '2mb' }));
 
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: socketCorsOptions });
+// Socket.IO adds no CORS headers unless configured — left unset so Caddy stays
+// the only emitter for the polling handshake too.
+const io = new Server(httpServer);
 
 // Socket handlers are registered after the queue is built (below) so the
 // distributed queue-subscribe handler can be wired when BUGSAFARI_USE_QUEUE=1.
@@ -133,7 +134,6 @@ app.use(errorHandler);
 
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
-  console.log(`[BugSafari] CORS allow-list: ${allowedOrigins.join(', ') || '(none — set CORS_ALLOWED_ORIGINS)'}`);
 });
 
 // Periodic orphan sweep. The TTL index expires abandoned sessions but MongoDB

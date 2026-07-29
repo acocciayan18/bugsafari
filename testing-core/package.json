@@ -24,7 +24,6 @@
     "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.78.0",
-    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^5.10.1",
@@ -38,7 +37,6 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^20.19.41",

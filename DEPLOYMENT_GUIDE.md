@@ -171,7 +171,7 @@ The dashboard runs on the **host**, not in a container:
 npm run dev:client        # -> http://localhost:5173
 ```
 
-Vite proxies `/api` and `/socket.io` to `localhost:3000`, forwarding both `cookie` and `authorization` headers, and upgrades the WebSocket. So leaving `VITE_BUGSAFARI_API_URL` empty (same-origin) is the cleanest local setup.
+Vite proxies `/api` and `/socket.io` to `localhost:3000`, forwarding both `cookie` and `authorization` headers, and upgrades the WebSocket. So `VITE_BUGSAFARI_API_URL` must be left **empty** locally. It is no longer merely the cleanest option: the backend emits no CORS headers (Caddy owns them, and Caddy is production-only), so pointing the dev dashboard straight at `http://localhost:3000` is cross-origin with nothing to answer the preflight.
 
 ### 2.6 Running the backend outside a container
 
@@ -233,7 +233,7 @@ Target: a single DigitalOcean droplet running Docker Compose, MongoDB on Atlas, 
 | Droplet | **4 GB RAM minimum**, 2 vCPU | Compose limits: worker 1.5 GB × replicas, api 1 GB, redis 256 MB. 2 workers ≈ 4.3 GB ceiling. Go 8 GB to scale past 2 workers. |
 | Docker Compose | **v2** | The legacy v1 Python `docker-compose` silently ignores the whole `deploy:` block, dropping both `replicas` and the memory limits. Check with `docker compose version`. |
 | MongoDB Atlas | M0 works; M10+ for real load | Whitelist the droplet's IP under Network Access. |
-| Reverse proxy | nginx or Caddy on the host | Terminates TLS, proxies to `127.0.0.1:3000`, upgrades WebSockets. |
+| Reverse proxy | Caddy on the host (`deploy/Caddyfile`) | Terminates TLS, proxies to `127.0.0.1:3000`, upgrades WebSockets, owns all CORS headers. |
 | DNS | A record → droplet | Needed before issuing certificates. |
 | Dashboard host | Any static host | Not deployed by the prod compose file. |
 
@@ -254,7 +254,6 @@ Required — compose refuses to start without them (`${VAR:?}`):
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `BUGSAFARI_AUTH_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `FRONTEND_URL` | `https://your-dashboard-domain` (required — CORS allow-list + password-reset links) |
-| `CORS_ALLOWED_ORIGINS` | optional extra origins, comma-separated, e.g. `https://bugsafari.vercel.app,https://*.vercel.app` |
 
 > **Never copy the repo's root `.env` to the droplet.** Compose interpolation gives file values priority over the compose defaults, so its `DOCKER_LOCAL`, `localhost:5173`, and dev `JWT_SECRET` would win. With `NODE_ENV=production` that JWT secret is the exact string `authConfig.ts` fatals on — the api would refuse to boot.
 
@@ -297,19 +296,15 @@ docker compose -f docker-compose.prod.yml ps    # api should read "healthy"
 
 ### 3.4 Reverse proxy
 
-The API speaks plain HTTP and binds to loopback only. nginx sketch — the `Upgrade`/`Connection` headers are mandatory or Socket.IO silently falls back to long-polling:
+The API speaks plain HTTP and binds to loopback only. Caddy terminates TLS, proxies to `127.0.0.1:3000`, upgrades WebSockets, **and owns CORS** — the checked-in config is `deploy/Caddyfile`; copy it to `/etc/caddy/Caddyfile`:
 
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_read_timeout 600s;      # exploration runs are long-lived
-}
+```bash
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
 ```
+
+The `Upgrade`/`Connection` headers in it are mandatory or Socket.IO silently falls back to long-polling. To add or remove an allowed dashboard origin, edit the two `header_regexp` lines — the backend has no CORS knob to turn.
 
 `TRUST_PROXY_HOPS=1` must match the number of proxies in front. It is set explicitly rather than `trust proxy: true` because a blanket trust lets a client forge `X-Forwarded-For` and evade the rate limiter.
 
@@ -392,7 +387,7 @@ Restart Docker afterwards. For retained logs, ship to a collector rather than re
 
 Already handled in code — do not "fix" these without reading the rationale:
 
-- **CORS is an explicit allow-list** (`testing-core/src/presentation/middleware/corsPolicy.ts`), shared by Express and both Socket.IO servers. Origins come from `CORS_ALLOWED_ORIGINS` (comma-separated) plus `FRONTEND_URL`; `localhost` dev origins are added only when `NODE_ENV !== production`. `credentials: true` is on, so a wildcard origin is not an option — the browser rejects `*` with credentialed requests. An entry may be an exact origin or one wildcard label (`https://*.vercel.app`) for rotating preview deploys. Unknown origins get no CORS header (browser blocks) rather than a 5xx; requests with no `Origin` (server-to-server, health checks) pass.
+- **CORS lives in Caddy only** (`deploy/Caddyfile`). Express ships no `cors` middleware and neither Socket.IO server sets a `cors` option — two emitters produce duplicate `Access-Control-*` headers, which browsers reject outright. Caddy matches the `Origin` against an anchored allow-list regex (exact prod dashboard + `*.vercel.app` previews), echoes it back with `Access-Control-Allow-Credentials: true` (credentials mode forbids `*`), answers preflight with 204, and sends `Vary: Origin` so caches never cross origins. An unlisted origin simply gets no header and the browser blocks it — no 5xx. Requests with no `Origin` (server-to-server, health checks) are untouched. **Do not re-add `app.use(cors())`.**
 - **`trust proxy` is an explicit hop count**, not `true`. See §3.4.
 - **JWT boot guards** reject weak/dev secrets in production.
 - **Chromium runs with `--no-sandbox`** inside the container. This is normal for containerized Playwright but means the container boundary is the only isolation between a hostile target page and the worker. Do not point BugSafari at untrusted targets from a droplet that hosts anything else.
