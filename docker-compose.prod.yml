@@ -80,7 +80,7 @@ services:
     # host and proxy to 127.0.0.1:3000 (TRUST_PROXY_HOPS=1 matches that one hop).
     # Binding 0.0.0.0 would expose JWTs and run telemetry unencrypted.
     ports:
-      - "159.223.136.105:3000:3000"
+      - "0.0.0.0:3000:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
