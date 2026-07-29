@@ -3,16 +3,31 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "outDir": "./dist",
-    "rootDir": "..",
-    "declaration": true,
-    "skipLibCheck": true,
-    "types": ["node"]
+    "ignoreDeprecations": "6.0",
+
+    /* Path Aliases */
+    "paths": {
+      "@bugsafari/shared": ["../shared/types.ts"],
+      "@bugsafari/shared/*": ["../shared/*"]
+    }
   },
-  "include": ["src/**/*.ts", "../shared/types.ts", "src/domain/**/*.ts"]
+  "include": [
+    "src/**/*",
+    "../shared/types.ts",
+    "../shared/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "../shared/**/*.test.ts",
+    "../shared/**/*.spec.ts"
+  ]
 }

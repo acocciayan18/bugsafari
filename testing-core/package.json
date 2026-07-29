@@ -32,7 +32,8 @@
     "mongoose": "^8.24.0",
     "nodemailer": "^9.0.3",
     "playwright": "^1.59.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "@bugsafari/shared": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

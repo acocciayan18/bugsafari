@@ -3,18 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "workspaces": [
+    "shared",
     "testing-core",
-    "developer-dashboard",
-    "shared"
+    "developer-dashboard"
   ],
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "build": "npm run build -w testing-core && npm run build -w developer-dashboard",
+    "build": "npm run build -w shared --if-present && npm run build -w testing-core && npm run build -w developer-dashboard",
     "build:dashboard": "npm run build -w developer-dashboard",
-    "typecheck": "npm run typecheck -w shared && npm run typecheck -w testing-core && npm run build -w developer-dashboard",
-    "test": "npm run test -w shared && npm run test -w testing-core && npm run test -w developer-dashboard",
+    "typecheck": "npm run typecheck -w shared --if-present && npm run typecheck -w testing-core && npm run build -w developer-dashboard",
+    "test": "npm run test -w shared --if-present && npm run test -w testing-core && npm run test -w developer-dashboard",
     "dev:server": "npm run dev -w testing-core",
     "dev:client": "npm run dev -w developer-dashboard"
   },

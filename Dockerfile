@@ -8,22 +8,21 @@ COPY package*.json ./
 COPY testing-core/package.json ./testing-core/package.json
 COPY shared/package.json ./shared/package.json
 
-# 2. Scoped install: developer-dashboard is a declared workspace but is never copied
-# into this image, so a bare `npm ci` fails resolving it.
-RUN npm ci --workspace testing-core --include-workspace-root
+# 2. FIXED: Include BOTH shared and testing-core so npm creates node_modules/@bugsafari/shared
+RUN npm ci --workspace testing-core --workspace shared --include-workspace-root
 
-# 3. Copy the rest of your local codebase into the container filesystem space
+# 3. Copy source files for shared and testing-core
 COPY testing-core ./testing-core
 COPY shared ./shared
 
-# 4. Compile our shared models FIRST before the brain loops
+# 4. Compile shared package FIRST
 RUN npm run build --workspace shared --if-present
 
-# 5. Build the TypeScript scripts inside testing-core into executable JS targets
+# 5. Build testing-core engine
 RUN npm run build --workspace testing-core
 
-# Expose our core REST / WebSocket API port to the local host machine layout
+# Expose REST / WebSocket API port
 EXPOSE 3000
 
-# 6. FIXED EXECUTION ENTRYPOINT PATH: Points to the true nested dist bundle
+# 6. Execution entrypoint
 CMD ["node", "testing-core/dist/testing-core/src/index.js"]
