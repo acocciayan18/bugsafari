@@ -155,7 +155,7 @@ podman compose -f docker-compose.local.yml up --build -d
 ## GIT
 
 git init
-git add .
+git add .developer-dashboard/types.ts
 git commit -m "infiltration-matrix audit"
 git checkout -b dev
 git push --set-upstream origin dev

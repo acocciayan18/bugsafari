@@ -25,6 +25,7 @@ import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } f
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
+import { isLocalTargetUrl, LOCAL_TARGET_MESSAGE } from '../../../../shared/url.js';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 
@@ -196,9 +197,12 @@ export default function ClinicalForensicsDashboard({
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   const authIncomplete = isTargetAuthIncomplete(authDraft);
+  // Local targets are refused outright, never bridged to a container-host alias:
+  // the engine runs remotely and dials exactly what is typed here.
+  const targetIsLocal = isLocalTargetUrl(urlInput);
 
   const handleInitialize = () => {
-    if (!onStartInitialization || authIncomplete) return;
+    if (!onStartInitialization || authIncomplete || targetIsLocal) return;
     // The draft is deliberately retained so reopening the config modal — or
     // re-running against the same target — shows what the operator entered.
     // It lives only in component state: never persisted, gone on page reload.
@@ -380,21 +384,36 @@ export default function ClinicalForensicsDashboard({
                 if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
               }}
               disabled={isActiveSession}
-              className="w-full h-11 border border-(--border-strong) rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)"
-              placeholder="Enter target URL to initiate..."
+              aria-invalid={targetIsLocal || undefined}
+              aria-describedby="target-url-hint"
+              className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${targetIsLocal ? 'border-(--status-critical-fg) focus:ring-(--status-critical-fg)' : 'border-(--border-strong) focus:ring-(--border-focus)'}`}
+              placeholder="https://your-public-url.example.com"
             />
           </div>
 
           <button
             onClick={handleInitialize}
-            disabled={isActiveSession || authIncomplete}
-            title={authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
+            disabled={isActiveSession || authIncomplete || targetIsLocal}
+            title={targetIsLocal ? LOCAL_TARGET_MESSAGE : authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
             className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
           </button>
         </div>
+
+        {/* Local targets are rejected, not rewritten — say so before the operator submits. */}
+        {!isActiveSession && (
+          <p
+            id="target-url-hint"
+            role={targetIsLocal ? 'alert' : undefined}
+            className={`text-xs font-sans leading-relaxed ${targetIsLocal ? 'text-(--status-critical-fg)' : 'text-(--text-tertiary)'}`}
+          >
+            {targetIsLocal
+              ? LOCAL_TARGET_MESSAGE
+              : 'The engine runs remotely, so the target must be reachable from the public internet. For a local app, expose it with ngrok or Cloudflare Tunnel and paste that URL.'}
+          </p>
+        )}
 
       </div>
 

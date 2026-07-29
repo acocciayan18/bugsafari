@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
-import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
+import { parseTargetUrl } from '../../serverUtils.js';
+import { isLocalTargetUrl, LOCAL_TARGET_MESSAGE } from '../../../../shared/url.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
@@ -377,6 +378,15 @@ export function registerRoutes(
       return;
     }
 
+    // Local targets are refused, never rewritten — the address the operator typed is
+    // the address the engine dials. Checked HERE, ahead of the queue branch, so the
+    // operator gets an immediate error instead of a job that fails inside a worker.
+    if (isLocalTargetUrl(targetUrl)) {
+      console.warn(`[API]  Local target rejected: ${targetUrl}`);
+      response.status(422).json({ error: 'TARGET_NOT_PUBLIC', message: LOCAL_TARGET_MESSAGE });
+      return;
+    }
+
     // Resolve the operator-selected Unified Infiltration Profile into gated scenario
     // categories BEFORE the queue branch, so a distributed run carries the same gate
     // as a synchronous one (otherwise the worker defaults to all testing types).
@@ -539,23 +549,6 @@ export function registerRoutes(
 
     // (optimizationSettings and selectedScenarios resolved above, before the queue branch.)
 
-    // Route the target for the active RUN_ENVIRONMENT before launch: bridge
-    // loopback in DOCKER_LOCAL, or reject an unreachable private address in
-    // CLOUD_HOSTED with a clear operator message. Reject BEFORE accepting.
-    const routing = resolveEngineTargetUrl(targetUrl);
-    if (!routing.ok) {
-      console.warn(`[API]  Target rejected: ${routing.message}`);
-      // Roll back the slot claimed above — we're bailing out without ever
-      // calling execute(), so nothing else will reset it to false.
-      useCase.releaseActivation();
-      response.status(422).json({ error: routing.message });
-      return;
-    }
-    const engineUrl = routing.url;
-    if (routing.rewritten) {
-      console.log(`[API]  Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
-    }
-
     // Server-issued run token: returned to the client (stored client-side) so a
     // returning socket — including a guest after a full refresh — can prove
     // ownership and re-attach to this exact run. The public RUN- code is minted
@@ -579,13 +572,13 @@ export function registerRoutes(
     });
 
     console.log(`[API] Accepting safari launch for: ${targetUrl} (runToken=${runToken}, runCode=${runCode})`);
-    // Operator sees their original URL; the engine dials the routed one.
+    // One address end to end: what the operator sees is what the engine dials.
     response.json({ accepted: true, url: targetUrl, runToken, runId: runCode });
     console.log(`[API] Starting safari in background...`);
     // Fire-and-forget, but never unhandled: a rejection here means the run died
     // before its own finally could report anything, so we must publish the
     // terminal handshake ourselves or the dashboard waits forever.
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
+    void useCase.execute(targetUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[API]  Safari run ${runToken} failed to start:`, message);

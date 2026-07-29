@@ -16,6 +16,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Path Aliases for Monorepo Shared Workspace (Modern TS 6+ Format) */
+    "paths": {
+      "@bugsafari/shared": ["../shared/src/index.ts"],
+      "@bugsafari/shared/*": ["../shared/src/*"]
+    },
+
     /* Type-safety: strict contract parity with testing-core */
     "strict": true,
 
@@ -24,6 +30,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "../shared/**/*"
+  ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

@@ -1,7 +1,7 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
 import { defaultOptimizationSettings, isActionableNetworkStatus } from '../../../../shared/types.js';
-import { normalizeTargetUrl } from '../../../../shared/url.js';
+import { normalizeTargetUrl, isLocalTargetUrl, LOCAL_TARGET_MESSAGE } from '../../../../shared/url.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
@@ -36,6 +36,13 @@ export async function startRun(
     const resolvedUrl = normalizeTargetUrl(targetUrl);
     if (!resolvedUrl) {
         toast.error('Enter a valid http(s) URL to start a session.');
+        return;
+    }
+
+    // Caught client-side so the operator gets the tunnel guidance instantly; the API
+    // enforces the same rule (422 TARGET_NOT_PUBLIC) for non-dashboard callers.
+    if (isLocalTargetUrl(resolvedUrl)) {
+        toast.error(LOCAL_TARGET_MESSAGE);
         return;
     }
 

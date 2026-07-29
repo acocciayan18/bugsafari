@@ -11,7 +11,7 @@ import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { RunRegistry } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
-import { resolveEngineTargetUrl } from '../../serverUtils.js';
+import { isLocalTargetUrl, LOCAL_TARGET_MESSAGE } from '../../../../shared/url.js';
 
 export interface SafariWorkerRuntime {
   worker: Worker<SafariTaskPayload>;
@@ -150,22 +150,17 @@ async (job) => {
         ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
-      // Route the target for the active RUN_ENVIRONMENT before launch: bridge
-      // loopback in DOCKER_LOCAL, or fail the job with a clear message in
-      // CLOUD_HOSTED when the target is a private/unreachable address.
-      const routing = resolveEngineTargetUrl(payload.targetUrl);
-      if (!routing.ok) {
-        console.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
-        throw new Error(routing.message);
-      }
-      const engineUrl = routing.url;
-      if (routing.rewritten) {
-        console.log(`[SafariWorker]  Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
+      // The API already refuses local targets at submit; re-checked here because a
+      // job enqueued by an older build may still be sitting in Redis. Never rewritten
+      // — the job runs against exactly the address the operator entered.
+      if (isLocalTargetUrl(payload.targetUrl)) {
+        console.error(`[SafariWorker] local target rejected id=${job.id ?? 'unknown'}: ${payload.targetUrl}`);
+        throw new Error(LOCAL_TARGET_MESSAGE);
       }
 
       // Bind the run to the SAME run token the client received at enqueue, so the
       // worker's telemetry room (run:${runToken}) matches the room the dashboard joined.
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runToken=${payload.runToken} runCode=${payload.runCode} target=${engineUrl}`);
+      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runToken=${payload.runToken} runCode=${payload.runCode} target=${payload.targetUrl}`);
       // Throttled snapshot publishing: mirrors the live SessionManager replay
       // buffer into Redis so /api/session/active can serve it from the API process.
       // Match on the token (snapshot.runToken) — snapshot.runId is the public code.
@@ -195,7 +190,7 @@ async (job) => {
         // job payload; undefined would default the gate to all testing types and
         // the timebox to 600s regardless of what the operator configured. runCode is
         // threaded so the worker-created session doc reuses the enqueue-minted code.
-        await useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runToken, targetAuth ?? undefined, payload.runCode);
+        await useCase.execute(payload.targetUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runToken, targetAuth ?? undefined, payload.runCode);
         succeeded = true;
       } finally {
         clearInterval(snapshotTimer);
@@ -218,7 +213,7 @@ async (job) => {
           }
         }
       }
-      console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
+      console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${payload.targetUrl}`);
     },
     {
       connection: {
