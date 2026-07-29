@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm ci --include-workspace-root --workspace developer-dashboard --workspace shared",
+  "installCommand": "npm install --no-audit --no-fund --include-workspace-root --workspace developer-dashboard --workspace shared",
   "buildCommand": "npm run build --workspace developer-dashboard",
   "outputDirectory": "developer-dashboard/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
