@@ -160,6 +160,11 @@ git commit -m "infiltration-matrix audit"
 git checkout -b dev
 git push --set-upstream origin dev
 
+git add .
+git commit -m "infiltration-matrix audit"
+git checkout dev
+git push origin dev --force
+
 
 
 git init
