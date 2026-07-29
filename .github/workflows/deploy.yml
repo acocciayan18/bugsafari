@@ -1,0 +1,36 @@
+name: Deploy BugSafari to DigitalOcean
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+
+      - name: Add droplet to known_hosts
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$DROPLET_HOST" >> ~/.ssh/known_hosts
+
+      - name: Execute Remote Deploy Commands
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.DROPLET_HOST }} << 'EOF'
+            cd /var/www/bugsafari
+            git fetch origin dev
+            git checkout dev
+            git pull origin dev
+            docker compose -f docker-compose.local.yml up -d --build
+          EOF
