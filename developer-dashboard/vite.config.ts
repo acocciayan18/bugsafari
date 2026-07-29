@@ -5,21 +5,19 @@ import { createRequire } from 'node:module'
 
 const { version } = createRequire(import.meta.url)('./package.json')
 
+// shared/ lives outside this workspace root; resolve it from an absolute path
+const sharedDir = fileURLToPath(new URL('../shared', import.meta.url))
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: [
-      // 1. Direct barrel import: import { ... } from '@bugsafari/shared'
-      {
-        find: '@bugsafari/shared',
-        replacement: fileURLToPath(new URL('../shared/types.ts', import.meta.url)),
-      },
-      // 2. Subpath imports: import { ... } from '@bugsafari/shared/types/telemetry'
-      {
-        find: /^@bugsafari\/shared\/(.*)$/,
-        replacement: fileURLToPath(new URL('../shared/$1', import.meta.url)),
-      },
+      // barrel: '@bugsafari/shared'
+      { find: /^@bugsafari\/shared$/, replacement: `${sharedDir}/types.ts` },
+      // subpaths, with or without the NodeNext '.js' suffix
+      { find: /^@bugsafari\/shared\/(.*?)(?:\.js)?$/, replacement: `${sharedDir}/$1.ts` },
     ],
   },
   build: {
@@ -32,6 +30,7 @@ export default defineConfig({
   },
   server: {
     allowedHosts: true,
+    fs: { allow: ['.', sharedDir] },
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:3000',

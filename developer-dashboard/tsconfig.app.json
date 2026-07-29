@@ -16,7 +16,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Subpath Path Aliases */
+    /* Subpath Path Aliases - must mirror resolve.alias in vite.config.ts */
     "paths": {
       "@bugsafari/shared": ["../shared/types.ts"],
       "@bugsafari/shared/*": ["../shared/*"]
@@ -31,5 +31,10 @@
     "src",
     "../shared/**/*"
   ],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "../shared/**/*.test.ts",
+    "../shared/scripts/**"
+  ]
 }
