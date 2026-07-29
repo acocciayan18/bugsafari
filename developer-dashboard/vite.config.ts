@@ -9,16 +9,9 @@ const { version } = createRequire(import.meta.url)('./package.json')
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: [
-      {
-        find: '@bugsafari/shared',
-        replacement: fileURLToPath(new URL('../shared/types.ts', import.meta.url)),
-      },
-      {
-        find: /^@bugsafari\/shared\/(.*)$/,
-        replacement: fileURLToPath(new URL('../shared/types/$1', import.meta.url)),
-      },
-    ],
+    alias: {
+      '@bugsafari/shared': fileURLToPath(new URL('../shared/types.ts', import.meta.url)),
+    },
   },
   build: {
     outDir: 'dist',
