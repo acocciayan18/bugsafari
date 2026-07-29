@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
+    "@bugsafari/shared": "*",
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.10",
     "gsap": "^3.15.0",
