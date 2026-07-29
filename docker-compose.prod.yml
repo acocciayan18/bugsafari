@@ -21,8 +21,9 @@ x-shared-env: &shared-env
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   # TTL is always on; keep the cascade reaper on so expired sessions don't orphan
-  # forensic children (DB3).
-  BUGSAFARI_ENABLE_RETENTION_REAPER: "true"
+  # forensic children (DB3). index.ts reads this as an opt-OUT flag — leave unset
+  # to keep the reaper enabled (its default).
+  BUGSAFARI_DISABLE_RETENTION_REAPER: ${BUGSAFARI_DISABLE_RETENTION_REAPER:-false}
 
 services:
   redis:

@@ -33,11 +33,11 @@ export default defineConfig({
     fs: { allow: ['.', sharedDir] },
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        target: process.env.VITE_BUGSAFARI_API_URL || 'http://localhost:3000',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        target: process.env.VITE_BUGSAFARI_SOCKET_URL || 'http://localhost:3000',
         ws: true,
         changeOrigin: true,
       },
