@@ -1,0 +1,239 @@
+// ═══════════════════════════════════════════════════════════════
+// shared/types/telemetryRouting.ts — NETWORK vs FINDING DECISION TREE
+// ═══════════════════════════════════════════════════════════════
+// The single place that answers "is this observation raw network telemetry, or an
+// actionable defect?". Pure, deterministic, dependency-free so BOTH the engine
+// (StabilityMonitor, route/chaos scenarios) and the dashboard (Network tab, Errors
+// tab) route identically — live, replayed and saved streams included.
+//
+// The rule, in order:
+//   1. Static-asset chatter                       → Network tab only.
+//   2. Chaos-injected failure                     → Finding (the app's handling is under test).
+//   3. Failure that broke the UI / threw at runtime → Finding.
+//   4. Cancelled/aborted request                  → Network tab only.
+//   5. Infrastructure & environment (DNS, offline, TLS/cert, proxy, CORS,
+//      driver timeouts, extension noise)          → Network tab only.
+//   6. HTTP 5xx, or an error payload masked behind a 2xx → Finding.
+//   7. Everything else (4xx, redirects, successes, plain transport failures)
+//                                                 → Network tab only.
+// Provenance (faultOrigin) answers a DIFFERENT question — whose code is at fault —
+// and feeds step 5 here; it never decides the surface on its own.
+/** The reason codes that make an observation a finding rather than a Network row. */
+export const PROMOTABLE_REASON_CODES = new Set([
+    'CHAOS_INJECTED',
+    'BROKE_UI',
+    'SERVER_ERROR',
+    'SOFT_FAIL_BODY',
+]);
+/** True when a recorded routing decision belongs in Findings/Errors. */
+export function isPromotableReason(reasonCode) {
+    return reasonCode !== undefined && PROMOTABLE_REASON_CODES.has(reasonCode);
+}
+/** Root-cause origins the router treats as non-application infrastructure. */
+export const NON_APPLICATION_ORIGINS = new Set([
+    'NETWORK_ENV',
+    'PLAYWRIGHT',
+    'BUGSAFARI',
+    'BROWSER_EXTENSION',
+]);
+// ── Shared signal vocabulary (also consumed by the provenance classifier) ──
+/** BugSafari's own injected scripts/markers — never the app under test. */
+export const BUGSAFARI_MARKERS = ['[bugsafari', 'bugsafari-inject', '__bugsafari'];
+/** Playwright / automation-driver artifacts (closed page, waits, driver timeouts). */
+export const PLAYWRIGHT_MARKERS = [
+    'target page, context or browser has been closed',
+    'target closed',
+    'browser has been closed',
+    'execution context was destroyed',
+    'page.goto',
+    'page.evaluate',
+    'waiting for selector',
+    'waiting for locator',
+    'locator.',
+    'timeout exceeded',
+    'timeout of',
+    'navigation timeout',
+];
+/**
+ * Cancellations. Anchored to net-error tokens / explicit request phrasing: a bare
+ * "cancelled" also appears in legitimate app errors ("Payment cancelled by gateway").
+ */
+export const ABORT_PATTERNS = [
+    /net::err_aborted/,
+    /\berr_aborted\b/,
+    /\brequest (?:was )?(?:cancell?ed|aborted)\b/,
+    /\b(?:operation|action|navigation) (?:was )?(?:cancell?ed|aborted)\b/,
+];
+/** Benign browser/devtools chatter, not app defects. */
+export const BROWSER_NOISE_MARKERS = [
+    'resizeobserver loop limit exceeded',
+    'resizeobserver loop completed',
+    'non-error promise rejection captured',
+    'script error.',
+];
+export const EXTENSION_URL_PREFIXES = [
+    'chrome-extension://',
+    'moz-extension://',
+    'safari-extension://',
+    'devtools://',
+];
+/** No network, broken DNS, misconfigured TLS/proxy — environmental whoever the host. */
+export const ENVIRONMENT_TRANSPORT_MARKERS = [
+    'err_name_not_resolved',
+    'err_name_resolution_failed',
+    'err_internet_disconnected',
+    'err_network_changed',
+    'err_address_unreachable',
+    'err_cert_',
+    'err_ssl_',
+    'err_proxy_connection_failed',
+];
+/**
+ * Transport failures whose ROOT CAUSE depends on which host failed (see faultOrigin).
+ * For routing they are still infrastructure: a refused/reset/timed-out request only
+ * becomes a finding once it is chaos-injected or observably breaks the UI.
+ */
+export const HOST_DEPENDENT_TRANSPORT_MARKERS = [
+    'err_connection_refused',
+    'err_connection_reset',
+    'err_connection_closed',
+    'err_connection_aborted',
+    'err_connection_failed',
+    'err_connection_timed_out',
+    'err_timed_out',
+    'err_empty_response',
+    'err_response_headers_truncated',
+    'err_http2_protocol_error',
+];
+/** Browser-enforced cross-origin blocks — a deployment/config concern, not a defect. */
+export const CORS_MARKERS = [
+    'err_blocked_by_response',
+    'err_blocked_by_client',
+    'blocked by cors policy',
+    'access-control-allow-origin',
+    'cross-origin request blocked',
+    'preflight',
+];
+/** Non-API resource types whose failed loads are browser noise, never app faults. */
+export const ASSET_RESOURCE_TYPES = new Set([
+    'image',
+    'font',
+    'media',
+    'stylesheet',
+    'script',
+    'manifest',
+    'texttrack',
+    'other',
+]);
+/** URL suffixes of static assets — backstops resourceType when it is ambiguous. */
+export const ASSET_URL_PATTERN = /\.(?:png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|otf|eot|css|js|mjs|map|mp4|webm|ogg|mp3|wav|json)(?:[?#].*)?$/i;
+/**
+ * Canonical "defensive" client-error statuses — a correctly-behaving backend
+ * returns these to reject malformed/unauthorized/absent requests. Documented as an
+ * explicit set even though every 4xx routes to the Network tab.
+ */
+export const DEFENSIVE_CLIENT_STATUSES = new Set([
+    400, 401, 403, 404, 405, 406, 409, 410, 415, 422, 429,
+]);
+const includesAny = (haystack, needles) => needles.some((needle) => haystack.includes(needle));
+const matchesAny = (haystack, patterns) => patterns.some((pattern) => pattern.test(haystack));
+/** True for a request whose failure is ordinary static-asset chatter. */
+export function isStaticAssetRequest(url, resourceType) {
+    const type = (resourceType ?? '').toLowerCase();
+    if (type === 'xhr' || type === 'fetch' || type === 'document')
+        return false;
+    return ASSET_RESOURCE_TYPES.has(type) || ASSET_URL_PATTERN.test(url ?? '');
+}
+/** True when the text carries a browser cross-origin block. */
+export function isCorsBlocked(text) {
+    return includesAny(text, CORS_MARKERS);
+}
+/** True when the text is an infrastructure/environment transport failure. */
+export function isInfrastructureFailure(text) {
+    return (includesAny(text, ENVIRONMENT_TRANSPORT_MARKERS) || includesAny(text, HOST_DEPENDENT_TRANSPORT_MARKERS));
+}
+/** True when the text is a harness/driver/browser artifact rather than app behaviour. */
+export function isHarnessArtifact(text, url = '') {
+    return (includesAny(text, BUGSAFARI_MARKERS) ||
+        includesAny(url, BUGSAFARI_MARKERS) ||
+        includesAny(url, EXTENSION_URL_PREFIXES) ||
+        includesAny(text, BROWSER_NOISE_MARKERS) ||
+        includesAny(text, PLAYWRIGHT_MARKERS));
+}
+/** True when the text says the request was cancelled/aborted rather than failed. */
+export function isCancelledRequest(text) {
+    return matchesAny(text, ABORT_PATTERNS);
+}
+const verdict = (surface, tier, reasonCode, reason) => ({ surface, promote: surface === 'FINDING', tier, reasonCode, reason });
+/**
+ * Route one network observation. See the ordered rule list at the top of this file —
+ * the sequence is load-bearing: chaos injection and UI breakage outrank the
+ * cancellation/environment filters, because a deliberately-aborted request that the
+ * app failed to handle IS the defect under test.
+ */
+export function routeNetworkEvent(input) {
+    const text = `${input.failureText ?? ''}`.toLowerCase();
+    const url = (input.url ?? '').toLowerCase();
+    const status = input.statusCode;
+    // Nothing below promotes a healthy exchange: a chaos-injected or UI-breaking
+    // observation only escalates when the request itself actually failed.
+    const failed = input.kind === 'TRANSPORT_FAILURE' || (status !== undefined && status >= 400) || Boolean(input.softFailBody);
+    if (isStaticAssetRequest(input.url, input.resourceType) && (status === undefined || status >= 400)) {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'ASSET_NOISE', 'Static asset load failed — ordinary page chatter.');
+    }
+    if (input.chaosInjected && failed) {
+        return verdict('FINDING', 'MEDIUM', 'CHAOS_INJECTED', 'Injected network fault — the application had to handle this failure and did not.');
+    }
+    if (input.causedRuntimeFault && failed) {
+        return verdict('FINDING', 'CRITICAL', 'BROKE_UI', 'The failed request left the interface broken (unhandled error or stuck UI).');
+    }
+    if (isCancelledRequest(text)) {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'CANCELLED', 'Request was cancelled (navigation, stop, or superseded call).');
+    }
+    if (isCorsBlocked(text)) {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'CORS_BLOCKED', 'Blocked by the browser cross-origin policy — a configuration issue.');
+    }
+    if (isHarnessArtifact(text, url) || (input.origin !== undefined && isHarnessOrigin(input.origin))) {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'HARNESS_ARTIFACT', 'Test-harness or browser artifact, not application behaviour.');
+    }
+    if (isInfrastructureFailure(text) || input.origin === 'NETWORK_ENV') {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'ENVIRONMENT', 'Infrastructure or environment failure (DNS, connectivity, TLS, proxy, or an unreachable host).');
+    }
+    if (status !== undefined && status >= 500) {
+        return verdict('FINDING', 'MEDIUM', 'SERVER_ERROR', `HTTP ${status} server error — the backend failed to handle the request.`);
+    }
+    if (input.softFailBody) {
+        return verdict('FINDING', 'MEDIUM', 'SOFT_FAIL_BODY', `HTTP ${status ?? 200} with an error payload — a failure masked as success.`);
+    }
+    if (status !== undefined && status >= 400) {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'DEFENSIVE_CLIENT_ERROR', `HTTP ${status} — the request was rejected as designed.`);
+    }
+    if (input.kind === 'TRANSPORT_FAILURE') {
+        return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'TRANSPORT_FAILURE', 'Request failed before a response arrived, with no visible effect on the interface.');
+    }
+    return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'SUCCESS', `HTTP ${status ?? 200} — normal response.`);
+}
+/** True for a provenance origin that is a harness/browser artifact. */
+export function isHarnessOrigin(origin) {
+    return origin === 'PLAYWRIGHT' || origin === 'BUGSAFARI' || origin === 'BROWSER_EXTENSION';
+}
+/**
+ * Dashboard-side guard: decide the surface for a finding payload that already
+ * crossed the wire. Runs the same tree over what a stored/streamed finding carries,
+ * so a legacy or queued record cannot put infrastructure noise in the Errors tab.
+ * Runtime faults (exceptions, races, injections) are never network-routed.
+ */
+export function routeFindingPayload(payload) {
+    const type = (payload.type ?? '').toUpperCase();
+    const isNetworkFinding = type.includes('NETWORK') || type.includes('API') || type.includes('HTTP');
+    if (!isNetworkFinding || payload.hasRuntimeEvidence) {
+        return verdict('FINDING', 'MEDIUM', 'BROKE_UI', 'Application-level fault — always a finding.');
+    }
+    return routeNetworkEvent({
+        kind: payload.statusCode === undefined ? 'TRANSPORT_FAILURE' : 'HTTP_RESPONSE',
+        statusCode: payload.statusCode,
+        url: payload.url,
+        resourceType: 'xhr',
+        failureText: payload.message,
+    });
+}
