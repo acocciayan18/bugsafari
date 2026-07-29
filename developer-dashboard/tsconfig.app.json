@@ -16,7 +16,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Type-safety: strict contract parity with testing-core */
+    /* Path Aliases mapped directly to BugSafari's shared barrel */
+    "paths": {
+      "@bugsafari/shared": ["../shared/types.ts"],
+      "@bugsafari/shared/*": ["../shared/types/*"]
+    },
+
+    /* Strict type checking */
     "strict": true,
 
     /* Linting */
@@ -24,6 +30,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "../shared/**/*"
+  ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
