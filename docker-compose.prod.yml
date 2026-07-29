@@ -1,50 +1,27 @@
 name: bugsafari-prod
 
-# Production topology: API + worker fleet + Redis, all built from the single root
-# Dockerfile (no inline dockerfile divergence — see B3). Secrets are injected from
-# the host environment; nothing is hardcoded. Requires MONGODB_URI and JWT_SECRET to
-# be exported (the API hard-fails on boot without JWT_SECRET in production).
-
-
 x-shared-env: &shared-env
   NODE_ENV: production
   MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI}
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
   REDIS_URL: redis://redis:6379
-  # Shared by api + worker (single anchor guarantees an identical key across processes)
-  # so the worker can decrypt target credentials the api sealed. Required for
-  # authenticated queued runs; the api refuses them without it (AUTH_UNSUPPORTED_ON_QUEUE).
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
-  # Must be CLOUD_HOSTED or DOCKER_LOCAL — serverUtils.ts warns and falls back to
-  # DOCKER_LOCAL on anything else, which would rewrite targets to host.docker.internal.
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  # TTL is always on; keep the cascade reaper on so expired sessions don't orphan
-  # forensic children (DB3). index.ts reads this as an opt-OUT flag — leave unset
-  # to keep the reaper enabled (its default).
-  BUGSAFARI_DISABLE_RETENTION_REAPER: ${BUGSAFARI_DISABLE_RETENTION_REAPER:-false}
 
 services:
   redis:
     image: redis:alpine
     container_name: bugsafari-prod-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 256m
     networks:
       - bugsafari-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     container_name: bugsafari-prod-api
@@ -54,39 +31,17 @@ services:
       dockerfile: Dockerfile
     environment:
       <<: *shared-env
-      # Route start-test through Redis to the worker fleet — mandatory for prod
-      # so the API process never launches Playwright in-process (SC2).
-      BUGSAFARI_USE_QUEUE: "1"
-      # Backlog ceiling; enqueue past this returns 503 QUEUE_FULL.
-      BUGSAFARI_MAX_QUEUE_DEPTH: ${BUGSAFARI_MAX_QUEUE_DEPTH:-50}
-      BUGSAFARI_PORT: "3000"
-      BUGSAFARI_API_PORT: "3000"
-      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      APP_NAME: ${APP_NAME:-BugSafari}
-      # On-demand AI Suggested Fix; empty => deterministic knowledge-base fallback.
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
-      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-8000}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      REFRESH_TOKEN_TTL_MS: ${REFRESH_TOKEN_TTL_MS:-604800000}
-      BUGSAFARI_UNSAVED_SESSION_TTL_SECONDS: ${BUGSAFARI_UNSAVED_SESSION_TTL_SECONDS:-86400}
+      PORT: 3000
     command: ["npm", "run", "start", "--workspace", "testing-core"]
-    # Loopback-only: the API speaks plain HTTP. Terminate TLS in nginx/Caddy on the
-    # host and proxy to 127.0.0.1:3000 (TRUST_PROXY_HOPS=1 matches that one hop).
-    # Binding 0.0.0.0 would expose JWTs and run telemetry unencrypted.
     ports:
       - "0.0.0.0:3000:3000"
+    networks:
+      - bugsafari-prod
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 40s
     deploy:
       resources:
         limits:
@@ -94,42 +49,52 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  # --- CADDY AUTOMATED HTTPS REVERSE PROXY ---
+  caddy:
+    image: caddy:latest
+    container_name: bugsafari-prod-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
     networks:
       - bugsafari-prod
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   worker:
-    # No container_name: a fixed name pins the service to one container and makes
-    # replicas/--scale fail. Containers are named bugsafari-prod-worker-N.
     restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
     environment:
       <<: *shared-env
-      # Stays 1: in-process run state is not isolated (SC1 / CONCURRENCY_BLOCKERS in
-      # SafariWorker.ts). Fleet capacity comes from replicas below, where the OS
-      # isolates each run's process, browser, and forensic buffers.
       BUGSAFARI_WORKER_CONCURRENCY: ${BUGSAFARI_WORKER_CONCURRENCY:-1}
     command: ["npm", "run", "start:worker", "--workspace", "testing-core"]
-    # Concurrent-run capacity == replica count. Budget ~700MB (Node + Chromium) per
-    # replica. Scale further: WORKER_REPLICAS=4, or
-    # docker compose -f docker-compose.prod.yml up --scale worker=4
+    networks:
+      - bugsafari-prod
     deploy:
       replicas: ${WORKER_REPLICAS:-2}
-      # Ceiling per replica so one runaway Chromium can't OOM the droplet and take
-      # the api + redis with it. Node + Chromium idles ~700MB; 1.5g leaves headroom.
       resources:
         limits:
-          memory: 1536m
+          memory: 1g
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-      - bugsafari-prod
 
 networks:
   bugsafari-prod:
     driver: bridge
 
 volumes:
-  redis-data:
+  caddy_data:
+  caddy_config:
