@@ -16,16 +16,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path Aliases mapped directly to BugSafari's shared barrel */
+    /* Subpath Path Aliases */
     "paths": {
       "@bugsafari/shared": ["../shared/types.ts"],
-      "@bugsafari/shared/*": ["../shared/types/*"]
+      "@bugsafari/shared/*": ["../shared/*"]
     },
 
-    /* Strict type checking */
     "strict": true,
-
-    /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true

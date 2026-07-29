@@ -9,9 +9,18 @@ const { version } = createRequire(import.meta.url)('./package.json')
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@bugsafari/shared': fileURLToPath(new URL('../shared/types.ts', import.meta.url)),
-    },
+    alias: [
+      // 1. Direct barrel import: import { ... } from '@bugsafari/shared'
+      {
+        find: '@bugsafari/shared',
+        replacement: fileURLToPath(new URL('../shared/types.ts', import.meta.url)),
+      },
+      // 2. Subpath imports: import { ... } from '@bugsafari/shared/types/telemetry'
+      {
+        find: /^@bugsafari\/shared\/(.*)$/,
+        replacement: fileURLToPath(new URL('../shared/$1', import.meta.url)),
+      },
+    ],
   },
   build: {
     outDir: 'dist',
