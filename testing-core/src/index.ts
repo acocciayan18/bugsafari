@@ -19,6 +19,7 @@ import { reapExpiredSessionChildren } from './infrastructure/database/retentionR
 import { syncAllIndexes } from './infrastructure/database/indexSync.js';
 import { backfillRunIds } from './infrastructure/database/runIdBackfill.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
+import { corsOptions, socketCorsOptions, allowedOrigins } from './presentation/middleware/corsPolicy.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
@@ -34,25 +35,14 @@ const app = express();
 // Rate limits key on req.ip, so the proxy hop count must be declared explicitly —
 // a blanket `true` would let a client forge X-Forwarded-For and evade its budget.
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
-// INTENTIONAL wildcard CORS: BugSafari authenticates purely via a JWT Bearer
-// token read from the Authorization header (see authMiddleware.ts) — there is
-// no cookie-based session, so the browser never auto-attaches ambient
-// credentials to a cross-origin request. A wildcard origin therefore cannot
-// be used for CSRF/session-riding against this API; the worst case is that an
-// arbitrary origin can call the public/guest endpoints, which is the intended
-// behavior for this public demo/testing tool. Do not add `credentials: true`
-// to this config without also switching to an explicit env-driven allow-list.
-app.use(cors());
+// Explicit env-driven allow-list (CORS_ALLOWED_ORIGINS / FRONTEND_URL). The
+// dashboard sends credentials, which a wildcard origin cannot serve.
+app.use(cors(corsOptions));
 // Default 100kb is too small for /api/history/save-session's findings array (stack traces + reproduction steps accumulate across a run and were observed hitting 413).
 app.use(express.json({ limit: '2mb' }));
 
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  // Same rationale as the Express CORS config above: Socket.IO handshakes
-  // carry the JWT in the `auth` payload (see registerSocketHandlers.ts), not
-  // in a cookie, so a wildcard origin here doesn't expose a CSRF-style attack.
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-});
+const io = new Server(httpServer, { cors: socketCorsOptions });
 
 // Socket handlers are registered after the queue is built (below) so the
 // distributed queue-subscribe handler can be wired when BUGSAFARI_USE_QUEUE=1.
@@ -143,6 +133,7 @@ app.use(errorHandler);
 
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
+  console.log(`[BugSafari] CORS allow-list: ${allowedOrigins.join(', ') || '(none — set CORS_ALLOWED_ORIGINS)'}`);
 });
 
 // Periodic orphan sweep. The TTL index expires abandoned sessions but MongoDB

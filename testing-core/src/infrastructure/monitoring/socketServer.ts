@@ -3,18 +3,14 @@ import { Server } from 'socket.io';
 import type { TelemetryEvent, TelemetryMeta, TelemetryType } from '@bugsafari/shared';
 import type { AccessibilityFinding, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, TelemetryEvent as TelemetryEventType, TimeSyncPayload } from '../../../../shared/types.js';
 import { ACCESSIBILITY_EVENT, TIME_SYNC_EVENT } from '../../../../shared/types.js';
+import { socketCorsOptions } from '../../presentation/middleware/corsPolicy.js';
 
 export class TelemetryHub {
   private readonly io: Server;
 
 
   constructor(server: HttpServer) {
-    this.io = new Server(server, {
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
-      },
-    });
+    this.io = new Server(server, { cors: socketCorsOptions });
 
     this.io.on('connection', (socket) => {
       console.log(`[Socket] Dashboard connected: ${socket.id}`);

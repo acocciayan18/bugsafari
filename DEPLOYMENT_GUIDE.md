@@ -253,7 +253,8 @@ Required — compose refuses to start without them (`${VAR:?}`):
 | `MONGODB_URI` | Atlas connection string |
 | `JWT_SECRET` | `openssl rand -hex 32` |
 | `BUGSAFARI_AUTH_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `FRONTEND_URL` | `https://your-dashboard-domain` |
+| `FRONTEND_URL` | `https://your-dashboard-domain` (required — CORS allow-list + password-reset links) |
+| `CORS_ALLOWED_ORIGINS` | optional extra origins, comma-separated, e.g. `https://bugsafari.vercel.app,https://*.vercel.app` |
 
 > **Never copy the repo's root `.env` to the droplet.** Compose interpolation gives file values priority over the compose defaults, so its `DOCKER_LOCAL`, `localhost:5173`, and dev `JWT_SECRET` would win. With `NODE_ENV=production` that JWT secret is the exact string `authConfig.ts` fatals on — the api would refuse to boot.
 
@@ -391,7 +392,7 @@ Restart Docker afterwards. For retained logs, ship to a collector rather than re
 
 Already handled in code — do not "fix" these without reading the rationale:
 
-- **Wildcard CORS is deliberate.** Auth is a JWT bearer token in the `Authorization` header; there is no cookie session, so the browser never attaches ambient credentials cross-origin. A wildcard origin therefore cannot enable CSRF here. Do **not** add `credentials: true` without switching to an env-driven allow-list first.
+- **CORS is an explicit allow-list** (`testing-core/src/presentation/middleware/corsPolicy.ts`), shared by Express and both Socket.IO servers. Origins come from `CORS_ALLOWED_ORIGINS` (comma-separated) plus `FRONTEND_URL`; `localhost` dev origins are added only when `NODE_ENV !== production`. `credentials: true` is on, so a wildcard origin is not an option — the browser rejects `*` with credentialed requests. An entry may be an exact origin or one wildcard label (`https://*.vercel.app`) for rotating preview deploys. Unknown origins get no CORS header (browser blocks) rather than a 5xx; requests with no `Origin` (server-to-server, health checks) pass.
 - **`trust proxy` is an explicit hop count**, not `true`. See §3.4.
 - **JWT boot guards** reject weak/dev secrets in production.
 - **Chromium runs with `--no-sandbox`** inside the container. This is normal for containerized Playwright but means the container boundary is the only isolation between a hostile target page and the worker. Do not point BugSafari at untrusted targets from a droplet that hosts anything else.

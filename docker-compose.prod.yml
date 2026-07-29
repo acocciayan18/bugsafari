@@ -8,6 +8,8 @@ x-shared-env: &shared-env
   REDIS_URL: redis://redis:6379
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
+  FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL (dashboard origin, used for CORS + reset links)}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
 
 services:
