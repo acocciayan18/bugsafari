@@ -121,7 +121,7 @@ export class EngineHttpClient {
   }
 
   public async saveSession(targetUrl: string): Promise<void> {
-    const response = await this.fetchWithAuthRetry('/api/history/save-session', {
+    const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/history/save-session`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       credentials: 'include',
@@ -135,7 +135,7 @@ export class EngineHttpClient {
 
   public async fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
     try {
-      const response = await this.fetchWithAuthRetry(`/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
+      const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/history/sessions?limit=${encodeURIComponent(String(limit))}`, {
         headers: this.getAuthHeaders(),
         credentials: 'include',
       });

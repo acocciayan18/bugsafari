@@ -10,6 +10,7 @@ import { Input } from '../ui/Input';
 import { X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { buildAuthHeaders } from '../../utils/authHeaders';
+import { apiUrl } from '../../utils/apiBase';
 
 interface SupportModalProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
     if (!canSubmit) return;
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/support/tickets', {
+      const response = await fetch(apiUrl('/api/support/tickets'), {
         method: 'POST',
         headers: buildAuthHeaders(token),
         body: JSON.stringify({

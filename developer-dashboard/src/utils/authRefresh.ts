@@ -5,6 +5,8 @@
 // (historyService, EngineHttpClient), so a 401 in any of them can attempt one
 // silent refresh before falling back to session-expired/logout.
 
+import { apiUrl } from './apiBase';
+
 export interface RefreshedAuth {
   token: string;
   user: { id: string; email: string };
@@ -53,7 +55,7 @@ export async function refreshAuthToken(_currentToken?: string | null): Promise<R
 
   inFlight = (async () => {
     try {
-      const response = await fetch('/api/auth/refresh', {
+      const response = await fetch(apiUrl('/api/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),

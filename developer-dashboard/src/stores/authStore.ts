@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { AUTH_SUCCESS, authEventToast, authSuccessToast } from '../infrastructure/notifications/authToasts';
 import { buildFeedback, postAuth, type AuthFeedback } from '../utils/authFeedback';
 import { isTokenExpired } from '../utils/tokenUtils';
+import { apiUrl } from '../utils/apiBase';
 import {
     refreshAuthToken,
     onTokenRefreshed,
@@ -154,7 +155,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         // Fire-and-forget revoke so the refresh token can't be replayed; local teardown never waits
         const refresh = getRefreshToken();
         if (refresh) {
-            void fetch('/api/auth/logout', {
+            void fetch(apiUrl('/api/auth/logout'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ refreshToken: refresh }),

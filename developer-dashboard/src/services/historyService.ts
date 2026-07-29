@@ -7,6 +7,7 @@ import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } 
 import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
+import { apiUrl } from '../utils/apiBase';
 import { refreshAuthToken } from '../utils/authRefresh';
 
 /**
@@ -34,7 +35,8 @@ function getFetchOptions(method: string, body?: object): RequestInit {
  * through AuthContext - refreshAuthToken() still persists the new token and
  * notifies AuthContext so React state stays in sync.
  */
-async function fetchWithAuthRetry(url: string, options: RequestInit): Promise<Response> {
+async function fetchWithAuthRetry(path: string, options: RequestInit): Promise<Response> {
+  const url = apiUrl(path);
   const response = await fetch(url, options);
   if (response.status !== 401) return response;
 

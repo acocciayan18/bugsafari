@@ -24,6 +24,7 @@ export async function requireAuth(
     console.warn('[AUTH] requireAuth - rejected: missing Authorization header');
     response.status(401).json({
       error: 'Authentication required. Please log in to access this feature.',
+      code: 'GUEST_FORBIDDEN',
     });
     return;
   }
@@ -32,16 +33,18 @@ export async function requireAuth(
     console.warn('[AUTH] requireAuth - rejected: malformed Authorization header (must start with "Bearer ")');
     response.status(401).json({
       error: 'Invalid authorization format. Expected "Bearer {token}".',
+      code: 'GUEST_FORBIDDEN',
     });
     return;
   }
 
   const token = authHeader.substring(7);
-  
+
   if (!token) {
     console.warn('[AUTH] requireAuth - rejected: empty token after Bearer prefix');
     response.status(401).json({
       error: 'Authentication required. Please log in to access this feature.',
+      code: 'GUEST_FORBIDDEN',
     });
     return;
   }
