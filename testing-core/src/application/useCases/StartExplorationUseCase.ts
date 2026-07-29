@@ -9,7 +9,8 @@ import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { maskPayload, resolveControlName } from '../../../../shared/reproduction.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
-import { generateRunCode } from '../../infrastructure/database/runCodeGenerator.js';
+import { createWithRunCodeRetry, generateRunCode, isDuplicateRunIdError } from '../../infrastructure/database/runCodeGenerator.js';
+import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
@@ -235,6 +236,8 @@ export class StartExplorationUseCase {
         options?: {
             ownerType?: string;
             elapsedTimeMs?: number;
+            /** Public RUN- code the client saw live — the run's identity for this save. */
+            runCode?: string;
             clientFindings?: ClientFinding[];
             clientNetworkLog?: Record<string, unknown>[];
             clientConsoleLog?: Record<string, unknown>[];
@@ -360,27 +363,34 @@ export class StartExplorationUseCase {
         const visitedRoutes = (this.browserEngine.getVisitedRoutes?.() ?? []).slice(0, 500);
         const errorsEncountered = caughtBugs.length;
 
-        // The run's own auto-created session id (the forensic correlation key). When
-        // present we must reuse it on save so children stay keyed; a mismatch/absence
-        // is the only case that mints a fresh document.
+        // Identity of the run being saved, most trustworthy first. The client's public
+        // RUN- code is the only id that survives queue mode, a process restart, or a
+        // second run started meanwhile; the in-process id is the legacy fallback for
+        // clients that send no code.
+        const requestedCode = normalizeRunCode(options?.runCode);
         const originalSessionId = this.lastCompletedSessionId && isValidObjectId(this.lastCompletedSessionId)
             ? new Types.ObjectId(this.lastCompletedSessionId)
             : null;
 
-        // Preserve a genuine termination verdict recorded by markSessionTerminated —
-        // a manual save must never rewrite a crashed/timed-out run as Completed.
-        const existingTerminal = originalSessionId
-            ? await SessionModel.findOne({ _id: originalSessionId, userId: userObjectId })
-                .select('status outcome endedReason finishedAt')
-                .lean()
-            : null;
+        // Resolve the run's own document once: it settles both which record this save
+        // rewrites and whether a genuine termination verdict recorded by
+        // markSessionTerminated must be preserved (a manual save must never rewrite a
+        // crashed/timed-out run as Completed).
+        const ownedBy = { userId: userObjectId };
+        const terminalFields = 'status outcome endedReason finishedAt';
+        const existing = (requestedCode
+            ? await SessionModel.findOne({ runId: requestedCode, ...ownedBy }).select(terminalFields).lean()
+            : null)
+            ?? (originalSessionId
+                ? await SessionModel.findOne({ _id: originalSessionId, ...ownedBy }).select(terminalFields).lean()
+                : null);
 
-        const lifecycleFields = existingTerminal?.outcome
+        const lifecycleFields = existing?.outcome
             ? {
-                status: existingTerminal.status,
-                outcome: existingTerminal.outcome,
-                endedReason: existingTerminal.endedReason ?? 'Manually saved by operator',
-                finishedAt: existingTerminal.finishedAt ?? new Date(),
+                status: existing.status,
+                outcome: existing.outcome,
+                endedReason: existing.endedReason ?? 'Manually saved by operator',
+                finishedAt: existing.finishedAt ?? new Date(),
             }
             : {
                 status: SessionStatus.COMPLETED,
@@ -424,14 +434,14 @@ export class StartExplorationUseCase {
         };
 
         try {
-            // Prefer updating the engine's own auto-created session document in
-            // place — this is the SAME record used as the forensic correlation
-            // id during the run, so saving no longer produces a second, duplicate
-            // document. Only fall back to creating a new one if that document
-            // doesn't exist (e.g. the initial DB write failed at run-start).
-            let savedDocument = originalSessionId
+            // Update the run's own document in place — the SAME record used as the
+            // forensic correlation id during the run. Saving twice, double-clicking
+            // Save, or retrying a failed save therefore rewrites one record instead
+            // of minting a second. Only a run that never persisted a session falls
+            // through to a create.
+            let savedDocument = existing
                 ? await SessionModel.findOneAndUpdate(
-                    { _id: originalSessionId, userId: userObjectId },
+                    { _id: existing._id, ...ownedBy },
                     { $set: sessionFields },
                     { new: true },
                 )
@@ -439,22 +449,38 @@ export class StartExplorationUseCase {
 
             let source = 'update-in-place';
             if (!savedDocument) {
-                // The update can miss two ways: the document does not exist, or it
-                // exists under another owner. Only the first is safe to create into —
-                // re-creating over a live id would collide on _id and, if it somehow
-                // succeeded, would hand one user another's forensic children.
-                if (originalSessionId && (await SessionModel.exists({ _id: originalSessionId }))) {
+                // Neither identity resolved to a document of ours. If either is taken
+                // by another account, refuse — creating over a live _id would collide,
+                // and reusing its code would hand one user another's forensic children.
+                const takenByOther = (requestedCode && (await SessionModel.exists({ runId: requestedCode })))
+                    || (originalSessionId && (await SessionModel.exists({ _id: originalSessionId })));
+                if (takenByOther) {
                     return { success: false, message: 'This run belongs to a different account and cannot be saved here.' };
                 }
-                // No engine doc existed: stamp the run's own public RUN- code when we
-                // have it so the created doc's runId matches what the operator saw live.
-                const runCodeField = this.lastRunCode ? { runId: this.lastRunCode } : {};
-                // Reuse the run's own id when we have one, so forensic children written
+                // Reuse the run's own id when we have one so forensic children written
                 // during the run stay correctly keyed; only mint a fresh id when the run
                 // never persisted a session (no children exist to orphan).
-                savedDocument = originalSessionId
-                    ? await SessionModel.create({ _id: originalSessionId, ...runCodeField, ...sessionFields })
-                    : await SessionModel.create({ ...runCodeField, ...sessionFields });
+                const idField = originalSessionId ? { _id: originalSessionId } : {};
+                const create = (code: string) => SessionModel.create({ ...idField, runId: code, ...sessionFields });
+                // The code the operator saw live is this run's identity and must not be
+                // swapped for a fresh one: an E11000 here means a concurrent save of the
+                // same run won the race, so converge onto its document.
+                const identityCode = requestedCode ?? normalizeRunCode(this.lastRunCode);
+                if (identityCode) {
+                    savedDocument = await create(identityCode).catch(async (error: unknown) => {
+                        if (!isDuplicateRunIdError(error)) throw error;
+                        return SessionModel.findOneAndUpdate(
+                            { runId: identityCode, ...ownedBy },
+                            { $set: sessionFields },
+                            { new: true },
+                        );
+                    });
+                    if (!savedDocument) {
+                        return { success: false, message: 'This run belongs to a different account and cannot be saved here.' };
+                    }
+                } else {
+                    savedDocument = await createWithRunCodeRetry(create);
+                }
                 source = originalSessionId ? 'reuse-id-create' : 'fallback-create';
             }
 
@@ -551,6 +577,9 @@ export class StartExplorationUseCase {
         // when provided so a worker-executed run keeps the same code the client saw.
         const runCode = providedRunCode ?? generateRunCode();
         this.lastRunCode = runCode;
+        // Drop the previous run's document id now: this use case is a process-wide
+        // singleton, and a stale id let a later save rewrite an earlier run's record.
+        this.lastCompletedSessionId = null;
         this.browserEngine.setRunCode?.(runCode);
 
         // EVERYTHING from here on is inside the try, so the finally below always

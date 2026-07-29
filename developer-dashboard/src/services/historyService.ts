@@ -82,6 +82,8 @@ export async function saveSessionToHistory(
   targetUrl: string,
   options?: {
     initialUrl?: string;
+    /** Public RUN- code of the run — makes the save idempotent server-side. */
+    runId?: string | null;
     elapsedTimeMs?: number;
     findings?: SaveFindingPayload[];
     // Full live streams transferred so the saved report mirrors the live tabs
@@ -101,6 +103,8 @@ export async function saveSessionToHistory(
   const payload = {
     targetUrl: trimmedUrl,
     ...(options?.initialUrl && { initialUrl: options.initialUrl.trim() }),
+    // Sent only when well-formed; the backend falls back to its own run state otherwise.
+    ...(isRunCode(options?.runId) && { runId: options.runId }),
     ...(typeof options?.elapsedTimeMs === 'number' && { elapsedTimeMs: options.elapsedTimeMs }),
     // Transfer the complete raw findings array — every live error, untruncated.
     ...(Array.isArray(options?.findings) && { findings: options.findings }),

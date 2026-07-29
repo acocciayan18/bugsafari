@@ -2,6 +2,7 @@ import { Schema, model, Document, Types } from 'mongoose';
 import type { ActionOutcome, ConstraintBypassDetail, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome, StateFingerprint, TestingTypeId } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
+import { RUN_CODE_REGEX } from '../../../../../shared/runCode.js';
 
 export interface ISessionConfig {
   maxDepth?: number;
@@ -179,7 +180,7 @@ const sessionSchema = new Schema(
       unique: true,
       sparse: true,
       uppercase: true,
-      match: [/^RUN-[0-9A-F]{6}$/, 'runId must be RUN- followed by 6 uppercase hex characters'],
+      match: [RUN_CODE_REGEX, 'runId must be RUN- followed by 6-12 uppercase hex characters'],
       default: generateRunCode,
     },
     // User association - CRITICAL: Every session must belong to a user

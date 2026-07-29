@@ -2,6 +2,7 @@ import type { ActiveSessionSnapshot, OptimizationSettings, SessionHistoryEntry, 
 import type { StartTestResult, StopRunResult } from '../../../application/ports/EngineGateway';
 import { buildAuthHeaders } from '../../../utils/authHeaders';
 import { refreshAuthToken } from '../../../utils/authRefresh';
+import { normalizeRunCode } from '../../../../../shared/runCode.js';
 
 // Pull the operator-facing prose out of a JSON error body, or null if the response
 // wasn't JSON (proxy HTML, empty body) so the caller keeps its raw fallback.
@@ -97,13 +98,15 @@ export class EngineHttpClient {
       // prove ownership and re-attach. A queued (202) response additionally carries
       // the jobId used to track the run's place in the worker-fleet line.
       const data = (await response.json().catch(() => ({}))) as { runToken?: string; runId?: string; jobId?: string; queued?: boolean; resumed?: boolean };
-      // `runToken` is the opaque ownership/attach token; `runId` (the RUN- code) is display-only.
+      // `runToken` is the opaque ownership/attach token; `runId` (the RUN- code) is
+      // the run's public identity, replayed on save so it rewrites the right document.
       const runId = typeof data.runToken === 'string' ? data.runToken : null;
+      const runCode = normalizeRunCode(data.runId);
       const jobId = typeof data.jobId === 'string' ? data.jobId : null;
       const queued = data.queued === true;
       const resumed = data.resumed === true;
       console.log(`[Gateway] Safari launch ${resumed ? 'RESUMED existing session' : 'accepted'} (runId=${runId ?? 'n/a'}${queued ? `, queued job=${jobId ?? 'n/a'}` : ''})`);
-      return { runId, jobId, queued, resumed };
+      return { runId, runCode, jobId, queued, resumed };
     } catch (error) {
       if (error instanceof TypeError) {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {

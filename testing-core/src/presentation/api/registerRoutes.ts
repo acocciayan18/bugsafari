@@ -739,8 +739,13 @@ export function registerRoutes(
       const clientConsoleLog = asArray(request.body?.consoleLog).slice(0, 1000);
       console.log(`[API] Transferred network rows: ${clientNetworkLog.length} | console rows: ${clientConsoleLog.length}`);
 
+      // Public RUN- code of the run being saved. It makes the save idempotent and
+      // keyed to the right document even when the run executed on a worker.
+      const runCode = normalizeRunCode(request.body?.runId) ?? undefined;
+      console.log(`[API] Save identity runId: ${runCode ?? 'not supplied (legacy client)'}`);
+
       // Call manualSaveToHistory to save to sessions collection
-      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, clientFindings, clientNetworkLog, clientConsoleLog });
+      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, runCode, clientFindings, clientNetworkLog, clientConsoleLog });
 
       if (!result.success) {
         console.warn('[API] Manual save failed:', result.message);

@@ -62,6 +62,8 @@ export const NETWORK_CAP = 200;
 
 // Server-issued run token — lets a guest survive a full page refresh
 export const RUN_ID_STORAGE_KEY = 'bugsafari:runId';
+// Public RUN- code of the run — replayed on save so it targets the run's own document
+export const RUN_CODE_STORAGE_KEY = 'bugsafari:runCode';
 // jobId of an enqueued distributed run — needed to rejoin the queue-position stream
 export const JOB_ID_STORAGE_KEY = 'bugsafari:jobId';
 

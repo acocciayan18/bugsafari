@@ -10,19 +10,13 @@ import type { PaginationParams, RunTerminationOutcome } from "../../../../../sha
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
-import { generateRunCode } from "../runCodeGenerator.js";
+import { createWithRunCodeRetry } from "../runCodeGenerator.js";
 
 function toObjectId(id: string): Types.ObjectId | null {
   if (!isValidObjectId(id)) {
     return null;
   }
   return new Types.ObjectId(id);
-}
-
-// A Mongo duplicate-key (E11000) collision specifically on the unique runId index.
-function isDuplicateRunIdError(error: unknown): boolean {
-  const e = error as { code?: number; keyPattern?: Record<string, unknown>; message?: string };
-  return e?.code === 11000 && (Boolean(e.keyPattern?.runId) || Boolean(e.message?.includes('runId')));
 }
 
 // Coarse persisted status per termination outcome. `boundary-saturated` is a clean
@@ -68,9 +62,9 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     return session._id.toString();
   }
 
-  // Create the run's session doc, retrying on a duplicate-key collision of the
-  // provided runId code (E11000) by regenerating a fresh code. Only the caller-
-  // supplied code can collide; the schema default is already collision-checked.
+  // Create the run's session doc. The code is always stamped explicitly and
+  // retried against the unique index — the schema default is an unchecked random
+  // mint, so leaving it to fill the field would surface E11000 to the caller.
   private async createSessionDoc(userId: Types.ObjectId, startedAt: Date, input: CreateSessionInput) {
     const base = {
       userId,
@@ -80,17 +74,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       infiltrationProfile: input.infiltrationProfile,
       activeTestingTypes: input.activeTestingTypes,
     };
-    let code = input.runId;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        return await SessionModel.create(code ? { ...base, runId: code } : base);
-      } catch (error) {
-        if (!isDuplicateRunIdError(error) || attempt === 2) throw error;
-        code = generateRunCode();
-        console.warn(`[MongoFindingRepository] runId collision on create — regenerated to ${code}`);
-      }
-    }
-    throw new Error('createSession: exhausted runId retries');
+    return createWithRunCodeRetry((code) => SessionModel.create({ ...base, runId: code }), input.runId);
   }
 
   public async markSessionTerminated(

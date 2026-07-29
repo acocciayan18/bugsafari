@@ -20,6 +20,7 @@ import {
     TELEMETRY_CAP,
     NETWORK_CAP,
     RUN_ID_STORAGE_KEY,
+    RUN_CODE_STORAGE_KEY,
     JOB_ID_STORAGE_KEY,
     STATUS_TOAST_ID,
     ENGINE_TERMINAL_ACTIONS,
@@ -450,6 +451,9 @@ export const useRunStore = create<RunState>((set, get) => ({
         // Reattach proves ownership with the opaque runToken, never the display runId code
         gateway.setRunId(snapshot.runToken);
         writeStorage(RUN_ID_STORAGE_KEY, snapshot.runToken);
+        // Restore the run's public code too, so a save after a refresh still rewrites
+        // this run's document instead of creating a second one.
+        writeStorage(RUN_CODE_STORAGE_KEY, snapshot.runId || null);
     },
 
     resetForLaunch: (timeboxMs, resolvedUrl) => {

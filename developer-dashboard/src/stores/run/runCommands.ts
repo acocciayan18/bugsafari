@@ -6,7 +6,7 @@ import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
+import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
 
 function writeStorage(key: string, value: string | null): void {
     try {
@@ -14,6 +14,14 @@ function writeStorage(key: string, value: string | null): void {
         else window.localStorage.setItem(key, value);
     } catch {
         // Storage unavailable
+    }
+}
+
+function readStorage(key: string): string | null {
+    try {
+        return window.localStorage.getItem(key);
+    } catch {
+        return null;
     }
 }
 
@@ -47,9 +55,12 @@ export async function startRun(
     store.resetForLaunch(timeboxMs, resolvedUrl);
 
     try {
-        const { runId, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
+        const { runId, runCode, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
         // Persist the server-issued run token so a refresh / reconnect re-attaches
         if (runId) writeStorage(RUN_ID_STORAGE_KEY, runId);
+        // The run's public code identifies it at save time — always overwrite, so a
+        // new run can never be saved under the previous run's code.
+        writeStorage(RUN_CODE_STORAGE_KEY, runCode);
         if (jobId) writeStorage(JOB_ID_STORAGE_KEY, jobId);
         useRunStore.setState({ isLaunching: false });
 
@@ -189,6 +200,9 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
         // Save requires authentication (throws 403 for guests)
         await saveSessionToHistory(runtimeUrl.trim(), {
             initialUrl: inputTargetUrl.trim(),
+            // Identifies the run server-side, so a repeated save rewrites its document
+            // instead of minting a second one under a fresh code.
+            runId: readStorage(RUN_CODE_STORAGE_KEY),
             elapsedTimeMs: effectiveElapsedMs,
             findings: liveFindings,
             networkLog: [...networkMap.values()],

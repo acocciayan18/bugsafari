@@ -8,6 +8,8 @@ export type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
  *  run additionally yields the jobId used to track its place in line. */
 export interface StartTestResult {
   runId: string | null;
+  /** Public RUN- code of the accepted run — the identity a later save is keyed to. */
+  runCode: string | null;
   jobId: string | null;
   queued: boolean;
   /** Server matched the request to a session the client already owns — reconnect, don't relaunch. */
