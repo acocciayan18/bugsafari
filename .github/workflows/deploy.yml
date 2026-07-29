@@ -13,20 +13,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Configure Native SSH Key
-        env:
-          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
-          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+      - name: Start SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_KEY }}
+
+      - name: Add Host to Known Hosts
         run: |
           mkdir -p ~/.ssh
-          # Write secret, strip Windows \r returns, and ensure trailing newline
-          printf "%s\n" "$DROPLET_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$DROPLET_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.DROPLET_HOST }} >> ~/.ssh/known_hosts
 
       - name: Execute Remote Deploy Commands
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no root@${{ secrets.DROPLET_HOST }} << 'EOF'
+          ssh root@${{ secrets.DROPLET_HOST }} << 'EOF'
             cd /var/www/bugsafari
             git fetch origin dev
             git checkout dev
