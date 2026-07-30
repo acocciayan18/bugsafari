@@ -291,6 +291,15 @@ export class BrokenNavigationFinder {
     if (!route) return [];
     const last = this.urlWindow[this.urlWindow.length - 1];
     if (last && c.timestampMs - last.timestampMs > OSCILLATION_GAP_MS) this.urlWindow = [];
+    // A consecutive same-route hop is a reload, not an oscillation: a redirect loop
+    // alternates BETWEEN routes (A→B→A). The engine reloads/re-parses a node while
+    // exploring (Chaos amplifies it), which would otherwise inflate the sighting
+    // count of an A→B→B→B arrive-then-reload shape into a false loop.
+    const tail = this.urlWindow[this.urlWindow.length - 1];
+    if (tail && tail.route === route) {
+      tail.timestampMs = c.timestampMs;
+      return [];
+    }
     this.urlWindow.push({ route, timestampMs: c.timestampMs });
     if (this.urlWindow.length > MAX_WINDOW_ENTRIES) this.urlWindow.shift();
     if (this.suppressedLoopRoutes.has(route)) return [];

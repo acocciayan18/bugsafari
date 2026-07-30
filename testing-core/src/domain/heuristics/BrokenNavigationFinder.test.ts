@@ -260,6 +260,16 @@ check('repeating a single route without alternation never reports', () => {
   }
 });
 
+check('arrive-then-reload (A,B,B,B) is a reload, not a loop, and never reports', () => {
+  const f = new BrokenNavigationFinder();
+  f.observeInteraction(deadClick());
+  let defects: ReturnType<typeof f.observeUrlChange> = [];
+  ['/a', '/b', '/b', '/b'].forEach((r, i) => {
+    defects = defects.concat(f.observeUrlChange(change(r, 1000 + i * 100)));
+  });
+  assert.equal(defects.length, 0);
+});
+
 console.log('\nBrokenNavigationFinder — ledger accounting');
 
 check('reported cap bounds the run ledger', () => {

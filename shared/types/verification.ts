@@ -13,6 +13,7 @@ export type FaultOrigin =
   | 'BUGSAFARI' // Artifact of BugSafari's own instrumentation / injected scripts / operator stop.
   | 'PLAYWRIGHT' // Automation-driver artifact (closed context, navigation/wait timeout, aborted action).
   | 'BROWSER_EXTENSION' // Browser/devtools/extension noise (ResizeObserver loop, extension URL).
+  | 'THIRD_PARTY_SDK' // Embedded vendor SDK noise (Facebook widget, chat/analytics) — the widget's error, not the app's.
   | 'NETWORK_ENV' // Transport/environment failure (DNS, TLS, connection refused, third-party host).
   | 'TIMING' // Transient timing/race artifact that did not reproduce.
   | 'UNKNOWN'; // Could not be attributed — reportable only as NEEDS_VERIFICATION.

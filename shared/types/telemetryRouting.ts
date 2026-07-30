@@ -59,6 +59,7 @@ export const NON_APPLICATION_ORIGINS: ReadonlySet<string> = new Set([
   'PLAYWRIGHT',
   'BUGSAFARI',
   'BROWSER_EXTENSION',
+  'THIRD_PARTY_SDK',
 ]);
 
 export interface NetworkRoutingInput {
@@ -128,6 +129,20 @@ export const BROWSER_NOISE_MARKERS: readonly string[] = [
   'resizeobserver loop completed',
   'non-error promise rejection captured',
   'script error.',
+];
+
+/**
+ * Embedded third-party SDK console noise (social widgets, chat, analytics). A caught-
+ * and-logged error from a vendor SDK the page embeds is the vendor's concern, not a
+ * defect in the app under test. Markers are unmistakable vendor signatures only —
+ * kept narrow so a genuine first-party exception is never suppressed.
+ */
+export const THIRD_PARTY_SDK_MARKERS: readonly string[] = [
+  'fburl.com', // Facebook debug-link suffix appended to its own console errors
+  'errorutils caught', // Facebook / React Native global error util
+  'startstreamfailure', // Facebook GraphQL streaming subscription failure
+  'connect.facebook.net', // Facebook JS SDK host (stack / source URL)
+  'graph.facebook.com', // Facebook Graph API host (stack / source URL)
 ];
 
 export const EXTENSION_URL_PREFIXES: readonly string[] = [

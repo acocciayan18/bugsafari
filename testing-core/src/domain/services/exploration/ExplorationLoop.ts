@@ -449,11 +449,17 @@ export class ExplorationLoop {
     return this.buildTerminalSummary(ctx);
   }
 
-  /** Budget boundary: extend while unexplored controls remain, else signal loop termination. */
+  /** Budget boundary: extend while unexplored controls remain AND coverage is still
+   *  being gained, else signal loop termination. The coverage-stall guard mirrors
+   *  handleExhaustedDecision: controls that stay untriggered only because their sole
+   *  shell is saturated/pruned (unreachable) keep hasUnexploredControls() true
+   *  forever. Without it the budget extends into a frontier livelock (restore-ladder
+   *  → saturated-skip → repeat) until the timebox instead of ending Graph Exhausted. */
   private checkBudgetGate(step: number, ctx: RunContext): 'proceed' | 'break' {
     if (step > ctx.budget) {
       if (
         this.deps.clusterRegistry.hasUnexploredControls() &&
+        this.deps.clusterRegistry.stepsSinceCoverageGain(step) < ctx.coverageStallWindow &&
         !this.deps.checkTimebox() &&
         ctx.budget < ctx.hardCap
       ) {

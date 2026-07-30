@@ -35,6 +35,29 @@ check('DNS/connection failure → NETWORK_ENV', () => {
   assert.equal(v.origin, 'NETWORK_ENV');
 });
 
+check('embedded Facebook SDK console error → THIRD_PARTY_SDK (not the app)', () => {
+  const v = classifyFaultOrigin({
+    faultType: 'EXCEPTION',
+    message:
+      'ErrorUtils caught an error: terminate stream because StartStreamFailure with msg : UNAUTHENTICATED [Caught in: Subscription error in preprocessResponse] see https://fburl.com/debugjs',
+    url: 'https://tcu.edu.ph/',
+    targetOrigin: 'https://tcu.edu.ph',
+  });
+  assert.equal(v.origin, 'THIRD_PARTY_SDK');
+  assert.equal(v.isTargetApp, false);
+});
+
+check('a genuine first-party runtime exception still → TARGET_APP', () => {
+  const v = classifyFaultOrigin({
+    faultType: 'EXCEPTION',
+    message: "TypeError: Cannot read properties of undefined (reading 'id')",
+    url: 'https://app.test/checkout',
+    targetOrigin: 'https://app.test',
+  });
+  assert.equal(v.origin, 'TARGET_APP');
+  assert.equal(v.isTargetApp, true);
+});
+
 check("first-party connection refusal → TARGET_APP (the app's backend is down)", () => {
   const v = classifyFaultOrigin({
     faultType: 'NETWORK',

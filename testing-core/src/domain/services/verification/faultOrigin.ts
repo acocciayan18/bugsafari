@@ -17,6 +17,7 @@ import {
   EXTENSION_URL_PREFIXES,
   HOST_DEPENDENT_TRANSPORT_MARKERS,
   PLAYWRIGHT_MARKERS,
+  THIRD_PARTY_SDK_MARKERS,
 } from '../../../../../shared/types.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 
@@ -85,6 +86,13 @@ export function classifyFaultOrigin(input: OriginInput): OriginVerdict {
   }
   if (includesAny(text, BROWSER_NOISE_MARKERS)) {
     return { origin: 'BROWSER_EXTENSION', isTargetApp: false, reason: 'Benign browser/devtools console noise.' };
+  }
+
+  // Embedded vendor SDK (Facebook widget, chat, analytics) logging its own caught
+  // error. No URL host to compare — matched by unmistakable message/stack signature
+  // so a page's social/chat widget can't be reported as the app's own exception.
+  if (includesAny(text, THIRD_PARTY_SDK_MARKERS) || includesAny(url, THIRD_PARTY_SDK_MARKERS)) {
+    return { origin: 'THIRD_PARTY_SDK', isTargetApp: false, reason: 'Embedded third-party SDK (social/chat/analytics widget) error, not the application under test.' };
   }
 
   // Driver prose ("waiting for locator", "navigation timeout") is produced by Playwright's
