@@ -42,6 +42,15 @@ const EXECUTION_STATUS_BY_OUTCOME: Record<RunTerminationOutcome, ExecutionStatus
     exception: 'CRASHED',
 };
 
+// Why a manual save was refused. Lets the route map a domain refusal to its real
+// status code and surface an actionable reason instead of a blanket 500 — a
+// generic 500 is what made the production-only save failure undiagnosable.
+export type SaveFailureCode =
+    | 'INVALID_USER'
+    | 'OWNED_BY_OTHER'
+    | 'VALIDATION_FAILED'
+    | 'PERSIST_FAILED';
+
 /**
  * A finding transferred verbatim from the live dashboard Error Tab at save time.
  * This is the uncompromised, raw representation of what the operator saw live —
@@ -242,7 +251,7 @@ export class StartExplorationUseCase {
             clientNetworkLog?: Record<string, unknown>[];
             clientConsoleLog?: Record<string, unknown>[];
         },
-    ): Promise<{ success: boolean; message: string; runId?: string }> {
+    ): Promise<{ success: boolean; message: string; runId?: string; code?: SaveFailureCode }> {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
@@ -334,7 +343,7 @@ export class StartExplorationUseCase {
         // Ownership guard: a session document must belong to a real authenticated
         // user. The route already enforces requireAuth, so this is defense-in-depth.
         if (!isValidObjectId(userId)) {
-            return { success: false, message: 'A valid authenticated user is required to save history.' };
+            return { success: false, message: 'A valid authenticated user is required to save history.', code: 'INVALID_USER' };
         }
         const userObjectId = new Types.ObjectId(userId);
 
@@ -455,7 +464,7 @@ export class StartExplorationUseCase {
                 const takenByOther = (requestedCode && (await SessionModel.exists({ runId: requestedCode })))
                     || (originalSessionId && (await SessionModel.exists({ _id: originalSessionId })));
                 if (takenByOther) {
-                    return { success: false, message: 'This run belongs to a different account and cannot be saved here.' };
+                    return { success: false, message: 'This run belongs to a different account and cannot be saved here.', code: 'OWNED_BY_OTHER' };
                 }
                 // Reuse the run's own id when we have one so forensic children written
                 // during the run stay correctly keyed; only mint a fresh id when the run
@@ -476,7 +485,7 @@ export class StartExplorationUseCase {
                         );
                     });
                     if (!savedDocument) {
-                        return { success: false, message: 'This run belongs to a different account and cannot be saved here.' };
+                        return { success: false, message: 'This run belongs to a different account and cannot be saved here.', code: 'OWNED_BY_OTHER' };
                     }
                 } else {
                     savedDocument = await createWithRunCodeRetry(create);
@@ -515,8 +524,22 @@ export class StartExplorationUseCase {
             return { success: true, message: `Saved as ${savedDocument._id}`, runId: savedDocument.runId };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
-            console.error(`[StartExplorationUseCase] ✗ Manual save failed: ${errorMessage}`);
-            return { success: false, message: errorMessage };
+            const name = persistError instanceof Error ? persistError.name : 'UnknownError';
+            // A schema rejection is a bounded, actionable fault the operator can be
+            // told about verbatim; anything else stays opaque to the client and is
+            // logged in full. Shape context is logged either way: the production
+            // failure was a cap breached only on the in-process path, invisible
+            // from the message alone.
+            const code: SaveFailureCode = name === 'ValidationError' ? 'VALIDATION_FAILED' : 'PERSIST_FAILED';
+            console.error(
+                `[StartExplorationUseCase] ✗ Manual save failed (${code}/${name}): ${errorMessage}`
+                + ` | runCode=${requestedCode ?? 'none'} sessionId=${originalSessionId?.toString() ?? 'none'}`
+                + ` findings=${caughtBugs.length} actionSteps=${actionSteps.length}`
+                + ` breadcrumbs=${finalBreadcrumbSteps.length} visitedRoutes=${visitedRoutes.length}`
+                + ` source=${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}`,
+                persistError,
+            );
+            return { success: false, message: errorMessage, code };
         }
     }
 

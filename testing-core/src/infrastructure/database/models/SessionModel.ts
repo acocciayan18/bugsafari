@@ -3,6 +3,7 @@ import type { ActionOutcome, ConstraintBypassDetail, InfiltrationProfileId, Repl
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
 import { RUN_CODE_REGEX } from '../../../../../shared/runCode.js';
+import { ACTION_TRACE_CAPACITY } from '../../monitoring/reproductionPlaybookStore.js';
 
 export interface ISessionConfig {
   maxDepth?: number;
@@ -337,8 +338,8 @@ const sessionSchema = new Schema(
           type: [String],
           default: [],
           validate: {
-            validator: (steps: string[]) => steps.length <= 20,
-            message: 'finalBreadcrumbSteps cannot exceed the 20-step limit.',
+            validator: (steps: string[]) => steps.length <= ACTION_TRACE_CAPACITY,
+            message: `finalBreadcrumbSteps cannot exceed the ${ACTION_TRACE_CAPACITY}-step limit.`,
           },
         },
         caughtBugs: [{
@@ -414,8 +415,8 @@ const sessionSchema = new Schema(
       required: false,
       default: [],
       validate: {
-        validator: (steps: unknown[]) => steps.length <= 60,
-        message: 'actionSteps cannot exceed the 60-step limit.',
+        validator: (steps: unknown[]) => steps.length <= ACTION_TRACE_CAPACITY,
+        message: `actionSteps cannot exceed the ${ACTION_TRACE_CAPACITY}-step limit.`,
       },
     },
     // Distinct routes/URLs visited this run — session-global page set for history context.

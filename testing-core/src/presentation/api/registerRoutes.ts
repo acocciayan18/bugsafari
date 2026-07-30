@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
-import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
+import { StartExplorationUseCase, type SaveFailureCode } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
@@ -49,6 +49,16 @@ import {
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
 const RECENT_SESSION_LOOKUP_LIMIT = 500;
+
+// Why a save was refused → the status and client-facing code it deserves. A
+// schema rejection is the caller's own oversized run, not a server fault, so it
+// gets 422 and its real message; only PERSIST_FAILED stays a blanket 500.
+const SAVE_FAILURE_RESPONSE: Record<SaveFailureCode, { status: number; code: SaveFailureCode }> = {
+  INVALID_USER: { status: 401, code: 'INVALID_USER' },
+  OWNED_BY_OTHER: { status: 403, code: 'OWNED_BY_OTHER' },
+  VALIDATION_FAILED: { status: 422, code: 'VALIDATION_FAILED' },
+  PERSIST_FAILED: { status: 500, code: 'PERSIST_FAILED' },
+};
 
 // Resolve a URL id param to a Mongo query selector: a RUN- code targets `runId`,
 // a 24-char ObjectId targets `_id`, anything else is unresolvable (null → 400/404).
@@ -741,8 +751,18 @@ export function registerRoutes(
       const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, runCode, clientFindings, clientNetworkLog, clientConsoleLog });
 
       if (!result.success) {
-        console.warn('[API] Manual save failed:', result.message);
-        response.status(500).json({ error: 'Failed to save the session.' });
+        // The caller owns this data and is authenticated, so a refusal we can
+        // describe is returned verbatim with its real status. Only a genuinely
+        // internal persistence fault stays opaque, and even then an errorId ties
+        // the response to the full server-side log line.
+        const { status, code } = SAVE_FAILURE_RESPONSE[result.code ?? 'PERSIST_FAILED'];
+        const errorId = randomUUID();
+        console.error(`[API ${errorId}] Manual save failed (${code}) for user ${userId}: ${result.message}`);
+        response.status(status).json({
+          error: code === 'PERSIST_FAILED' ? 'Failed to save the session.' : result.message,
+          code,
+          errorId,
+        });
         return;
       }
 
@@ -751,8 +771,11 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // saved doc's public RUN- code for the client to display/deep-link.
       response.status(201).json({ ok: true, message: result.message, runId: result.runId, ownerType });
     } catch (error) {
-      console.error('[API] Error saving session:', error);
-      response.status(500).json({ error: 'Failed to save the session.' });
+      // Reached only on a fault outside manualSaveToHistory's own handling (a
+      // dynamic import, a dropped connection). Correlate, don't describe.
+      const errorId = randomUUID();
+      console.error(`[API ${errorId}] Unhandled error saving session for user ${userId}:`, error);
+      response.status(500).json({ error: 'Failed to save the session.', code: 'PERSIST_FAILED', errorId });
     }
   });
 

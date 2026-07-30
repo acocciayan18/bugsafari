@@ -156,7 +156,7 @@ podman compose -f docker-compose.local.yml up --build -d
 
 git init
 git add .
-git commit -m "infiltration-matrix audit"
+git commit -m "standardized run id and fix saving"
 git checkout -b dev
 git push --set-upstream origin dev
 

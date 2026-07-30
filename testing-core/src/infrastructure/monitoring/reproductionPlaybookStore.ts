@@ -2,6 +2,13 @@ import type { ActionRecord } from '../../../../shared/types.js';
 
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
 
+// Depth of the causal chain kept for one run. Every save-path derivative of this
+// buffer (session actionSteps, forensicTrace.finalBreadcrumbSteps) is bounded by
+// it, so the SessionModel validators read this constant rather than restating a
+// number — a stale restatement is what made the save fail validation in
+// production while queue-mode local runs (empty store) never reached it.
+export const ACTION_TRACE_CAPACITY = 60;
+
 /**
  * Persistent per-Safari-run action history.
  *
@@ -10,7 +17,7 @@ import { narrateActionRecords } from '../../domain/services/forensics/narration.
 export class ReproductionPlaybookStore {
   private static actions: ActionRecord[] = [];
   // Deep enough to keep a long causal chain reachable by the minimizer (was 20).
-  private static readonly capacity = 60;
+  private static readonly capacity = ACTION_TRACE_CAPACITY;
   private static resetCounter = 0;
   // Frozen at crash time so post-fault scenario/traversal writes can't overwrite the
   // causal chain that led to the fault. Every write API respects it; reset() clears it.

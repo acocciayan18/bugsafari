@@ -145,8 +145,10 @@ if (!response.ok) {
       errorMessage = `Server returned ${response.status}`;
     }
 
-    // Handle guest rejection specifically
-    if (response.status === 403 || errorCode === 'GUEST_FORBIDDEN') {
+    // Handle guest rejection specifically. Match on the code, not the bare
+    // status — 403 also carries OWNED_BY_OTHER, which is not a registration
+    // problem and must keep its own message. Bare 403 stays guest for old servers.
+    if (errorCode === 'GUEST_FORBIDDEN' || (response.status === 403 && !errorCode)) {
       console.warn('[historyService]  Guest save rejected - registration required');
       const err = new Error('Registration required to save history.') as Error & { 
         status: number; 
