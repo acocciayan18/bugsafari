@@ -4,11 +4,14 @@ import type { RemediationFailureReason, SuggestFixRequest, SuggestInsightsReques
 // classified reason instead of a bare null, so the caller can fall back to the
 // deterministic knowledge-base output AND report why the model was skipped.
 
-const MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-flash-lite-latest';
+// Read per call, never at module load: ESM hoists this import above index.ts's
+// dotenv.config(), so a top-level read would silently ignore every .env value.
+const model = (): string => process.env.GEMINI_MODEL?.trim() || 'gemini-flash-lite-latest';
 // Reasoning-capable flash models routinely spend 6-12s on thinking tokens before the
 // first byte; anything under ~20s aborts a healthy call and looks like an outage.
-const TIMEOUT_MS = Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 30_000;
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const timeoutMs = (): number => Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 30_000;
+const endpoint = (): string =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent`;
 
 export type GeminiResult =
   | { ok: true; text: string }
@@ -45,11 +48,13 @@ async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiRes
     return { ok: false, reason: 'not_configured' };
   }
 
+  const MODEL = model();
+  const TIMEOUT_MS = timeoutMs();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const startedAt = Date.now();
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpoint(), {
       method: 'POST',
       // Key travels in a header, not the query string, so it never lands in a URL log.
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -153,7 +158,7 @@ export async function generateInsights(req: SuggestInsightsRequest): Promise<Ins
     ? parsed.recommendations.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
     : [];
   if (!rootCause && recommendations.length === 0) {
-    console.error(`[RemediationAdvisor] Gemini output was not usable insights JSON (${call.text.length} chars) model=${MODEL}`);
+    console.error(`[RemediationAdvisor] Gemini output was not usable insights JSON (${call.text.length} chars) model=${model()}`);
     return { ok: false, reason: 'invalid_response' };
   }
   return { ok: true, rootCause, recommendations };

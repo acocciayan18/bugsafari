@@ -9,6 +9,11 @@ x-shared-env: &shared-env
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
+  # AI remediation / insights. Optional by design — an empty key makes the endpoints
+  # return the deterministic knowledge-base advice instead of failing the UI.
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
+  GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-30000}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   # Optimize V8 Garbage Collection for 1GB per container budget
   NODE_OPTIONS: "--max-old-space-size=1024"

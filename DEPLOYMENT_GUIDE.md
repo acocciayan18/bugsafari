@@ -241,6 +241,16 @@ Required — compose refuses to start without them (`${VAR:?}`):
 | `BUGSAFARI_AUTH_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `FRONTEND_URL` | `https://your-dashboard-domain` (required — CORS allow-list + password-reset links) |
 
+Optional — absent means the feature degrades, not that boot fails:
+
+| Variable | Effect when unset |
+|---|---|
+| `GEMINI_API_KEY` | AI Suggested Fix / AI Insights return the deterministic knowledge-base advice, and the UI shows "AI is not configured on the server". |
+| `GEMINI_MODEL` | Defaults to `gemini-flash-lite-latest`. |
+| `GEMINI_TIMEOUT_MS` | Defaults to `30000`. |
+
+> **A `.env` value only reaches a container if `docker-compose.prod.yml` names it.** Compose reads `.env` for `${VAR}` *interpolation in the compose file* — it does not export the file into the containers, and `.dockerignore` keeps `.env` out of the image entirely. A variable set in `.env` but absent from the `x-shared-env` anchor is silently invisible to the api and workers. Verify with `docker compose -f docker-compose.prod.yml config | grep GEMINI`.
+
 > **Never copy the repo's root `.env` to the droplet.** Compose interpolation gives file values priority over the compose defaults, so its `localhost:5173` and dev `JWT_SECRET` would win. With `NODE_ENV=production` that JWT secret is the exact string `authConfig.ts` fatals on — the api would refuse to boot.
 
 The api hard-fails at startup if `JWT_SECRET` is absent, equals the dev fallback, is shorter than 32 characters, or looks like a dev placeholder. That is intentional: a predictable signing key means forgeable sessions.
