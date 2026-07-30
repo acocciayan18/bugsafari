@@ -161,7 +161,7 @@ git checkout -b dev
 git push --set-upstream origin dev
 
 git add .
-git commit -m "fix mongodb E11000 duplicate key error in session"
+git commit -m "Fix the Gemini integration"
 git checkout dev
 git push origin dev --force
 
