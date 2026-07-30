@@ -25,6 +25,7 @@ import type { ExplorationLoopDeps, RunResult } from './types.js';
 import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from './stagnationScoring.js';
 import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
+import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { detectClientErrorView } from './clientErrorOracle.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
@@ -184,6 +185,10 @@ export class ExplorationLoop {
   // Normalized route the static lookahead probe resolved for the current target
   // (null = no static destination) — feeds the dead-interaction oracle.
   private lastProbedRoute: string | null = null;
+
+  // Absolute destination the same probe resolved — compared against the boundary
+  // lock so a navigation BugSafari itself cancelled is never read as a dead link.
+  private lastProbedHref: string | null = null;
 
   public async execute(page: Page, maxSteps: number): Promise<LoopResult> {
     const telemetry = this.deps.telemetry;
@@ -401,7 +406,7 @@ export class ExplorationLoop {
 
         //  Navigation-defect observation BEFORE any parent restore, so the
         // post-action URL still reflects what the interaction actually did.
-        this.observeNavigation(page, fingerprint.compound, target, {
+        this.observeNavigation(page, fingerprint.compound, target, fingerprint.currentUrl, {
           traversalOk,
           landedInvalid,
           actionThrew,
@@ -1090,11 +1095,29 @@ export class ExplorationLoop {
     }
   }
 
+  /**
+   * True when the Strict Page Boundary Lock — not the application — is what stopped
+   * this control from navigating. Under the lock, only a destination sharing the
+   * locked confinement key can commit; every other target is aborted pre-commit or
+   * cancelled in the client sandbox, and a control with no statically resolvable
+   * destination (router.push et al.) is cancelled invisibly. In all those cases the
+   * absence of a route change carries no evidence about the app.
+   */
+  private navigationBlockedByLock(currentUrl: string): boolean {
+    if (!this.deps.strictUrlLock) return false;
+    if (!this.lastProbedHref) return true;
+    const lockKey = StrictUrlLockGuard.confinementKey(currentUrl);
+    const targetKey = StrictUrlLockGuard.confinementKey(this.lastProbedHref);
+    if (lockKey === null || targetKey === null) return true;
+    return targetKey !== lockKey;
+  }
+
   /** Feed the post-action outcome to the navigation-defect oracle (never derails the loop). */
   private observeNavigation(
     page: Page,
     compound: CompoundStateHash,
     target: InteractiveElement,
+    currentUrl: string,
     outcome: { traversalOk: boolean; landedInvalid: boolean; actionThrew: boolean },
   ): void {
     try {
@@ -1112,6 +1135,7 @@ export class ExplorationLoop {
         landedInvalid: outcome.landedInvalid,
         actionThrew: outcome.actionThrew,
         networkActivity: this.deps.hadNetworkActivitySinceAction(),
+        navigationBlocked: this.navigationBlockedByLock(currentUrl),
         url,
         timestampMs: Date.now(),
       });
@@ -1355,6 +1379,7 @@ export class ExplorationLoop {
         url,
         statusCode: mainFrameStatus,
         reason: routeVerdict.reason,
+        timestampMs: Date.now(),
       }),
     );
 
@@ -1469,6 +1494,7 @@ export class ExplorationLoop {
     step: number,
   ): Promise<boolean> {
     this.lastProbedRoute = null;
+    this.lastProbedHref = null;
     // Session-wide transition-repeat cap: this exact control has already driven
     // its structural shell back to already-seen views `budget` times — a
     // navigation-loop source the combined-hash edge model can't see (each variant
@@ -1495,7 +1521,8 @@ export class ExplorationLoop {
     }
 
     const probe = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
-    this.lastProbedRoute = probe.href && !probe.deadEnd ? normalizeRoutePath(probe.href) || null : null;
+    this.lastProbedHref = probe.href && !probe.deadEnd ? probe.href : null;
+    this.lastProbedRoute = this.lastProbedHref ? normalizeRoutePath(this.lastProbedHref) || null : null;
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
     if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {

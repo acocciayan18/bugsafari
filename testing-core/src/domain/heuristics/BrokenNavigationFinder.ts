@@ -14,6 +14,18 @@ export interface NavHop {
   timestampMs: number;
 }
 
+/** The single interaction a defect is attributed to — anchors evidence + playbook. */
+export interface DefectCulprit {
+  selector: string;
+  /** Raw human label (unquoted) — what the reproduction step names the control. */
+  label: string;
+  /** Plain-English control noun ("link", "button"). */
+  kind: string;
+  route: string;
+  url: string;
+  timestampMs: number;
+}
+
 /** A verified navigation defect, ready for telemetry + confirmed-bug registration. */
 export interface NavigationDefect {
   kind: NavigationDefectKind;
@@ -32,6 +44,8 @@ export interface NavigationDefect {
   evidence: string[];
   /** The structured navigation chain that formed the defect — anchors the repro trace. */
   hops?: NavHop[];
+  /** The interaction that actually triggered this defect; absent when unattributable. */
+  culprit?: DefectCulprit;
   advice: string;
   corroborated: boolean;
 }
@@ -53,6 +67,8 @@ export interface InteractionObservation {
   landedInvalid: boolean;
   actionThrew: boolean;
   networkActivity: boolean;
+  /** True when BugSafari's own boundary lock cancelled this control's navigation. */
+  navigationBlocked?: boolean;
   url: string;
   timestampMs: number;
 }
@@ -62,6 +78,7 @@ export interface ErrorStateObservation {
   url: string;
   statusCode: number | null;
   reason: string;
+  timestampMs: number;
 }
 
 export interface RedirectHop {
@@ -84,6 +101,20 @@ const OSCILLATION_SIGHTINGS = 3;
 const MAX_REPORTED = 100;
 const MAX_STRIKE_KEYS = 500;
 const MAX_WINDOW_ENTRIES = 30;
+// Causal window an async navigation signal (document response, url change) may
+// still be pinned to the last interaction. Beyond it the signal belongs to app
+// timers/background routing, and naming the last-clicked control would be a lie.
+const ATTRIBUTION_WINDOW_MS = 5000;
+
+interface LastInteraction {
+  selector: string;
+  name: string;
+  label: string;
+  kind: string;
+  fromRoute: string;
+  url: string;
+  atMs: number;
+}
 
 /**
  * Passive navigation-defect analyzer. Pure and event-fed: the engine/loop push
@@ -98,7 +129,7 @@ export class BrokenNavigationFinder {
   private readonly deadClickStrikes = new Map<string, number>();
   private redirectWindow: RedirectHop[] = [];
   private urlWindow: Array<{ route: string; timestampMs: number }> = [];
-  private lastInteraction: { selector: string; name: string; kind: string; fromRoute: string } | null = null;
+  private lastInteraction: LastInteraction | null = null;
   private lastNavCause: 'interaction' | 'engine' | 'none' = 'none';
 
   /** Mark an engine-initiated navigation (restore/backtrack/recovery) — suppresses FPs. */
@@ -111,13 +142,28 @@ export class BrokenNavigationFinder {
 
   /** Dead-interaction oracle: nav-intent control that repeatedly changes nothing. */
   public observeInteraction(o: InteractionObservation): NavigationDefect[] {
-    const name = this.controlName(o.selector, o.elementLabel);
+    const label = resolveControlName({ label: o.elementLabel, selector: o.selector });
+    const name = label.startsWith('<') ? label : `"${label}"`;
     const kind = (o.elementKind ?? '').trim() || 'control';
     this.lastNavCause = 'interaction';
-    this.lastInteraction = { selector: o.selector, name, kind, fromRoute: o.fromRoute };
+    this.lastInteraction = {
+      selector: o.selector,
+      name,
+      label,
+      kind,
+      fromRoute: o.fromRoute,
+      url: o.url,
+      atMs: o.timestampMs,
+    };
     const key = `${o.fromStructure}::${o.selector}`;
     if (o.traversalOk || o.toRoute !== o.fromRoute || o.networkActivity) {
       // A control that ever works is never dead — clear its strike history.
+      this.deadClickStrikes.delete(key);
+      return [];
+    }
+    // BugSafari's own boundary lock cancelled the navigation: the missing route
+    // change is the engine's doing, not the app's. No strike, no finding.
+    if (o.navigationBlocked) {
       this.deadClickStrikes.delete(key);
       return [];
     }
@@ -151,6 +197,14 @@ export class BrokenNavigationFinder {
       url: o.url,
       route: o.fromRoute,
       evidence,
+      culprit: {
+        selector: o.selector,
+        label,
+        kind,
+        route: o.fromRoute,
+        url: o.url,
+        timestampMs: o.timestampMs,
+      },
       advice: this.buildAdvice('Wire the control to its route handler or remove it if obsolete.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: declaredElsewhere || strikes >= DEAD_CLICK_STRIKES,
     });
@@ -158,9 +212,10 @@ export class BrokenNavigationFinder {
 
   /** Broken-route oracle: interaction led the main frame to a hard HTTP error. */
   public observeErrorState(o: ErrorStateObservation): NavigationDefect[] {
-    if (this.lastNavCause !== 'interaction' || !this.lastInteraction) return [];
     if (o.statusCode === null || o.statusCode < 400) return [];
-    const { selector, name, kind, fromRoute } = this.lastInteraction;
+    const culprit = this.attributableInteraction(o.timestampMs);
+    if (!culprit) return [];
+    const { selector, name, kind, fromRoute } = culprit;
     return this.emitOnce({
       kind: 'BROKEN_ROUTE',
       bugId: `nav-broken-route-${o.statusCode}-${o.route}`,
@@ -178,6 +233,7 @@ export class BrokenNavigationFinder {
         `Main-frame document responded HTTP ${o.statusCode}`,
         `Route verdict: ${o.reason}`,
       ],
+      culprit: BrokenNavigationFinder.culpritOf(culprit, o.route, o.url),
       advice: this.buildAdvice('Fix the link target or add a resolvable fallback route for this path.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
@@ -206,6 +262,7 @@ export class BrokenNavigationFinder {
     }));
     this.redirectWindow.forEach((hop) => this.suppressedLoopRoutes.add(hop.route));
     this.redirectWindow = [];
+    const culprit = this.attributableInteraction(h.timestampMs);
     return this.emitOnce({
       kind: 'REDIRECT_LOOP',
       bugId: `nav-redirect-loop-${h.route}`,
@@ -213,13 +270,14 @@ export class BrokenNavigationFinder {
       severity: 'HIGH',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: `Redirect loop: HTTP redirect chain revisited ${h.route} ${sightings}× within ${REDIRECT_WINDOW_MS}ms`,
-      selector: this.lastInteraction?.selector ?? '',
-      elementLabel: this.lastInteraction?.name ?? '',
+      selector: culprit?.selector ?? '',
+      elementLabel: culprit?.name ?? '',
       url: h.url,
       route: h.route,
       statusCode: h.status,
       evidence: [`HTTP redirect chain: ${chain}`],
       hops,
+      culprit: culprit ? BrokenNavigationFinder.culpritOf(culprit) : undefined,
       advice: this.buildAdvice('Bound the redirect chain and break the cycle in the router/server redirect rules.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
@@ -243,6 +301,7 @@ export class BrokenNavigationFinder {
     const hops: NavHop[] = this.urlWindow.map((e) => ({ route: e.route, timestampMs: e.timestampMs }));
     this.urlWindow.forEach((e) => this.suppressedLoopRoutes.add(e.route));
     this.urlWindow = [];
+    const culprit = this.attributableInteraction(c.timestampMs);
     return this.emitOnce({
       kind: 'REDIRECT_LOOP',
       bugId: `nav-redirect-loop-${route}`,
@@ -250,12 +309,13 @@ export class BrokenNavigationFinder {
       severity: 'HIGH',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: `Redirect loop: client-side route oscillation revisited ${route} ${sightings}× in rapid succession`,
-      selector: this.lastInteraction?.selector ?? '',
-      elementLabel: this.lastInteraction?.name ?? '',
+      selector: culprit?.selector ?? '',
+      elementLabel: culprit?.name ?? '',
       url: c.url,
       route,
       evidence: [`Rapid route oscillation: ${chain}`],
       hops,
+      culprit: culprit ? BrokenNavigationFinder.culpritOf(culprit, route, c.url) : undefined,
       advice: this.buildAdvice('Guard the router redirect/guard logic against mutually-redirecting routes.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
@@ -266,11 +326,24 @@ export class BrokenNavigationFinder {
     return this.reported.size;
   }
 
-  // Quoted human name for a control, or a semantic fallback (`<a.nav-link>`) when
-  // the engine had no readable label. Never a structural DOM path.
-  private controlName(selector: string, label?: string): string {
-    const name = resolveControlName({ label, selector });
-    return name.startsWith('<') ? name : `"${name}"`;
+  // The last interaction, but only while it can still causally own a signal at
+  // `atMs`. Engine-driven navigation and stale clicks yield null so an async
+  // document response / url change is never pinned to an unrelated control.
+  private attributableInteraction(atMs: number): LastInteraction | null {
+    const last = this.lastInteraction;
+    if (!last || this.lastNavCause !== 'interaction') return null;
+    return atMs - last.atMs <= ATTRIBUTION_WINDOW_MS ? last : null;
+  }
+
+  private static culpritOf(i: LastInteraction, route?: string, url?: string): DefectCulprit {
+    return {
+      selector: i.selector,
+      label: i.label,
+      kind: i.kind,
+      route: route ?? i.fromRoute,
+      url: url ?? i.url,
+      timestampMs: i.atMs,
+    };
   }
 
   private bumpStrike(map: Map<string, number>, key: string): number {

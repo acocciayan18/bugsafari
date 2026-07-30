@@ -7,8 +7,11 @@ x-shared-env: &shared-env
   JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
   REDIS_URL: redis://redis:6379
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
-  FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL (dashboard origin, used for password-reset links)}
+  FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+  RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  # Optimize V8 Garbage Collection for 1GB per container budget
+  NODE_OPTIONS: "--max-old-space-size=1024"
 
 services:
   redis:
@@ -17,6 +20,10 @@ services:
     restart: unless-stopped
     networks:
       - bugsafari-prod
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -50,7 +57,6 @@ services:
       redis:
         condition: service_healthy
 
-  # --- CADDY AUTOMATED HTTPS REVERSE PROXY ---
   caddy:
     image: caddy:latest
     container_name: bugsafari-prod-caddy
@@ -83,6 +89,7 @@ services:
     networks:
       - bugsafari-prod
     deploy:
+      # 2 Worker Replicas == 2 Parallel Test Jobs (Ideal for 2 vCPU / 4GB RAM)
       replicas: ${WORKER_REPLICAS:-2}
       resources:
         limits:

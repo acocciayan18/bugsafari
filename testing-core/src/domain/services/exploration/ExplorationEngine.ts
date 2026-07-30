@@ -9,7 +9,7 @@ import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
-import type { NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
+import type { DefectCulprit, NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
@@ -99,6 +99,28 @@ const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 const ACTED_HISTORY_CAP = 32;
 // Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
 const FORENSIC_FLUSH_THRESHOLD = 50;
+
+/**
+ * Make the culprit interaction the terminal step of a navigation defect's
+ * reproduction, replacing the buffer's own record of it when present. Guarantees
+ * the playbook names the same control the finding does, even when the rolling
+ * buffer was frozen, minimized away, or never captured the click.
+ */
+function anchorToCulprit(actions: ActionRecord[], culprit?: DefectCulprit): ActionRecord[] {
+  if (!culprit) return actions;
+  const record: ActionRecord = {
+    timestamp: new Date(culprit.timestampMs).toISOString(),
+    type: 'CLICK',
+    selector: culprit.selector,
+    url: culprit.url,
+    elementLabel: culprit.label,
+    elementKind: culprit.kind,
+  };
+  const last = actions[actions.length - 1];
+  return last && last.selector === culprit.selector
+    ? [...actions.slice(0, -1), { ...last, ...record }]
+    : [...actions, record];
+}
 
 /**
  * Manages parent execution orchestration and run setups for an autonomous
@@ -819,6 +841,11 @@ export class ExplorationEngine {
     // Turn verified navigation defects into forensic telemetry + confirmed bugs.
     // type:'NAVIGATION' auto-streams to the live Errors tab via registerConfirmedBug.
     const reportNavigationDefects = async (defects: NavigationDefect[]): Promise<void> => {
+      // Off-target scenarios (coordinate bombing, sibling concurrent clicks, route
+      // trashing) drive controls OTHER than the acted element, so any navigation
+      // evidence gathered inside such a window is unattributable. Decline the
+      // finding rather than pin it on whatever element was nominally selected.
+      if (ActiveScenarioTracker.offTargetVetoes(Date.now(), this.lastActedAtMs)) return;
       for (const defect of defects) {
         const reproduction = ActiveScenarioTracker.flushSnapshot({
           faultUrl: defect.url || lastKnownUrl,
@@ -835,8 +862,11 @@ export class ExplorationEngine {
               payload: h.status ? `HTTP ${h.status}` : undefined,
             }))
           : null;
-        const reproductionActions = hopActions ?? reproduction.actions;
-        const reproductionSteps = hopActions ? narrateActionRecords(hopActions) : reproduction.narrative;
+        // A navigation defect belongs to ONE control, so its playbook must end on
+        // that control's own interaction — never on an unrelated stress-scenario
+        // window, which is what the generic snapshot narrative would supply.
+        const reproductionActions = hopActions ?? anchorToCulprit(reproduction.actions, defect.culprit);
+        const reproductionSteps = narrateActionRecords(reproductionActions);
         const stateFingerprint = this.activePage ? await captureStateFingerprint(this.activePage) : undefined;
         const attribution: FindingAttribution = {
           bugClass: defect.bugClass,

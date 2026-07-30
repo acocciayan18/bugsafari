@@ -92,9 +92,41 @@ check('a successful outcome clears accumulated strikes', () => {
   assert.equal(f.observeInteraction(deadClick()).length, 1);
 });
 
+check('a navigation the boundary lock cancelled is never a dead link', () => {
+  const f = new BrokenNavigationFinder();
+  // Strict URL mode: the declared destination is off-lock, so the engine itself
+  // cancelled the click. No number of repeats may promote it to a finding.
+  for (let i = 0; i < 5; i++) {
+    assert.equal(
+      f.observeInteraction(deadClick({ probedRoute: '/about', navigationBlocked: true })).length,
+      0,
+    );
+  }
+  assert.equal(f.totalFound(), 0);
+});
+
+check('a blocked click leaves no strike behind for a later unblocked one', () => {
+  const f = new BrokenNavigationFinder();
+  f.observeInteraction(deadClick({ navigationBlocked: true }));
+  // First unblocked no-op must still be strike 1 — below the reporting threshold.
+  assert.equal(f.observeInteraction(deadClick()).length, 0);
+  assert.equal(f.observeInteraction(deadClick()).length, 1);
+});
+
+check('a dead-interaction defect carries the culprit that produced it', () => {
+  const f = new BrokenNavigationFinder();
+  const [defect] = f.observeInteraction(
+    deadClick({ selector: '#nav-a', elementLabel: 'Home', elementKind: 'link', probedRoute: '/about' }),
+  );
+  assert.equal(defect.culprit?.selector, '#nav-a');
+  assert.equal(defect.culprit?.label, 'Home');
+  assert.equal(defect.culprit?.kind, 'link');
+  assert.equal(defect.culprit?.timestampMs, 1000);
+});
+
 console.log('\nBrokenNavigationFinder — BROKEN_ROUTE');
 
-const err404 = { route: '/missing', url: `${ORIGIN}/missing`, statusCode: 404, reason: 'HTTP 404' };
+const err404 = { route: '/missing', url: `${ORIGIN}/missing`, statusCode: 404, reason: 'HTTP 404', timestampMs: 1500 };
 
 check('interaction followed by a 404 error state reports with the triggering selector', () => {
   const f = new BrokenNavigationFinder();
@@ -113,6 +145,12 @@ check('error state after an engine navigation never reports', () => {
   assert.equal(f.observeErrorState(err404).length, 0);
 });
 
+check('an error state beyond the causal window is not pinned to the last click', () => {
+  const f = new BrokenNavigationFinder();
+  f.observeInteraction(deadClick());
+  assert.equal(f.observeErrorState({ ...err404, timestampMs: 1000 + 20_000 }).length, 0);
+});
+
 check('soft route collapse (statusCode null) never reports', () => {
   const f = new BrokenNavigationFinder();
   f.observeInteraction(deadClick());
@@ -125,7 +163,7 @@ check('same route+status dedups; 500 is HIGH', () => {
   assert.equal(f.observeErrorState(err404).length, 1);
   f.observeInteraction(deadClick());
   assert.equal(f.observeErrorState(err404).length, 0);
-  const boom = f.observeErrorState({ route: '/api-page', url: `${ORIGIN}/api-page`, statusCode: 500, reason: 'HTTP 500' });
+  const boom = f.observeErrorState({ route: '/api-page', url: `${ORIGIN}/api-page`, statusCode: 500, reason: 'HTTP 500', timestampMs: 1500 });
   assert.equal(boom[0].severity, 'HIGH');
 });
 
@@ -228,7 +266,7 @@ check('reported cap bounds the run ledger', () => {
   const f = new BrokenNavigationFinder();
   for (let i = 0; i < 150; i++) {
     f.observeInteraction(deadClick());
-    f.observeErrorState({ route: `/r${i}`, url: `${ORIGIN}/r${i}`, statusCode: 404, reason: 'HTTP 404' });
+    f.observeErrorState({ route: `/r${i}`, url: `${ORIGIN}/r${i}`, statusCode: 404, reason: 'HTTP 404', timestampMs: 1500 });
   }
   assert.equal(f.totalFound(), 100);
 });
@@ -277,6 +315,7 @@ check('a broken-route defect names the control that navigated there', () => {
     url: `${ORIGIN}/pages/2.html`,
     statusCode: 404,
     reason: 'HTTP 404',
+    timestampMs: 1500,
   });
   assert.ok(defect.message.includes('"Register"'), defect.message);
   assert.ok(!defect.message.includes('nth-of-type'), defect.message);
