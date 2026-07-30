@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "node scripts/run-tests.mjs",
+    "selfcheck:gemini": "tsx scripts/gemini-selfcheck.ts",
     "bench": "tsx scripts/accuracy-bench.ts",
     "bench:e2e": "tsx scripts/e2e-bench.ts",
     "bench:e2e:deep": "tsx scripts/e2e-bench-deep.ts",

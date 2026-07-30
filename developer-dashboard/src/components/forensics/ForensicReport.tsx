@@ -33,12 +33,12 @@ import type {
   RegressionSignal,
 } from '../../types';
 import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
-import { CopyButton } from '../common/ForensicCardKit';
+import { CopyButton, fallbackReasonText } from '../common/ForensicCardKit';
 import { Skeleton } from '../ui/Skeleton';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
-import { isActionableNetworkStatus } from '../../../../shared/types.js';
+import { isActionableNetworkStatus, type RemediationFailureReason } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import { caughtBugToFindingView } from '../../utils/findingView';
@@ -235,6 +235,7 @@ function AiInsightsPanel({
   findings: ForensicCaughtBug[];
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [reason, setReason] = useState<RemediationFailureReason | undefined>();
   const [override, setOverride] = useState<{ rootCause: string; recommendations: string[] } | null>(null);
 
   const rootCause = override?.rootCause ?? aiAnalysis?.rootCause;
@@ -259,8 +260,10 @@ function AiInsightsPanel({
         })),
       });
       if (result.source === 'ai') setOverride({ rootCause: result.rootCause, recommendations: result.recommendations });
+      setReason(result.reason);
       setStatus(result.source === 'ai' ? 'idle' : 'error');
     } catch {
+      setReason('network');
       setStatus('error');
     }
   };
@@ -294,7 +297,7 @@ function AiInsightsPanel({
         )}
       </div>
       {status === 'error' && (
-        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">Couldn’t reach the model — showing the deterministic analysis.</p>
+        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">{fallbackReasonText(reason)} — showing the deterministic analysis.</p>
       )}
       {rootCause && (
         <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>

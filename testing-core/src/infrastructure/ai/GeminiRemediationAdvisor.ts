@@ -1,43 +1,88 @@
-import type { SuggestFixRequest, SuggestInsightsRequest } from '../../../../shared/types.js';
+import type { RemediationFailureReason, SuggestFixRequest, SuggestInsightsRequest } from '../../../../shared/types.js';
 
-// On-demand LLM generation via Google Gemini. Best-effort: any missing key,
-// timeout, transport error, or empty output resolves to null so the caller can
-// fall back to the deterministic knowledge-base output.
+// On-demand LLM generation via Google Gemini. Every failure path resolves to a
+// classified reason instead of a bare null, so the caller can fall back to the
+// deterministic knowledge-base output AND report why the model was skipped.
 
-const MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-flash-latest';
-const TIMEOUT_MS = Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 8000;
-const ENDPOINT = (key: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+const MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-flash-lite-latest';
+// Reasoning-capable flash models routinely spend 6-12s on thinking tokens before the
+// first byte; anything under ~20s aborts a healthy call and looks like an outage.
+const TIMEOUT_MS = Number.parseInt(process.env.GEMINI_TIMEOUT_MS ?? '', 10) || 30_000;
+const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
-function extractText(payload: unknown): string {
-  const parts = (payload as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> })
-    ?.candidates?.[0]?.content?.parts;
+export type GeminiResult =
+  | { ok: true; text: string }
+  | { ok: false; reason: RemediationFailureReason };
+
+type Candidate = { content?: { parts?: Array<{ text?: string }> }; finishReason?: string };
+type GeminiPayload = { candidates?: Candidate[]; promptFeedback?: { blockReason?: string }; error?: { message?: string; status?: string } };
+
+function extractText(payload: GeminiPayload): string {
+  const parts = payload?.candidates?.[0]?.content?.parts;
   return (parts?.map((p) => p?.text ?? '').join('') ?? '').trim();
 }
 
-// Single low-level call — returns the model's text, or null on any failure.
-async function callGemini(prompt: string): Promise<string | null> {
+// HTTP status -> operator-meaningful cause. 400 is split because Google reports an
+// invalid/expired key as 400 INVALID_ARGUMENT, not 401.
+function classifyStatus(status: number, body: GeminiPayload): RemediationFailureReason {
+  if (status === 400) return /api key/i.test(body?.error?.message ?? '') ? 'auth' : 'bad_request';
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'model_unavailable';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'provider_error';
+  return 'provider_error';
+}
+
+// Never let a provider message reach a log line verbatim without scrubbing the key.
+function redact(text: string, key: string): string {
+  return key ? text.split(key).join('***') : text;
+}
+
+async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiResult> {
   const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) return null;
+  if (!key) {
+    console.error('[RemediationAdvisor] GEMINI_API_KEY is not set — skipping model, using deterministic output.');
+    return { ok: false, reason: 'not_configured' };
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const startedAt = Date.now();
   try {
-    const res = await fetch(ENDPOINT(key), {
+    const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      // Key travels in a header, not the query string, so it never lands in a URL log.
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        ...(jsonOutput ? { generationConfig: { responseMimeType: 'application/json' } } : {}),
+      }),
       signal: controller.signal,
     });
+
+    const body = (await res.json().catch(() => ({}))) as GeminiPayload;
     if (!res.ok) {
-      console.error('[RemediationAdvisor] Gemini responded', res.status);
-      return null;
+      const reason = classifyStatus(res.status, body);
+      console.error(
+        `[RemediationAdvisor] Gemini ${res.status} (${reason}) model=${MODEL} after ${Date.now() - startedAt}ms:`,
+        redact(body?.error?.message ?? '(no message)', key),
+      );
+      return { ok: false, reason };
     }
-    const text = extractText(await res.json());
-    return text.length > 0 ? text : null;
+
+    const text = extractText(body);
+    if (!text) {
+      const finish = body?.candidates?.[0]?.finishReason ?? body?.promptFeedback?.blockReason ?? 'unknown';
+      console.error(`[RemediationAdvisor] Gemini returned no text (finishReason=${finish}) model=${MODEL} after ${Date.now() - startedAt}ms`);
+      return { ok: false, reason: 'empty_response' };
+    }
+    return { ok: true, text };
   } catch (error) {
-    console.error('[RemediationAdvisor] Gemini call failed:', error instanceof Error ? error.message : error);
-    return null;
+    const aborted = error instanceof Error && error.name === 'AbortError';
+    const reason: RemediationFailureReason = aborted ? 'timeout' : 'network';
+    const detail = aborted ? `exceeded ${TIMEOUT_MS}ms` : error instanceof Error ? redact(error.message, key) : String(error);
+    console.error(`[RemediationAdvisor] Gemini call failed (${reason}) model=${MODEL} after ${Date.now() - startedAt}ms:`, detail);
+    return { ok: false, reason };
   } finally {
     clearTimeout(timer);
   }
@@ -64,7 +109,7 @@ function buildFixPrompt(req: SuggestFixRequest): string {
   ].join('\n');
 }
 
-export async function generateRemediation(req: SuggestFixRequest): Promise<string | null> {
+export async function generateRemediation(req: SuggestFixRequest): Promise<GeminiResult> {
   return callGemini(buildFixPrompt(req));
 }
 
@@ -94,18 +139,22 @@ function buildInsightsPrompt(req: SuggestInsightsRequest): string {
   ].join('\n');
 }
 
-// Returns a session-level insight, or null on any failure / malformed output.
-export async function generateInsights(
-  req: SuggestInsightsRequest,
-): Promise<{ rootCause: string; recommendations: string[] } | null> {
-  const text = await callGemini(buildInsightsPrompt(req));
-  if (!text) return null;
+export type InsightsResult =
+  | { ok: true; rootCause: string; recommendations: string[] }
+  | { ok: false; reason: RemediationFailureReason };
 
-  const parsed = parseJsonBlock(text) as { rootCause?: unknown; recommendations?: unknown } | null;
+export async function generateInsights(req: SuggestInsightsRequest): Promise<InsightsResult> {
+  const call = await callGemini(buildInsightsPrompt(req), true);
+  if (!call.ok) return call;
+
+  const parsed = parseJsonBlock(call.text) as { rootCause?: unknown; recommendations?: unknown } | null;
   const rootCause = typeof parsed?.rootCause === 'string' ? parsed.rootCause.trim() : '';
   const recommendations = Array.isArray(parsed?.recommendations)
-    ? parsed!.recommendations.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
+    ? parsed.recommendations.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
     : [];
-  if (!rootCause && recommendations.length === 0) return null;
-  return { rootCause, recommendations };
+  if (!rootCause && recommendations.length === 0) {
+    console.error(`[RemediationAdvisor] Gemini output was not usable insights JSON (${call.text.length} chars) model=${MODEL}`);
+    return { ok: false, reason: 'invalid_response' };
+  }
+  return { ok: true, rootCause, recommendations };
 }

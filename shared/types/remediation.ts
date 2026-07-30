@@ -21,9 +21,24 @@ export interface SuggestFixRequest {
 
 export type SuggestFixSource = 'ai' | 'fallback';
 
+// Why the model was not used — set only when `source` is 'fallback', so the operator
+// sees a cause instead of a generic failure. Never carries provider text or secrets.
+export type RemediationFailureReason =
+  | 'not_configured'
+  | 'auth'
+  | 'rate_limited'
+  | 'model_unavailable'
+  | 'bad_request'
+  | 'provider_error'
+  | 'timeout'
+  | 'network'
+  | 'invalid_response'
+  | 'empty_response';
+
 export interface SuggestFixResponse {
   advice: string;
   source: SuggestFixSource;
+  reason?: RemediationFailureReason;
 }
 
 // Session-level AI Insights — on-demand LLM summary of a saved run, persisted so it
@@ -41,4 +56,5 @@ export interface SuggestInsightsResponse {
   rootCause: string;
   recommendations: string[];
   source: SuggestFixSource;
+  reason?: RemediationFailureReason;
 }

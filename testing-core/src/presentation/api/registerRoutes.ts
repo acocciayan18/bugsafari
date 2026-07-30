@@ -1103,10 +1103,11 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
     const body = (request.body ?? {}) as SuggestFixRequest;
     const fallback = typeof body.fallbackAdvice === 'string' ? body.fallbackAdvice : '';
 
-    const ai = await generateRemediation(body);
-    const result: SuggestFixResponse = ai
-      ? { advice: ai, source: 'ai' }
-      : { advice: fallback, source: 'fallback' };
+    const call = await generateRemediation(body);
+    const ai = call.ok ? call.text : '';
+    const result: SuggestFixResponse = call.ok
+      ? { advice: call.text, source: 'ai' }
+      : { advice: fallback, source: 'fallback', reason: call.reason };
 
     if (ai && request.userId && typeof body.sessionId === 'string' && typeof body.bugId === 'string') {
       const selector = resolveSessionSelector(body.sessionId);
@@ -1144,11 +1145,11 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
 
     const ai = await generateInsights(body);
-    const result: SuggestInsightsResponse = ai
+    const result: SuggestInsightsResponse = ai.ok
       ? { rootCause: ai.rootCause || fbRootCause, recommendations: ai.recommendations.length ? ai.recommendations : fbRecommendations, source: 'ai' }
-      : { rootCause: fbRootCause, recommendations: fbRecommendations, source: 'fallback' };
+      : { rootCause: fbRootCause, recommendations: fbRecommendations, source: 'fallback', reason: ai.reason };
 
-    if (ai) {
+    if (ai.ok) {
       try {
         await SessionModel.updateOne(
           { ...selector, userId: new Types.ObjectId(userId) },

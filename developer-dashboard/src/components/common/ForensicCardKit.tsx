@@ -8,8 +8,26 @@
 
 import { useState } from 'react';
 import { Copy, Sparkles, Loader2 } from 'lucide-react';
-import type { SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
+import type { RemediationFailureReason, SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
+
+// Operator-facing cause for a fallback. Shared by the per-finding fix block and the
+// session-level AI Insights panel so both explain the same failure the same way.
+const FALLBACK_REASON_TEXT: Record<RemediationFailureReason, string> = {
+  not_configured: 'AI is not configured on the server (GEMINI_API_KEY missing)',
+  auth: 'AI rejected the server credentials — check the API key',
+  rate_limited: 'AI rate limit reached — retry in a moment',
+  model_unavailable: 'Configured AI model is unavailable — check GEMINI_MODEL',
+  bad_request: 'AI rejected the request payload',
+  provider_error: 'AI provider returned an error — retry in a moment',
+  timeout: 'AI timed out — retry, or raise GEMINI_TIMEOUT_MS',
+  network: 'Could not reach the AI provider — check network access',
+  invalid_response: 'AI returned an unusable response — retry',
+  empty_response: 'AI returned no content — retry',
+};
+
+export const fallbackReasonText = (reason?: RemediationFailureReason): string =>
+  (reason && FALLBACK_REASON_TEXT[reason]) || 'Model unavailable';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
   try {
@@ -120,6 +138,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
   // Seed from a persisted AI fix so a saved remediation shows immediately on load.
   const [aiAdvice, setAiAdvice] = useState<string | null>(savedAiAdvice || null);
   const [source, setSource] = useState<SuggestFixSource | null>(savedAiAdvice ? 'ai' : null);
+  const [reason, setReason] = useState<RemediationFailureReason | undefined>();
 
   const displayed = aiAdvice ?? advice;
 
@@ -130,8 +149,10 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
       const result = await requestSuggestedFix({ ...context, fallbackAdvice: advice });
       setAiAdvice(result.advice || advice || null);
       setSource(result.source);
+      setReason(result.reason);
       setStatus('idle');
     } catch {
+      setReason('network');
       setStatus('error');
     }
   };
@@ -163,14 +184,12 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
         {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
       </div>
 
-      {source && (
-        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">
-          {source === 'ai' ? '✦ AI-generated remediation' : 'Model unavailable — showing knowledge-base remediation'}
-        </div>
+      {source === 'ai' && status !== 'error' && (
+        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ AI-generated remediation</div>
       )}
-      {status === 'error' && (
+      {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
-          Couldn’t reach the model — showing the knowledge-base fix.
+          {fallbackReasonText(reason)} — showing the knowledge-base fix.
         </div>
       )}
 

@@ -169,8 +169,8 @@ git push origin dev --force
 
 git init
 git add .
-git commit -m "improve dashboar usability by implementing framer-motion and skeleton"
-git checkout -b 7-30-Ayan-4
-git push --set-upstream origin 7-30-Ayan-4
+git commit -m "Fix the Gemini integration"
+git checkout -b 7-30-Ayan-5
+git push --set-upstream origin 7-30-Ayan-5
 
 
