@@ -19,21 +19,21 @@ function formatChecklist(steps: PlaybookStep[]): string[] {
   return steps.map((s) => `Step ${s.stepNumber}: ${s.instruction}`);
 }
 
-// Templated remediation snippet (diagnostic-layer placeholder) — clean & copyable.
+// Templated remediation checklist (diagnostic-layer placeholder) — clean & copyable.
 function generateSuggestedFix(type: string, reason: string, statusCode?: number): string {
   if (type === 'NETWORK') {
     return [
-      `// Suggested remediation — ${statusCode ?? 'network'} failure`,
-      `// 1. Verify endpoint health / response for: ${reason}`,
-      `// 2. Add retry with backoff and a user-facing error state`,
-      `// 3. Guard the call site against null / timeout responses`,
+      `Suggested remediation — ${statusCode ?? 'network'} failure`,
+      `1. Verify endpoint health and response for: ${reason}`,
+      `2. Add retry with backoff and a user-facing error state`,
+      `3. Guard the call site against null / timeout responses`,
     ].join('\n');
   }
   return [
-    `// Suggested remediation — runtime exception`,
-    `// 1. Reproduce via the checklist above`,
-    `// 2. Wrap the failing operation in try/catch; add a null guard before: ${reason}`,
-    `// 3. Add a regression test asserting the element/handler stays stable`,
+    `Suggested remediation — runtime exception`,
+    `1. Reproduce via the checklist above`,
+    `2. Wrap the failing operation in try/catch; add a null guard before: ${reason}`,
+    `3. Add a regression test asserting the element/handler stays stable`,
   ].join('\n');
 }
 

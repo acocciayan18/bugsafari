@@ -19,12 +19,12 @@ export interface BugDefinition {
   defaultSeverity: Severity;
   /** MITRE CWE identifier for the vulnerability class. */
   cwe: string;
-  /** Copyable remediation guidance, formatted as comment lines. */
+  /** Copyable remediation guidance, formatted as a plain checklist. */
   remediation: string;
 }
 
 function remediation(...lines: string[]): string {
-  return lines.map((line) => `// ${line}`).join('\n');
+  return lines.join('\n');
 }
 
 export const BUG_CATALOG: Record<BugClass, BugDefinition> = {

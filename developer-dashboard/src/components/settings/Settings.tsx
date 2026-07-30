@@ -25,7 +25,6 @@ import {
   KeyRound,
   X,
   Mail,
-  Hash,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 
@@ -642,14 +641,17 @@ function AccountSection() {
             <dd className="truncate text-sm text-(--text-primary)">{user?.email || '—'}</dd>
           </div>
         </div>
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <Hash className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <dt className="text-sm text-(--text-secondary)">User ID</dt>
-            <dd className="truncate font-mono text-sm text-(--text-secondary)">{user?.id || '—'}</dd>
-          </div>
-        </div>
       </dl>
+
+      {/* Security lives inside Account now — only authed users reach this return. */}
+      <div className="border-t border-(--border-hairline) pt-5">
+        <div className="mb-1 flex items-center gap-2 text-(--text-primary)">
+          <ShieldCheck className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <h3 className="text-sm font-semibold">Security</h3>
+        </div>
+        <p className="mb-4 text-sm text-(--text-secondary)">Password and account protection</p>
+        <SecuritySettingsSection />
+      </div>
 
       <div className="pt-4 border-t border-(--border-hairline)">
         {showLogoutConfirm ? (
@@ -691,7 +693,7 @@ function AccountSection() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const { user, isAuthenticated, isGuestMode } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -735,26 +737,15 @@ export default function Settings() {
           initial="hidden"
           animate="shown"
           variants={{ shown: { transition: { staggerChildren: 0.07 } } }}
-          className="grid grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6 xl:grid-cols-3"
+          className="grid w-full grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6"
         >
           <SettingsCard
             icon={<User className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Account"
-            description="Your profile and identity"
+            description="Your profile, security, and identity"
           >
             <AccountSection />
           </SettingsCard>
-
-          {/* Guests have no credentials to change — the whole card is inapplicable. */}
-          {!isGuestMode && (
-            <SettingsCard
-              icon={<ShieldCheck className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
-              title="Security"
-              description="Password and account protection"
-            >
-              <SecuritySettingsSection />
-            </SettingsCard>
-          )}
 
           <SettingsCard
             icon={<Palette className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}

@@ -35,9 +35,10 @@ podman compose -f docker-compose.local.yml up -d --build
 # Lucide React
 npm install lucide-react
 
-# For testing (URL LINK: http://seeded-fixture-full:4600/)
+# For testing (URL LINK: http://seeded-fixture-full:4600/ and http://clean-fixture-full:4600/)
 podman start seeded-fixture
 podman start seeded-fixture-full seeded-full-host
+podman start clean-fixture-full clean-full-host
 
 
 # Option 2: Generate Kubernetes YAML and apply (native Podman)

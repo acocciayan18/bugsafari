@@ -100,9 +100,10 @@ const FIELD_CLASS =
   'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
 const LABEL_CLASS = 'block text-[12px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
 
-const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string }> = [
+// Session state temporarily disabled — button rendered inert, not removed.
+const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string; disabled?: boolean }> = [
   { id: 'credentials', label: 'Login form' },
-  { id: 'storageState', label: 'Session state' },
+  { id: 'storageState', label: 'Session state', disabled: true },
 ];
 
 // Shared collapse choreography for the help and advanced regions.
@@ -220,9 +221,13 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
               type="button"
               role="radio"
               aria-checked={draft.method === option.id}
-              disabled={fieldsDisabled}
+              aria-disabled={option.disabled}
+              disabled={fieldsDisabled || option.disabled}
+              title={option.disabled ? 'Session state is temporarily unavailable' : undefined}
               onClick={() => setMethod(option.id)}
               className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase tracking-wider font-sans transition-colors disabled:cursor-not-allowed enabled:cursor-pointer ${
+                option.disabled ? 'opacity-50' : ''
+              } ${
                 draft.method === option.id
                   ? 'border-(--border-focus) bg-(--surface-inset) text-(--text-primary)'
                   : 'border-(--border-hairline) text-(--text-tertiary) enabled:hover:text-(--text-secondary)'
