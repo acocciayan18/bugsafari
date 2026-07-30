@@ -19,6 +19,7 @@ import { SessionStatus } from '../../infrastructure/database/models/FindingType.
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
 import { TargetHealthMonitor } from './TargetHealthMonitor.js';
+import { ownsRun } from './runOwnership.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.js';
@@ -151,16 +152,12 @@ export class SessionManager implements TelemetryRecorder {
     return this.run?.engine ?? null;
   }
 
-  public getActiveUserId(): string | null {
-    return this.run?.userId ?? null;
-  }
-
   /** Unique tenant key of the active run (guests included), or null. */
   public getActiveOwnerKey(): string | null {
     return this.run?.ownerKey ?? null;
   }
 
-  /** Public ownership probe for HTTP callers (stop endpoint). */
+  /** The single ownership probe for HTTP and socket callers alike. */
   public ownsActiveRun(userId: string | null, runId: string | undefined): boolean {
     return this.run ? this.isOwner(this.run, runId, userId) : false;
   }
@@ -196,7 +193,7 @@ export class SessionManager implements TelemetryRecorder {
       if (!run || run.runToken !== params.runToken || run.status !== 'STARTING') return;
       console.error(`[SessionManager] Run ${run.runToken} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
       this.emitFailure(`Engine failed to start within ${Math.round(RESERVATION_TIMEOUT_MS / 1000)}s. The session was cancelled and all resources released.`);
-      this.endRun('CRASHED');
+      this.endRun('CRASHED', params.runToken);
       params.onAbandoned?.();
     }, RESERVATION_TIMEOUT_MS);
 
@@ -302,16 +299,30 @@ export class SessionManager implements TelemetryRecorder {
     });
   }
 
+  /**
+   * A caller settling a run must be settling the run it started. Several call
+   * sites reach here after an await (crash termination, a fire-and-forget catch),
+   * by which time the operator may already have launched the NEXT run — and
+   * tearing that one down would unbind its telemetry room mid-boot, leaving it
+   * unroutable and unbuffered for its whole timebox. Mirrors the grace timer's
+   * own runToken check.
+   */
+  private isStaleSettle(runToken: string | undefined, label: string): boolean {
+    if (!this.run || runToken === undefined || runToken === this.run.runToken) return false;
+    console.warn(`[SessionManager] Ignoring stale ${label} for run ${runToken} — run ${this.run.runToken} is active now.`);
+    return true;
+  }
+
   /** Publish a terminal failure for the active run and release it. */
-  public failRun(message: string): void {
-    if (!this.run) return;
+  public failRun(message: string, runToken?: string): void {
+    if (!this.run || this.isStaleSettle(runToken, 'failRun')) return;
     this.emitFailure(message);
-    this.endRun('CRASHED');
+    this.endRun('CRASHED', runToken);
   }
 
   /** Called from the run's finally block when the engine loop returns/throws. */
-  public endRun(finalStatus: RunLifecycleStatus = 'COMPLETED'): void {
-    if (!this.run) return;
+  public endRun(finalStatus: RunLifecycleStatus = 'COMPLETED', ownerRunToken?: string): void {
+    if (!this.run || this.isStaleSettle(ownerRunToken, 'endRun')) return;
     const { runToken } = this.run;
     // A confirmed server crash is terminal — the normal run-completion path must
     // not downgrade it back to COMPLETED when the stopped engine unwinds.
@@ -447,18 +458,13 @@ export class SessionManager implements TelemetryRecorder {
   }
 
   /**
-   * Ownership check. Possession of the server-issued run token is proof of
-   * ownership for BOTH guests and authenticated operators — the token is a UUID
-   * returned only in the authenticated start-test response, never broadcast. This
-   * is the primary path because the Socket.IO handshake carries no JWT, so a
-   * socket's userId is null even for an authenticated run; requiring identity
-   * here would reject every socket attach and starve the client of live frames.
-   * Identity match is an additional accepted path for the HTTP restore endpoint,
-   * whose request DOES carry the Bearer token.
+   * Ownership check, delegated to the shared rule so attach (socket) and restore
+   * (HTTP) can never disagree. Both transports now carry a verified identity: the
+   * Socket.IO handshake presents the JWT and registerSocketHandlers verifies it,
+   * so an authenticated run no longer has to accept bare token possession.
    */
   private isOwner(run: ActiveRun, runId: string | undefined, userId: string | null): boolean {
-    if (typeof runId === 'string' && runId === run.runToken) return true;
-    return run.userId !== null && userId !== null && userId === run.userId;
+    return ownsRun({ runToken: run.runToken, userId: run.userId }, runId, userId);
   }
 
   /** Unscoped snapshot of the active run — worker-side Redis publishing only. */
@@ -477,12 +483,11 @@ export class SessionManager implements TelemetryRecorder {
     if (run) {
       return this.isOwner(run, runId, userId) ? this.buildSnapshot(run) : null;
     }
-    // No live run: offer the retained final state to its owner (token or identity).
+    // No live run: offer the retained final state to its owner, under the same rule.
     const terminal = this.lastTerminal;
     if (!terminal) return null;
-    const ownsByToken = typeof runId === 'string' && runId === terminal.snapshot.runToken;
-    const ownsByIdentity = terminal.userId !== null && userId !== null && userId === terminal.userId;
-    return ownsByToken || ownsByIdentity ? terminal.snapshot : null;
+    const owner = { runToken: terminal.snapshot.runToken, userId: terminal.userId };
+    return ownsRun(owner, runId, userId) ? terminal.snapshot : null;
   }
 
   private buildSnapshot(run: ActiveRun): ActiveSessionSnapshot {
@@ -662,8 +667,10 @@ export class SessionManager implements TelemetryRecorder {
       await Promise.resolve(run.engine.stop?.('target-crash'));
     } catch (err) {
       console.error('[SessionManager] Crash-termination stop failed:', err);
-      // Engine unresponsive — force teardown so resources are still released.
-      this.endRun('CRASH_COMPLETED');
+      // Engine unresponsive — force teardown so resources are still released. Scoped
+      // to THIS run: the await above can outlive it, and the operator may already
+      // have launched the next one.
+      this.endRun('CRASH_COMPLETED', run.runToken);
     }
   }
 

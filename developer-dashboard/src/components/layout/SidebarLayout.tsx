@@ -97,7 +97,7 @@ export default function SidebarLayout({
           <div
             onClick={closeDrawer}
             aria-hidden="true"
-            className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 ${
+            className={`fixed inset-0 z-40 bg-[#121212]/50 transition-opacity duration-200 ${
               isDrawerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
             }`}
           />

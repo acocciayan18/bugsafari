@@ -21,6 +21,7 @@ import {
     NETWORK_CAP,
     RUN_ID_STORAGE_KEY,
     RUN_CODE_STORAGE_KEY,
+    RUN_SCOPED_STORAGE_KEYS,
     JOB_ID_STORAGE_KEY,
     STATUS_TOAST_ID,
     ENGINE_TERMINAL_ACTIONS,
@@ -59,6 +60,14 @@ function writeStorage(key: string, value: string | null): void {
     } catch {
         // Storage unavailable — non-fatal
     }
+}
+
+// Drop every run-scoped token at once. Leaving any one behind is what lets a
+// later launch/save/attach address a run this client no longer owns — the runCode
+// especially, since the save endpoint keys the persisted document on it.
+function clearRunTokens(): void {
+    getEngineGateway().setRunId(null);
+    for (const key of RUN_SCOPED_STORAGE_KEYS) writeStorage(key, null);
 }
 
 function appendCapped<T>(previous: T[], item: T, cap: number): T[] {
@@ -133,6 +142,8 @@ export interface RunState {
     applyTimeSync: (elapsedActiveMs: number, timeboxMs: number) => void;
     resetForLaunch: (timeboxMs: number, resolvedUrl: string) => void;
     resetAfterCancel: () => void;
+    /** Wipe all run-scoped state + tokens because the operator identity changed. */
+    resetForIdentityChange: () => void;
     markLaunchFailed: (message: string) => void;
     releaseOrphanedRun: (message: string) => void;
     setSavingSession: (saving: boolean) => void;
@@ -508,9 +519,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         runRefs.queuePhase = 'done';
         runRefs.runStarted = false;
         toast.dismiss(STATUS_TOAST_ID);
-        getEngineGateway().setRunId(null);
-        writeStorage(RUN_ID_STORAGE_KEY, null);
-        writeStorage(JOB_ID_STORAGE_KEY, null);
+        clearRunTokens();
         set({
             isQueued: false, queuePosition: null, queueDepth: 0, isTestRunning: false,
             isLaunching: false, isInitializing: false, isThinking: false, status: 'IDLE',
@@ -525,9 +534,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         runRefs.queuePhase = 'done';
         runRefs.runStarted = false;
         toast.dismiss(STATUS_TOAST_ID);
-        getEngineGateway().setRunId(null);
-        writeStorage(RUN_ID_STORAGE_KEY, null);
-        writeStorage(JOB_ID_STORAGE_KEY, null);
+        clearRunTokens();
         set((s) => ({
             isInitializing: false,
             isThinking: false,
@@ -542,15 +549,58 @@ export const useRunStore = create<RunState>((set, get) => ({
         }));
     },
 
+    // The operator's identity changed (login, logout, account switch). Everything in
+    // this store belongs to the PREVIOUS identity, so it is wiped rather than reset:
+    // leaving the buffers would show one account another's telemetry, and leaving the
+    // tokens would let the new account attach to — and save over — the old one's run.
+    resetForIdentityChange: () => {
+        runRefs.queuePhase = 'idle';
+        runRefs.runStarted = false;
+        runRefs.runStartWallClock = 0;
+        runRefs.serverElapsedMs = 0;
+        runRefs.serverElapsedAt = 0;
+        runRefs.timeSyncSeeded = false;
+        toast.dismiss(STATUS_TOAST_ID);
+        clearRunTokens();
+        set({
+            status: 'IDLE',
+            isTestRunning: false,
+            isLaunching: false,
+            isThinking: false,
+            isInitializing: false,
+            isQueued: false,
+            isReconnecting: false,
+            hasRunCompleted: false,
+            hasTimeLimitExceeded: false,
+            terminationOutcome: null,
+            queuePosition: null,
+            queueDepth: 0,
+            queueActiveCount: 0,
+            queueWorkerCount: null,
+            liveFrame: null,
+            latestFrame: null,
+            telemetry: [],
+            networkEvents: [],
+            reports: [],
+            incidents: [],
+            browserConsole: [],
+            accessibilityCount: 0,
+            accessibilityBannerDismissed: false,
+            // History is per-tenant and refetched for the new identity.
+            sessionHistory: [],
+            isSavingSession: false,
+            isSessionSaved: false,
+            elapsedTimeMs: 0,
+        });
+    },
+
     // A failed launch owns no run — drop the tokens too, or the next start sends a
     // stale knownRunId and the server "resumes" a session that no longer exists.
     markLaunchFailed: (message) => {
         runRefs.queuePhase = 'done';
         runRefs.runStarted = false;
         toast.dismiss(STATUS_TOAST_ID);
-        getEngineGateway().setRunId(null);
-        writeStorage(RUN_ID_STORAGE_KEY, null);
-        writeStorage(JOB_ID_STORAGE_KEY, null);
+        clearRunTokens();
         set((s) => ({
             isInitializing: false,
             isThinking: false,

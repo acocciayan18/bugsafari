@@ -245,6 +245,20 @@ export class SocketConnectionManager {
     this.socket.disconnect();
   }
 
+  /**
+   * Force a fresh handshake, dropping everything tied to the previous identity.
+   * The `auth` callback is evaluated once per handshake, so swapping the stored
+   * token in place never reaches the server — an account switch would keep
+   * presenting the OLD account's JWT until the next network drop. The run token
+   * and queue subscription are cleared because they belonged to that account.
+   */
+  public reconnect(): void {
+    this.runId = null;
+    this.queueSubscription = null;
+    this.disconnect();
+    this.connect();
+  }
+
   public pauseTest(): void {
     this.socket.emit('pause-test');
   }

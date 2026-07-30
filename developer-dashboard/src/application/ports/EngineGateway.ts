@@ -72,6 +72,8 @@ export interface EngineGateway {
   resumeTest(): void;
   /** Stop the live engine (socket emit); for QUEUED runs use cancelQueuedRun. */
   stopTest(): void;
+  /** Force a fresh socket handshake under the current identity (account switch). */
+  reconnect(): void;
   saveSession(targetUrl: string): Promise<void>;
   fetchSessionHistory(limit?: number): Promise<SessionHistoryEntry[]>;
   /** Force stop - sends explicit stop to terminate orphaned backend processes on timeout.

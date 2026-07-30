@@ -103,7 +103,7 @@ export default function SlidingAuthForm() {
 
                         <div className="relative w-full h-full flex flex-col items-center justify-center p-8 text-white">
                             {/* Gradient overlay for better text readability */}
-                            <div className="absolute inset-0 bg-black/20" />
+                            <div className="absolute inset-0 bg-[#121212]/20" />
 
                             <div className="relative text-center max-w-md">
                                 <h2 className="text-3xl sm:text-4xl font-bold mb-4 drop-shadow-md">

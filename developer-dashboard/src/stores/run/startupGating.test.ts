@@ -4,8 +4,9 @@
 // Run via `npm test`; exits non-zero on the first failed node:assert.
 
 import assert from 'node:assert/strict';
-import { shouldFetchHistory, shouldRestoreSession, type SessionBootstrap } from './sessionBootstrap.js';
+import { identityKey, isIdentitySwitch, shouldFetchHistory, shouldRestoreSession, type SessionBootstrap } from './sessionBootstrap.js';
 import { canAttach } from '../../infrastructure/engine/gateway/attachEligibility.js';
+import { RUN_SCOPED_STORAGE_KEYS, RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY } from './types.js';
 
 const guest: SessionBootstrap = { authToken: null, isAuthenticated: false };
 const signedIn: SessionBootstrap = { authToken: 'jwt', isAuthenticated: true };
@@ -65,6 +66,45 @@ check('a held run token is proof of ownership', () => {
 
 check('an authenticated identity can claim its own run without a stored token', () => {
     assert.equal(canAttach(null, 'jwt'), true);
+});
+
+console.log('\nsession isolation — an identity switch invalidates all run-scoped state');
+
+const userA = { id: 'user-a' };
+const userB = { id: 'user-b' };
+
+check('a token rotation for the SAME user is not an identity switch', () => {
+    // Rotation changes the JWT mid-run. Treating that as a switch would wipe a live
+    // session, which is why the trigger keys on identity rather than on the token.
+    assert.equal(isIdentitySwitch(identityKey(userA, false), identityKey(userA, false)), false);
+});
+
+check('logging in as a different account IS an identity switch', () => {
+    assert.equal(isIdentitySwitch(identityKey(userA, false), identityKey(userB, false)), true);
+});
+
+check('logout and login are both identity switches', () => {
+    assert.equal(isIdentitySwitch(identityKey(userA, false), identityKey(null, false)), true);
+    assert.equal(isIdentitySwitch(identityKey(null, false), identityKey(userA, false)), true);
+});
+
+check('guest and signed-out are distinct identities', () => {
+    assert.equal(isIdentitySwitch(identityKey(null, true), identityKey(null, false)), true);
+    assert.equal(isIdentitySwitch(identityKey(null, true), identityKey(null, true)), false);
+});
+
+check('a guest becoming authenticated is an identity switch', () => {
+    assert.equal(isIdentitySwitch(identityKey(null, true), identityKey(userA, false)), true);
+});
+
+check('every run-scoped storage key is covered by the teardown set', () => {
+    // A key omitted here survives logout and lets the next account present it on
+    // attach, or save its own findings over the previous account's document.
+    const keys = [...RUN_SCOPED_STORAGE_KEYS];
+    for (const key of [RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY]) {
+        assert.ok(keys.includes(key), `${key} must be dropped on identity change`);
+    }
+    assert.equal(new Set(keys).size, keys.length, 'no duplicate keys');
 });
 
 console.log(`\n${passed} checks passed`);

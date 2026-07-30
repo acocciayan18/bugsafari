@@ -55,6 +55,12 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.connection.disconnect();
   }
 
+  /** Re-handshake under the current identity, dropping the previous one's run. */
+  public reconnect(): void {
+    this.runId = null;
+    this.connection.reconnect();
+  }
+
   // ── HTTP/REST routines ────────────────────────────────────────
   public async startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<StartTestResult> {
     // Present the owned run token so the server resumes an existing session

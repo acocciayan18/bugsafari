@@ -175,16 +175,11 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     // its owner — otherwise any connected socket could pause or kill a run it does
     // not own. Mirrors the ownership check on POST /api/safari/stop; the queue
     // branch enforces the equivalent via ownsQueuedRun.
-    const ownsActiveRun = (): boolean => {
-      const activeRunToken = sessionManager.getActiveRunId();
-      if (!activeRunToken) return false;
-      // Possession of the run token proves ownership (same trust model as
-      // SESSION_ATTACH) — the dashboard socket carries no JWT. A matching
-      // authenticated identity is accepted as the alternative proof.
-      if (socketRunToken() === activeRunToken) return true;
-      const activeUserId = sessionManager.getActiveUserId();
-      return activeUserId !== null && activeUserId === socketUserId(socket);
-    };
+    // Delegated to the manager's own check rather than re-deriving the rule here:
+    // this copy accepted bare token possession even for an authenticated run, so it
+    // drifted from SESSION_ATTACH the moment that rule was tightened.
+    const ownsActiveRun = (): boolean =>
+      sessionManager.ownsActiveRun(socketUserId(socket), socketRunToken() ?? undefined);
 
     const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void, reason?: StopReason): Promise<void> => {
       if (controlPublisher) {

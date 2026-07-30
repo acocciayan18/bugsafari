@@ -67,6 +67,14 @@ export const RUN_CODE_STORAGE_KEY = 'bugsafari:runCode';
 // jobId of an enqueued distributed run — needed to rejoin the queue-position stream
 export const JOB_ID_STORAGE_KEY = 'bugsafari:jobId';
 
+// Every key tied to ONE operator's run. Enumerated so a teardown can drop the set
+// without a caller having to remember which keys exist.
+export const RUN_SCOPED_STORAGE_KEYS = [
+    RUN_ID_STORAGE_KEY,
+    RUN_CODE_STORAGE_KEY,
+    JOB_ID_STORAGE_KEY,
+] as const;
+
 // Now the same app-wide slot — kept as an alias so callers don't need to change.
 export const STATUS_TOAST_ID = TOAST_ID;
 

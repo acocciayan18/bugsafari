@@ -723,7 +723,7 @@ export class StartExplorationUseCase {
             // Tear down the run in the SessionManager (stops health monitor, clears
             // grace timer, releases the room + replay buffer). No-op if a grace
             // expiry already ended it. CRASHED preserves the fatal-error lifecycle.
-            sessionManager.endRun(executionStatus === 'CRASHED' ? 'CRASHED' : 'COMPLETED');
+            sessionManager.endRun(executionStatus === 'CRASHED' ? 'CRASHED' : 'COMPLETED', resolvedRunToken);
 
             console.log('[StartExplorationUseCase] Session terminated, status set to IDLE');
         }

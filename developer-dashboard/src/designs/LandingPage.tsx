@@ -64,7 +64,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <div className="flex flex-wrap gap-4 pt-4">
                             <button
                                 onClick={onLogin}
-                                className="px-8 py-3.5 bg-black text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all flex items-center gap-2 cursor-pointer"
+                                className="px-8 py-3.5 bg-[#121212] text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all flex items-center gap-2 cursor-pointer"
                             >
                                 Start BugSafari
                             </button>
@@ -93,7 +93,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                 <div className="flex gap-4 bg-zinc-50 border-l-2 border-zinc-400 py-1.5 px-2 rounded-r items-center shadow-xs">
                                     <div className="w-10 text-zinc-600 font-bold text-right select-none">125</div>
                                     <div className="text-zinc-800">&nbsp; let result = <span className="font-bold text-indigo-600">await</span> forensicEngine.analyze(packet);</div>
-                                    <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-black text-white text-xs font-bold rounded">
+                                    <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-[#121212] text-white text-xs font-bold rounded">
                                         ANOMALY
                                     </div>
                                 </div>
@@ -107,21 +107,21 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                             <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">CPU Usage</div>
                                             <div className="text-[18px] font-bold">94.2%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-black rounded-full w-4/5"></div>
+                                                <div className="h-full bg-[#121212] rounded-full w-4/5"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
                                             <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Memory</div>
                                             <div className="text-[18px] font-bold">2.4 GB</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-black rounded-full w-1/3"></div>
+                                                <div className="h-full bg-[#121212] rounded-full w-1/3"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
                                             <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Confidence</div>
                                             <div className="text-[18px] font-bold">98.4%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-black rounded-full w-11/12"></div>
+                                                <div className="h-full bg-[#121212] rounded-full w-11/12"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -157,7 +157,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         {featureCards.map((card) => (
                             <div key={card.title} className="p-8 border border-zinc-200/80 rounded-xl bg-white shadow-md shadow-zinc-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-default flex flex-col justify-between">
                                 <div>
-                                    <div className="w-12 h-12 bg-black text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px] mb-6 shrink-0">
+                                    <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px] mb-6 shrink-0">
                                         {card.tag}
                                     </div>
                                     <h3 className="text-[20px] mb-3 font-bold uppercase">{card.title}</h3>
@@ -178,7 +178,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <ul className="space-y-4">
                             {deepTraceChecks.map((item) => (
                                 <li key={item.title} className="flex items-start gap-3">
-                                    <span className="font-mono text-[13px] font-bold bg-black text-white w-5 h-5 rounded-full flex items-center justify-center mt-0.5">✓</span>
+                                    <span className="font-mono text-[13px] font-bold bg-[#121212] text-white w-5 h-5 rounded-full flex items-center justify-center mt-0.5">✓</span>
                                     <div>
                                         <h4 className="font-mono text-[13px] font-bold text-black uppercase">{item.title}</h4>
                                         <p className="text-[13px] text-zinc-600">{item.description}</p>
@@ -207,7 +207,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         <button
                             onClick={onLogin}
-                            className="px-10 py-4 bg-black text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all uppercase tracking-widest text-xs cursor-pointer"
+                            className="px-10 py-4 bg-[#121212] text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all uppercase tracking-widest text-xs cursor-pointer"
                         >
                             Try BugSafari
                         </button>
@@ -258,7 +258,7 @@ const LandingPage = () => {
     const goToLogin = useCallback(() => navigate('/login'), [navigate]);
 
     return (
-        <div className="bg-white text-black min-h-screen font-sans selection:bg-black selection:text-white">
+        <div className="bg-white text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
             {/* Top Navigation Bar — stays mounted across every in-page section switch */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
                 <div className="flex justify-between items-center w-full px-6 py-4 max-w-[1440px] mx-auto">
@@ -288,7 +288,7 @@ const LandingPage = () => {
                         </button>
                         <button
                             onClick={goToLogin}
-                            className="px-5 py-2 font-mono text-[13px] font-semibold bg-black text-white rounded-lg shadow-sm hover:bg-zinc-800 transition-all focus:ring-2 focus:ring-black focus:outline-none cursor-pointer"
+                            className="px-5 py-2 font-mono text-[13px] font-semibold bg-[#121212] text-white rounded-lg shadow-sm hover:bg-zinc-800 transition-all focus:ring-2 focus:ring-black focus:outline-none cursor-pointer"
                         >
                             Log In
                         </button>

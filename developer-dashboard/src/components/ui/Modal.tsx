@@ -86,7 +86,7 @@ export function Modal({
 
   return createPortal(
     <div
-  className={`fixed inset-0 backdrop-blur-sm bg-black/10 z-50 flex items-end justify-center overflow-y-auto p-0 animate-backdrop-in sm:items-center sm:p-4 md:p-6 ${backdropClassName}`}
+  className={`fixed inset-0 backdrop-blur-sm bg-[#121212]/10 z-50 flex items-end justify-center overflow-y-auto p-0 animate-backdrop-in sm:items-center sm:p-4 md:p-6 ${backdropClassName}`}
   onMouseDown={handleBackdropMouseDown}
 >
       {/* Bottom sheet under `sm`, centered dialog above. Panel owns its own scroll so

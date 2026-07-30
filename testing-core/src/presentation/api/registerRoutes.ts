@@ -589,7 +589,7 @@ export function registerRoutes(
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[API]  Safari run ${runToken} failed to start:`, message);
-        sessionManager.failRun(`Engine failed to start: ${message}`);
+        sessionManager.failRun(`Engine failed to start: ${message}`, runToken);
         useCase.releaseActivation();
       });
   });

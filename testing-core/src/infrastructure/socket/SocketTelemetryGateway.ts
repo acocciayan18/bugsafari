@@ -25,12 +25,11 @@ export interface TelemetryRecorder {
 }
 
 export class SocketTelemetryGateway implements TelemetryGateway {
-  // When set, emits are scoped to this Socket.IO room instead of broadcast to
-  // every connected socket — the run-scoped wire that makes future per-tenant
-  // isolation a config change rather than a rewrite. Null preserves the legacy
-  // broadcast behavior (no active run).
+  // Every emit is scoped to this Socket.IO room. Null means no run owns the wire
+  // (before reserve, after teardown) and emits are DROPPED — see channel().
   private room: string | null = null;
   private recorder: TelemetryRecorder | null = null;
+  private droppedUnrouted = 0;
   // Centralized suppression of consecutive-identical lines and repeat lifecycle
   // handshakes (e.g. duplicate IDLEs). Reset per run so state never leaks across runs.
   private readonly deduper: TelemetryDeduper = createTelemetryDeduper();
@@ -48,9 +47,29 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     this.recorder = recorder;
   }
 
-  // Room-scoped emitter when a run owns the wire, otherwise a plain broadcast.
+  // Room-scoped emitter, or a sink that drops when no run owns the wire.
+  //
+  // There is no legitimate fleet-wide audience for a run's telemetry: broadcasting
+  // an unrouted emit re-sends one run's frame to EVERY connected dashboard, so a
+  // late tail from a finished run lands in another operator's live session — the
+  // cross-account leak this replaced. The worker transport already drops these
+  // (see RedisTelemetryPublisher.emit); the Socket.IO path now matches it.
+  //
+  // Nothing is lost for the run's own owner: the room is bound before the
+  // start-test response and the owner joins immediately after, and anything
+  // emitted in that gap is buffered by the recorder and replayed on attach.
   private channel(): Pick<RoomEmitter, 'emit'> {
-    return this.room ? this.io.to(this.room) : this.io;
+    if (this.room) return this.io.to(this.room);
+    return { emit: (event: string): boolean => this.dropUnrouted(event) };
+  }
+
+  // Rate-limited so a stuck producer cannot write one log line per frame.
+  private dropUnrouted(event: string): boolean {
+    this.droppedUnrouted += 1;
+    if (this.droppedUnrouted === 1 || this.droppedUnrouted % 100 === 0) {
+      console.warn(`[SocketTelemetryGateway] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
+    }
+    return true;
   }
 
   public emitTelemetry(event: TelemetryEvent): void {

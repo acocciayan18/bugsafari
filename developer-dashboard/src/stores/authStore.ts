@@ -12,6 +12,7 @@ import {
     getRefreshToken,
 } from '../utils/authRefresh';
 import { navigateTo } from './authBridge';
+import { RUN_SCOPED_STORAGE_KEYS } from './run/types';
 import type { AuthUser, LoginCredentials, SignupCredentials } from '../context/AuthContext';
 
 interface AuthResponse {
@@ -168,6 +169,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem('bugsafari_guest');
         localStorage.removeItem('bugsafari_guest_settings');
         localStorage.removeItem('bugsafari_displayName');
+        // Run-scoped tokens belong to the identity being dropped. The dashboard's
+        // identity subscription clears these too, but it only exists while the
+        // workspace is mounted — logging out from elsewhere would otherwise leave
+        // them for the next account to present on attach.
+        for (const key of RUN_SCOPED_STORAGE_KEYS) localStorage.removeItem(key);
 
         authSuccessToast(AUTH_SUCCESS.signedOut);
         console.log('[authStore] User logged out');

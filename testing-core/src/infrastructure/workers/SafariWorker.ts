@@ -120,8 +120,18 @@ export async function createSafariWorker(
   // dashboard sits on its last snapshot until the 60s TTL lapses, and a client
   // that already left queue:${jobId} never learns the run is dead at all.
   const publishRunFailure = (runToken: string, message: string): void => {
-    if (sessionManager.getActiveRunId() === runToken) {
-      sessionManager.failRun(message);
+    const activeRunToken = sessionManager.getActiveRunId();
+    if (activeRunToken === runToken) {
+      sessionManager.failRun(message, runToken);
+      return;
+    }
+    // BullMQ fires 'failed' after the processor settles, so the next job may
+    // already own the wire. Borrowing its room to announce a DEAD run's failure
+    // would misattribute the notice and then null the live run's room — blacking
+    // out its telemetry for the rest of its timebox. The dead run's own room is
+    // safe to borrow only when nothing else holds one.
+    if (activeRunToken) {
+      console.warn(`[SafariWorker] Skipping failure notice for run ${runToken} — run ${activeRunToken} owns the wire.`);
       return;
     }
     telemetry.setRoom(`run:${runToken}`);

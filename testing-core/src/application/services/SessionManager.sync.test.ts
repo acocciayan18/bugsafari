@@ -108,10 +108,16 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   // A foreign socket with the wrong token and no identity is rejected.
   const bad = sm.attach(new FakeSocket() as never, 'wrong-token', null);
   assert.ok(!bad.attached && bad.reason === 'not-owner', 'S4: wrong token cannot attach');
-  // Ownership: only userA (identity) or the run token proves ownership.
+  // Ownership of an AUTHENTICATED run requires the identity to match. A run token
+  // alone is no longer accepted: it outlives its run in the client's localStorage,
+  // and a second account in the same browser would otherwise replay userA's run.
   assert.strictEqual(sm.ownsActiveRun('userB', undefined), false, 'S4: a different operator does not own the run');
   assert.strictEqual(sm.ownsActiveRun('userA', undefined), true, 'S4: owner by identity');
-  assert.strictEqual(sm.ownsActiveRun(null, 'r4'), true, 'S4: owner by run token');
+  assert.strictEqual(sm.ownsActiveRun('userA', 'r4'), true, 'S4: owner by identity + token');
+  assert.strictEqual(sm.ownsActiveRun(null, 'r4'), false, 'S4: token alone cannot claim an authenticated run');
+  assert.strictEqual(sm.ownsActiveRun('userB', 'r4'), false, "S4: userB cannot claim userA's run with a leaked token");
+  const stolen = sm.attach(new FakeSocket() as never, 'r4', 'userB');
+  assert.ok(!stolen.attached && stolen.reason === 'not-owner', "S4: userB cannot attach with userA's run token");
   // Two guests are never conflated by null===null.
   const { sm: sm2 } = newManager();
   sm2.beginRun({ runToken: 'g1', runCode: 'RUN-0000A1', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: fakeEngine() });
@@ -172,6 +178,35 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   sm.beginRun({ runToken: 'r8', runCode: 'RUN-000008', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: fakeEngine() });
   assert.strictEqual(sm.getSnapshotFor(null, 'r8')?.status, 'RUNNING', 'S8: reservation upgraded to RUNNING, same room/buffers');
   assert.ok(sock.joined.includes('run:r8'), 'S8: the early socket is in the run room');
+}
+
+// ── S9: a late settle from a FINISHED run must not tear down the NEXT one ──────
+// onTargetCrash reaches endRun after an await, by which time the operator may
+// already have launched another run. Unbinding its room mid-boot left that run
+// broadcasting unroutable, unbuffered telemetry for its whole timebox.
+{
+  const { sm, gw } = newManager();
+  sm.beginRun({ runToken: 'r9a', runCode: 'RUN-0000A9', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: fakeEngine() });
+  assert.strictEqual(gw.room, 'run:r9a', 'S9: run A owns the wire');
+  sm.endRun('COMPLETED', 'r9a');
+  assert.strictEqual(gw.room, null, 'S9: run A released the wire on its own settle');
+
+  sm.reserveRun({ runToken: 'r9b', runCode: 'RUN-0000B9', userId: null, targetUrl: 'http://t', timeboxMs: 1000 });
+  assert.strictEqual(gw.room, 'run:r9b', 'S9: run B owns the wire');
+
+  // The straggler finally lands, naming run A.
+  sm.endRun('CRASH_COMPLETED', 'r9a');
+  assert.strictEqual(gw.room, 'run:r9b', "S9: a stale settle must not unbind run B's room");
+  assert.strictEqual(sm.hasActiveRun(), true, 'S9: run B is still live');
+  assert.ok(gw.recorder !== null, 'S9: run B still buffers for reconnect');
+
+  sm.failRun('stale worker notice', 'r9a');
+  assert.strictEqual(gw.room, 'run:r9b', 'S9: a stale failRun is ignored too');
+  assert.strictEqual(sm.hasActiveRun(), true, 'S9: run B survives a stale failRun');
+
+  // An unscoped settle still works, so callers that cannot name their run are unchanged.
+  sm.endRun('COMPLETED');
+  assert.strictEqual(gw.room, null, 'S9: an unscoped settle releases the active run');
 }
 
 console.log('SessionManager.sync.test.ts passed');

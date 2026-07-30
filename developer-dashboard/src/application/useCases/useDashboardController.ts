@@ -4,6 +4,7 @@ import { useAuthStore, selectIsAuthenticated } from '../../stores/authStore';
 import { useRunStore } from '../../stores/run/runStore';
 import { initRunTimer } from '../../stores/run/runTimer';
 import { bindGatewayToRunStore, connectAndRestore } from '../../stores/run/gatewayBinding';
+import { identityKey, isIdentitySwitch } from '../../stores/run/sessionBootstrap';
 import { startRun, pauseRun, resumeRun, stopRun, saveRun, refreshHistory } from '../../stores/run/runCommands';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { classifyProbe, decideProbeAction, nextMissCount } from '../../stores/run/engineLiveness';
@@ -56,8 +57,21 @@ function useRunSession(): void {
 
             // Keep the singleton's token current for the rest of the session
             // (rotation, login in another tab, logout).
+            let identity = identityKey(auth.user, auth.isGuestMode);
             unsubscribeAuth = useAuthStore.subscribe((state, prev) => {
                 if (state.token !== prev.token) gateway.setAuthToken(state.token);
+
+                // An identity switch (login, logout, account swap) invalidates every
+                // run-scoped thing this page holds. setAuthToken alone only reaches the
+                // HTTP client — the socket's auth callback is read once per handshake,
+                // so without a reconnect the wire keeps presenting the OLD account's
+                // JWT, and the store keeps showing the old account's telemetry.
+                const nextIdentity = identityKey(state.user, state.isGuestMode);
+                if (!isIdentitySwitch(identity, nextIdentity)) return;
+                identity = nextIdentity;
+                console.log('[Dashboard] Operator identity changed — clearing run state and re-handshaking.');
+                useRunStore.getState().resetForIdentityChange();
+                gateway.reconnect();
             });
         }
 
