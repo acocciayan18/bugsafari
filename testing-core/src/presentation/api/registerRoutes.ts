@@ -377,6 +377,16 @@ export function registerRoutes(
       return;
     }
 
+    // Reachability gate BEFORE the queue branch, so a distributed run is refused
+    // on the same terms as a synchronous one. The URL is never rewritten: a
+    // loopback/private target is rejected outright.
+    const routing = resolveEngineTargetUrl(targetUrl);
+    if (!routing.ok) {
+      console.warn(`[API]  Target rejected: ${routing.message}`);
+      response.status(422).json({ error: 'TARGET_NOT_PUBLIC', message: routing.message });
+      return;
+    }
+
     // Resolve the operator-selected Unified Infiltration Profile into gated scenario
     // categories BEFORE the queue branch, so a distributed run carries the same gate
     // as a synchronous one (otherwise the worker defaults to all testing types).
@@ -409,9 +419,8 @@ export function registerRoutes(
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
-    // must not touch the synchronous use case's active flag. Target routing is left
-    // to the worker (resolveEngineTargetUrl runs there against the browser's own
-    // network view). Guest runs (no userId) enqueue too; the worker persists nothing.
+    // must not touch the synchronous use case's active flag. Guest runs (no userId)
+    // enqueue too; the worker persists nothing.
     if (taskQueue) {
       // Credentials never enter the job payload: BullMQ retains failed jobs in
       // Redis for 24h in plaintext. They travel through the AuthVault instead —
@@ -539,22 +548,7 @@ export function registerRoutes(
 
     // (optimizationSettings and selectedScenarios resolved above, before the queue branch.)
 
-    // Route the target for the active RUN_ENVIRONMENT before launch: bridge
-    // loopback in DOCKER_LOCAL, or reject an unreachable private address in
-    // CLOUD_HOSTED with a clear operator message. Reject BEFORE accepting.
-    const routing = resolveEngineTargetUrl(targetUrl);
-    if (!routing.ok) {
-      console.warn(`[API]  Target rejected: ${routing.message}`);
-      // Roll back the slot claimed above — we're bailing out without ever
-      // calling execute(), so nothing else will reset it to false.
-      useCase.releaseActivation();
-      response.status(422).json({ error: routing.message });
-      return;
-    }
-    const engineUrl = routing.url;
-    if (routing.rewritten) {
-      console.log(`[API]  Routed target for engine: ${targetUrl} -> ${engineUrl} (${routing.note})`);
-    }
+    // (target reachability was gated above, before the queue branch.)
 
     // Server-issued run token: returned to the client (stored client-side) so a
     // returning socket — including a guest after a full refresh — can prove
@@ -579,13 +573,12 @@ export function registerRoutes(
     });
 
     console.log(`[API] Accepting safari launch for: ${targetUrl} (runToken=${runToken}, runCode=${runCode})`);
-    // Operator sees their original URL; the engine dials the routed one.
     response.json({ accepted: true, url: targetUrl, runToken, runId: runCode });
     console.log(`[API] Starting safari in background...`);
     // Fire-and-forget, but never unhandled: a rejection here means the run died
     // before its own finally could report anything, so we must publish the
     // terminal handshake ourselves or the dashboard waits forever.
-    void useCase.execute(engineUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
+    void useCase.execute(targetUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[API]  Safari run ${runToken} failed to start:`, message);

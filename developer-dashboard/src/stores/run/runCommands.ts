@@ -1,7 +1,7 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
 import { defaultOptimizationSettings, isActionableNetworkStatus } from '../../../../shared/types.js';
-import { normalizeTargetUrl } from '../../../../shared/url.js';
+import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE } from '../../../../shared/url.js';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
@@ -44,6 +44,12 @@ export async function startRun(
     const resolvedUrl = normalizeTargetUrl(targetUrl);
     if (!resolvedUrl) {
         toast.error('Enter a valid http(s) URL to start a session.');
+        return;
+    }
+    // Last gate before the network call — the engine dials this address verbatim
+    // and cannot reach a private host.
+    if (isPrivateTargetUrl(resolvedUrl)) {
+        toast.error(PUBLIC_TARGET_REQUIRED_MESSAGE);
         return;
     }
 

@@ -87,13 +87,13 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
       footer={
         <>
-          <div className="mt-8 text-center text-[13px] text-(--text-primary)">
+          <div className="mt-8 text-center text-sm text-(--text-primary)">
             Don't have an account?{' '}
             <Link to="/signup" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Sign Up</Link>
           </div>
 
           <div className="mt-3 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-[13px] text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-sm text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
               Continue As Guest
             </button>
           </div>
@@ -131,8 +131,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
             <div className="relative">
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
-                <label htmlFor="password" className="text-[13px] font-medium text-(--text-primary)">Password</label>
-                <Link to="/forgot-password" className="text-[13px] font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
+                <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
+                <Link to="/forgot-password" className="text-sm font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
               </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
@@ -158,7 +158,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {passwordError && <p id="password-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{passwordError}</p>}
+              {passwordError && <p id="password-error" className="mt-1.5 text-sm text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
            

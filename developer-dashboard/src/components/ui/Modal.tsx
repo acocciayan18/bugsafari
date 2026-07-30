@@ -10,6 +10,7 @@ interface ModalProps {
   maxWidthClassName?: string;
   closeOnBackdrop?: boolean;
   backdropClassName?: string;
+  panelSurfaceClassName?: string;
 }
 
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -26,6 +27,9 @@ export function Modal({
   maxWidthClassName = 'max-w-md',
   closeOnBackdrop = true,
   backdropClassName = 'bg-(--surface-app)',
+  // Replaced (not merged) so callers outside the themed shell — e.g. the always-light
+  // landing page — can supply a full surface treatment without class-order conflicts.
+  panelSurfaceClassName = 'border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl)',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -96,7 +100,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`custom-scrollbar w-full ${maxWidthClassName} max-h-[92dvh] overflow-y-auto overscroll-contain animate-fade-in rounded-t-(--radius-lg) rounded-b-none border border-(--border-hairline) bg-(--surface-panel) pb-safe shadow-(--shadow-xl) sm:max-h-[88dvh] sm:rounded-(--radius-lg) sm:pb-0`}
+        className={`custom-scrollbar w-full ${maxWidthClassName} max-h-[92dvh] overflow-y-auto overscroll-contain animate-fade-in rounded-t-(--radius-lg) rounded-b-none border ${panelSurfaceClassName} pb-safe sm:max-h-[88dvh] sm:rounded-(--radius-lg) sm:pb-0`}
       >
         {children}
       </div>

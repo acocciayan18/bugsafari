@@ -17,6 +17,7 @@ import type { RunTerminationOutcome } from '../../types';
 import LiveFeed from '../common/LiveFeed';
 import SessionTimerLive from '../common/SessionTimerLive';
 import QueueStandbyChip from '../common/QueueStandbyChip';
+import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, ConsoleFilterBar, AiDiagnosticCard, TelemetryHelpModal, type ConsoleFilter } from '../telemetry';
@@ -24,6 +25,7 @@ import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
+import { isPrivateTargetUrl } from '../../../../shared/url.js';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
@@ -136,6 +138,11 @@ export default function ClinicalForensicsDashboard({
   const [strictBoundary, setStrictBoundary] = useState(false);
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
+
+  // The engine dials the typed address verbatim, so a local target can never
+  // resolve to the operator's machine — block launch and explain why.
+  const isLocalTarget = isPrivateTargetUrl(urlInput);
 
   // ─────────────────────────────────────────────────────────────
   // TELEMETRY SCROLL & UTILITIES
@@ -198,7 +205,7 @@ export default function ClinicalForensicsDashboard({
   const authIncomplete = isTargetAuthIncomplete(authDraft);
 
   const handleInitialize = () => {
-    if (!onStartInitialization || authIncomplete) return;
+    if (!onStartInitialization || authIncomplete || isLocalTarget) return;
     // The draft is deliberately retained so reopening the config modal — or
     // re-running against the same target — shows what the operator entered.
     // It lives only in component state: never persisted, gone on page reload.
@@ -209,6 +216,8 @@ export default function ClinicalForensicsDashboard({
   // timer, dormant feeds, locked controls) until the backend flips it to RUNNING.
   const isQueued = testStatus === 'QUEUED';
   const isActiveSession = testStatus === 'ACTIVE' || testStatus === 'PAUSED' || isTestRunning;
+  // Only surfaced pre-launch: mid-run the field mirrors the running target, not a draft.
+  const showLocalTargetError = isLocalTarget && !isActiveSession;
   const showSessionControls = isActiveSession || hasRunCompleted;
   // Backend settling in-flight tasks — lock every control until it confirms completion.
   const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
@@ -313,7 +322,7 @@ export default function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center cursor:pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -324,7 +333,7 @@ export default function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor:pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -333,7 +342,7 @@ export default function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor:pointer!!!  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                  className="flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase tracking-wider transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -374,21 +383,36 @@ export default function ClinicalForensicsDashboard({
               inputMode="url"
               autoComplete="url"
               aria-label="Target URL"
+              aria-invalid={showLocalTargetError || undefined}
               value={isActiveSession ? targetUrl : urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
+              onChange={(e) => {
+                setUrlInput(e.target.value);
+                // Re-arm the notice once the operator moves off a local address.
+                if (noticeDismissed && !isPrivateTargetUrl(e.target.value)) setNoticeDismissed(false);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
               }}
               disabled={isActiveSession}
-              className="w-full h-11 border border-(--border-strong) rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)"
-              placeholder="Enter target URL to initiate..."
+              className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
+              placeholder="Enter a publicly reachable URL (e.g. https://your-site.com)"
             />
+            {/* Overlays the page rather than reflowing it — the field keeps its position. */}
+            {showLocalTargetError && !noticeDismissed && (
+              <PublicTargetNotice onDismiss={() => setNoticeDismissed(true)} />
+            )}
           </div>
 
           <button
             onClick={handleInitialize}
-            disabled={isActiveSession || authIncomplete}
-            title={authIncomplete ? 'Enter a username and password, or turn off target authentication' : undefined}
+            disabled={isActiveSession || authIncomplete || isLocalTarget}
+            title={
+              showLocalTargetError
+                ? 'Enter a publicly reachable URL — local addresses cannot be tested'
+                : authIncomplete
+                  ? 'Enter a username and password, or turn off target authentication'
+                  : undefined
+            }
             className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase tracking-wider font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />

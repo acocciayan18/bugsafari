@@ -160,18 +160,14 @@ async (job) => {
         ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
-      // Route the target for the active RUN_ENVIRONMENT before launch: bridge
-      // loopback in DOCKER_LOCAL, or fail the job with a clear message in
-      // CLOUD_HOSTED when the target is a private/unreachable address.
+      // Second reachability gate (the API already ran one): a job may have been
+      // enqueued by an older client. The URL is dialed exactly as enqueued.
       const routing = resolveEngineTargetUrl(payload.targetUrl);
       if (!routing.ok) {
         console.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
         throw new Error(routing.message);
       }
-      const engineUrl = routing.url;
-      if (routing.rewritten) {
-        console.log(`[SafariWorker]  Routed target for engine: ${payload.targetUrl} -> ${engineUrl} (${routing.note})`);
-      }
+      const engineUrl = payload.targetUrl;
 
       // Bind the run to the SAME run token the client received at enqueue, so the
       // worker's telemetry room (run:${runToken}) matches the room the dashboard joined.

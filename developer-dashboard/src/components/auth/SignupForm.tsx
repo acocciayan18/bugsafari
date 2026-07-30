@@ -112,7 +112,7 @@ export default function SignupForm() {
       subtitle="Register credentials to start streaming evaluation safaris."
       footer={
         <>
-          <div className="mt-5 text-center text-[13px] text-(--text-primary)">
+          <div className="mt-5 text-center text-sm text-(--text-primary)">
             Already have an account? <Link to="/login" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Log in</Link>
           </div>
           <LegalFooter onOpenDoc={setOpenDocId} />
@@ -213,7 +213,7 @@ export default function SignupForm() {
               aria-describedby={consentError ? 'accept-policies-error' : undefined}
               className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
             />
-            <p className="text-[13px] leading-relaxed text-(--text-secondary)">
+            <p className="text-sm leading-relaxed text-(--text-secondary)">
               <label htmlFor="accept-policies" className="cursor-pointer">
                 I have read and agree to the
               </label>{' '}
@@ -228,7 +228,7 @@ export default function SignupForm() {
             </p>
           </div>
           {consentError && (
-            <p id="accept-policies-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">
+            <p id="accept-policies-error" className="mt-1.5 text-sm text-(--status-critical-fg)">
               {consentError}
             </p>
           )}

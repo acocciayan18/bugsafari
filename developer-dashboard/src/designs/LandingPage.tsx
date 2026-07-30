@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExploreContent, FeaturesContent, CommunityContent, AboutContent } from '../pages/InfoPages';
 import { SECTION_META } from '../pages/sectionMeta';
+import WelcomeModal from '../components/common/WelcomeModal';
+import { useWelcomeNotice } from '../hooks/useWelcomeNotice';
 
 type SectionId = 'home' | 'explore' | 'features' | 'community' | 'about';
 
@@ -245,6 +247,7 @@ const LandingPage = () => {
     const navigate = useNavigate();
     const [activeSection, setActiveSection] = useState<SectionId>('home');
     const mainRef = useRef<HTMLElement>(null);
+    const welcome = useWelcomeNotice();
 
     const goToSection = useCallback((id: SectionId) => {
         setActiveSection(id);
@@ -259,6 +262,8 @@ const LandingPage = () => {
 
     return (
         <div className="bg-white text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
+            <WelcomeModal isOpen={welcome.isOpen} onDismiss={welcome.dismiss} />
+
             {/* Top Navigation Bar — stays mounted across every in-page section switch */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
                 <div className="flex justify-between items-center w-full px-6 py-4 max-w-[1440px] mx-auto">

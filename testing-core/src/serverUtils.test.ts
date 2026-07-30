@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { normalizeTargetUrl } from '../../shared/url.js';
-import { parseTargetUrl } from './serverUtils.js';
+import { parseTargetUrl, resolveEngineTargetUrl } from './serverUtils.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -15,12 +15,12 @@ function check(name: string, fn: () => void): void {
 
 console.log('serverUtils — target URL resolution');
 
-check('bare host gains https and a trailing slash', () => {
-  assert.equal(normalizeTargetUrl('example.com'), 'https://example.com/');
+check('bare host gains https and nothing else', () => {
+  assert.equal(normalizeTargetUrl('example.com'), 'https://example.com');
 });
 
 check('explicit scheme and path are preserved', () => {
-  assert.equal(normalizeTargetUrl('http://localhost:3000/app'), 'http://localhost:3000/app');
+  assert.equal(normalizeTargetUrl('http://example.com:3000/app'), 'http://example.com:3000/app');
 });
 
 check('surrounding whitespace is trimmed', () => {
@@ -35,8 +35,8 @@ check('non-web protocols are rejected', () => {
 });
 
 check('a bare host:port is not mistaken for a scheme', () => {
-  assert.equal(normalizeTargetUrl('localhost:3000'), 'https://localhost:3000/');
-  assert.equal(normalizeTargetUrl('localhost:3000/app'), 'https://localhost:3000/app');
+  assert.equal(normalizeTargetUrl('example.com:3000'), 'https://example.com:3000');
+  assert.equal(normalizeTargetUrl('example.com:3000/app'), 'https://example.com:3000/app');
 });
 
 check('empty and non-string input is rejected', () => {
@@ -52,10 +52,23 @@ check('normalizing an already-resolved URL is a no-op', () => {
 });
 
 check('parseTargetUrl resolves the body url through the shared rule', () => {
-  assert.equal(parseTargetUrl({ url: 'example.com' }), 'https://example.com/');
+  assert.equal(parseTargetUrl({ url: 'example.com' }), 'https://example.com');
   assert.equal(parseTargetUrl({ url: '' }), null);
   assert.equal(parseTargetUrl({}), null);
   assert.equal(parseTargetUrl(null), null);
+});
+
+check('a public target is admitted unchanged', () => {
+  const raw = 'https://example.com/a?b=1';
+  assert.deepEqual(resolveEngineTargetUrl(raw), { ok: true, url: raw });
+});
+
+check('local and private targets are refused, never rewritten', () => {
+  for (const raw of ['http://localhost:3000', 'http://127.0.0.1:5173/app', 'http://192.168.1.50', 'http://host.docker.internal:3000']) {
+    const result = resolveEngineTargetUrl(raw);
+    assert.equal(result.ok, false, raw);
+    if (!result.ok) assert.match(result.message, /publicly reachable/);
+  }
 });
 
 console.log(`\nserverUtils: ${passed} checks passed.`);
