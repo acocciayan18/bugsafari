@@ -9,10 +9,13 @@ function dupError(): Error & { code: number; keyPattern: Record<string, number> 
 // Minted codes satisfy the shared contract and carry real entropy.
 const codes = new Set(Array.from({ length: 2000 }, generateRunCode));
 assert.ok([...codes].every((c) => RUN_CODE_REGEX.test(c)), 'every minted code matches RUN_CODE_REGEX');
-assert.equal(codes.size, 2000, 'no repeats across 2000 mints');
+assert.ok([...codes].every((c) => c.length === 10), 'every minted code is RUN- plus exactly 6 hex chars');
+// 2^24 space: ~0.12 expected collisions per 2000 mints, so 10 is a non-flaky ceiling.
+assert.ok(codes.size >= 1990, `2000 mints stayed near-unique (got ${codes.size})`);
 
-// Legacy 3-byte codes still validate; malformed ones do not.
-assert.ok(RUN_CODE_REGEX.test('RUN-A1B2C3'), 'legacy 6-hex code stays valid');
+// Legacy 5-byte codes still validate; malformed ones do not.
+assert.ok(RUN_CODE_REGEX.test('RUN-73412D8043'), 'legacy 10-hex code stays valid');
+assert.ok(RUN_CODE_REGEX.test('RUN-A1B2C3'), 'canonical 6-hex code is valid');
 assert.ok(!RUN_CODE_REGEX.test('RUN-a1b2c3'), 'lowercase rejected');
 assert.ok(!RUN_CODE_REGEX.test('RUN-A1B2C'), 'too short rejected');
 

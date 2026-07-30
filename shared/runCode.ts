@@ -4,13 +4,14 @@
 // The public, user-facing session identifier: RUN- + 6 uppercase hex chars.
 // Pure/browser-safe — generation (node:crypto) lives backend-side.
 
-// RUN- followed by 6-12 uppercase hex characters. Codes are minted at
-// RUN_CODE_BYTES wide; the lower bound keeps legacy 3-byte codes valid.
+// RUN- followed by 6-12 uppercase hex characters. New codes are always minted at
+// RUN_CODE_BYTES wide (6 chars); the wider bound keeps legacy 5-byte codes valid
+// so stored history stays readable, deletable and deep-linkable.
 export const RUN_CODE_REGEX = /^RUN-[0-9A-F]{6,12}$/;
 
-// Entropy of a freshly minted code. 5 bytes (2^40) makes a collision against
-// stored history negligible; the unique index remains the actual guarantee.
-export const RUN_CODE_BYTES = 5;
+// Canonical width of a freshly minted code: 3 bytes (2^24) as 6 hex chars.
+// The sparse-unique runId index plus mint-retry is the collision guarantee.
+export const RUN_CODE_BYTES = 3;
 
 export const RUN_CODE_PREFIX = 'RUN-' as const;
 

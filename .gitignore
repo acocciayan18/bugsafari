@@ -26,3 +26,8 @@ dist-ssr
 
 # Codemap
 .codemap/
+
+# shared/ is consumed as TypeScript source by every workspace. Committed .js
+# artifacts silently drift from the .ts and win in Vite's resolver.
+shared/**/*.js
+!shared/scripts/*.mjs
