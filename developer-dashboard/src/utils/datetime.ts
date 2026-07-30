@@ -26,3 +26,19 @@ export function formatReportTime(value?: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString('en-US', TIME_OPTS);
 }
+
+// Log rows — e.g. "Jul 30, 10:45:23 AM". Seconds stay because ordering within a
+// minute matters; the date stays because a long run can straddle midnight.
+const LOG_OPTS: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+};
+
+export function formatLogTimestamp(value?: string): string {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('en-US', LOG_OPTS);
+}

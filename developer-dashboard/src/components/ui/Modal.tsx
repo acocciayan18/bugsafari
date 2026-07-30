@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 interface ModalProps {
@@ -80,31 +81,44 @@ export function Modal({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   function handleBackdropMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (closeOnBackdrop && event.target === event.currentTarget) {
       onClose();
     }
   }
 
+  // The portal always mounts so AnimatePresence can play the panel out; `children`
+  // are still unmounted while closed, so no caller content renders behind the scenes.
   return createPortal(
-    <div
-  className={`fixed inset-0 backdrop-blur-sm bg-[#121212]/10 z-50 flex items-end justify-center overflow-y-auto p-0 animate-backdrop-in sm:items-center sm:p-4 md:p-6 ${backdropClassName}`}
-  onMouseDown={handleBackdropMouseDown}
->
-      {/* Bottom sheet under `sm`, centered dialog above. Panel owns its own scroll so
-          tall content never clips on short viewports. */}
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={`custom-scrollbar w-full ${maxWidthClassName} max-h-[92dvh] overflow-y-auto overscroll-contain animate-fade-in rounded-t-(--radius-lg) rounded-b-none border ${panelSurfaceClassName} pb-safe sm:max-h-[88dvh] sm:rounded-(--radius-lg) sm:pb-0`}
-      >
-        {children}
-      </div>
-    </div>,
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="modal-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          className={`fixed inset-0 backdrop-blur-sm bg-[#121212]/10 z-50 flex items-end justify-center overflow-y-auto p-0 sm:items-center sm:p-4 md:p-6 ${backdropClassName}`}
+          onMouseDown={handleBackdropMouseDown}
+        >
+          {/* Bottom sheet under `sm`, centered dialog above. Panel owns its own scroll so
+              tall content never clips on short viewports. */}
+          <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className={`custom-scrollbar w-full ${maxWidthClassName} max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-(--radius-lg) rounded-b-none border ${panelSurfaceClassName} pb-safe sm:max-h-[88dvh] sm:rounded-(--radius-lg) sm:pb-0`}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
     document.body
   );
 }

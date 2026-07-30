@@ -7,6 +7,7 @@
 // 'dark' class to <html> and persists via settings storage.
 
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import {
   LoaderCircle,
   Monitor,
@@ -31,6 +32,8 @@ import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useAuth } from '../../hooks/useAuth';
 import { useUserSettings } from '../../hooks/useUserSettings';
 import { useDarkMode } from '../../context/DarkModeContext';
+import { Skeleton } from '../ui/Skeleton';
+import { isDesktopNotifySupported, requestDesktopNotifyPermission } from '../../utils/desktopNotify';
 import type { ThemeMode } from '../../types';
 
 const ICON_SIZE = 'h-5 w-5';
@@ -39,6 +42,9 @@ const ICON_STROKE = 1.75;
 function Spinner() {
   return <LoaderCircle className={`${ICON_SIZE} animate-spin`} strokeWidth={ICON_STROKE} aria-hidden="true" />;
 }
+
+// Cards rise in sequence on mount; the grid below drives the stagger.
+const CARD_MOTION = { hidden: { opacity: 0, y: 12 }, shown: { opacity: 1, y: 0 } };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Card shell — every settings group renders inside one of these
@@ -51,7 +57,11 @@ function SettingsCard({ icon, title, description, children }: {
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
+    <motion.section
+      variants={CARD_MOTION}
+      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm"
+    >
       <header className="flex items-start gap-3 border-b border-(--border-hairline) px-4 py-4 sm:px-5">
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
           {icon}
@@ -62,7 +72,7 @@ function SettingsCard({ icon, title, description, children }: {
         </div>
       </header>
       <div className="flex-1 px-4 py-4 sm:px-5 sm:py-5">{children}</div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -154,7 +164,10 @@ function PasswordInputField({
         />
         <button
           type="button"
-          className="absolute inset-y-0 right-0 pr-3 flex items-center text-(--text-tertiary) hover:text-(--text-secondary) focus:outline-none"
+          aria-label={showPassword ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          aria-pressed={showPassword}
+          aria-controls={id}
+          className="absolute inset-y-0 right-0 pr-3 flex cursor-pointer items-center text-(--text-tertiary) hover:text-(--text-secondary) focus:outline-none"
           onClick={onTogglePassword}
         >
           {showPassword
@@ -225,9 +238,18 @@ const ToggleSwitch = memo(function ToggleSwitch({
 // Theme is applied globally by the settings layer; this only drives instant feedback.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 'unsupported' collapses the no-Notification-API case into the same state machine,
+// so the notice below has one source of truth instead of two overlapping checks.
+type NotifyPermission = NotificationPermission | 'unsupported';
+
+function readNotifyPermission(): NotifyPermission {
+  return isDesktopNotifySupported() ? Notification.permission : 'unsupported';
+}
+
 function ApplicationSettingsSection() {
   const { settings, isSettingsLoading, updateSettings } = useUserSettings();
   const { setMode } = useDarkMode();
+  const [notifyPermission, setNotifyPermission] = useState<NotifyPermission>(readNotifyPermission);
   // isSettingsLoading also flips true/false around every per-toggle save, not just the
   // initial fetch — gating the skeleton on that alone would unmount/remount this whole
   // section on every click. Only show the skeleton before the first load ever completes.
@@ -244,16 +266,51 @@ function ApplicationSettingsSection() {
     await updateSettings({ theme: mode });
   };
 
-  const handleBooleanToggle = async (key: 'notifications' | 'autoSave', value: boolean) => {
-    await updateSettings({ [key]: value });
+  // Turning this on is only meaningful once the browser agrees to deliver, so the
+  // permission prompt gates the save rather than following it. A denied prompt leaves
+  // the stored value untouched — no toggle that claims a capability it does not have.
+  const enableNotifications = async (): Promise<void> => {
+    const granted = await requestDesktopNotifyPermission();
+    setNotifyPermission(readNotifyPermission());
+
+    if (!granted) {
+      toast.error(
+        isDesktopNotifySupported()
+          ? 'Your browser is blocking notifications for this site. Allow them in the browser site settings, then try again.'
+          : 'This browser does not support desktop notifications.',
+      );
+      return;
+    }
+    await updateSettings({ notifications: true });
+  };
+
+  const handleNotificationsToggle = (value: boolean): void => {
+    void (value ? enableNotifications() : updateSettings({ notifications: false }));
   };
 
   if (isSettingsLoading && !hasLoadedRef.current) {
     return (
-      <div className="animate-pulse space-y-3">
-        <div className="h-8 bg-(--surface-inset) rounded"></div>
-        <div className="h-8 bg-(--surface-inset) rounded"></div>
-        <div className="h-8 bg-(--surface-inset) rounded"></div>
+      <div role="status" aria-label="Loading application settings" className="space-y-5">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-3 w-56 max-w-full" />
+          <div className="grid grid-cols-3 gap-2">
+            <Skeleton className="h-[60px] rounded-lg" />
+            <Skeleton className="h-[60px] rounded-lg" />
+            <Skeleton className="h-[60px] rounded-lg" />
+          </div>
+        </div>
+        <div className="space-y-4 border-t border-(--border-hairline) pt-4">
+          {[0, 1].map((row) => (
+            <div key={row} className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+              </div>
+              <Skeleton className="h-6 w-11 shrink-0 rounded-full" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -267,19 +324,39 @@ function ApplicationSettingsSection() {
       </div>
 
       <div className="border-t border-(--border-hairline) pt-3 divide-y divide-(--border-hairline)">
-        <ToggleSwitch
-          checked={settings.notifications}
-          onChange={(checked) => handleBooleanToggle('notifications', checked)}
-          label="Notifications"
-          description="Show desktop notifications"
-          icon={<Bell className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
-        />
+        <div>
+          <ToggleSwitch
+            checked={settings.notifications}
+            onChange={handleNotificationsToggle}
+            label="Notifications"
+            description="Desktop alerts when a run finds a bug or finishes, while this tab is in the background"
+            icon={<Bell className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+          />
+          {/* A stored `true` predates (or outlives) the browser grant — say so instead
+              of letting the toggle imply alerts are being delivered. */}
+          {settings.notifications && notifyPermission !== 'granted' && (
+            <p className="mb-3 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) px-3 py-2 text-sm text-(--status-warning-fg)">
+              {notifyPermission === 'unsupported'
+                ? 'This browser does not support desktop notifications, so nothing will be delivered.'
+                : 'Your browser has not granted notification permission, so nothing will be delivered.'}
+              {notifyPermission === 'default' && (
+                <button
+                  type="button"
+                  onClick={() => void enableNotifications()}
+                  className="ml-2 cursor-pointer font-semibold underline underline-offset-2"
+                >
+                  Grant permission
+                </button>
+              )}
+            </p>
+          )}
+        </div>
 
         <ToggleSwitch
           checked={settings.autoSave}
-          onChange={(checked) => handleBooleanToggle('autoSave', checked)}
+          onChange={(checked) => void updateSettings({ autoSave: checked })}
           label="Auto Save"
-          description="Automatically save changes"
+          description="Commit a finished run to history without pressing Save"
           icon={<Save className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         />
       </div>
@@ -348,15 +425,14 @@ function SecuritySettingsSection() {
 
     const success = await changePassword(currentPassword, newPassword);
     if (success) {
-      setSuccessMessage('Password changed successfully');
+      // A successful change revokes every session it established, so the store fires
+      // 'bugsafari:session-expired' synchronously and App logs out. A deferred
+      // close/reset would never run — this component is already unmounting.
+      setSuccessMessage('Password changed. Signing you out — please sign in again.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setTimeout(() => {
-        setSuccessMessage('');
-        clearPasswordSuccess();
-        setIsOpen(false);
-      }, 3000);
+      setShowPasswords({ current: false, new: false, confirm: false });
     }
   };
 
@@ -527,10 +603,18 @@ function AccountSection() {
 
   if (isProfileLoading) {
     return (
-      <div className="animate-pulse space-y-3">
-        <div className="h-4 bg-(--surface-inset) rounded w-3/4"></div>
-        <div className="h-4 bg-(--surface-inset) rounded w-1/2"></div>
-        <div className="h-20 bg-(--surface-inset) rounded"></div>
+      <div role="status" aria-label="Loading account" className="space-y-5">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-40 max-w-full" />
+            <Skeleton className="h-3 w-52 max-w-full" />
+          </div>
+        </div>
+        <Skeleton className="h-[92px] rounded-lg" />
+        <div className="border-t border-(--border-hairline) pt-4">
+          <Skeleton className="h-9 w-32 rounded-lg" />
+        </div>
       </div>
     );
   }
@@ -616,7 +700,12 @@ export default function Settings() {
   }, [isAuthenticated]);
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)"
+    >
       {/* Breadcrumb duplicates the compact top bar — desktop only. */}
       <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
         <div className="flex min-w-0 items-center">
@@ -642,7 +731,12 @@ export default function Settings() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6 xl:grid-cols-3">
+        <motion.div
+          initial="hidden"
+          animate="shown"
+          variants={{ shown: { transition: { staggerChildren: 0.07 } } }}
+          className="grid grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6 xl:grid-cols-3"
+        >
           <SettingsCard
             icon={<User className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Account"
@@ -669,10 +763,8 @@ export default function Settings() {
           >
             <ApplicationSettingsSection />
           </SettingsCard>
-        </div>
+        </motion.div>
       </main>
-
-      
-    </div>
+    </motion.div>
   );
 }

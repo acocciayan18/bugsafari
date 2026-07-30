@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
     "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.10",
+    "framer-motion": "^12.43.0",
     "gsap": "^3.15.0",
     "lucide-react": "^0.542.0",
     "ogl": "^1.0.11",

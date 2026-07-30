@@ -1,6 +1,7 @@
 // TelemetryHelpModal.tsx - anchored popover explaining each telemetry tab
 import { useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Network, HelpCircle, Terminal } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Activity, AlertTriangle, Network, HelpCircle, Terminal, X } from 'lucide-react';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 
 type HelpTabId = 'telemetry' | 'errors' | 'network' | 'console';
@@ -91,77 +92,105 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
         <HelpCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
       </button>
 
+      <AnimatePresence>
       {isOpen && (
-        <div
+        <motion.div
           role="dialog"
           aria-label="Telemetry panel guide"
-          className="custom-scrollbar animate-in fade-in slide-in-from-top-1 absolute right-0 top-full z-50 mt-2 mb-4 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-2rem))] origin-top-right overflow-y-auto overscroll-contain rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl duration-150 sm:right-2"
+          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 6, scale: 0.98 }}
+          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          // Under `sm` this is pinned to the VIEWPORT, not to the trigger — an anchored
+          // popover on a narrow pane could not stay on screen and still be readable.
+          className="custom-scrollbar fixed inset-x-3 bottom-3 z-50 flex max-h-[75dvh] origin-bottom flex-col overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-full sm:mt-2 sm:max-h-[calc(100dvh-8rem)] sm:w-96 sm:max-w-[calc(100vw-2rem)] sm:origin-top-right"
         >
-          <div className="scroll-rail flex gap-1 border-b border-(--border-hairline) px-2 pt-2" role="tablist">
-            {TOPICS.map((topic) => {
-              const TopicIcon = topic.icon;
-              const isActive = topic.id === activeId;
-              return (
-                <button
-                  key={topic.id}
-                  onClick={() => setActiveId(topic.id)}
-                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
-                    isActive
-                      ? 'border-(--text-primary) text-(--text-primary)'
-                      : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
-                  }`}
-                  role="tab"
-                  aria-selected={isActive}
-                >
-                  <TopicIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                  {topic.label}
-                </button>
-              );
-            })}
+          <div className="flex shrink-0 items-start gap-1 border-b border-(--border-hairline) px-2 pt-2">
+            <div className="scroll-rail flex min-w-0 flex-1 gap-1" role="tablist">
+              {TOPICS.map((topic) => {
+                const TopicIcon = topic.icon;
+                const isActive = topic.id === activeId;
+                return (
+                  <button
+                    key={topic.id}
+                    onClick={() => setActiveId(topic.id)}
+                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
+                      isActive
+                        ? 'border-(--text-primary) text-(--text-primary)'
+                        : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
+                    }`}
+                    role="tab"
+                    aria-selected={isActive}
+                  >
+                    <TopicIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                    {topic.label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* ESC is not reachable on touch, so the sheet needs its own dismiss. */}
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Close guide"
+              className="mt-0.5 grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary)"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            </button>
           </div>
 
-          <div key={active.id} className="animate-fade-in space-y-3 px-3 py-3.5 sm:px-4" role="tabpanel">
-            <div className="flex items-start gap-2.5">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-(--surface-inset) text-(--text-primary)">
-                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-              </span>
-              <p className="min-w-0 text-body-sm leading-5 text-(--text-secondary)">{active.what}</p>
-            </div>
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <motion.div
+              key={active.id}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="space-y-3 px-3 py-3.5 sm:px-4"
+              role="tabpanel"
+            >
+              <div className="flex items-start gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-(--surface-inset) text-(--text-primary)">
+                  <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <p className="min-w-0 text-body-sm leading-5 text-(--text-secondary)">{active.what}</p>
+              </div>
 
-            <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">What it collects</div>
-              <ul className="mt-1 space-y-1">
-                {active.collects.map((item) => (
-                  <li key={item} className="flex gap-2 text-body-sm text-(--text-secondary)">
-                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-(--text-tertiary)" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+              <div>
+                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">What it collects</div>
+                <ul className="mt-1 space-y-1">
+                  {active.collects.map((item) => (
+                    <li key={item} className="flex min-w-0 gap-2 text-body-sm text-(--text-secondary)">
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-(--text-tertiary)" />
+                      <span className="min-w-0 break-words">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Why it's useful</div>
-              <p className="mt-1 text-body-sm leading-5 text-(--text-secondary)">{active.why}</p>
-            </div>
+              <div>
+                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Why it's useful</div>
+                <p className="mt-1 text-body-sm leading-5 text-(--text-secondary)">{active.why}</p>
+              </div>
 
-            <div>
-              <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Example events</div>
-              <ul className="mt-1 space-y-1">
-                {active.examples.map((item) => (
-                  <li key={item} className="rounded-md bg-(--surface-inset) px-2 py-1 font-mono text-caption text-(--text-secondary)">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+              <div>
+                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Example events</div>
+                <ul className="mt-1 space-y-1">
+                  {active.examples.map((item) => (
+                    <li key={item} className="break-words rounded-md bg-(--surface-inset) px-2 py-1 font-mono text-caption text-(--text-secondary)">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </motion.div>
           </div>
 
-          <div className="border-t border-(--border-hairline) px-3 py-1.5 sm:px-4">
+          <div className="hidden shrink-0 border-t border-(--border-hairline) px-3 py-1.5 sm:block sm:px-4">
             <p className="text-caption text-(--text-disabled)">Press ESC to close</p>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

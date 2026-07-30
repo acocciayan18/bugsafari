@@ -34,6 +34,7 @@ import type {
 } from '../../types';
 import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
 import { CopyButton } from '../common/ForensicCardKit';
+import { Skeleton } from '../ui/Skeleton';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
@@ -895,6 +896,56 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Loading state — mirrors the report's own chrome (header, summary
+// block, tab strip, finding cards) so the page does not reflow when
+// the real document lands.
+// ─────────────────────────────────────────────────────────────
+
+function ForensicReportSkeleton() {
+  return (
+    <div role="status" aria-label="Loading forensic report" className="flex h-full w-full flex-col bg-(--surface-app)">
+      <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-4">
+        <Skeleton className="h-7 w-20" />
+        <Skeleton className="hidden h-4 w-56 lg:block" />
+      </header>
+
+      <div className="custom-scrollbar flex-1 overflow-hidden p-3 sm:p-4 lg:p-6">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
+          <div className="rounded-xl border border-(--border-hairline) bg-(--surface-panel) p-5">
+            <Skeleton className="h-5 w-2/3 max-w-sm" />
+            <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[0, 1, 2, 3].map((cell) => (
+                <div key={cell} className="space-y-2">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-1 border-b border-(--border-hairline) pb-2">
+            <Skeleton className="h-7 w-24" />
+            <Skeleton className="h-7 w-24" />
+            <Skeleton className="h-7 w-24" />
+          </div>
+
+          {[0, 1, 2].map((card) => (
+            <div key={card} className="space-y-3 rounded-xl border border-(--border-hairline) bg-(--surface-panel) p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-6 w-16" />
+                <Skeleton className="h-4 w-1/2 max-w-xs" />
+              </div>
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-3.5 w-4/5" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ForensicReport() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
@@ -963,16 +1014,8 @@ export default function ForensicReport() {
   const [activeTab, setActiveTab] = useState<'findings' | 'network' | 'console'>('findings');
   const { statuses, verify } = useRegressionVerifier();
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-(--surface-panel)">
-        <div className="text-center">
-          <div className="text-[13px] font-semibold text-(--text-secondary)">Loading forensic report…</div>
-          <div className="mt-2 text-[13px] text-(--text-tertiary)">Fetching the latest session details from the backend.</div>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <ForensicReportSkeleton />;
+
 
   if (error || !report) {
     return (

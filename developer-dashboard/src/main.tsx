@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { MotionConfig } from 'framer-motion'
 import { ToastProvider } from './infrastructure/notifications/ToastProvider'
 import './infrastructure/notifications/customToast.css'
 import './index.css'
@@ -19,9 +20,12 @@ initHistoryStore()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
+      {/* reducedMotion="user" drops transforms for prefers-reduced-motion, keeping opacity */}
+      <MotionConfig reducedMotion="user">
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </MotionConfig>
     </BrowserRouter>
   </StrictMode>,
 )

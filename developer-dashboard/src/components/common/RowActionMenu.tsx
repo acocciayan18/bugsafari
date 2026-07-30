@@ -12,6 +12,7 @@
 // - Accessible labels
 
 import { useLayoutEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 import { Download, EllipsisVertical, LoaderCircle, Scroll, Trash2 } from 'lucide-react';
 
@@ -115,10 +116,15 @@ export function RowActionMenu({
       </button>
 
       {/* Dropdown menu */}
+      <AnimatePresence>
       {isOpen && (
-        <div
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: flipUp ? 4 : -4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: flipUp ? 4 : -4 }}
+          transition={{ duration: 0.14, ease: 'easeOut' }}
           className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-hairline) bg-(--surface-panel) py-1 shadow-lg ${
-            flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+            flipUp ? 'bottom-full mb-1 origin-bottom' : 'top-full mt-1 origin-top'
           } ${alignLeft ? 'left-0' : 'right-0'}`}
           role="menu"
         >
@@ -147,11 +153,12 @@ export function RowActionMenu({
             className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
             role="menuitem"
           >
-            <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
+            <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg) " aria-hidden="true" />
             Delete Record
           </button>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

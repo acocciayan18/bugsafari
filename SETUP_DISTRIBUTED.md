@@ -169,8 +169,8 @@ git push origin dev --force
 
 git init
 git add .
-git commit -m "fix the concurrent telemtry with diferent account problem"
-git checkout -b 7-30-Ayan-3
-git push --set-upstream origin 7-30-Ayan-3
+git commit -m "improve dashboar usability by implementing framer-motion and skeleton"
+git checkout -b 7-30-Ayan-4
+git push --set-upstream origin 7-30-Ayan-4
 
 

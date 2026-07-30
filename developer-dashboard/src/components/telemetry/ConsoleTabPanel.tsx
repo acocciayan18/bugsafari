@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
 import { CopyButton } from '../common/ForensicCardKit';
+import { formatLogTimestamp } from '../../utils/datetime';
 
 // Per-level accent so severity reads at a glance in a dense list.
 const LEVEL_STYLES: Record<BrowserConsoleLevel, string> = {
@@ -22,9 +23,11 @@ const ROW_ACCENTS: Partial<Record<BrowserConsoleLevel, string>> = {
 const FILTERS = ['all', 'error', 'warning', 'info', 'debug', 'log'] as const;
 export type ConsoleFilter = (typeof FILTERS)[number];
 
-function formatTime(timestamp: string): string {
+// Millisecond precision moves to the row tooltip — it only matters when two logs
+// land inside the same second, which is not worth the width in every row.
+function preciseTime(timestamp: string): string {
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return '--:--:--';
+  if (Number.isNaN(date.getTime())) return timestamp;
   return `${date.toLocaleTimeString('en-GB', { hour12: false })}.${String(date.getMilliseconds()).padStart(3, '0')}`;
 }
 
@@ -96,11 +99,16 @@ export default function ConsoleTabPanel({ browserConsole = [], filter }: Console
           {visible.map((log, idx) => (
             <div
               key={`${log.timestamp}-${idx}`}
-              className={`group grid grid-cols-[1fr_auto] items-baseline gap-x-2 px-3 py-1.5 border-b border-(--border-hairline)/40 hover:bg-(--surface-hover) lg:grid-cols-[7.5rem_3.5rem_1fr_auto] lg:gap-x-3 lg:py-1 ${ROW_ACCENTS[log.level] ?? ''}`}
+              className={`group grid grid-cols-[1fr_auto] items-baseline gap-x-2 px-3 py-1.5 border-b border-(--border-hairline)/40 hover:bg-(--surface-hover) lg:grid-cols-[11rem_3.5rem_1fr_auto] lg:gap-x-3 lg:py-1 ${ROW_ACCENTS[log.level] ?? ''}`}
             >
               {/* Timestamp + level share one row on narrow panes, split into their own columns once there's room. */}
               <div className="flex min-w-0 items-baseline gap-2 lg:contents">
-                <span className="text-(--text-tertiary) tabular-nums whitespace-nowrap">{formatTime(log.timestamp)}</span>
+                <span
+                  title={preciseTime(log.timestamp)}
+                  className="text-(--text-tertiary) tabular-nums whitespace-nowrap"
+                >
+                  {formatLogTimestamp(log.timestamp)}
+                </span>
                 <span className={`uppercase font-bold truncate ${LEVEL_STYLES[log.level] ?? LEVEL_STYLES.log}`}>
                   {log.level}
                 </span>

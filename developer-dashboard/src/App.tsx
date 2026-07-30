@@ -4,10 +4,12 @@
 // Uses AuthContext for centralized authentication state management
 // AuthGuard handles route protection automatically
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
+import { useRunNotifications } from './hooks/useRunNotifications';
+import { useSettingsStore } from './stores/settingsStore';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import ClinicalForensicsDashboard from './components/forensics/ClinicalForensicsDashboard';
@@ -52,8 +54,42 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   const location = useLocation();
   const navigate = useNavigate();
 
+  const autoSave = useSettingsStore((s) => s.settings.autoSave);
+
   const { state, startTest, pauseTest, resumeTest, stopTest, saveSession: saveSessionToHistory, dismissAccessibilityBanner } =
     useDashboardController();
+
+  useRunNotifications();
+
+  // Auto Save (Settings) — commit a finished run without waiting for the manual press.
+  // Guests cannot persist. Exactly one attempt per finished run: a failed save flips
+  // isSavingSession back to false, and without the latch that alone would re-trigger
+  // this effect, turning a persistent backend error into an endless retry loop.
+  const autoSaveAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!state.hasRunCompleted) {
+      autoSaveAttemptedRef.current = false;
+      return;
+    }
+    if (!autoSave || isGuestMode || autoSaveAttemptedRef.current) return;
+    if (state.isSessionSaved || state.isSavingSession) return;
+
+    autoSaveAttemptedRef.current = true;
+    toast.promise(saveSessionToHistory(targetUrl), {
+      loading: 'Auto-saving session...',
+      success: 'Session auto-saved to history',
+      error: 'Auto-save failed — use Save Session to retry',
+    });
+  }, [
+    autoSave,
+    isGuestMode,
+    state.hasRunCompleted,
+    state.isSessionSaved,
+    state.isSavingSession,
+    saveSessionToHistory,
+    targetUrl,
+  ]);
 
   const handleSaveSessionToHistory = () => {
     // Guests never persist — upsell an account instead of firing a doomed save.

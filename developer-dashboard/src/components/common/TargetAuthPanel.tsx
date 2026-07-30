@@ -7,7 +7,8 @@
 // and autoComplete is off so the browser does not offer to save them either.
 
 import { useId, useState } from 'react';
-import { ChevronDown, HelpCircle, KeyRound, ShieldCheck } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ChevronDown, Eye, EyeOff, HelpCircle, KeyRound, ShieldCheck } from 'lucide-react';
 import type { TargetAuthConfig } from '../../types';
 
 export type TargetAuthMethod = 'credentials' | 'storageState';
@@ -104,19 +105,32 @@ const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string }> = [
   { id: 'storageState', label: 'Session state' },
 ];
 
+// Shared collapse choreography for the help and advanced regions.
+const COLLAPSE_MOTION = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto' as const, opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const },
+};
+
 export default function TargetAuthPanel({ draft, onChange, disabled = false }: TargetAuthPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const helpId = useId();
   const set = <K extends keyof TargetAuthDraft>(key: K, value: TargetAuthDraft[K]): void =>
     onChange({ ...draft, [key]: value });
 
   // Switching method drops the other mode's secrets rather than parking them in
   // memory for the tab's lifetime. toTargetAuthConfig already ignores them.
-  const setMethod = (method: TargetAuthMethod): void =>
+  const setMethod = (method: TargetAuthMethod): void => {
+    // Never leave the field revealed across a switch — the next password typed in
+    // would start visible without the operator having asked for that.
+    setShowPassword(false);
     onChange(method === 'credentials'
       ? { ...draft, method, storageState: '' }
       : { ...draft, method, username: '', password: '' });
+  };
 
   const incomplete = isTargetAuthIncomplete(draft);
   // Config stays visible when auth is off, but every input is inert and grayed —
@@ -160,7 +174,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         </button>
       </div>
 
-      {showHelp && (
+      <AnimatePresence initial={false}>
+        {showHelp && (
+        <motion.div key="target-auth-help" {...COLLAPSE_MOTION} className="overflow-hidden">
         <div
           id={helpId}
           role="region"
@@ -192,7 +208,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             dedicated test account.
           </p>
         </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className={`border-t border-(--border-hairline) px-4 py-3 space-y-3 ${!draft.enabled ? 'opacity-60' : ''}`}>
         <div role="radiogroup" aria-label="Authentication method" className="grid grid-cols-2 gap-2">
@@ -232,16 +250,31 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             </div>
             <div>
               <label className={LABEL_CLASS} htmlFor="target-auth-password">Password</label>
-              <input
-                id="target-auth-password"
-                type="password"
-                autoComplete="new-password"
-                value={draft.password}
-                disabled={fieldsDisabled}
-                onChange={(e) => set('password', e.target.value)}
-                className={FIELD_CLASS}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  id="target-auth-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={draft.password}
+                  disabled={fieldsDisabled}
+                  onChange={(e) => set('password', e.target.value)}
+                  className={`${FIELD_CLASS} pr-10`}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={fieldsDisabled}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  aria-controls="target-auth-password"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg text-(--text-tertiary) transition-colors enabled:cursor-pointer enabled:hover:text-(--text-secondary) disabled:text-(--text-disabled) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--border-focus)"
+                >
+                  {showPassword
+                    ? <EyeOff className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                    : <Eye className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -311,8 +344,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         </button>
         )}
 
+        <AnimatePresence initial={false}>
         {showAdvanced && draft.method === 'credentials' && (
-          <div className="space-y-3 pt-1">
+          <motion.div key="target-auth-advanced" {...COLLAPSE_MOTION} className="space-y-3 overflow-hidden pt-1">
             <p className="text-xs text-(--text-tertiary) font-sans leading-relaxed">
               Leave blank to auto-detect. The engine finds the login form on the target, behind a
               Login/Sign In control, or at a common auth route. Set these when the form is
@@ -380,8 +414,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                 />
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </div>
     </div>
   );

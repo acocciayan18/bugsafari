@@ -3,9 +3,11 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '../../hooks/useAuth';
+import { Skeleton } from '../ui/Skeleton';
 import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
@@ -15,7 +17,7 @@ import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
 import { INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
 
 // Operator-facing profile label, or '' when the row predates profile recording.
 const profileLabel = (id?: InfiltrationProfileId): string =>
@@ -89,7 +91,12 @@ export default function SavedEvaluationSafaris() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--surface-app)]">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex h-full w-full flex-col bg-[var(--surface-app)]"
+    >
       <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
         {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
         <div className="hidden min-w-0 items-center lg:flex">
@@ -203,9 +210,21 @@ export default function SavedEvaluationSafaris() {
 
         <div className="divide-y divide-[var(--border-hairline)]">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-hairline)] border-t-[var(--text-secondary)]"></div>
-              <span className="text-[13px] text-[var(--text-secondary)]">Loading history...</span>
+            // Skeleton rows mirror the real row geometry, so nothing shifts on arrival.
+            <div role="status" aria-label="Loading history" className="divide-y divide-[var(--border-hairline)]">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-5 w-2/3 max-w-sm" />
+                    <Skeleton className="h-3.5 w-full max-w-md" />
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-6 w-6 rounded-full" />
+                    <Skeleton className="hidden h-6 w-6 sm:block" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
@@ -244,8 +263,14 @@ export default function SavedEvaluationSafaris() {
               </span>
             </div>
           ) : (
-            view.page.map((evalItem) => (
-              <div key={evalItem.id}>
+            view.page.map((evalItem, index) => (
+              <motion.div
+                key={evalItem.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                // Capped so a full page never front-loads a long wait on the last row.
+                transition={{ duration: 0.2, ease: 'easeOut', delay: Math.min(index, 8) * 0.025 }}
+              >
                 <div
                   className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--border-focus)]"
                   role="button"
@@ -316,7 +341,7 @@ export default function SavedEvaluationSafaris() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))
           )}
         </div>
@@ -332,16 +357,16 @@ export default function SavedEvaluationSafaris() {
             <button
               onClick={() => setCurrentPage((p) => p - 1)}
               disabled={view.safePage === 1}
-              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-[13px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-[13px] text-(--text-secondary) hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ‹
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               onClick={() => setCurrentPage((p) => Math.min(view.totalPages, p + 1))}
               disabled={view.safePage >= view.totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded border border-[var(--border-strong)] bg-[var(--surface-app)] text-[13px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-[13px] text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ›
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -357,6 +382,6 @@ export default function SavedEvaluationSafaris() {
         confirmLabel="Delete"
         isLoading={deleteState.isDeleting}
       />
-    </div>
+    </motion.div>
   );
 }
