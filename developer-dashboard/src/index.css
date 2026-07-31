@@ -98,9 +98,15 @@
   --status-neutral-fg: #52525b;
   --status-neutral-bg: #f4f4f5;
   --status-neutral-border: #e4e4e7;
+
+  /* Shared auth-screen backdrop — swaps by theme; consumed by AuthShell. */
+  --auth-bg-image: url('/auth-bg-light.png');
 }
 
 .dark {
+  /* Shared auth-screen backdrop (dark variant). */
+  --auth-bg-image: url('/auth-bg-dark.png');
+
   /* ==========================================
      WATCHTOWER COMPONENT CORE — DARK THEME 
      ========================================== */

@@ -23,7 +23,19 @@ export default function AuthShell({
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-dvh-screen flex items-center justify-center p-3 sm:p-4 lg:p-6 bg-(--surface-app)">
+    <div className="relative isolate overflow-hidden min-h-dvh-screen flex items-center justify-center p-3 sm:p-4 lg:p-6 bg-(--surface-app)">
+      {/* Shared themed backdrop (auth-bg-light/dark.png via --auth-bg-image). Fixed &
+          decorative: subtle low opacity + a surface-tinted overlay keep the form fully
+          readable, and being out of flow it never shifts the centered layout. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 bg-cover bg-center bg-no-repeat opacity-[0.2] dark:opacity-[0.10]"
+        style={{ backgroundImage: 'var(--auth-bg-image)' }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-(--surface-app)/40 via-(--surface-app)/20 to-(--surface-app)/70"
+      />
       <button
         type="button"
         onClick={() => navigate('/')}

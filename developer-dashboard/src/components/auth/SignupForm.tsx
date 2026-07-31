@@ -228,7 +228,7 @@ export default function SignupForm() {
             </p>
           </div>
           {consentError && (
-            <p id="accept-policies-error" className="mt-1.5 text-sm text-(--status-critical-fg)">
+            <p id="accept-policies-error" className="mt-1.5 text-xs text-(--status-critical-fg)">
               {consentError}
             </p>
           )}
