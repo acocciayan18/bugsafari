@@ -25,7 +25,8 @@ import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
-import { isPrivateTargetUrl } from '../../../../shared/url.js';
+import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
+import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
@@ -143,6 +144,10 @@ export default function ClinicalForensicsDashboard({
   // The engine dials the typed address verbatim, so a local target can never
   // resolve to the operator's machine — block launch and explain why.
   const isLocalTarget = isPrivateTargetUrl(urlInput);
+  // BugSafari must never test itself — a BugSafari production/preview/staging or the
+  // dashboard's own serving origin is refused (backend re-checks authoritatively).
+  const isSelfTarget = isSelfTargetUrl(urlInput);
+  const isBlockedTarget = isLocalTarget || isSelfTarget;
 
   // ─────────────────────────────────────────────────────────────
   // TELEMETRY SCROLL & UTILITIES
@@ -205,7 +210,7 @@ export default function ClinicalForensicsDashboard({
   const authIncomplete = isTargetAuthIncomplete(authDraft);
 
   const handleInitialize = () => {
-    if (!onStartInitialization || authIncomplete || isLocalTarget) return;
+    if (!onStartInitialization || authIncomplete || isBlockedTarget) return;
     // The draft is deliberately retained so reopening the config modal — or
     // re-running against the same target — shows what the operator entered.
     // It lives only in component state: never persisted, gone on page reload.
@@ -217,7 +222,7 @@ export default function ClinicalForensicsDashboard({
   const isQueued = testStatus === 'QUEUED';
   const isActiveSession = testStatus === 'ACTIVE' || testStatus === 'PAUSED' || isTestRunning;
   // Only surfaced pre-launch: mid-run the field mirrors the running target, not a draft.
-  const showLocalTargetError = isLocalTarget && !isActiveSession;
+  const showLocalTargetError = isBlockedTarget && !isActiveSession;
   const showSessionControls = isActiveSession || hasRunCompleted;
   // Backend settling in-flight tasks — lock every control until it confirms completion.
   const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
@@ -387,8 +392,8 @@ export default function ClinicalForensicsDashboard({
               value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => {
                 setUrlInput(e.target.value);
-                // Re-arm the notice once the operator moves off a local address.
-                if (noticeDismissed && !isPrivateTargetUrl(e.target.value)) setNoticeDismissed(false);
+                // Re-arm the notice once the operator moves off a blocked (local or self) address.
+                if (noticeDismissed && !isPrivateTargetUrl(e.target.value) && !isSelfTargetUrl(e.target.value)) setNoticeDismissed(false);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
@@ -399,19 +404,23 @@ export default function ClinicalForensicsDashboard({
             />
             {/* Overlays the page rather than reflowing it — the field keeps its position. */}
             {showLocalTargetError && !noticeDismissed && (
-              <PublicTargetNotice onDismiss={() => setNoticeDismissed(true)} />
+              isSelfTarget
+                ? <PublicTargetNotice title="BugSafari cannot test itself" onDismiss={() => setNoticeDismissed(true)}>{SELF_TARGET_FORBIDDEN_MESSAGE}</PublicTargetNotice>
+                : <PublicTargetNotice onDismiss={() => setNoticeDismissed(true)} />
             )}
           </div>
 
           <button
             onClick={handleInitialize}
-            disabled={isActiveSession || authIncomplete || isLocalTarget}
+            disabled={isActiveSession || authIncomplete || isBlockedTarget}
             title={
-              showLocalTargetError
-                ? 'Enter a publicly reachable URL — local addresses cannot be tested'
-                : authIncomplete
-                  ? 'Enter a username and password, or turn off target authentication'
-                  : undefined
+              isSelfTarget
+                ? 'BugSafari cannot test itself — enter a different public website'
+                : showLocalTargetError
+                  ? 'Enter a publicly reachable URL — local addresses cannot be tested'
+                  : authIncomplete
+                    ? 'Enter a username and password, or turn off target authentication'
+                    : undefined
             }
             className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >

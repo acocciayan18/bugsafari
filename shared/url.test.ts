@@ -3,7 +3,15 @@
 // or `npm test --workspace shared`. Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { normalizeTargetUrl, isPrivateTargetHost, isPrivateTargetUrl } from './url.js';
+import {
+  normalizeTargetUrl,
+  isPrivateTargetHost,
+  isPrivateTargetUrl,
+  isProtectedTargetHost,
+  isProtectedTargetUrl,
+  parseProtectedOrigins,
+  DEFAULT_PROTECTED_HOSTS,
+} from './url.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -71,6 +79,46 @@ check('isPrivateTargetUrl only fires on a parseable local target', () => {
   assert.equal(isPrivateTargetUrl('https://example.com'), false);
   assert.equal(isPrivateTargetUrl(''), false);
   assert.equal(isPrivateTargetUrl('file:///etc/passwd'), false);
+});
+
+check('self-target: BugSafari default host, subdomains, and vercel previews are protected', () => {
+  for (const host of [
+    'bugsafari.vercel.app',
+    'BugSafari.Vercel.App',           // case-insensitive
+    'bugsafari.vercel.app.',          // trailing dot
+    'www.bugsafari.vercel.app',       // www alias
+    'api.bugsafari.vercel.app',       // subdomain
+    'bugsafari-git-main-team.vercel.app', // vercel branch preview
+    'bugsafari-a1b2c3.vercel.app',    // vercel deploy preview
+  ]) {
+    assert.equal(isProtectedTargetHost(host), true, host);
+  }
+});
+
+check('self-target: unrelated hosts are NOT protected', () => {
+  for (const host of ['example.com', 'notbugsafari.vercel.app', 'bugsafari.com', 'vercel.app', 'my-bugsafari.com', 'bugsafarivercel.app']) {
+    assert.equal(isProtectedTargetHost(host), false, host);
+  }
+});
+
+check('self-target: port and scheme never change the verdict', () => {
+  assert.equal(isProtectedTargetUrl('bugsafari.vercel.app'), true);
+  assert.equal(isProtectedTargetUrl('https://bugsafari.vercel.app:8443/dashboard/'), true);
+  assert.equal(isProtectedTargetUrl('http://www.bugsafari.vercel.app'), true);
+  assert.equal(isProtectedTargetUrl('https://example.com'), false);
+  assert.equal(isProtectedTargetUrl(''), false);
+  assert.equal(isProtectedTargetUrl('file:///etc/passwd'), false);
+});
+
+check('self-target: a configured extra origin (env-style) is protected, default still applies', () => {
+  const hosts = [...DEFAULT_PROTECTED_HOSTS, ...parseProtectedOrigins('https://staging.bugsafari.io, bugsafari.internal.example')];
+  assert.deepEqual(parseProtectedOrigins('https://staging.bugsafari.io, bugsafari.internal.example'), ['staging.bugsafari.io', 'bugsafari.internal.example']);
+  assert.equal(isProtectedTargetHost('staging.bugsafari.io', hosts), true);
+  assert.equal(isProtectedTargetHost('www.staging.bugsafari.io', hosts), true); // subdomain of a configured host
+  assert.equal(isProtectedTargetHost('bugsafari.vercel.app', hosts), true);     // default preserved
+  assert.equal(isProtectedTargetHost('example.com', hosts), false);
+  assert.equal(parseProtectedOrigins('').length, 0);
+  assert.equal(parseProtectedOrigins(undefined).length, 0);
 });
 
 console.log(`\n${passed} url assertion group(s) passed.`);

@@ -64,6 +64,19 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a test injecting {"$ne":""} and expecting a rejected request',
     ),
   },
+  SQL_INJECTION: {
+    title: 'SQL injection',
+    description: 'User input is concatenated into a SQL statement, so an operator payload alters the query (auth bypass, data exposure, or a leaked SQL error).',
+    defaultSeverity: 'CRITICAL',
+    cwe: 'CWE-89',
+    remediation: remediation(
+      'Suggested remediation — SQL injection',
+      '1. Use parameterized queries / prepared statements; never string-concatenate input into SQL',
+      '2. Validate and type-cast input server-side; reject values that violate the column contract',
+      "3. Stop returning raw SQL/driver errors to the client; log them server-side only",
+      "4. Add a test submitting ' OR '1'='1 and expecting a rejected request (not a widened result set)",
+    ),
+  },
   SPA_STATE_RACE_CONDITION: {
     title: 'SPA state race condition',
     description: 'Concurrent interactions desynchronize component state or double-submit before guards apply.',

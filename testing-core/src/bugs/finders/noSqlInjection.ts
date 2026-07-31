@@ -4,8 +4,10 @@ import { fuzzTextWithAttackSurface } from '../scenarioAdapters.js';
 import { matchesCategory } from '../knowledgeBase/signalPatterns.js';
 import { describeTarget, elementNoun, resolveElementLabel } from '../../../../shared/reproduction.js';
 
-// Text-bearing controls whose value plausibly reaches a Mongo query.
-const QUERYABLE_CLUE_RE = /(search|query|filter|email|username|account|id)/;
+// Text-bearing controls whose value plausibly reaches a Mongo query. Bounds `id`/`q`
+// so the substring does not match `hidden`/`video`/`valid` — mirrors the sibling
+// injectionDifferential oracle's proven applicability regex.
+const QUERYABLE_CLUE_RE = /(search|query|filter|email|username|user|account|login|\bid\b|name|\bq\b)/i;
 
 // Time allowed for the backend to answer the injected input before we judge it.
 const OBSERVE_WINDOW_MS = 1200;

@@ -6,14 +6,15 @@ Every candidate fault passes a **verification pipeline** before it becomes a fin
 
 1. **Classification** — matched against the canonical `BUG_CATALOG` (bug class, CWE, severity, remediation).
 2. **Provenance gate** (`faultOrigin.ts`) — faults rooted in BugSafari, Playwright, the browser/extensions, or DNS/TLS/offline conditions are demoted to informational telemetry. Only `TARGET_APP` faults become bugs.
-3. **Evidence scoring** — message, stack trace, status code, reproduction steps, and cross-channel corroboration produce a confidence score (`CONFIRMED` / `SIGNAL` / `INFERRED`).
-4. **Deduplication** — signature-derived stable bug ids collapse repeats into one finding with an occurrence count.
+3. **Signal-strength label** (`FaultClassifier`) — a matched signature or a positive oracle sets a `FaultConfidence` of `CONFIRMED` / `SIGNAL` / `INFERRED`.
+4. **Evidence scoring** (`confidenceScore`) — origin, evidence completeness, cross-channel corroboration, and the reproduction outcome produce a numeric score and a `VerificationStatus` of `CONFIRMED` / `NEEDS_VERIFICATION` / `INCONCLUSIVE`. Reproduction contributes a **rate** (N replays, severity-scaled 1–3), so an intermittent fault re-grades on how often it recurred, not a single pass/fail.
+5. **Deduplication** — signature-derived stable bug ids collapse repeats into one finding with an occurrence count.
 
 ---
 
 ## 1. JavaScript Runtime Errors
 
-Source: `RuntimeStabilityFinder.ts`, `StabilityMonitor.attachExceptionMonitoring`. Captured from `pageerror`, error-level `console`, in-page `unhandledrejection`, and renderer `crash` events — including on popups the app opens itself.
+Source: `RuntimeStabilityFinder.ts`, `StabilityMonitor.attachExceptionMonitoring` (`pageerror`, error-level `console`, in-page `unhandledrejection`) and `StabilityMonitor.attachCrashMonitoring` (renderer `crash`) — both wired on the main page and on popups the app opens itself.
 
 | Name | Description | Typical example | Detection |
 |---|---|---|---|
@@ -28,7 +29,7 @@ Source: `RuntimeStabilityFinder.ts`, `StabilityMonitor.attachExceptionMonitoring
 | Code-split chunk failure | Lazy bundle failed to download | `ChunkLoadError: Loading chunk 12 failed` | Message pattern match |
 | Unhandled promise rejection | Rejected promise with no `.catch` | Silent failed `await fetch(...)` | In-page `unhandledrejection` hook |
 | Renderer crash | Tab process died (OOM / GPU fault) | White tab, "Aw, snap" | Playwright `crash` event |
-| Console errors | Error-level console output not covered above | `console.error('Failed to hydrate')` | `console` listener (network-stack errors excluded) |
+| Console errors | Error-level console output — a capture **source**, re-run through the same message patterns above (not a separate sub-type) | `console.error('Failed to hydrate')` | `console` listener (network-stack errors excluded) |
 
 Each finding carries a plain-language explanation, remediation from `BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION`, a screenshot, source-map-resolved stack frames when available, and a minimized reproduction playbook.
 
@@ -41,9 +42,11 @@ Source: `StabilityMonitor.attachNetworkMonitoring`, `routeTrashClassifier.ts`, `
 | Server error (5xx) | Backend failed to handle the request | `HTTP 500 POST /api/orders` | `response` listener + status tiering |
 | Soft-fail body masked as success | 2xx whose body flags an error | `200 OK` with `{"error":"internal server error"}` | Body scan of xhr/fetch 2xx for error/server-error signatures |
 | Transport-level failure | Request never got a response, against the app's own backend | `net::ERR_CONNECTION_REFUSED`, `ERR_TIMED_OUT` | `requestfailed` + first-party host attribution |
-| Cascading network failure | Burst of failures in a short window | 5+ failed requests within 2s | `NetworkFailureCascadeTracker` rolling window |
+| Cascading network failure | Burst of failures in a short window | 5+ failed requests within 2s | **Not emitted as a finding.** `NetworkFailureCascadeTracker` (5-in-2s rolling window) drives **back-off throttling only** — it produces no `CASCADING_STATE_FAILURE` finding. |
 
 Deliberately **not** findings: 4xx defensive responses (400/401/403/404/409/422/429…) handled gracefully, static-asset 404s, and aborts from operator stop or stress scenarios. These surface as informational Network-tab telemetry only.
+
+The catalog class `CASCADING_STATE_FAILURE` (CWE-754) is a **different** concept — a fault in one action propagating into a later one (async-state cascade) — not this burst-window network counter.
 
 ## 3. Unhandled API Failure / Infinite Loading
 
@@ -75,33 +78,42 @@ Source: `BrokenNavigationFinder.ts`, `routeTrasher/*`.
 | Broken route | Interaction navigated to a hard HTTP error | Clicking a link lands on `HTTP 404 /reports/old` | Main-frame document status ≥400 attributed to the last interaction |
 | Redirect loop (HTTP) | 3xx chain revisits the same route | `/login → /home → /login` | Same route seen 3× within a 4s redirect window |
 | Redirect loop (SPA) | Rapid client-side route oscillation | Router guard bouncing A→B→A | Same route 3× across ≥2 distinct routes within 1.5s gaps; engine-initiated navigations suppressed |
-| Back-navigation state loss | `history.back()` lands on the wrong route | Back from a modal exits to `/` instead of the list | Expected vs. landed route mismatch, twice for the same pair |
+| Back-navigation state loss | `history.back()` lands on the wrong route | Back from a modal exits to `/` instead of the list | **Not detected.** `BrokenNavigationFinder` has no back-nav `NavigationDefectKind`, method, or hook — no expected-vs-landed comparison exists. |
 | Malformed route mutation | Query/history mutation breaks resolution | `?page=undefined`, `%3D` artifacts, white screen | **Not detected.** Required `RouteTrasher`, which is disabled engine-wide, so no `ROUTE_TRASH` transaction is ever opened and `structuralProbeFinder` is not registered (FR-4.8). |
 
 ## 6. UI Stability
 
 | Name | Description | Typical example | Detection |
 |---|---|---|---|
-| Main-thread lock-up (UI freeze) | Browser main thread unresponsive | Infinite `while` loop in a handler | 2s heartbeat `page.evaluate`; 5s timeout, then 3 bounded recovery re-probes before a `RUNTIME_UI_FREEZE` finding |
+| Main-thread lock-up (UI freeze) | Browser main thread unresponsive | Infinite `while` loop in a handler | 2s heartbeat `page.evaluate`; 5s timeout, then 3 bounded recovery re-probes before a freeze finding — emitted as finding-type `RUNTIME_UI_FREEZE` (infra stability monitor); the render-loop catalog class is `CLIENT_RENDER_FREEZE` (CWE-835) |
 
 ## 7. Input Validation & Security
 
-Source: `formBypasser.ts`, `fuzzing/*`, `fuzzGuard.ts`, `reflectionOracle.ts`, `storageTamper.ts`.
+Source: `bugs/finders/constraintBypass.ts`, `bugs/finders/injectionDifferential.ts`, `bugs/finders/noSqlInjection.ts`, `fuzzGuard.ts`, `reflectionOracle.ts`, `fuzzing/*`, `formBypasser.ts` (strip-only scenario), `storageTamper.ts`.
 
 | Name | Description | Typical example | Detection |
 |---|---|---|---|
-| Client-side constraint bypass | Validation enforced only in the browser | Stripping `required`/`maxlength`/`disabled` still submits | `FormBypasser` removes constraint attributes and submits; a 2xx commit means the server did not re-validate |
-| Reflected XSS | Injected payload reaches an executable context | `<img src=x onerror=...>` echoed unescaped or fires | Execution oracle (nonce + `alert`/`confirm`/`prompt` witnesses) plus raw-reflection check; HTML-encoded echoes are correctly **not** flagged |
-| NoSQL injection | Query operators survive into the datastore | `{"$ne":""}` yields `MongoError`/BSON errors | Post-injection console + ≥400 response bodies scanned for `NOSQL_ERROR` signatures |
+| Client-side constraint bypass | Validation enforced only in the browser | Stripping `required`/`maxlength`/`disabled` still submits | `constraintBypassFinder` strips constraint attributes and submits; a correlated, same-origin, state-changing 2xx means the server did not re-validate. (`formBypasser.ts` is the strip-only scenario that mutates the DOM — it emits telemetry, not the finding.) |
+| Reflected XSS | Injected payload reaches an executable context | `<img src=x onerror=...>` echoed unescaped or fires | Execution oracle (nonce + `alert`/`confirm`/`prompt` witnesses) plus raw-reflection check; HTML-encoded echoes are correctly **not** flagged. Raw tag-presence in a response body is **not** trusted without the oracle. |
+| NoSQL injection | Query operators survive into the datastore | `{"$ne":null}` yields `MongoError`, **or** it returns `200` with widened/auth-bypassed data | `noSqlInjectionFinder` reports on a 5xx or a leaked `NOSQL_ERROR` signature; `injectionDifferentialFinder` additionally catches the **200-with-data** case — baseline vs operator payload compared, flagged when the operator flips an auth outcome or broadens the result even at HTTP 200 |
+| SQL injection | Input concatenated into a SQL statement | `' OR '1'='1` widens a query, or a leaked driver/syntax error | `injectionDifferentialFinder` (`' OR '1'='1` differential, CWE-89) + `SQL_ERROR` driver/syntax-error signatures (MySQL/Postgres/Oracle/SQL Server/SQLite) in console or ≥400 bodies |
 | Server instability from fuzzing | Injection destabilizes the backend | Stack trace or `fatal error` in DOM/response after a payload | `SERVER_ERROR` + `CLIENT_CRASH` signature scan of error containers and URL |
-| Security information leak | Internal detail exposed to the client | Stack trace, SQL text, or secret in an error response | Body/message signature match, `CWE-200` |
-| Client-trusted auth state (broken access control) | Privileged UI unlocked from forged client state | `role=admin` in localStorage, or a JWT re-minted with `alg:none`, reveals an admin panel | `StorageTamper` forges auth-shaped storage/cookie/JWT values, reloads, and asserts a **strict positive delta** of privileged markers; original state is restored afterward |
+| Security information leak | Internal detail exposed to the client | Stack trace, SQL text, or secret in an error response | **Passive** — `signalPatterns.ts` `INFO_LEAK` + `FaultClassifier` match a body/message signature on an incidentally-captured fault (no active leak-provoking probe), `CWE-200` |
+| Client-trusted auth state (broken access control) | Privileged UI unlocked from forged client state | `role=admin` in localStorage, or a JWT re-minted with `alg:none`, reveals an admin panel | `StorageTamper` forges auth-shaped storage/cookie/JWT values, reloads, and asserts a **strict positive delta** of privileged markers; original state is restored afterward. **CONFIRMED / CRITICAL only when a privileged same-origin request returns 2xx after the forge** (`serverConfirmed`); a render-only delta is reported at **NEEDS_VERIFICATION / HIGH** ("client renders privileged UI from untrusted state; server enforcement unverified") |
 
 Fuzz payload strategies by classified field type: numeric boundary, XSS vectors, SQL/NoSQL injection, email, date, JSON, and a chaos fallback — escalated in intensity by `payloadEscalator`.
 
+## 7b. Session Integrity
+
+Source: `SessionPreservationGuard`, `ExplorationEngine`.
+
+| Name | Description | Typical example | Detection |
+|---|---|---|---|
+| Session loss / auth desync | The app drops the authenticated session or bounces to re-login mid-flow | A guarded action silently logs the operator out and lands on `/login` | `SESSION_SYNC_FAULT` (CWE-613) — the guard detects the authenticated→unauthenticated transition and distinguishes it from an engine-initiated navigation |
+
 ## 8. Accessibility (WCAG 2.1)
 
-Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, deduplicated by (rule, selector), capped at 300 per run.
+Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, deduplicated by (rule, selector). The ledger upper bound is 300, but auditing effectively **stops after ~10 distinct violations** per run once the `ACCESSIBILITY_BANNER_THRESHOLD` (10) gate trips — the 300 cap is rarely reached. Findings are ephemeral WebSocket events, never persisted through the finding / `BUG_CATALOG` pipeline.
 
 | Rule | WCAG | Impact | Example |
 |---|---|---|---|
@@ -129,8 +141,9 @@ Source: `AccessibilityAuditor.ts`. Read-only per-structural-state DOM audit, ded
 - A frozen tab from an unbounded loop in a click handler.
 - A form that submits successfully after `required` and `maxlength` are stripped in the DOM.
 - `<img src=x onerror=alert(1)>` reflected unescaped into a search results page.
-- A `MongoError` leaked to the client after `{"$ne":""}` is submitted to a login field.
-- An admin dashboard rendered purely because `role` was flipped to `admin` in localStorage.
+- A `MongoError` leaked to the client after `{"$ne":null}` is submitted to a login field — or a login that succeeds (HTTP 200) under `{"$ne":null}` where the benign value failed (differential auth bypass, no leaked error needed).
+- A `' OR '1'='1` payload that widens a search result or leaks a SQL driver/syntax error.
+- An admin dashboard whose privileged UI unlocks after `role` is flipped to `admin` in localStorage **and** a privileged API call then returns 2xx (server honored the forged state — a confirmed access-control bypass; a render-only unlock is reported as needing verification instead).
 - Form inputs with no programmatic label, invisible to screen readers.
 
 ---
@@ -144,5 +157,5 @@ Gaps the current implementation does not cover:
 - **Performance budgets** — response times are recorded but never thresholded into findings; no CLS/LCP/long-task detection.
 - **Contrast and keyboard-navigation a11y** — the auditor covers structural WCAG rules only; no color-contrast ratio or focus-trap checks.
 - **Cross-browser / responsive-viewport differences** — runs on a single browser and viewport.
-- **Authentication flow depth** — storage tampering is covered; session expiry, refresh-token rotation, and CSRF are not.
+- **Authentication flow depth** — storage tampering and session-loss desync (`SESSION_SYNC_FAULT`) are covered; session expiry, refresh-token rotation, and CSRF are not.
 - **Third-party backend correlation** — server-side logs are never joined with client-observed failures.

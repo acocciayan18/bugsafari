@@ -67,8 +67,29 @@ check('local and private targets are refused, never rewritten', () => {
   for (const raw of ['http://localhost:3000', 'http://127.0.0.1:5173/app', 'http://192.168.1.50', 'http://host.docker.internal:3000']) {
     const result = resolveEngineTargetUrl(raw);
     assert.equal(result.ok, false, raw);
-    if (!result.ok) assert.match(result.message, /publicly reachable/);
+    if (!result.ok) {
+      assert.match(result.message, /publicly reachable/);
+      assert.equal(result.code, 'TARGET_NOT_PUBLIC', raw);
+    }
   }
+});
+
+check('self-targeting BugSafari is refused with a distinct code, never rewritten', () => {
+  for (const raw of [
+    'https://bugsafari.vercel.app',
+    'https://bugsafari.vercel.app/dashboard',
+    'https://www.bugsafari.vercel.app',
+    'https://bugsafari-git-main-team.vercel.app',
+  ]) {
+    const result = resolveEngineTargetUrl(raw);
+    assert.equal(result.ok, false, raw);
+    if (!result.ok) assert.equal(result.code, 'TARGET_SELF_FORBIDDEN', raw);
+  }
+});
+
+check('a different public target is still admitted', () => {
+  const raw = 'https://example.com';
+  assert.deepEqual(resolveEngineTargetUrl(raw), { ok: true, url: raw });
 });
 
 console.log(`\nserverUtils: ${passed} checks passed.`);

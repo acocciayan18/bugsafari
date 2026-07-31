@@ -73,9 +73,28 @@ export const NOT_REPRODUCED_PENALTY = 0.1;
  * Re-grade an already-scored finding once its reproduction pass settles. Applies the
  * SAME delta scoreFinding would have used, so an in-run verdict and a hypothetical
  * up-front one converge on the identical score.
+ *
+ * When `rate` (reproductions / decidable attempts, 0–1) is supplied the delta scales
+ * with it: a deterministic bug (rate 1) earns the full bonus, a flake earns a
+ * proportional partial bonus, and a bug that never recurred (rate 0) takes the
+ * penalty. Omitting `rate` preserves the exact single-shot boolean behaviour, so
+ * legacy callers and rate∈{0,1} converge on the identical score.
  */
-export function applyReproductionOutcome(score: number, origin: FaultOrigin, reproduced: boolean): ScoreResult {
-  return gradeScore(score + (reproduced ? REPRODUCED_BONUS : -NOT_REPRODUCED_PENALTY), origin);
+export function applyReproductionOutcome(
+  score: number,
+  origin: FaultOrigin,
+  reproduced: boolean,
+  rate?: number,
+): ScoreResult {
+  const delta =
+    rate === undefined
+      ? reproduced
+        ? REPRODUCED_BONUS
+        : -NOT_REPRODUCED_PENALTY
+      : rate > 0
+        ? REPRODUCED_BONUS * clamp01(rate)
+        : -NOT_REPRODUCED_PENALTY;
+  return gradeScore(score + delta, origin);
 }
 
 /** Clamp, threshold, and apply the origin caps. Single source of the verdict bands. */

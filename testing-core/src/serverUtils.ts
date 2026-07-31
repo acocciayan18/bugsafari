@@ -7,16 +7,34 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { normalizeTargetUrl, isPrivateTargetHost, isDisallowedIp, PUBLIC_TARGET_REQUIRED_MESSAGE } from '../../shared/url.js';
+import {
+  normalizeTargetUrl,
+  isPrivateTargetHost,
+  isProtectedTargetHost,
+  isDisallowedIp,
+  parseProtectedOrigins,
+  DEFAULT_PROTECTED_HOSTS,
+  PUBLIC_TARGET_REQUIRED_MESSAGE,
+  SELF_TARGET_FORBIDDEN_MESSAGE,
+} from '../../shared/url.js';
+
+// BugSafari's own hosts, which must never be tested: the shared default plus any
+// BUGSAFARI_PROTECTED_ORIGINS (comma/space-separated) the deployment configures.
+// Resolved once at load — the security boundary is the backend, so this list is
+// authoritative regardless of what the dashboard sends.
+const PROTECTED_HOSTS: readonly string[] = [
+  ...DEFAULT_PROTECTED_HOSTS,
+  ...parseProtectedOrigins(process.env.BUGSAFARI_PROTECTED_ORIGINS),
+];
 
 /**
  * Outcome of admitting a target URL. `ok:true` always carries the URL exactly as
  * the operator entered it — the engine never rewrites a host. `ok:false` carries
- * an operator-facing message explaining why the target can't be launched.
+ * an operator-facing message and a stable `code` the API surfaces as its error.
  */
 export type EngineTargetResolution =
   | { ok: true; url: string }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code: 'TARGET_NOT_PUBLIC' | 'TARGET_SELF_FORBIDDEN' };
 
 /**
  * Admission gate for a validated target URL. The engine must dial a publicly
@@ -30,11 +48,17 @@ export function resolveEngineTargetUrl(rawUrl: string): EngineTargetResolution {
   try {
     url = new URL(rawUrl);
   } catch {
-    return { ok: false, message: `Invalid target URL: ${rawUrl}` };
+    return { ok: false, code: 'TARGET_NOT_PUBLIC', message: `Invalid target URL: ${rawUrl}` };
+  }
+
+  // Refuse self-targeting first: BugSafari must never test its own production,
+  // preview/staging, or any configured BugSafari host.
+  if (isProtectedTargetHost(url.hostname, PROTECTED_HOSTS)) {
+    return { ok: false, code: 'TARGET_SELF_FORBIDDEN', message: SELF_TARGET_FORBIDDEN_MESSAGE };
   }
 
   if (isPrivateTargetHost(url.hostname)) {
-    return { ok: false, message: `Target "${url.hostname}" is not publicly reachable. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
+    return { ok: false, code: 'TARGET_NOT_PUBLIC', message: `Target "${url.hostname}" is not publicly reachable. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
   }
 
   return { ok: true, url: rawUrl };
@@ -55,6 +79,7 @@ export async function assertPublicTarget(rawUrl: string): Promise<EngineTargetRe
   const host = new URL(rawUrl).hostname.replace(/^\[|\]$/g, '');
   const refuse = (detail: string): EngineTargetResolution => ({
     ok: false,
+    code: 'TARGET_NOT_PUBLIC',
     message: `Target "${host}" resolves to a non-public address (${detail}). ${PUBLIC_TARGET_REQUIRED_MESSAGE}`,
   });
 
@@ -69,7 +94,7 @@ export async function assertPublicTarget(rawUrl: string): Promise<EngineTargetRe
   try {
     addresses = await lookup(host, { all: true, verbatim: true });
   } catch {
-    return { ok: false, message: `Target "${host}" could not be resolved to a public address. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
+    return { ok: false, code: 'TARGET_NOT_PUBLIC', message: `Target "${host}" could not be resolved to a public address. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
   }
   if (addresses.length === 0) return refuse('no addresses');
   for (const { address } of addresses) {

@@ -37,12 +37,16 @@ export const REPRODUCTION_VERDICT_EVENT = 'reproduction-verdict' as const;
  */
 export interface ReproductionVerdict {
   bugId: string;
-  /** True ⇒ the original fault class recurred on replay. */
+  /** True ⇒ the original fault class recurred on at least one replay. */
   reproduced: boolean;
   stepsReplayed: number;
   /** Re-graded confidence after applying the reproduction delta. */
   confidenceScore: number;
   verificationStatus: VerificationStatus;
+  /** Reproductions ÷ decidable replays (0–1). 1 = deterministic, <1 = intermittent flake. */
+  reproductionRate?: number;
+  /** Number of decidable replay attempts behind {@link reproductionRate}. */
+  attempts?: number;
 }
 
 /** Verification verdict attached to a finding once the pipeline has evaluated it. */

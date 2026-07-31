@@ -448,8 +448,8 @@ export function registerRoutes(
     // bypasses (metadata via public A-record, decimal/octal/hex/short literals).
     const routing = await assertPublicTarget(targetUrl);
     if (!routing.ok) {
-      console.warn(`[API]  Target rejected: ${routing.message}`);
-      response.status(422).json({ error: 'TARGET_NOT_PUBLIC', message: routing.message });
+      console.warn(`[API]  Target rejected (${routing.code}): ${routing.message}`);
+      response.status(422).json({ error: routing.code, message: routing.message });
       return;
     }
 

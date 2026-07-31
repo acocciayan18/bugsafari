@@ -189,7 +189,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             screen. Pick whichever method matches how your target authenticates.
           </p>
           <div>
-            <p className="font-bold text-(--text-primary)">Login form — email &amp; password</p>
+            <p className="font-medium text-(--text-primary)">Login form — email &amp; password</p>
             <p className="text-(--text-tertiary)">
               The engine opens the login page, fills the fields, and submits. Best for ordinary
               username/password forms. Add custom selectors under Advanced only if auto-detection
@@ -197,7 +197,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             </p>
           </div>
           <div>
-            <p className="font-bold text-(--text-primary)">Session state — storageState JSON</p>
+            <p className="font-medium text-(--text-primary)">Session state — storageState JSON</p>
             <p className="text-(--text-tertiary)">
               Seed a session you already established out of band. Use this when a form fill can't drive
               the login: SSO/OAuth redirects, MFA, or captcha. Export it with

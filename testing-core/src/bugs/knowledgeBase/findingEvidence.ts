@@ -14,6 +14,45 @@ import type { BugClass } from '../types.js';
 /** Fallback class when a detector reports a promotion with no class at all. */
 const FALLBACK_BUG_CLASS: BugClass = 'RUNTIME_STABILITY_EXCEPTION';
 
+const MAX_SPECIFIC_PAYLOAD = 80;
+
+/**
+ * Prepend a "For this finding" block naming the concrete endpoint / field / payload /
+ * location above the generic catalog checklist, so remediation references the actual
+ * defect a developer is looking at. Returns the advice unchanged when no facts exist.
+ */
+function withSpecifics(advice: string, specifics?: FindingSpecifics): string {
+  if (!specifics) return advice;
+  const lines: string[] = [];
+  if (specifics.method || specifics.endpoint) {
+    const status = specifics.statusCode !== undefined ? ` (HTTP ${specifics.statusCode})` : '';
+    lines.push(`• Endpoint: ${[specifics.method, specifics.endpoint].filter(Boolean).join(' ')}${status}`);
+  }
+  if (specifics.field) lines.push(`• Field: ${specifics.field}`);
+  if (specifics.payload) {
+    const p = specifics.payload.length > MAX_SPECIFIC_PAYLOAD ? `${specifics.payload.slice(0, MAX_SPECIFIC_PAYLOAD)}…` : specifics.payload;
+    lines.push(`• Payload that triggered it: ${p}`);
+  }
+  if (specifics.location) lines.push(`• Originates at: ${specifics.location}`);
+  if (lines.length === 0) return advice;
+  return `For this finding\n${lines.join('\n')}\n\n${advice}`;
+}
+
+/**
+ * Finding-specific facts used to make the generic catalog remediation concrete —
+ * naming the exact endpoint, field, payload, and source location instead of a bare
+ * checklist (audit M1). Every field is optional; absent ones are simply omitted.
+ */
+export interface FindingSpecifics {
+  endpoint?: string;
+  method?: string;
+  statusCode?: number;
+  field?: string;
+  payload?: string;
+  /** Source-mapped `file:line` (or top stack frame) the fault originated at. */
+  location?: string;
+}
+
 export interface FindingEvidenceInput {
   attribution: FindingAttribution;
   advice?: string;
@@ -21,6 +60,8 @@ export interface FindingEvidenceInput {
   reproductionPlaybook: string[];
   /** Fallback context when no steps were captured (endpoint, action, URL…). */
   context?: string;
+  /** Concrete facts to fold into the remediation so it references THIS finding. */
+  specifics?: FindingSpecifics;
 }
 
 export interface FindingEvidenceResult {
@@ -45,8 +86,9 @@ export function ensureFindingEvidence(input: FindingEvidenceInput): FindingEvide
   const cwe = input.attribution.cwe || definition.cwe;
   if (!input.attribution.cwe) filled.push('cwe');
 
-  const advice = (input.advice ?? '').trim() || definition.remediation;
+  const baseAdvice = (input.advice ?? '').trim() || definition.remediation;
   if (!(input.advice ?? '').trim()) filled.push('advice');
+  const advice = withSpecifics(baseAdvice, input.specifics);
 
   let reproductionPlaybook = input.reproductionPlaybook;
   if (reproductionPlaybook.length === 0) {

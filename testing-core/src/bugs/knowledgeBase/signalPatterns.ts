@@ -21,6 +21,7 @@ export type SignalCategory =
   | 'SERVER_ERROR'
   | 'INFO_LEAK'
   | 'NOSQL_ERROR'
+  | 'SQL_ERROR'
   | 'XSS_REFLECTION'
   | 'QUERY_MUTATION';
 
@@ -104,6 +105,31 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /unrecognized/i,
     /dollar.*operator/i,
     /modifier.*must/i,
+  ],
+  // Relational-SQL injection leakage (error message + response body). Driver/engine
+  // error signatures across MySQL/Postgres/Oracle/SQL Server/SQLite — a raw one in a
+  // response is direct evidence input reached a SQL statement unparameterized.
+  SQL_ERROR: [
+    /you have an error in your sql syntax/i,
+    /sql syntax.*(?:mysql|mariadb)/i,
+    /warning.*\bmysqli?(?:_|\b)/i,
+    /valid mysql result/i,
+    /unknown column '[^']+' in/i,
+    /pg::\w+error/i,
+    /postgresql.*error/i,
+    /syntax error at or near/i,
+    /unterminated quoted string/i,
+    /\bORA-\d{5}\b/i,
+    /oracle.*(?:driver|error)/i,
+    /microsoft ole db provider for sql server/i,
+    /unclosed quotation mark after the character string/i,
+    /incorrect syntax near/i,
+    /sqlite(?:3)?[:.]/i,
+    /sqlite_error/i,
+    /\bSQLSTATE\[/i,
+    /sqlexception/i,
+    /odbc.*sql/i,
+    /quoted string not properly terminated/i,
   ],
   // Reflected XSS signatures (page content).
   XSS_REFLECTION: [

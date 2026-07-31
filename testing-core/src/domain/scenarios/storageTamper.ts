@@ -26,7 +26,7 @@
  * and deterministic (fixed escalation values — no RNG).
  */
 
-import type { Page } from 'playwright';
+import type { Page, Response } from 'playwright';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import type { ChaosTransactionManager, StorageTamperMetadata } from '../chaos/index.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -37,11 +37,42 @@ const DEFAULT_SELECTOR = 'body';
 /** Bounded reload timeout — a slow re-render must never hang the run. */
 const RELOAD_TIMEOUT_MS = 5000;
 
+// Same-origin request paths that only a privileged/authorized session should be able
+// to load. A 2xx here AFTER the forge is server-side corroboration that the escalated
+// state was honored — not merely painted client-side.
+const PRIVILEGED_PATH_RE = /(admin|dashboard|privileg|permission|\brole|manage|internal|users?\/all|audit)/i;
+
+/** Same-origin GET/data request that returned 2xx to a privileged-looking endpoint. */
+function isPrivilegedServerResponse(response: Response, pageOrigin: string): boolean {
+  try {
+    if (response.status() < 200 || response.status() >= 300) return false;
+    const request = response.request();
+    const method = request.method().toUpperCase();
+    if (method !== 'GET') return false; // a data read the client is authorized for
+    const type = request.resourceType();
+    if (type !== 'xhr' && type !== 'fetch' && type !== 'document') return false;
+    const url = new URL(response.url());
+    if (pageOrigin && url.origin !== pageOrigin) return false;
+    return PRIVILEGED_PATH_RE.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** A self-asserted client-trust finding handed to the ActionExecutor sink. */
 export interface StorageTamperFinding {
   message: string;
   selector: string;
   evidence: string;
+  /**
+   * True only when the SERVER corroborated the escalation — a privileged same-origin
+   * request succeeded (2xx) after the forge. Render-only deltas leave this false, so
+   * the sink reports NEEDS_VERIFICATION ("client renders privileged UI from untrusted
+   * state; server enforcement unverified") instead of a CRITICAL confirmed bypass. This
+   * is the fix for the audit's C1 over-claim: a client that optimistically paints an
+   * "admin" class but whose API still 403s is NOT a broken-access-control defect.
+   */
+  serverConfirmed: boolean;
 }
 
 /** Dependencies injected by the ActionExecutor adapter (mirrors asyncStateRacer). */
@@ -347,8 +378,28 @@ export const storageTamper = {
       metadata.tamperedKeys = result.tamperedKeys;
       metadata.jwtForged = result.jwtForged;
 
-      // 3) Re-render from tampered state (same URL — confinement-safe).
-      await safeReload(page);
+      // 3) Re-render from tampered state (same URL — confinement-safe), watching for a
+      // privileged same-origin 2xx: server-side corroboration that the forged state was
+      // actually honored, not merely painted client-side.
+      const pageOrigin = (() => {
+        try {
+          return new URL(page.url()).origin;
+        } catch {
+          return '';
+        }
+      })();
+      let serverConfirmed = false;
+      const onResponse = (response: Response): void => {
+        if (!serverConfirmed && isPrivilegedServerResponse(response, pageOrigin)) serverConfirmed = true;
+      };
+      page.on('response', onResponse);
+      try {
+        await safeReload(page);
+        // Brief settle so a privileged data fetch issued on mount can land before we judge.
+        if (!page.isClosed()) await page.waitForTimeout(600).catch(() => undefined);
+      } finally {
+        page.off('response', onResponse);
+      }
 
       // 4) Oracle: did privileged UI appear that was absent before?
       const after = await countPrivilegedSurface(page);
@@ -358,15 +409,23 @@ export const storageTamper = {
 
       if (verdict === 'GAINED') {
         const keys = result.tamperedKeys.join(', ') || '(seeded canonical flags)';
-        const evidence =
-          `Privileged surface markers rose ${before} → ${after} after forging client auth-state ` +
-          `(keys: ${keys}${result.jwtForged ? '; JWT re-minted alg=none role=admin' : ''}). ` +
-          `The client granted privileged UI from tampered client state without server authorization.`;
+        const forgeDetail = `(keys: ${keys}${result.jwtForged ? '; JWT re-minted alg=none role=admin' : ''})`;
+        const evidence = serverConfirmed
+          ? `Privileged surface markers rose ${before} → ${after} after forging client auth-state ${forgeDetail}, ` +
+            `AND a privileged same-origin request returned 2xx under the forged state. ` +
+            `The server honored tampered client state — broken access control (server authorization bypassed).`
+          : `Privileged surface markers rose ${before} → ${after} after forging client auth-state ${forgeDetail}. ` +
+            `The client rendered privileged UI from untrusted client state, but no privileged server request was ` +
+            `observed to succeed — server-side enforcement is UNVERIFIED. Confirm whether protected data/actions are ` +
+            `actually reachable under the forged state before treating this as an access-control bypass.`;
         ActiveScenarioTracker.record(evidence);
         ctx?.registerFinding?.({
-          message: `Client-trusted auth state: privileged UI unlocked from forged storage on ${page.url()}`,
+          message: serverConfirmed
+            ? `Broken access control: server honored forged client auth-state on ${page.url()}`
+            : `Client renders privileged UI from forged storage (server enforcement unverified) on ${page.url()}`,
           selector,
           evidence,
+          serverConfirmed,
         });
       }
       // No ActionRecorder step here: a storage forge is not a typed input, has no

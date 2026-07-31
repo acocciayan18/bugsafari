@@ -44,8 +44,10 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
   },
   DataFuzzer: {
     testingType: 'dataFuzzing',
-    expectedBugs: ['FUZZ_VULNERABILITY_LEAK', 'NOSQL_INJECTION', 'INPUT_SANITIZATION_FAILURE'],
-    signalCategories: ['XSS_REFLECTION', 'NOSQL_ERROR', 'SERVER_ERROR', 'CLIENT_CRASH'],
+    // SQL_INJECTION / NOSQL_INJECTION precede the generic FUZZ leak so a matched SQL/Mongo
+    // error resolves to the precise datastore class (CWE-89 / CWE-943), not CWE-79.
+    expectedBugs: ['SQL_INJECTION', 'NOSQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK', 'INPUT_SANITIZATION_FAILURE'],
+    signalCategories: ['XSS_REFLECTION', 'SQL_ERROR', 'NOSQL_ERROR', 'SERVER_ERROR', 'CLIENT_CRASH'],
     description: 'Injects boundary/malformed/injection payloads into classified input fields.',
   },
   ButtonSpammer: {

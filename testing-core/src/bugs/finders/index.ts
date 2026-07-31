@@ -3,6 +3,7 @@ import { concurrentStressGuard } from './concurrentStress.js';
 import { noSqlInjectionFinder } from './noSqlInjection.js';
 import { spaRaceConditionsFinder } from './spaRaceConditions.js';
 import { constraintBypassFinder } from './constraintBypass.js';
+import { injectionDifferentialFinder } from './injectionDifferential.js';
 
 /**
  * Finders executed by BugFinderRunner, ordered cheapest-gate-first.
@@ -25,8 +26,13 @@ export const BUG_FINDERS: readonly BugFinder[] = [
   noSqlInjectionFinder,
   spaRaceConditionsFinder,
   constraintBypassFinder,
+  // Differential injection oracle: catches operator payloads that change the result
+  // (auth bypass / broadened query) while the server still answers 2xx — the case the
+  // signal-only noSqlInjectionFinder above cannot see (audit C3).
+  injectionDifferentialFinder,
 ];
 
 export { setChaosManagerAccessor as setStructuralProbeAccessor } from './structuralProbe.js';
 export { setChaosManagerAccessor as setConcurrentStressAccessor } from './concurrentStress.js';
 export { resetConstraintBypassFinder } from './constraintBypass.js';
+export { resetInjectionDifferentialFinder } from './injectionDifferential.js';

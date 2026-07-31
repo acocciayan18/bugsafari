@@ -1,12 +1,23 @@
 import { X } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 interface PublicTargetNoticeProps {
   onDismiss: () => void;
+  // Optional overrides so the same popover serves the self-target case; defaults keep
+  // the original "local website detected" copy for existing callers.
+  title?: string;
+  children?: ReactNode;
 }
+
+const DEFAULT_BODY = (
+  <>
+    This looks like a local address (<code className="font-mono">localhost</code>, <code className="font-mono">127.0.0.1</code>, or a private IP), which BugSafari can't access directly. If you want to test your local website, make it available through a public URL using a secure tunneling or hosting solution, then enter that public URL here. BugSafari will test the URL exactly as you enter it.
+  </>
+);
 
 // Floating popover anchored under the target URL field. Absolutely positioned so
 // it overlays the page instead of reflowing it, and sized to its own content.
-export default function PublicTargetNotice({ onDismiss }: PublicTargetNoticeProps) {
+export default function PublicTargetNotice({ onDismiss, title = 'Local website detected', children }: PublicTargetNoticeProps) {
   return (
     <div
       role="status"
@@ -14,9 +25,9 @@ export default function PublicTargetNotice({ onDismiss }: PublicTargetNoticeProp
     >
       <div className="flex items-start gap-2.5">
         <div className="min-w-0 space-y-1">
-          <p className="text-sm font-bold text-(--status-warning-fg)">Local website detected</p>
+          <p className="text-sm font-bold text-(--status-warning-fg)">{title}</p>
 <p className="text-[13px] leading-relaxed text-(--text-secondary)">
-  This looks like a local address (<code className="font-mono">localhost</code>, <code className="font-mono">127.0.0.1</code>, or a private IP), which BugSafari can't access directly. If you want to test your local website, make it available through a public URL using a secure tunneling or hosting solution, then enter that public URL here. BugSafari will test the URL exactly as you enter it.
+  {children ?? DEFAULT_BODY}
 </p>
         </div>
         <button

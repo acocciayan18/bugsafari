@@ -31,6 +31,7 @@ import type { ActionExecutorDeps } from './types.js';
 import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
+import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
 
 // A form control the sibling pass decided to drive. Tagged in-page, actuated from
@@ -1129,17 +1130,28 @@ export class ActionExecutor {
    * scenario expectation alone — mirroring the fuzz-leak path.
    */
   private async registerStorageFinding(finding: StorageTamperFinding, page: Page): Promise<void> {
+    // Server-corroborated ⇒ a genuine access-control bypass (CONFIRMED, CRITICAL). A
+    // render-only delta ⇒ the client painted privileged UI but server enforcement is
+    // unverified, so it is reported as a HIGH lead needing verification, never a
+    // confirmed CRITICAL bypass (audit C1). `confirmed` is passed to the classifier
+    // only for the server-corroborated case so the security verdict rests on evidence.
+    const serverConfirmed = finding.serverConfirmed;
+    // The class is invariant for this finding; only the evidence STRENGTH varies. Resolve
+    // scenario/testingType via the classifier but pin class + cwe + advice to the
+    // client-trust catalog entry, so a render-only (unconfirmed) verdict does not fall
+    // back to the generic runtime class/remediation.
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.message,
       content: finding.evidence,
       scenario: 'StorageTamper',
-      confirmed: true,
+      confirmed: serverConfirmed,
     });
+    const definition = BUG_CATALOG.CLIENT_TRUST_BOUNDARY_VIOLATION;
     // Capture the (tampered) storage state so replay re-seeds it before the app boots.
     const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
-      bugId: deriveStableBugId(`storage-${classification.bugClass}`, [
+      bugId: deriveStableBugId('storage-CLIENT_TRUST_BOUNDARY_VIOLATION', [
         finding.selector,
         finding.message,
         finding.evidence,
@@ -1149,21 +1161,29 @@ export class ActionExecutor {
       message: finding.evidence,
       selector: finding.selector,
       payloadUsed: 'role=admin; isAdmin=true; JWT{alg:none,role:admin}',
-      advice: classification.advice,
+      advice: definition.remediation,
       timestamp: new Date(),
+      severity: serverConfirmed ? 'CRITICAL' : 'HIGH',
       stateFingerprint,
       attribution: {
-        bugClass: classification.bugClass,
-        cwe: classification.cwe,
+        bugClass: 'CLIENT_TRUST_BOUNDARY_VIOLATION',
+        cwe: definition.cwe,
         scenario: classification.scenario,
         testingType: classification.testingType,
         stepIndex: classification.stepIndex,
+        origin: 'TARGET_APP',
+        confidence: serverConfirmed ? 'CONFIRMED' : 'SIGNAL',
+        verificationStatus: serverConfirmed ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+        confidenceScore: serverConfirmed ? 0.9 : 0.6,
+        corroborated: serverConfirmed,
       },
     });
     this.deps.telemetry.emit('EXCEPTION', {
-      actionExecuted: 'storage-tamper-confirmed',
+      actionExecuted: serverConfirmed ? 'storage-tamper-confirmed' : 'storage-tamper-needs-verification',
       selector: finding.selector,
-      message: ` Confirmed client-trust violation (${classification.bugClass}) — privileged UI unlocked from forged client storage`,
+      message: serverConfirmed
+        ? ` Confirmed broken access control (${classification.bugClass}) — server honored forged client auth-state`
+        : ` Client-trust lead (needs verification): privileged UI rendered from forged storage, server enforcement unconfirmed`,
     });
   }
 }

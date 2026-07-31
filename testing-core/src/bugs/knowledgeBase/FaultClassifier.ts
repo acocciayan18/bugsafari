@@ -85,6 +85,7 @@ export interface FaultClassification {
  */
 const SECURITY_BUGCLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
   'NOSQL_INJECTION',
+  'SQL_INJECTION',
   'FUZZ_VULNERABILITY_LEAK',
   'SECURITY_VULNERABILITY_LEAK',
   'INPUT_SANITIZATION_FAILURE',
@@ -109,6 +110,7 @@ const CATEGORY_SOURCE: Record<SignalCategory, 'url' | 'text' | 'both'> = {
   SERVER_ERROR: 'text',
   INFO_LEAK: 'text',
   NOSQL_ERROR: 'text',
+  SQL_ERROR: 'text',
   XSS_REFLECTION: 'text',
   QUERY_MUTATION: 'url',
 };
@@ -119,6 +121,7 @@ const CATEGORY_SOURCE: Record<SignalCategory, 'url' | 'text' | 'both'> = {
  */
 const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
   NOSQL_ERROR: ['NOSQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK'],
+  SQL_ERROR: ['SQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK'],
   XSS_REFLECTION: ['FUZZ_VULNERABILITY_LEAK', 'INPUT_SANITIZATION_FAILURE'],
   REDIRECT_LOOP: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
   COMPONENT_FAIL: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
@@ -141,11 +144,12 @@ const CLIENT_RENDER_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['CLIENT_C
 // XSS_REFLECTION, which — under a security scenario's expectation bias — mislabels a
 // plain runtime crash a FUZZ/injection leak. So for a client fault they count only when
 // an oracle positively CONFIRMED the injection (mirrors the CLIENT_RENDER guard above).
-const SECURITY_SIGNAL_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['XSS_REFLECTION', 'NOSQL_ERROR', 'INFO_LEAK']);
+const SECURITY_SIGNAL_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['XSS_REFLECTION', 'NOSQL_ERROR', 'SQL_ERROR', 'INFO_LEAK']);
 
 /** Deterministic priority order in which matched categories are considered. */
 const CATEGORY_PRIORITY: SignalCategory[] = [
   'NOSQL_ERROR',
+  'SQL_ERROR',
   'XSS_REFLECTION',
   'REDIRECT_LOOP',
   'COMPONENT_FAIL',
@@ -179,6 +183,11 @@ function matchedCategories(input: FaultInput): SignalCategory[] {
     // echoed one. Skip the client-render categories so the server/leak/boundary
     // verdict wins instead of a spurious RUNTIME_STABILITY_EXCEPTION.
     if (input.faultType === 'NETWORK' && CLIENT_RENDER_CATEGORIES.has(category)) return false;
+    // XSS via raw tag-presence is only trustworthy when the execution oracle CONFIRMED
+    // it — a <script> echoed in a 5xx body is not proof of an executable reflection, so
+    // it must not read as XSS on a NETWORK fault either (leaked SQL/Mongo/info errors,
+    // which ARE direct body evidence, stay network-trusted below).
+    if (category === 'XSS_REFLECTION' && !input.confirmed) return false;
     // A client fault's own stack is not injection evidence — only an oracle-confirmed
     // injection promotes a security verdict for it (else a JS crash reads as a leak).
     if (input.faultType !== 'NETWORK' && !input.confirmed && SECURITY_SIGNAL_CATEGORIES.has(category)) return false;

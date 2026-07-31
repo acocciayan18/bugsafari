@@ -28,6 +28,7 @@ export interface DetectionCase {
 /** BugClasses that constitute a "security/injection" verdict for precision scoring. */
 export const SECURITY_CLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
   'NOSQL_INJECTION',
+  'SQL_INJECTION',
   'FUZZ_VULNERABILITY_LEAK',
   'SECURITY_VULNERABILITY_LEAK',
   'INPUT_SANITIZATION_FAILURE',
@@ -69,6 +70,30 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
       scenario: 'DataFuzzer',
     },
     expected: 'NOSQL_INJECTION',
+    expectSecurity: true,
+  },
+  {
+    name: 'sql: leaked MySQL syntax error in a response body',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 500 POST /api/login',
+      content: "You have an error in your SQL syntax; check the manual near ''' OR '1'='1' at line 1",
+      statusCode: 500,
+      scenario: 'DataFuzzer',
+    },
+    expected: 'SQL_INJECTION',
+    expectSecurity: true,
+  },
+  {
+    name: 'sql: leaked Postgres syntax error',
+    input: {
+      faultType: 'NETWORK',
+      message: 'Request failed',
+      content: 'error: syntax error at or near "OR"',
+      statusCode: 500,
+      scenario: 'DataFuzzer',
+    },
+    expected: 'SQL_INJECTION',
     expectSecurity: true,
   },
   {
@@ -138,6 +163,23 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     input: {
       faultType: 'NETWORK',
       message: 'net::ERR_TIMED_OUT',
+      scenario: 'DataFuzzer',
+    },
+    expected: 'BOUNDARY_STRESS_FAILURE',
+    expectSecurity: false,
+  },
+  {
+    // A 5xx error page whose body merely echoes a <script> tag is NOT a confirmed XSS:
+    // raw tag-presence without the execution oracle is not proof of an executable
+    // reflection. Pre-fix this classified as FUZZ_VULNERABILITY_LEAK (security FP);
+    // XSS_REFLECTION is now oracle-gated on every fault type, so it falls to the
+    // network boundary verdict.
+    name: 'benign: unconfirmed <script> echoed in a 5xx body under data-fuzz',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 500 POST /api/search',
+      content: '<div class="error">Internal error</div><script>alert(1)</script>',
+      statusCode: 500,
       scenario: 'DataFuzzer',
     },
     expected: 'BOUNDARY_STRESS_FAILURE',

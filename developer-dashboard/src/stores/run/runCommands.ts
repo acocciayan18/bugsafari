@@ -1,7 +1,8 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
 import { defaultOptimizationSettings, isActionableNetworkStatus } from '../../../../shared/types.js';
-import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE } from '../../../../shared/url.js';
+import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
+import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
@@ -50,6 +51,12 @@ export async function startRun(
     // and cannot reach a private host.
     if (isPrivateTargetUrl(resolvedUrl)) {
         toast.error(PUBLIC_TARGET_REQUIRED_MESSAGE);
+        return;
+    }
+    // BugSafari must never test itself — refuse a BugSafari production/preview/staging
+    // or self-served origin before the request leaves the browser (backend re-checks).
+    if (isSelfTargetUrl(resolvedUrl)) {
+        toast.error(SELF_TARGET_FORBIDDEN_MESSAGE);
         return;
     }
 

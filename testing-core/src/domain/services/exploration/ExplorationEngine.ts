@@ -22,6 +22,7 @@ import {
   setStructuralProbeAccessor,
   setConcurrentStressAccessor,
   resetConstraintBypassFinder,
+  resetInjectionDifferentialFinder,
 } from '../../../bugs/finders/index.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -563,6 +564,7 @@ export class ExplorationEngine {
       existing.attribution.confidenceScore ?? 0,
       existing.attribution.origin ?? 'UNKNOWN',
       outcome.reproduced,
+      outcome.reproductionRate,
     );
     const attribution = { ...existing.attribution, confidenceScore: score, verificationStatus: status };
     this.confirmedBugsMemory[index] = { ...existing, attribution };
@@ -573,16 +575,25 @@ export class ExplorationEngine {
       stepsReplayed: outcome.stepsReplayed,
       confidenceScore: score,
       verificationStatus: status,
+      reproductionRate: outcome.reproductionRate,
+      attempts: outcome.attempts,
     });
 
+    // Reproduction rate makes an intermittent fault legible: "3/3" is deterministic,
+    // "1/3" is a flake a developer should treat differently, "0/3" did not recur.
+    const rateLabel = `${Math.round(outcome.reproductionRate * outcome.attempts)}/${outcome.attempts}`;
+    const verdictWord =
+      outcome.reproductionRate >= 1
+        ? 'Reproduced deterministically'
+        : outcome.reproduced
+          ? 'Reproduced intermittently'
+          : 'Did not reproduce';
     this.activeGateway?.emitTelemetry({
       timestamp: new Date().toISOString(),
       type: 'ACTION',
       meta: {
         actionExecuted: 'reproduction-verified',
-        message: outcome.reproduced
-          ? ` Reproduced after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`
-          : ` Did not reproduce after replaying ${outcome.stepsReplayed} step(s) — confidence ${score} (${status})`,
+        message: ` ${verdictWord} (${rateLabel} replays, ${outcome.stepsReplayed} step(s)) — confidence ${score} (${status})`,
       },
     });
   }
@@ -1274,6 +1285,7 @@ export class ExplorationEngine {
       );
 
       resetConstraintBypassFinder(); // clear the per-run one-probe-per-field guard
+      resetInjectionDifferentialFinder(); // clear the differential oracle's per-field guard
       const bugFinderRunner = new BugFinderRunner({
         finders: BUG_FINDERS,
         gate: this.gate,

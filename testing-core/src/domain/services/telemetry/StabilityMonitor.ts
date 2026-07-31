@@ -1144,12 +1144,19 @@ export class StabilityMonitor {
       routingReason: routing.reasonCode,
     };
 
-    // Guarantee the three things a developer needs before this leaves the engine.
+    // Guarantee the three things a developer needs before this leaves the engine, and
+    // fold the concrete endpoint facts into the remediation so it names THIS call
+    // rather than reading as a generic checklist (audit M1).
     const complete = ensureFindingEvidence({
       attribution,
       advice: verification.advice,
       reproductionPlaybook: playbook,
       context: `${evidence.method} ${evidence.url}`,
+      specifics: {
+        method: evidence.method,
+        endpoint: evidence.url.split('?')[0],
+        statusCode: evidence.statusCode,
+      },
     });
 
     const severity =

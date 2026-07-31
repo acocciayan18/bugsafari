@@ -27,6 +27,14 @@ const MAX_QUEUED = 12;
 // A replay that has not settled by now is wedged; abandon it so the queue drains.
 const PROBE_TIMEOUT_MS = 45_000;
 
+// A single replay is statistically weak for exactly the timing/race/network faults
+// BugSafari specialises in: one coincidental recurrence would false-CONFIRM, one
+// coincidental miss would wrongly demote. Replay N times (severity-scaled) and report
+// the reproduction RATE so a developer can tell a deterministic defect from a flake.
+// Kept small so teardown wall-clock stays bounded (each attempt is its own sidecar).
+const ATTEMPTS_BY_SEVERITY: Record<FaultSeverity, number> = { INFO: 1, LOW: 2, MEDIUM: 2, HIGH: 3, CRITICAL: 3 };
+const attemptsFor = (s: FaultSeverity): number => ATTEMPTS_BY_SEVERITY[s] ?? ATTEMPTS_BY_SEVERITY.MEDIUM;
+
 // Severity ordering for backpressure. Under a fault storm the queue is the scarce
 // resource, so it must serve the findings a developer cares about first: a CRITICAL
 // evicts a queued LOW rather than being tail-dropped behind it, and draining picks the
@@ -76,7 +84,12 @@ export interface ReproductionRequest {
 
 export interface ReproductionOutcome {
   bugId: string;
+  /** True when the fault recurred on at least one decidable replay. */
   reproduced: boolean;
+  /** Reproductions ÷ decidable attempts (0–1). 1 = deterministic, <1 = intermittent. */
+  reproductionRate: number;
+  /** Replays that produced a usable verdict (undecidable nav failures excluded). */
+  attempts: number;
   stepsReplayed: number;
   matchedSignals: RegressionSignal[];
 }
@@ -161,8 +174,52 @@ export class ReproductionProbe {
     }
   }
 
-  /** Run one replay in a throwaway sidecar context. Returns null when undecidable. */
+  /**
+   * Replay a finding N times (severity-scaled) and aggregate into a reproduction
+   * RATE. Undecidable attempts (nav failure, wedged page) are excluded from the
+   * denominator rather than counted as negatives. Returns null only when NO attempt
+   * was decidable, so a finding that could not be replayed keeps its neutral score.
+   */
   private async probe(request: ReproductionRequest): Promise<ReproductionOutcome | null> {
+    const attempts = attemptsFor(request.severity);
+    let decided = 0;
+    let reproductions = 0;
+    let stepsReplayed = 0;
+    const matchedSignals: RegressionSignal[] = [];
+    const seenSignals = new Set<string>();
+
+    for (let i = 0; i < attempts; i += 1) {
+      if (this.disposed || !this.browser.isConnected()) break;
+      const once = await this.probeOnce(request);
+      if (!once) continue; // undecidable — excluded from the rate
+      decided += 1;
+      if (once.reproduced) reproductions += 1;
+      stepsReplayed = once.stepsReplayed;
+      for (const signal of once.matchedSignals) {
+        const key = String(signal);
+        if (!seenSignals.has(key)) {
+          seenSignals.add(key);
+          matchedSignals.push(signal);
+        }
+      }
+    }
+
+    if (decided === 0) return null;
+
+    return {
+      bugId: request.bugId,
+      reproduced: reproductions > 0,
+      reproductionRate: reproductions / decided,
+      attempts: decided,
+      stepsReplayed,
+      matchedSignals,
+    };
+  }
+
+  /** Run one replay in a throwaway sidecar context. Returns null when undecidable. */
+  private async probeOnce(
+    request: ReproductionRequest,
+  ): Promise<{ reproduced: boolean; stepsReplayed: number; matchedSignals: RegressionSignal[] } | null> {
     if (!this.browser.isConnected()) return null;
 
     let context: BrowserContext | null = null;
@@ -192,14 +249,13 @@ export class ReproductionProbe {
 
       // An undecidable replay (nav failure, wedged page) must leave `reproduced`
       // unset rather than assert a negative — a false "did not reproduce" costs
-      // 0.1 of confidence on a finding that may be perfectly real.
+      // confidence on a finding that may be perfectly real.
       if (!result || !result.ok) {
         console.warn(`[ReproductionProbe] undecidable for ${request.bugId}: ${result?.error ?? 'timed out'}`);
         return null;
       }
 
       return {
-        bugId: request.bugId,
         reproduced: result.reproduced,
         stepsReplayed: result.stepsReplayed,
         matchedSignals: result.matchedSignals,

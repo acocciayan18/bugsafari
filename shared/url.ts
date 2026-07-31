@@ -5,7 +5,17 @@
 // Operator-facing reason reused by the dashboard and the API so both sides say
 // the same thing. Deliberately provider-neutral.
 export const PUBLIC_TARGET_REQUIRED_MESSAGE =
-  'BugSafari can only test websites that are publicly reachable over the internet. Local addresses such as localhost, 127.0.0.1, or a private network IP cannot be opened by the testing engine. Deploy the site, or expose your development server through a secure public tunnel, and enter that public address instead.';
+  'BugSafari cannot access this website. The URL appears to be a local or private address, which is not reachable by the testing engine. Please deploy your application or expose it through a secure public tunnel, then use the public URL instead.';
+
+// Operator-facing reason for a rejected self-target, reused by the dashboard and API.
+export const SELF_TARGET_FORBIDDEN_MESSAGE =
+  'This website cannot be tested. The URL you entered points to a BugSafari instance. To avoid recursive testing, BugSafari only accepts publicly accessible websites that are not running BugSafari.';
+
+// Hosts BugSafari must never test: itself. Centralized default (bare hostnames, no
+// scheme/port); the backend extends this from BUGSAFARI_PROTECTED_ORIGINS and the
+// dashboard adds its own serving origin. Matching also covers subdomains and Vercel
+// preview deployments (see isProtectedTargetHost).
+export const DEFAULT_PROTECTED_HOSTS: readonly string[] = ['bugsafari.vercel.app'];
 
 // Loopback, RFC1918, link-local, IPv6 ULA/link-local, mDNS/internal suffixes and
 // container host aliases — none are routable from the engine.
@@ -77,6 +87,68 @@ export function isPrivateTargetUrl(raw: unknown): boolean {
   if (!resolved) return false;
   try {
     return isPrivateTargetHost(new URL(resolved).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Reduce a raw origin/host/URL entry to a comparable hostname: lowercase, drop any
+// scheme/path/port, strip IPv6 brackets, a trailing dot, and a leading `www.`.
+// Returns '' when nothing usable remains, so a blank entry never matches everything.
+function canonicalHost(entry: string): string {
+  let s = entry.trim().toLowerCase();
+  if (!s) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//.test(s)) {
+    try { s = new URL(s).hostname; } catch { return ''; }
+  } else {
+    s = s.split('/')[0];
+    // Strip a :port only for a plain host:port (single colon, digits) — never IPv6.
+    if (/^[^:]+:\d+$/.test(s)) s = s.split(':')[0];
+  }
+  return s.replace(/^\[|\]$/g, '').replace(/\.$/, '').replace(/^www\./, '');
+}
+
+// Split a comma/space/newline-separated origins string (e.g. an env var) into
+// canonical hostnames, dropping blanks. Extends DEFAULT_PROTECTED_HOSTS.
+export function parseProtectedOrigins(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  return raw.split(/[\s,]+/).map(canonicalHost).filter(Boolean);
+}
+
+// Is this hostname a BugSafari instance we must refuse? Matches, per protected entry:
+// the exact host (case/port/trailing-dot/www normalized), any subdomain of it, and —
+// for a Vercel apex `<slug>.vercel.app` — that project's preview/branch deploys
+// `<slug>-*.vercel.app`. Comparison is on hostnames only, so scheme, port, and path
+// never affect the verdict.
+export function isProtectedTargetHost(
+  hostname: string,
+  protectedHosts: readonly string[] = DEFAULT_PROTECTED_HOSTS,
+): boolean {
+  const host = canonicalHost(hostname);
+  if (!host) return false;
+  for (const entry of protectedHosts) {
+    const p = canonicalHost(entry);
+    if (!p) continue;
+    if (host === p || host.endsWith('.' + p)) return true;
+    const vercel = /^([a-z0-9-]+)\.vercel\.app$/.exec(p);
+    if (vercel) {
+      const slug = vercel[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp('^' + slug + '-[a-z0-9-]+\\.vercel\\.app$').test(host)) return true;
+    }
+  }
+  return false;
+}
+
+// URL-level mirror of isProtectedTargetHost, gated on a parseable web URL so a
+// half-typed host never trips the block while the operator is still typing.
+export function isProtectedTargetUrl(
+  raw: unknown,
+  protectedHosts: readonly string[] = DEFAULT_PROTECTED_HOSTS,
+): boolean {
+  const resolved = normalizeTargetUrl(raw);
+  if (!resolved) return false;
+  try {
+    return isProtectedTargetHost(new URL(resolved).hostname, protectedHosts);
   } catch {
     return false;
   }
