@@ -49,7 +49,7 @@ interface WorkspaceProps {
  * only ever rendered once a session exists.
  */
 function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: WorkspaceProps) {
-  const [targetUrl, setTargetUrl] = useState('https://cafesplatform.elementfx.com/');
+  const [targetUrl, setTargetUrl] = useState('https://example.com/');
   const [showGuestSavePrompt, setShowGuestSavePrompt] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
