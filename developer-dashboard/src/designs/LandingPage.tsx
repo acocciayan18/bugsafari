@@ -55,7 +55,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                 <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div className="relative z-10 space-y-6">
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-zinc-200 bg-zinc-50 rounded-full text-zinc-800 shadow-xs">
-                            <span className="font-mono text-xs uppercase tracking-widest font-bold">AI-Native Intelligence</span>
+                            <span className="font-mono text-xs uppercase st font-bold">AI-Native Intelligence</span>
                         </div>
                         <h1 className="text-[48px] lg:text-[64px] leading-tight text-black font-extrabold uppercase">
                             Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
@@ -106,21 +106,21 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                 <div className="pt-4 border-t border-zinc-200/80 mt-4">
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">CPU Usage</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase r">CPU Usage</div>
                                             <div className="text-[18px] font-bold">94.2%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-[#121212] rounded-full w-4/5"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Memory</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase r">Memory</div>
                                             <div className="text-[18px] font-bold">2.4 GB</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-[#121212] rounded-full w-1/3"></div>
                                             </div>
                                         </div>
                                         <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Confidence</div>
+                                            <div className="text-xs text-zinc-500 font-bold uppercase r">Confidence</div>
                                             <div className="text-[18px] font-bold">98.4%</div>
                                             <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
                                                 <div className="h-full bg-[#121212] rounded-full w-11/12"></div>
@@ -209,16 +209,16 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         <button
                             onClick={onLogin}
-                            className="px-10 py-4 bg-[#121212] text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all uppercase tracking-widest text-xs cursor-pointer"
+                            className="px-10 py-4 bg-[#121212] text-white font-medium rounded-lg shadow-md hover:bg-zinc-800 transition-all uppercase st text-xs cursor-pointer"
                         >
                             Try BugSafari
                         </button>
-                        <button className="px-10 py-4 border border-zinc-200 rounded-lg text-black font-medium bg-white shadow-xs hover:bg-zinc-50 transition-all uppercase tracking-widest text-xs cursor-pointer">
+                        <button className="px-10 py-4 border border-zinc-200 rounded-lg text-black font-medium bg-white shadow-xs hover:bg-zinc-50 transition-all uppercase st text-xs cursor-pointer">
                             Schedule Demo
                         </button>
                     </div>
                     <div className="pt-8">
-                        <p className="font-mono text-xs text-zinc-500 font-bold uppercase tracking-widest">No credit card required • 14-day free trial • Unlimited agents</p>
+                        <p className="font-mono text-xs text-zinc-500 font-bold uppercase st">No credit card required • 14-day free trial • Unlimited agents</p>
                     </div>
                 </div>
             </section>

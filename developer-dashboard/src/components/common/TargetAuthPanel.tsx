@@ -98,7 +98,7 @@ interface TargetAuthPanelProps {
 // text-base under `sm` keeps iOS from zooming the viewport on focus.
 const FIELD_CLASS =
   'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
-const LABEL_CLASS = 'block text-[12px] font-bold uppercase tracking-wider text-(--text-tertiary) mb-1 font-sans';
+const LABEL_CLASS = 'block text-[12px] font-bold uppercase r text-(--text-tertiary) mb-1 font-sans';
 
 // Session state temporarily disabled — button rendered inert, not removed.
 const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string; disabled?: boolean }> = [
@@ -156,7 +156,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         </button>
         <KeyRound className="h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold tracking-wider text-(--text-secondary) uppercase font-sans leading-tight">
+          <p className="text-xs font-bold r text-(--text-secondary) uppercase font-sans leading-tight">
             Authenticate into target
           </p>
           <p className="text-xs text-(--text-tertiary) font-sans leading-tight mt-0.5">
@@ -225,7 +225,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
               disabled={fieldsDisabled || option.disabled}
               title={option.disabled ? 'Session state is temporarily unavailable' : undefined}
               onClick={() => setMethod(option.id)}
-              className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase tracking-wider font-sans transition-colors disabled:cursor-not-allowed enabled:cursor-pointer ${
+              className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase r font-sans transition-colors disabled:cursor-not-allowed enabled:cursor-pointer ${
                 option.disabled ? 'opacity-50' : ''
               } ${
                 draft.method === option.id
@@ -338,7 +338,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           onClick={() => setShowAdvanced((prev) => !prev)}
           disabled={fieldsDisabled}
           aria-expanded={showAdvanced}
-          className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-(--text-tertiary) enabled:hover:text-(--text-secondary) transition-colors font-sans disabled:cursor-not-allowed enabled:cursor-pointer"
+          className="flex items-center gap-1 text-xs font-bold uppercase r text-(--text-tertiary) enabled:hover:text-(--text-secondary) transition-colors font-sans disabled:cursor-not-allowed enabled:cursor-pointer"
         >
           <ChevronDown
             className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}

@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
-import { sanitizeString } from './authValidation.js';
+import { requireNonEmptyString, maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
 // Wrong-email and wrong-password answer identically — telling them apart would
@@ -25,8 +25,8 @@ export async function handleLogin(
     const { email, password } = request.body;
 
     // Validate and sanitize inputs
-    const sanitizedEmail = sanitizeString(email, 'email');
-    const sanitizedPassword = sanitizeString(password, 'password');
+    const sanitizedEmail = requireNonEmptyString(email, 'email');
+    const sanitizedPassword = requireNonEmptyString(password, 'password');
 
     if (!sanitizedEmail || !sanitizedPassword) {
       const body: AuthErrorBody = {
@@ -40,7 +40,7 @@ export async function handleLogin(
 
     const trimmedEmail = sanitizedEmail.trim().toLowerCase();
 
-    console.log(`[Auth] Login attempt for: "${trimmedEmail}"`);
+    console.log(`[Auth] Login attempt for: "${maskEmail(trimmedEmail)}"`);
 
     try {
       // Find user by email
@@ -64,7 +64,7 @@ export async function handleLogin(
       // Verify password using model's comparePassword method (timing-safe via bcrypt)
       const isValidPassword = await user.comparePassword(sanitizedPassword);
       if (!isValidPassword) {
-        console.warn(`[Auth] Invalid password attempt for: ${trimmedEmail}`);
+        console.warn(`[Auth] Invalid password attempt for: ${maskEmail(trimmedEmail)}`);
         response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
@@ -72,7 +72,7 @@ export async function handleLogin(
       // Short-lived access token plus a rotating refresh token in a new family.
       const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
 
-      console.log(`[Auth] User logged in: ${trimmedEmail}`);
+      console.log(`[Auth] User logged in: ${maskEmail(trimmedEmail)}`);
 
       response.json({
         ok: true,

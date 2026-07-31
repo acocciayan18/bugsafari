@@ -27,7 +27,7 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
     >
       <div className="flex items-start justify-between gap-3 border-b border-zinc-200 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0 space-y-2">
-          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-800">
+          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[10px] font-bold uppercase st text-zinc-800">
             Work in progress
           </span>
           <h2 id="welcome-notice-title" className="text-[24px] font-extrabold uppercase leading-tight tracking-tight text-black">
@@ -56,7 +56,7 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
         <button
           type="button"
           onClick={onDismiss}
-          className="w-full cursor-pointer rounded-lg bg-[#121212] px-8 py-3 text-xs font-medium uppercase tracking-widest text-white shadow-md transition-all hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className="w-full cursor-pointer rounded-lg bg-[#121212] px-8 py-3 text-xs font-medium uppercase st text-white shadow-md transition-all hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         >
           I Understand — Continue to BugSafari
         </button>

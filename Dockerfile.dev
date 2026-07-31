@@ -1,0 +1,33 @@
+# Local development image for the api + worker (docker-compose.local.yml).
+#
+# Why a dedicated file instead of `dockerfile_inline`: podman's compose does not
+# honor `dockerfile_inline` and silently falls back to the repo-root `Dockerfile` —
+# which is the PRODUCTION build. That prod image runs `npm prune --omit=dev`, removing
+# tsc-watch / tsx / typescript, so the dev command (`npm run dev` -> tsc-watch) crash-
+# loops with `tsc-watch: not found` (exit 127) and the api never binds :3000. This dev
+# image keeps the full dev toolchain and NEVER prunes. `dockerfile:` is honored by both
+# docker and podman, so the topology is deterministic.
+#
+# Source is bind-mounted over /app/testing-core/src and /app/shared at runtime, so
+# tsc-watch recompiles the current code on start and on every edit.
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+
+WORKDIR /app
+ENV NODE_ENV=development
+
+# Install first (dev dependencies included — no prune) so the layer caches on lockfile.
+COPY package.json package-lock.json ./
+COPY testing-core/package.json ./testing-core/package.json
+COPY shared/package.json ./shared/package.json
+RUN npm ci --workspace testing-core --include-workspace-root
+
+COPY testing-core ./testing-core
+COPY shared ./shared
+
+# Bake an initial build so `node dist/...` has something to run before the first
+# tsc-watch pass; tsc-watch then owns recompilation from the mounted source.
+RUN npm run build --workspace shared --if-present
+RUN npm run build --workspace testing-core
+
+EXPOSE 3000
+# No CMD: docker-compose.local.yml sets the per-service command (dev / dev:worker).

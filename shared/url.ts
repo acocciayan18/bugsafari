@@ -24,6 +24,52 @@ export function isPrivateTargetHost(hostname: string): boolean {
   return false;
 }
 
+// Reject an IPv4 literal that is loopback, private, link-local, CGNAT, reserved,
+// multicast or broadcast. Operates on canonical dotted-quad — the caller resolves
+// non-canonical forms (decimal/octal/hex/short) via getaddrinfo first (SEC-02).
+function isDisallowedIpv4(ip: string): boolean {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return true; // not canonical dotted-quad ⇒ refuse
+  const octets = parts.map((p) => Number(p));
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = octets;
+  if (a === 0) return true;                              // 0.0.0.0/8 "this host"
+  if (a === 10) return true;                             // 10.0.0.0/8
+  if (a === 127) return true;                            // 127.0.0.0/8 loopback
+  if (a === 169 && b === 254) return true;               // 169.254.0.0/16 link-local (cloud metadata)
+  if (a === 172 && b >= 16 && b <= 31) return true;      // 172.16.0.0/12
+  if (a === 192 && b === 168) return true;               // 192.168.0.0/16
+  if (a === 100 && b >= 64 && b <= 127) return true;     // 100.64.0.0/10 CGNAT
+  if (a === 192 && b === 0 && octets[2] === 0) return true;   // 192.0.0.0/24 IETF
+  if (a === 192 && b === 0 && octets[2] === 2) return true;   // 192.0.2.0/24 TEST-NET-1
+  if (a === 198 && (b === 18 || b === 19)) return true;  // 198.18.0.0/15 benchmark
+  if (a === 198 && b === 51 && octets[2] === 100) return true; // 198.51.100.0/24 TEST-NET-2
+  if (a === 203 && b === 0 && octets[2] === 113) return true;  // 203.0.113.0/24 TEST-NET-3
+  if (a >= 224) return true;                             // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved + 255.255.255.255
+  return false;
+}
+
+// Reject an IPv6 literal that is loopback, unspecified, ULA, link-local, multicast,
+// or an IPv4-mapped/compat address whose embedded IPv4 is itself disallowed.
+function isDisallowedIpv6(ip: string): boolean {
+  const host = ip.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, ''); // strip zone id
+  if (host === '::1' || host === '::') return true;                 // loopback / unspecified
+  const mapped = /^(?:::ffff:|::)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(host);
+  if (mapped) return isDisallowedIpv4(mapped[1]);                    // IPv4-mapped / compat
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return true;                 // fc00::/7 ULA
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true;                 // fe80::/10 link-local
+  if (/^ff[0-9a-f]{2}:/.test(host)) return true;                    // ff00::/8 multicast
+  return false;
+}
+
+// The authoritative "is this resolved address off-limits" check, used AFTER DNS
+// resolution so a public hostname pointing at a private/metadata address is caught.
+export function isDisallowedIp(ip: string): boolean {
+  const addr = ip.trim().toLowerCase();
+  if (!addr) return true;
+  return addr.includes(':') ? isDisallowedIpv6(addr) : isDisallowedIpv4(addr);
+}
+
 // True only once the input parses as a web URL, so a half-typed host never trips
 // the warning while the operator is still typing.
 export function isPrivateTargetUrl(raw: unknown): boolean {

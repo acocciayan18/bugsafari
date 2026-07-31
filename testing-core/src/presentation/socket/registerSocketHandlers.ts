@@ -42,6 +42,38 @@ const regressionVerifier = new RegressionPlaybookVerifier();
 const verificationsInFlight = new Set<string>();
 const VERIFY_FIX_TIMEOUT_MS = 120_000;
 
+// Per-socket abuse caps (SEC-07): a single client must not be able to join
+// unbounded rooms (growing the adapter's maps until OOM) or flood inbound events.
+const MAX_ROOMS_PER_SOCKET = 50;
+const EVENT_BUDGET = 60;
+const EVENT_WINDOW_MS = 10_000;
+
+interface RateBucket { count: number; resetAt: number; }
+
+// Token bucket per socket. Excess inbound events are dropped, not queued.
+function withinEventBudget(socket: Socket): boolean {
+  const now = Date.now();
+  const bucket = socket.data.rate as RateBucket | undefined;
+  if (!bucket || now >= bucket.resetAt) {
+    socket.data.rate = { count: 1, resetAt: now + EVENT_WINDOW_MS };
+    return true;
+  }
+  if (bucket.count >= EVENT_BUDGET) return false;
+  bucket.count += 1;
+  return true;
+}
+
+// Bounded join: refuse once a socket holds too many rooms (its own id room counts).
+function joinLimited(socket: Socket, room: string): boolean {
+  if (socket.rooms.has(room)) return true;
+  if (socket.rooms.size >= MAX_ROOMS_PER_SOCKET) {
+    console.warn(`[Socket]  join cap (${MAX_ROOMS_PER_SOCKET}) reached for ${socket.id} — refusing ${room}`);
+    return false;
+  }
+  void socket.join(room);
+  return true;
+}
+
 /** Build a terminal VERIFICATION_FAILED ack without running a replay (validation/guard failures). */
 function verificationFailedAck(request: Partial<VerifyFixRequest>, error: string): VerifyFixResult {
   return {
@@ -125,21 +157,31 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     // runId, joining the queue-position room and — once ownership of the runId is
     // confirmed — the run room where bridged worker telemetry lands.
     socket.on(QUEUE_SUBSCRIBE_EVENT, async (payload: unknown) => {
+      if (!withinEventBudget(socket)) return;
       const request = (payload ?? {}) as QueueSubscribeRequest;
       const jobId = typeof request.jobId === 'string' ? request.jobId.trim() : '';
       if (!jobId || !queueSupport) return;
 
-      void socket.join(queueRoom(jobId));
-      // The run room streams that run's telemetry — bind it only to a runToken this
-      // socket actually owns, so a bogus/foreign token can't be used to eavesdrop or
-      // to seed socket.data.runToken for a later control command.
+      // Authorize the queue-position room (SEC-07): BullMQ job ids are sequential
+      // integers, so joining queue:${jobId} unconditionally let any anonymous socket
+      // enumerate the whole fleet's positions and failure messages. Require a runToken
+      // the socket owns whose registry entry actually references THIS jobId — binding
+      // the subscription to possession of the unguessable server-issued token.
       const runToken = typeof request.runToken === 'string' && request.runToken ? request.runToken : null;
-      if (runToken && (await ownsQueuedRun(runToken))) {
-        void socket.join(`run:${runToken}`);
+      const entry = runToken ? await queueSupport.runRegistry.findByRunToken(runToken).catch(() => null) : null;
+      const authorized = Boolean(
+        entry && entry.jobId === jobId && (!entry.userId || entry.userId === socketUserId(socket)),
+      );
+      if (!authorized) {
+        console.warn(`[Socket]  queue-subscribe rejected: ${socket.id} does not own job ${jobId}`);
+        return;
+      }
+
+      joinLimited(socket, queueRoom(jobId));
+      // The run room streams that run's telemetry; the same proven ownership binds it.
+      if (joinLimited(socket, `run:${runToken}`)) {
         socket.data.runToken = runToken;
-        cancelQueueGrace(runToken);
-      } else if (runToken) {
-        console.warn(`[Socket]  queue-subscribe rejected run binding: ${socket.id} does not own run ${runToken}`);
+        cancelQueueGrace(runToken!);
       }
       // Send the current place in line immediately, without waiting for the next
       // queue transition to fire a broadcast.
@@ -154,6 +196,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     // telemetry — WITHOUT spawning a duplicate engine.
     socket.on(SESSION_ATTACH_EVENT, (payload: unknown, ack?: (result: SessionAttachAck) => void) => {
       const respond = typeof ack === 'function' ? ack : (): void => undefined;
+      if (!withinEventBudget(socket)) return;
       const request = (payload ?? {}) as SessionAttachRequest;
       if (typeof request.runToken === 'string' && request.runToken) {
         socket.data.runToken = request.runToken;
@@ -182,6 +225,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       sessionManager.ownsActiveRun(socketUserId(socket), socketRunToken() ?? undefined);
 
     const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void, reason?: StopReason): Promise<void> => {
+      if (!withinEventBudget(socket)) return;
       if (controlPublisher) {
         const runToken = socketRunToken();
         if (!(await ownsQueuedRun(runToken))) {
@@ -212,6 +256,10 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     // replay phases are streamed back over VERIFY_FIX_PROGRESS_EVENT meanwhile.
     socket.on(VERIFY_FIX_EVENT, async (payload: unknown, ack?: (result: VerifyFixResult) => void) => {
       const respond = typeof ack === 'function' ? ack : (): void => undefined;
+      if (!withinEventBudget(socket)) {
+        respond(verificationFailedAck((payload ?? {}) as Partial<VerifyFixRequest>, 'Too many requests. Please retry shortly.'));
+        return;
+      }
       const request = (payload ?? {}) as Partial<VerifyFixRequest>;
 
       // Payload validation.

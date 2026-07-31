@@ -17,7 +17,7 @@ import type {
 import { armNetworkSabotage, type ArmedSabotage } from '../../scenarios/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeRecovery, elementNoun, humanizeElement, resolveElementLabel } from '../forensics/narration.js';
-import { isBrowserClosedError, sanitizeException } from '../telemetry/StabilityMonitor.js';
+import { isBrowserClosedError, isEngineLifecycleError, sanitizeException } from '../telemetry/StabilityMonitor.js';
 import { inferSemanticRole, settle } from './types.js';
 import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
 import { isSessionDestroyingControl, shouldVetoExecution, SESSION_EXIT_DEMOTION } from './SessionPreservationGuard.js';
@@ -1874,11 +1874,17 @@ export class ExplorationLoop {
     runtimeCrashReason: string | null,
     serverCrashReason: string | null,
   ): Promise<LoopResult> {
-    // A browser/context-closed error is only expected when something actually asked
-    // the engine to stop — the teardown that follows stop() closes the browser out
-    // from under the in-flight action. With no stop recorded, the browser died on its
-    // own, which is a genuine fault and must NOT be reported as an operator stop.
-    if (isBrowserClosedError(err) && this.deps.isStopRequested()) {
+    // A Playwright lifecycle exception (closed page/context/browser, execution
+    // context destroyed, in-flight goto/evaluate against a dying page) is only
+    // expected when something actually asked the engine to stop — the teardown that
+    // follows stop() closes the browser out from under the in-flight action. It is a
+    // harness artifact, never a target-app defect, so settle on the stop outcome and
+    // emit NO EXCEPTION, forensic record, or risk entry — log for debugging only.
+    // With no stop recorded, the browser died on its own: a genuine fault that must
+    // still be reported as an exception below.
+    if (this.deps.isStopRequested() && isEngineLifecycleError(err)) {
+      const sanitized = sanitizeException(err instanceof Error ? err : String(err));
+      console.debug(`[ExplorationLoop] Suppressed expected engine lifecycle exception during shutdown: ${sanitized.message}`);
       return this.stopResult();
     }
 

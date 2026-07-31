@@ -12,7 +12,7 @@
 import type { ReactNode } from 'react';
 import { Bug } from 'lucide-react';
 import type { FindingAttribution } from '../../types';
-import { buildFindingSummary, type FindingView } from '../../utils/findingView';
+import { buildFindingSummary, humanizeFindingTitle, type FindingView } from '../../utils/findingView';
 import { CopyButton, SeverityBadge } from './ForensicCardKit';
 import FindingEvidence from './FindingEvidence';
 
@@ -39,7 +39,7 @@ function MetaPill({ label, value, title }: { label: string; value: string; title
       title={title}
       className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
     >
-      <span className="text-xs font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</span>
+      <span className="text-xs font-semibold uppercase r text-(--text-tertiary)">{label}</span>
       <span className="text-xs font-semibold text-(--text-primary)">{value}</span>
     </span>
   );
@@ -99,7 +99,7 @@ export default function FindingCard({
             <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{view.title}</span>
+            <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
             {view.occurrences > 1 && (
               <span
@@ -123,18 +123,18 @@ export default function FindingCard({
         <FindingMetaBar attribution={view.attribution} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Message</div>
+            <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Message</div>
             <div className="mt-0.5 break-words text-[13px] text-(--text-primary)">{view.message || 'No details provided'}</div>
           </div>
           {element && (
             <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Element</div>
+              <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Element</div>
               <div className="mt-0.5 truncate text-[13px] text-(--text-primary)" title={element}>{element}</div>
             </div>
           )}
           {view.payloadUsed && (
             <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase tracking-wide text-(--text-secondary)">Payload Used</div>
+              <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Payload Used</div>
               <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={view.payloadUsed}>{view.payloadUsed}</div>
             </div>
           )}

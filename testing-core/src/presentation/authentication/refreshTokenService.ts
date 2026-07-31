@@ -32,6 +32,10 @@ function hashToken(token: string): string {
 function signAccessToken(userId: string, email: string): string {
   return jwt.sign({ userId, email }, AUTH_CONFIG.JWT_SECRET, {
     expiresIn: AUTH_CONFIG.ACCESS_TOKEN_TTL,
+    // Matching claims for the pinned verify (SEC-13).
+    issuer: AUTH_CONFIG.JWT_ISSUER,
+    audience: AUTH_CONFIG.JWT_AUDIENCE,
+    algorithm: 'HS256',
   } as jwt.SignOptions);
 }
 

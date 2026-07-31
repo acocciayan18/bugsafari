@@ -11,7 +11,7 @@ import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { RunRegistry } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
-import { resolveEngineTargetUrl } from '../../serverUtils.js';
+import { assertPublicTarget } from '../../serverUtils.js';
 
 export interface SafariWorkerRuntime {
   worker: Worker<SafariTaskPayload>;
@@ -109,7 +109,9 @@ export async function createSafariWorker(
   // so the API process can rebuild a refreshed client's dashboard cross-process.
   const runRegistry = new RunRegistry(redisUrl);
   const authVault = AuthVault.create(redisUrl);
-  const SNAPSHOT_INTERVAL_MS = 2_000;
+  // 3s cadence still leaves a 20x margin under SNAPSHOT_TTL_SECONDS (60) for dead-
+  // worker detection, and the dirty-flag below skips writes when nothing changed.
+  const SNAPSHOT_INTERVAL_MS = 3_000;
   // jobId -> run identity for jobs this worker is currently processing. The
   // 'stalled' event delivers only a jobId and Worker exposes no job lookup, so
   // the mapping has to be kept here to clean up an abandoned run.
@@ -160,9 +162,10 @@ async (job) => {
         ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
-      // Second reachability gate (the API already ran one): a job may have been
-      // enqueued by an older client. The URL is dialed exactly as enqueued.
-      const routing = resolveEngineTargetUrl(payload.targetUrl);
+      // Second reachability + SSRF gate (the API already ran one): a job may have
+      // been enqueued by an older client, and DNS may have changed since. Re-resolve
+      // and re-validate the address (SEC-02). The URL is dialed exactly as enqueued.
+      const routing = await assertPublicTarget(payload.targetUrl);
       if (!routing.ok) {
         console.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
         throw new Error(routing.message);
@@ -171,13 +174,23 @@ async (job) => {
 
       // Bind the run to the SAME run token the client received at enqueue, so the
       // worker's telemetry room (run:${runToken}) matches the room the dashboard joined.
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runToken=${payload.runToken} runCode=${payload.runCode} target=${engineUrl}`);
+      // Log the public runCode, never the runToken — the token is a bearer credential
+      // that grants attach/pause/stop on the run (SEC-22).
+      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runCode=${payload.runCode} target=${engineUrl}`);
       // Throttled snapshot publishing: mirrors the live SessionManager replay
       // buffer into Redis so /api/session/active can serve it from the API process.
       // Match on the token (snapshot.runToken) — snapshot.runId is the public code.
+      let lastPublishedRevision = -1;
       const snapshotTimer = setInterval(() => {
-        const snapshot = sessionManager.getActiveSnapshot();
+        // Dirty-flag: read the cheap meta first (no buffer copies) and skip the whole
+        // serialize+write when the non-frame content is unchanged since last publish.
+        const meta = sessionManager.getActiveSnapshotMeta();
+        if (!meta || meta.runToken !== payload.runToken || meta.revision === lastPublishedRevision) return;
+        // Exclude lastFrame from the periodic snapshot — the single largest component
+        // and one the recovery path barely needs (the live stream resumes on restore).
+        const snapshot = sessionManager.getActiveSnapshot(false);
         if (snapshot && snapshot.runToken === payload.runToken) {
+          lastPublishedRevision = meta.revision;
           void runRegistry.writeSnapshot(payload.runToken, { ...snapshot, jobId: String(job.id ?? '') })
             .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
         }

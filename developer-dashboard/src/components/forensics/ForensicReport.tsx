@@ -41,7 +41,7 @@ import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProf
 import { isActionableNetworkStatus, type RemediationFailureReason } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
-import { caughtBugToFindingView } from '../../utils/findingView';
+import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
 import { requestAiInsights } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
 import {
@@ -168,7 +168,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
           ) : (
             <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${theme.bg}`}>
               <span className={`h-2.5 w-2.5 rounded-full ${theme.dot}`} />
-              <span className={`text-[13px] font-bold uppercase tracking-wide ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+              <span className={`text-[13px] font-bold uppercase  ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
             </span>
           )}
         </div>
@@ -201,7 +201,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
           <button
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
-            className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wider text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+            className="flex items-center gap-1.5 text-caption font-semibold uppercase r text-(--text-secondary) transition-colors hover:text-(--text-primary)"
           >
             <span>{showRoutes ? '▼' : ''}</span>
             <span>Visited Routes ({routes.length})</span>
@@ -272,7 +272,7 @@ function AiInsightsPanel({
 
   return (
     <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
-      <div className="flex flex-wrap items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-(--status-neutral-fg)">
+      <div className="flex flex-wrap items-center gap-2 text-[13px] font-bold uppercase r text-(--status-neutral-fg)">
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         <span>AI Insights</span>
         {aiAnalysis.riskLevel && (
@@ -283,7 +283,10 @@ function AiInsightsPanel({
         {aiGenerated && (
           <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold normal-case text-(--status-neutral-fg)">✦ AI-generated</span>
         )}
-        {canGenerate && (
+        {/* Generate once per run: hidden once AI insights exist (fresh or persisted),
+            so a successful result is shown directly and never regenerated. It returns
+            only when generation failed or fell back to the deterministic analysis. */}
+        {canGenerate && !aiGenerated && (
           <button
             type="button"
             onClick={generate}
@@ -292,7 +295,7 @@ function AiInsightsPanel({
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {aiGenerated ? 'Regenerate with AI' : 'Generate with AI'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' ? 'Retry with AI' : 'Generate with AI'}</>}
           </button>
         )}
       </div>
@@ -465,7 +468,7 @@ function VerifyFixControl({
   if (status.state === 'running') {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-(--text-secondary)"
+        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-xs font-semibold uppercase  text-(--text-secondary)"
         aria-live="polite"
       >
         <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -481,7 +484,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${meta.badge}`}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase  transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}
@@ -495,7 +498,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold uppercase  text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
@@ -513,7 +516,7 @@ function VerifyFixControl({
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-(--text-tertiary)">{label}</div>
+      <div className="text-[9px] font-semibold uppercase r text-(--text-tertiary)">{label}</div>
       <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
@@ -523,7 +526,7 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
     <li className="rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-(--text-oninvert)">
+        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[9px] font-bold uppercase  text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
@@ -556,7 +559,7 @@ function VerificationResultModal({
       <div className={`flex items-center gap-3 rounded-t-lg px-4 py-4 text-(--text-oninvert) sm:px-5 ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wider opacity-90">Verification Result</div>
+          <div className="text-xs font-semibold uppercase r opacity-90">Verification Result</div>
           <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
         </div>
       </div>
@@ -565,7 +568,7 @@ function VerificationResultModal({
         <p className="text-[13px] leading-relaxed text-(--text-primary)">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <ResultStat label="Bug Class" value={result.bugClass || 'UNKNOWN'} />
+          <ResultStat label="Bug Class" value={humanizeFindingTitle(result.bugClass) || 'Unknown'} />
           <ResultStat
             label="Steps Run"
             value={`${result.stepStats.executed}/${result.stepStats.total}`}
@@ -577,7 +580,7 @@ function VerificationResultModal({
 
         {result.matchedSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-(--text-secondary)">
+            <div className="mb-2 text-xs font-bold uppercase r text-(--text-secondary)">
               {result.verdict === 'STILL_ACTIVE' ? 'Reproduced Signals' : 'Uncorroborated Same-Class Signals'} ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
@@ -608,7 +611,7 @@ function VerificationResultModal({
 
         {result.otherSignals.length > 0 && (
           <div className="mt-4">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-(--text-secondary)">
+            <div className="mb-2 text-xs font-bold uppercase r text-(--text-secondary)">
               Other Faults Observed — Different Class ({result.otherSignals.length})
             </div>
             <ul className="space-y-2">
@@ -697,7 +700,7 @@ function ReportFindingCard({
         sessionId={sessionId}
         theme={verdictMeta ?? BASE_FINDING_THEME}
         statusChip={verdictMeta && (
-          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${verdictMeta.chip}`}>
+          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase  ${verdictMeta.chip}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
             {verdictMeta.label}
           </span>
@@ -811,7 +814,7 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
               <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold uppercase text-(--text-oninvert)">{row.method}</span>
               <span className={`font-mono text-xs font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
               {row.resourceType && (
-                <span className="font-mono text-xs uppercase tracking-wide text-(--text-tertiary)">{row.resourceType}</span>
+                <span className="font-mono text-xs uppercase  text-(--text-tertiary)">{row.resourceType}</span>
               )}
               {row.repeatCount && row.repeatCount > 1 && (
                 <span className="font-mono text-xs text-(--text-secondary)">×{row.repeatCount}</span>
@@ -882,7 +885,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
-        <span className="text-[13px] font-semibold uppercase tracking-wider text-(--text-secondary)">
+        <span className="text-[13px] font-semibold uppercase r text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps) — reference
         </span>
         <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : ' Expand'}</span>
@@ -1045,14 +1048,14 @@ export default function ForensicReport() {
         </button>
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
         <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
-          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>
       </header>
 
       {/* Report Body */}
-      <main className="custom-scrollbar flex-1 overflow-auto p-3 pb-safe sm:p-4 lg:p-6">
+      <main className="custom-scrollbar flex-1 overflow-auto p-3  sm:p-4 lg:p-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
           <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={runtimeBugs.length} />
 

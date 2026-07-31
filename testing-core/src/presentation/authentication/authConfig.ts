@@ -56,24 +56,46 @@ if (isProduction && JWT_SECRET.length < 32) {
   );
 }
 
-// Validate secret does not contain obvious dev markers in production
-if (isProduction && JWT_SECRET.includes('dev') && JWT_SECRET.includes('fallback')) {
+// Genuine low-entropy check (replaces the §7.2 "dev"+"fallback" substring heuristic,
+// which fired on almost nothing while implying secret quality was validated). A
+// production secret with too few distinct characters (repeated/padded strings) is
+// rejected outright.
+if (isProduction && new Set(JWT_SECRET).size < 16) {
   throw new Error(
-    'FATAL: JWT_SECRET appears to contain development fallback markers. ' +
-    'Use a production-grade secret.'
+    `FATAL: JWT_SECRET has only ${new Set(JWT_SECRET).size} distinct characters — too low-entropy for production. ` +
+    'Use `openssl rand -hex 32`.'
   );
 }
+
+// Pinned issuer/audience so verification is bound to this service (SEC-13). A token
+// minted for another audience — or by a future asymmetric-key confusion — is rejected.
+const JWT_ISSUER = 'bugsafari';
+const JWT_AUDIENCE = 'bugsafari-api';
 
 // Access tokens are short-lived because they are stateless and cannot be revoked;
 // durability of a session comes from the rotating refresh token instead.
 const ACCESS_TOKEN_TTL = process.env.JWT_EXPIRES_IN ?? '30m';
-const ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
+
+// Derive the ms figure from the SAME source as the signed expiry (SEC-13.5). The
+// old hardcoded 30min diverged from JWT_EXPIRES_IN (e.g. '7d'), so the advertised
+// expiresIn was wrong by orders of magnitude and clients refreshed off-schedule.
+function parseDurationMs(ttl: string): number {
+  const match = /^(\d+)\s*(ms|s|m|h|d)?$/.exec(ttl.trim());
+  if (!match) return 30 * 60 * 1000;
+  const value = Number(match[1]);
+  const unit = match[2] ?? 'ms';
+  const factor: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+  return value * (factor[unit] ?? 1);
+}
+const ACCESS_TOKEN_TTL_MS = parseDurationMs(ACCESS_TOKEN_TTL);
 const REFRESH_TOKEN_TTL_MS = Number(process.env.REFRESH_TOKEN_TTL_MS ?? 7 * 24 * 60 * 60 * 1000);
 
 // Configuration object - immutable in production
 // JWT_SECRET is guaranteed to be defined after validation - use non-null assertion
 export const AUTH_CONFIG = {
   JWT_SECRET: JWT_SECRET!, // Non-null assertion: validated above
+  JWT_ISSUER,
+  JWT_AUDIENCE,
   ACCESS_TOKEN_TTL,
   ACCESS_TOKEN_TTL_MS,
   REFRESH_TOKEN_TTL_MS,
@@ -119,7 +141,15 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
  */
 export function verifyTokenSync(token: string): AuthPayload | null {
   try {
-    const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET) as Record<string, unknown>;
+    // Pin algorithm (a string secret is HMAC-only, but pin it so a future asymmetric
+    // key cannot silently reintroduce the RS256→HS256 confusion attack) plus the
+    // issuer/audience this service mints (SEC-13). clockTolerance absorbs minor skew.
+    const decoded = jwt.verify(token, AUTH_CONFIG.JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: AUTH_CONFIG.JWT_ISSUER,
+      audience: AUTH_CONFIG.JWT_AUDIENCE,
+      clockTolerance: 5,
+    }) as Record<string, unknown>;
     // A validly-signed token missing string userId/email must fail cleanly here,
     // not blow up downstream in `new Types.ObjectId(undefined)`.
     if (typeof decoded.userId !== 'string' || typeof decoded.email !== 'string') {

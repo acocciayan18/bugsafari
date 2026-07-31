@@ -70,4 +70,35 @@ check('browser-closed error with no stop requested stays an exception', async ()
   assert.equal(result.outcome, 'exception');
 });
 
+function iterationErrorOutcome(loop: ExplorationLoop, err: unknown): Promise<RunResult> {
+  const page = { url: () => 'https://example.test' } as never;
+  return (loop as unknown as {
+    handleIterationError(e: unknown, p: never, a: string | null, b: string | null): Promise<RunResult>;
+  }).handleIterationError(err, page, null, null);
+}
+
+// The false positive this fix targets: newPage-closed thrown as stop() tears the
+// browser down must settle as a clean operator stop, never an exception finding.
+check('browserContext.newPage closed during an operator stop settles clean, not an exception', async () => {
+  const err = new Error('browserContext.newPage: Target page, context or browser has been closed');
+  const result = await iterationErrorOutcome(makeLoop('operator'), err);
+  assert.equal(result.outcome, 'user-stopped');
+});
+
+// "Execution context was destroyed" has no "closed" token — it used to leak through
+// the old guard and be reported as an engine exception on stop.
+check('execution-context-destroyed during a stop is suppressed, not an exception', async () => {
+  const err = new Error('Execution context was destroyed, most likely because of a navigation');
+  const result = await iterationErrorOutcome(makeLoop('disconnect-grace'), err);
+  assert.equal(result.outcome, 'abandoned');
+});
+
+// A genuine target-app exception during a stop is NOT a lifecycle artifact and must
+// still surface — the stop-guard must not swallow real crashes that race the stop.
+check('a real app exception during a stop still reports as an exception', async () => {
+  const err = new TypeError("Cannot read properties of undefined (reading 'id')");
+  const result = await iterationErrorOutcome(makeLoop('operator'), err);
+  assert.equal(result.outcome, 'exception');
+});
+
 setTimeout(() => console.log(`\n${passed} checks passed.`), 0);

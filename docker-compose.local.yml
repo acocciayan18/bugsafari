@@ -30,19 +30,10 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile_inline: |
-        FROM mcr.microsoft.com/playwright:v1.60.0-jammy
-        WORKDIR /app
-        ENV NODE_ENV=development
-        COPY package.json package-lock.json ./
-        COPY testing-core/package.json ./testing-core/package.json
-        COPY shared/package.json ./shared/package.json
-        RUN npm ci --workspace testing-core --include-workspace-root
-        COPY testing-core ./testing-core
-        COPY shared ./shared
-        RUN npm run build --workspace shared --if-present
-        RUN npm run build --workspace testing-core
-        EXPOSE 3000
+      # Real file, not dockerfile_inline: podman's compose ignores inline and would
+      # otherwise build the production Dockerfile (which prunes dev deps and breaks
+      # tsc-watch). See Dockerfile.dev.
+      dockerfile: Dockerfile.dev
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - NODE_ENV=development
@@ -100,18 +91,9 @@ services:
       replicas: ${WORKER_REPLICAS:-2}
     build:
       context: .
-      dockerfile_inline: |
-        FROM mcr.microsoft.com/playwright:v1.60.0-jammy
-        WORKDIR /app
-        ENV NODE_ENV=development
-        COPY package.json package-lock.json ./
-        COPY testing-core/package.json ./testing-core/package.json
-        COPY shared/package.json ./shared/package.json
-        RUN npm ci --workspace testing-core --include-workspace-root
-        COPY testing-core ./testing-core
-        COPY shared ./shared
-        RUN npm run build --workspace shared --if-present
-        RUN npm run build --workspace testing-core
+      # Real file, not dockerfile_inline (podman ignores inline → prod Dockerfile →
+      # dev deps pruned → tsc-watch missing). See Dockerfile.dev.
+      dockerfile: Dockerfile.dev
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - NODE_ENV=development

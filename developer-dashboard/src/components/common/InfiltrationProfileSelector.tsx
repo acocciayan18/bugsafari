@@ -20,7 +20,7 @@ function InfiltrationProfileSelectorImpl({
 }: InfiltrationProfileSelectorProps) {
   return (
     <div className="w-full flex flex-col gap-2">
-      <span className="text-xs font-bold text-(--text-tertiary) uppercase tracking-wider font-sans">
+      <span className="text-xs font-bold text-(--text-tertiary) uppercase r font-sans">
         Infiltration Matrix
       </span>
 

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyTokenSync } from './authConfig.js';
+import { maskEmail } from './authValidation.js';
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -63,7 +64,7 @@ export async function requireAuth(
   request.userId = decoded.userId;
   request.userEmail = decoded.email;
   request.isGuest = false;
-  console.log('[AUTH] requireAuth - accepted for user:', decoded.email);
+  console.log('[AUTH] requireAuth - accepted for user:', maskEmail(decoded.email));
   next();
 }
 

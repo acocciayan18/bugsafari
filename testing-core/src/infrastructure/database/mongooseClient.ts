@@ -15,13 +15,18 @@ function getMongooseOptions(): ConnectOptions {
   const isProduction = process.env.NODE_ENV === 'production';
   const uri = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/';
   const isLocalEnv = isLocal(uri);
+  // A worker runs one exploration and issues a handful of concurrent queries; the
+  // api fans out across many requests. Ten sockets per worker is wasted memory and
+  // Atlas connection budget (3 processes x 10 = 30 held), so halve it for workers.
+  const isWorker = process.env.BUGSAFARI_ROLE === 'worker';
 
   const options: ConnectOptions = {
     // Explicitly force the database name to prevent falling back to system databases
     dbName: 'bugsafari',
 
-    // Connection pool size - bounded for free-tier databases
-    maxPoolSize: 10,
+    // Connection pool size - bounded for free-tier databases, smaller for workers
+    maxPoolSize: isWorker ? 5 : 10,
+    minPoolSize: 0,
 
     // Server selection timeout - automatic reconnection
     serverSelectionTimeoutMS: 5000,
@@ -35,9 +40,13 @@ function getMongooseOptions(): ConnectOptions {
     // Local development: Keep enabled for convenience
     ...(isProduction ? { autoIndex: false } : { autoIndex: true }),
 
-    // Force disable all compression to avoid MongoMissingDependencyError
-    // The @mongodb-js/zstd optional module may not be installed
-    compressors: [],
+    // zlib wire compression: Atlas is off-box, so every forensic batch insert and
+    // history read crosses the public network. zlib is built into Node (unlike the
+    // optional zstd/snappy native deps that caused MongoMissingDependencyError), so
+    // no package is required. Level 1 captures most of the win on repetitive JSON
+    // (stack traces, URLs, repeated keys) at minimal CPU cost.
+    compressors: ['zlib'],
+    zlibCompressionLevel: 1,
   };
 
   return options;
@@ -179,5 +188,10 @@ export async function ensureConnected(): Promise<boolean> {
  * Returns true if connected and in ready state.
  */
 export function isReady(): boolean {
-  return isConnected && mongoose.connection.readyState === 1;
+  // Trust the driver's own readyState (1 = connected) as the source of truth. The
+  // `isConnected` flag is set by the 'connected' event listener, which is registered
+  // just AFTER mongoose.connect() resolves and therefore misses the very first
+  // 'connected' event — leaving isConnected false while the connection is live and
+  // making /api/health falsely report mongo:false (503).
+  return mongoose.connection.readyState === 1;
 }

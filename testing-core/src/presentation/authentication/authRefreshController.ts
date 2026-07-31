@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { rotateRefreshToken, revokeToken, type RotationFailure } from './refreshTokenService.js';
+import { maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
 // A failed rotation always reads the same to the client — distinguishing "unknown
@@ -36,7 +37,7 @@ export async function handleTokenRefresh(
 
     // Rotation already loaded the user to sign the token — reuse its email
     // instead of a second identical lookup.
-    console.log(`[Auth] Token rotated for user: ${result.email}`);
+    console.log(`[Auth] Token rotated for user: ${maskEmail(result.email)}`);
     response.json({
       ok: true,
       token: result.tokens.token,

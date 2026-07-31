@@ -30,6 +30,9 @@ export class RunRegistry {
 
   constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
     this.redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
+    // Prevent an unhandled ioredis 'error' event from crashing the process on a
+    // transient Redis blip; the client auto-reconnects (maxRetriesPerRequest:null).
+    this.redis.on('error', (err) => console.error('[RunRegistry] redis connection error:', err instanceof Error ? err.message : err));
   }
 
   private runKey(runToken: string): string {

@@ -6,6 +6,7 @@
 // Consolidates duplicate code from ClinicalForensicsDashboard
 
 import type { IntelligentDiagnosis } from '../../types';
+import { humanizeFindingTitle } from '../../utils/findingView';
 
 /**
  *  Unified AI Diagnostic Card Component
@@ -23,11 +24,11 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-(--border-hairline) pb-2 mb-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-(--text-secondary) font-bold tracking-wider uppercase text-xs">
+        <div className="flex min-w-0 items-center gap-1.5 text-(--text-secondary) font-bold r uppercase text-xs">
           <span> BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <span
-          className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-widest uppercase border ${
+          className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold st uppercase border ${
             isCritical
               ? 'bg-(--status-critical-bg) border-(--status-critical-border) text-(--status-critical-fg)'
               : 'bg-(--surface-raised) border-(--border-strong) text-(--text-secondary)'
@@ -40,7 +41,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
       <div className="space-y-2 text-xs leading-relaxed">
         <div>
           <span className="text-(--text-tertiary) font-bold">Vulnerability Class:</span>{' '}
-          <span className="text-(--text-primary) font-bold">{ai.vulnerabilityClass}</span>
+          <span className="text-(--text-primary) font-bold">{humanizeFindingTitle(ai.vulnerabilityClass)}</span>
         </div>
         <div>
           <span className="text-(--text-tertiary) font-bold">Standard Profile:</span>{' '}
@@ -56,7 +57,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
         <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px] break-words">
-          <span className="font-mono text-xs font-bold uppercase tracking-wider block text-(--text-secondary) mb-1">
+          <span className="font-mono text-xs font-bold uppercase r block text-(--text-secondary) mb-1">
              Actionable Remediation Patch Strategy:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>

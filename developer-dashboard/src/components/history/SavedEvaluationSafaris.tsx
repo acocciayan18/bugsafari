@@ -100,7 +100,7 @@ export default function SavedEvaluationSafaris() {
       <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
         {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
         <div className="hidden min-w-0 items-center lg:flex">
-          <span className="text-sm font-bold tracking-wide text-[var(--text-primary)]">
+          <span className="text-sm font-bold  text-[var(--text-primary)]">
             BUGSAFARI
           </span>
           <span className="mx-3 text-[var(--text-tertiary)]">/</span>
@@ -233,7 +233,7 @@ export default function SavedEvaluationSafaris() {
               <span className="text-[13px] text-[var(--text-secondary)]">{error}</span>
               <button
                 onClick={() => void fetchSessions(true)}
-                className="mt-2 rounded-md border border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                className="mt-2 rounded-md border cursor-pointer border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
               >
                 Try Again
               </button>

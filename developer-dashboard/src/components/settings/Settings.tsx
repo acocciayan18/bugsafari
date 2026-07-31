@@ -317,7 +317,7 @@ function ApplicationSettingsSection() {
   return (
     <div className="space-y-5">
       <div>
-        <span className="text-sm font-semibold text-(--text-secondary) uppercase tracking-wider">Theme</span>
+        <span className="text-sm font-semibold text-(--text-secondary) uppercase r">Theme</span>
         <p className="mt-0.5 mb-2 text-sm text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
         <ThemeModeControl mode={settings.theme} onChange={handleThemeSelect} />
       </div>
@@ -711,7 +711,7 @@ export default function Settings() {
       {/* Breadcrumb duplicates the compact top bar — desktop only. */}
       <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
         <div className="flex min-w-0 items-center">
-          <span className="text-sm font-bold tracking-wide text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>

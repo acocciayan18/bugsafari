@@ -56,7 +56,11 @@ export class AuthVault {
       console.warn('[AuthVault] BUGSAFARI_AUTH_KEY missing or not 32 bytes — authenticated runs cannot be queued.');
       return null;
     }
-    return new AuthVault(new Redis(redisUrl, { maxRetriesPerRequest: null }), key);
+    const redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
+    // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
+    // EventEmitter 'error' that crashes the process. The client auto-reconnects.
+    redis.on('error', (err) => console.error('[AuthVault] redis connection error:', err instanceof Error ? err.message : err));
+    return new AuthVault(redis, key);
   }
 
   private vaultKey(runToken: string): string {

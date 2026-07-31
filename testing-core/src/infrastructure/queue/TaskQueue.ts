@@ -60,7 +60,9 @@ const defaultJobOptions: JobsOptions = {
     count: 100,
   },
   removeOnFail: {
-    age: 24 * 60 * 60,
+    // Failed job payloads carry target URLs and user ids in an unauthenticated Redis
+    // (SEC-20); retain them only long enough to inspect a failure, not a full day.
+    age: 2 * 60 * 60,
     count: 250,
   },
 };
@@ -68,6 +70,10 @@ const defaultJobOptions: JobsOptions = {
 // getWorkersCount() issues a Redis CLIENT LIST, which is O(connections) — cached
 // because positions() runs on every queue transition, not once per request.
 const WORKER_COUNT_TTL_MS = 5_000;
+// positions() hydrates the full waiting list from Redis and runs twice per queue
+// transition plus on a 10s resync. Queue positions are display-only, so sub-second
+// staleness is invisible — a short TTL collapses those bursts to one fetch.
+const POSITIONS_TTL_MS = 750;
 // Backlog ceiling. Unbounded enqueue lets one burst pin every Redis job payload
 // in memory and hand later operators a wait time no UI can honestly display.
 const DEFAULT_MAX_QUEUE_DEPTH = 50;
@@ -88,12 +94,16 @@ export interface QueuePositions {
 export class TaskQueue {
   private readonly queue: Queue<SafariTaskPayload>;
   private workerCountCache: { value: number | null; at: number } = { value: null, at: 0 };
+  private positionsCache: { value: QueuePositions; at: number } | null = null;
 
   constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
     this.queue = new Queue<SafariTaskPayload>(SAFARI_TASK_QUEUE_NAME, {
       connection: resolveQueueConnection(redisUrl),
       defaultJobOptions,
     });
+    // BullMQ's Queue is an EventEmitter that emits 'error' on a Redis blip; without a
+    // listener that would crash the api process. Log-and-continue (it reconnects).
+    this.queue.on('error', (err) => console.error('[TaskQueue] queue redis error:', err instanceof Error ? err.message : err));
   }
 
   public async addSafariTask(input: EnqueueSafariTaskInput): Promise<EnqueuedSafariTask> {
@@ -139,17 +149,23 @@ export class TaskQueue {
   // Live waiting/active snapshot used to compute each job's queue position. Waiting
   // jobs come back FIFO, so array index + 1 is the 1-based place in line.
   public async positions(): Promise<QueuePositions> {
+    const now = Date.now();
+    if (this.positionsCache && now - this.positionsCache.at < POSITIONS_TTL_MS) {
+      return this.positionsCache.value;
+    }
     const [waiting, activeCount, workerCount] = await Promise.all([
       this.queue.getWaiting(),
       this.queue.getActiveCount(),
       this.workerCount(),
     ]);
-    return {
+    const value: QueuePositions = {
       order: waiting.map((job) => String(job.id)),
       queueDepth: waiting.length,
       activeCount,
       workerCount,
     };
+    this.positionsCache = { value, at: now };
+    return value;
   }
 
   /** Waiting-job count only — the cheap pre-enqueue backlog check. */
@@ -160,6 +176,15 @@ export class TaskQueue {
   // Authoritative BullMQ state of one job — drives recovery + initial pushes.
   public async getJobState(jobId: string): Promise<string> {
     return this.queue.getJobState(jobId);
+  }
+
+  // Liveness probe against the queue's own Redis connection — reused by /api/health
+  // so the readiness check needs no second client. BullMQ's IRedisClient type omits
+  // ping(); the concrete connection is ioredis, which has it.
+  public async ping(): Promise<boolean> {
+    const client = (await this.queue.client) as unknown as { ping(): Promise<string> };
+    const reply = await client.ping();
+    return reply === 'PONG';
   }
 
   // Cancel a job that no worker has claimed yet. BullMQ refuses to remove a

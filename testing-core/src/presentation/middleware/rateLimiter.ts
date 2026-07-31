@@ -20,6 +20,9 @@ interface Bucket {
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
+// Upper bound on distinct keys held per limiter (SEC-09/16): a spoofed-source flood
+// must not grow the map without limit between sweeps. Oldest entries are evicted.
+const MAX_BUCKETS = 20_000;
 
 function clientIp(request: Request): string {
   // req.ip honors `trust proxy`; socket address is the direct-connection fallback.
@@ -49,16 +52,22 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
     const bucket = buckets.get(key) ?? { hits: [] };
     bucket.hits = bucket.hits.filter((at) => at > cutoff);
 
+    // Standard rate-limit headers so clients can self-throttle (SEC-16.6).
+    const resetSec = bucket.hits.length
+      ? Math.max(1, Math.ceil((bucket.hits[0] + windowMs - now) / 1000))
+      : Math.ceil(windowMs / 1000);
+    response.setHeader('RateLimit-Limit', String(max));
+    response.setHeader('RateLimit-Remaining', String(Math.max(0, max - bucket.hits.length)));
+    response.setHeader('RateLimit-Reset', String(resetSec));
+
     if (bucket.hits.length >= max) {
       buckets.set(key, bucket);
-      const retryAfterMs = bucket.hits[0] + windowMs - now;
-      const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
       console.warn(`[RATE LIMIT] ${name} tripped for ${clientIp(request)} (${bucket.hits.length}/${max})`);
-      response.setHeader('Retry-After', String(retryAfterSec));
+      response.setHeader('Retry-After', String(resetSec));
       const body: AuthErrorBody = {
         error: message ?? 'Too many requests. Please slow down and try again shortly.',
         code: 'RATE_LIMITED',
-        retryAfterSeconds: retryAfterSec,
+        retryAfterSeconds: resetSec,
       };
       response.status(429).json(body);
       return;
@@ -66,6 +75,13 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
 
     bucket.hits.push(now);
     buckets.set(key, bucket);
+    // Bound the map: evict oldest-inserted keys once over the cap so the limiter's
+    // own state cannot be grown into a memory-exhaustion vector.
+    while (buckets.size > MAX_BUCKETS) {
+      const oldest = buckets.keys().next().value as string | undefined;
+      if (oldest === undefined || oldest === key) break;
+      buckets.delete(oldest);
+    }
     next();
   };
 }
@@ -80,6 +96,16 @@ export const loginLimiter = createRateLimiter({
   max: 10,
   keyOn: (request) => (typeof request.body?.email === 'string' ? request.body.email.toLowerCase() : undefined),
   message: 'Too many login attempts. Try again in a few minutes.',
+});
+
+// IP-only companion to loginLimiter (SEC-16.2): the per-email bucket lets one IP
+// spray one attempt each across thousands of accounts unbounded. This bounds total
+// login failures per source network regardless of which account is targeted.
+export const loginIpLimiter = createRateLimiter({
+  name: 'auth:login-ip',
+  windowMs: 15 * 60_000,
+  max: 30,
+  message: 'Too many login attempts from this network. Try again in a few minutes.',
 });
 
 export const signupLimiter = createRateLimiter({

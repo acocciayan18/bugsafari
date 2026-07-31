@@ -5,7 +5,9 @@
  * maintaining a clean separation of concerns as defined in the system architecture.
  */
 
-import { normalizeTargetUrl, isPrivateTargetHost, PUBLIC_TARGET_REQUIRED_MESSAGE } from '../../shared/url.js';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+import { normalizeTargetUrl, isPrivateTargetHost, isDisallowedIp, PUBLIC_TARGET_REQUIRED_MESSAGE } from '../../shared/url.js';
 
 /**
  * Outcome of admitting a target URL. `ok:true` always carries the URL exactly as
@@ -35,6 +37,44 @@ export function resolveEngineTargetUrl(rawUrl: string): EngineTargetResolution {
     return { ok: false, message: `Target "${url.hostname}" is not publicly reachable. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
   }
 
+  return { ok: true, url: rawUrl };
+}
+
+/**
+ * SSRF-hardened admission (SEC-02): resolves the target and validates the RESOLVED
+ * address, not just the hostname string. Closes the whole bypass class —
+ * `attacker.com → 169.254.169.254`, `nip.io`, and the decimal/octal/hex/short-form
+ * literals (`2130706433`, `0177.0.0.1`, `127.1`), because getaddrinfo canonicalizes
+ * those before we validate. Fail-closed: an unresolvable host is refused, not admitted.
+ */
+export async function assertPublicTarget(rawUrl: string): Promise<EngineTargetResolution> {
+  // Cheap string gate first (localhost, .internal, obvious literals) — unchanged.
+  const stringGate = resolveEngineTargetUrl(rawUrl);
+  if (!stringGate.ok) return stringGate;
+
+  const host = new URL(rawUrl).hostname.replace(/^\[|\]$/g, '');
+  const refuse = (detail: string): EngineTargetResolution => ({
+    ok: false,
+    message: `Target "${host}" resolves to a non-public address (${detail}). ${PUBLIC_TARGET_REQUIRED_MESSAGE}`,
+  });
+
+  // A literal IP is validated directly — no DNS needed.
+  if (isIP(host)) {
+    return isDisallowedIp(host) ? refuse('private/reserved IP') : { ok: true, url: rawUrl };
+  }
+
+  // Resolve, then reject if ANY answer is off-limits. verbatim keeps the raw order;
+  // we inspect every address regardless.
+  let addresses: { address: string }[];
+  try {
+    addresses = await lookup(host, { all: true, verbatim: true });
+  } catch {
+    return { ok: false, message: `Target "${host}" could not be resolved to a public address. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
+  }
+  if (addresses.length === 0) return refuse('no addresses');
+  for (const { address } of addresses) {
+    if (isDisallowedIp(address)) return refuse(address);
+  }
   return { ok: true, url: rawUrl };
 }
 

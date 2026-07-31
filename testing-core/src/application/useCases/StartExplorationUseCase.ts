@@ -22,6 +22,18 @@ import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js'
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
 import { ConsoleLogStore } from '../../infrastructure/monitoring/ConsoleLogStore.js';
 
+// Hard caps on the arrays embedded in the session document (SEC-27). The 16MB BSON
+// ceiling is a per-document limit; exceeding it fails the whole save, so a pathological
+// run is truncated (with a log) rather than lost entirely.
+const MAX_EMBEDDED_CAUGHT_BUGS = 1000;
+const MAX_EMBEDDED_ACTION_STEPS = 2000;
+
+function capEmbedded<T>(items: T[], max: number, label: string): T[] {
+  if (items.length <= max) return items;
+  console.warn(`[StartExplorationUseCase] ${label} ${items.length} exceeds ${max} — truncating to bound BSON document size (SEC-27).`);
+  return items.slice(0, max);
+}
+
 interface RunState {
     active: boolean;
 }
@@ -255,7 +267,7 @@ export class StartExplorationUseCase {
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
-        const actionSteps = buildActionSteps(actionRecords);
+        const actionSteps = capEmbedded(buildActionSteps(actionRecords), MAX_EMBEDDED_ACTION_STEPS, 'actionSteps');
 
         // SINGLE SOURCE OF TRUTH: the engine's confirmed-bug memory is now a
         // lossless superset of the live Errors Tab (every JS exception, console
@@ -324,7 +336,9 @@ export class StartExplorationUseCase {
         // Collapse duplicate findings (same fault repeated across the run) into one
         // representative carrying an occurrence count, so the persisted findingCount
         // matches what the report renders and the history list reports.
-        const caughtBugs = this.dedupeCaughtBugs(rawCaughtBugs);
+        // Cap embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB
+        // BSON limit and fail the ENTIRE save. Generous — only a pathological run trips it.
+        const caughtBugs = capEmbedded(this.dedupeCaughtBugs(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
 
         // Derive the category breakdown dynamically from the *actual* persisted
         // findings so no category (known or novel) is ever silently zeroed out.
@@ -514,8 +528,12 @@ export class StartExplorationUseCase {
                 const conEntries = options?.clientConsoleLog?.length
                     ? options.clientConsoleLog.map((r) => this.mapConsoleEntry(r))
                     : ConsoleLogStore.snapshot();
-                await networkLogRepository.createMany(savedDocument._id as Types.ObjectId, netEntries);
-                await consoleLogRepository.createMany(savedDocument._id as Types.ObjectId, conEntries);
+                // Independent inserts to Atlas — run them concurrently instead of two
+                // serial round-trips (both writes target different collections).
+                await Promise.all([
+                    networkLogRepository.createMany(savedDocument._id as Types.ObjectId, netEntries),
+                    consoleLogRepository.createMany(savedDocument._id as Types.ObjectId, conEntries),
+                ]);
                 console.log(`[StartExplorationUseCase] ✓ Saved logs: network=${netEntries.length} console=${conEntries.length}`);
             } catch (logError) {
                 console.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);

@@ -5,6 +5,7 @@ import { handleLogin } from './authLoginController.js';
 import { handleForgotPassword, handleResetPassword } from './authPasswordResetController.js';
 import {
   loginLimiter,
+  loginIpLimiter,
   signupLimiter,
   forgotPasswordLimiter,
   resetPasswordLimiter,
@@ -19,7 +20,8 @@ export function registerAuthRoutes(app: Express): void {
   // Registration routes - /api/auth/register is primary, /api/auth/send-email-verification kept for compatibility
   app.post('/api/auth/register', signupLimiter, handleSignup);
   app.post('/api/auth/signup', signupLimiter, handleSignup);
-  app.post('/api/auth/login', loginLimiter, handleLogin);
+  // Two buckets: per-(IP,email) catches targeted brute force, per-IP bounds spraying.
+  app.post('/api/auth/login', loginIpLimiter, loginLimiter, handleLogin);
   // Rotating refresh: exchanges a refresh token for a new pair, reuse burns the family.
   app.post('/api/auth/refresh', refreshLimiter, handleTokenRefresh);
   app.post('/api/auth/logout', refreshLimiter, handleLogout);

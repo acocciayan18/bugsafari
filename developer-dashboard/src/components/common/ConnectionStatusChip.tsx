@@ -70,9 +70,9 @@ export default function ConnectionStatusChip() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed right-3 top-3 z-[9999] flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold shadow-sm backdrop-blur ${cls}`}
+      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[12px] font-semibold shadow-sm backdrop-blur ${cls}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${dot} ${down ? 'animate-pulse' : ''}`} />
+      
       {down ? 'No Internet' : 'Connected'}
     </div>
   );

@@ -17,7 +17,11 @@ interface ControlMessage {
 }
 
 function redisClient(redisUrl: string): Redis {
-  return new Redis(redisUrl, { maxRetriesPerRequest: null });
+  const client = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
+  // EventEmitter 'error' that crashes the process. ioredis auto-reconnects.
+  client.on('error', (err) => console.error('[ControlBridge] redis connection error:', err instanceof Error ? err.message : err));
+  return client;
 }
 
 // API-side: publishes operator control commands to the worker fleet.

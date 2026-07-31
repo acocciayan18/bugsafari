@@ -62,16 +62,16 @@ export function errorHandler(
   const { status, message, code } = classify((error ?? {}) as ErrorLike);
 
   const detail = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
-  console.error(`[ERROR ${errorId}] ${request.method} ${request.originalUrl} -> ${status}\n${detail}`);
+  // Log the path WITHOUT the query string (SEC-19): query strings can carry reset
+  // tokens and other sensitive values that must not land in logs.
+  console.error(`[ERROR ${errorId}] ${request.method} ${request.path} -> ${status}\n${detail}`);
 
   response.status(status).json({ error: message, code, errorId });
 }
 
-// 404 for unmatched API paths — keeps unknown routes on the JSON contract too.
-export function notFoundHandler(request: Request, response: Response, next: NextFunction): void {
-  if (!request.path.startsWith('/api/')) {
-    next();
-    return;
-  }
+// JSON 404 for every unmatched path (SEC-23). The API host serves no HTML, so a
+// non-/api path must not fall through to Express's default HTML 404, which
+// fingerprints the framework. Socket.IO handles /socket.io/ before Express.
+export function notFoundHandler(_request: Request, response: Response, _next: NextFunction): void {
   response.status(404).json({ error: 'Endpoint not found.', code: 'NOT_FOUND' });
 }

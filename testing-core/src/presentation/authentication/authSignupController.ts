@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
-import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
+import { requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
 const EMAIL_TAKEN: AuthErrorBody = {
@@ -23,8 +23,8 @@ export async function handleSignup(
     const { email, password } = request.body;
 
     // Validate and sanitize inputs
-    const sanitizedEmail = sanitizeString(email, 'email');
-    const sanitizedPassword = sanitizeString(password, 'password');
+    const sanitizedEmail = requireNonEmptyString(email, 'email');
+    const sanitizedPassword = requireNonEmptyString(password, 'password');
 
     if (!sanitizedEmail || !sanitizedPassword) {
       const body: AuthErrorBody = {
@@ -78,7 +78,7 @@ export async function handleSignup(
 
       const tokens = await issueTokenPair(newUser._id.toString(), trimmedEmail);
 
-      console.log(`[Auth] New user registered: ${trimmedEmail}`);
+      console.log(`[Auth] New user registered: ${maskEmail(trimmedEmail)}`);
 
       response.status(201).json({
         ok: true,

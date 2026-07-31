@@ -96,10 +96,10 @@ export default function Sidebar({
         </button>
 
         <div className={`overflow-hidden transition-all duration-200 ${isRail ? 'w-0 h-0' : 'w-auto h-auto flex-1 min-w-0'}`}>
-          <h1 className="font-sans font-bold text-md uppercase tracking-wider text-(--text-primary) whitespace-nowrap leading-none">
+          <h1 className="font-sans font-bold text-md uppercase r text-(--text-primary) whitespace-nowrap leading-none">
             BUGSAFARI
           </h1>
-          <p className="mt-0.5 font-sans font-medium text-xs text-(--text-secondary) whitespace-nowrap leading-none tracking-wider">
+          <p className="mt-0.5 font-sans font-medium text-xs text-(--text-secondary) whitespace-nowrap leading-none r">
             TERMINAL ACCESS
           </p>
         </div>

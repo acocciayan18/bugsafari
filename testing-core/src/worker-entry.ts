@@ -1,5 +1,10 @@
 import { createSafariWorker, type SafariWorkerRuntime } from './infrastructure/workers/SafariWorker.js';
 
+// Role marker read by mongooseClient to right-size the connection pool: a worker
+// runs one exploration and issues a handful of concurrent queries, so it needs far
+// fewer sockets than the api. Set at module load, before main()'s connectDatabase().
+process.env.BUGSAFARI_ROLE = 'worker';
+
 let runtime: SafariWorkerRuntime | null = null;
 let shuttingDown = false;
 

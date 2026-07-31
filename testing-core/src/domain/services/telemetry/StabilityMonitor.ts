@@ -34,7 +34,7 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import {
   NetworkFaultArbiter,
@@ -136,6 +136,20 @@ export function isBrowserClosedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('closed') ||
          message.includes('Target page, context or browser has been closed');
+}
+
+/**
+ * Broader than isBrowserClosedError: the full family of Playwright lifecycle
+ * exceptions thrown when the engine is intentionally torn down (operator stop,
+ * cancel, timebox, crash termination) — closed page/context/browser AND
+ * "Execution context was destroyed", "Target closed", in-flight goto/evaluate
+ * against a dying page. Reuses the shared driver-marker vocabulary so this
+ * stop-guard and the provenance classifier can never disagree about what a
+ * teardown artifact looks like. Root cause is the harness, never the target app.
+ */
+export function isEngineLifecycleError(error: unknown): boolean {
+  const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return text.includes('closed') || PLAYWRIGHT_MARKERS.some((marker) => text.includes(marker));
 }
 
 /**

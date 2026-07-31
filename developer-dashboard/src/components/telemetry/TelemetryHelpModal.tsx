@@ -156,7 +156,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
               </div>
 
               <div>
-                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">What it collects</div>
+                <div className="text-caption font-semibold uppercase r text-(--text-tertiary)">What it collects</div>
                 <ul className="mt-1 space-y-1">
                   {active.collects.map((item) => (
                     <li key={item} className="flex min-w-0 gap-2 text-body-sm text-(--text-secondary)">
@@ -168,12 +168,12 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
               </div>
 
               <div>
-                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Why it's useful</div>
+                <div className="text-caption font-semibold uppercase r text-(--text-tertiary)">Why it's useful</div>
                 <p className="mt-1 text-body-sm leading-5 text-(--text-secondary)">{active.why}</p>
               </div>
 
               <div>
-                <div className="text-caption font-semibold uppercase tracking-wider text-(--text-tertiary)">Example events</div>
+                <div className="text-caption font-semibold uppercase r text-(--text-tertiary)">Example events</div>
                 <ul className="mt-1 space-y-1">
                   {active.examples.map((item) => (
                     <li key={item} className="break-words rounded-md bg-(--surface-inset) px-2 py-1 font-mono text-caption text-(--text-secondary)">

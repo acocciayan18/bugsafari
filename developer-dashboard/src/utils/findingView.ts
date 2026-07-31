@@ -50,6 +50,28 @@ export interface FindingView {
   bypass?: ConstraintBypassDetail;
 }
 
+// Known acronyms preserved verbatim so title-casing doesn't mangle them
+// ("NOSQL_INJECTION" → "NoSQL Injection", not "Nosql Injection").
+const TITLE_ACRONYMS: Record<string, string> = {
+  NOSQL: 'NoSQL', SPA: 'SPA', API: 'API', XSS: 'XSS', SQL: 'SQL',
+  HTTP: 'HTTP', HTTPS: 'HTTPS', URL: 'URL', DOM: 'DOM', UI: 'UI', CWE: 'CWE',
+};
+
+// Display-only: render an ENUM_STYLE bug class / finding type as human-readable
+// Title Case ("CLIENT_SIDE_CONSTRAINT_BYPASS" → "Client Side Constraint Bypass").
+// Pure — never mutates the source; callers keep the raw enum for identity,
+// filtering, and API payloads and render only the returned string. Already-
+// humanized labels ("Runtime Incident") and mixed input pass through cleanly.
+export function humanizeFindingTitle(raw: string | undefined | null): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  return value
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => TITLE_ACRONYMS[word.toUpperCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 const isRealSelector = (s: string | undefined): s is string => Boolean(s && s.trim() && s !== 'N/A');
 
 // The element the fault attaches to. Prefer the backend-resolved culprit (the
@@ -110,7 +132,7 @@ export function buildFindingSummary(view: FindingView, index: number): string {
     ? actionStepsToMarkdown(view.actionSteps)
     : toMarkdownChecklist(narrativeSteps, []);
   return [
-    `Finding #${index + 1}: ${view.title}`,
+    `Finding #${index + 1}: ${humanizeFindingTitle(view.title)}`,
     view.message ? `Message: ${view.message}` : '',
     view.elementLabel ? `Element: ${view.elementLabel}` : '',
     view.payloadUsed ? `Payload: ${view.payloadUsed}` : '',

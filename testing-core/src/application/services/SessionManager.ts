@@ -129,6 +129,11 @@ interface ActiveRun {
 export class SessionManager implements TelemetryRecorder {
   private gateway: SocketTelemetryGateway | null = null;
   private run: ActiveRun | null = null;
+  // Monotonic revision of the snapshot's non-frame content, bumped on every
+  // meaningful record(). The worker's periodic publisher skips the Redis write when
+  // it is unchanged since the last publish — the bulk of ticks change nothing but
+  // the live frame, which the periodic snapshot deliberately omits.
+  private snapshotRevision = 0;
   // Final snapshot of the most recently ended run, kept until the next run
   // begins so a refresh restores the completed/stopped state instead of IDLE.
   private lastTerminal: { snapshot: ActiveSessionSnapshot; userId: string | null } | null = null;
@@ -356,6 +361,12 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run) return;
 
+    // A live-frame changes only lastFrame, which the periodic snapshot omits, so it
+    // must not mark the snapshot dirty — otherwise the dirty-flag never settles and
+    // every 3s tick rewrites an unchanged payload. Every other kind mutates snapshot
+    // content (buffers, currentUrl, incident patches) and bumps the revision.
+    if (kind !== 'live-frame') this.snapshotRevision += 1;
+
     switch (kind) {
       case 'telemetry':
         pushCapped(run.telemetry, payload as TelemetryEvent, TELEMETRY_BUFFER_CAP);
@@ -466,9 +477,19 @@ export class SessionManager implements TelemetryRecorder {
     return ownsRun({ runToken: run.runToken, userId: run.userId }, runId, userId);
   }
 
-  /** Unscoped snapshot of the active run — worker-side Redis publishing only. */
-  public getActiveSnapshot(): ActiveSessionSnapshot | null {
-    return this.run ? this.buildSnapshot(this.run) : null;
+  /** Unscoped snapshot of the active run — worker-side Redis publishing only.
+   *  `includeFrame=false` drops lastFrame for the periodic publish (the largest
+   *  component, and a restoring client barely needs a stale JPEG). */
+  public getActiveSnapshot(includeFrame = true): ActiveSessionSnapshot | null {
+    if (!this.run) return null;
+    const snapshot = this.buildSnapshot(this.run);
+    return includeFrame ? snapshot : { ...snapshot, lastFrame: null };
+  }
+
+  /** Cheap identity + dirty-flag of the active run's snapshot — no buffer copies.
+   *  Lets the worker's periodic publisher skip a Redis write when nothing changed. */
+  public getActiveSnapshotMeta(): { runToken: string; revision: number } | null {
+    return this.run ? { runToken: this.run.runToken, revision: this.snapshotRevision } : null;
   }
 
   /** Terminal snapshot of the last ended run — worker-side Redis publishing only. */

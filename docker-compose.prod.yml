@@ -9,26 +9,54 @@ x-shared-env: &shared-env
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
+  # One reverse proxy (Caddy) sits in front, so req.ip must read the single
+  # X-Forwarded-For hop it appends. Unset (0) collapses every client into the
+  # proxy's IP for rate limiting; a blanket trust would let a client forge it (SEC-16).
+  TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
   # AI remediation / insights. Optional by design — an empty key makes the endpoints
   # return the deterministic knowledge-base advice instead of failing the UI.
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-lite-latest}
   GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-30000}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  # Optimize V8 Garbage Collection for 1GB per container budget
-  NODE_OPTIONS: "--max-old-space-size=1024"
+  # NODE_OPTIONS is set PER SERVICE, not here: a heap ceiling equal to the cgroup
+  # limit OOM-kills before V8 ever runs a major GC, and a worker's cgroup must hold
+  # Node AND Chromium. See the api/worker service blocks for the right-sized values.
+  # Bound the queue backlog: 2 slots × 600s timebox ⇒ 20 deep is ~100 min, the edge
+  # of a wait time the UI can honestly display. Beyond that the enqueue returns 503.
+  BUGSAFARI_MAX_QUEUE_DEPTH: ${BUGSAFARI_MAX_QUEUE_DEPTH:-20}
+  # Live-feed retune for a 2 vCPU box (monitoring feed, not a recording): ~10 fps is
+  # smooth for watching an agent at a third of the encode/bandwidth cost. Observability
+  # only — the engine's own perception (viewport) is unchanged. Override to revert.
+  BUGSAFARI_SCREENCAST_MAX_FPS: ${BUGSAFARI_SCREENCAST_MAX_FPS:-10}
+  BUGSAFARI_SCREENCAST_QUALITY: ${BUGSAFARI_SCREENCAST_QUALITY:-30}
+  BUGSAFARI_SCREENCAST_MAX_WIDTH: ${BUGSAFARI_SCREENCAST_MAX_WIDTH:-960}
+  BUGSAFARI_SCREENCAST_MAX_HEIGHT: ${BUGSAFARI_SCREENCAST_MAX_HEIGHT:-600}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   redis:
     image: redis:alpine
     container_name: bugsafari-prod-redis
     restart: unless-stopped
+    # Fail predictably instead of being OOM-killed: a write refusal surfaces as a
+    # visible enqueue error, an eviction would silently vanish a live run's job.
+    # --save "" disables RDB snapshotting (no durable business data lives here) and
+    # its fork-driven memory spikes.
+    command: ["redis-server", "--maxmemory", "160mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    logging: *default-logging
     networks:
       - bugsafari-prod
     deploy:
       resources:
         limits:
-          memory: 256m
+          memory: 192m
+          cpus: "0.15"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -44,9 +72,16 @@ services:
     environment:
       <<: *shared-env
       PORT: 3000
+      # Enqueue /api/start-test to the worker fleet instead of running Chromium in
+      # the api process. Workers do not read this — the api is the only producer.
+      BUGSAFARI_USE_QUEUE: "1"
+      # No Chromium in the api after queueing; heap is ~2/3 of the 768MB cgroup,
+      # leaving room for socket buffers and frame payloads.
+      NODE_OPTIONS: "--max-old-space-size=512"
     command: ["npm", "run", "start", "--workspace", "testing-core"]
     ports:
       - "0.0.0.0:3000:3000"
+    logging: *default-logging
     networks:
       - bugsafari-prod
     healthcheck:
@@ -57,7 +92,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1g
+          memory: 768m
+          cpus: "0.6"
     depends_on:
       redis:
         condition: service_healthy
@@ -90,7 +126,12 @@ services:
     environment:
       <<: *shared-env
       BUGSAFARI_WORKER_CONCURRENCY: ${BUGSAFARI_WORKER_CONCURRENCY:-1}
+      # The cgroup holds Node AND Chromium (400-600MB RSS), so the Node heap is a
+      # deliberate minority of it — a 1GB heap ceiling here would guarantee mid-run
+      # OOM-kills, which BullMQ surfaces as a stalled/failed job and a lost run.
+      NODE_OPTIONS: "--max-old-space-size=384"
     command: ["npm", "run", "start:worker", "--workspace", "testing-core"]
+    logging: *default-logging
     networks:
       - bugsafari-prod
     deploy:
@@ -98,7 +139,12 @@ services:
       replicas: ${WORKER_REPLICAS:-2}
       resources:
         limits:
-          memory: 1g
+          # Node heap 384MB + Chromium 400-600MB + binary/overhead ~150MB.
+          memory: 1100m
+          # Under-provisioned vs 1.0 on purpose so a Chromium burst never starves
+          # the api event loop (control latency is operator-visible; exploration is
+          # a background batch workload where a small slowdown is invisible).
+          cpus: "0.6"
     depends_on:
       redis:
         condition: service_healthy

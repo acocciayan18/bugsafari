@@ -30,9 +30,32 @@ import { reconcileRunRegistry } from './infrastructure/queue/registryReconciler.
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
 const app = express();
+// Suppress the framework-fingerprinting header (SEC-24).
+app.disable('x-powered-by');
 // Rate limits key on req.ip, so the proxy hop count must be declared explicitly —
 // a blanket `true` would let a client forge X-Forwarded-For and evade its budget.
-app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+app.set('trust proxy', trustProxyHops);
+// A proxy sits in front in production; with hops=0, req.ip is the proxy for every
+// request and all clients collapse into one rate-limit bucket (SEC-16). Warn loudly.
+if (process.env.NODE_ENV === 'production' && trustProxyHops === 0) {
+  console.warn('[BugSafari] ️ TRUST_PROXY_HOPS is 0 in production — behind a reverse proxy this makes rate limiting key on the proxy IP for every client. Set TRUST_PROXY_HOPS=1.');
+}
+
+// Security response headers for the JSON API (SEC-06). This host serves no HTML, so
+// the CSP locks everything down; frame-ancestors 'none' blocks framing, nosniff stops
+// MIME sniffing, no-referrer prevents URL leakage, HSTS asserts TLS. The dashboard's
+// own headers are set at the CDN (vercel.json).
+app.use((_req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
 // No CORS middleware here by design: the Caddy reverse proxy owns origin
 // validation and every Access-Control-* header (see deploy/Caddyfile). A second
 // emitter would duplicate the headers, which browsers reject. Locally the Vite
@@ -41,9 +64,23 @@ app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
 app.use(express.json({ limit: '2mb' }));
 
 const httpServer = createServer(app);
-// Socket.IO adds no CORS headers unless configured — left unset so Caddy stays
-// the only emitter for the polling handshake too.
-const io = new Server(httpServer);
+// Handshake origin allow-list (SEC-07): WebSocket upgrades bypass the same-origin
+// policy, so validate the Origin header here — the Caddy CORS list only governs the
+// HTTP polling handshake, not the WS upgrade. Sourced from FRONTEND_URL (comma-list).
+// Unset (local dev) preserves the previous open behavior; a non-browser client sends
+// no Origin and is admitted (it is Bearer-gated per event, not origin-gated).
+const allowedSocketOrigins = (process.env.FRONTEND_URL ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const isAllowedSocketOrigin = (origin: string | undefined): boolean => {
+  if (allowedSocketOrigins.length === 0) return true;
+  if (!origin) return true;
+  return allowedSocketOrigins.includes(origin);
+};
+const io = new Server(httpServer, {
+  // Cap the inbound frame size explicitly rather than relying on the 1MB default.
+  maxHttpBufferSize: 1e6,
+  allowRequest: (req, callback) => callback(null, isAllowedSocketOrigin(req.headers.origin)),
+});
 
 // Socket handlers are registered after the queue is built (below) so the
 // distributed queue-subscribe handler can be wired when BUGSAFARI_USE_QUEUE=1.
@@ -81,6 +118,14 @@ const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { a
 // Opt-in producer: only when BUGSAFARI_USE_QUEUE=1 do we build the queue (which
 // opens a Redis connection) and route /api/start-test through the worker fleet.
 // Unset => taskQueue stays undefined and the synchronous path is byte-identical.
+// Fail closed (SEC-04): worker isolation is a safety-critical boundary — Chromium
+// visits attacker-chosen sites, so it must never run in the api process that holds
+// JWT_SECRET, BUGSAFARI_AUTH_KEY, and every operator's socket. An unset variable
+// must not silently defeat it. Mirror the hard-fail authConfig uses for JWT_SECRET.
+if (process.env.NODE_ENV === 'production' && process.env.BUGSAFARI_USE_QUEUE !== '1') {
+  console.error('[BugSafari] FATAL: BUGSAFARI_USE_QUEUE must be "1" in production so runs execute in the isolated worker fleet, not in the api process. Refusing to start.');
+  process.exit(1);
+}
 const taskQueue = process.env.BUGSAFARI_USE_QUEUE === '1' ? new TaskQueue() : undefined;
 // Distributed-mode wiring (queue enabled only): the bridge re-emits isolated
 // worker telemetry into the browser-facing io, and the broadcaster pushes live
@@ -131,6 +176,17 @@ registerRoutes(app, useCase, port, findingRepository, taskQueue, runRegistry, co
 // unmatched /api path resolves to sanitized JSON instead of an HTML stack trace.
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+// Keep-alive timeouts. A dev proxy (Vite's http-proxy) and any production upstream
+// (Caddy) pool keep-alive sockets to this server. On Node 19+ the global agent
+// keep-alives by default, so when Node's default 5s keepAliveTimeout closes an idle
+// pooled socket exactly as the proxy reuses it, the proxy sees a FIN mid-request and
+// reports "socket hang up" — intermittently, on every proxied path (/api polls and
+// the /socket.io polling transport). Keeping the server's timeout ABOVE the proxy's
+// idle window makes the PROXY retire idle sockets, never the server mid-reuse.
+// headersTimeout must exceed keepAliveTimeout so a slow header never trips first.
+httpServer.keepAliveTimeout = 61_000;
+httpServer.headersTimeout = 65_000;
 
 httpServer.listen(port, () => {
   console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
@@ -198,3 +254,17 @@ const shutdown = async (signal: string): Promise<void> => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Last-resort safety net for the api process (the worker already has one). Without
+// these, a stray unhandled rejection or an unhandled EventEmitter 'error' silently
+// exits the process — the api port closes and every proxied request fails with
+// ECONNREFUSED until it restarts. Always LOG the cause (so a crash is diagnosable),
+// then keep serving in development so a single fault doesn't drop the whole dev
+// session; in production, exit so the orchestrator restarts a clean process.
+process.on('unhandledRejection', (reason) => {
+  console.error('[BugSafari] Unhandled promise rejection:', reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[BugSafari] Uncaught exception:', error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : error);
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+});

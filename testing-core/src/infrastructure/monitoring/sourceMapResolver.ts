@@ -15,6 +15,9 @@ for (let i = 0; i < B64.length; i++) B64_LOOKUP[B64[i]] = i;
 const MAX_FRAMES = 6;
 const MAX_CACHE = 32;
 const FETCH_TIMEOUT_MS = 2500;
+// Cap fetched bundle/map bodies so a hostile target can't feed a huge response
+// through the VLQ decoder (SEC-26).
+const MAX_FETCH_BYTES = 5_000_000;
 
 interface RawMap {
   version?: number;
@@ -137,6 +140,28 @@ export class SourceMapResolver {
 
   constructor(private readonly page: Page) {}
 
+  // Origin the target page is served from. Source-map fetches are restricted to it
+  // (SEC-26): a crafted stack frame or `//# sourceMappingURL=` must not point the
+  // page-context fetch at the metadata service or an internal host. Best-effort — an
+  // off-origin bundle simply goes unresolved.
+  private allowedOrigin(): string | null {
+    try {
+      const origin = new URL(this.page.url()).origin;
+      return origin === 'null' ? null : origin;
+    } catch {
+      return null;
+    }
+  }
+
+  private sameOrigin(url: string, origin: string | null): boolean {
+    if (!origin) return false;
+    try {
+      return new URL(url).origin === origin;
+    } catch {
+      return false;
+    }
+  }
+
   // Resolve the top frames of `rawStack`; returns a compact original-frame listing,
   // or undefined when nothing could be resolved. Never throws.
   public async resolve(rawStack: string | undefined): Promise<string | undefined> {
@@ -176,6 +201,12 @@ export class SourceMapResolver {
   // sourceMappingURL from the bundle's trailing comment, falling back to `<url>.map`.
   private async mapFor(bundleUrl: string): Promise<DecodedMap | null> {
     if (this.cache.has(bundleUrl)) return this.cache.get(bundleUrl) ?? null;
+    // Only resolve bundles served from the target's own origin (SEC-26).
+    const origin = this.allowedOrigin();
+    if (!this.sameOrigin(bundleUrl, origin)) {
+      this.cache.set(bundleUrl, null);
+      return null;
+    }
     if (this.cache.size >= MAX_CACHE) {
       const oldest = this.cache.keys().next().value as string | undefined;
       if (oldest) this.cache.delete(oldest);
@@ -207,11 +238,15 @@ export class SourceMapResolver {
       const res = await this.page.request.get(bundleUrl, { timeout: FETCH_TIMEOUT_MS });
       if (!res.ok()) return this.fallbackMapUrl(bundleUrl);
       const body = await res.text();
+      if (body.length > MAX_FETCH_BYTES) return this.fallbackMapUrl(bundleUrl);
       const match = body.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/);
       if (match?.[1]) {
         const ref = match[1].trim();
         if (ref.startsWith('data:')) return null; // inline maps unsupported (rare, heavy)
-        return new URL(ref, bundleUrl).toString();
+        const resolved = new URL(ref, bundleUrl).toString();
+        // Never chase a sourceMappingURL off the bundle's origin (SEC-26): a target
+        // could point it at the metadata service. Fall back to the same-origin .map.
+        return this.sameOrigin(resolved, this.allowedOrigin()) ? resolved : this.fallbackMapUrl(bundleUrl);
       }
       return this.fallbackMapUrl(bundleUrl);
     } catch {
@@ -225,9 +260,13 @@ export class SourceMapResolver {
 
   private async fetchJson(url: string): Promise<RawMap | null> {
     try {
+      // Only fetch maps from the target's own origin (SEC-26).
+      if (!this.sameOrigin(url, this.allowedOrigin())) return null;
       const res = await this.page.request.get(url, { timeout: FETCH_TIMEOUT_MS });
       if (!res.ok()) return null;
-      return (await res.json()) as RawMap;
+      const text = await res.text();
+      if (text.length > MAX_FETCH_BYTES) return null;
+      return JSON.parse(text) as RawMap;
     } catch {
       return null;
     }

@@ -120,7 +120,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   return (
     <span
       title={`Backend-classified severity: ${style.label}`}
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${style.cls}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase  ${style.cls}`}
     >
       {style.label}
     </span>
@@ -169,7 +169,11 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
       {/* Header row: AI action (saved report only) on the left, copy on the right. */}
       <div className="mb-1 flex items-center justify-between gap-2">
-        {context ? (
+        {/* Generate once per finding: the button is hidden the moment a genuine AI
+            fix exists (source === 'ai', incl. a persisted one seeded on load) so we
+            never spend an API call regenerating a successful response. It reappears
+            only when generation failed or fell back to the knowledge-base fix. */}
+        {context && source !== 'ai' ? (
           <button
             type="button"
             onClick={generate}
@@ -178,7 +182,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
           >
             {status === 'loading'
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {aiAdvice ? 'Regenerate AI Fix' : 'Generate AI Fix'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry AI Fix' : 'Generate AI Fix'}</>}
           </button>
         ) : <span />}
         {displayed && <CopyButton text={displayed} label="Suggested Fix" />}

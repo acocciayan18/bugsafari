@@ -14,6 +14,16 @@ import { setScrubValues, clearScrubValues } from '../../domain/services/telemetr
 import { TelemetryEmitter } from '../../domain/services/telemetry/TelemetryEmitter.js';
 import { AuthNarrator } from '../../domain/services/auth/AuthNarrator.js';
 
+// Env-tunable positive-integer viewport dimension with a safe fallback.
+function readViewportInt(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+// Gate for per-run diagnostic dumps that add stdout write pressure and log volume
+// without operational value in production. Errors/warnings are never gated.
+const VERBOSE = process.env.BUGSAFARI_VERBOSE === '1' || process.env.BUGSAFARI_VERBOSE === 'true';
+
 /**
  * Browser and system information captured at launch
  */
@@ -176,7 +186,28 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
     try {
       this.activeBrowser = await launchBounded(
-        ['--start-maximized', '--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox'],
+        [
+          '--no-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          // Suppress background work irrelevant to exploration. --start-maximized was
+          // a no-op headless (overridden by the explicit viewport) and is dropped.
+          '--disable-background-networking',
+          // Anti-throttling: a throttled background timer in a headless page can make
+          // the engine observe a frozen app and mis-report it — costs a little CPU,
+          // correct here.
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-extensions',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter',
+          '--metrics-recording-only',
+          '--mute-audio',
+          '--no-first-run',
+          '--no-default-browser-check',
+        ],
         'primary',
       );
     } catch (launchError) {
@@ -191,13 +222,17 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       }
     }
 
-    const VIEWPORT_WIDTH = 1440;
-    const VIEWPORT_HEIGHT = 900;
+    // Env-tunable but defaulted to the historical 1440x900: the viewport alters what
+    // the engine SEES (responsive breakpoints, above-the-fold visibility), so it can
+    // shift which elements are discovered and scored. Reducing it (e.g. 1280x800) is
+    // benchmark-gated — re-baseline with bench:e2e before changing the default.
+    const VIEWPORT_WIDTH = readViewportInt('BUGSAFARI_VIEWPORT_WIDTH', 1440);
+    const VIEWPORT_HEIGHT = readViewportInt('BUGSAFARI_VIEWPORT_HEIGHT', 900);
 
     // Diagnostic: Log viewport configuration
-    console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
+    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
     const browserVersion = await this.activeBrowser.version();
-    console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
+    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
 
     // storageState seeds a pre-authenticated session and MUST be applied at context
     // creation — cookies/origins have to exist before the app's first boot. An
@@ -205,10 +240,15 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     const seededState =
       targetAuth?.mode === 'storageState' ? parseStorageState(targetAuth.storageState) : null;
 
+    // Optional attribution User-Agent (SEC-01.6): identify BugSafari with a contact so
+    // a scanned party can trace/report a run. Opt-in via env — default keeps the stock
+    // Chromium UA, since a non-standard UA can change what a target serves.
+    const attributionUserAgent = process.env.BUGSAFARI_USER_AGENT?.trim();
     this.activeContext = await this.activeBrowser.newContext({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       ignoreHTTPSErrors: true,
       deviceScaleFactor: 1,
+      ...(attributionUserAgent ? { userAgent: attributionUserAgent } : {}),
       // Structurally validated above; Playwright's own type is narrower than the
       // shared contract, which cannot depend on the playwright package.
       ...(seededState ? { storageState: seededState as BrowserContextOptions['storageState'] } : {}),
@@ -256,22 +296,25 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       viewportHeight: VIEWPORT_HEIGHT,
 };
 
-    console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
+    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
 
-    // Diagnostic: Verify page viewport
-    const initialViewport = await this.activePage.evaluate(() => {
-      return {
-        windowInnerWidth: window.innerWidth,
-        windowInnerHeight: window.innerHeight,
-        documentClientWidth: document.documentElement?.clientWidth ?? 0,
-        documentClientHeight: document.documentElement?.clientHeight ?? 0,
-        bodyClientWidth: document.body?.clientWidth ?? 0,
-        bodyClientHeight: document.body?.clientHeight ?? 0,
-        scrollWidth: document.documentElement?.scrollWidth ?? 0,
-        scrollHeight: document.documentElement?.scrollHeight ?? 0,
-      };
-    });
-    console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
+    // Diagnostic: verify page viewport. Gated — this is a per-run CDP round-trip whose
+    // only consumer is the log below, so it is pure cost outside debugging.
+    if (VERBOSE) {
+      const initialViewport = await this.activePage.evaluate(() => {
+        return {
+          windowInnerWidth: window.innerWidth,
+          windowInnerHeight: window.innerHeight,
+          documentClientWidth: document.documentElement?.clientWidth ?? 0,
+          documentClientHeight: document.documentElement?.clientHeight ?? 0,
+          bodyClientWidth: document.body?.clientWidth ?? 0,
+          bodyClientHeight: document.body?.clientHeight ?? 0,
+          scrollWidth: document.documentElement?.scrollWidth ?? 0,
+          scrollHeight: document.documentElement?.scrollHeight ?? 0,
+        };
+      });
+      console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
+    }
 
     let result: RunResult;
     try {

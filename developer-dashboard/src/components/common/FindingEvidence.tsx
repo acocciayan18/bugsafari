@@ -29,7 +29,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
           >
             <span className="mt-px shrink-0 text-xs font-mono text-(--text-tertiary)">{step.stepNumber}</span>
-            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${chipClass(kind)}`}>
+            <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase  ${chipClass(kind)}`}>
               {chipLabel(kind)}
             </span>
             <div className="w-full min-w-0 sm:w-auto sm:flex-1">
@@ -56,7 +56,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
 function BypassRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-xs font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="text-xs font-semibold uppercase  text-(--text-tertiary)">{label}</div>
       <div className="mt-0.5 text-[13px] leading-relaxed text-(--text-primary) break-words">{children}</div>
     </div>
   );
@@ -74,7 +74,7 @@ function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> 
   const payload = bypass.payload === '' ? '""' : bypass.payload;
   return (
     <div>
-      <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Bypass Details</div>
+      <div className="mb-2 text-caption font-bold uppercase r text-(--text-secondary)">Bypass Details</div>
       <div className="grid grid-cols-1 gap-3 rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 sm:grid-cols-2">
         <BypassRow label="Target element">{bypass.element}</BypassRow>
         <BypassRow label="Bypass action">
@@ -99,7 +99,7 @@ function Reproduction({ view }: { view: FindingView }) {
   if (view.actionSteps && view.actionSteps.length > 0) {
     return (
       <div>
-        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">
+        <div className="mb-2 text-caption font-bold uppercase r text-(--text-secondary)">
           Reproduction Trace ({view.actionSteps.length} steps)
         </div>
         <ActionStepList steps={view.actionSteps} />
@@ -157,7 +157,7 @@ export default function FindingEvidence({ view, showBypass = true, aiFix = false
       {/* Original source frames resolved from the target's source maps (best-effort) */}
       {view.resolvedStackTrace && (
         <div className="px-4 pt-3">
-          <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Original source (via source maps)</div>
+          <div className="mb-2 text-caption font-bold uppercase r text-(--text-secondary)">Original source (via source maps)</div>
           <pre className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-words text-(--text-primary)">
             {view.resolvedStackTrace}
           </pre>
@@ -166,7 +166,7 @@ export default function FindingEvidence({ view, showBypass = true, aiFix = false
 
       {/* Suggested fix — bound to this finding's remediation */}
       <div className="px-4 pt-3">
-        <div className="mb-2 text-caption font-bold uppercase tracking-wider text-(--text-secondary)">Suggested Fix</div>
+        <div className="mb-2 text-caption font-bold uppercase r text-(--text-secondary)">Suggested Fix</div>
         <SuggestedFixBlock advice={view.advice} savedAiAdvice={view.aiAdvice} context={aiFix ? toSuggestFixContext(view, sessionId) : undefined} />
       </div>
 

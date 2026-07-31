@@ -74,7 +74,7 @@ export default function TestingConfigModal({
             aria-selected={activeTab === id}
             aria-controls={`config-panel-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors font-sans ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase r transition-colors font-sans ${
               activeTab === id
                 ? 'border-(--text-primary) text-(--text-primary)'
                 : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
@@ -106,7 +106,7 @@ export default function TestingConfigModal({
                 className="mt-0.5 rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
               />
               <span className="flex flex-col">
-                <span className="text-xs font-bold tracking-wider text-(--text-secondary) uppercase font-sans">
+                <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
                   Strict Boundary Lock
                 </span>
                 <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">
@@ -128,7 +128,7 @@ export default function TestingConfigModal({
         <span className="text-xs text-(--text-tertiary) font-sans">Applied on the next run.</span>
         <button
           onClick={onClose}
-          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
+          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase r transition-colors"
         >
           Done
         </button>

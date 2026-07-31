@@ -52,7 +52,7 @@ function StatRow({ items }: { items: { value: string; label: string }[] }) {
             {items.map((it) => (
                 <div key={it.label} className="bg-white p-6 text-center space-y-1">
                     <div className="text-3xl font-extrabold tracking-tight">{it.value}</div>
-                    <div className="text-xs font-mono uppercase tracking-wide text-zinc-500">{it.label}</div>
+                    <div className="text-xs font-mono uppercase  text-zinc-500">{it.label}</div>
                 </div>
             ))}
         </div>
@@ -66,7 +66,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
     return (
         <div className={`grid grid-cols-1 lg:grid-cols-2 gap-12 items-center ${reverse ? 'lg:[&>*:first-child]:order-2' : ''}`}>
             <div className="space-y-5">
-                <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">{eyebrow}</span>
+                <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">{eyebrow}</span>
                 <h2 className="text-2xl lg:text-3xl font-extrabold uppercase tracking-tight">{heading}</h2>
                 <p className="text-zinc-600 leading-relaxed">{description}</p>
                 <ul className="space-y-3 pt-2">
@@ -83,7 +83,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
                 {badge && (
                     <div className="absolute -bottom-6 -left-6 bg-[#121212] text-white rounded-xl p-5 shadow-xl hidden sm:block">
                         <div className="text-2xl font-extrabold">{badge.value}</div>
-                        <div className="text-xs font-mono uppercase tracking-wide text-zinc-400">{badge.label}</div>
+                        <div className="text-xs font-mono uppercase  text-zinc-400">{badge.label}</div>
                     </div>
                 )}
             </div>
@@ -229,7 +229,7 @@ export function ExploreContent() {
 
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">Infiltration Profiles</span>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Infiltration Profiles</span>
                         <h2 className="text-2xl font-extrabold uppercase tracking-tight">One Target URL, Five Ways In</h2>
                         <p className="text-zinc-600 max-w-2xl">Every run picks one profile, which gates which scenario families fire and derives the pathfinder's mode — exploration, coverage, or targeted probe.</p>
                     </div>
@@ -304,7 +304,7 @@ export function FeaturesContent() {
 
                 <div>
                     <div className="mb-6 space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">Infiltration Matrix</span>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Infiltration Matrix</span>
                         <h2 className="text-2xl font-extrabold uppercase tracking-tight">Pick a Profile, Not a Script</h2>
                     </div>
                     <ProfileTabs />
@@ -346,7 +346,7 @@ export function FeaturesContent() {
 
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-widest">Bug Taxonomy</span>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Bug Taxonomy</span>
                         <h2 className="text-2xl font-extrabold uppercase tracking-tight">12 Deterministic Bug Classes</h2>
                         <p className="text-zinc-600 max-w-2xl">Every finding maps to one of twelve classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
                     </div>
@@ -466,19 +466,19 @@ export function AboutContent() {
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">Our Core Principles</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">01. Type Safety First</h4>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">01. Type Safety First</h4>
                             <p className="text-[13px] text-zinc-600">Strict TypeScript boundaries and explicit contracts across every package, enforced by one shared types layer the engine and dashboard both import from.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">02. Deterministic Classification</h4>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">02. Deterministic Classification</h4>
                             <p className="text-[13px] text-zinc-600">Every fault resolves through one shared knowledge base — the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">03. Failure Isolation</h4>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">03. Failure Isolation</h4>
                             <p className="text-[13px] text-zinc-600">Runtime and browser failures are handled defensively so one crashing scenario or finder never takes the rest of a run down with it.</p>
                         </div>
                         <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] tracking-wide">04. Persistence Discipline</h4>
+                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">04. Persistence Discipline</h4>
                             <p className="text-[13px] text-zinc-600">Sessions, findings, action traces, and learned brain snapshots are Mongo-backed and scoped to the owning account, kept entirely out of domain logic.</p>
                         </div>
                     </div>

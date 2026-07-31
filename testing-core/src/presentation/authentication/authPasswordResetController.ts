@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { sanitizeString, validatePasswordComplexity } from './authValidation.js';
+import { requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
@@ -144,7 +144,7 @@ If you didn't request this, please ignore this email.
     }
 
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[EMAIL] Password reset email sent to ${email}: ${info.messageId}`);
+    console.log(`[EMAIL] Password reset email sent to ${maskEmail(email)}: ${info.messageId}`);
     return true;
   } catch (error) {
     console.error(`[EMAIL] Failed to send password reset email:`, error);
@@ -172,7 +172,7 @@ export async function handleForgotPassword(
     const { email } = request.body;
 
     // Validate and sanitize email
-    const sanitizedEmail = sanitizeString(email, 'email');
+    const sanitizedEmail = requireNonEmptyString(email, 'email');
 
     if (!sanitizedEmail) {
       const body: AuthErrorBody = { error: 'Email is required', code: 'VALIDATION_FAILED', field: 'email' };
@@ -210,7 +210,7 @@ export async function handleForgotPassword(
       await user.save();
 
       // The plaintext token leaves the server only via the reset email.
-      console.log(`[FORGOT PASSWORD] Reset requested for: ${trimmedEmail} (expires in 1 hour)`);
+      console.log(`[FORGOT PASSWORD] Reset requested for: ${maskEmail(trimmedEmail)} (expires in 1 hour)`);
       await sendPasswordResetEmail(trimmedEmail, resetToken);
 
       response.json({
@@ -219,7 +219,7 @@ export async function handleForgotPassword(
       });
     } else {
       // User doesn't exist - still return success to prevent enumeration
-      console.log(`[FORGOT PASSWORD] No user found for email: ${trimmedEmail}`);
+      console.log(`[FORGOT PASSWORD] No user found for email: ${maskEmail(trimmedEmail)}`);
       response.json({
         ok: true,
         message: 'If an account exists with that email, a password reset link has been sent.',
@@ -243,9 +243,9 @@ export async function handleResetPassword(
     const { email, token, newPassword } = request.body;
 
     // Validate inputs
-    const sanitizedEmail = sanitizeString(email, 'email');
-    const sanitizedToken = sanitizeString(token, 'token');
-    const sanitizedPassword = sanitizeString(newPassword, 'newPassword');
+    const sanitizedEmail = requireNonEmptyString(email, 'email');
+    const sanitizedToken = requireNonEmptyString(token, 'token');
+    const sanitizedPassword = requireNonEmptyString(newPassword, 'newPassword');
 
     if (!sanitizedEmail || !sanitizedToken || !sanitizedPassword) {
       // A missing email/token means a mangled link, not a form mistake — route it
@@ -292,7 +292,7 @@ export async function handleResetPassword(
       !user.resetPasswordExpires ||
       user.resetPasswordExpires < new Date()
     ) {
-      console.warn(`[RESET PASSWORD] Invalid or expired token for: ${trimmedEmail}`);
+      console.warn(`[RESET PASSWORD] Invalid or expired token for: ${maskEmail(trimmedEmail)}`);
       response.status(400).json(RESET_TOKEN_REJECTION);
       return;
     }
@@ -310,7 +310,7 @@ export async function handleResetPassword(
     // one. Outstanding access tokens remain valid until their short TTL lapses.
     const revoked = await revokeAllForUser(user._id.toString(), 'password-reset');
 
-    console.log(`[RESET PASSWORD] Password successfully reset for: ${trimmedEmail} (${revoked} session(s) revoked)`);
+    console.log(`[RESET PASSWORD] Password successfully reset for: ${maskEmail(trimmedEmail)} (${revoked} session(s) revoked)`);
 
     response.json({
       ok: true,

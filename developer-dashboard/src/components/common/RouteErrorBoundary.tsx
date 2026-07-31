@@ -45,7 +45,7 @@ export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProp
           <TriangleAlert className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
         </div>
         <div className="max-w-md space-y-1">
-          <h2 className="text-[13px] font-bold uppercase tracking-wider text-(--text-primary)">This panel hit an error</h2>
+          <h2 className="text-[13px] font-bold uppercase r text-(--text-primary)">This panel hit an error</h2>
           <p className="text-[13px] text-(--text-secondary)">
             The rest of the app and your live session are still running. Reload the panel to recover the view.
           </p>
@@ -53,7 +53,7 @@ export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProp
         </div>
         <button
           onClick={this.retry}
-          className="flex items-center gap-2 rounded-lg bg-(--surface-invert) px-4 py-2 text-[13px] font-bold uppercase tracking-wider text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
+          className="flex items-center gap-2 rounded-lg bg-(--surface-invert) px-4 py-2 text-[13px] font-bold uppercase r text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           <RotateCw className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           Reload panel

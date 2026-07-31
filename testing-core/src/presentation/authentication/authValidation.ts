@@ -41,10 +41,12 @@ export function validatePasswordComplexity(password: string): string | null {
 }
 
 /**
- * Helper: Validate string input and prevent NoSQL injection attacks
- * Ensures input is a plain string, not an object like {"$gt": ""}
+ * Require a non-empty string (§7.3 rename: this validates type + emptiness and
+ * returns the input UNCHANGED — it never sanitizes, so the old name `sanitizeString`
+ * implied a neutralization it does not perform). A plain string can never be a Mongo
+ * operator object ({"$gt":""}), so the typeof guard is the real NoSQL-injection defense.
  */
-export function sanitizeString(value: unknown, fieldName: string): string | null {
+export function requireNonEmptyString(value: unknown, fieldName: string): string | null {
   // Check if value is a primitive string
   if (typeof value !== 'string') {
     console.error(`[Auth] ${fieldName} is not a valid string type:`, typeof value);
@@ -62,4 +64,15 @@ export function sanitizeString(value: unknown, fieldName: string): string | null
   // can never be interpreted as a Mongo operator object ({"$gt":""}). No `$`-substring
   // check here — it only false-rejected legitimate passwords like "Str0ng$pass".
   return value;
+}
+
+/**
+ * Mask an email for logs (SEC-19): a full address is PII and should never be logged.
+ * The account identity for correlation is the ObjectId, not the email. Returns e.g.
+ * `a***@example.com`.
+ */
+export function maskEmail(email: unknown): string {
+  if (typeof email !== 'string' || !email.includes('@')) return '[redacted-email]';
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 1)}***@${domain}`;
 }

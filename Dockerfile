@@ -21,6 +21,12 @@ RUN npm run build --workspace shared --if-present
 # 5. Build testing-core engine
 RUN npm run build --workspace testing-core
 
+# 5b. Drop dev-only dependencies from the runtime image. Production start scripts run
+# `node dist/...` (never tsx/tsc-watch), so typescript, tsx, tsc-watch, @playwright/test
+# and @types/* are unused at runtime — pruning them shrinks the image and speeds the
+# in-place `git pull && up --build` cycle on a droplet with no image registry.
+RUN npm prune --omit=dev
+
 # Expose REST / WebSocket API port
 EXPOSE 3000
 

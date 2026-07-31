@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { parseTargetUrl, resolveEngineTargetUrl } from '../../serverUtils.js';
+import { parseTargetUrl, assertPublicTarget } from '../../serverUtils.js';
 import { StartExplorationUseCase, type SaveFailureCode } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
@@ -10,7 +10,9 @@ import type { FindingRepository } from '../../domain/repositories/FindingReposit
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
+import { isReady as isDbReady } from '../../infrastructure/database/mongooseClient.js';
 import { randomUUID } from 'node:crypto';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { generateRemediation, generateInsights } from '../../infrastructure/ai/GeminiRemediationAdvisor.js';
@@ -49,6 +51,34 @@ import {
 
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
 const RECENT_SESSION_LOOKUP_LIMIT = 500;
+
+// Hard server-side bounds on the operator-settable timebox (SEC-09.3): a run holds a
+// scarce fleet slot for its whole duration, so an unbounded client value is a DoS knob.
+const MIN_TIMEBOX_MS = 10_000;
+const MAX_TIMEBOX_MS = 1_800_000; // 30 minutes
+
+// Clamp/strip the client-supplied execution timebox in place so the queue path, the
+// synchronous path, and the worker all inherit the enforced ceiling.
+function clampTimebox(settings: OptimizationSettings | undefined): void {
+  if (!settings) return;
+  const raw: unknown = settings['execution-timebox-ms'];
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isFinite(n)) {
+    settings['execution-timebox-ms'] = Math.min(MAX_TIMEBOX_MS, Math.max(MIN_TIMEBOX_MS, n));
+  } else if (raw !== undefined) {
+    delete settings['execution-timebox-ms'];
+  }
+}
+
+// Event-loop delay sampler for the readiness probe. Enabled once at module load;
+// percentile is read (and the window reset) per health computation, so the figure
+// reflects recent load rather than lifetime. Sustained p99 > ~50ms during a run
+// means the api is CPU-starved.
+const eventLoopMonitor = monitorEventLoopDelay({ resolution: 20 });
+eventLoopMonitor.enable();
+// The Docker probe hits /api/health every 10s and external monitors may poll too;
+// cache the readiness computation so the probe cannot itself become load.
+const HEALTH_CACHE_MS = 5_000;
 
 // Why a save was refused → the status and client-facing code it deserves. A
 // schema rejection is the caller's own oversized run, not a server fault, so it
@@ -113,7 +143,7 @@ function parseInfiltration(body: unknown): {
  * a browser is ever launched. Never log the returned object: it is the one value in
  * the request that must not reach a log line, a database, or the job queue.
  */
-function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefined {
+function parseTargetAuth(body: unknown, targetHost?: string): TargetAuthConfig | 'invalid' | undefined {
   const raw = (body as { targetAuth?: unknown })?.targetAuth as Record<string, unknown> | undefined;
   if (!raw || typeof raw !== 'object') return undefined;
 
@@ -123,8 +153,9 @@ function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefine
   if (raw.mode === 'storageState') {
     const state = typeof raw.storageState === 'string' ? raw.storageState : '';
     // Malformed state is rejected, never downgraded: an unauthenticated run against
-    // an authenticated target reports a clean result that is silently wrong.
-    if (!state || !parseStorageState(state)) return 'invalid';
+    // an authenticated target reports a clean result that is silently wrong. Scoped
+    // to the target host so a jar carrying cookies for another domain is refused (SEC-08).
+    if (!state || !parseStorageState(state, { targetHost })) return 'invalid';
     return { mode: 'storageState', storageState: state, successIndicator: optionalString(raw.successIndicator) };
   }
 
@@ -201,11 +232,10 @@ function sanitizeTargetUrl(targetUrl: unknown): string | null {
     console.error('[SECURITY] targetUrl is empty');
     return null;
   }
-  // Check for NoSQL injection patterns
-  if (trimmed.includes('$') && trimmed.match(/\$\w+/)) {
-    console.error('[SECURITY] Potential NoSQL injection in targetUrl');
-    return null;
-  }
+  // §7.1: the removed "$-in-string" NoSQL check was a vibe-coded control — operator
+  // injection needs the value to arrive as an OBJECT, which the typeof-string guard
+  // above already prevents; Mongo never parses operators from string literals. The
+  // regex added no security and rejected valid URLs whose path/query contains '$'.
   // Basic URL format check - must start with http:// or https://
   if (!trimmed.match(/^https?:\/\/.+/)) {
     console.error('[SECURITY] Invalid URL format in targetUrl');
@@ -263,9 +293,33 @@ export function registerRoutes(
     queueActiveCount: fleet?.activeCount ?? 0,
     queueWorkerCount: fleet?.workerCount ?? null,
   });
-// Health check - public
-  app.get('/api/health', (_request: Request, response: Response) => {
-    response.json({ status: "healthy" });
+// Health check - public. Real readiness, not a static literal: reports Mongo,
+  // Redis (queue mode only), event-loop lag and uptime, and returns 503 when Mongo
+  // is down so monitors see a true signal instead of a constant. Cached ~5s so the
+  // 10s Docker probe and any external monitor cannot themselves become load.
+  let healthCache: { at: number; status: number; body: Record<string, unknown> } | null = null;
+  app.get('/api/health', async (_request: Request, response: Response): Promise<void> => {
+    const now = Date.now();
+    if (healthCache && now - healthCache.at < HEALTH_CACHE_MS) {
+      response.status(healthCache.status).json(healthCache.body);
+      return;
+    }
+    const mongo = isDbReady();
+    // Only meaningful when the queue owns a Redis connection; null in the sync path.
+    const redis = taskQueue ? await taskQueue.ping().catch(() => false) : null;
+    const eventLoopLagMs = Math.round(eventLoopMonitor.percentile(99) / 1e6);
+    eventLoopMonitor.reset();
+    const healthy = mongo && redis !== false;
+    const status = mongo ? 200 : 503;
+    const body = {
+      status: healthy ? 'healthy' : 'degraded',
+      mongo,
+      redis,
+      eventLoopLagMs,
+      uptimeSeconds: Math.round(process.uptime()),
+    };
+    healthCache = { at: now, status, body };
+    response.status(status).json(body);
   });
 
   // Explicit Safari stop endpoint — cancels a QUEUED job or terminates a RUNNING
@@ -280,7 +334,7 @@ export function registerRoutes(
     const userId = request.userId ?? null;
     // Client may assert operator/timebox only; anything else coerces to operator.
     const stopReason = coerceClientStopReason(request.body?.reason);
-    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ?? 'n/a'}, reason=${stopReason})`);
+    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ? 'provided' : 'n/a'}, reason=${stopReason})`);
 
     // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
     if (taskQueue && runRegistry && (knownRunToken || userId)) {
@@ -387,10 +441,12 @@ export function registerRoutes(
       return;
     }
 
-    // Reachability gate BEFORE the queue branch, so a distributed run is refused
-    // on the same terms as a synchronous one. The URL is never rewritten: a
-    // loopback/private target is rejected outright.
-    const routing = resolveEngineTargetUrl(targetUrl);
+    // Reachability + SSRF gate BEFORE the queue branch, so a distributed run is
+    // refused on the same terms as a synchronous one. The URL is never rewritten:
+    // a loopback/private target is rejected outright. assertPublicTarget resolves
+    // DNS and validates the RESOLVED address (SEC-02), closing the hostname-string
+    // bypasses (metadata via public A-record, decimal/octal/hex/short literals).
+    const routing = await assertPublicTarget(targetUrl);
     if (!routing.ok) {
       console.warn(`[API]  Target rejected: ${routing.message}`);
       response.status(422).json({ error: 'TARGET_NOT_PUBLIC', message: routing.message });
@@ -411,7 +467,8 @@ export function registerRoutes(
       : undefined;
 
     // Ephemeral target-app credentials. Never logged here or anywhere downstream.
-    const parsedAuth = parseTargetAuth(request.body);
+    // storageState cookies/origins are scoped to the admitted target's host (SEC-08).
+    const parsedAuth = parseTargetAuth(request.body, new URL(targetUrl).hostname);
     if (parsedAuth === 'invalid') {
       response.status(400).json({
         error: 'AUTH_CONFIG_INVALID',
@@ -424,6 +481,7 @@ export function registerRoutes(
     // Resolved before the queue branch so a distributed run enforces the same
     // timebox and tuning as a synchronous one.
     const optimizationSettings = request.body?.optimization as OptimizationSettings | undefined;
+    clampTimebox(optimizationSettings);
     console.log(`[API] Optimization settings:`, optimizationSettings);
 
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
@@ -519,7 +577,7 @@ export function registerRoutes(
         }
 
         await runRegistry?.register({ ...entry, jobId: enqueued.id });
-        console.log(`[API]  Enqueued safari job ${enqueued.id} runToken=${enqueued.runToken} runCode=${enqueued.runCode} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
+        console.log(`[API]  Enqueued safari job ${enqueued.id} runCode=${enqueued.runCode} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
         // runToken lets the client join run:${runToken} for bridged worker telemetry;
         // jobId lets it subscribe to queue:${jobId} position pushes; runId is the public code.
         response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runToken: enqueued.runToken, runId: enqueued.runCode, queued: true });
@@ -582,7 +640,7 @@ export function registerRoutes(
       onAbandoned: () => useCase.releaseActivation(),
     });
 
-    console.log(`[API] Accepting safari launch for: ${targetUrl} (runToken=${runToken}, runCode=${runCode})`);
+    console.log(`[API] Accepting safari launch for: ${targetUrl} (runCode=${runCode})`);
     response.json({ accepted: true, url: targetUrl, runToken, runId: runCode });
     console.log(`[API] Starting safari in background...`);
     // Fire-and-forget, but never unhandled: a rejection here means the run died

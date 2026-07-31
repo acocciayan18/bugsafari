@@ -53,6 +53,9 @@ export class QueueStatusBroadcaster {
     redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
   ) {
     this.events = new QueueEvents(SAFARI_TASK_QUEUE_NAME, { connection: resolveQueueConnection(redisUrl) });
+    // QueueEvents emits 'error' on a Redis blip; an unhandled EventEmitter 'error'
+    // crashes the api process. Log-and-continue — it reconnects on its own.
+    this.events.on('error', (err) => console.error('[QueueStatus] queue-events redis error:', err instanceof Error ? err.message : err));
   }
 
   public async start(): Promise<void> {
@@ -94,14 +97,18 @@ export class QueueStatusBroadcaster {
   }
 
   private async onLifecycle(jobId: string, state: QueueJobState, message?: string): Promise<void> {
-    const { queueDepth, activeCount, workerCount } = await this.queue.positions();
+    // Compute positions ONCE and reuse it for both the job's own push and the
+    // shift-everyone-else fan-out — the old code fetched the waiting list twice.
+    const positions = await this.queue.positions();
+    const { queueDepth, activeCount, workerCount } = positions;
     this.emit(jobId, { jobId, state, position: null, queueDepth, activeCount, workerCount, message });
     // A job leaving/entering the running set shifts everyone else's place in line.
-    await this.broadcastPositions();
+    await this.broadcastPositions(positions);
   }
 
-  private async broadcastPositions(): Promise<void> {
-    for (const update of waitingUpdates(await this.queue.positions())) {
+  private async broadcastPositions(positions?: QueuePositions): Promise<void> {
+    const resolved = positions ?? await this.queue.positions();
+    for (const update of waitingUpdates(resolved)) {
       this.emit(update.jobId, update);
     }
   }

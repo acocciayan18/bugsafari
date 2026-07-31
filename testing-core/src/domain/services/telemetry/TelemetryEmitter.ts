@@ -4,6 +4,14 @@ import type { AccessibilityFinding, TelemetryEvent } from '../../../../../shared
 import type { TelemetryEmitterFlags } from '../exploration/types.js';
 import { isBrowserClosedError } from './StabilityMonitor.js';
 
+// Env-tunable positive integer with a safe fallback. Lets the screencast be retuned
+// per deployment without a rebuild — the feed is operator observability, not a
+// recording, so a constrained box can trade fidelity for CPU/bandwidth.
+function readEnvInt(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /**
  * Manages Socket.IO / HTTP cross-boundary telemetry transmissions for the
  * exploration engine: the canonical TelemetryEvent factory, milestone/system
@@ -20,14 +28,18 @@ export class TelemetryEmitter {
   // frame is a fraction of a page.screenshot() round-trip, and delivery is decoupled
   // from the exploration's own protocol traffic. maxWidth/maxHeight downscale from
   // the 1440x900 viewport server-side, shrinking each JPEG for faster transfer/decode.
-  private static readonly SCREENCAST_QUALITY = 40;
-  private static readonly SCREENCAST_MAX_WIDTH = 1280;
-  private static readonly SCREENCAST_MAX_HEIGHT = 800;
-  // Cap the live feed at 30 fps. Chrome holds the next frame until we ack, so pacing
-  // the ack throttles capture at the source — no wasted encoding, and the feed can't
-  // outrun the dashboard and build a stale backlog (the "delay" on heavy pages).
-  private static readonly SCREENCAST_MAX_FPS = 30;
-  private static readonly SCREENCAST_MIN_INTERVAL_MS = Math.round(1000 / 30);
+  // Env-overridable so a constrained box can trade feed fidelity for CPU/bandwidth
+  // (this is operator observability, not a recording). Code defaults preserve the
+  // historical feed; production sets the retuned values via compose env — see
+  // BUGSAFARI_SCREENCAST_* in docker-compose.prod.yml.
+  private static readonly SCREENCAST_QUALITY = readEnvInt('BUGSAFARI_SCREENCAST_QUALITY', 40);
+  private static readonly SCREENCAST_MAX_WIDTH = readEnvInt('BUGSAFARI_SCREENCAST_MAX_WIDTH', 1280);
+  private static readonly SCREENCAST_MAX_HEIGHT = readEnvInt('BUGSAFARI_SCREENCAST_MAX_HEIGHT', 800);
+  // Cap the live feed. Chrome holds the next frame until we ack, so pacing the ack
+  // throttles capture at the source — no wasted encoding, and the feed can't outrun
+  // the dashboard and build a stale backlog (the "delay" on heavy pages).
+  private static readonly SCREENCAST_MAX_FPS = readEnvInt('BUGSAFARI_SCREENCAST_MAX_FPS', 30);
+  private static readonly SCREENCAST_MIN_INTERVAL_MS = Math.round(1000 / TelemetryEmitter.SCREENCAST_MAX_FPS);
   // No frame for this long while streaming ⇒ the screencast stalled (Chrome stops it
   // on navigation, or a cross-process target swap). Re-arm and push a current-page
   // screenshot so the feed never freezes on the previous URL.

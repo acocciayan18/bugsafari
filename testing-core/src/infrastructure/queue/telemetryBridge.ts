@@ -15,7 +15,13 @@ interface BridgeMessage {
 
 function redisClient(redisUrl: string): Redis {
   // maxRetriesPerRequest:null keeps the connection resilient like the worker's.
-  return new Redis(redisUrl, { maxRetriesPerRequest: null });
+  const client = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  // MUST attach an 'error' listener: an ioredis client emits 'error' on every
+  // transient blip (reconnect, ECONNRESET), and an EventEmitter 'error' with no
+  // listener throws → uncaught exception → the api process exits (ECONNREFUSED for
+  // every proxied request until it restarts). ioredis auto-reconnects, so log-and-continue.
+  client.on('error', (err) => console.error('[TelemetryBridge] redis connection error:', err instanceof Error ? err.message : err));
+  return client;
 }
 
 /** Worker-side RoomEmitter: every gateway emit is published to Redis instead of
