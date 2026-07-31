@@ -172,7 +172,7 @@ git push origin dev --force
 git init
 git add .
 git commit -m "bugsafari-doc-engine-sync"
-git checkout -b 7-31-Ayan-1
-git push --set-upstream origin 7-31-Ayan-1
+git checkout -b 7-31-Ayan-2
+git push --set-upstream origin 7-31-Ayan-2
 
 
