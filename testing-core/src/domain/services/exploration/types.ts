@@ -177,6 +177,9 @@ export interface StabilityMonitorDeps {
   /** Operator escape hatch: cancel every native dialog instead of confirming it, so a
    *  run against a shared/production-like environment never executes a destructive branch. */
   dialogReadOnly(): boolean;
+  /** True when the engine is intentionally stopping, cancelling, or paused — a browser
+   *  teardown or idle window that must never be reported as a target-app UI freeze. */
+  isEngineStopping(): boolean;
 }
 
 export interface StateRestorerDeps {

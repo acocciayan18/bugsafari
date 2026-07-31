@@ -76,11 +76,14 @@ export type BugRegistrationCallback = (bug: {
  * @param page - Playwright page to monitor
  * @param telemetry - Telemetry gateway for emitting events
  * @param onBugRegistered - Optional callback to register confirmed bugs to memory
+ * @param isEngineStopping - True while the engine is intentionally stopping/paused; a probe
+ *   that fails because BugSafari is tearing the browser down is teardown, never a UI freeze.
  */
 export function setupStabilityMonitoring(
   page: Page,
   telemetry: TelemetryGateway,
-  onBugRegistered?: BugRegistrationCallback
+  onBugRegistered?: BugRegistrationCallback,
+  isEngineStopping: () => boolean = () => false,
 ): Cleanup {
   let disposed = false;
   let heartbeatInterval: NodeJS.Timeout | null = null;
@@ -169,6 +172,10 @@ export function setupStabilityMonitoring(
     });
   };
 
+  // A failed probe during intentional teardown (disposed, page closed, or engine
+  // stopping/paused) is an expected shutdown artifact — never a target-app freeze.
+  const isTeardown = (): boolean => disposed || page.isClosed() || isEngineStopping();
+
   const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
     return await Promise.race<T>([
       promise,
@@ -205,9 +212,12 @@ export function setupStabilityMonitoring(
   // server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
   // /pageerror listeners, not this heartbeat.
   const handleHeartbeatTimeout = async (faultAtMs: number): Promise<void> => {
+    if (isTeardown()) return;
     emitInfo(' Browser thread stalled — attempting local recovery...');
     const recovered = await validatePageStability();
-    if (disposed) return;
+    // Re-check after the recovery window: a stop/close that landed mid-probe makes the
+    // stall an expected shutdown artifact, so suppress the finding entirely.
+    if (isTeardown()) return;
 
     if (recovered) {
       emitInfo('Browser thread recovered — resuming exploration.');
@@ -227,6 +237,9 @@ export function setupStabilityMonitoring(
       // anchoring the fault here trims the ~5s stall + recovery window from repro steps.
       const probeStartedAt = Date.now();
       if (await threadResponsive()) return;
+      // The probe can fail simply because the engine closed the browser out from under it
+      // (operator stop / cancel / pause) — that is teardown, not an application lock-up.
+      if (isTeardown()) return;
       // Rate-limit escalation so one sustained freeze doesn't spam the pipeline.
       const now = Date.now();
       if (now - lastHeartbeatAlertAt < HEARTBEAT_TIMEOUT_MS) return;

@@ -926,6 +926,7 @@ export class ExplorationEngine {
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
       getTargetOrigin: () => this.targetOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
+      isEngineStopping: () => this.isStopRequested || this.isPaused,
     });
 
     const stateRestorer = new StateRestorer({

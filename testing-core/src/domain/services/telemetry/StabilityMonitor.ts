@@ -1569,7 +1569,9 @@ export class StabilityMonitor {
     // ️ Initialize stability monitoring - runs silently in background
     // Monitors System Lock-up (5s heartbeat timeout). Real server outages are
     // caught separately via 5xx/requestfailed/pageerror listeners below.
-    const cleanup = setupStabilityMonitoring(page, this.deps.telemetry.gateway, onBugRegistered);
+    const cleanup = setupStabilityMonitoring(page, this.deps.telemetry.gateway, onBugRegistered, () =>
+      this.deps.isEngineStopping(),
+    );
 
     // ️ Setup isolated browser console listener for dedicated Console Tab in dashboard
     // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
