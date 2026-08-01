@@ -1178,7 +1178,9 @@ export class ExplorationEngine {
         isStopRequested: () => this.isStopRequested || tab.isClosed(),
         // isTimeboxExceeded (not checkTimeboxAndTerminateIfExceeded): the latter is a
         // one-shot latch, and consuming it here would stop the outer loop ever timing out.
+        // Both the terminating and non-consuming reads honor the sub-session deadline.
         checkTimebox: () => this.isTimeboxExceeded() || Date.now() >= deadlineMs,
+        isTimeboxExceeded: () => this.isTimeboxExceeded() || Date.now() >= deadlineMs,
       });
       await subLoop.execute(tab, budget);
     };
@@ -1323,6 +1325,7 @@ export class ExplorationEngine {
         getStopReason: () => this.stopReason,
         isPaused: () => this.isPaused,
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
+        isTimeboxExceeded: () => this.isTimeboxExceeded(),
         getTimeboxMs: () => this.timeboxMs,
         getLastKnownUrl: () => lastKnownUrl,
         // Only surface the status when it matches the current route, so a stale

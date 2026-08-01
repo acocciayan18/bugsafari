@@ -240,8 +240,12 @@ export interface ExplorationLoopDeps {
    *  operator stop from a crash/disconnect/shutdown teardown that closed the browser. */
   getStopReason(): StopReason | null;
   isPaused(): boolean;
-  /** Returns true when the timebox is exceeded (caller should exit the loop). */
+  /** Terminating one-shot: true when the timebox is exceeded; latches and stops the
+   * timer. Only the top-of-loop gate calls this, so it alone reports outcome:'timebox'. */
   checkTimebox(): boolean;
+  /** Non-consuming read of the same condition, for secondary gates that must not
+   * latch the one-shot (or the real timebox stop gets mislabeled as a budget stop). */
+  isTimeboxExceeded(): boolean;
   getTimeboxMs(): number;
   getLastKnownUrl(): string;
   /** Latest observed main-frame document HTTP status for `routePath`, or null when
@@ -293,45 +297,69 @@ export function wait(ms: number): Promise<void> {
 }
 
 /**
+ * Race a `page.evaluate` (or any per-step promise) against a Node-side wall-clock
+ * deadline. `page.evaluate` has NO default timeout, so a wedged page main thread
+ * (heavy ad/analytics JS, a render loop) parks the promise — and the whole
+ * iteration, starving the timebox — forever. On expiry the abandoned work is
+ * discarded (it holds no locks; its result is unused) and `fallback` is returned.
+ * Late rejection is swallowed so it never surfaces as an unhandled rejection.
+ * Mirrors the parser's scanBounded (domParser.ts).
+ */
+export async function raceDeadline<T>(work: Promise<T>, deadlineMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), deadlineMs);
+  });
+  try {
+    return await Promise.race([work.catch(() => fallback), deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Node-side grace over the in-page cap before settle is force-resolved.
+const SETTLE_DEADLINE_MARGIN_MS = 1000;
+
+/**
  * Adaptive post-action settle (audit D2): wait for the DOM to go quiet — no
  * mutations for `quietMs` — instead of a fixed delay, bounded by [floorMs, capMs].
- * A static page resolves at the floor; a churny (ad-heavy) page is capped. Falls
- * back to a short fixed wait if the page navigates/closes mid-evaluate.
+ * A static page resolves at the floor; a churny (ad-heavy) page is capped. On a
+ * wedged/detached page it is force-resolved by a Node-side deadline (raceDeadline).
  */
 export async function settle(page: Page, floorMs = 100, capMs = 600, quietMs = 150): Promise<void> {
-  try {
-    await page.evaluate(
-      ([floor, cap, quiet]: [number, number, number]) =>
-        new Promise<void>((resolve) => {
-          const start = Date.now();
-          let quietTimer: ReturnType<typeof setTimeout>;
-          let done = false;
-          const finish = (): void => {
-            if (done) return;
-            done = true;
-            try { observer.disconnect(); } catch { /* detached */ }
-            clearTimeout(quietTimer);
-            resolve();
-          };
-          const arm = (delay: number): void => {
-            clearTimeout(quietTimer);
-            quietTimer = setTimeout(finish, delay);
-          };
-          const observer = new MutationObserver(() => {
-            if (Date.now() - start >= cap) return finish();
-            arm(quiet);
-          });
-          try {
-            observer.observe(document, { subtree: true, childList: true, attributes: true });
-          } catch { /* detached document — floor/cap timers still resolve */ }
-          arm(Math.max(floor, quiet)); // minimum floor before the first resolve
-          setTimeout(finish, cap); // hard ceiling on churny pages
-        }),
-      [floorMs, capMs, quietMs] as [number, number, number],
-    );
-  } catch {
-    await wait(floorMs);
-  }
+  const inPage = page.evaluate(
+    ([floor, cap, quiet]: [number, number, number]) =>
+      new Promise<void>((resolve) => {
+        const start = Date.now();
+        let quietTimer: ReturnType<typeof setTimeout>;
+        let done = false;
+        const finish = (): void => {
+          if (done) return;
+          done = true;
+          try { observer.disconnect(); } catch { /* detached */ }
+          clearTimeout(quietTimer);
+          resolve();
+        };
+        const arm = (delay: number): void => {
+          clearTimeout(quietTimer);
+          quietTimer = setTimeout(finish, delay);
+        };
+        const observer = new MutationObserver(() => {
+          if (Date.now() - start >= cap) return finish();
+          arm(quiet);
+        });
+        try {
+          observer.observe(document, { subtree: true, childList: true, attributes: true });
+        } catch { /* detached document — floor/cap timers still resolve */ }
+        arm(Math.max(floor, quiet)); // minimum floor before the first resolve
+        setTimeout(finish, cap); // hard ceiling on churny pages
+      }),
+    [floorMs, capMs, quietMs] as [number, number, number],
+  );
+  // The in-page timers above only fire if the page main thread runs; a wedged
+  // page would hang this evaluate with no timeout. Bound it Node-side so settle
+  // never parks an iteration past the timebox check.
+  await raceDeadline(inPage, capMs + SETTLE_DEADLINE_MARGIN_MS, undefined as void);
 }
 
 export function inferSemanticRole(

@@ -18,7 +18,7 @@ import { armNetworkSabotage, type ArmedSabotage } from '../../scenarios/index.js
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { describeRecovery, elementNoun, humanizeElement, resolveElementLabel } from '../forensics/narration.js';
 import { isBrowserClosedError, isEngineLifecycleError, sanitizeException } from '../telemetry/StabilityMonitor.js';
-import { inferSemanticRole, settle } from './types.js';
+import { inferSemanticRole, raceDeadline, settle } from './types.js';
 import { attackTargetBoost, ATTACK_TARGET_SCORE_BOOST } from './interactionScope.js';
 import { isSessionDestroyingControl, shouldVetoExecution, SESSION_EXIT_DEMOTION } from './SessionPreservationGuard.js';
 import type { ExplorationLoopDeps, RunResult } from './types.js';
@@ -31,6 +31,10 @@ import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { detectClientErrorView } from './clientErrorOracle.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
+
+// Node-side ceiling for a single scroll page.evaluate — a wedged page main thread
+// would otherwise hang the un-timeouted evaluate and park the whole iteration.
+const SCROLL_EVAL_DEADLINE_MS = 3000;
 
 // Upper bounds on the per-run visited sets so long runs can't grow memory without limit.
 const MAX_VISITED_HASHES = 5000;
@@ -461,7 +465,7 @@ export class ExplorationLoop {
       if (
         this.deps.clusterRegistry.hasUnexploredControls() &&
         this.deps.clusterRegistry.stepsSinceCoverageGain(step) < ctx.coverageStallWindow &&
-        !this.deps.checkTimebox() &&
+        !this.deps.isTimeboxExceeded() &&
         ctx.budget < ctx.hardCap
       ) {
         ctx.budget = Math.min(ctx.hardCap, ctx.budget + ctx.extensionSteps);
@@ -536,24 +540,30 @@ export class ExplorationLoop {
       // that survives a constant scrollHeight), or the document end is reached.
       let lastSig = -1;
       for (let i = 0; i < MAX_REVEAL_SCROLLS; i++) {
-        const probe = await page.evaluate(() => {
-          const before = window.scrollY;
-          window.scrollBy(0, window.innerHeight);
-          const interactiveCount = document.querySelectorAll(
-            'button, input:not([type="hidden"]), textarea, select, a[href], [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])',
-          ).length;
-          const atBottom =
-            window.scrollY === before ||
-            window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
-          return { interactiveCount, scrollY: window.scrollY, atBottom };
-        });
+        // Bounded Node-side: a wedged page returns the fallback (stable, atBottom),
+        // so the loop ends within two scrolls instead of hanging this iteration.
+        const probe = await raceDeadline(
+          page.evaluate(() => {
+            const before = window.scrollY;
+            window.scrollBy(0, window.innerHeight);
+            const interactiveCount = document.querySelectorAll(
+              'button, input:not([type="hidden"]), textarea, select, a[href], [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])',
+            ).length;
+            const atBottom =
+              window.scrollY === before ||
+              window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+            return { interactiveCount, scrollY: window.scrollY, atBottom };
+          }),
+          SCROLL_EVAL_DEADLINE_MS,
+          { interactiveCount: -1, scrollY: -1, atBottom: true },
+        );
         await settle(page);
         const sig = probe.interactiveCount * 100000 + probe.scrollY;
         if (probe.atBottom && sig === lastSig) break; // no advance and no new controls — done
         lastSig = sig;
       }
       // Restore the viewport so parsing/coordinate capture starts from the top.
-      await page.evaluate(() => window.scrollTo(0, 0));
+      await raceDeadline(page.evaluate(() => window.scrollTo(0, 0)), SCROLL_EVAL_DEADLINE_MS, undefined as void);
       await settle(page);
       this.deps.telemetry.emitMilestone(' Scrolled to reveal lazy-loaded / off-screen content before re-parsing.');
     } catch {
@@ -581,11 +591,15 @@ export class ExplorationLoop {
       for (let i = 0; i < MAX_FRONTIER_SCROLLS; i++) {
         // Advance one viewport; atBottom when the position no longer moved or the
         // scroll reached the document end.
-        const atBottom = await page.evaluate(() => {
-          const before = window.scrollY;
-          window.scrollBy(0, window.innerHeight);
-          return window.scrollY === before || window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
-        });
+        const atBottom = await raceDeadline(
+          page.evaluate(() => {
+            const before = window.scrollY;
+            window.scrollBy(0, window.innerHeight);
+            return window.scrollY === before || window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+          }),
+          SCROLL_EVAL_DEADLINE_MS,
+          true, // wedged page → treat as bottom and stop scrolling
+        );
         await settle(page);
         const reparsed = await this.deps.parser.parse(page);
         const hasNewUntriggered = reparsed.some(
@@ -1276,7 +1290,7 @@ export class ExplorationLoop {
         this.deps.clusterRegistry.hasUnexploredControls() &&
         this.deps.clusterRegistry.stepsSinceCoverageGain(step) < ctx.coverageStallWindow &&
         ctx.budget < ctx.hardCap &&
-        !this.deps.checkTimebox();
+        !this.deps.isTimeboxExceeded();
       if (coverageRemains) {
         ctx.budget = Math.min(ctx.hardCap, ctx.budget + ctx.extensionSteps);
         ctx.recoveryRounds = ctx.maxRecoveryRounds - 1; // allow another round

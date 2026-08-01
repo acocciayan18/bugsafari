@@ -400,7 +400,10 @@ export class StartExplorationUseCase {
         // markSessionTerminated must be preserved (a manual save must never rewrite a
         // crashed/timed-out run as Completed).
         const ownedBy = { userId: userObjectId };
-        const terminalFields = 'status outcome endedReason finishedAt';
+        // targetUrl is included so the save preserves the authoritative URL the
+        // worker recorded at run start (createSessionDoc) rather than overwriting
+        // it with a possibly-stale client value from a remounted dashboard.
+        const terminalFields = 'status outcome endedReason finishedAt targetUrl';
         const existing = (requestedCode
             ? await SessionModel.findOne({ runId: requestedCode, ...ownedBy }).select(terminalFields).lean()
             : null)
@@ -423,7 +426,9 @@ export class StartExplorationUseCase {
 
         const sessionFields = {
             userId: userObjectId,
-            targetUrl,
+            // Preserve the worker-recorded target on an in-place update; use the
+            // client value only when creating a run that never persisted a session.
+            targetUrl: existing?.targetUrl ?? targetUrl,
             ...lifecycleFields,
             startedAt,
             savedManually: true,

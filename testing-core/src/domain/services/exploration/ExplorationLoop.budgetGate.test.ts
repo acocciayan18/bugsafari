@@ -28,6 +28,7 @@ interface RegistryStub {
 function makeLoop(reg: RegistryStub, timeboxHit = false): ExplorationLoop {
   return new ExplorationLoop({
     checkTimebox: () => timeboxHit,
+    isTimeboxExceeded: () => timeboxHit,
     clusterRegistry: {
       hasUnexploredControls: () => reg.hasUnexplored,
       stepsSinceCoverageGain: () => reg.stepsSinceGain,
@@ -91,6 +92,25 @@ check('over budget at hard cap breaks', () => {
   const c = ctx({ budget: 200, hardCap: 200 });
   const r = gate(makeLoop({ hasUnexplored: true, stepsSinceGain: 1 }), 201, c);
   assert.equal(r, 'break');
+});
+
+// Regression: a real timebox stop was mislabeled "budget/hard cap" because the gate
+// consumed the one-shot terminator. The gate must use the non-consuming read only.
+check('budget gate never consumes the one-shot checkTimebox', () => {
+  const loop = new ExplorationLoop({
+    checkTimebox: () => { throw new Error('budget gate must not call the latching checkTimebox'); },
+    isTimeboxExceeded: () => false,
+    clusterRegistry: {
+      hasUnexploredControls: () => true,
+      stepsSinceCoverageGain: () => 1,
+      unexploredControlCount: () => 5,
+    },
+    telemetry: { emitMilestone: () => {}, emit: () => {} },
+  } as unknown as ExplorationLoopDeps);
+  const c = ctx();
+  const r = gate(loop, 61, c); // throws if the gate touches the one-shot
+  assert.equal(r, 'proceed');
+  assert.equal((c as { budget: number }).budget, 90); // extended via the non-consuming read
 });
 
 console.log(`\n${passed} checks passed.`);
