@@ -95,7 +95,7 @@ export function isPrivateTargetUrl(raw: unknown): boolean {
 // Reduce a raw origin/host/URL entry to a comparable hostname: lowercase, drop any
 // scheme/path/port, strip IPv6 brackets, a trailing dot, and a leading `www.`.
 // Returns '' when nothing usable remains, so a blank entry never matches everything.
-function canonicalHost(entry: string): string {
+export function canonicalHost(entry: string): string {
   let s = entry.trim().toLowerCase();
   if (!s) return '';
   if (/^[a-z][a-z0-9+.-]*:\/\//.test(s)) {
@@ -137,6 +137,31 @@ export function isProtectedTargetHost(
     }
   }
   return false;
+}
+
+// True when `pageUrl` stays within the target site: the same host as `targetUrl`, a
+// subdomain of it, or one of `extraHosts` (e.g. resolved auth origins). Non-http(s)
+// or unparseable page URLs return true — those are browser-internal transitions
+// (about:blank, data:, blob:), not an off-site navigation; the caller's invalid-
+// context path handles them. Confines live exploration to the app under test.
+export function isWithinTargetSite(
+  pageUrl: string,
+  targetUrl: string,
+  extraHosts: readonly string[] = [],
+): boolean {
+  let host: string;
+  try {
+    const u = new URL(pageUrl);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+    host = canonicalHost(u.hostname);
+  } catch {
+    return true;
+  }
+  if (!host) return true;
+  return [targetUrl, ...extraHosts]
+    .map(canonicalHost)
+    .filter(Boolean)
+    .some((h) => host === h || host.endsWith('.' + h));
 }
 
 // URL-level mirror of isProtectedTargetHost, gated on a parseable web URL so a

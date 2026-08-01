@@ -26,6 +26,7 @@ import { computeStagnation, computePenaltyIntensity, computePenaltyWindow } from
 import { isNovelStructuralState } from './noveltyScoring.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { isWithinTargetSite } from '../../../../../shared/url.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { detectClientErrorView } from './clientErrorOracle.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
@@ -1594,13 +1595,14 @@ export class ExplorationLoop {
     return false;
   }
 
-  /** True when `href` resolves to a different origin than the app under test. */
+  /**
+   * True when `href` leaves the target site (a different host that is not a
+   * subdomain of the target). Subdomain links stay in scope and are followed.
+   * Best-effort pre-click skip — unparseable hrefs fall through here and are
+   * caught by the always-on boundary guard / post-click off-site demotion.
+   */
   private leavesTargetOrigin(href: string): boolean {
-    try {
-      return new URL(href).origin !== new URL(this.deps.getTargetOrigin()).origin;
-    } catch {
-      return false; // Unparseable → let the normal click path handle it.
-    }
+    return !isWithinTargetSite(href, this.deps.getTargetOrigin());
   }
 
   private async executeAndVerifyAction(
@@ -1663,16 +1665,23 @@ export class ExplorationLoop {
     }
 
     // A click that drove the main page into an invalid context (about:blank /
-    // chrome-error / closed) is NOT a real state transition — verifyTraversal
-    // otherwise sees the blank fingerprint as a novel state and rewards it,
-    // training the engine to seek the blank page. Demote it to a failed,
-    // non-novel traversal so the caller isolates and permanently blocks the edge.
-    const landedInvalid = !page.isClosed() && PageHealthGuard.isInvalidContext(page);
+    // chrome-error / closed) OR off the target site (a third-party host) is NOT a
+    // real state transition — verifyTraversal otherwise sees the foreign
+    // fingerprint as a novel state and rewards it, training the engine to leave
+    // the app under test. Demote it to a failed, non-novel traversal so the caller
+    // isolates and permanently blocks the edge (the boundary guard already aborted
+    // the load; this keeps the edge from being rewarded or retried).
+    const leftSite =
+      !page.isClosed() && !isWithinTargetSite(page.url(), this.deps.getTargetOrigin());
+    const landedInvalid =
+      (!page.isClosed() && PageHealthGuard.isInvalidContext(page)) || leftSite;
     if (landedInvalid) {
       traversalOk = false;
       childHash = currentHash;
       this.deps.telemetry.emitMilestone(
-        ` ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
+        leftSite
+          ? ` ${humanTarget} tried to leave the app under test (${page.url()}) — blocking edge.`
+          : ` ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
       );
     }
 

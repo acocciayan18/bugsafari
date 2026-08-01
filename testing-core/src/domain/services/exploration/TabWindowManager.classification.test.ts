@@ -24,20 +24,22 @@ function makeManager(authOrigins: readonly string[] = []): TabWindowManager {
 
 const plain = makeManager();
 
-check('exact same origin is approved', () => {
+check('exact same host is approved', () => {
   assert.equal(plain.classify('https://app.example.com/checkout?id=9#top'), 'approved');
 });
 
-check('different port is a different origin and is blocked', () => {
-  assert.equal(plain.classify('https://app.example.com:8443/checkout'), 'blocked');
+// Site confinement is host-based (like isProtectedTargetHost): port and scheme
+// don't change the site, so the same host over another port/scheme stays in scope.
+check('same host on a different port is approved', () => {
+  assert.equal(plain.classify('https://app.example.com:8443/checkout'), 'approved');
 });
 
-check('different scheme is a different origin and is blocked', () => {
-  assert.equal(plain.classify('http://app.example.com/checkout'), 'blocked');
+check('same host on a different scheme is approved', () => {
+  assert.equal(plain.classify('http://app.example.com/checkout'), 'approved');
 });
 
-check('a subdomain is NOT the app under test', () => {
-  assert.equal(plain.classify('https://cdn.app.example.com/asset'), 'blocked');
+check('a subdomain of the target IS in scope and is approved', () => {
+  assert.equal(plain.classify('https://cdn.app.example.com/asset'), 'approved');
 });
 
 check('an unrelated site is blocked', () => {

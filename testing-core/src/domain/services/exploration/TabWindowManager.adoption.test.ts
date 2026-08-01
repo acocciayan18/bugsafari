@@ -29,6 +29,9 @@ class FakePage extends EventEmitter {
   url(): string { return this.href; }
   async goto(target: string): Promise<null> { this.href = target; return null; }
   mainFrame(): unknown { return this.frame; }
+  // Touched by the always-on boundary guard reinstalled on a recreated primary.
+  async addInitScript(): Promise<void> { /* no-op */ }
+  async route(): Promise<void> { /* no-op */ }
   isClosed(): boolean { return this.closed; }
   async close(): Promise<void> { this.closed = true; this.emit('close'); }
   async bringToFront(): Promise<void> { /* no-op */ }

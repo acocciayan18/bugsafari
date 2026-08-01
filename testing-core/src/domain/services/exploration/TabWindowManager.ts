@@ -2,6 +2,7 @@ import type { BrowserContext, Frame, Page, Request, Response } from 'playwright'
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { isWithinTargetSite } from '../../../../../shared/url.js';
 
 export type TabRole = 'primary' | 'secondary';
 export type TabVerdict = 'approved' | 'blocked';
@@ -98,8 +99,10 @@ export class TabWindowManager {
     try {
       const u = new URL(url);
       if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'blocked';
-      if (u.origin === new URL(this.deps.getTargetOrigin()).origin) return 'approved';
-      return this.deps.authOrigins.includes(u.origin) ? 'approved' : 'blocked';
+      // Approve the target site (host + subdomains) and configured auth origins.
+      return isWithinTargetSite(url, this.deps.getTargetOrigin(), this.deps.authOrigins)
+        ? 'approved'
+        : 'blocked';
     } catch {
       return 'blocked';
     }
@@ -163,9 +166,12 @@ export class TabWindowManager {
       }
 
       if (dying === this.primaryPage) this.primaryPage = fresh;
-      if (this.deps.strictUrlLock) {
-        await new StrictUrlLockGuard(targetUrl, this.deps.telemetry).install(fresh);
-      }
+      // Reinstall the boundary guard on the fresh primary so confinement survives
+      // recreation — exact under strict lock, site-scoped otherwise (always-on).
+      const guard = this.deps.strictUrlLock
+        ? new StrictUrlLockGuard(targetUrl, this.deps.telemetry, { scope: 'exact' })
+        : new StrictUrlLockGuard(targetUrl, this.deps.telemetry, { scope: 'site', authOrigins: this.deps.authOrigins });
+      await guard.install(fresh);
       this.disposers.set(fresh, await this.wire(fresh, 'primary'));
       await this.focus(fresh);
       await fresh.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: RECREATE_NAV_TIMEOUT_MS });

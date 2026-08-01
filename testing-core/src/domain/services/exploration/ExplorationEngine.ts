@@ -1223,6 +1223,7 @@ export class ExplorationEngine {
       getTargetUrl: () => this.targetUrl,
       getTargetOrigin: () => this.targetOrigin,
       strictUrlLock: this.strictUrlLock,
+      authOrigins,
       recreatePage: () => tabs.recreateFocused(),
       recordRecovery: (url, strategy) => {
         navigationFinder.noteEngineNavigation();
@@ -1248,15 +1249,17 @@ export class ExplorationEngine {
         message: ` Browser launched, navigating to ${targetUrl}...`,
       });
 
-      //  Proactive Strict Page Boundary Lock: arm the navigation guard BEFORE
-      // the first goto so the init script is present for the initial document and
-      // the route interceptor is live for the very first navigation. Blocks any
-      // main-frame navigation off the locked URL before it commits (no reactive
-      // goto → no nav race / main-thread lockup).
-      if (this.strictUrlLock) {
-        const guard = new StrictUrlLockGuard(targetUrl, emitter);
-        await guard.install(page);
-      }
+      //  Proactive Page Boundary Lock: arm the navigation guard BEFORE the first
+      // goto so the init script is present for the initial document and the route
+      // interceptor is live for the very first navigation. Blocks off-boundary
+      // main-frame navigation before it commits (no reactive goto → no nav race).
+      // Always-on: strict lock pins to the exact URL, otherwise confine to the
+      // target site (host + subdomains + auth origins) so a redirect/button to a
+      // third-party site is aborted rather than explored.
+      const boundaryGuard = this.strictUrlLock
+        ? new StrictUrlLockGuard(targetUrl, emitter, { scope: 'exact' })
+        : new StrictUrlLockGuard(targetUrl, emitter, { scope: 'site', authOrigins });
+      await boundaryGuard.install(page);
 
       console.log('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
       // Use shorter timeout and better wait strategy to prevent hanging

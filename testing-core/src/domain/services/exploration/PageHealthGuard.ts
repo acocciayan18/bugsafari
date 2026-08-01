@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { isWithinTargetSite } from '../../../../../shared/url.js';
 import { wait } from './types.js';
 
 /** Outcome of a per-iteration health gate; `page` may be a recreated instance. */
@@ -15,6 +16,8 @@ export interface PageHealthGuardDeps {
   getTargetUrl(): string;
   getTargetOrigin(): string;
   strictUrlLock: boolean;
+  // Extra in-scope hosts (SSO/OAuth origins) never treated as off-site drift.
+  authOrigins: readonly string[];
   /**
    * Deepest recovery rung: tear down the dead page and return a fresh, fully
    * re-wired page navigated to the target (strict guard reinstalled if enabled),
@@ -80,12 +83,21 @@ export class PageHealthGuard {
     this.consecutiveInvalidRounds = 0;
     this.driftRestores = 0;
 
-    // 2. Strict lock: restore on residual drift off the locked URL.
+    // 2. Strict lock: restore on residual drift off the locked URL (exact).
     if (this.deps.strictUrlLock && this.hasDrifted(page)) {
-      return this.restoreDrift(page);
+      return this.restoreDrift(page, false);
     }
 
-    // 3. Normal mode / on-target strict → do not interfere.
+    // 3. Always-on site confinement (both modes): a navigation that left the target
+    //    site (a third-party host, not a subdomain or auth origin) is restored to
+    //    the target, however it was triggered — JS, form submit, server redirect,
+    //    meta refresh. The proactive boundary guard should prevent it; this is the
+    //    deterministic backstop for anything that slips through.
+    if (!isWithinTargetSite(page.url(), this.deps.getTargetUrl(), this.deps.authOrigins)) {
+      return this.restoreDrift(page, true);
+    }
+
+    // 4. On-target → do not interfere.
     return { page, status: 'healthy' };
   }
 
@@ -186,23 +198,29 @@ export class PageHealthGuard {
     return current !== lock;
   }
 
-  private async restoreDrift(page: Page): Promise<PageHealthResult> {
+  private async restoreDrift(page: Page, offSite: boolean): Promise<PageHealthResult> {
     if (this.driftRestores >= this.maxRecoveries) {
-      this.deps.telemetry.emitMilestone(' Strict URL Lock: drift-restore budget exhausted — ending exploration.');
+      this.deps.telemetry.emitMilestone(
+        offSite
+          ? ' Off-site restore budget exhausted — ending exploration.'
+          : ' Strict URL Lock: drift-restore budget exhausted — ending exploration.',
+      );
       return { page, status: 'unrecoverable' };
     }
     this.driftRestores += 1;
     const target = this.deps.getTargetUrl();
     this.deps.telemetry.emit('ACTION', {
-      actionExecuted: 'strict-url-lock-restore',
+      actionExecuted: offSite ? 'off-site-restore' : 'strict-url-lock-restore',
       url: page.url(),
-      message: ` Strict URL Lock: residual drift to ${page.url()} — restoring ${target}.`,
+      message: offSite
+        ? ` Off-site drift to ${page.url()} — restoring the app under test (${target}).`
+        : ` Strict URL Lock: residual drift to ${page.url()} — restoring ${target}.`,
     });
 
     try {
       await wait(SETTLE_MS); // let the drifting navigation settle before correcting
       await page.goto(target, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-      this.deps.recordRecovery(target, 'strict-lock-restore');
+      this.deps.recordRecovery(target, offSite ? 'off-site-restore' : 'strict-lock-restore');
       return { page, status: 'recovered' };
     } catch (err) {
       this.deps.telemetry.emit('ACTION', {
