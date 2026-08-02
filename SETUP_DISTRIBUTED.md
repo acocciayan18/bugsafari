@@ -163,7 +163,7 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m "Fix the Gemini integration"
+git commit -m "prefix lock navigation guard"
 git checkout -b dev
 git push origin dev --force
 
