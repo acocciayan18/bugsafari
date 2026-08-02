@@ -22,3 +22,4 @@ export * from './types/verification.js';
 export * from './types/queue.js';
 export * from './types/pagination.js';
 export * from './types/remediation.js';
+export * from './severity.js';

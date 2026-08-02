@@ -43,6 +43,7 @@ import {
   type RunTerminationOutcome,
   coerceClientStopReason,
   parseStorageState,
+  resolveSeverity,
   type SuggestFixRequest,
   type SuggestFixResponse,
   type SuggestInsightsRequest,
@@ -1348,6 +1349,17 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
       // derived from the persisted caughtBugs — the same findings the report
       // lists — and fall back to the forensic_errors analysis only when absent.
       const caughtBugs = sessionDoc.forensicTrace?.caughtBugs ?? [];
+      // Read-side guarantee: derive a severity from the bug class when a legacy/null
+      // value was stored, so risk score, badges, and counts are correct for old runs.
+      // Same array is embedded in the report below, so this normalizes every surface.
+      for (const bug of caughtBugs) {
+        bug.severity = resolveSeverity({
+          severity: bug.severity,
+          bugClass: bug.attribution?.bugClass,
+          confidence: bug.attribution?.confidence,
+          verificationStatus: bug.attribution?.verificationStatus,
+        });
+      }
       const findingsRiskScore = forensicAnalysisService.scoreFindings(caughtBugs);
       const effectiveRiskScore = caughtBugs.length > 0 ? findingsRiskScore : (analysis?.riskScore ?? 0);
       const effectiveRiskLevel = determineRiskLevel(effectiveRiskScore);

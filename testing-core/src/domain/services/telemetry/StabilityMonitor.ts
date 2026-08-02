@@ -34,7 +34,7 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS, resolveSeverity } from '../../../../../shared/types.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import {
   NetworkFaultArbiter,
@@ -65,6 +65,15 @@ const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', Foren
   MEDIUM: ForensicErrorSeverity.MEDIUM,
   HIGH: ForensicErrorSeverity.HIGH,
   CRITICAL: ForensicErrorSeverity.CRITICAL,
+};
+
+/** Maps the resolved 5-tier FaultSeverity to the persisted forensic-error scale. */
+const FAULT_TO_FORENSIC: Record<FaultSeverity, ForensicErrorSeverity> = {
+  CRITICAL: ForensicErrorSeverity.CRITICAL,
+  HIGH: ForensicErrorSeverity.HIGH,
+  MEDIUM: ForensicErrorSeverity.MEDIUM,
+  LOW: ForensicErrorSeverity.LOW,
+  INFO: ForensicErrorSeverity.INFO,
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -539,7 +548,12 @@ export class StabilityMonitor {
       attribution: complete.attribution,
     });
 
-    const faultSeverity = severity as FaultSeverity;
+    const faultSeverity = resolveSeverity({
+      severity,
+      bugClass: complete.attribution.bugClass,
+      confidence: complete.attribution.confidence,
+      verificationStatus: complete.attribution.verificationStatus,
+    });
 
     const culpritSelector = this.culpritSelectorAt(faultAtMs);
     t.gateway.emitIncidentReport({
@@ -576,7 +590,7 @@ export class StabilityMonitor {
     // Persist to forensic_errors so saved history mirrors the live Errors tab.
     this.deps.persistForensicError({
       type: forensicType,
-      severity,
+      severity: FAULT_TO_FORENSIC[faultSeverity],
       message: ` ${finding.message}`,
       stackTrace,
       url,
@@ -729,7 +743,13 @@ export class StabilityMonitor {
     const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
-    const severity = SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity;
+    const severity = resolveSeverity({
+      severity: defect.severity,
+      bugClass: defect.bugClass,
+      confidence: defect.faultConfidence,
+      verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+      statusCode: defect.secondStatus,
+    });
     // Same contract as every promotion path: steps + CWE + remediation, filled from
     // the knowledge base when this self-gating finder left one of them empty.
     const complete = ensureFindingEvidence({
@@ -808,7 +828,7 @@ export class StabilityMonitor {
 
       this.deps.persistForensicError({
         type: ForensicErrorType.INTERACTION_FAILURE,
-        severity: SEVERITY_TO_FORENSIC[defect.severity],
+        severity: FAULT_TO_FORENSIC[severity],
         message: ` ${defect.message}`,
         stackTrace,
         url,
@@ -1030,6 +1050,13 @@ export class StabilityMonitor {
     });
     t.emitMilestone(` API hang: ${defect.method} ${url}`);
 
+    const severity = resolveSeverity({
+      severity: defect.severity,
+      bugClass: attribution.bugClass,
+      confidence: attribution.confidence,
+      verificationStatus: attribution.verificationStatus,
+    });
+
     t.gateway.emitIncidentReport({
       bugId: defect.bugId,
       timestamp,
@@ -1042,7 +1069,7 @@ export class StabilityMonitor {
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      severity,
       culpritSelector: this.culpritSelectorAt(faultAtMs),
     });
 
@@ -1055,13 +1082,13 @@ export class StabilityMonitor {
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      severity,
       culpritSelector: this.culpritSelectorAt(faultAtMs),
     });
 
     this.deps.persistForensicError({
       type: ForensicErrorType.TIMEOUT_FAILURE,
-      severity: SEVERITY_TO_FORENSIC[defect.severity],
+      severity: FAULT_TO_FORENSIC[severity],
       message: ` ${defect.message}`,
       stackTrace,
       url,
@@ -1085,7 +1112,7 @@ export class StabilityMonitor {
       reproductionActions: reproduction.actions,
       stateFingerprint,
       attribution,
-      severity: SEVERITY_TO_FORENSIC[defect.severity] as FaultSeverity,
+      severity,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -1163,6 +1190,15 @@ export class StabilityMonitor {
       routing.tier === 'CRITICAL' && verification.severity !== ForensicErrorSeverity.CRITICAL
         ? ForensicErrorSeverity.HIGH
         : verification.severity;
+    // Resolve to the canonical scale: applies the low-confidence/unverified cap while a
+    // 5xx still escalates, so live and saved surfaces share one guaranteed severity.
+    const displaySeverity = resolveSeverity({
+      severity,
+      bugClass: complete.attribution.bugClass,
+      confidence: complete.attribution.confidence,
+      verificationStatus: complete.attribution.verificationStatus,
+      statusCode: evidence.statusCode,
+    });
 
     // Only genuine target-app failures move the failed-request metric.
     this.deps.onApiFailure();
@@ -1219,7 +1255,7 @@ export class StabilityMonitor {
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution: complete.attribution,
-      severity: severity as FaultSeverity,
+      severity: displaySeverity,
       culpritSelector: evidence.culpritSelector,
     });
 
@@ -1233,13 +1269,13 @@ export class StabilityMonitor {
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution: complete.attribution,
-      severity: severity as FaultSeverity,
+      severity: displaySeverity,
       culpritSelector: evidence.culpritSelector,
     });
 
     this.deps.persistForensicError({
       type: ForensicErrorType.API_FAILURE,
-      severity,
+      severity: FAULT_TO_FORENSIC[displaySeverity],
       message: headline,
       stackTrace: evidence.detail,
       url: reportUrl,
@@ -1265,7 +1301,7 @@ export class StabilityMonitor {
       reproductionActions: evidence.reproduction.actions,
       stateFingerprint: evidence.stateFingerprint,
       attribution: complete.attribution,
-      severity: severity as FaultSeverity,
+      severity: displaySeverity,
       timestamp: new Date(evidence.timestamp),
       streamed: true, // the incident report above already put it on the Errors tab
     });

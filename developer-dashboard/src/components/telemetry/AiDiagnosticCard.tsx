@@ -7,6 +7,8 @@
 
 import type { IntelligentDiagnosis } from '../../types';
 import { humanizeFindingTitle } from '../../utils/findingView';
+import { SeverityBadge } from '../common/ForensicCardKit';
+import { normalizeSeverity } from '../../../../shared/types.js';
 
 /**
  *  Unified AI Diagnostic Card Component
@@ -15,7 +17,10 @@ import { humanizeFindingTitle } from '../../utils/findingView';
 const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined }) => {
   if (!ai) return null;
 
-  const isCritical = ai.severity === 'CRITICAL';
+  // Map the AI 3-tier scale (CRITICAL|WARNING|INFO) onto the canonical severity so
+  // the badge colour matches the finding cards everywhere else.
+  const severity = normalizeSeverity(ai.severity);
+  const isCritical = severity === 'CRITICAL';
 
   return (
     <div
@@ -27,15 +32,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
         <div className="flex min-w-0 items-center gap-1.5 text-(--text-secondary) font-bold r uppercase text-xs">
           <span> BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
-        <span
-          className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold st uppercase border ${
-            isCritical
-              ? 'bg-(--status-critical-bg) border-(--status-critical-border) text-(--status-critical-fg)'
-              : 'bg-(--surface-raised) border-(--border-strong) text-(--text-secondary)'
-          }`}
-        >
-          {ai.severity}
-        </span>
+        <SeverityBadge severity={severity} />
       </div>
 
       <div className="space-y-2 text-xs leading-relaxed">

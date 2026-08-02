@@ -13,6 +13,7 @@ import type {
   IncidentReport,
 } from '../types';
 import type { ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
+import { resolveSeverity } from '../../../shared/types.js';
 import { isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
@@ -148,7 +149,13 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     key: liveFaultSignature(inc),
     title: inc.attribution?.bugClass || 'Runtime Incident',
     message: inc.reason,
-    severity: inc.severity,
+    severity: resolveSeverity({
+      severity: inc.severity,
+      bugClass: inc.attribution?.bugClass,
+      confidence: inc.attribution?.confidence,
+      verificationStatus: inc.attribution?.verificationStatus,
+      statusCode: inc.statusCode,
+    }),
     occurrences,
     timestamp: inc.timestamp,
     url: inc.url,
@@ -168,7 +175,13 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     key: liveFaultSignature(rep),
     title: rep.attribution?.bugClass || 'Console Error',
     message: rep.reason,
-    severity: rep.severity,
+    severity: resolveSeverity({
+      severity: rep.severity,
+      bugClass: rep.attribution?.bugClass,
+      confidence: rep.attribution?.confidence,
+      verificationStatus: rep.attribution?.verificationStatus,
+      statusCode: rep.statusCode,
+    }),
     occurrences,
     timestamp: rep.timestamp,
     url: rep.url,
@@ -187,7 +200,12 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     key: bug.bugId,
     title: bug.attribution?.bugClass || bug.type || 'UNKNOWN',
     message: bug.message,
-    severity: bug.severity,
+    severity: resolveSeverity({
+      severity: bug.severity,
+      bugClass: bug.attribution?.bugClass,
+      confidence: bug.attribution?.confidence,
+      verificationStatus: bug.attribution?.verificationStatus,
+    }),
     occurrences,
     timestamp: bug.timestamp,
     selector: resolveCulprit(bug.selector, bug.actionSteps),

@@ -140,6 +140,20 @@ check('Oracle-confirmed injection under DataFuzzer → CONFIRMED security verdic
   assert.equal(c.confidence, 'CONFIRMED');
 });
 
+check('INFERRED runtime fault is severity-capped at MEDIUM', () => {
+  // A no-signal exception classifies to RUNTIME_STABILITY_EXCEPTION (catalog HIGH) with
+  // INFERRED confidence; the confidence cap lowers it to MEDIUM.
+  const c = classifyFault({ faultType: 'EXCEPTION', message: 'Something unusual happened' });
+  assert.equal(c.confidence, 'INFERRED');
+  assert.equal(c.severity, 'MEDIUM');
+});
+
+check('5xx escalation outranks the INFERRED cap', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 500 GET /api/data', statusCode: 500, scenario: 'NetworkSaboteur' });
+  assert.equal(c.confidence, 'INFERRED');
+  assert.equal(c.severity, 'HIGH');
+});
+
 check('Determinism — same input yields identical classification', () => {
   const input = { faultType: 'NETWORK' as const, message: 'HTTP 503', statusCode: 503, scenario: 'NetworkSaboteur' };
   assert.deepEqual(classifyFault(input), classifyFault(input));

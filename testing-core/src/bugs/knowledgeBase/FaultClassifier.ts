@@ -255,8 +255,12 @@ export function classifyFault(input: FaultInput): FaultClassification {
   const { bugClass, confidence } = resolveBugClass(input, categories, scenarioDef.expectedBugs);
   const definition = BUG_CATALOG[bugClass];
 
-  // Severity: catalog default, escalated to at least HIGH on a 5xx response.
+  // Severity: catalog default, capped at MEDIUM for INFERRED (evidence-weak) verdicts,
+  // then escalated to at least HIGH on a 5xx response — a server fault outranks the cap.
   let severity: Severity = definition.defaultSeverity;
+  if (confidence === 'INFERRED' && SEVERITY_RANK[severity] > SEVERITY_RANK.MEDIUM) {
+    severity = 'MEDIUM';
+  }
   if (input.statusCode !== undefined && input.statusCode >= 500 && SEVERITY_RANK[severity] < SEVERITY_RANK.HIGH) {
     severity = 'HIGH';
   }

@@ -316,11 +316,9 @@ export default function SavedEvaluationSafaris() {
                     </div>
                     <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                       <div
-                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${evalItem.severity === 'CRITICAL'
+                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${evalItem.severity === 'CRITICAL' || evalItem.severity === 'HIGH'
                           ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
-                          : evalItem.severity === 'HIGH'
-                            ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
-                            : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
+                          : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
                           }`}
                       >
                         {evalItem.severityCount} {evalItem.severity}

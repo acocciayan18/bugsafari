@@ -1,6 +1,6 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
-import { defaultOptimizationSettings, describeTermination, isActionableNetworkStatus } from '../../../../shared/types.js';
+import { defaultOptimizationSettings, describeTermination, isActionableNetworkStatus, resolveSeverity } from '../../../../shared/types.js';
 import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
@@ -314,7 +314,12 @@ export class StartExplorationUseCase {
                 attribution: bug.attribution,
                 stateFingerprint: bug.stateFingerprint,
                 bypass: bug.bypass,
-                severity: bug.severity,
+                severity: resolveSeverity({
+                    severity: bug.severity,
+                    bugClass: bug.attribution?.bugClass,
+                    confidence: bug.attribution?.confidence,
+                    verificationStatus: bug.attribution?.verificationStatus,
+                }),
             }))
             : clientFindings.map((finding, index) => ({
                 bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
@@ -330,7 +335,12 @@ export class StartExplorationUseCase {
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
                 attribution: finding.attribution,
                 stateFingerprint: finding.stateFingerprint,
-                severity: finding.severity,
+                severity: resolveSeverity({
+                    severity: finding.severity,
+                    bugClass: finding.attribution?.bugClass,
+                    confidence: finding.attribution?.confidence,
+                    verificationStatus: finding.attribution?.verificationStatus,
+                }),
             }));
 
         // Collapse duplicate findings (same fault repeated across the run) into one
