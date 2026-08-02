@@ -79,7 +79,7 @@ function makeHarness(): Harness {
     getTargetUrl: () => 'https://app.example.com/',
     getTargetOrigin: () => 'https://app.example.com',
     authOrigins: [],
-    strictUrlLock: false,
+    boundaryScope: 'site',
     setActivePage: () => { /* no-op */ },
     onNavigated: () => { /* no-op */ },
     onNetworkRequest: () => { /* no-op */ },

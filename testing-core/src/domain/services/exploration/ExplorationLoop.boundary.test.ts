@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { ScenarioGate } from '../scenarioGate.js';
 import type { ExplorationLoopDeps } from './types.js';
+import type { UrlLockScope } from './StrictUrlLockGuard.js';
 import { ALL_TESTING_TYPE_IDS } from '../../../../../shared/types.js';
 
 let passed = 0;
@@ -20,12 +21,12 @@ console.log('ExplorationLoop — completion classification');
 
 const actions: string[] = [];
 function makeLoop(
-  strictUrlLock: boolean,
+  boundaryScope: UrlLockScope,
   gate: ScenarioGate,
   cap = { reached: false, evictions: 0, maxNodes: 500 },
 ): ExplorationLoop {
   return new ExplorationLoop({
-    strictUrlLock,
+    boundaryScope,
     gate,
     pathNavigator: { graphCapStatus: () => cap },
     telemetry: {
@@ -36,7 +37,7 @@ function makeLoop(
 }
 
 // Unconstrained run (no lock, full profile) → genuine graph exhaustion.
-const full = makeLoop(false, new ScenarioGate([...ALL_TESTING_TYPE_IDS]));
+const full = makeLoop('site', new ScenarioGate([...ALL_TESTING_TYPE_IDS]));
 const fullResult = (full as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('full-spectrum unlocked run reports Graph Exhausted', () => {
   assert.match(fullResult.reason, /Graph Exhausted/);
@@ -45,7 +46,7 @@ check('full-spectrum unlocked run reports Graph Exhausted', () => {
 });
 
 // Strict URL lock → the app graph beyond the launch URL was never reachable.
-const locked = makeLoop(true, new ScenarioGate([...ALL_TESTING_TYPE_IDS]));
+const locked = makeLoop('exact', new ScenarioGate([...ALL_TESTING_TYPE_IDS]));
 const lockedResult = (locked as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('strict URL lock reports Boundary Saturation', () => {
   assert.match(lockedResult.reason, /Boundary Saturation Reached/);
@@ -55,7 +56,7 @@ check('strict URL lock reports Boundary Saturation', () => {
 });
 
 // Partial infiltration profile → states behind withheld interaction classes unexplored.
-const partial = makeLoop(false, new ScenarioGate(['dataFuzzing', 'formBypass']));
+const partial = makeLoop('site', new ScenarioGate(['dataFuzzing', 'formBypass']));
 const partialResult = (partial as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('partial infiltration profile reports Boundary Saturation', () => {
   assert.match(partialResult.reason, /Boundary Saturation Reached/);
@@ -65,7 +66,7 @@ check('partial infiltration profile reports Boundary Saturation', () => {
 
 // Node-cap eviction → states were dropped and never re-explored, so a claim of
 // full graph coverage would be false (audit P3-06).
-const capped = makeLoop(false, new ScenarioGate([...ALL_TESTING_TYPE_IDS]), {
+const capped = makeLoop('site', new ScenarioGate([...ALL_TESTING_TYPE_IDS]), {
   reached: true,
   evictions: 37,
   maxNodes: 500,

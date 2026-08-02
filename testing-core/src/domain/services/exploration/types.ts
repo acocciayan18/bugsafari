@@ -41,6 +41,7 @@ import type { EdgeRepeatTracker } from './EdgeRepeatTracker.js';
 import type { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import type { PageHealthResult } from './PageHealthGuard.js';
 import type { TabWindowManager } from './TabWindowManager.js';
+import type { UrlLockScope } from './StrictUrlLockGuard.js';
 
 // ─────────────────────────────────────────────────────────────
 // Shared data shapes
@@ -263,10 +264,15 @@ export interface ExplorationLoopDeps {
    *  strict-lock drift, and may return a recreated page. `unrecoverable` tells
    *  the loop to terminate gracefully. */
   ensurePageHealth(page: Page): Promise<PageHealthResult>;
-  /** When true, the launch URL is pinned: navigation-based recovery (backtrack,
-   *  unstable-restore, origin re-seed) is suppressed so it can't compete with the
-   *  boundary-lock restore for control of the page. */
-  strictUrlLock: boolean;
+  /** Active navigation-boundary scope. Under 'exact'/'subtree' the boundary is
+   *  pinned: navigation-based recovery (backtrack, unstable-restore, origin
+   *  re-seed) is suppressed so it can't compete with the boundary-lock restore.
+   *  'site' leaves ordinary navigation untouched. */
+  boundaryScope: UrlLockScope;
+  /** Full launch URL — boundary reference for scope-aware lock classification. */
+  getTargetUrl(): string;
+  /** Extra in-scope hosts (SSO/OAuth) never treated as a boundary escape. */
+  authOrigins: readonly string[];
   /** Session-wide transition-repeat budget: max non-productive re-navigations of one
    *  control on its structural shell before it's blocked as a loop source (0 disables). */
   transitionRepeatBudget: number;

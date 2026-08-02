@@ -293,10 +293,11 @@ export class ExplorationLoop {
 
         // Page-saturation short-circuit: if this landing's structural shell is
         // already Fully Explored, skip all parse/score/interaction work, log once,
-        // and unwind to the nearest unexplored branch. Suppressed under the strict
-        // URL lock — there is nowhere to advance to, and skipping interactions
+        // and unwind to the nearest unexplored branch. Suppressed only under the
+        // exact lock — there is nowhere to advance to, and skipping interactions
         // would starve the only path (DOM mutation) to any new locked-page state.
-        if (!this.deps.strictUrlLock) {
+        // Sub-tree still has descendant routes to advance to, so it keeps saturation.
+        if (this.deps.boundaryScope !== 'exact') {
           // Pre-parse gate: a shell already Fully Explored is skipped before any
           // parse/score/interaction work, so it needs its own (cheap) hash here.
           const preParse = await this.deps.hashManager.hashCompound(page);
@@ -411,7 +412,7 @@ export class ExplorationLoop {
 
         //  Navigation-defect observation BEFORE any parent restore, so the
         // post-action URL still reflects what the interaction actually did.
-        this.observeNavigation(page, fingerprint.compound, target, fingerprint.currentUrl, {
+        this.observeNavigation(page, fingerprint.compound, target, {
           traversalOk,
           landedInvalid,
           actionThrew,
@@ -1124,13 +1125,17 @@ export class ExplorationLoop {
    * destination (router.push et al.) is cancelled invisibly. In all those cases the
    * absence of a route change carries no evidence about the app.
    */
-  private navigationBlockedByLock(currentUrl: string): boolean {
-    if (!this.deps.strictUrlLock) return false;
+  private navigationBlockedByLock(): boolean {
+    if (this.deps.boundaryScope === 'site') return false;
     if (!this.lastProbedHref) return true;
-    const lockKey = StrictUrlLockGuard.confinementKey(currentUrl);
-    const targetKey = StrictUrlLockGuard.confinementKey(this.lastProbedHref);
-    if (lockKey === null || targetKey === null) return true;
-    return targetKey !== lockKey;
+    // Blocked iff the probed destination isn't allowed under the active scope,
+    // referenced against the run's launch URL (exact pin or sub-tree prefix).
+    return !StrictUrlLockGuard.isAllowed(
+      this.lastProbedHref,
+      this.deps.getTargetUrl(),
+      this.deps.boundaryScope,
+      this.deps.authOrigins,
+    );
   }
 
   /** Feed the post-action outcome to the navigation-defect oracle (never derails the loop). */
@@ -1138,7 +1143,6 @@ export class ExplorationLoop {
     page: Page,
     compound: CompoundStateHash,
     target: InteractiveElement,
-    currentUrl: string,
     outcome: { traversalOk: boolean; landedInvalid: boolean; actionThrew: boolean },
   ): void {
     try {
@@ -1156,7 +1160,7 @@ export class ExplorationLoop {
         landedInvalid: outcome.landedInvalid,
         actionThrew: outcome.actionThrew,
         networkActivity: this.deps.hadNetworkActivitySinceAction(),
-        navigationBlocked: this.navigationBlockedByLock(currentUrl),
+        navigationBlocked: this.navigationBlockedByLock(),
         url,
         timestampMs: Date.now(),
       });
@@ -1236,7 +1240,11 @@ export class ExplorationLoop {
    */
   private boundaryConstraints(): string[] {
     const limits: string[] = [];
-    if (this.deps.strictUrlLock) limits.push('strict URL lock — exploration pinned to the launch URL');
+    if (this.deps.boundaryScope === 'exact') {
+      limits.push('strict URL lock — exploration pinned to the launch URL');
+    } else if (this.deps.boundaryScope === 'subtree') {
+      limits.push('sub-tree lock — exploration pinned to the launch route and its child pages');
+    }
     const active = this.deps.gate.activeCategories();
     if (active.length < ALL_TESTING_TYPE_IDS.length) {
       // A partial profile withholds interaction classes (fuzz/bypass/etc.), so states
@@ -1319,10 +1327,11 @@ export class ExplorationLoop {
       // Nothing soft-blocked left to re-queue — re-seed from the origin once
       // to surface states the run may have drifted away from.
       const origin = this.deps.getTargetOrigin();
-      if (this.deps.strictUrlLock) {
-        // Under the boundary lock the origin re-seed is a competing navigation:
-        // the boundary-lock restore is the sole page-transition authority, so skip it.
-        this.deps.telemetry.emitMilestone(' Strict URL Lock: skipping origin re-seed (boundary lock owns navigation).');
+      if (this.deps.boundaryScope !== 'site') {
+        // Under exact/sub-tree the origin re-seed leaves the boundary (the origin is
+        // a parent of the launch route) and competes with the boundary-lock restore
+        // for the page — the lock is the sole page-transition authority, so skip it.
+        this.deps.telemetry.emitMilestone(' Boundary lock: skipping origin re-seed (lock owns navigation).');
       } else {
         this.deps.telemetry.emitMilestone(`️ Re-seeding exploration from origin: ${origin}`);
         await this.deps.stateRestorer.restoreToState(page, '', origin);
@@ -1441,11 +1450,13 @@ export class ExplorationLoop {
   }
 
   private async handleBacktrackDecision(page: Page, decision: BacktrackDecision): Promise<void> {
-    // Under the boundary lock, backtracking through the recovery ladder
-    // (history.back / deep-link goto / reload) would issue a page transition that
-    // races the boundary-lock restore. Skip it — the lock keeps us on the single
-    // permitted URL and the next parse re-reads the live DOM regardless.
-    if (this.deps.strictUrlLock) {
+    // Under the exact lock, backtracking through the recovery ladder (history.back
+    // / deep-link goto / reload) would issue a page transition that races the
+    // boundary-lock restore. Skip it — the lock keeps us on the single permitted
+    // URL and the next parse re-reads the live DOM regardless. Sub-tree is
+    // multi-page: backtracking among in-boundary descendants is how it advances, so
+    // it is allowed (any out-of-boundary jump is still aborted by the guard).
+    if (this.deps.boundaryScope === 'exact') {
       this.deps.telemetry.emitMilestone(' Strict URL Lock: backtrack navigation suppressed (boundary lock owns navigation).');
       return;
     }
@@ -1788,9 +1799,11 @@ export class ExplorationLoop {
         // endless recovery re-seeds back through the origin pages.
         this.deps.clusterRegistry.markTriggered(compound.structure, target.selector, step);
       }
-      if (this.deps.strictUrlLock) {
+      if (this.deps.boundaryScope === 'exact') {
         this.deps.telemetry.emitMilestone(' Strict URL Lock: unstable edge isolated; parent restore deferred to boundary lock.');
       } else {
+        // Restore targets currentUrl (the in-boundary page we are on), so it is safe
+        // under sub-tree and site alike — no out-of-boundary transition is issued.
         this.deps.telemetry.emitMilestone(` Edge unstable — restoring parent locally (no false exhaustion).`);
         this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);

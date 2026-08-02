@@ -27,7 +27,7 @@ import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPrese
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId } from '../../types';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode } from '../../types';
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 
@@ -76,7 +76,7 @@ interface ClinicalForensicsDashboardProps {
   onStop?: () => void;
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
-  onStartInitialization?: (url: string, profile: InfiltrationProfileId, strictBoundary: boolean, targetAuth?: TargetAuthConfig) => void;
+  onStartInitialization?: (url: string, profile: InfiltrationProfileId, boundaryMode: BoundaryLockMode, targetAuth?: TargetAuthConfig) => void;
   children?: ReactNode;
 }
 
@@ -136,7 +136,7 @@ export default function ClinicalForensicsDashboard({
   const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all');
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
-  const [strictBoundary, setStrictBoundary] = useState(false);
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(DEFAULT_BOUNDARY_LOCK_MODE);
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
@@ -214,7 +214,7 @@ export default function ClinicalForensicsDashboard({
     // The draft is deliberately retained so reopening the config modal — or
     // re-running against the same target — shows what the operator entered.
     // It lives only in component state: never persisted, gone on page reload.
-    onStartInitialization(urlInput, selectedProfile, strictBoundary, toTargetAuthConfig(authDraft));
+    onStartInitialization(urlInput, selectedProfile, boundaryMode, toTargetAuthConfig(authDraft));
   };
 
   // Job parked behind the worker fleet — hold the dashboard in standby (frozen
@@ -237,7 +237,7 @@ export default function ClinicalForensicsDashboard({
   // Trigger-button digest so the collapsed settings stay discoverable at a glance.
   const configSummary = [
     currentProfileName,
-    strictBoundary ? 'Locked' : null,
+    boundaryMode === 'exact' ? 'Exact lock' : boundaryMode === 'subtree' ? 'Sub-tree lock' : null,
     authDraft.enabled ? 'Auth on' : null,
   ]
     .filter(Boolean)
@@ -437,8 +437,8 @@ export default function ClinicalForensicsDashboard({
         onClose={() => setIsConfigOpen(false)}
         profile={selectedProfile}
         onProfileChange={setSelectedProfile}
-        strictBoundary={strictBoundary}
-        onStrictBoundaryChange={setStrictBoundary}
+        boundaryMode={boundaryMode}
+        onBoundaryModeChange={setBoundaryMode}
         authDraft={authDraft}
         onAuthDraftChange={setAuthDraft}
       />

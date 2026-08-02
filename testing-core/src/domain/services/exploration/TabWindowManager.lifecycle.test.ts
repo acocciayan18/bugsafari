@@ -70,7 +70,7 @@ function makeHarness(options: {
     getTargetUrl: () => 'https://app.example.com/',
     getTargetOrigin: () => 'https://app.example.com',
     authOrigins: [],
-    strictUrlLock: options.strictUrlLock ?? false,
+    boundaryScope: (options.strictUrlLock ?? false) ? 'exact' : 'site',
     setActivePage: (p: unknown) => { trace.push('set-active'); activePages.push(p); },
     onNavigated: () => { /* no-op */ },
     onNetworkRequest: () => { /* no-op */ },

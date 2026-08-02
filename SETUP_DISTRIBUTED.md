@@ -171,8 +171,8 @@ git push origin dev --force
 
 git init
 git add .
-git commit -m "Add severity classification to BugSafari findings"
-git checkout -b 8-31-Ayan
-git push --set-upstream origin 8-31-Ayan
+git commit -m "prefix lock navigation guard"
+git checkout -b 8-31-Ayan-2
+git push --set-upstream origin 8-31-Ayan-2
 
 

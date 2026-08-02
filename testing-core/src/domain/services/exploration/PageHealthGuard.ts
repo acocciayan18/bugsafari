@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
-import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { StrictUrlLockGuard, type UrlLockScope } from './StrictUrlLockGuard.js';
 import { isWithinTargetSite } from '../../../../../shared/url.js';
 import { wait } from './types.js';
 
@@ -15,7 +15,9 @@ export interface PageHealthGuardDeps {
   telemetry: TelemetryEmitter;
   getTargetUrl(): string;
   getTargetOrigin(): string;
-  strictUrlLock: boolean;
+  // Active navigation-boundary scope. 'exact'/'subtree' trigger drift restore back
+  // into the boundary; 'site' leaves ordinary in-site navigation untouched.
+  boundaryScope: UrlLockScope;
   // Extra in-scope hosts (SSO/OAuth origins) never treated as off-site drift.
   authOrigins: readonly string[];
   /**
@@ -83,8 +85,8 @@ export class PageHealthGuard {
     this.consecutiveInvalidRounds = 0;
     this.driftRestores = 0;
 
-    // 2. Strict lock: restore on residual drift off the locked URL (exact).
-    if (this.deps.strictUrlLock && this.hasDrifted(page)) {
+    // 2. Boundary lock (exact/sub-tree): restore on residual drift off the boundary.
+    if (this.deps.boundaryScope !== 'site' && this.hasDrifted(page)) {
       return this.restoreDrift(page, false);
     }
 
@@ -125,7 +127,7 @@ export class PageHealthGuard {
     // fall back to the application origin (never an arbitrary drifted route).
     const targetUrl = this.deps.getTargetUrl();
     const origin = this.deps.getTargetOrigin() || targetUrl;
-    const primaryUrl = this.deps.strictUrlLock ? targetUrl : origin;
+    const primaryUrl = this.deps.boundaryScope !== 'site' ? targetUrl : origin;
 
     let recovered: Page | null = page;
     try {
@@ -190,12 +192,14 @@ export class PageHealthGuard {
   // ── Strict-lock drift restore ───────────────────────────────────────────────
 
   private hasDrifted(page: Page): boolean {
-    const current = StrictUrlLockGuard.confinementKey(page.url());
-    const lock = StrictUrlLockGuard.confinementKey(this.deps.getTargetUrl());
-    // A null key is a browser-internal / unparseable context (handled by the
-    // invalid-state path), not http(s) app drift — never treat it as drift here.
-    if (current === null || lock === null) return false;
-    return current !== lock;
+    // isAllowed returns true for browser-internal / unparseable contexts (handled by
+    // the invalid-state path), so those are never treated as boundary drift here.
+    return !StrictUrlLockGuard.isAllowed(
+      page.url(),
+      this.deps.getTargetUrl(),
+      this.deps.boundaryScope,
+      this.deps.authOrigins,
+    );
   }
 
   private async restoreDrift(page: Page, offSite: boolean): Promise<PageHealthResult> {

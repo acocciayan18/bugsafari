@@ -117,6 +117,23 @@ services:
     command: >
       sh -c "npm run dev:worker --workspace testing-core"
 
+  # Opt-in benchmark target. Not started by default; bring it up with
+  # `docker compose -f docker-compose.local.yml --profile target up target-app`.
+  # The engine's SSRF guard rejects localhost, so expose it via `npm run tunnel`
+  # on the host (cloudflared) and paste the public URL into the start-test form.
+  target-app:
+    container_name: bugsafari-target-app
+    profiles:
+      - target
+    restart: unless-stopped
+    build:
+      context: ./bugsafari-target-app
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5174:5174"
+    networks:
+      - bugsafari-local
+
 volumes:
   redis-data:
     name: bugsafari-redis-data

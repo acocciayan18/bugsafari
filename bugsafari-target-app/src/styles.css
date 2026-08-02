@@ -1,0 +1,149 @@
+:root {
+  --bg: #0e1116;
+  --panel: #171c24;
+  --panel-2: #1e252f;
+  --border: #2a323d;
+  --text: #e6edf3;
+  --muted: #9aa7b4;
+  --accent: #f2a900;
+  --danger: #ef4444;
+  --ok: #22c55e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand { font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
+.tagline { color: var(--muted); font-size: 13px; }
+.content { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+
+.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+.back:hover { text-decoration: underline; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+
+.card {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color .15s, transform .15s;
+}
+.card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.card h3 { margin: 0 0 6px; font-size: 15px; }
+.card p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+.meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.tag.sev-CRITICAL { color: #fff; background: #7f1d1d; border-color: #b91c1c; }
+.tag.sev-HIGH { color: #fee2e2; background: #7c2d12; border-color: #c2410c; }
+.tag.sev-MEDIUM { color: #fef3c7; background: #713f12; border-color: #a16207; }
+.tag.sev-LOW { color: #dcfce7; background: #14532d; border-color: #166534; }
+.tag.sev-INFO { color: var(--muted); }
+
+.cat-title { margin: 30px 0 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.scenario-head { margin-bottom: 20px; }
+.scenario-head h1 { margin: 12px 0 6px; font-size: 24px; }
+.scenario-head .summary { color: var(--muted); max-width: 720px; line-height: 1.5; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-top: 16px;
+}
+.panel h2 { margin: 0 0 12px; font-size: 15px; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.danger { border-color: #7f1d1d; }
+button.danger:hover { border-color: var(--danger); }
+
+input, textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  width: 100%;
+}
+label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+
+.out {
+  margin-top: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.banner {
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.banner.warn { background: #422006; border: 1px solid #a16207; color: #fde68a; }
+
+.spinner {
+  width: 22px; height: 22px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.expected {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 14px;
+  font-size: 13px;
+}
+.expected dt { color: var(--muted); }
+.expected dd { margin: 0; }

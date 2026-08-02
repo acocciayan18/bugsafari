@@ -1,7 +1,7 @@
 import type { BrowserContext, Frame, Page, Request, Response } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
-import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { StrictUrlLockGuard, type UrlLockScope } from './StrictUrlLockGuard.js';
 import { isWithinTargetSite } from '../../../../../shared/url.js';
 
 export type TabRole = 'primary' | 'secondary';
@@ -29,7 +29,7 @@ export interface TabWindowManagerDeps {
   getTargetOrigin(): string;
   // Extra approved origins (SSO/OAuth popups). Origins only — the auth config never reaches the engine.
   authOrigins: readonly string[];
-  strictUrlLock: boolean;
+  boundaryScope: UrlLockScope;
   // Mirrors the focused page into ExplorationEngine.activePage.
   setActivePage(page: Page | null): void;
   onNavigated(url: string): void;
@@ -108,10 +108,13 @@ export class TabWindowManager {
     }
   }
 
-  /** Strict lock pins the run to one URL, so a second tab is off-boundary by definition. */
+  /**
+   * A boundary lock (exact or sub-tree) pins the run inside the target boundary, and
+   * a secondary tab carries no boundary guard — so any lock but 'site' forbids it.
+   */
   public canExploreSecondary(): boolean {
     return (
-      !this.deps.strictUrlLock &&
+      this.deps.boundaryScope === 'site' &&
       this.secondaryDepth === 0 &&
       this.secondarySessions < SECONDARY_SESSIONS_PER_RUN
     );
@@ -167,10 +170,11 @@ export class TabWindowManager {
 
       if (dying === this.primaryPage) this.primaryPage = fresh;
       // Reinstall the boundary guard on the fresh primary so confinement survives
-      // recreation — exact under strict lock, site-scoped otherwise (always-on).
-      const guard = this.deps.strictUrlLock
-        ? new StrictUrlLockGuard(targetUrl, this.deps.telemetry, { scope: 'exact' })
-        : new StrictUrlLockGuard(targetUrl, this.deps.telemetry, { scope: 'site', authOrigins: this.deps.authOrigins });
+      // recreation, under whichever scope the run resolved (exact/sub-tree/site).
+      const guard = new StrictUrlLockGuard(targetUrl, this.deps.telemetry, {
+        scope: this.deps.boundaryScope,
+        authOrigins: this.deps.authOrigins,
+      });
       await guard.install(fresh);
       this.disposers.set(fresh, await this.wire(fresh, 'primary'));
       await this.focus(fresh);

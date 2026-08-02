@@ -32,6 +32,8 @@ export type {
   // Unified Infiltration Profiles (operator-facing preset layer)
   InfiltrationProfileId,
   InfiltrationProfileOption,
+  // Navigation boundary lock mode (operator-facing single choice)
+  BoundaryLockMode,
   // Automated Regression Verification (Verify Fix)
   RegressionVerdict,
   VerifyFixRequest,
@@ -66,6 +68,9 @@ export {
   INFILTRATION_PROFILE_CATALOG,
   DEFAULT_INFILTRATION_PROFILE,
   resolveInfiltrationProfile,
+  DEFAULT_BOUNDARY_LOCK_MODE,
+  boundaryModeToFlags,
+  boundaryModeFromFlags,
   VERIFY_FIX_EVENT,
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,

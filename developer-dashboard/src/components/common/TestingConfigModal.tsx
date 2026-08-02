@@ -6,28 +6,47 @@
 // nothing is lost when the dialog closes; the caller keeps owning persistence.
 
 import { useState } from 'react';
-import { X, KeyRound, Crosshair } from 'lucide-react';
+import { X, KeyRound, Crosshair, Route } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import InfiltrationProfileSelector from './InfiltrationProfileSelector';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
-import type { InfiltrationProfileId } from '../../types';
+import type { BoundaryLockMode, InfiltrationProfileId } from '../../types';
 
-type ConfigTab = 'infiltration' | 'auth';
+type ConfigTab = 'infiltration' | 'boundary' | 'auth';
 
 interface TestingConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: InfiltrationProfileId;
   onProfileChange: (next: InfiltrationProfileId) => void;
-  strictBoundary: boolean;
-  onStrictBoundaryChange: (next: boolean) => void;
+  boundaryMode: BoundaryLockMode;
+  onBoundaryModeChange: (next: BoundaryLockMode) => void;
   authDraft: TargetAuthDraft;
   onAuthDraftChange: (next: TargetAuthDraft) => void;
 }
 
 const TABS: { id: ConfigTab; label: string; icon: typeof Crosshair }[] = [
   { id: 'infiltration', label: 'Infiltration', icon: Crosshair },
+  { id: 'boundary', label: 'Navigation', icon: Route },
   { id: 'auth', label: 'Target Auth', icon: KeyRound },
+];
+
+const BOUNDARY_OPTIONS: { id: BoundaryLockMode; label: string; description: string }[] = [
+  {
+    id: 'exact',
+    label: 'Exact URL',
+    description: 'Limit exploration to the configured target URL. Any navigation beyond the target site is blocked.',
+  },
+  {
+    id: 'subtree',
+    label: 'Sub-Tree / Prefix Lock',
+    description: 'Restricts exploration to the selected feature by allowing navigation only within the target route and its descendant pages.',
+  },
+  {
+    id: 'site',
+    label: 'Whole Site',
+    description: 'Allows exploration across the target host, its subdomains, and trusted authentication origins.',
+  },
 ];
 
 export default function TestingConfigModal({
@@ -35,8 +54,8 @@ export default function TestingConfigModal({
   onClose,
   profile,
   onProfileChange,
-  strictBoundary,
-  onStrictBoundaryChange,
+  boundaryMode,
+  onBoundaryModeChange,
   authDraft,
   onAuthDraftChange,
 }: TestingConfigModalProps) {
@@ -97,23 +116,49 @@ export default function TestingConfigModal({
         {activeTab === 'infiltration' && (
           <div role="tabpanel" id="config-panel-infiltration" aria-labelledby="config-tab-infiltration" className="space-y-4">
             <InfiltrationProfileSelector profile={profile} onProfileChange={onProfileChange} />
-            <label htmlFor="strict-boundary-lock" className="flex items-start gap-2.5 cursor-pointer select-none rounded-lg border border-(--border-hairline) bg-(--surface-raised) px-3 py-2.5">
-              <input
-                id="strict-boundary-lock"
-                type="checkbox"
-                checked={strictBoundary}
-                onChange={(e) => onStrictBoundaryChange(e.target.checked)}
-                className="mt-0.5 rounded border-(--border-strong) text-(--surface-invert) focus:ring-(--border-focus) h-4 w-4"
-              />
-              <span className="flex flex-col">
-                <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
-                  Strict Boundary Lock
-                </span>
-                <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">
-                  Confine exploration to the exact target URL — never follow links off it.
-                </span>
+          </div>
+        )}
+
+        {activeTab === 'boundary' && (
+          <div role="tabpanel" id="config-panel-boundary" aria-labelledby="config-tab-boundary">
+            <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2">
+              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                Navigation Boundary
               </span>
-            </label>
+              {BOUNDARY_OPTIONS.map(({ id, label, description }) => {
+                const selected = boundaryMode === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => onBoundaryModeChange(id)}
+                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
+                      selected
+                        ? 'border-(--text-primary) bg-(--surface-raised)'
+                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
+                      aria-hidden="true"
+                    >
+                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                        {label}
+                        {id === 'subtree' && (
+                          <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">{description}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

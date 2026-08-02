@@ -27,7 +27,7 @@ import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
-import { defaultOptimizationSettings } from '../../shared/types.js';
+import { defaultOptimizationSettings, boundaryModeToFlags } from '../../shared/types.js';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 
@@ -150,9 +150,9 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   onResume={resumeTest}
                   onStop={stopTest}
                   onSaveSessionToHistory={handleSaveSessionToHistory}
-                  onStartInitialization={(url, profile, strictBoundary, targetAuth) => {
+                  onStartInitialization={(url, profile, boundaryMode, targetAuth) => {
                     setTargetUrl(url);
-                    startTest(url, { ...defaultOptimizationSettings, strictUrlLock: !!strictBoundary }, { profile }, targetAuth);
+                    startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode) }, { profile }, targetAuth);
                   }}
                 />
                 </RouteErrorBoundary>

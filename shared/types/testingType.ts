@@ -18,6 +18,9 @@ export interface OptimizationSettings {
   // Strict Page Boundary Lock: confine exploration to the exact launch URL
   // (path + query + hash). Any action that drifts the page off it is reverted.
   strictUrlLock?: boolean;
+  // Sub-Tree / Prefix Lock: confine exploration to the launch route and its
+  // descendant paths only — blocks parent, sibling, and off-site navigation.
+  subtreeLock?: boolean;
   // Session-wide transition-repeat budget: max times one control may re-navigate
   // its structural shell back to an already-seen view before it is blocked
   // session-wide as a navigation-loop source. 0 disables the cap (default: 3).
@@ -56,12 +59,35 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'concurrent-spam-event': true,
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
+  subtreeLock: true,  // On by default — confine to the launch route sub-tree
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
   'page-saturation-visits': 8,  // gain-less revisits to a shell → fully explored
   'page-saturation-interactions': 25,  // repeat actuations on a shell → fully explored
   'form-fuzz-cap': 2,  // 2 fuzz submissions per form → excluded from further fuzzing
   'dialog-read-only': false,  // Answer dialogs so confirm-gated branches actually run
 };
+
+// Operator-facing single boundary choice. Maps to the two engine flags below:
+//  • 'exact'   — pin to the launch URL (strictUrlLock).
+//  • 'subtree' — pin to the launch route + descendants (subtreeLock). Default.
+//  • 'site'    — whole target host + subdomains + auth origins (neither flag).
+export type BoundaryLockMode = 'exact' | 'subtree' | 'site';
+
+export const DEFAULT_BOUNDARY_LOCK_MODE: BoundaryLockMode = 'subtree';
+
+// Resolve the UI mode into the two persisted engine flags (single source of truth).
+export function boundaryModeToFlags(
+  mode: BoundaryLockMode,
+): Pick<OptimizationSettings, 'strictUrlLock' | 'subtreeLock'> {
+  return { strictUrlLock: mode === 'exact', subtreeLock: mode === 'subtree' };
+}
+
+// Inverse of boundaryModeToFlags. Precedence exact > subtree > site.
+export function boundaryModeFromFlags(settings?: Partial<OptimizationSettings>): BoundaryLockMode {
+  if (settings?.strictUrlLock) return 'exact';
+  if (settings?.subtreeLock) return 'subtree';
+  return 'site';
+}
 
 // ─────────────────────────────────────────────────────────────
 // ️ TESTING TYPE SELECTOR (Operator-gated scenario matrix)

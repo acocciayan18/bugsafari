@@ -1,6 +1,7 @@
 import type { Page, Route, Request } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { canonicalHost, isWithinTargetSite } from '../../../../../shared/url.js';
+import type { OptimizationSettings } from '../../../../../shared/types.js';
 
 // Only real application navigations are subject to confinement. Every other
 // scheme is a browser-internal / non-navigational transition (blank frames,
@@ -10,14 +11,24 @@ import { canonicalHost, isWithinTargetSite } from '../../../../../shared/url.js'
 const APP_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:']);
 
 // Confinement scope:
-//  • 'exact' — pin to one URL (origin+path+query); the opt-in strict URL lock.
-//  • 'site'  — pin to the target host, its subdomains, and any auth origins; the
-//              always-on default that keeps exploration from wandering off-site.
-export type UrlLockScope = 'exact' | 'site';
+//  • 'exact'   — pin to one URL (origin+path+query); the opt-in strict URL lock.
+//  • 'subtree' — pin to the launch route + its descendant paths (prefix lock);
+//                the default. Auth origins still pass so login never breaks.
+//  • 'site'    — pin to the target host, its subdomains, and any auth origins; the
+//                fallback that keeps exploration from wandering off-site.
+export type UrlLockScope = 'exact' | 'subtree' | 'site';
 
 export interface UrlLockOptions {
   scope?: UrlLockScope;
-  authOrigins?: readonly string[]; // 'site' scope only — extra allowed hosts (SSO).
+  authOrigins?: readonly string[]; // 'site'/'subtree' scopes — extra allowed hosts (SSO).
+}
+
+// Resolve the persisted OptimizationSettings flags into an active scope.
+// Precedence: exact > subtree > site.
+export function resolveUrlLockScope(settings?: Partial<OptimizationSettings> | null): UrlLockScope {
+  if (settings?.strictUrlLock) return 'exact';
+  if (settings?.subtreeLock) return 'subtree';
+  return 'site';
 }
 
 /**
@@ -41,7 +52,11 @@ export class StrictUrlLockGuard {
   /** Canonical http/https confinement key for the lock, or null if unparseable. */
   private readonly lockKey: string | null;
   private readonly scope: UrlLockScope;
-  /** 'site' scope: pre-canonicalized allowed hosts (target + auth origins). */
+  /**
+   * Injected-sandbox allow list. 'site': target host + auth origins. 'subtree':
+   * auth origins ONLY (the target host is governed by the path-prefix rule, not a
+   * bare host match). 'exact': empty.
+   */
   private readonly allowedHosts: string[];
 
   constructor(
@@ -51,10 +66,13 @@ export class StrictUrlLockGuard {
   ) {
     this.scope = options.scope ?? 'exact';
     this.lockKey = StrictUrlLockGuard.confinementKey(this.lockedUrl);
+    const authHosts = (options.authOrigins ?? []).map(canonicalHost).filter(Boolean);
     this.allowedHosts =
       this.scope === 'site'
-        ? [this.lockedUrl, ...(options.authOrigins ?? [])].map(canonicalHost).filter(Boolean)
-        : [];
+        ? [canonicalHost(this.lockedUrl), ...authHosts].filter(Boolean)
+        : this.scope === 'subtree'
+          ? authHosts
+          : [];
   }
 
   /**
@@ -80,14 +98,72 @@ export class StrictUrlLockGuard {
     return `${u.protocol}//${u.host}${path}${u.search}`;
   }
 
-  /** True when the main frame may navigate to `url` under the active scope. */
-  private nodeAllows(url: string): boolean {
-    if (this.scope === 'site') {
-      return isWithinTargetSite(url, this.lockedUrl, this.options.authOrigins ?? []);
+  /**
+   * Origin + normalized path of a URL, or null when not an http(s) app URL. The
+   * search string is intentionally dropped — the sub-tree test is on the path.
+   */
+  private static subtreeParts(raw: string, base?: string): { origin: string; path: string } | null {
+    let u: URL;
+    try {
+      u = base !== undefined ? new URL(raw, base) : new URL(raw);
+    } catch {
+      return null;
+    }
+    if (!APP_PROTOCOLS.has(u.protocol)) {
+      return null;
+    }
+    const path = u.pathname.replace(/\/+$/, '') || '/';
+    return { origin: `${u.protocol}//${u.host}`, path };
+  }
+
+  /** True when `url`'s host matches any of the canonical `hosts` (or a subdomain). */
+  private static hostAllowed(url: string, hosts: readonly string[]): boolean {
+    if (hosts.length === 0) return false;
+    let host: string;
+    try {
+      host = canonicalHost(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+    if (!host) return false;
+    return hosts
+      .map(canonicalHost)
+      .filter(Boolean)
+      .some((h) => host === h || host.endsWith('.' + h));
+  }
+
+  /**
+   * Canonical Node-side allow test for every scope, shared by the guard, drift
+   * detection (PageHealthGuard), and loop classification (ExplorationLoop) so the
+   * three can never diverge. Non-http(s) targets are browser-internal → allowed.
+   */
+  public static isAllowed(
+    url: string,
+    lockedUrl: string,
+    scope: UrlLockScope,
+    authOrigins: readonly string[] = [],
+  ): boolean {
+    if (scope === 'site') {
+      return isWithinTargetSite(url, lockedUrl, authOrigins);
+    }
+    if (scope === 'subtree') {
+      const target = StrictUrlLockGuard.subtreeParts(lockedUrl);
+      const current = StrictUrlLockGuard.subtreeParts(url);
+      if (current === null || target === null) return true;
+      if (StrictUrlLockGuard.hostAllowed(url, authOrigins)) return true;
+      if (current.origin !== target.origin) return false;
+      const prefix = target.path === '/' ? '/' : target.path + '/';
+      return current.path === target.path || current.path.startsWith(prefix);
     }
     const key = StrictUrlLockGuard.confinementKey(url);
+    const lockKey = StrictUrlLockGuard.confinementKey(lockedUrl);
     // Non-http(s) target, or a lock that was itself non-http(s) → browser internal.
-    return key === null || this.lockKey === null || key === this.lockKey;
+    return key === null || lockKey === null || key === lockKey;
+  }
+
+  /** True when the main frame may navigate to `url` under the active scope. */
+  private nodeAllows(url: string): boolean {
+    return StrictUrlLockGuard.isAllowed(url, this.lockedUrl, this.scope, this.options.authOrigins ?? []);
   }
 
   /**
@@ -123,16 +199,29 @@ export class StrictUrlLockGuard {
       // Genuine off-boundary http(s) main-frame navigation — abort pre-commit.
       await this.abort(route);
       this.telemetry.emit('ACTION', {
-        actionExecuted: this.scope === 'site' ? 'off-site-nav-blocked' : 'strict-url-lock-blocked',
+        actionExecuted: this.blockedAction(),
         url: request.url(),
-        message:
-          this.scope === 'site'
-            ? ` Off-site navigation blocked: ${request.url()} leaves the app under test (${this.lockedUrl}).`
-            : ` Strict URL Lock: blocked navigation to ${request.url()} (locked to ${this.lockedUrl}).`,
+        message: this.blockedMessage(request.url()),
       });
     };
 
     await page.route('**/*', handler);
+  }
+
+  private blockedAction(): string {
+    if (this.scope === 'site') return 'off-site-nav-blocked';
+    if (this.scope === 'subtree') return 'subtree-lock-blocked';
+    return 'strict-url-lock-blocked';
+  }
+
+  private blockedMessage(url: string): string {
+    if (this.scope === 'site') {
+      return ` Off-site navigation blocked: ${url} leaves the app under test (${this.lockedUrl}).`;
+    }
+    if (this.scope === 'subtree') {
+      return ` Sub-Tree Lock: blocked navigation to ${url} (outside the launch route ${this.lockedUrl}).`;
+    }
+    return ` Strict URL Lock: blocked navigation to ${url} (locked to ${this.lockedUrl}).`;
   }
 
   private async allow(route: Route): Promise<void> {
@@ -202,6 +291,48 @@ export class StrictUrlLockGuard {
               return false;
             }
             return !allowed.some((h) => host === h || host.endsWith('.' + h));
+          };
+        } else if (cfg.scope === 'subtree') {
+          // Mirror of the Node-side sub-tree rule: same origin AND path under the
+          // launch route's prefix. Auth origins (allowedHosts) always pass.
+          const canon = (h: string): string =>
+            h.toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
+          const partsOf = (raw: string, base?: string): { origin: string; path: string } | null => {
+            let u: URL;
+            try {
+              u = base !== undefined ? new URL(raw, base) : new URL(raw);
+            } catch {
+              return null;
+            }
+            if (APP_PROTOCOLS.indexOf(u.protocol) === -1) {
+              return null;
+            }
+            const path = u.pathname.replace(/\/+$/, '') || '/';
+            return { origin: `${u.protocol}//${u.host}`, path };
+          };
+          const target = partsOf(cfg.lockedUrl);
+          if (target === null) {
+            return; // lock isn't an http(s) app URL — nothing to confine.
+          }
+          const prefix = target.path === '/' ? '/' : target.path + '/';
+          const authHosts = cfg.allowedHosts;
+          leavesBoundary = (t: string): boolean => {
+            const current = partsOf(t, window.location.href);
+            if (current === null) {
+              return false;
+            }
+            try {
+              const host = canon(new URL(t, window.location.href).hostname);
+              if (host && authHosts.some((h) => host === h || host.endsWith('.' + h))) {
+                return false; // auth origin — always allowed
+              }
+            } catch {
+              // fall through to the path test
+            }
+            if (current.origin !== target.origin) {
+              return true;
+            }
+            return !(current.path === target.path || current.path.startsWith(prefix));
           };
         } else {
           // Mirror of the Node-side confinement key. Returns null when the URL is

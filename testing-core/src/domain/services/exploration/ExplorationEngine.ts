@@ -49,7 +49,7 @@ import { scrubCredentials } from '../telemetry/credentialScrub.js';
 import type { AuthPlaybookStep } from '../auth/authNarration.js';
 import { ActionExecutor } from './ActionExecutor.js';
 import { StateRestorer } from './StateRestorer.js';
-import { StrictUrlLockGuard } from './StrictUrlLockGuard.js';
+import { StrictUrlLockGuard, resolveUrlLockScope, type UrlLockScope } from './StrictUrlLockGuard.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
 import { shouldTriggerSessionLoss, classifySessionLoss, SessionRestoreCoordinator, type SessionRestoreFn } from './SessionPreservationGuard.js';
@@ -198,9 +198,10 @@ export class ExplorationEngine {
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
   private targetUrl = ''; // Full run URL — keyed for per-URL brain persistence/warm-start.
-  // Strict Page Boundary Lock: when true the launch URL is the immutable
-  // reference state and any drift is reverted (resolved in the constructor).
-  private readonly strictUrlLock: boolean;
+  // Active navigation-boundary scope (exact > subtree > site), resolved once from
+  // the optimization flags and threaded into every guard/consumer. exact pins the
+  // launch URL, subtree the launch route + descendants, site the whole target host.
+  private readonly boundaryScope: UrlLockScope;
   // Read-only dialog mode: cancel native dialogs instead of confirming them, so a
   // run against a shared environment never executes a confirm-gated destructive branch.
   private readonly dialogReadOnly: boolean;
@@ -307,9 +308,10 @@ export class ExplorationEngine {
       ?? defaultOptimizationSettings['execution-timebox-ms']
       ?? 600000;
 
-    // Resolve the Strict Page Boundary Lock flag (defaults off / backward-compatible).
-    this.strictUrlLock = optimizationSettings?.strictUrlLock ?? false;
-    console.log(`[ExplorationEngine] Strict URL Lock:`, this.strictUrlLock);
+    // Resolve the navigation-boundary scope. exact > subtree > site; sub-tree is
+    // the default when no explicit lock flag is supplied.
+    this.boundaryScope = resolveUrlLockScope(optimizationSettings);
+    console.log(`[ExplorationEngine] Navigation boundary scope:`, this.boundaryScope);
     this.dialogReadOnly = optimizationSettings?.['dialog-read-only'] ?? false;
 
     // Resolve the session-wide transition-repeat budget (default 3; 0 disables).
@@ -965,9 +967,11 @@ export class ExplorationEngine {
     // Operator visibility: announce which testing strategies are active this run.
     emitter.emitMilestone(`️ Active testing types: ${this.gate.activeCategories().join(', ')}`);
 
-    // Announce the Strict Page Boundary Lock so the operator sees the URL is pinned.
-    if (this.strictUrlLock) {
+    // Announce the active boundary lock so the operator sees how navigation is pinned.
+    if (this.boundaryScope === 'exact') {
       emitter.emitMilestone(` Strict Page Boundary Lock enabled — exploration confined to ${targetUrl}`);
+    } else if (this.boundaryScope === 'subtree') {
+      emitter.emitMilestone(` Sub-Tree Lock enabled — exploration confined to the launch route and its child pages (${targetUrl})`);
     }
 
     // Warm-start the perceptron from the latest brain for this URL BEFORE creating the
@@ -1192,7 +1196,7 @@ export class ExplorationEngine {
       getTargetUrl: () => this.targetUrl,
       getTargetOrigin: () => this.targetOrigin,
       authOrigins,
-      strictUrlLock: this.strictUrlLock,
+      boundaryScope: this.boundaryScope,
       setActivePage: (p) => { this.activePage = p; },
       onNavigated,
       onNetworkRequest,
@@ -1224,7 +1228,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       getTargetUrl: () => this.targetUrl,
       getTargetOrigin: () => this.targetOrigin,
-      strictUrlLock: this.strictUrlLock,
+      boundaryScope: this.boundaryScope,
       authOrigins,
       recreatePage: () => tabs.recreateFocused(),
       recordRecovery: (url, strategy) => {
@@ -1255,12 +1259,14 @@ export class ExplorationEngine {
       // goto so the init script is present for the initial document and the route
       // interceptor is live for the very first navigation. Blocks off-boundary
       // main-frame navigation before it commits (no reactive goto → no nav race).
-      // Always-on: strict lock pins to the exact URL, otherwise confine to the
-      // target site (host + subdomains + auth origins) so a redirect/button to a
-      // third-party site is aborted rather than explored.
-      const boundaryGuard = this.strictUrlLock
-        ? new StrictUrlLockGuard(targetUrl, emitter, { scope: 'exact' })
-        : new StrictUrlLockGuard(targetUrl, emitter, { scope: 'site', authOrigins });
+      // Always-on: exact pins to the launch URL, subtree pins to the launch route
+      // + descendants, site confines to the target host (+ subdomains + auth
+      // origins). authOrigins is ignored by 'exact' and always kept as an escape
+      // hatch for login under 'subtree'/'site'.
+      const boundaryGuard = new StrictUrlLockGuard(targetUrl, emitter, {
+        scope: this.boundaryScope,
+        authOrigins,
+      });
       await boundaryGuard.install(page);
 
       console.log('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
@@ -1342,11 +1348,13 @@ export class ExplorationEngine {
           if (this.actedHistory.length > ACTED_HISTORY_CAP) this.actedHistory.shift();
         },
         getTargetOrigin: () => this.targetOrigin,
+        getTargetUrl: () => this.targetUrl,
+        authOrigins,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => this.freezeRecording(),
         ensureDomReady: (p) => this.ensureDomReady(p, emitter),
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
-        strictUrlLock: this.strictUrlLock,
+        boundaryScope: this.boundaryScope,
         transitionRepeatBudget: this.transitionRepeatBudget,
         accessibilityAuditor: this.accessibilityAuditor,
         navigationFinder,
