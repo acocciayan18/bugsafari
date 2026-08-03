@@ -49,6 +49,7 @@ services:
       - BUGSAFARI_AUTH_KEY=${BUGSAFARI_AUTH_KEY}
       - JWT_SECRET=bugsafari-local-development-secret
       - JWT_EXPIRES_IN=7d
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
       - SMTP_HOST=${SMTP_HOST:-smtp.resend.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_SECURE=${SMTP_SECURE:-false}

@@ -8,9 +8,13 @@ x-shared-env: &shared-env
   REDIS_URL: redis://redis:6379
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
-  # Resend SMTP for operator emails (password reset, email verification). Consumed by
-  # the api service (the only sender). SMTP_PASS is the Resend API key; unset => sends
-  # fail and signup/reset return a structured error (no false success in production).
+  # Operator emails (password reset, email verification). Consumed by the api service
+  # (the only sender). PRIMARY transport is the Brevo HTTP API over 443 — set when the
+  # host blocks outbound SMTP (GCP and others block 25/465/587), which makes the SMTP
+  # path time out. Use the Brevo v3 API key (xkeysib-…), NOT the SMTP key (xsmtpsib-…).
+  BREVO_API_KEY: ${BREVO_API_KEY:-}
+  # SMTP fallback for hosts that permit it. SMTP_PASS is the provider's SMTP key; unset
+  # (and no BREVO_API_KEY) => sends fail and signup/reset return a structured error.
   # Port 587 = STARTTLS (SMTP_SECURE=false); 465 = implicit TLS (SMTP_SECURE=true).
   SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
   SMTP_PORT: ${SMTP_PORT:-587}
