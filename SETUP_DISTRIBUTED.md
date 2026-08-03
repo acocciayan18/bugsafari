@@ -184,5 +184,7 @@ git push --set-upstream origin 8-3-Ayan-4
 git add .
 git commit -m "Fix dashboard control flickering during initialization and canonical names"
 git switch dev
-git merge <your-current-branch>
+git merge 8-3-Ayan-4
 git push origin dev
+
+
