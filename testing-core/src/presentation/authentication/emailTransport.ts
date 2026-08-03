@@ -19,6 +19,12 @@ const SMTP_SECURE = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SEC
 const SMTP_USER = process.env.SMTP_USER || 'resend';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 
+// Brevo HTTP API — the PRIMARY transport when set. It sends over HTTPS/443, which
+// bypasses the outbound-SMTP egress blocks (e.g. GCP blocks 25/465/587) that make the
+// nodemailer path time out. SMTP stays the fallback for hosts that allow it.
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+
 export const APP_NAME = process.env.APP_NAME || 'BugSafari';
 // Resend's shared onboarding@resend.dev works without domain verification, so it is a
 // safe development default; production sets SMTP_FROM to a verified-domain sender.
@@ -33,10 +39,17 @@ export type EmailResult =
   | { ok: true; messageId: string }
   | { ok: false; code: EmailErrorCode; error: string };
 
-// A missing SMTP password (Resend API key) is a config problem, distinct from a
-// send that was attempted and failed — the two are surfaced differently.
+// Email is configured when EITHER transport can send — the Brevo HTTP API key or an
+// SMTP password. A config gap is distinct from a send that was attempted and failed.
 export function isSmtpConfigured(): boolean {
-  return SMTP_PASS.length > 0;
+  return BREVO_API_KEY.length > 0 || SMTP_PASS.length > 0;
+}
+
+// Brevo's API wants the sender as {email,name}; SMTP_FROM may be "Name <email>" or bare.
+function parseSender(): { email: string; name: string } {
+  const match = SMTP_FROM.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (match) return { name: match[1] || APP_NAME, email: match[2].trim() };
+  return { name: APP_NAME, email: SMTP_FROM.trim() };
 }
 
 // A dev machine with no SMTP configured should not be blocked: the link is logged
@@ -77,6 +90,11 @@ function getTransporter(): Transporter {
       // Force STARTTLS on the non-secure ports so credentials never cross in plaintext.
       requireTLS: !SMTP_SECURE,
       auth: SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+      // Fail fast on a blocked egress port: a filtered SMTP port otherwise hangs the
+      // signup request ~2min on nodemailer's defaults before the 502 (stuck-loading UX).
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
   }
   return transporter;
@@ -86,7 +104,14 @@ function getTransporter(): Transporter {
 // misconfiguration is visible at boot instead of on the first signup.
 export async function verifyEmailTransport(): Promise<void> {
   if (!isSmtpConfigured()) {
-    console.warn('[EMAIL] SMTP not configured (SMTP_PASS empty) — auth emails will not send. Set SMTP_PASS to your Resend API key.');
+    console.warn('[EMAIL] Email not configured (no BREVO_API_KEY or SMTP_PASS) — auth emails will not send. Set BREVO_API_KEY (HTTP API, recommended) or SMTP_PASS.');
+    return;
+  }
+  // Brevo API mode: no cheap verify endpoint, so log the resolved transport instead of
+  // probing. Takes priority — it is the send path whenever the key is present.
+  if (BREVO_API_KEY) {
+    const sender = parseSender();
+    console.log(`[EMAIL] Transport: Brevo HTTP API (from="${sender.name} <${sender.email}>")`);
     return;
   }
   try {
@@ -97,8 +122,39 @@ export async function verifyEmailTransport(): Promise<void> {
   }
 }
 
-// Core send. Never throws — every outcome is a structured EmailResult.
-async function sendMail(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
+// Send via Brevo's transactional HTTP API over 443. Bounded by AbortController so a
+// hung request fails fast like the SMTP path. Never throws — returns an EmailResult.
+async function sendViaBrevoApi(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: { 'api-key': BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ sender: parseSender(), to: [{ email: to }], subject, htmlContent: html, textContent: text }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => '')).slice(0, 300);
+      const message = `Brevo API ${response.status}: ${detail}`;
+      console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
+      return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
+    }
+    const body = (await response.json().catch(() => ({}))) as { messageId?: string };
+    const messageId = body.messageId ?? 'brevo-accepted';
+    console.log(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${messageId}`);
+    return { ok: true, messageId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
+    return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Send via SMTP (nodemailer). Fallback for hosts that permit outbound SMTP.
+async function sendViaSmtp(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
   try {
     const info = await getTransporter().sendMail({ from: SMTP_FROM, to, subject, html, text });
     console.log(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)}: ${info.messageId}`);
@@ -108,6 +164,11 @@ async function sendMail(to: string, subject: string, html: string, text: string)
     console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)}: ${message}`);
     return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
   }
+}
+
+// Core send. Prefers the Brevo HTTP API (egress-safe); falls back to SMTP. Never throws.
+async function sendMail(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
+  return BREVO_API_KEY ? sendViaBrevoApi(to, subject, html, text) : sendViaSmtp(to, subject, html, text);
 }
 
 // Dark-header card shared by both operator emails so they read as one brand.
@@ -169,7 +230,7 @@ export async function sendVerificationEmail(email: string, verifyToken: string):
   const expiresIn = formatDuration(EMAIL_VERIFICATION_TTL_MS);
 
   if (!isSmtpConfigured()) {
-    console.warn(`[EMAIL] SMTP not configured — verification link for ${maskEmail(email)}: ${verifyLink}`);
+    console.warn(`[EMAIL] Email not configured — verification link for ${maskEmail(email)}: ${verifyLink}`);
     return { ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'SMTP not configured' };
   }
 
@@ -191,7 +252,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
   const expiresIn = formatDuration(RESET_TOKEN_TTL_MS);
 
   if (!isSmtpConfigured()) {
-    console.warn(`[EMAIL] SMTP not configured — reset link for ${maskEmail(email)}: ${resetLink}`);
+    console.warn(`[EMAIL] Email not configured — reset link for ${maskEmail(email)}: ${resetLink}`);
     return { ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'SMTP not configured' };
   }
 
