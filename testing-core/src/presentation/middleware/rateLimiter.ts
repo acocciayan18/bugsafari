@@ -24,13 +24,59 @@ const SWEEP_INTERVAL_MS = 60_000;
 // must not grow the map without limit between sweeps. Oldest entries are evicted.
 const MAX_BUCKETS = 20_000;
 
+// Global kill switch for load tests / incident response. Off by default; every
+// limiter becomes a pass-through when set. Warned loudly in production because it
+// removes the API's abuse protection wholesale.
+const RATE_LIMITING_DISABLED =
+  process.env.BUGSAFARI_RL_DISABLED === '1' || process.env.BUGSAFARI_RL_DISABLED === 'true';
+if (RATE_LIMITING_DISABLED && process.env.NODE_ENV === 'production') {
+  console.warn('[RATE LIMIT] BUGSAFARI_RL_DISABLED is set in production — all API rate limiting is OFF.');
+}
+
+// A limiter's env override prefix, derived from its name so every preset (present
+// and future) is configurable with no extra wiring: 'auth:login-ip' -> AUTH_LOGIN_IP,
+// read as BUGSAFARI_RL_AUTH_LOGIN_IP_MAX / _WINDOW_MS.
+function configKeyFor(name: string): string {
+  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+// Read a positive-integer env override, falling back (with a warning) on absent or
+// malformed input so a fat-fingered value can never silently disable a limit.
+function envInt(key: string, fallback: number): number {
+  const raw = process.env[key];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    console.warn(`[RATE LIMIT] Ignoring invalid ${key}="${raw}" (expected a positive integer); using default ${fallback}.`);
+    return fallback;
+  }
+  return n;
+}
+
 function clientIp(request: Request): string {
   // req.ip honors `trust proxy`; socket address is the direct-connection fallback.
   return request.ip ?? request.socket.remoteAddress ?? 'unknown';
 }
 
 export function createRateLimiter(options: RateLimitOptions): RequestHandler {
-  const { windowMs, max, name, keyOn, message } = options;
+  const { name, keyOn, message } = options;
+
+  // Disabled globally → hand back a no-op so no per-request work or state is kept.
+  if (RATE_LIMITING_DISABLED) {
+    return function rateLimitDisabled(_request: Request, _response: Response, next: NextFunction): void {
+      next();
+    };
+  }
+
+  // Per-limiter env overrides; the hardcoded preset values are the defaults, so
+  // behavior is unchanged unless an operator sets the override.
+  const configKey = configKeyFor(name);
+  const windowMs = envInt(`BUGSAFARI_RL_${configKey}_WINDOW_MS`, options.windowMs);
+  const max = envInt(`BUGSAFARI_RL_${configKey}_MAX`, options.max);
+  if (windowMs !== options.windowMs || max !== options.max) {
+    console.log(`[RATE LIMIT] ${name} overridden via env: max=${max}, windowMs=${windowMs}`);
+  }
+
   const buckets = new Map<string, Bucket>();
 
   const sweep = setInterval(() => {
@@ -134,6 +180,24 @@ export const refreshLimiter = createRateLimiter({
   windowMs: 15 * 60_000,
   max: 60,
   message: 'Too many token refresh attempts.',
+});
+
+// Verifying consumes a token from an email; a modest ceiling stops brute-forcing
+// the token space without frustrating a user retrying a flaky link.
+export const verifyEmailLimiter = createRateLimiter({
+  name: 'auth:verify-email',
+  windowMs: 15 * 60_000,
+  max: 10,
+  message: 'Too many verification attempts. Try again in a few minutes.',
+});
+
+// Resend triggers an outbound email — same tight budget as forgot-password so it
+// can't be used as a mail-flood amplifier.
+export const resendVerificationLimiter = createRateLimiter({
+  name: 'auth:resend-verification',
+  windowMs: 60 * 60_000,
+  max: 5,
+  message: 'Too many verification email requests. Try again later.',
 });
 
 export const startTestLimiter = createRateLimiter({

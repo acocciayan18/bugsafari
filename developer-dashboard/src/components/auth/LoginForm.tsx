@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Lock, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { AUTH_SUCCESS, authSuccessToast, authEventToast } from '../../infrastructure/notifications/authToasts';
+import { postAuth } from '../../utils/authFeedback';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
@@ -26,6 +28,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   const [submitted, setSubmitted] = useState(false);
   const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
   const [openDocId, setOpenDocId] = useState<LegalDocId | null>(null);
+  const [resending, setResending] = useState(false);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -58,6 +61,17 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   // Wrong credentials are not attributable to one field, so both are marked —
   // and the wording lives once, in the alert.
   const credentialsRejected = authError?.code === 'INVALID_CREDENTIALS';
+  const emailUnverified = authError?.code === 'EMAIL_UNVERIFIED';
+
+  const handleResendVerification = async () => {
+    if (!email.trim()) return;
+    setResending(true);
+    const result = await postAuth('/api/auth/resend-verification', { email: email.trim() });
+    setResending(false);
+    // Only claim success once the backend confirms the email actually sent.
+    if (result.ok) authSuccessToast(AUTH_SUCCESS.verificationResent);
+    else authEventToast(result.feedback);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -164,6 +178,15 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
            
 
             <AuthAlert feedback={authError} />
+
+            {emailUnverified && (
+              <Button type="button" variant="secondary" size="md" className="w-full" isLoading={resending} disabled={resending} onClick={handleResendVerification}>
+                <span className="inline-flex items-center gap-2">
+                  <MailCheck className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                  {resending ? 'Sending…' : 'Resend verification email'}
+                </span>
+              </Button>
+            )}
 
             <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}

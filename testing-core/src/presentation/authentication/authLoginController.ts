@@ -69,6 +69,21 @@ export async function handleLogin(
         return;
       }
 
+      // Hard email-verification gate. Placed AFTER the password check so it only
+      // reveals the unverified state to a caller who already holds the password —
+      // it never becomes an enumeration oracle. Only an explicit `false` blocks;
+      // accounts predating verification (field undefined) pass through.
+      if (user.emailVerified === false) {
+        console.warn(`[Auth] Login blocked, email unverified: ${maskEmail(trimmedEmail)}`);
+        const body: AuthErrorBody = {
+          error: 'Please verify your email address before signing in',
+          code: 'EMAIL_UNVERIFIED',
+          field: 'email',
+        };
+        response.status(403).json(body);
+        return;
+      }
+
       // Short-lived access token plus a rotating refresh token in a new family.
       const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
 

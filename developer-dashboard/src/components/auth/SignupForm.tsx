@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, MailCheck, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -27,6 +27,8 @@ export default function SignupForm() {
   const [submitted, setSubmitted] = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [openDocId, setOpenDocId] = useState<LegalDocId | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [sentToEmail, setSentToEmail] = useState('');
 
   const consentRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -99,11 +101,42 @@ export default function SignupForm() {
     }
 
     try {
-      await signup({ email: email.trim(), password });
+      const ok = await signup({ email: email.trim(), password });
+      if (ok) {
+        setSentToEmail(email.trim());
+        setVerificationSent(true);
+      }
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
     }
   };
+
+  // Post-signup: the account exists but is unverified, so we show a terminal
+  // "check your inbox" screen rather than treating the user as signed in.
+  if (verificationSent) {
+    return (
+      <AuthShell eyebrow="VERIFY YOUR EMAIL" title="Check your inbox">
+        <div className="text-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-(--status-stable-fg)"><MailCheck className="w-7 h-7 sm:w-8 sm:h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          </div>
+          <p className="text-(--text-primary) mb-2">
+            We sent a verification link to <span className="font-medium">{sentToEmail}</span>.
+          </p>
+          <p className="text-[13px] text-(--text-tertiary) mb-6">
+            Open it to activate your account and sign in. Check your spam folder if it hasn't arrived.
+          </p>
+          <Link
+            to="/login"
+            className="inline-flex items-center text-[13px] text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+          >
+            <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            <span className="ml-2">Back to sign in</span>
+          </Link>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

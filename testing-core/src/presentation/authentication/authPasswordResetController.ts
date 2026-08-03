@@ -1,10 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
+import { sendPasswordResetEmail, deliveredOrDevFallback, RESET_TOKEN_TTL_MS, formatDuration } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
 // Unknown email, wrong token and expired token are indistinguishable to the
@@ -15,142 +15,17 @@ const RESET_TOKEN_REJECTION: AuthErrorBody = {
   field: 'token',
 };
 
-// Email transporter configuration
-// Using environment variables for SMTP settings
-const emailConfig = {
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true',
-  auth: {
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-  },
+// Surfaced only when a reset email genuinely fails to send to a real account, so
+// the frontend shows an honest error instead of a false "link sent".
+const EMAIL_SEND_FAILED: AuthErrorBody = {
+  error: 'We could not send the reset email right now. Please try again in a moment.',
+  code: 'EMAIL_SEND_FAILED',
 };
 
-const APP_NAME = process.env.APP_NAME || 'BugSafari';
-const APP_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-
-/**
- * Create nodemailer transporter
- */
-function createEmailTransporter() {
-  return nodemailer.createTransport({
-    host: emailConfig.host,
-    port: emailConfig.port,
-    secure: emailConfig.secure,
-    auth: emailConfig.auth.user ? emailConfig.auth : undefined,
-  });
-}
-
-/**
- * Send password reset email
- */
-async function sendPasswordResetEmail(email: string, resetToken: string): Promise<boolean> {
-  const resetLink = `${APP_URL}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
-
-  const mailOptions = {
-    from: `"${APP_NAME}" <${process.env.SMTP_USER || 'noreply@bugsafari.com'}>`,
-    to: email,
-    subject: ' Password Reset Request - BugSafari',
-    html: `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; padding: 20px;">
-    <tr>
-      <td align="center" style="padding: 40px 0;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); overflow: hidden;">
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">${APP_NAME}</h1>
-              <p style="margin: 10px 0 0 0; color: #94a3b8; font-size: 14px;">Password Reset</p>
-            </td>
-          </tr>
-
-          <!-- Content -->
-          <tr>
-            <td style="padding: 40px 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 20px; font-weight: 600;">Forgot your password?</h2>
-              <p style="margin: 0 0 20px 0; color: #64748b; font-size: 15px; line-height: 1.6;">
-                We received a request to reset your password. Click the button below to create a new password:
-              </p>
-
-              <!-- CTA Button -->
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center" style="padding: 25px 0;">
-                    <a href="${resetLink}" style="display: inline-block; background: #1e293b; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                      Reset Password
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 25px 0 15px 0; color: #64748b; font-size: 13px;">
-                Or copy and paste this link in your browser:
-              </p>
-              <p style="margin: 0; word-break: break-all;">
-                <a href="${resetLink}" style="color: #3b82f6; font-size: 13px;">${resetLink}</a>
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding: 25px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0;">
-              <p style="margin: 0; color: #94a3b8; font-size: 12px; text-align: center;">
-                This link will expire in 1 hour.<br>
-                If you didn't request this, please ignore this email.
-              </p>
-            </td>
-          </tr>
-        </table>
-
-        <p style="margin: 25px 0 0 0; color: #94a3b8; font-size: 12px; text-align: center;">
-           ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-    `,
-    text: `
-${APP_NAME} - Password Reset
-
-We received a request to reset your password.
-
-Click the link below to create a new password:
-${resetLink}
-
-This link will expire in 1 hour.
-
-If you didn't request this, please ignore this email.
-    `,
-  };
-
-  try {
-    const transporter = createEmailTransporter();
-
-    // Check if SMTP is configured
-    if (!emailConfig.auth.user) {
-      console.log(`[EMAIL] SMTP not configured. Reset link would be: ${resetLink}`);
-      return false;
-    }
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[EMAIL] Password reset email sent to ${maskEmail(email)}: ${info.messageId}`);
-    return true;
-  } catch (error) {
-    console.error(`[EMAIL] Failed to send password reset email:`, error);
-    return false;
-  }
-}
+// A pre-computed bcrypt hash of a throwaway value. The user-miss branch compares
+// against it so an unknown email costs the same bcrypt work as a real one,
+// keeping response time from leaking account existence (anti-enumeration).
+const TIMING_DECOY_HASH = bcrypt.hashSync('bugsafari-timing-decoy', 10);
 
 /**
  * Generate a secure reset token
@@ -161,7 +36,7 @@ function generateResetToken(): string {
 
 /**
  * POST /api/auth/forgot-password
- * Request a password reset - generates token and shows reset link
+ * Request a password reset - generates token and emails a reset link
  */
 export async function handleForgotPassword(
   request: Request,
@@ -196,35 +71,35 @@ export async function handleForgotPassword(
     // Find user by email
     const user = await UserModel.findOne({ email: trimmedEmail });
 
-    // ALWAYS return success to prevent email enumeration attacks
-    // But generate the token if user exists
-    if (user) {
-      // Generate reset token. The plaintext token is only ever sent to the user
-      // (email/link) - the DB stores a bcrypt hash of it, same as passwords, so a
-      // DB read/leak alone can't be replayed to reset an account's password.
-      const resetToken = generateResetToken();
-      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-      user.resetPasswordToken = await bcrypt.hash(resetToken, 10);
-      user.resetPasswordExpires = resetExpires;
-      await user.save();
-
-      // The plaintext token leaves the server only via the reset email.
-      console.log(`[FORGOT PASSWORD] Reset requested for: ${maskEmail(trimmedEmail)} (expires in 1 hour)`);
-      await sendPasswordResetEmail(trimmedEmail, resetToken);
-
-      response.json({
-        ok: true,
-        message: 'If an account exists with that email, a password reset link has been sent.',
-      });
-    } else {
-      // User doesn't exist - still return success to prevent enumeration
+    // Anti-enumeration: an unknown address gets the SAME generic success and an
+    // equivalent bcrypt cost, so it cannot be told apart from a known one.
+    if (!user) {
+      await bcrypt.compare(generateResetToken(), TIMING_DECOY_HASH);
       console.log(`[FORGOT PASSWORD] No user found for email: ${maskEmail(trimmedEmail)}`);
-      response.json({
-        ok: true,
-        message: 'If an account exists with that email, a password reset link has been sent.',
-      });
+      response.json({ ok: true, message: 'If an account exists with that email, a password reset link has been sent.' });
+      return;
     }
+
+    // The plaintext token is only ever sent to the user (email/link) - the DB
+    // stores a bcrypt hash of it, so a DB leak alone can't be replayed.
+    const resetToken = generateResetToken();
+    user.resetPasswordToken = await bcrypt.hash(resetToken, 10);
+    user.resetPasswordExpires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+    await user.save();
+
+    console.log(`[FORGOT PASSWORD] Reset requested for: ${maskEmail(trimmedEmail)} (expires in ${formatDuration(RESET_TOKEN_TTL_MS)})`);
+
+    // Awaited so success is reported only after delivery is confirmed. A real send
+    // failure surfaces an honest error rather than a false "link sent". (Trade-off:
+    // for a known account this is distinguishable from the unknown-account success
+    // during an SMTP outage — an accepted risk to keep delivery feedback truthful.)
+    const sent = await sendPasswordResetEmail(trimmedEmail, resetToken);
+    if (!deliveredOrDevFallback(sent)) {
+      response.status(502).json(EMAIL_SEND_FAILED);
+      return;
+    }
+
+    response.json({ ok: true, message: 'If an account exists with that email, a password reset link has been sent.' });
   } catch (err) {
     next(err);
   }
@@ -279,6 +154,9 @@ export async function handleResetPassword(
     const user = await UserModel.findOne({ email: trimmedEmail });
 
     if (!user) {
+      // Match the bcrypt cost of the found-user path so an unknown email is not
+      // measurably faster to reject than a wrong token on a real account.
+      await bcrypt.compare(trimmedToken, TIMING_DECOY_HASH);
       response.status(400).json(RESET_TOKEN_REJECTION);
       return;
     }

@@ -3,6 +3,7 @@ import { handleTokenRefresh, handleLogout } from './authRefreshController.js';
 import { handleSignup } from './authSignupController.js';
 import { handleLogin } from './authLoginController.js';
 import { handleForgotPassword, handleResetPassword } from './authPasswordResetController.js';
+import { handleVerifyEmail, handleResendVerification } from './authEmailVerificationController.js';
 import {
   loginLimiter,
   loginIpLimiter,
@@ -10,6 +11,8 @@ import {
   forgotPasswordLimiter,
   resetPasswordLimiter,
   refreshLimiter,
+  verifyEmailLimiter,
+  resendVerificationLimiter,
 } from '../middleware/rateLimiter.js';
 
 /**
@@ -17,9 +20,12 @@ import {
  * by definition, so each carries its own abuse budget.
  */
 export function registerAuthRoutes(app: Express): void {
-  // Registration routes - /api/auth/register is primary, /api/auth/send-email-verification kept for compatibility
+  // Registration routes - /api/auth/register is primary alias of /api/auth/signup
   app.post('/api/auth/register', signupLimiter, handleSignup);
   app.post('/api/auth/signup', signupLimiter, handleSignup);
+  // Email verification - confirm the address (auto-login) or re-send the link.
+  app.post('/api/auth/verify-email', verifyEmailLimiter, handleVerifyEmail);
+  app.post('/api/auth/resend-verification', resendVerificationLimiter, handleResendVerification);
   // Two buckets: per-(IP,email) catches targeted brute force, per-IP bounds spraying.
   app.post('/api/auth/login', loginIpLimiter, loginLimiter, handleLogin);
   // Rotating refresh: exchanges a refresh token for a new pair, reuse burns the family.

@@ -21,6 +21,13 @@ interface AuthResponse {
     user?: AuthUser;
 }
 
+// Signup no longer returns a session — access is gated behind email verification.
+interface SignupResponse {
+    ok?: boolean;
+    verificationRequired?: boolean;
+    email?: string;
+}
+
 interface AuthState {
     user: AuthUser | null;
     token: string | null;
@@ -37,6 +44,9 @@ interface AuthState {
     refreshToken: () => Promise<boolean>;
     clearAuthError: () => void;
     setSession: (token: string | null, user: AuthUser | null) => void;
+    // Persist + publish a full session from a token pair (login-equivalent path
+    // used by email verification auto-login).
+    establishSession: (token: string, refreshToken: string, user: AuthUser) => void;
 }
 
 // Derived, never stored — a stored copy would drift from token/user.
@@ -76,6 +86,12 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     setSession: (token, user) => set({ token, user }),
 
+    establishSession: (token, refreshToken, user) => {
+        set({ token, user, isGuestMode: false });
+        persistSession(token, refreshToken, user);
+        localStorage.removeItem('bugsafari_guest');
+    },
+
     login: async (credentials) => {
         set({ isLoading: true, authError: null });
 
@@ -108,7 +124,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     signup: async (credentials) => {
         set({ isLoading: true, authError: null });
 
-        const result = await postAuth<AuthResponse>('/api/auth/register', {
+        const result = await postAuth<SignupResponse>('/api/auth/register', {
             email: credentials.email.trim(),
             password: credentials.password,
         });
@@ -118,25 +134,17 @@ export const useAuthStore = create<AuthState>((set) => ({
             return false;
         }
 
-        const { token, refreshToken, user } = result.data;
-        if (!token || !refreshToken || !user) {
-            console.error('[authStore] Signup accepted but the token pair was incomplete:', result.data);
+        // Signup issues no session — the account is unverified. Success means "check
+        // your inbox"; the form renders that screen off this boolean.
+        if (!result.data.ok || !result.data.verificationRequired) {
+            console.error('[authStore] Signup accepted but verification flag was missing:', result.data);
             set({ authError: buildFeedback('UNEXPECTED_RESPONSE'), isLoading: false });
             return false;
         }
 
-        persistSession(token, refreshToken, user);
-        console.log('[authStore] Signup successful:', user.email);
-        authSuccessToast(AUTH_SUCCESS.accountCreated);
-
-        // Session is persisted immediately but published to the store only when
-        // the bounce lands, so the signup screen never renders as signed-in for
-        // the 2s it is still visible. isLoading holds the form locked meanwhile.
-        setTimeout(() => {
-            set({ token, user, isLoading: false });
-            navigateTo('/login');
-        }, 2000);
-
+        set({ isLoading: false });
+        console.log('[authStore] Signup successful, verification required:', credentials.email.trim());
+        authSuccessToast(AUTH_SUCCESS.verificationSent);
         return true;
     },
 

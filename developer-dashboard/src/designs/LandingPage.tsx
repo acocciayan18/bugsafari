@@ -277,7 +277,7 @@ const LandingPage = () => {
                                     key={item.id}
                                     onClick={() => goToSection(item.id)}
                                     aria-current={activeSection === item.id ? 'page' : undefined}
-                                    className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${activeSection === item.id ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}
+                                    className={`font-mono text-sm font-medium transition-colors bg-transparent border-none cursor-pointer ${activeSection === item.id ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}
                                 >
                                     {item.label}
                                 </button>
@@ -286,17 +286,19 @@ const LandingPage = () => {
                     </div>
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => navigate('/signup')}
-                            className="px-5 py-2 font-mono text-[13px] font-semibold text-black border border-zinc-300 rounded-lg bg-transparent hover:bg-zinc-50 transition-all focus:ring-2 focus:ring-black focus:outline-none cursor-pointer"
-                        >
-                            Sign Up
-                        </button>
-                        <button
                             onClick={goToLogin}
                             className="px-5 py-2 font-mono text-[13px] font-semibold bg-[#121212] text-white rounded-lg shadow-sm hover:bg-zinc-800 transition-all focus:ring-2 focus:ring-black focus:outline-none cursor-pointer"
                         >
                             Log In
                         </button>
+
+                        <button
+                            onClick={() => navigate('/signup')}
+                            className="px-5 py-2 font-mono text-[13px] font-semibold text-black border border-zinc-300 rounded-lg bg-transparent hover:bg-zinc-50 transition-all focus:ring-2 focus:ring-black focus:outline-none cursor-pointer"
+                        >
+                            Sign Up
+                        </button>
+                        
                     </div>
                 </div>
             </nav>

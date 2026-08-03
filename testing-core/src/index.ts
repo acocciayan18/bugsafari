@@ -11,6 +11,7 @@ import { registerRoutes } from './presentation/api/registerRoutes.js';
 import { registerAuthRoutes } from './presentation/authentication/authController.js';
 import { registerUserSettingsRoutes } from './presentation/authentication/userSettingsController.js';
 import { registerSupportRoutes } from './presentation/api/supportController.js';
+import { verifyEmailTransport } from './presentation/authentication/emailTransport.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
@@ -166,6 +167,9 @@ if (taskQueue) {
 
 // Register socket handlers now that optional queue support is resolved.
 registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher && runRegistry ? { broadcaster: queueStatusBroadcaster, controlPublisher, runRegistry } : undefined);
+
+// Probe SMTP once at boot so a misconfiguration is visible now, not on first signup.
+void verifyEmailTransport();
 
 registerAuthRoutes(app);
 registerUserSettingsRoutes(app);

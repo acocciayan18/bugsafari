@@ -5,6 +5,9 @@ export interface IUser extends Document {
   email: string;
   password: string;
   name?: string;
+  emailVerified: boolean;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   settings: {
@@ -37,6 +40,21 @@ const userSchema = new Schema(
       type: String,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters'],
+    },
+    // Explicit false only on accounts created after email verification shipped.
+    // Pre-existing docs have no field (undefined) and the login guard treats only
+    // an explicit `false` as unverified, so they are never locked out — no backfill.
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      default: undefined,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      default: undefined,
     },
     resetPasswordToken: {
       type: String,

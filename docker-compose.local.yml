@@ -49,10 +49,12 @@ services:
       - BUGSAFARI_AUTH_KEY=${BUGSAFARI_AUTH_KEY}
       - JWT_SECRET=bugsafari-local-development-secret
       - JWT_EXPIRES_IN=7d
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_HOST=${SMTP_HOST:-smtp.resend.com}
       - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-resend}
       - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM:-}
       - APP_NAME=BugSafari
       # On-demand AI Suggested Fix (POST /api/findings/suggest-fix). Empty => the
       # endpoint returns the deterministic knowledge-base advice as fallback.

@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { issueTokenPair } from './refreshTokenService.js';
 import { requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
+import { sendVerificationEmail, deliveredOrDevFallback, EMAIL_VERIFICATION_TTL_MS } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
 const EMAIL_TAKEN: AuthErrorBody = {
@@ -70,25 +72,44 @@ export async function handleSignup(
         return;
       }
 
-      // Create user - password will be hashed by pre-save hook in UserModel
+      // The plaintext verification token is sent only via email; the DB stores a
+      // bcrypt hash, so a DB leak alone can't confirm an account.
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+
+      // Create user unverified and issue NO session — access is hard-gated behind
+      // clicking the verification link (see handleVerifyEmail / login guard).
       const newUser = await UserModel.create({
         email: trimmedEmail,
         password: trimmedPassword,
+        emailVerified: false,
+        emailVerificationToken: await bcrypt.hash(verificationToken, 10),
+        emailVerificationExpires: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
       });
 
-      const tokens = await issueTokenPair(newUser._id.toString(), trimmedEmail);
+      // Awaited so signup reports success only after the verification email is
+      // actually delivered (no false "check your inbox").
+      const emailResult = await sendVerificationEmail(trimmedEmail, verificationToken);
+      if (!deliveredOrDevFallback(emailResult)) {
+        // Roll back the just-created account so the user can retry cleanly rather
+        // than being blocked by EMAIL_TAKEN on an unverifiable orphan.
+        await UserModel.deleteOne({ _id: newUser._id }).catch((e) =>
+          console.error('[Auth] Rollback after verification-email failure failed:', e),
+        );
+        console.error(`[Auth] Verification email failed; rolled back signup for ${maskEmail(trimmedEmail)}`);
+        const body: AuthErrorBody = {
+          error: 'We could not send your verification email. Please try again in a moment.',
+          code: 'EMAIL_SEND_FAILED',
+          field: 'email',
+        };
+        response.status(502).json(body);
+        return;
+      }
 
-      console.log(`[Auth] New user registered: ${maskEmail(trimmedEmail)}`);
-
+      console.log(`[Auth] New user registered (unverified): ${maskEmail(trimmedEmail)}`);
       response.status(201).json({
         ok: true,
-        user: {
-          id: newUser._id.toString(),
-          email: trimmedEmail,
-        },
-        token: tokens.token,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
+        verificationRequired: true,
+        email: trimmedEmail,
       });
     } catch (dbError) {
       // Duplicate key from the unique email index races the existence check above.

@@ -19,6 +19,7 @@ import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ForgotPasswordForm from './components/auth/ForgotPasswordForm';
 import ResetPasswordForm from './components/auth/ResetPasswordForm';
+import VerifyEmailForm from './components/auth/VerifyEmailForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
@@ -219,7 +220,7 @@ function AuthAppContent() {
     return () => window.removeEventListener('bugsafari:session-expired', handler);
   }, [logout]);
 
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password';
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password' || location.pathname === '/reset-password' || location.pathname === '/verify-email';
   const isInfoRoute = location.pathname === '/explore' || location.pathname === '/features' || location.pathname === '/community' || location.pathname === '/about';
 
   const activeView: ViewType = location.pathname.startsWith('/history')
@@ -263,6 +264,7 @@ function AuthAppContent() {
           <Route path="/signup" element={<SignupForm />} />
           <Route path="/forgot-password" element={<ForgotPasswordForm />} />
           <Route path="/reset-password" element={<ResetPasswordForm />} />
+          <Route path="/verify-email" element={<VerifyEmailForm />} />
           <Route path="/explore" element={<ExplorePage />} />
           <Route path="/features" element={<FeaturesPage />} />
           <Route path="/community" element={<CommunityPage />} />

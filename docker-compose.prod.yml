@@ -8,6 +8,24 @@ x-shared-env: &shared-env
   REDIS_URL: redis://redis:6379
   BUGSAFARI_AUTH_KEY: ${BUGSAFARI_AUTH_KEY:?set BUGSAFARI_AUTH_KEY (32-byte hex or base64)}
   FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL}
+  # Resend SMTP for operator emails (password reset, email verification). Consumed by
+  # the api service (the only sender). SMTP_PASS is the Resend API key; unset => sends
+  # fail and signup/reset return a structured error (no false success in production).
+  # Port 587 = STARTTLS (SMTP_SECURE=false); 465 = implicit TLS (SMTP_SECURE=true).
+  SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-resend}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  APP_NAME: ${APP_NAME:-BugSafari}
+  # Configurable link lifetimes (ms). Reset default 1h, verification default 24h.
+  RESET_TOKEN_TTL_MS: ${RESET_TOKEN_TTL_MS:-3600000}
+  EMAIL_VERIFICATION_TTL_MS: ${EMAIL_VERIFICATION_TTL_MS:-86400000}
+  # API rate limiting. Emergency kill switch (default off). Per-limiter overrides
+  # (BUGSAFARI_RL_<LIMITER>_MAX / _WINDOW_MS) can be added here as needed; see
+  # testing-core/.env.example for the limiter list and defaults.
+  BUGSAFARI_RL_DISABLED: ${BUGSAFARI_RL_DISABLED:-false}
   RUN_ENVIRONMENT: ${RUN_ENVIRONMENT:-CLOUD_HOSTED}
   # One reverse proxy (Caddy) sits in front, so req.ip must read the single
   # X-Forwarded-For hop it appends. Unset (0) collapses every client into the

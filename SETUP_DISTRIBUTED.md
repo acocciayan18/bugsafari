@@ -168,6 +168,10 @@ git checkout -b dev
 git push origin dev --force
 
 
+git add .
+git commit -m "productionize of forgot pass and email verification"
+git push origin HEAD:dev --force
+
 
 git init
 git add .

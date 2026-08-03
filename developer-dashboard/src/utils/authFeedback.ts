@@ -54,10 +54,25 @@ const COPY: Record<AuthFeedbackCode, CopyEntry> = {
     message: 'An account with this email already exists.',
     hint: 'Sign in instead, or reset the password for that account.',
   },
+  EMAIL_UNVERIFIED: {
+    severity: 'auth',
+    message: 'Please verify your email before signing in.',
+    hint: 'Open the verification link we emailed you, or resend it below.',
+  },
+  VERIFICATION_TOKEN_INVALID: {
+    severity: 'auth',
+    message: 'This verification link is invalid or has expired.',
+    hint: 'Request a new verification email to continue.',
+  },
+  EMAIL_SEND_FAILED: {
+    severity: 'server',
+    message: "We couldn't send the email.",
+    hint: 'This is on our side, not your details. Please try again in a moment.',
+  },
   RESET_TOKEN_INVALID: {
     severity: 'auth',
     message: 'This password reset link is invalid or has expired.',
-    hint: 'Reset links expire after 1 hour. Request a new one to continue.',
+    hint: 'Reset links expire for security. Request a new one to continue.',
   },
   SESSION_REVOKED: {
     severity: 'auth',

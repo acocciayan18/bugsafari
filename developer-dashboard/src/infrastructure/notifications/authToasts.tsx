@@ -18,6 +18,9 @@ const alertIcon = <ShieldAlert className="w-4 h-4" strokeWidth={1.75} />;
 
 export const AUTH_SUCCESS = {
   accountCreated: 'Account created. Redirecting to sign in…',
+  verificationSent: 'Check your inbox to verify your email and finish signing up.',
+  emailVerified: 'Email verified. Welcome to BugSafari.',
+  verificationResent: 'If your account needs verifying, a new link is on its way.',
   resetLinkSent: 'If an account exists for that email, a reset link is on its way.',
   passwordReset: 'Password updated. Sign in with your new password.',
   signedOut: 'Signed out successfully.',
