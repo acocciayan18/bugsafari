@@ -175,8 +175,14 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Fix console tab card design"
-git checkout -b 8-3-Ayan-3
-git push --set-upstream origin 8-3-Ayan-3
+git commit -m "Fix dashboard control flickering during initialization and canonical names"
+git checkout -b 8-3-Ayan-4
+git push --set-upstream origin 8-3-Ayan-4
 
 
+
+git add .
+git commit -m "Fix dashboard control flickering during initialization and canonical names"
+git switch dev
+git merge <your-current-branch>
+git push origin dev

@@ -197,7 +197,13 @@ export class ExplorationEngine {
   private freezeActionTraceRecording = false;
   private lastBrainSnapshotStep = 0;
   private targetOrigin = '';
-  private targetUrl = ''; // Full run URL — keyed for per-URL brain persistence/warm-start.
+  private targetUrl = ''; // User-entered run URL — kept for display, history, reports, forensics, brain key.
+  // Canonical navigation target, resolved once from page.url() after the initial
+  // redirect chain settles (e.g. fb.com → https://www.facebook.com/). Every
+  // boundary/scope guard validates against this; it defaults to the user URL until
+  // the first load resolves it, and is never replaced again mid-exploration.
+  private canonicalUrl = '';
+  private canonicalOrigin = '';
   // Active navigation-boundary scope (exact > subtree > site), resolved once from
   // the optimization flags and threaded into every guard/consumer. exact pins the
   // launch URL, subtree the launch route + descendants, site the whole target host.
@@ -814,6 +820,9 @@ export class ExplorationEngine {
     this.activeGateway = telemetry;
     this.targetOrigin = new URL(targetUrl).origin;
     this.targetUrl = targetUrl;
+    // Boundary starts at the user URL; relocked to the canonical URL after first load.
+    this.canonicalUrl = targetUrl;
+    this.canonicalOrigin = this.targetOrigin;
     this.freezeActionTraceRecording = false;
     ActiveScenarioTracker.reset();
     this.clusterRegistry.reset();
@@ -937,7 +946,7 @@ export class ExplorationEngine {
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
-      getTargetOrigin: () => this.targetOrigin,
+      getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
       isEngineStopping: () => this.isStopRequested || this.isPaused,
     });
@@ -946,7 +955,7 @@ export class ExplorationEngine {
       hashManager: this.hashManager,
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
-      getTargetOrigin: () => this.targetOrigin,
+      getTargetOrigin: () => this.canonicalOrigin,
     });
 
     const actionExecutor = new ActionExecutor({
@@ -956,7 +965,7 @@ export class ExplorationEngine {
       highlighter: this.highlighter,
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
-      getTargetOrigin: () => this.targetOrigin,
+      getTargetOrigin: () => this.canonicalOrigin,
       escalationTracker: this.escalationTracker,
       formFuzz: this.formFuzz,
       formFuzzCap: this.formFuzzCap,
@@ -1193,8 +1202,8 @@ export class ExplorationEngine {
       context: page.context(),
       telemetry: emitter,
       stabilityMonitor,
-      getTargetUrl: () => this.targetUrl,
-      getTargetOrigin: () => this.targetOrigin,
+      getTargetUrl: () => this.canonicalUrl,
+      getTargetOrigin: () => this.canonicalOrigin,
       authOrigins,
       boundaryScope: this.boundaryScope,
       setActivePage: (p) => { this.activePage = p; },
@@ -1226,8 +1235,8 @@ export class ExplorationEngine {
     // once per exploration iteration by the loop via ensurePageHealth().
     const pageHealthGuard = new PageHealthGuard({
       telemetry: emitter,
-      getTargetUrl: () => this.targetUrl,
-      getTargetOrigin: () => this.targetOrigin,
+      getTargetUrl: () => this.canonicalUrl,
+      getTargetOrigin: () => this.canonicalOrigin,
       boundaryScope: this.boundaryScope,
       authOrigins,
       recreatePage: () => tabs.recreateFocused(),
@@ -1266,6 +1275,10 @@ export class ExplorationEngine {
       const boundaryGuard = new StrictUrlLockGuard(targetUrl, emitter, {
         scope: this.boundaryScope,
         authOrigins,
+        // Follow the launch redirect chain to the canonical URL, THEN pin the boundary
+        // to it (relock below). Arming pre-goto would abort the very redirect that
+        // resolves an alias like fb.com → www.facebook.com as a scope violation.
+        deferInitialLock: true,
       });
       await boundaryGuard.install(page);
 
@@ -1286,6 +1299,20 @@ export class ExplorationEngine {
       );
 
       onNavigated(page.url()); // emit the real post-navigation URL
+
+      // Canonical target resolution (once): the browser's final URL after the launch
+      // redirect chain is the site's real domain. Pin every boundary/scope guard to it
+      // for the rest of the run so an alias entry (fb.com → www.facebook.com) never
+      // reads as an off-boundary violation. The user-entered URL stays untouched for
+      // display, history, reports, and forensics — only navigation validation moves.
+      const settledUrl = page.url();
+      const canonicalUrl = /^https?:/i.test(settledUrl) ? settledUrl : targetUrl;
+      this.canonicalUrl = canonicalUrl;
+      this.canonicalOrigin = new URL(canonicalUrl).origin;
+      await boundaryGuard.relock(canonicalUrl);
+      if (new URL(canonicalUrl).host !== new URL(targetUrl).host) {
+        emitter.emitMilestone(` Canonical target resolved to ${this.canonicalOrigin} after redirect — navigation boundary now follows the site's real domain.`);
+      }
 
       await this.ensureDomReady(page, emitter);
 
@@ -1347,8 +1374,8 @@ export class ExplorationEngine {
           this.actedHistory.push({ target: t, actedAtMs: now });
           if (this.actedHistory.length > ACTED_HISTORY_CAP) this.actedHistory.shift();
         },
-        getTargetOrigin: () => this.targetOrigin,
-        getTargetUrl: () => this.targetUrl,
+        getTargetOrigin: () => this.canonicalOrigin,
+        getTargetUrl: () => this.canonicalUrl,
         authOrigins,
         persistBrainSnapshot: (source, step) => this.persistBrainSnapshot(source, step),
         setFreeze: () => this.freezeRecording(),

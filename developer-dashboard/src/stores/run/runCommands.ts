@@ -7,7 +7,7 @@ import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
+import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID } from './types';
 
 function writeStorage(key: string, value: string | null): void {
     try {
@@ -68,7 +68,7 @@ export async function startRun(
     store.resetForLaunch(timeboxMs, resolvedUrl);
 
     try {
-        const { runId, runCode, jobId, queued, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
+        const { runId, runCode, jobId, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
         // Persist the server-issued run token so a refresh / reconnect re-attaches
         if (runId) writeStorage(RUN_ID_STORAGE_KEY, runId);
         // The run's public code identifies it at save time — always overwrite, so a
@@ -87,10 +87,10 @@ export async function startRun(
             return;
         }
 
-        // Queued runs haven't launched an engine yet: drop into standby and disarm the
-        // 30s no-frame watchdog. The queued toast comes from the backend push, which is
-        // the single source of truth for it.
-        if (queued) useRunStore.setState((s) => ({ status: resolveStatus(s.status, 'QUEUED'), isInitializing: false }));
+        // No optimistic QUEUED. subscribeQueue (in gateway.startTest) triggers an
+        // immediate queue push: 'waiting' → QUEUED with a real position for a genuine
+        // wait, 'active' → ACTIVE on instant pickup. Flipping to QUEUED here forced a
+        // transient standby frame that reverted the moment that push landed.
     } catch (error) {
         const raw = error instanceof Error ? error.message : String(error);
         // The backend refuses authenticated runs only when its credential-encryption

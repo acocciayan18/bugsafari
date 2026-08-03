@@ -1,6 +1,6 @@
 import type { Page, Route, Request } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
-import { canonicalHost, isWithinTargetSite } from '../../../../../shared/url.js';
+import { canonicalHost, isWithinTargetSite, isPrivateTargetUrl } from '../../../../../shared/url.js';
 import type { OptimizationSettings } from '../../../../../shared/types.js';
 
 // Only real application navigations are subject to confinement. Every other
@@ -21,6 +21,9 @@ export type UrlLockScope = 'exact' | 'subtree' | 'site';
 export interface UrlLockOptions {
   scope?: UrlLockScope;
   authOrigins?: readonly string[]; // 'site'/'subtree' scopes — extra allowed hosts (SSO).
+  // Defer confinement past the initial navigation so the launch redirect chain can
+  // resolve the canonical URL; relock() then pins the boundary to it. Default off.
+  deferInitialLock?: boolean;
 }
 
 // Resolve the persisted OptimizationSettings flags into an active scope.
@@ -50,29 +53,54 @@ export function resolveUrlLockScope(settings?: Partial<OptimizationSettings> | n
  */
 export class StrictUrlLockGuard {
   /** Canonical http/https confinement key for the lock, or null if unparseable. */
-  private readonly lockKey: string | null;
+  private lockKey: string | null = null;
   private readonly scope: UrlLockScope;
   /**
    * Injected-sandbox allow list. 'site': target host + auth origins. 'subtree':
    * auth origins ONLY (the target host is governed by the path-prefix rule, not a
    * bare host match). 'exact': empty.
    */
-  private readonly allowedHosts: string[];
+  private allowedHosts: string[] = [];
+  // Confinement is inert until armed. Deferred-lock mode (initial navigation) stays
+  // unarmed so the launch redirect chain reaches the canonical URL; relock() then
+  // pins the boundary to it. Immediate mode arms at construction.
+  private armed: boolean;
+  // Captured at install so relock() can re-inject the client sandbox on the live page.
+  private page: Page | null = null;
 
   constructor(
-    private readonly lockedUrl: string,
+    private lockedUrl: string,
     private readonly telemetry: TelemetryEmitter,
     private readonly options: UrlLockOptions = {},
   ) {
     this.scope = options.scope ?? 'exact';
+    this.applyLock();
+    this.armed = options.deferInitialLock !== true;
+  }
+
+  // (Re)derive the confinement key + injected-sandbox allow list from lockedUrl.
+  private applyLock(): void {
     this.lockKey = StrictUrlLockGuard.confinementKey(this.lockedUrl);
-    const authHosts = (options.authOrigins ?? []).map(canonicalHost).filter(Boolean);
+    const authHosts = (this.options.authOrigins ?? []).map(canonicalHost).filter(Boolean);
     this.allowedHosts =
       this.scope === 'site'
         ? [canonicalHost(this.lockedUrl), ...authHosts].filter(Boolean)
         : this.scope === 'subtree'
           ? authHosts
           : [];
+  }
+
+  /**
+   * Pin the boundary to the canonical URL resolved after the initial navigation
+   * (page.url() post-redirect) and arm enforcement. Called once, immediately after
+   * the first load. Re-injects the client sandbox so the live document and every
+   * future one confine to the canonical URL.
+   */
+  public async relock(canonicalUrl: string): Promise<void> {
+    this.lockedUrl = canonicalUrl;
+    this.applyLock();
+    this.armed = true;
+    if (this.page) await this.installClientSandbox(this.page, true);
   }
 
   /**
@@ -172,7 +200,10 @@ export class StrictUrlLockGuard {
    * the route interceptor is armed for the very first navigation.
    */
   public async install(page: Page): Promise<void> {
-    await this.installClientSandbox(page);
+    this.page = page;
+    // Deferred-lock mode injects the sandbox at relock (with the canonical URL); an
+    // immediately-armed guard installs it now.
+    if (this.armed) await this.installClientSandbox(page);
     await this.installRouteInterceptor(page);
   }
 
@@ -187,6 +218,19 @@ export class StrictUrlLockGuard {
       // handler order — any handler that wanted the request (e.g. NetworkSaboteur)
       // has already taken it, so continue() is the unambiguous terminal action.
       if (!request.isNavigationRequest() || request.frame() !== mainFrame) {
+        await this.allow(route);
+        return;
+      }
+
+      // Unarmed (initial navigation): let the main-frame redirect chain through so it
+      // can settle on the canonical URL before the boundary is pinned to it — but never
+      // to a private/internal host, which the armed guard would block and which would be
+      // an SSRF via a public alias's redirect.
+      if (!this.armed) {
+        if (isPrivateTargetUrl(request.url())) {
+          await this.abort(route);
+          return;
+        }
         await this.allow(route);
         return;
       }
@@ -241,9 +285,8 @@ export class StrictUrlLockGuard {
   }
 
   // ── Layer 2: client-side navigation sandbox (runs before page scripts) ─────
-  private async installClientSandbox(page: Page): Promise<void> {
-    await page.addInitScript(
-      (cfg: { scope: UrlLockScope; lockedUrl: string; allowedHosts: string[] }) => {
+  private async installClientSandbox(page: Page, applyToCurrent = false): Promise<void> {
+    const sandbox = (cfg: { scope: UrlLockScope; lockedUrl: string; allowedHosts: string[] }) => {
         // ── Runs in the browser at document start, before any page script. ──
 
         // Confine only the top-level application frame. Cross-origin sub-frames
@@ -428,8 +471,19 @@ export class StrictUrlLockGuard {
           },
           true,
         );
-      },
-      { scope: this.scope, lockedUrl: this.lockedUrl, allowedHosts: this.allowedHosts },
-    );
+      };
+
+    const cfg = { scope: this.scope, lockedUrl: this.lockedUrl, allowedHosts: this.allowedHosts };
+    // Future documents (reloads, SPA sub-docs, iframes) run it at document-start.
+    await page.addInitScript(sandbox, cfg);
+    // The live document (already past document-start) needs it applied directly —
+    // relock uses this so the canonical boundary takes effect without a reload.
+    if (applyToCurrent) {
+      try {
+        await page.evaluate(sandbox, cfg);
+      } catch {
+        // Current document navigating/closed — future documents stay covered by addInitScript.
+      }
+    }
   }
 }
