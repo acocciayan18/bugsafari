@@ -18,7 +18,7 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
         <div className="flex min-w-0 items-start gap-2.5">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-(--text-secondary)" strokeWidth={1.75} aria-hidden="true" />
           <div className="min-w-0">
-            <h3 id="guest-mode-title" className="text-[13px] font-semibold text-(--text-primary)">
+            <h3 id="guest-mode-title" className="text-sm font-semibold text-(--text-primary)">
               Continue as Guest?
             </h3>
             <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
@@ -55,10 +55,10 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
       </div>
 
       <div className="flex flex-col-reverse gap-2 border-t border-(--border-hairline) px-3 pb-5 py-3 sm:flex-row sm:justify-end sm:px-5">
-        <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={onContinue}>
+        <Button variant="secondary" size="sm" className="w-full sm:w-auto " onClick={onContinue}>
           Continue as Guest
         </Button>
-        <Button variant="primary" size="sm" className="w-full sm:w-auto" onClick={onCreateAccount}>
+        <Button variant="primary" size="sm" className="w-full sm:w-auto " onClick={onCreateAccount}>
           Create Account
         </Button>
       </div>

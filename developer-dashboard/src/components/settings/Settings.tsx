@@ -180,7 +180,7 @@ function PasswordInputField({
 }
 
 // Memoized toggle switch — keyboard-accessible (Enter + Space)
-const ToggleSwitch = memo(function ToggleSwitch({
+export const ToggleSwitch = memo(function ToggleSwitch({
   checked,
   onChange,
   label,
@@ -196,14 +196,23 @@ const ToggleSwitch = memo(function ToggleSwitch({
   return (
     <div className="flex items-center justify-between gap-3 py-3 sm:gap-4">
       <div className="flex items-start gap-3">
-        {icon && <div className="mt-0.5 text-(--text-tertiary)">{icon}</div>}
+        {icon && (
+          <div className="mt-0.5 text-slate-400 dark:text-zinc-400">
+            {icon}
+          </div>
+        )}
         <div>
-          <span className="text-sm font-medium text-(--text-secondary)">{label}</span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            {label}
+          </span>
           {description && (
-            <p className="text-sm text-(--text-secondary) mt-0.5">{description}</p>
+            <p className="mt-0.5 text-sm text-slate-600 dark:text-zinc-400">
+              {description}
+            </p>
           )}
         </div>
       </div>
+
       <button
         type="button"
         role="switch"
@@ -216,13 +225,15 @@ const ToggleSwitch = memo(function ToggleSwitch({
             onChange(!checked);
           }
         }}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-(--border-focus) focus:ring-offset-2 focus:ring-offset-(--surface-app) ${
-          checked ? 'bg-(--surface-invert)' : 'bg-(--surface-inset)'
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
+          checked
+            ? 'bg-emerald-500 dark:bg-emerald-500' // High-visibility active color (Emerald / Tech Accent)
+            : 'bg-slate-300 dark:bg-zinc-700'       // Clear, high-contrast inactive track
         }`}
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-(--surface-panel) shadow ring-0 transition duration-200 ease-in-out ${
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />

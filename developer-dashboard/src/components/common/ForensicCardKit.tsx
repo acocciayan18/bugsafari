@@ -57,7 +57,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
       title={`Copy ${label || 'content'} to clipboard`}
     >
       <Copy className="h-3.5 w-3.5" />
-      <span className="text-[13px]">{copied ? 'Copied!' : 'Copy'}</span>
+      <span className="text-[13px] cursor-pointer">{copied ? 'Copied!' : 'Copy'}</span>
     </button>
   );
 };
