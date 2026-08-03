@@ -31,9 +31,9 @@ const DESCRIPTION_PLACEHOLDERS: Record<SupportModalProps['mode'], string> = {
 };
 
 const SUCCESS_MESSAGES: Record<SupportModalProps['mode'], string> = {
-  contact: 'Message sent — support will reply to your email.',
-  ticket: 'Ticket opened — we will follow up by email.',
-  feature: 'Feature request submitted — thank you.',
+  contact: "Message sent. We'll reply to your email.",
+  ticket: "Ticket opened. We'll follow up by email.",
+  feature: 'Thanks, your feature request is in.',
 };
 
 export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
@@ -77,9 +77,8 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
       toast.success(SUCCESS_MESSAGES[mode]);
       resetAndClose();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not submit your request.';
-      console.error('[SupportModal] Submit failed:', message);
-      toast.error(message);
+      console.error('[SupportModal] Submit failed:', error);
+      toast.error("We couldn't send that just now. Try again in a moment.");
     } finally {
       setIsSubmitting(false);
     }

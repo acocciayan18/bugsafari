@@ -58,7 +58,7 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
           onClick={onDismiss}
           className="w-full cursor-pointer rounded-lg bg-[#121212] px-8 py-3 text-xs font-medium uppercase st text-white shadow-md transition-all hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         >
-          I Understand — Continue to BugSafari
+          I understand, continue to BugSafari
         </button>
       </div>
     </Modal>

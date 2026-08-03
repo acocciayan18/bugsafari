@@ -300,7 +300,7 @@ function AiInsightsPanel({
         )}
       </div>
       {status === 'error' && (
-        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">{fallbackReasonText(reason)} — showing the deterministic analysis.</p>
+        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">{fallbackReasonText(reason)} Showing the built-in analysis instead.</p>
       )}
       {rootCause && (
         <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
@@ -426,19 +426,19 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
 
 // Operator-facing explanation for each non-terminal-proof reason.
 const REASON_TEXT: Record<VerifyFixReason, string> = {
-  REPRODUCED: 'The original fault recurred during replay — the defect is still present.',
-  CLEAN_REPLAY: 'The recorded reproduction timeline replayed cleanly — none of the original fault’s signals recurred.',
+  REPRODUCED: 'The original fault came back during replay, so the defect is still present.',
+  CLEAN_REPLAY: 'The recorded steps replayed cleanly, and none of the original fault signals came back.',
   INSUFFICIENT_REPLAY:
-    'Too few of the recorded steps actually executed (selectors may have changed), so a clean run does not prove the fix.',
+    'Too few of the recorded steps actually ran (selectors may have changed), so a clean run does not prove the fix.',
   FAULT_TRIGGER_NOT_EXERCISED:
-    'The replay never re-triggered the request that produced the original fault, so a clean run cannot prove it is fixed.',
+    'The replay never re-triggered the request that caused the original fault, so a clean run cannot prove it is fixed.',
   UNVERIFIABLE_BUG_CLASS:
-    'This bug class cannot be evidenced by deterministic replay. Re-test it with a live exploration run.',
+    "We can't confirm this kind of bug with replay alone. Re-test it with a live exploration run.",
   WEAK_MATCH_ONLY:
-    'Faults of the same class occurred but could not be corroborated as the original defect — not enough evidence either way.',
+    "Faults of the same type showed up, but we couldn't confirm they're the original defect, so there isn't enough evidence either way.",
   LEGACY_TIMELINE:
-    'This finding predates per-finding timelines; the session-wide replay may never reach the faulting state, so a clean run is not proof.',
-  REPLAY_ERROR: 'The target could not be replayed — this verdict says nothing about the bug. Try again.',
+    'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
+  REPLAY_ERROR: "We couldn't replay the target, so this result says nothing about the bug. Try again.",
 };
 
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
@@ -581,7 +581,7 @@ function VerificationResultModal({
         {result.matchedSignals.length > 0 && (
           <div className="mt-4">
             <div className="mb-2 text-xs font-bold uppercase r text-(--text-secondary)">
-              {result.verdict === 'STILL_ACTIVE' ? 'Reproduced Signals' : 'Uncorroborated Same-Class Signals'} ({result.matchedSignals.length})
+              {result.verdict === 'STILL_ACTIVE' ? 'Reproduced Signals' : 'Unconfirmed Same-Type Signals'} ({result.matchedSignals.length})
             </div>
             <ul className="space-y-2">
               {result.matchedSignals.map((signal, idx) => (
@@ -599,20 +599,20 @@ function VerificationResultModal({
 
         {result.verdict === 'INCONCLUSIVE' && (
           <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
-            {REASON_TEXT[result.reason] ?? result.error ?? 'The replay could not conclude. Try again.'}
+            {REASON_TEXT[result.reason] ?? 'The replay could not finish. Try again.'}
           </div>
         )}
 
         {result.verdict === 'VERIFICATION_FAILED' && (
           <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
-            {result.error ? `${REASON_TEXT.REPLAY_ERROR} (${result.error})` : REASON_TEXT.REPLAY_ERROR}
+            {REASON_TEXT.REPLAY_ERROR}
           </div>
         )}
 
         {result.otherSignals.length > 0 && (
           <div className="mt-4">
             <div className="mb-2 text-xs font-bold uppercase r text-(--text-secondary)">
-              Other Faults Observed — Different Class ({result.otherSignals.length})
+              Other Faults Observed (Different Type) ({result.otherSignals.length})
             </div>
             <ul className="space-y-2">
               {result.otherSignals.map((signal, idx) => (
@@ -672,9 +672,9 @@ function ReportFindingCard({
   // A verifiable finding needs both a persisted session id and a stable bugId.
   const canVerify = Boolean(sessionId) && Boolean(bug.bugId);
   const disabledReason = !sessionId
-    ? 'Missing session id for this report'
+    ? "This report can't be replayed right now."
     : !bug.bugId
-      ? 'This finding has no stable id to replay'
+      ? "This finding can't be replayed."
       : undefined;
 
   // Settled verdict drives both the card theme and the header status chip.
@@ -812,7 +812,7 @@ function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
           <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold uppercase text-(--text-oninvert)">{row.method}</span>
-              <span className={`font-mono text-xs font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '—'}` : 'FAILED'}</span>
+              <span className={`font-mono text-xs font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '?'}` : 'FAILED'}</span>
               {row.resourceType && (
                 <span className="font-mono text-xs uppercase  text-(--text-tertiary)">{row.resourceType}</span>
               )}
@@ -886,7 +886,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
         className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
         <span className="text-[13px] font-semibold uppercase r text-(--text-secondary)">
-          Full Action Timeline ({steps.length} steps) — reference
+          Full Action Timeline ({steps.length} steps), for reference
         </span>
         <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : ' Expand'}</span>
       </button>
@@ -960,7 +960,7 @@ export default function ForensicReport() {
 
   useEffect(() => {
     if (!sessionId) {
-      setError('Missing report ID.');
+      setError('This report link is missing its ID.');
       setIsLoading(false);
       return;
     }
@@ -978,7 +978,8 @@ export default function ForensicReport() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load forensic report.');
+          console.error('[ForensicReport] Failed to load report:', err);
+          setError("We couldn't load this report. Try again in a moment.");
         }
       } finally {
         if (!cancelled) {
@@ -1027,8 +1028,8 @@ export default function ForensicReport() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-(--surface-panel) px-6">
         <div className="max-w-md text-center">
-          <div className="text-[13px] font-semibold text-(--status-critical-fg)">Failed to load report</div>
-          <div className="mt-2 text-[13px] text-(--text-tertiary)">{error || 'No report data was returned for this session.'}</div>
+          <div className="text-[13px] font-semibold text-(--status-critical-fg)">Couldn't load this report</div>
+          <div className="mt-2 text-[13px] text-(--text-tertiary)">{error || "We couldn't find any data for this report."}</div>
         </div>
       </div>
     );

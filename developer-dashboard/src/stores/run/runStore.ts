@@ -355,7 +355,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             // Shared id makes repeated waiting pushes update in place instead of stacking.
             // The live place in line rides the chip, not the toast — a toast body that
             // changes every push re-announces itself to screen readers on each tick.
-            toast('Session queued — waiting for an available worker. Execution starts automatically.', { id: STATUS_TOAST_ID, duration: Infinity });
+            toast('Session queued. Waiting for an available worker, then execution starts automatically.', { id: STATUS_TOAST_ID, duration: Infinity });
             return;
         }
 
@@ -389,7 +389,8 @@ export const useRunStore = create<RunState>((set, get) => ({
         }
 
         if (update.state === 'failed') {
-            const message = `Queued run failed before execution: ${update.message ?? 'unknown error'}`;
+            console.error('[runStore] Queued run failed before execution:', update.message ?? 'unknown error');
+            const message = "Your queued run couldn't start. Try again.";
             toast.error(message);
             set((s) => ({
                 isQueued: false, queuePosition: null, isInitializing: false, isThinking: false,

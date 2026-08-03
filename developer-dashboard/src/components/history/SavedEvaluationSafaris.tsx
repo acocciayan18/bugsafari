@@ -75,7 +75,7 @@ export default function SavedEvaluationSafaris() {
       setDeleteState({ isOpen: false, recordId: null, targetUrl: '', isDeleting: false });
     } catch (err) {
       console.error('[SavedEvaluations] Delete error:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to delete record');
+      toast.error("We couldn't delete that record. Try again.");
       setDeleteState((prev) => ({ ...prev, isDeleting: false }));
     }
   };
@@ -86,7 +86,7 @@ export default function SavedEvaluationSafaris() {
       toast.success('Record exported successfully');
     } catch (err) {
       console.error('[SavedEvaluations] Export error:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to export record');
+      toast.error("We couldn't export that record. Try again.");
     }
   };
 
@@ -229,7 +229,7 @@ export default function SavedEvaluationSafaris() {
           ) : error ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
-              <span className="text-[13px] font-medium text-[var(--status-critical-fg)]">Failed to load history</span>
+              <span className="text-[13px] font-medium text-[var(--status-critical-fg)]">We couldn't load your history</span>
               <span className="text-[13px] text-[var(--text-secondary)]">{error}</span>
               <button
                 onClick={() => void fetchSessions(true)}

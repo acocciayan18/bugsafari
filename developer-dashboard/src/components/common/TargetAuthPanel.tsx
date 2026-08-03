@@ -189,7 +189,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             screen. Pick whichever method matches how your target authenticates.
           </p>
           <div>
-            <p className="font-medium text-(--text-primary)">Login form — email &amp; password</p>
+            <p className="font-medium text-(--text-primary)">Login form (email &amp; password)</p>
             <p className="text-(--text-tertiary)">
               The engine opens the login page, fills the fields, and submits. Best for ordinary
               username/password forms. Add custom selectors under Advanced only if auto-detection
@@ -197,7 +197,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             </p>
           </div>
           <div>
-            <p className="font-medium text-(--text-primary)">Session state — storageState JSON</p>
+            <p className="font-medium text-(--text-primary)">Session state (storageState JSON)</p>
             <p className="text-(--text-tertiary)">
               Seed a session you already established out of band. Use this when a form fill can't drive
               the login: SSO/OAuth redirects, MFA, or captcha. Export it with
@@ -309,7 +309,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                 disabled={fieldsDisabled}
                 onChange={(e) => set('successIndicator', e.target.value)}
                 className={FIELD_CLASS}
-                placeholder="Optional — defaults to a login-wall check"
+                placeholder="Optional, defaults to a login-wall check"
               />
             </div>
           </div>
@@ -318,7 +318,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         <p className="flex items-start gap-1.5 text-xs leading-relaxed text-(--text-tertiary) font-sans">
           <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
           <span>
-            Used once for this run and held in memory only — never saved to your history, reports,
+            Used once for this run and held in memory only, never saved to your history, reports,
             logs, or the job queue. Re-enter them for each run. Use a dedicated test account.
           </span>
         </p>
@@ -345,7 +345,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             strokeWidth={1.75}
             aria-hidden="true"
           />
-          Advanced — custom selectors
+          Advanced (custom selectors)
         </button>
         )}
 
@@ -367,7 +367,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                   disabled={fieldsDisabled}
                   onChange={(e) => set('loginUrl', e.target.value)}
                   className={FIELD_CLASS}
-                  placeholder="Optional — where to start looking"
+                  placeholder="Optional, where to start looking"
                 />
               </div>
               <div>

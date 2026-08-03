@@ -77,7 +77,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
                 const fetched = await fetchSessionHistory();
                 set({ sessions: transformSessionsToEvaluations(fetched), lastFetchedAt: Date.now() });
             } catch (err) {
-                set({ error: err instanceof Error ? err.message : 'Unknown error' });
+                set({ error: "We couldn't load your history. Try again." });
                 console.error('[historyStore] Fetch error:', err);
             } finally {
                 set({ isLoading: false });

@@ -29,7 +29,7 @@ export default function QueueStandbyChip() {
         >
             <LoaderCircle className="h-4 w-4 shrink-0 animate-spin sm:h-5 sm:w-5" strokeWidth={1.75} aria-hidden="true" />
             <span className="truncate">
-                Queued — {place}
+                Queued, {place}
                 {fleet && <span className="font-semibold opacity-80"> · {fleet}</span>}
             </span>
         </span>

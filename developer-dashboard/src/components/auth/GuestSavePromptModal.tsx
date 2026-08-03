@@ -36,7 +36,7 @@ export function GuestSavePromptModal({ isOpen, onClose, onCreateAccount }: Guest
 
       <div className="px-3 py-4 sm:px-5">
         <p className="text-sm leading-relaxed text-(--text-secondary)">
-          Guest sessions are temporary and never written to the database. Create a free account to keep this
+          Guest sessions are temporary and never saved. Create a free account to keep this
           session, revisit its findings, and export reports.
         </p>
       </div>

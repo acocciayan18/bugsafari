@@ -96,38 +96,38 @@ const COPY: Record<AuthFeedbackCode, CopyEntry> = {
   },
   NOT_FOUND: {
     severity: 'server',
-    message: 'The authentication service is unavailable.',
-    hint: 'Your details are fine — this is on our side. Try again shortly.',
+    message: "We can't reach our servers right now.",
+    hint: 'Your details are fine. This one is on us, so try again shortly.',
   },
   BAD_REQUEST: {
     severity: 'validation',
-    message: 'The request was rejected.',
+    message: "We couldn't process that request.",
     hint: 'Check your details and try again.',
   },
   INVALID_JSON: {
     severity: 'server',
-    message: 'The request could not be read by the server.',
+    message: "We couldn't process that request.",
     hint: 'Reload the page and try again.',
   },
   PAYLOAD_TOO_LARGE: {
     severity: 'validation',
-    message: 'The submitted details are too large.',
+    message: 'The details you entered are too long.',
     hint: 'Shorten your input and try again.',
   },
   INTERNAL_ERROR: {
     severity: 'server',
-    message: 'The server hit an unexpected error.',
-    hint: 'Your details are fine — this is on our side. Try again in a moment.',
+    message: 'Something went wrong on our end.',
+    hint: 'Your details are fine. Try again in a moment.',
   },
   NETWORK_UNREACHABLE: {
     severity: 'network',
-    message: 'Cannot reach the BugSafari server.',
-    hint: 'Check your connection, confirm the API is running, then try again.',
+    message: "Can't reach BugSafari right now.",
+    hint: 'Check your internet connection and try again.',
   },
   UNEXPECTED_RESPONSE: {
     severity: 'server',
-    message: 'The server returned an unexpected response.',
-    hint: 'Your details are fine — this is on our side. Try again in a moment.',
+    message: 'Something went wrong on our end.',
+    hint: 'Your details are fine. Try again in a moment.',
   },
 };
 

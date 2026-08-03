@@ -85,7 +85,7 @@ function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> 
           <Chip text={`${bypass.method} ${bypass.endpoint}`} />
         </BypassRow>
         <BypassRow label="Response">
-          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span> — server accepted the value
+          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span>, and the value was accepted
         </BypassRow>
       </div>
     </div>
@@ -112,7 +112,7 @@ function Reproduction({ view }: { view: FindingView }) {
   }
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-[13px] italic text-(--text-tertiary)">
-      No deterministic reproduction steps were recorded for this fault.
+      No reproduction steps were recorded for this fault.
     </div>
   );
 }

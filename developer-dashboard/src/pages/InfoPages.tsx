@@ -231,14 +231,14 @@ export function ExploreContent() {
                     <div className="space-y-2">
                         <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Infiltration Profiles</span>
                         <h2 className="text-2xl font-extrabold uppercase tracking-tight">One Target URL, Five Ways In</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every run picks one profile, which gates which scenario families fire and derives the pathfinder's mode — exploration, coverage, or targeted probe.</p>
+                        <p className="text-zinc-600 max-w-2xl">Every run picks one profile, which gates which scenario families fire and derives the pathfinder's mode: exploration, coverage, or targeted probe.</p>
                     </div>
                     <ProfileTabs />
                 </div>
 
                 <FaqAccordion items={[
-                    { q: 'Do I need to write test scripts?', a: 'No. The recursive DOM parser discovers interactive elements straight from the live page on every step — there is no fixture, selector list, or path to hand-author before a run.' },
-                    { q: 'How does it avoid clicking the same button forever?', a: 'Five independent layers — repeat-strike thresholds, forward look-ahead, ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking — keep the state graph moving toward unexplored territory instead of circling.' },
+                    { q: 'Do I need to write test scripts?', a: 'No. The recursive DOM parser discovers interactive elements straight from the live page on every step. There is no fixture, selector list, or path to hand-author before a run.' },
+                    { q: 'How does it avoid clicking the same button forever?', a: 'Five independent layers (repeat-strike thresholds, forward look-ahead, ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking) keep the state graph moving toward unexplored territory instead of circling.' },
                     { q: 'Can a run wander off the target site?', a: 'Only if Strict Boundary Lock is off. When enabled, a page.route interceptor plus an init-script sandbox blocks any off-origin navigation before it commits.' },
                     { q: 'What happens when the app runs out of new states?', a: 'A cluster is marked saturated once every discovered control has been triggered, then the engine runs up to two adaptive recovery rounds before terminating with a boundary-saturated outcome.' },
                 ]} />
@@ -264,7 +264,7 @@ export function FeaturesContent() {
                         <div>
                             <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">AI</div>
                             <h3 className="text-xl font-bold uppercase mb-2">Scriptless Traversal</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">A recursive DOM parser discovers every interactive candidate live, verifies visibility with elementFromPoint, and hands each one to the risk model — no manual test script or selector map required.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">A recursive DOM parser discovers every interactive candidate live, verifies visibility with elementFromPoint, and hands each one to the risk model, with no manual test script or selector map required.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Zero Configuration</div>
                     </div>
@@ -273,7 +273,7 @@ export function FeaturesContent() {
                         <div>
                             <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">ML</div>
                             <h3 className="text-xl font-bold uppercase mb-2">Adaptive Intelligence</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 24-feature single-layer perceptron scores every candidate and updates its weights after every observed outcome — a fault, a network call, a repeated state — via a momentum-augmented delta rule.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 24-feature single-layer perceptron scores every candidate and updates its weights after every observed outcome (a fault, a network call, a repeated state) via a momentum-augmented delta rule.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Self-Learning Core</div>
                     </div>
@@ -291,7 +291,7 @@ export function FeaturesContent() {
                 <SplitSection
                     eyebrow="Attack Scenarios"
                     heading="Five Ways to Stress a Target"
-                    description="Each infiltration profile gates a different family of live scenarios — from concurrent-click bursts to escalating fuzz payloads — so a run can be tuned to exactly the kind of defect you're hunting."
+                    description="Each infiltration profile gates a different family of live scenarios, from concurrent-click bursts to escalating fuzz payloads, so a run can be tuned to exactly the kind of defect you're hunting."
                     bullets={[
                         'DataFuzzer classifies inputs into 7 categories and escalates payloads across 5 levels, from base cases to polyglot amplification.',
                         'FormBypasser strips disabled, readonly, and pattern constraints to test whether validation is actually enforced server-side.',
@@ -317,14 +317,14 @@ export function FeaturesContent() {
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">01</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Provenance Attribution</h4>
-                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, network, or timing noise — so only real application defects ever get reported.</p>
+                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, network, or timing noise, so only real application defects ever get reported.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">02</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Deterministic Fault Classification</h4>
-                                <p className="text-[13px] text-zinc-600">One shared knowledge base resolves bug class, severity, and remediation from a runtime signal — the same signal always yields the same verdict, regardless of which detector saw it.</p>
+                                <p className="text-[13px] text-zinc-600">One shared knowledge base resolves bug class, severity, and remediation from a runtime signal. The same signal always yields the same verdict, no matter which detector saw it.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
@@ -374,7 +374,7 @@ export function CommunityContent() {
                     heading="Built for Builders Under Deadline"
                     description="The primary audience is student developers and independent engineers who need rapid feedback on unstable behavior before demos, submissions, or deployment milestones. BugSafari acts as an automated resilience probe that surfaces high-impact failures early and leaves enough evidence to understand what happened."
                     bullets={[
-                        'No QA team required — one person can start a run, read the forensic report, and know exactly what broke and why.',
+                        'No QA team required. One person can start a run, read the forensic report, and know exactly what broke and why.',
                         'Guest mode lets anyone try a full live run against their own app with zero signup.',
                         'Registered accounts keep history, export findings as JSON, and verify a fix once it ships.',
                     ]}
@@ -413,7 +413,7 @@ export function CommunityContent() {
                     <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
                         <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">01</div>
                         <h3 className="text-xl font-bold uppercase">Try Before You Sign Up</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same exploration engine and live dashboard as a registered account. The only difference is that a guest run isn't written to history — it exists for the length of the session.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same exploration engine and live dashboard as a registered account. The only difference is that a guest run isn't written to history. It lasts only as long as your session.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
                         <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">02</div>
@@ -423,7 +423,7 @@ export function CommunityContent() {
                 </div>
 
                 <FaqAccordion items={[
-                    { q: 'Do I need an account to try it?', a: 'No. Guest mode lets you enter a target URL, pick a profile, and watch a full live run with the same telemetry and reporting the registered dashboard uses — sessions just aren\'t saved.' },
+                    { q: 'Do I need an account to try it?', a: 'No. Guest mode lets you enter a target URL, pick a profile, and watch a full live run with the same telemetry and reporting the registered dashboard uses. Sessions just aren\'t saved.' },
                     { q: 'What do I get by registering?', a: 'Saved run history with search and filtering, a full-detail forensic report per session, JSON export, and the ability to re-verify a finding with Verify Fix after you ship a patch.' },
                     { q: 'Is my target app data isolated from other users?', a: 'Yes. Every history and forensic query filters on the owning account at the database level, and a run can additionally be re-attached only by whoever started it.' },
                 ]} />
@@ -445,8 +445,8 @@ export function AboutContent() {
     return (
             <div className="space-y-16">
                 <div className="space-y-6 text-zinc-700 leading-relaxed text-base max-w-4xl">
-                    <p>BugSafari was born out of a simple frustration: modern Single-Page Applications hide subtle regressions, timing races, and validation bypasses that scripted, linear test suites never think to try. Randomized "monkey" testing has the opposite problem — plenty of activity, little structural intelligence, weak reproducibility, and low forensic value.</p>
-                    <p>So we built an autonomous, scriptless exploration engine: it parses your app's live DOM, scores every interactive element with a self-learning perceptron, stress-tests state under concurrency and async chaos, fuzzes inputs with escalating payloads, and turns whatever breaks into a reproducible, replayable forensic record — no fixtures, no hand-written paths.</p>
+                    <p>BugSafari was born out of a simple frustration: modern Single-Page Applications hide subtle regressions, timing races, and validation bypasses that scripted, linear test suites never think to try. Randomized "monkey" testing has the opposite problem: plenty of activity, little structural intelligence, weak reproducibility, and low forensic value.</p>
+                    <p>So we built an autonomous, scriptless exploration engine: it parses your app's live DOM, scores every interactive element with a self-learning perceptron, stress-tests state under concurrency and async chaos, fuzzes inputs with escalating payloads, and turns whatever breaks into a reproducible, replayable forensic record, with no fixtures and no hand-written paths.</p>
                 </div>
 
                 <SplitSection
@@ -471,7 +471,7 @@ export function AboutContent() {
                         </div>
                         <div className="space-y-2">
                             <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">02. Deterministic Classification</h4>
-                            <p className="text-[13px] text-zinc-600">Every fault resolves through one shared knowledge base — the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
+                            <p className="text-[13px] text-zinc-600">Every fault resolves through one shared knowledge base, so the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
                         </div>
                         <div className="space-y-2">
                             <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">03. Failure Isolation</h4>

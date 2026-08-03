@@ -228,7 +228,7 @@ function LiveFeed({
         {isIdle && (
           <div className="absolute inset-0 flex items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
             <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
-              ENTER TARGET URL TO INITIATE
+              ENTER A TARGET URL TO BEGIN
             </p>
           </div>
         )}
@@ -238,7 +238,7 @@ function LiveFeed({
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
             <span className="mb-4 inline-block h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-(--status-neutral-fg) border-r-transparent"></span>
             <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
-              QUEUED — AWAITING WORKER FLEET
+              QUEUED, WAITING FOR AN OPEN SLOT
             </p>
           </div>
         )}

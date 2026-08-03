@@ -81,7 +81,7 @@ export const TERMS_OF_USE: LegalDoc = {
   {
     heading: 'Authorized testing only',
     body: [
-      'BugSafari actively interacts with the application you point it at — it clicks, submits forms, injects boundary and malformed input, and can create or modify data in that application.',
+      'BugSafari actively interacts with the application you point it at. It clicks, submits forms, injects boundary and malformed input, and can create or modify data in that application.',
     ],
     bullets: [
       'You may only use BugSafari on applications you own or are explicitly authorized to test, always in a dedicated staging environment with disposable test data, as unauthorized testing or targeting production systems containing real personal data may violate the Cybercrime Prevention Act of 2012 (RA 10175) and other applicable laws.',
@@ -129,7 +129,7 @@ export const RESEARCH_DISCLAIMER: LegalDoc = {
     {
       heading: 'Responsible use',
       body: [
-        'The techniques implemented here — automated interaction, input fuzzing, and boundary-state probing — are dual-use. Deploying them against systems you do not own or lack authorization to test is unlawful, and the authors accept no liability for such use.',
+        'The techniques implemented here (automated interaction, input fuzzing, and boundary-state probing) are dual-use. Deploying them against systems you do not own or lack authorization to test is unlawful, and the authors accept no liability for such use.',
       ],
     },
   ],
@@ -143,7 +143,7 @@ export const ABOUT_BUGSAFARI: LegalDoc = {
     {
       heading: 'What it does',
       body: [
-        'BugSafari replaces static test scripts with an agent that explores an application on its own — traversing the DOM, scoring which elements are worth interacting with, avoiding loops, fuzzing inputs, and recording the steps that led to any crash it triggers.',
+        'BugSafari replaces static test scripts with an agent that explores an application on its own, traversing the DOM, scoring which elements are worth interacting with, avoiding loops, fuzzing inputs, and recording the steps that led to any crash it triggers.',
       ],
     },
     {
@@ -194,12 +194,12 @@ export const OPEN_SOURCE_LICENSES: LegalDoc = {
     {
       heading: 'Core dependencies',
       body: [],
-      bullets: LICENSES.map((entry) => `${entry.name} — ${entry.license}`),
+      bullets: LICENSES.map((entry) => `${entry.name}: ${entry.license}`),
     },
     {
       heading: 'Attribution',
       body: [
-        'Full license texts ship with each package inside node_modules. Run `npm ls --all` in either workspace for the complete transitive dependency tree.',
+        'Full license texts are included with each package as distributed. Every dependency listed above remains governed by its own license terms.',
       ],
     },
   ],
@@ -217,7 +217,7 @@ export type LegalDocId = keyof typeof LEGAL_DOCS;
 
 export const GUEST_LIMITATIONS = [
   'Your session is temporary and ends when you close this browser.',
-  'Session history is not saved — past runs cannot be revisited.',
+  'Session history is not saved, so past runs cannot be revisited.',
   'Reports cannot be generated, exported, or downloaded.',
   'Testing configurations and target profiles are not stored.',
   'No data is written to the database at any point.',

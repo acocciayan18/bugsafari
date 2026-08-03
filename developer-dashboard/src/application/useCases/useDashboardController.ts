@@ -148,7 +148,7 @@ function useEngineLivenessProbe(
                 } else if (action === 'release') {
                     logger.warn('[useDashboardController] Liveness probe: backend owns no run for this client — releasing local state.');
                     useRunStore.getState().releaseOrphanedRun(
-                        'Session ended: the backend no longer reports an active run for this client. Nothing was left running.',
+                        'Session ended. There is no active run to resume, and nothing was left running.',
                     );
                     return;
                 }

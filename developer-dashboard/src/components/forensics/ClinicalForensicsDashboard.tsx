@@ -405,7 +405,7 @@ export default function ClinicalForensicsDashboard({
             {/* Overlays the page rather than reflowing it — the field keeps its position. */}
             {showLocalTargetError && !noticeDismissed && (
               isSelfTarget
-                ? <PublicTargetNotice title="BugSafari cannot test itself" onDismiss={() => setNoticeDismissed(true)}>{SELF_TARGET_FORBIDDEN_MESSAGE}</PublicTargetNotice>
+                ? <PublicTargetNotice title="BugSafari can't test itself" onDismiss={() => setNoticeDismissed(true)}>{SELF_TARGET_FORBIDDEN_MESSAGE}</PublicTargetNotice>
                 : <PublicTargetNotice onDismiss={() => setNoticeDismissed(true)} />
             )}
           </div>
@@ -415,9 +415,9 @@ export default function ClinicalForensicsDashboard({
             disabled={isActiveSession || authIncomplete || isBlockedTarget}
             title={
               isSelfTarget
-                ? 'BugSafari cannot test itself — enter a different public website'
+                ? "BugSafari can't test itself. Enter a different public website."
                 : showLocalTargetError
-                  ? 'Enter a publicly reachable URL — local addresses cannot be tested'
+                  ? "Enter a publicly reachable URL. Local addresses can't be tested."
                   : authIncomplete
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined

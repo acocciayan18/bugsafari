@@ -57,7 +57,7 @@ export function FindingMetaBar({ attribution }: { attribution?: FindingAttributi
 
   const pills: Array<{ label: string; value: string; title?: string }> = [];
   if (attribution?.cwe) pills.push({ label: 'CWE', value: attribution.cwe, title: 'MITRE CWE identifier' });
-  if (verification) pills.push({ label: 'Status', value: verification, title: 'Finding-verification pipeline verdict' });
+  if (verification) pills.push({ label: 'Status', value: verification, title: 'How this finding was verified' });
 
   if (pills.length === 0) return null;
   return (

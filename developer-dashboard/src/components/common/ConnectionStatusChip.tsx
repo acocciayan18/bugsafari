@@ -53,7 +53,7 @@ export default function ConnectionStatusChip() {
   useEffect(() => {
     if (reconnectGaveUp && !gaveUpToasted.current) {
       gaveUpToasted.current = true;
-      toast.network('Connection lost — automatic reconnection failed. Reload the page to resume your session.', { duration: Infinity });
+      toast.network("Connection lost. We couldn't reconnect automatically, so reload the page to resume your session.", { duration: Infinity });
     } else if (!reconnectGaveUp) {
       gaveUpToasted.current = false;
     }

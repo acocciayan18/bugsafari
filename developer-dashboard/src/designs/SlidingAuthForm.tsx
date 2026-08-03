@@ -111,8 +111,8 @@ export default function SlidingAuthForm() {
                                 </h2>
                                 <p className="mb-8 text-base sm:text-lg opacity-90 drop-shadow-sm leading-relaxed">
                                     {isSignup
-                                        ? 'To keep connected with us please login with your personal info'
-                                        : 'Enter your personal details and start your journey with us'
+                                        ? 'Already have an account? Sign in to pick up where you left off.'
+                                        : 'New to BugSafari? Create an account to get started.'
                                     }
                                 </p>
                                 <button

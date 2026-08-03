@@ -34,7 +34,7 @@ export function LegalFooter({ onOpenDoc }: LegalFooterProps) {
         <InlineLink onClick={() => onOpenDoc('about')}>About</InlineLink>, and{' '}
         <InlineLink onClick={() => onOpenDoc('licenses')}>Licenses</InlineLink>, or{' '}
         <InlineLink onClick={() => setIsSupportOpen(true)}>contact support</InlineLink>. Research
-        prototype v{APP_VERSION} — authorized testing only.
+        prototype v{APP_VERSION}. Authorized testing only.
       </p>
 
       <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} mode="contact" />

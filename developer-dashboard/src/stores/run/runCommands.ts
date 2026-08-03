@@ -80,7 +80,7 @@ export async function startRun(
         // The server matched an existing session we own — hydrate from its snapshot
         // rather than treating this as a fresh launch.
         if (resumed) {
-            toast('Reconnected to your existing session — resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
+            toast('Reconnected to your existing session. Resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
             useRunStore.setState({ isInitializing: false });
             const snapshot = await gateway.fetchActiveSession();
             if (snapshot) useRunStore.getState().hydrateFromSnapshot(snapshot);
@@ -96,8 +96,9 @@ export async function startRun(
         // The backend refuses authenticated runs only when its credential-encryption
         // key is unset — a deployment misconfig, not a product limit. Surface the fix.
         const isAuthOnQueue = raw.includes('AUTH_UNSUPPORTED_ON_QUEUE');
+        if (isAuthOnQueue) console.error('[runCommands] Authenticated runs require the server credential key (BUGSAFARI_AUTH_KEY) to be configured.');
         const message = isAuthOnQueue
-            ? 'Authenticated runs need the server credential key (BUGSAFARI_AUTH_KEY) configured. Ask an operator to set it, or run with the queue disabled.'
+            ? "Authenticated runs aren't available right now. Try again later, or start a run without signing in to the target."
             : raw;
         if (isAuthOnQueue) toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);

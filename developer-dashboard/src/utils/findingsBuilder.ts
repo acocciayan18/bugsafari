@@ -23,14 +23,14 @@ function formatChecklist(steps: PlaybookStep[]): string[] {
 function generateSuggestedFix(type: string, reason: string, statusCode?: number): string {
   if (type === 'NETWORK') {
     return [
-      `Suggested remediation — ${statusCode ?? 'network'} failure`,
+      `Suggested fix for a ${statusCode ?? 'network'} failure`,
       `1. Verify endpoint health and response for: ${reason}`,
       `2. Add retry with backoff and a user-facing error state`,
       `3. Guard the call site against null / timeout responses`,
     ].join('\n');
   }
   return [
-    `Suggested remediation — runtime exception`,
+    `Suggested fix for a runtime exception`,
     `1. Reproduce via the checklist above`,
     `2. Wrap the failing operation in try/catch; add a null guard before: ${reason}`,
     `3. Add a regression test asserting the element/handler stays stable`,

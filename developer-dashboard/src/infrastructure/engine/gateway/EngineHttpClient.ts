@@ -91,7 +91,7 @@ export class EngineHttpClient {
         // The API answers rejections (QUEUE_FULL, AUTH_CONFIG_INVALID, target
         // routing) with a JSON body carrying operator-facing prose. Surface that
         // instead of the raw payload, which reached the toast verbatim.
-        throw new Error(readServerMessage(errorText) ?? `Server returned ${response.status} - ${errorText}`);
+        throw new Error(readServerMessage(errorText) ?? "We couldn't start the session. Please try again.");
       }
 
       // Capture the server-issued run token so a later refresh / reconnect can
@@ -112,11 +112,11 @@ export class EngineHttpClient {
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('network')) {
           console.error(`[Gateway]  Network error - server may be unreachable: ${this.apiBaseUrl}`);
           console.error(`[Gateway]  Possible causes: Server not running, CORS error, or network issue`);
-          throw new Error(`Cannot reach server at ${this.apiBaseUrl}. Is the backend running?`);
+          throw new Error("We can't reach BugSafari right now. Check your connection and try again.");
         }
 
         console.error(`[Gateway]  Fetch error:`, error.message);
-        throw new Error(`Network error: ${error.message}`);
+        throw new Error("Something went wrong connecting to BugSafari. Try again in a moment.");
       }
 
       throw error;
@@ -132,7 +132,8 @@ export class EngineHttpClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Could not save session (${response.status})`);
+      console.error(`[Gateway] Save session failed: ${response.status}`);
+      throw new Error("We couldn't save your session. Please try again.");
     }
   }
 
@@ -189,16 +190,16 @@ export class EngineHttpClient {
 
       const data = (await response.json().catch(() => ({}))) as Partial<StopRunResult>;
       if (!response.ok || data.ok !== true) {
-        const error = data.error ?? `Server returned ${response.status}`;
-        console.warn('[Gateway] Stop rejected by server:', error);
+        const error = data.error ?? "We couldn't stop the session. Please try again.";
+        console.warn('[Gateway] Stop rejected by server:', error, `(status ${response.status})`);
         return { ok: false, error };
       }
       console.log(`[Gateway] Stop accepted (${data.cancelled ? 'queued job cancelled' : 'run terminating'})`);
       return { ...data, ok: true };
     } catch (httpError) {
-      const error = httpError instanceof Error ? httpError.message : String(httpError);
-      console.error('[Gateway] HTTP stop failed:', error);
-      return { ok: false, error };
+      const detail = httpError instanceof Error ? httpError.message : String(httpError);
+      console.error('[Gateway] HTTP stop failed:', detail);
+      return { ok: false, error: "We couldn't stop the session. Please try again." };
     }
   }
 }

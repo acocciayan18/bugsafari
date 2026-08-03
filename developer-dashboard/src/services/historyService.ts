@@ -162,7 +162,7 @@ if (!response.ok) {
     }
 
     console.error('[historyService]  Save failed:', errorMessage);
-    const err = new Error(errorMessage) as Error & { status: number };
+    const err = new Error("We couldn't save your session. Please try again.") as Error & { status: number };
     err.status = response.status;
     throw err;
   }

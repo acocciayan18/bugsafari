@@ -14,20 +14,20 @@ import { requestSuggestedFix } from '../../services/historyService';
 // Operator-facing cause for a fallback. Shared by the per-finding fix block and the
 // session-level AI Insights panel so both explain the same failure the same way.
 const FALLBACK_REASON_TEXT: Record<RemediationFailureReason, string> = {
-  not_configured: 'AI is not configured on the server (GEMINI_API_KEY missing)',
-  auth: 'AI rejected the server credentials — check the API key',
-  rate_limited: 'AI rate limit reached — retry in a moment',
-  model_unavailable: 'Configured AI model is unavailable — check GEMINI_MODEL',
-  bad_request: 'AI rejected the request payload',
-  provider_error: 'AI provider returned an error — retry in a moment',
-  timeout: 'AI timed out — retry, or raise GEMINI_TIMEOUT_MS',
-  network: 'Could not reach the AI provider — check network access',
-  invalid_response: 'AI returned an unusable response — retry',
-  empty_response: 'AI returned no content — retry',
+  not_configured: 'AI suggestions are turned off right now.',
+  auth: "AI suggestions aren't available right now. Try again shortly.",
+  rate_limited: 'AI is busy right now. Try again in a moment.',
+  model_unavailable: 'AI suggestions are unavailable right now. Try again shortly.',
+  bad_request: "We couldn't get an AI suggestion for this one.",
+  provider_error: 'AI ran into a problem. Try again in a moment.',
+  timeout: 'AI took too long to respond. Try again.',
+  network: "We couldn't reach AI. Check your connection and try again.",
+  invalid_response: "AI sent back something we couldn't use. Try again.",
+  empty_response: "AI didn't return anything. Try again.",
 };
 
 export const fallbackReasonText = (reason?: RemediationFailureReason): string =>
-  (reason && FALLBACK_REASON_TEXT[reason]) || 'Model unavailable';
+  (reason && FALLBACK_REASON_TEXT[reason]) || 'AI suggestions are unavailable right now.';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
   try {
@@ -119,7 +119,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   if (!style) return null;
   return (
     <span
-      title={`Backend-classified severity: ${style.label}`}
+      title={`Severity: ${style.label}`}
       className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase  ${style.cls}`}
     >
       {style.label}
@@ -160,7 +160,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
   if (!displayed && !context) {
     return (
       <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-[13px] italic text-(--text-tertiary)">
-        No remediation advisory generated for this fault.
+        No suggested fix for this finding yet.
       </div>
     );
   }
@@ -193,13 +193,13 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
       )}
       {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
-          {fallbackReasonText(reason)} — showing the knowledge-base fix.
+          {fallbackReasonText(reason)} Showing the saved fix instead.
         </div>
       )}
 
       {displayed
         ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
-        : <div className="text-[13px] italic text-(--text-tertiary)">No remediation advisory generated for this fault — generate one above.</div>}
+        : <div className="text-[13px] italic text-(--text-tertiary)">No suggested fix yet. Generate one above.</div>}
     </div>
   );
 };

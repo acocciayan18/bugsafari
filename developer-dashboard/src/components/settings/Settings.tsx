@@ -276,7 +276,7 @@ function ApplicationSettingsSection() {
       toast.error(
         isDesktopNotifySupported()
           ? 'Your browser is blocking notifications for this site. Allow them in the browser site settings, then try again.'
-          : 'This browser does not support desktop notifications.',
+          : "This browser doesn't support desktop notifications.",
       );
       return;
     }
@@ -336,8 +336,8 @@ function ApplicationSettingsSection() {
           {settings.notifications && notifyPermission !== 'granted' && (
             <p className="mb-3 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) px-3 py-2 text-sm text-(--status-warning-fg)">
               {notifyPermission === 'unsupported'
-                ? 'This browser does not support desktop notifications, so nothing will be delivered.'
-                : 'Your browser has not granted notification permission, so nothing will be delivered.'}
+                ? "This browser doesn't support desktop notifications, so nothing will be delivered."
+                : "Your browser hasn't granted notification permission, so nothing will be delivered."}
               {notifyPermission === 'default' && (
                 <button
                   type="button"
@@ -427,7 +427,7 @@ function SecuritySettingsSection() {
       // A successful change revokes every session it established, so the store fires
       // 'bugsafari:session-expired' synchronously and App logs out. A deferred
       // close/reset would never run — this component is already unmounting.
-      setSuccessMessage('Password changed. Signing you out — please sign in again.');
+      setSuccessMessage('Password changed. Signing you out, please sign in again.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');

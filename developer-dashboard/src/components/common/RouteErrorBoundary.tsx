@@ -49,7 +49,6 @@ export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProp
           <p className="text-[13px] text-(--text-secondary)">
             The rest of the app and your live session are still running. Reload the panel to recover the view.
           </p>
-          <p className="font-mono text-xs text-(--text-tertiary) break-words">{this.state.error.message}</p>
         </div>
         <button
           onClick={this.retry}

@@ -32,7 +32,7 @@ const TOPICS: HelpTopic[] = [
     icon: AlertTriangle,
     what: 'Crash reports and incidents captured when the target app throws or breaks unexpectedly.',
     collects: ['Uncaught exceptions and stack traces', 'The 20-step action buffer leading up to the crash', 'Deduplicated occurrence counts per fault'],
-    why: 'The core output of BugSafari — pinpoints reproducible bugs with the exact action sequence that triggered them.',
+    why: 'The core output of BugSafari. It pinpoints reproducible bugs with the exact action sequence that triggered them.',
     examples: ['TypeError: Cannot read properties of undefined', 'Unhandled promise rejection in checkout flow', 'React render crash after rapid navigation'],
   },
   {
@@ -41,7 +41,7 @@ const TOPICS: HelpTopic[] = [
     icon: Network,
     what: 'Every HTTP request/response the target app makes while being tested.',
     collects: ['Request method, URL, and status code', 'Failed or slow requests', 'API calls triggered by fuzzed input'],
-    why: 'Surfaces backend and API issues — failed calls, wrong status codes, broken integrations — that UI testing alone would miss.',
+    why: 'Surfaces backend and API issues (failed calls, wrong status codes, broken integrations) that UI testing alone would miss.',
     examples: ['POST /api/cart returned 500', 'GET /api/user timed out', '404 on a broken asset link'],
   },
   {

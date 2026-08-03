@@ -91,7 +91,7 @@ function renderToast(options: RenderToastOptions): string | undefined {
   // Generic network errors get their own slot + tint so they read as distinct from
   // run-status telemetry and never clobber (or get clobbered by) the shared slot.
   const targetId = options.id ?? (variant === 'network' ? NETWORK_TOAST_ID : TOAST_ID);
-  const duration = options.duration ?? (variant === 'error' || variant === 'network' ? 5000 : 2000);
+  const duration = options.duration ?? (variant === 'error' || variant === 'network' ? 5000 : 2500);
   const isSharedSlot = targetId === TOAST_ID;
 
   // Duplicate suppression: same message already occupying the slot → no-op.

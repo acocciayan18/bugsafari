@@ -80,7 +80,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     toast.promise(saveSessionToHistory(targetUrl), {
       loading: 'Auto-saving session...',
       success: 'Session auto-saved to history',
-      error: 'Auto-save failed — use Save Session to retry',
+      error: "Couldn't auto-save. Use Save Session to try again.",
     });
   }, [
     autoSave,

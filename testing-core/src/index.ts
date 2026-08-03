@@ -70,12 +70,17 @@ const httpServer = createServer(app);
 // HTTP polling handshake, not the WS upgrade. Sourced from FRONTEND_URL (comma-list).
 // Unset (local dev) preserves the previous open behavior; a non-browser client sends
 // no Origin and is admitted (it is Bearer-gated per event, not origin-gated).
+// Normalize trailing slashes on both sides: a browser Origin header is always
+// scheme+host with no path, but FRONTEND_URL is often set as a base URL with a
+// trailing slash (e.g. https://app.example.com/), so a raw includes() would 403
+// every valid handshake. Mirrors resolveBaseUrl() in emailTransport.
+const stripSlash = (value: string): string => value.replace(/\/+$/, '');
 const allowedSocketOrigins = (process.env.FRONTEND_URL ?? '')
-  .split(',').map((s) => s.trim()).filter(Boolean);
+  .split(',').map((s) => stripSlash(s.trim())).filter(Boolean);
 const isAllowedSocketOrigin = (origin: string | undefined): boolean => {
   if (allowedSocketOrigins.length === 0) return true;
   if (!origin) return true;
-  return allowedSocketOrigins.includes(origin);
+  return allowedSocketOrigins.includes(stripSlash(origin));
 };
 const io = new Server(httpServer, {
   // Cap the inbound frame size explicitly rather than relying on the 1MB default.

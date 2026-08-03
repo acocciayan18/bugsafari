@@ -48,14 +48,14 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
         </div>
         {/* Justified text opens large word gaps in a ~300px column, so it stays left-aligned. */}
         <div className="text-(--text-secondary) text-left italic font-light mt-1">
-          <span className="text-(--text-tertiary) not-italic font-bold">Inference Deduction:</span>{' '}
+          <span className="text-(--text-tertiary) not-italic font-bold">Analysis:</span>{' '}
           {ai.explanation}
         </div>
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
         <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px] break-words">
           <span className="font-mono text-xs font-bold uppercase r block text-(--text-secondary) mb-1">
-             Actionable Remediation Patch Strategy:
+             Suggested fix:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>
         </div>

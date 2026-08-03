@@ -61,7 +61,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                             Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
                         </h1>
                         <p className="text-[16px] leading-[24px] text-zinc-600 max-w-lg">
-                            BugSafari leverages adaptive AI to perform forensic-level analysis on complex distributed systems. Identify root causes in seconds, not hours, with scriptless traversal.
+                            BugSafari uses adaptive AI to run forensic-level analysis on complex systems. Find root causes in seconds, not hours, with scriptless traversal.
                         </p>
                         <div className="flex flex-wrap gap-4 pt-4">
                             <button
