@@ -169,7 +169,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "productionize of forgot pass and email verification"
+git commit -m "Fix production email verification flow"
 git push origin HEAD:dev --force
 
 
