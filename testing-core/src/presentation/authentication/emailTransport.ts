@@ -91,9 +91,9 @@ export async function verifyEmailTransport(): Promise<void> {
   }
   try {
     await getTransporter().verify();
-    console.log(`[EMAIL] SMTP ready: ${SMTP_HOST}:${SMTP_PORT} (secure=${SMTP_SECURE}, from="${SMTP_FROM}")`);
+    console.log(`[EMAIL] SMTP ready: ${SMTP_HOST}:${SMTP_PORT} (secure=${SMTP_SECURE}, user="${SMTP_USER}", from="${SMTP_FROM}")`);
   } catch (error) {
-    console.error(`[EMAIL] SMTP verify failed for ${SMTP_HOST}:${SMTP_PORT}:`, error instanceof Error ? error.message : error);
+    console.error(`[EMAIL] SMTP verify failed for ${SMTP_HOST}:${SMTP_PORT} (user="${SMTP_USER}"):`, error instanceof Error ? error.message : error);
   }
 }
 
