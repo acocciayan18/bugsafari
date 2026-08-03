@@ -138,7 +138,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedPassword(true)}
                   aria-invalid={!!passwordError || feedback?.field === 'password'}
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || feedback?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || feedback?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -172,7 +172,7 @@ export default function ResetPasswordForm() {
                   onBlur={() => setTouchedConfirm(true)}
                   aria-invalid={!!confirmError}
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base sm:text-[13px] text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   placeholder="••••••••"
                   required
                 />
@@ -199,16 +199,7 @@ export default function ResetPasswordForm() {
             </Button>
           </form>
 
-          {/* Back to Login */}
-          <div className="mt-6 flex justify-center">
-            <Link
-              to="/login"
-              className="inline-flex items-center text-[13px] text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
-            >
-              <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-              <span className="ml-2">Back to sign in</span>
-            </Link>
-          </div>
+          
     </AuthShell>
   );
 }
