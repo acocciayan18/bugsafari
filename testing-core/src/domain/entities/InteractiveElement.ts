@@ -36,4 +36,8 @@ export interface InteractiveElement {
   // Value-independent signature of the field's owning <form> ('' if form-less),
   // keying the per-form fuzz cap so payload mutation can't mint a fresh form.
   formKey?: string;
+  // Human name + kind of the nearest surrounding UI container (modal/dialog/tab/
+  // panel/section/form), used to frame and disambiguate reproduction steps.
+  contextLabel?: string;
+  contextKind?: string;
 }

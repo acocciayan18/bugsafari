@@ -161,6 +161,8 @@ export class BugFinderRunner {
           label: resolveElementLabel(el),
           kind: elementNoun(el.tagName, el.type),
           paramName: el.name || el.id || undefined,
+          containerLabel: el.contextLabel,
+          containerKind: el.contextKind,
           strippedAttribute: bypass.strippedAttribute,
           payload: bypass.payload,
           redact: isSensitiveInputElement(el),

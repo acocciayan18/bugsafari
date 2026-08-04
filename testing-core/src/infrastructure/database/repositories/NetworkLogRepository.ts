@@ -16,6 +16,7 @@ export class NetworkLogRepository {
       ...e,
       url: capText(e.url, MAX_URL_LEN) ?? '',
       message: capText(e.message, MAX_MESSAGE_LEN),
+      errorText: capText(e.errorText, MAX_MESSAGE_LEN),
       forensicRunId: runId,
       timestamp: new Date(e.timestamp),
     }));

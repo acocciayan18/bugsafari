@@ -119,6 +119,14 @@ export interface ActionRecord {
   outcome?: ActionOutcome;
   /** True ⇒ narration masks the payload value (auth/password fields); replay keeps it verbatim. */
   redactValue?: boolean;
+  /**
+   * Human name of the UI container the acted element sits in — a modal/dialog title,
+   * tab/panel/section heading, etc. Lets the playbook frame WHERE the action happened
+   * ("Open the "Create User" modal") and disambiguate one of several identical controls.
+   */
+  containerLabel?: string;
+  /** Container kind noun for that context: modal, dialog, tab, panel, section, form, … */
+  containerKind?: string;
 }
 
 /**

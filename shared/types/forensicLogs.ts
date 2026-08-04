@@ -15,6 +15,14 @@ export interface NetworkLogEntry {
   resourceType?: string;
   ok: boolean;
   message?: string;
+  /** Browser/network error text for a transport failure (e.g. net::ERR_TIMED_OUT). */
+  errorText?: string;
+  /** Correlation/trace id parsed from request/response headers, when present. */
+  traceId?: string;
+  /** Curated, size-bounded request headers. */
+  requestHeaders?: Record<string, string>;
+  /** Curated, size-bounded response headers. */
+  responseHeaders?: Record<string, string>;
   /** Consecutive identical rows collapsed (>1 ⇒ repeated request). */
   repeatCount?: number;
 }

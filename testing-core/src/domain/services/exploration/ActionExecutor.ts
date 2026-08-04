@@ -246,6 +246,8 @@ export class ActionExecutor {
           elementKind: kind,
           url: beforeUrl,
           outcome,
+          containerLabel: target.contextLabel,
+          containerKind: target.contextKind,
         },
       );
     }
@@ -286,6 +288,8 @@ export class ActionExecutor {
         actionType: 'CLICK',
         humanIdentifier: label,
         elementKind: elementNoun(target.tagName, target.type),
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
       },
     );
 
@@ -335,6 +339,8 @@ export class ActionExecutor {
         humanIdentifier: label,
         elementKind: 'dropdown',
         value: selected && value !== null ? value : undefined,
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
       },
     );
 
@@ -385,7 +391,7 @@ export class ActionExecutor {
 
     this.deps.recordActionTrace(
       { timestamp: new Date().toISOString(), selector: target.selector, action: 'file-upload', score: Number(target.riskScore.toFixed(4)) },
-      { actionType: 'CLICK', humanIdentifier: label, elementKind: 'file picker' },
+      { actionType: 'CLICK', humanIdentifier: label, elementKind: 'file picker', containerLabel: target.contextLabel, containerKind: target.contextKind },
     );
 
     this.deps.telemetry.emit('ACTION', {
@@ -427,6 +433,8 @@ export class ActionExecutor {
         actionType: 'CLICK',
         humanIdentifier: resolveElementLabel(target),
         elementKind: elementNoun(target.tagName, target.type),
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
       },
     );
 
@@ -662,6 +670,8 @@ export class ActionExecutor {
         elementKind: elementNoun(target.tagName, target.type),
         value: payload,
         redactValue,
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
       },
     );
 
@@ -833,6 +843,8 @@ export class ActionExecutor {
           elementKind: elementNoun(target.tagName, target.type),
           value,
           redactValue,
+          containerLabel: target.contextLabel,
+          containerKind: target.contextKind,
         },
       );
       const submissionMethod = await triggerFormSubmission(page, target.selector);

@@ -87,6 +87,21 @@ export interface TelemetryMeta {
   stateHash?: string;
   message?: string;
   blockedUrl?: string;
+  // ── Raw network row (Network tab) ──────────────────────────────
+  // Marks a genuine observed target-app request (from recordNetworkLog), as opposed
+  // to a BugSafari finding/diagnostic that merely rides the NETWORK channel. Only
+  // rawNetwork events populate the Network tab.
+  rawNetwork?: boolean;
+  /** True for a 2xx/3xx response; false for a 4xx/5xx or a transport failure. */
+  ok?: boolean;
+  /** Browser/network error text for a transport failure (e.g. net::ERR_TIMED_OUT). */
+  errorText?: string;
+  /** Correlation/trace id parsed from request or response headers, when the app sends one. */
+  traceId?: string;
+  /** Curated, size-bounded request headers (content-type, accept, trace ids…). */
+  requestHeaders?: Record<string, string>;
+  /** Curated, size-bounded response headers (content-type, cache-control, trace ids…). */
+  responseHeaders?: Record<string, string>;
   exceptionDetails?: ExceptionDetails;
   reproductionSteps?: string[];
   //  Optional parameter allowing the React client state logic to read inference mappings

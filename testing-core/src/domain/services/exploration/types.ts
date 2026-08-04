@@ -138,6 +138,9 @@ export interface CleanActionStep {
   affectedCount?: number;
   outcome?: ActionOutcome;
   redactValue?: boolean;
+  /** Human name + kind of the UI container the acted element sits in (modal/tab/section…). */
+  containerLabel?: string;
+  containerKind?: string;
 }
 
 export type RecordActionTrace = (trace: ActionBreadcrumb, clean?: CleanActionStep) => void;

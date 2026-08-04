@@ -23,7 +23,7 @@ import { scrubCredentials } from './credentialScrub.js';
 import { resolveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
-import { ApiHangFinder, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
+import { ApiHangFinder, isBackgroundTelemetryUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import type {
@@ -229,6 +229,47 @@ interface NetworkFaultEvidence {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Raw-network row enrichment (pure) — headers + trace id extraction
+// ─────────────────────────────────────────────────────────────
+
+// Correlation/trace headers, checked in order. First present wins.
+const TRACE_HEADER_KEYS = [
+  'x-request-id', 'request-id', 'x-correlation-id', 'x-trace-id', 'trace-id',
+  'x-amzn-trace-id', 'x-b3-traceid', 'traceparent', 'x-cloud-trace-context',
+];
+
+// Headers worth surfacing on a Network row. Deliberately EXCLUDES authorization,
+// cookie, and set-cookie (least privilege — never echo credentials to the UI).
+const KEEP_HEADER_KEYS: ReadonlySet<string> = new Set<string>([
+  'content-type', 'content-length', 'cache-control', 'retry-after', 'server',
+  'x-powered-by', 'location', 'x-ratelimit-remaining', 'x-ratelimit-limit', 'accept',
+  ...TRACE_HEADER_KEYS,
+]);
+
+// Curated, size-bounded header subset — never the full header bag (payload + secrets).
+function pickHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const out: Record<string, string> = {};
+  let n = 0;
+  for (const [rawKey, value] of Object.entries(headers)) {
+    const key = rawKey.toLowerCase();
+    if (!KEEP_HEADER_KEYS.has(key)) continue;
+    out[key] = String(value).slice(0, 256);
+    if (++n >= 12) break;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+// First present trace/correlation id across the curated header keys.
+function extractTraceId(headers?: Record<string, string>): string | undefined {
+  if (!headers) return undefined;
+  for (const key of TRACE_HEADER_KEYS) {
+    if (headers[key]) return String(headers[key]).slice(0, 128);
+  }
+  return undefined;
+}
+
+// ─────────────────────────────────────────────────────────────
 // StabilityMonitor — attaches fault-catching page listeners
 // ─────────────────────────────────────────────────────────────
 
@@ -334,25 +375,69 @@ export class StabilityMonitor {
     return start !== undefined && duration !== undefined ? start + duration : Date.now();
   }
 
-  // Record one settled request into the per-run network log (Network tab). Only
-  // actionable rows persist (transport failures + HTTP >=400); 2xx/3xx successes
-  // are dropped. Skips static-asset noise; never throws inside a page listener.
-  private recordNetworkLog(request: Request, statusCode: number | undefined, ok: boolean, message?: string): void {
+  // Record one settled request into the per-run network log AND stream it live to the
+  // Network tab as a marked raw-network row. Only actionable rows persist/stream
+  // (transport failures + HTTP >=400); 2xx/3xx successes are dropped. Skips static-asset
+  // noise; never throws inside a page listener. This is the SINGLE source of genuine
+  // target-app network activity — BugSafari findings/diagnostics never reach this tab.
+  private recordNetworkLog(
+    request: Request,
+    statusCode: number | undefined,
+    ok: boolean,
+    opts?: { response?: Response; errorText?: string },
+  ): void {
     try {
       if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
       if (!isActionableNetworkStatus(statusCode)) return;
+
+      const requestHeaders = pickHeaders(this.safeHeaders(request));
+      const responseHeaders = pickHeaders(this.safeResponseHeaders(opts?.response));
+      const traceId = extractTraceId(responseHeaders) ?? extractTraceId(requestHeaders);
+      const errorText = opts?.errorText ? scrubCredentials(opts.errorText) : undefined;
+      const durationMs = this.computeRequestDuration(request);
+      const method = request.method();
+      const url = request.url();
+
       NetworkLogStore.push({
         timestamp: new Date().toISOString(),
-        method: request.method(),
-        url: request.url(),
+        method,
+        url,
         statusCode,
-        durationMs: this.computeRequestDuration(request),
+        durationMs,
         resourceType: request.resourceType(),
         ok,
-        message,
+        errorText,
+        traceId,
+        requestHeaders,
+        responseHeaders,
+      });
+
+      // Live Network tab: a clean, real request row. rawNetwork marks it so the tab
+      // renders ONLY genuine requests, never a NETWORK-channel finding/diagnostic.
+      this.deps.telemetry.emit('NETWORK', {
+        rawNetwork: true,
+        method,
+        url,
+        statusCode,
+        ok,
+        errorText,
+        traceId,
+        requestHeaders,
+        responseHeaders,
+        durationMs,
       });
     } catch {
       // never let logging throw inside a page listener
+    }
+  }
+
+  // Response headers, defensively — Playwright can throw once a response is detached.
+  private safeResponseHeaders(response?: Response): Record<string, string> | undefined {
+    if (!response) return undefined;
+    try {
+      return response.headers();
+    } catch {
+      return undefined;
     }
   }
 
@@ -864,6 +949,9 @@ export class StabilityMonitor {
   private trackPending(request: Request): void {
     const rt = request.resourceType();
     if (rt !== 'xhr' && rt !== 'fetch') return;
+    // A fire-and-forget telemetry/analytics/beacon that never settles is not a UI hang —
+    // never watchdog it, so its pending timeout can't manufacture an INFINITE_LOADING finding.
+    if (isBackgroundTelemetryUrl(request.url())) return;
     if (this.pending.size >= MAX_PENDING) {
       // Evict the request with the least detection value left: one whose sweep budget is
       // exhausted, else one already probed. The oldest never-probed request is the
@@ -1385,7 +1473,8 @@ export class StabilityMonitor {
       }
 
       // Full network log (Network tab): record every meaningful request, any status.
-      this.recordNetworkLog(response.request(), status, status < 400);
+      // The response travels so the raw row can carry its headers + trace id.
+      this.recordNetworkLog(response.request(), status, status < 400, { response });
 
       // Asset chatter (missing favicon, lazy image 404) never reaches the classifier.
       if (routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: status, url, resourceType }).reasonCode === 'ASSET_NOISE') {
@@ -1537,7 +1626,7 @@ export class StabilityMonitor {
       // logged for context only, never counted, never parked for promotion.
       const cancelled = routing.reasonCode === 'CANCELLED' || (isAborted && !chaosMode);
 
-      this.recordNetworkLog(request, undefined, false, reason);
+      this.recordNetworkLog(request, undefined, false, { errorText: reason });
       if (!cancelled) this.deps.recordNetworkFailure();
 
       if (cancelled) {

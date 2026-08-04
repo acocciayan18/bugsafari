@@ -3,6 +3,25 @@ import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 // A duplicate finding never re-registers; cap the ledger so a pathological run stays bounded.
 const MAX_REPORTED = 100;
 
+// Background telemetry / analytics / beacon endpoints. A hang or failure on one of these
+// never blocks the user-facing UI — the app fired it fire-and-forget — so a PENDING_TIMEOUT
+// (or failure) against one must NOT become an INFINITE_LOADING finding. Matched on host +
+// path with word boundaries so "/analytics/event" hits but "/analytics-report" (a real page)
+// does not, and "/login" is never mistaken for a "log" endpoint.
+const BACKGROUND_TELEMETRY_RE =
+  /(?:^|[/.])(?:telemetry|analytics|metrics|ping|beacon|bz|collect|track(?:ing)?|rum|sentry|datadog|segment|mixpanel|amplitude|hotjar|gtag|gtm|google-analytics|googletagmanager|doubleclick)(?:[/.?#]|$)/i;
+
+/** True for a fire-and-forget telemetry/analytics/beacon URL whose timeout is not a UI bug. */
+export function isBackgroundTelemetryUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return BACKGROUND_TELEMETRY_RE.test(`${u.hostname}${u.pathname}`);
+  } catch {
+    return BACKGROUND_TELEMETRY_RE.test(url);
+  }
+}
+
 // What provoked the hang check: an errored request, a 5xx, or a request still pending past the watchdog.
 export type HangTrigger = 'REQUEST_FAILED' | 'SERVER_ERROR' | 'PENDING_TIMEOUT';
 
@@ -58,6 +77,12 @@ export class ApiHangFinder {
   // further confirmations of the same endpoint+trigger → isNew:false with occurrence bumped.
   public evaluate(o: HangObservation): { defect: ApiHangDefect; isNew: boolean } | null {
     this.observations += 1;
+    // A background telemetry/analytics/beacon timeout is never a user-facing hang — ignore
+    // it regardless of any coincidental spinner elsewhere on the page (req: no false positives).
+    if (isBackgroundTelemetryUrl(o.url)) return null;
+    // PENDING_TIMEOUT is the weakest trigger (the request has not even failed), so it — like
+    // every trigger — only counts when actual UI evidence persists: a loading indicator present
+    // in BOTH probes. No spinner / freeze ⇒ the request being slow is not an INFINITE_LOADING bug.
     if (!this.isStuck(o.initial, o.confirm)) return null;
 
     const method = (o.method ?? '').toString().toUpperCase() || 'GET';

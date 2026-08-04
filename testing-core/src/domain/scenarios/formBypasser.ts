@@ -290,22 +290,28 @@ export const formBypasser: StressScenario = {
         `[Telemetry:ACTION]  FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
       );
 
-      // Record to ActionBuffer for reproduction playbook
-      const pageUrl = page.url();
-      const bypassLabel = target ? resolveElementLabel(target) : '';
-      const bypassKind = elementNoun(target?.tagName, target?.type);
-      ActionRecorder.recordStep({
-        actionType: 'SUBMIT',
-        humanIdentifier: bypassLabel,
-        elementKind: bypassKind,
-        selector: result.selector,
-        url: pageUrl,
-        strippedAttributes: result.strippedAttributes,
-        affectedCount: result.affectedCount,
-      });
-      ActiveScenarioTracker.record(
-        describeConstraintBypass(bypassLabel, result.strippedAttributes, result.affectedCount, bypassKind),
-      );
+      // Record the constraint-strip STEP only when the target is an actual form input
+      // (input/textarea). Stripping also force-enables sibling buttons and clears form
+      // novalidate, but a "Remove validation from the button/link" step is misleading —
+      // a bypass is only meaningful against a field that carried a validation constraint.
+      const tag = (target?.tagName ?? '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') {
+        const pageUrl = page.url();
+        const bypassLabel = target ? resolveElementLabel(target) : '';
+        const bypassKind = elementNoun(target?.tagName, target?.type);
+        ActionRecorder.recordStep({
+          actionType: 'SUBMIT',
+          humanIdentifier: bypassLabel,
+          elementKind: bypassKind,
+          selector: result.selector,
+          url: pageUrl,
+          strippedAttributes: result.strippedAttributes,
+          affectedCount: result.affectedCount,
+        });
+        ActiveScenarioTracker.record(
+          describeConstraintBypass(bypassLabel, result.strippedAttributes, result.affectedCount, bypassKind),
+        );
+      }
 
       // Emit detailed telemetry
       console.log(

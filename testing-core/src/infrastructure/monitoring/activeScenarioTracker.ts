@@ -2,7 +2,7 @@ import { OBSERVATION_PREFIX, type ReproductionSnapshot } from '../../../../share
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
-import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
+import { narrateActionRecords, describeRouteStep } from '../../domain/services/forensics/narration.js';
 
 // Cap the deliberate steps carried into a finding — keep those closest to the fault.
 const MAX_SCENARIO_STEPS = 40;
@@ -74,7 +74,7 @@ export class ActiveScenarioTracker {
     // Seed the navigation step when the rolling log has nothing yet, so the
     // playbook always opens with context even on the very first scenario.
     if (ReproductionPlaybookStore.snapshot().length === 0 && targetUrl) {
-      steps.push(`Open ${targetUrl}`);
+      steps.push(describeRouteStep(targetUrl));
     }
     ActiveScenarioTracker.active = {
       scenario,

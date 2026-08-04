@@ -1603,6 +1603,8 @@ export class ExplorationEngine {
       affectedCount: clean?.affectedCount,
       outcome: clean?.outcome,
       redactValue: clean?.redactValue,
+      containerLabel: clean?.containerLabel,
+      containerKind: clean?.containerKind,
     };
     ReproductionPlaybookStore.push(actionRecord);
   }

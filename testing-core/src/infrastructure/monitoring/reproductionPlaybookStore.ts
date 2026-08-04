@@ -1,6 +1,7 @@
 import type { ActionRecord } from '../../../../shared/types.js';
 
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
+import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
 
 // Depth of the causal chain kept for one run. Every save-path derivative of this
 // buffer (session actionSteps, forensicTrace.finalBreadcrumbSteps) is bounded by
@@ -57,12 +58,14 @@ export class ReproductionPlaybookStore {
 
   /**
    * Generate sequentially numbered narrative instructions from stored actions.
-   * Uses same format as ActionRecorder.toNarrativeSteps().
-   * 
-   * @returns Array of formatted narrative strings
+   *
+   * Minimized first so the playbook ALWAYS opens with a navigation (the initial
+   * target URL a developer can actually reach) and consecutive identical actions —
+   * rapid clicks on the same control — collapse into a single "repeated N times"
+   * burst step instead of flooding the list with duplicates.
    */
   public static getNarrativeSteps(): string[] {
-    return narrateActionRecords(ReproductionPlaybookStore.actions);
+    return narrateActionRecords(minimizeActionRecords(ReproductionPlaybookStore.actions));
   }
 }
 

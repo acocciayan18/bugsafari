@@ -54,6 +54,10 @@ export interface ActionStepInput {
 
   /** True ⇒ narration masks the value (auth/password fields); replay keeps it verbatim. */
   redactValue?: boolean;
+
+  /** UI container the acted element sits in — frames + disambiguates the step. */
+  containerLabel?: string;
+  containerKind?: string;
 }
 
 /**
@@ -134,6 +138,8 @@ export class ActionRecorder {
       affectedCount: step.affectedCount,
       outcome: step.outcome,
       redactValue: step.redactValue,
+      containerLabel: step.containerLabel,
+      containerKind: step.containerKind,
     };
 
     this.records.push(record);

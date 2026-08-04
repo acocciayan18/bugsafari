@@ -10,6 +10,7 @@ import {
   describeInputInjection,
   describeOutcome,
   describeReplayMacro,
+  describeRouteStep,
   describeTarget,
   maskPayload,
   type StepKind,
@@ -89,7 +90,7 @@ export function humanizeActionStep(
   const label = stepLabel(step);
   const noun = stepNoun(step, kind);
   const action =
-    kind === 'navigation' ? `Open ${step.url ?? describeTarget(label, noun)}`
+    kind === 'navigation' ? (step.url ? describeRouteStep(step.url) : `Open ${describeTarget(label, noun)}`)
     : kind === 'input' ? describeInputInjection(label, undefined, step.redactValue, noun)
     : kind === 'bypass' ? describeConstraintBypass(label, step.strippedAttributes, step.affectedCount, noun)
     : `Click ${describeTarget(label, noun)}`;

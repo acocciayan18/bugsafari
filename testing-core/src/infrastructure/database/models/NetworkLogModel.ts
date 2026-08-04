@@ -18,6 +18,10 @@ const networkLogSchema = new Schema(
     resourceType: { type: String, required: false, default: null },
     ok: { type: Boolean, required: true, default: true },
     message: { type: String, required: false, default: null },
+    errorText: { type: String, required: false, default: null },
+    traceId: { type: String, required: false, default: null },
+    requestHeaders: { type: Schema.Types.Mixed, required: false, default: null },
+    responseHeaders: { type: Schema.Types.Mixed, required: false, default: null },
     repeatCount: { type: Number, required: false, default: 1 },
   },
   {
@@ -38,6 +42,10 @@ export interface INetworkLog extends Document {
   resourceType?: string;
   ok: boolean;
   message?: string;
+  errorText?: string;
+  traceId?: string;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
   repeatCount?: number;
   createdAt: Date;
   updatedAt: Date;

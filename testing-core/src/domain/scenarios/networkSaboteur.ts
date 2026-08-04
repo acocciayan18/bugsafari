@@ -8,6 +8,7 @@ import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js'
 import { ChaosInjectionRegistry } from '../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { describeNetworkSabotage, resolveControlName } from '../services/forensics/narration.js';
 import { FREEZE_SELECTORS, INPUT_BLOCK_SELECTORS } from '../../bugs/knowledgeBase/index.js';
+import { isBackgroundTelemetryUrl } from '../../domain/heuristics/ApiHangFinder.js';
 import { scenarioRandom } from './seededRandom.js';
 
 type SabotageMode = 'Delayed' | 'Aborted' | 'Mutated';
@@ -332,6 +333,13 @@ export async function armNetworkSabotage(
 
     // Only sabotage target resource types (xhr/fetch), NOT document
     if (!config.targetResourceTypes.includes(resourceType as 'xhr' | 'fetch')) {
+      await safeContinue(route);
+      return;
+    }
+
+    // Never sabotage a fire-and-forget telemetry/analytics/beacon — failing one produces a
+    // meaningless finding, not a real resilience defect in the app's own data flow.
+    if (isBackgroundTelemetryUrl(requestUrl)) {
       await safeContinue(route);
       return;
     }

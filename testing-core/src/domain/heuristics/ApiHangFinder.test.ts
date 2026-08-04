@@ -4,7 +4,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { ApiHangFinder, type HangObservation, type LoadingProbe } from './ApiHangFinder.js';
+import { ApiHangFinder, isBackgroundTelemetryUrl, type HangObservation, type LoadingProbe } from './ApiHangFinder.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -68,6 +68,39 @@ check('both present but disjoint indicators → null (different transient loader
   const initial = probe({ indicators: ['.spinner'], signature: '.spinner' });
   const confirm = probe({ indicators: ['.skeleton'], signature: '.skeleton' });
   assert.equal(f.evaluate(obs({ initial, confirm })), null);
+});
+
+console.log('\nApiHangFinder — background telemetry & UI-evidence gating');
+
+check('isBackgroundTelemetryUrl matches the named endpoints, not real pages', () => {
+  for (const u of [
+    'http://app.test/telemetry', 'http://app.test/analytics/event', 'http://app.test/api/metrics',
+    'http://app.test/ping', 'http://app.test/beacon?x=1', 'http://app.test/bz/collect',
+    'https://www.google-analytics.com/collect', 'http://app.test/track',
+  ]) assert.ok(isBackgroundTelemetryUrl(u), u);
+  for (const u of [
+    'http://app.test/api/orders', 'http://app.test/analytics-report', 'http://app.test/login',
+    'http://app.test/users/metrics-dashboard',
+  ]) assert.equal(isBackgroundTelemetryUrl(u), false, u);
+});
+
+check('a hanging telemetry beacon is ignored even with a persistent spinner', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/telemetry', pendingMs: 9000 }));
+  assert.equal(r, null);
+  assert.equal(f.totalFound(), 0);
+});
+
+check('PENDING_TIMEOUT on a real endpoint with NO loading indicator is not a hang', () => {
+  const f = new ApiHangFinder();
+  assert.equal(f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', initial: absent(), confirm: absent() })), null);
+});
+
+check('PENDING_TIMEOUT on a real endpoint WITH a persistent loader is a hang', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/api/profile', pendingMs: 9000 }));
+  assert.ok(r);
+  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
 });
 
 console.log('\nApiHangFinder — dedup & triggers');

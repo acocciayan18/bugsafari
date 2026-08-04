@@ -17,7 +17,11 @@ import {
   describeBurstOutcome,
   describeConcurrentBurst,
   describeInertBurst,
+  describeRouteStep,
+  describeContainerEntry,
+  narrateActionRecords,
 } from './reproduction.js';
+import type { ActionRecord } from './types/bug.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -119,10 +123,28 @@ check('constraint-bypass playbook pins the specific field + parameter that recei
     status: 200,
   });
   assert.equal(steps.length, 4);
-  assert.equal(steps[0], 'Step 1. Open /register');
+  assert.equal(steps[0], 'Step 1. Navigate to /register');
   assert.ok(steps[1].includes('Remove the maxlength=40 validation from the "Business Name" field (parameter "businessName")'), steps[1]);
   assert.ok(steps[2].includes('Enter "AAAA…(96 chars)" into the "Business Name" field (parameter "businessName")'), steps[2]);
   assert.ok(steps[3].includes('POST /api/register accepted it (HTTP 200)'), steps[3]);
+});
+
+check('constraint-bypass playbook frames the container when the field is inside one', () => {
+  const steps = describeConstraintBypassPlaybook({
+    url: 'http://app.test/settings/users',
+    label: 'Email',
+    kind: 'field',
+    containerLabel: 'Create User',
+    containerKind: 'modal',
+    strippedAttribute: 'type=email',
+    payload: 'not-an-email',
+    method: 'POST',
+    endpoint: '/api/users',
+    status: 201,
+  });
+  assert.equal(steps[0], 'Step 1. Navigate to /settings/users');
+  assert.equal(steps[1], 'Step 2. Open the "Create User" modal');
+  assert.ok(steps[2].includes('Remove the type=email validation from the "Email" field'), steps[2]);
 });
 
 check('constraint-bypass playbook masks a sensitive payload and omits the Open step when url absent', () => {
@@ -169,6 +191,62 @@ check('inert burst (0 clicks registered) is flagged invalid, not dressed up as N
   assert.ok(out.startsWith('Invalid:'), out);
   assert.ok(out.includes('0 of 15 clicks registered'), out);
   assert.ok(!out.includes('as fast as possible'), out);
+});
+
+check('route + container framing helpers read as human location, not selectors', () => {
+  assert.equal(describeRouteStep('http://app.test/settings/users?tab=1#top'), 'Navigate to /settings/users?tab=1#top');
+  assert.equal(describeRouteStep(undefined), 'Open the starting page');
+  assert.equal(describeContainerEntry('Create User', 'modal'), 'Open the "Create User" modal');
+  assert.equal(describeContainerEntry('Billing', 'tab panel'), 'Switch to the "Billing" tab panel');
+  assert.equal(describeContainerEntry('Filters', 'panel'), 'Go to the "Filters" panel');
+  // Unnamed in-flow container adds noise, not location → no framing.
+  assert.equal(describeContainerEntry('', 'section'), '');
+  // Unnamed overlay is still worth framing (developer must open it).
+  assert.equal(describeContainerEntry('', 'modal'), 'Open the modal');
+});
+
+check('playbook weaves route + container context BEFORE the interaction', () => {
+  const rec = (over: Partial<ActionRecord>): ActionRecord =>
+    ({ timestamp: '', type: 'CLICK', selector: '', url: 'http://app.test/settings/users', ...over });
+  const steps = narrateActionRecords([
+    rec({ type: 'NAVIGATE', url: 'http://app.test/settings/users' }),
+    rec({ containerKind: 'modal', containerLabel: 'Create User', elementLabel: 'Save', elementKind: 'button', selector: '#save' }),
+  ]);
+  assert.deepEqual(steps, [
+    'Step 1. Navigate to /settings/users',
+    'Step 2. Open the "Create User" modal',
+    'Step 3. Click the "Save" button',
+  ]);
+});
+
+check('a child-route transition mid-flow is an explicit step', () => {
+  const rec = (over: Partial<ActionRecord>): ActionRecord =>
+    ({ timestamp: '', type: 'CLICK', selector: '', url: '', ...over });
+  const steps = narrateActionRecords([
+    rec({ url: 'http://app.test/list', elementLabel: 'Row 1', elementKind: 'link' }),
+    rec({ url: 'http://app.test/list/42', elementLabel: 'Delete', elementKind: 'button' }),
+  ]);
+  assert.deepEqual(steps, [
+    'Step 1. Navigate to /list',
+    'Step 2. Click the "Row 1" link',
+    'Step 3. Navigate to /list/42',
+    'Step 4. Click the "Delete" button',
+  ]);
+});
+
+check('the same container is not re-announced on consecutive steps', () => {
+  const rec = (over: Partial<ActionRecord>): ActionRecord =>
+    ({ timestamp: '', type: 'CLICK', selector: '', url: 'http://app.test/x', containerKind: 'modal', containerLabel: 'Edit', ...over });
+  const steps = narrateActionRecords([
+    rec({ type: 'TYPE', elementLabel: 'Name', elementKind: 'field', payload: 'Ann' }),
+    rec({ elementLabel: 'Save', elementKind: 'button' }),
+  ]);
+  assert.deepEqual(steps, [
+    'Step 1. Navigate to /x',
+    'Step 2. Open the "Edit" modal',
+    'Step 3. Type "Ann" into the "Name" field',
+    'Step 4. Click the "Save" button',
+  ]);
 });
 
 console.log(`\n${passed} checks passed`);

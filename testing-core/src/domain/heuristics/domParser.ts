@@ -29,6 +29,10 @@ export interface ParsedElement {
   inActiveLayer: boolean;
   isDismiss: boolean;
   formKey: string;
+  /** Kind of the nearest surrounding UI container (modal, dialog, tab panel, section, form…), or ''. */
+  contextKind: string;
+  /** Human name of that container (aria-label, heading, or title), or '' when unnamed. */
+  contextLabel: string;
 }
 
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
@@ -102,6 +106,8 @@ export class RecursiveDomParser {
       isDisabled: element.isDisabled,
       formKey: element.formKey,
       href: element.href,
+      contextLabel: element.contextLabel,
+      contextKind: element.contextKind,
     }));
   }
 
@@ -569,6 +575,51 @@ const isDisabled = (element) => {
       document.querySelectorAll('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[aria-modal="true"],dialog[open]').forEach((el) => addRoot(el, false));
       document.querySelectorAll('[class*="modal"],[class*="popup"],[class*="drawer"],[class*="popover"],[class*="offcanvas"],[class*="dropdown"],[class*="lightbox"]').forEach((el) => addRoot(el, true));
 
+      // UI-container resolution: name the nearest surrounding modal/dialog/tab/panel/
+      // section/form so a reproduction step can say WHERE the control lives ("Open the
+      // 'Create User' modal") and disambiguate one of several identical controls.
+      const containerKindOf = (el) => {
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        const tag = (el.tagName || '').toLowerCase();
+        const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+        if (role === 'dialog' || role === 'alertdialog' || tag === 'dialog' || el.getAttribute('aria-modal') === 'true' || /(^|[^a-z])(modal|dialog|lightbox)/.test(cls)) return 'modal';
+        if (role === 'tabpanel' || /tab-?panel/.test(cls)) return 'tab panel';
+        if (/drawer|offcanvas/.test(cls)) return 'drawer';
+        if (/popover|popup|dropdown/.test(cls)) return 'popover';
+        if (tag === 'nav' || role === 'navigation') return 'navigation';
+        if (tag === 'aside' || /sidebar/.test(cls)) return 'sidebar';
+        if (/(^|[^a-z])panel/.test(cls)) return 'panel';
+        if (tag === 'form') return 'form';
+        if (tag === 'section' || role === 'region') return 'section';
+        return '';
+      };
+      const accessibleName = (el) => {
+        const trim = (s) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
+        const aria = trim(el.getAttribute('aria-label'));
+        if (aria) return aria;
+        const labelledby = el.getAttribute('aria-labelledby');
+        if (labelledby) {
+          const ref = document.getElementById(labelledby.split(/\\s+/)[0]);
+          const t = ref && trim(ref.textContent);
+          if (t) return t;
+        }
+        const heading = el.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"],legend');
+        const ht = heading && trim(heading.textContent);
+        if (ht) return ht;
+        return trim(el.getAttribute('title'));
+      };
+      const resolveContainer = (start) => {
+        let el = start.parentElement;
+        let depth = 0;
+        while (el && el.tagName && el.tagName.toLowerCase() !== 'body' && depth < 30) {
+          const kind = containerKindOf(el);
+          if (kind) return { kind, label: accessibleName(el) };
+          el = el.parentElement;
+          depth++;
+        }
+        return { kind: '', label: '' };
+      };
+
       // First pass: collect elements with their extracted text (no slicing)
       const elementData = specificElements.flatMap((wrapped) => {
         const element = wrapped.element;
@@ -599,6 +650,7 @@ const isDisabled = (element) => {
           element.hasAttribute('data-bs-target') ||
           LAYER_TRIGGER_RE.test([id, className, name, ariaLabel, fullText, role].join(' '));
         const inActiveLayer = layerRoots.some((root) => root === element || root.contains(element));
+        const container = resolveContainer(element);
         const isDismiss =
           element.hasAttribute('data-dismiss') ||
           element.hasAttribute('data-bs-dismiss') ||
@@ -620,6 +672,8 @@ const isDisabled = (element) => {
           opensLayer,
           inActiveLayer,
           isDismiss,
+          contextKind: container.kind,
+          contextLabel: container.label,
           isDisabled: isDisabled(element),
           crossBoundary: !!wrapped.crossBoundary,
           boundingBox: {
@@ -672,7 +726,9 @@ const isDisabled = (element) => {
           featureSignature,
           opensLayer: data.opensLayer,
           inActiveLayer: data.inActiveLayer,
-          isDismiss: data.isDismiss
+          isDismiss: data.isDismiss,
+          contextKind: data.contextKind,
+          contextLabel: data.contextLabel
         };
       });
 

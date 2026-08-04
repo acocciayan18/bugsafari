@@ -245,6 +245,9 @@ export interface ConstraintBypassPlaybookInput {
   kind?: string;
   /** Wire parameter name (`name`/`id`) of that field — pins the exact input on a multi-field form. */
   paramName?: string;
+  /** UI container the field lives in — framed after the route so the field is located. */
+  containerLabel?: string;
+  containerKind?: string;
   /** The browser-only guard that was stripped (required, maxlength=40, type=email). */
   strippedAttribute: string;
   /** The browser-rejected value the server accepted ('' ⇒ empty submission). */
@@ -275,7 +278,9 @@ export function describeConstraintBypassPlaybook(input: ConstraintBypassPlaybook
     : `Submit ${target}${paramClause} with an empty value`;
 
   const lines: string[] = [];
-  if (collapse(input.url)) lines.push(`Open ${collapse(input.url)}`);
+  if (collapse(input.url)) lines.push(describeRouteStep(input.url));
+  const container = describeContainerEntry(input.containerLabel, input.containerKind);
+  if (container) lines.push(container);
   lines.push(`Remove the ${attr} validation from ${target}${paramClause} (a browser-only guard)`);
   lines.push(inject);
   lines.push(
@@ -449,6 +454,49 @@ export function describeRecovery(requeued: number): string {
 // Outcome clause + step-kind classification
 // ─────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────
+// UI-context framing (route + container) — the WHERE of a step
+// ─────────────────────────────────────────────────────────────
+
+/** Domain-stripped route (pathname + query + hash) for human-readable playbooks. */
+export function routePath(url?: string): string {
+  const raw = collapse(url);
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    return `${u.pathname}${u.search}${u.hash}` || '/';
+  } catch {
+    return raw;
+  }
+}
+
+/** Route step — "Navigate to /settings/users". Opens/transitions the playbook's page. */
+export function describeRouteStep(url?: string): string {
+  const path = routePath(url);
+  return path ? `Navigate to ${path}` : 'Open the starting page';
+}
+
+// Overlay-style containers a developer must actively open/switch into (vs. an in-flow
+// section that's simply already on the page).
+const OVERLAY_CONTAINER_RE = /modal|dialog|drawer|popover|popup|dropdown|offcanvas/i;
+const TAB_CONTAINER_RE = /tab/i;
+
+/**
+ * Container-entry framing — "Open the "Create User" modal", "Switch to the "Billing"
+ * tab panel", "Go to the "Filters" panel". Returns '' for an unnamed in-flow container
+ * (a bare section/form/nav with no accessible name adds noise, not location).
+ */
+export function describeContainerEntry(label?: string, kind?: string): string {
+  const k = collapse(kind);
+  if (!k) return '';
+  const name = collapse(label);
+  const named = Boolean(name) && !isSelectorLike(name);
+  // An unnamed, non-overlay container is not worth a framing step.
+  if (!named && !OVERLAY_CONTAINER_RE.test(k)) return '';
+  const verb = OVERLAY_CONTAINER_RE.test(k) ? 'Open' : TAB_CONTAINER_RE.test(k) ? 'Switch to' : 'Go to';
+  return named ? `${verb} the "${truncate(name, MAX_LABEL_LENGTH)}" ${k}` : `${verb} the ${k}`;
+}
+
 /** Render an observed outcome as a trailing clause, or '' when nothing was observed. */
 export function describeOutcome(outcome?: ActionOutcome): string {
   if (!outcome) return '';
@@ -482,7 +530,7 @@ export function kindForRecord(type: ActionType): StepKind {
 /** Guess a chip kind for a pre-rendered narrative line (string fallback path). */
 export function classifyNarrativeLine(text: string): StepKind {
   const s = text.trim();
-  if (/^(Open|Go to) /i.test(s)) return 'navigation';
+  if (/^(Open|Go to|Navigate to|Switch to) /i.test(s)) return 'navigation';
   if (/^(Type |Enter a value|Select )/i.test(s)) return 'input';
   if (/^Remove /i.test(s)) return 'bypass';
   if (/^(Click|Hover|Press|Starting from)/i.test(s)) return 'click';
@@ -513,7 +561,7 @@ function describeSingleAction(record: ActionRecord): string {
   switch (record.type) {
     case 'NAVIGATE':
     case 'NAVIGATION':
-      return record.url ? `Open ${record.url}` : 'Open the starting page';
+      return describeRouteStep(record.url);
 
     case 'TYPE':
     case 'INPUT':
@@ -541,7 +589,48 @@ function describeSingleAction(record: ActionRecord): string {
   }
 }
 
-/** Render an ordered, sequentially-numbered playbook from raw action records. */
+/**
+ * Render an ordered, sequentially-numbered playbook from raw action records, weaving
+ * in UI context BEFORE the interactions: the route each action runs on (with explicit
+ * transition steps when it changes — child routes, cross-page navigations) and a
+ * framing step when the action enters a new named/overlay container. Produces e.g.
+ * "Navigate to /settings/users → Open the "Create User" modal → Click the "Save" button".
+ */
 export function narrateActionRecords(records: ActionRecord[]): string[] {
-  return records.map((record, index) => `Step ${index + 1}. ${describeActionRecord(record)}`);
+  const lines: string[] = [];
+  let lastRoute = '';
+  let lastContainer = '';
+
+  for (const record of records) {
+    const route = routePath(record.url);
+    const isNav = record.type === 'NAVIGATE' || record.type === 'NAVIGATION';
+
+    if (isNav) {
+      lines.push(describeRouteStep(record.url));
+      lastRoute = route;
+      lastContainer = ''; // a fresh page — any prior container context is gone
+      continue;
+    }
+
+    // Explicit route transition: this action runs on a different route than the last
+    // step (a click that crossed into a child route, or an async fault on a new page).
+    if (route && route !== lastRoute) {
+      lines.push(describeRouteStep(record.url));
+      lastRoute = route;
+      lastContainer = '';
+    }
+
+    // Container framing: entering a new named/overlay container frames the next action
+    // and disambiguates one of several identical controls (which "Save" — this modal's).
+    const containerKey = `${collapse(record.containerKind)}|${collapse(record.containerLabel)}`;
+    const entry = collapse(record.containerKind) ? describeContainerEntry(record.containerLabel, record.containerKind) : '';
+    if (entry && containerKey !== lastContainer) {
+      lines.push(entry);
+      lastContainer = containerKey;
+    }
+
+    lines.push(describeActionRecord(record));
+  }
+
+  return lines.map((line, index) => `Step ${index + 1}. ${line}`);
 }

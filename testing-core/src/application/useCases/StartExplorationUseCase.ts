@@ -189,6 +189,14 @@ export class StartExplorationUseCase {
     private mapNetworkEntry(raw: Record<string, unknown>): NetworkLogEntry {
         const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
         const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+        const headers = (v: unknown): Record<string, string> | undefined => {
+            if (!v || typeof v !== 'object') return undefined;
+            const out: Record<string, string> = {};
+            for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+                if (typeof val === 'string') out[k] = val.slice(0, 256);
+            }
+            return Object.keys(out).length ? out : undefined;
+        };
         return {
             timestamp: str(raw.timestamp) ?? new Date().toISOString(),
             method: str(raw.method) ?? 'GET',
@@ -198,6 +206,10 @@ export class StartExplorationUseCase {
             resourceType: str(raw.resourceType),
             ok: typeof raw.ok === 'boolean' ? raw.ok : (num(raw.statusCode) ?? 0) < 400,
             message: str(raw.message),
+            errorText: str(raw.errorText),
+            traceId: str(raw.traceId),
+            requestHeaders: headers(raw.requestHeaders),
+            responseHeaders: headers(raw.responseHeaders),
             repeatCount: num(raw.repeatCount),
         };
     }

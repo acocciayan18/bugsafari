@@ -1419,6 +1419,10 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         resourceType: n.resourceType,
         ok: n.ok,
         message: n.message,
+        errorText: n.errorText,
+        traceId: n.traceId,
+        requestHeaders: n.requestHeaders,
+        responseHeaders: n.responseHeaders,
         repeatCount: n.repeatCount,
       }));
       const formattedConsoleLog = consoleLog.map(c => ({
