@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ExploreContent, FeaturesContent, CommunityContent, AboutContent } from '../pages/InfoPages';
 import { SECTION_META } from '../pages/sectionMeta';
 import WelcomeModal from '../components/common/WelcomeModal';
+import { LegalDocModal } from '../components/legal/LegalDocModal';
+import type { LegalDocId } from '../legal/content';
 import { useWelcomeNotice } from '../hooks/useWelcomeNotice';
 
 type SectionId = 'home' | 'explore' | 'features' | 'community' | 'about';
@@ -12,30 +14,30 @@ const featureCards = [
         tag: 'AI',
         title: 'Scriptless Traversal',
         description:
-            'Navigate complex microservices and state machines without writing a single manual test script. Let our AI map the topology.',
+            'A recursive DOM parser discovers every interactive element on your SPA live, with no manual test script, selector list, or hand-authored path.',
     },
     {
         tag: 'ML',
         title: 'Adaptive Intelligence',
         description:
-            "The forensic engine learns your system's baseline behavior and identifies subtle deviations before they become catastrophic outages.",
+            'A self-learning perceptron scores every candidate and updates its weights after each observed outcome — a fault, a network call, a repeated state.',
     },
     {
         tag: 'RT',
         title: 'Real-time Forensics',
         description:
-            'Rewind and replay system state with nanosecond precision. Analyze logic paths as they occurred in the live production environment.',
+            'A 20-step circular action buffer and narrated reproduction steps capture what happened, so any saved finding can be deterministically replayed.',
     },
 ];
 
 const deepTraceChecks = [
     {
-        title: 'Logic Isolation',
-        description: 'Isolate specific execution branches across 1,000+ nodes.',
+        title: 'State Graph Navigation',
+        description: 'Track every transition across a bounded 500-node state graph, biasing toward unexplored edges.',
     },
     {
-        title: 'Dependency Mapping',
-        description: 'Automatically detect hidden circular dependencies in real-time.',
+        title: 'Five-Layer Loop Prevention',
+        description: 'Repeat-strikes, look-ahead, ancestor-hash dedup, per-edge budgets, and route-exhaustion keep runs off dead ends.',
     },
 ];
 
@@ -55,13 +57,13 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                 <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div className="relative z-10 space-y-6">
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-zinc-200 bg-zinc-50 rounded-full text-zinc-800 shadow-xs">
-                            <span className="font-mono text-xs uppercase st font-bold">AI-Native Intelligence</span>
+                            <span className="font-mono text-xs uppercase st font-bold">Autonomous Exploratory Testing</span>
                         </div>
                         <h1 className="text-[48px] lg:text-[64px] leading-tight text-black font-extrabold uppercase">
                             Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
                         </h1>
                         <p className="text-[16px] leading-[24px] text-zinc-600 max-w-lg">
-                            BugSafari uses adaptive AI to run forensic-level analysis on complex systems. Find root causes in seconds, not hours, with scriptless traversal.
+                            BugSafari autonomously explores your Single-Page App, scores every element with a self-learning model, and turns whatever breaks into a reproducible forensic report — no test scripts required.
                         </p>
                         <div className="flex flex-wrap gap-4 pt-4">
                             <button
@@ -70,13 +72,10 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                             >
                                 Start BugSafari
                             </button>
-                            <button className="px-8 py-3.5 border border-zinc-200 rounded-lg text-black font-medium bg-white shadow-xs hover:bg-zinc-50 transition-all cursor-pointer">
-                                Book a Demo
-                            </button>
                         </div>
                     </div>
 
-                    {/* Dashboard Mockup Visualization */}
+                    {/* Real Command Center screenshot in a browser-style frame */}
                     <div className="relative">
                         <div className="relative bg-white border border-zinc-200/80 rounded-xl overflow-hidden shadow-2xl shadow-zinc-200/50">
                             <div className="bg-zinc-50 px-4 py-2.5 flex items-center gap-2 border-b border-zinc-200/80">
@@ -85,65 +84,14 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                                     <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                     <div className="w-3 h-3 rounded-full border border-zinc-300 bg-zinc-200"></div>
                                 </div>
-                                <div className="flex-1 text-center font-mono text-xs text-zinc-500 font-bold">bug-safari-forensics-v2.trace</div>
+                                <div className="flex-1 text-center font-mono text-xs text-zinc-500 font-bold">BugSafari — Command Center</div>
                             </div>
-                            <div className="p-4 space-y-4 font-mono text-[13px] bg-white text-zinc-800">
-                                <div className="flex gap-4">
-                                    <div className="w-12 text-zinc-400 text-right select-none">124</div>
-                                    <div className="text-black"><span className="font-bold text-indigo-600">async</span> function <span className="underline decoration-zinc-300">resolveTrace</span>(packet) &#123;</div>
-                                </div>
-                                <div className="flex gap-4 bg-zinc-50 border-l-2 border-zinc-400 py-1.5 px-2 rounded-r items-center shadow-xs">
-                                    <div className="w-10 text-zinc-600 font-bold text-right select-none">125</div>
-                                    <div className="text-zinc-800">&nbsp; let result = <span className="font-bold text-indigo-600">await</span> forensicEngine.analyze(packet);</div>
-                                    <div className="ml-auto flex items-center gap-1 px-2 py-0.5 bg-[#121212] text-white text-xs font-bold rounded">
-                                        ANOMALY
-                                    </div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <div className="w-12 text-zinc-400 text-right select-none">126</div>
-                                    <div className="text-zinc-400">&nbsp; // AI suggests memory leak in packet buffer allocation</div>
-                                </div>
-                                <div className="pt-4 border-t border-zinc-200/80 mt-4">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase r">CPU Usage</div>
-                                            <div className="text-[18px] font-bold">94.2%</div>
-                                            <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-[#121212] rounded-full w-4/5"></div>
-                                            </div>
-                                        </div>
-                                        <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase r">Memory</div>
-                                            <div className="text-[18px] font-bold">2.4 GB</div>
-                                            <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-[#121212] rounded-full w-1/3"></div>
-                                            </div>
-                                        </div>
-                                        <div className="p-3.5 space-y-2 border border-zinc-200/80 rounded-lg bg-zinc-50/50 shadow-xs">
-                                            <div className="text-xs text-zinc-500 font-bold uppercase r">Confidence</div>
-                                            <div className="text-[18px] font-bold">98.4%</div>
-                                            <div className="h-1.5 w-full bg-zinc-200 rounded-full overflow-hidden">
-                                                <div className="h-full bg-[#121212] rounded-full w-11/12"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <img
+                                src="/marketing/dashboard-shell.png"
+                                alt="The BugSafari Command Center dashboard"
+                                className="w-full block"
+                            />
                         </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Trust Section */}
-            <section className="py-12 border-y border-zinc-200 bg-zinc-50/50">
-                <div className="max-w-[1440px] mx-auto px-6">
-                    <p className="text-center font-mono text-[13px] text-zinc-500 font-bold uppercase tracking-[0.2em] mb-10">Trusted by 2,000+ engineering teams globally</p>
-                    <div className="flex flex-wrap justify-center items-center gap-12 lg:gap-20 opacity-75">
-                        <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">VECTOR</div>
-                        <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">NEXUS</div>
-                        <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">CORE</div>
-                        <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">STRATUS</div>
-                        <div className="flex items-center gap-2 text-[18px] font-extrabold text-zinc-800">CYPHER</div>
                     </div>
                 </div>
             </section>
@@ -153,7 +101,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                 <div className="max-w-[1440px] mx-auto">
                     <div className="text-center mb-16 space-y-4">
                         <h2 className="text-[40px] text-black font-extrabold uppercase">Engineered for Technical Precision</h2>
-                        <p className="text-[16px] text-zinc-600 max-w-2xl mx-auto">A clinical approach to system observability. No fluff, just the high-fidelity data you need to fix production faster.</p>
+                        <p className="text-[16px] text-zinc-600 max-w-2xl mx-auto">A clinical approach to SPA observability. No fluff, just the high-fidelity forensic evidence you need to fix what breaks faster.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         {featureCards.map((card) => (
@@ -176,7 +124,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                 <div className="max-w-[1440px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                     <div className="space-y-6">
                         <h2 className="text-[40px] text-black font-extrabold uppercase">Deep Trace Analysis</h2>
-                        <p className="text-[16px] text-zinc-600 leading-relaxed">Visualize logic paths like never before. Our proprietary TraceMap technology renders complex execution flows as a navigable forensic graph.</p>
+                        <p className="text-[16px] text-zinc-600 leading-relaxed">Visualize how the engine moves through your app. The StateGraphNavigator renders every discovered page state and transition as a navigable forensic graph.</p>
                         <ul className="space-y-4">
                             {deepTraceChecks.map((item) => (
                                 <li key={item.title} className="flex items-start gap-3">
@@ -192,8 +140,8 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                     <div className="p-2 border border-zinc-200/80 rounded-2xl bg-white shadow-xl shadow-zinc-200/50">
                         <div className="w-full aspect-video rounded-xl overflow-hidden border border-zinc-200 shadow-inner">
                             <img
-                                src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80"
-                                alt="Trace Graph Topology"
+                                src="/marketing/dashboard-shell.png"
+                                alt="BugSafari Command Center showing live exploration telemetry"
                                 className="w-full h-full object-cover grayscale contrast-125 hover:grayscale-0 transition-all duration-500"
                             />
                         </div>
@@ -205,7 +153,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
             <section className="py-32 px-6 text-center bg-white">
                 <div className="max-w-3xl mx-auto space-y-8">
                     <h2 className="text-[48px] text-black font-extrabold uppercase">Ready to start your safari?</h2>
-                    <p className="text-[16px] text-zinc-600">Join thousands of engineers who have stopped guessing and started knowing. Get full forensic visibility into your production systems today.</p>
+                    <p className="text-[16px] text-zinc-600">Point BugSafari at your Single-Page App and watch the state graph, risk scores, and live forensic telemetry build in real time.</p>
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         <button
                             onClick={onLogin}
@@ -213,12 +161,9 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         >
                             Try BugSafari
                         </button>
-                        <button className="px-10 py-4 border border-zinc-200 rounded-lg text-black font-medium bg-white shadow-xs hover:bg-zinc-50 transition-all uppercase st text-xs cursor-pointer">
-                            Schedule Demo
-                        </button>
                     </div>
                     <div className="pt-8">
-                        <p className="font-mono text-xs text-zinc-500 font-bold uppercase st">No credit card required • 14-day free trial • Unlimited agents</p>
+                        <p className="font-mono text-xs text-zinc-500 font-bold uppercase st">No signup required to try • Guest mode available</p>
                     </div>
                 </div>
             </section>
@@ -246,6 +191,7 @@ const InfoSection = memo(function InfoSection({ id }: { id: Exclude<SectionId, '
 const LandingPage = () => {
     const navigate = useNavigate();
     const [activeSection, setActiveSection] = useState<SectionId>('home');
+    const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null);
     const mainRef = useRef<HTMLElement>(null);
     const welcome = useWelcomeNotice();
 
@@ -263,6 +209,7 @@ const LandingPage = () => {
     return (
         <div className="bg-white text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
             <WelcomeModal isOpen={welcome.isOpen} onDismiss={welcome.dismiss} />
+            <LegalDocModal docId={legalDoc} onClose={() => setLegalDoc(null)} />
 
             {/* Top Navigation Bar — stays mounted across every in-page section switch */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
@@ -313,39 +260,31 @@ const LandingPage = () => {
                     <div className="space-y-4">
                         <div className="text-[20px] font-extrabold text-black uppercase tracking-tighter">BugSafari</div>
                         <p className="text-[13px] text-zinc-500 font-medium max-w-xs">
-                            © 2026 BugSafari Inc. Forensic Debugging for Modern Systems.
+                            © 2026 BugSafari. Autonomous exploratory testing for Single-Page Apps. Research prototype.
                         </p>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 md:gap-12">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 md:gap-12">
                         <div className="flex flex-col gap-3">
                             <span className="font-mono text-xs font-extrabold text-black uppercase">Resources</span>
-                            <button onClick={() => goToSection('explore')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Documentation</button>
-                            <button onClick={() => goToSection('features')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">API Reference</button>
-                            <button onClick={() => goToSection('community')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Changelog</button>
+                            <button onClick={() => goToSection('explore')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Explore the Engine</button>
+                            <button onClick={() => goToSection('features')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Features</button>
+                            <button onClick={() => goToSection('community')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Community</button>
                         </div>
                         <div className="flex flex-col gap-3">
                             <span className="font-mono text-xs font-extrabold text-black uppercase">Legal</span>
-                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Privacy Policy</a>
-                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Terms of Service</a>
-                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Security</a>
+                            <button onClick={() => setLegalDoc('privacy')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Privacy Notice</button>
+                            <button onClick={() => setLegalDoc('terms')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Terms of Use</button>
+                            <button onClick={() => setLegalDoc('research')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Research Disclaimer</button>
                         </div>
                         <div className="flex flex-col gap-3">
-                            <span className="font-mono text-xs font-extrabold text-black uppercase">Company</span>
-                            <button onClick={() => goToSection('about')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">About Us</button>
-                            <a className="font-mono text-xs text-zinc-500 hover:text-black transition-colors" href="#">Careers</a>
-                            <button onClick={() => goToSection('community')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Blog</button>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            <span className="font-mono text-xs font-extrabold text-black uppercase">Status</span>
-                            <a className="flex items-center gap-2 font-mono text-xs text-black font-bold hover:underline transition-all" href="#">
-                                <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                ALL SYSTEMS OPERATIONAL
-                            </a>
+                            <span className="font-mono text-xs font-extrabold text-black uppercase">Project</span>
+                            <button onClick={() => goToSection('about')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">About</button>
+                            <button onClick={() => setLegalDoc('licenses')} className="font-mono text-xs text-zinc-500 hover:text-black transition-colors text-left bg-transparent border-none cursor-pointer p-0">Licenses</button>
                         </div>
                     </div>
                 </div>
                 <div className="max-w-[1440px] mx-auto px-6 py-6 border-t border-zinc-200 text-center md:text-left">
-                    <p className="font-mono text-xs text-zinc-500 font-bold">MADE WITH PRECISION FOR THE MODERN ENGINEERING STACK.</p>
+                    <p className="font-mono text-xs text-zinc-500 font-bold">AUTONOMOUS EXPLORATORY TESTING FOR SINGLE-PAGE APPS. AUTHORIZED TESTING ONLY.</p>
                 </div>
             </footer>
         </div>

@@ -165,6 +165,10 @@ const BUG_TAXONOMY = [
     ['Cascading State Failure', 'CWE-754'],
     ['Client Trust Boundary Violation', 'CWE-602'],
     ['Infinite Loading', 'CWE-400'],
+    ['SQL Injection', 'CWE-89'],
+    ['Route Mutation Failure', 'CWE-835'],
+    ['Client Render Freeze', 'CWE-835'],
+    ['Session Synchronization Fault', 'CWE-613'],
 ];
 
 function BugTaxonomyGrid() {
@@ -190,11 +194,11 @@ export function ExploreContent() {
                     bullets={[
                         'Detects the active modal/overlay layer before scoring so exploration never fights a dialog it cannot see past.',
                         'Candidates are normalized into typed interactive-element structures shared across the whole engine.',
-                        'A 5,000-element budget keeps parsing bounded even on dense, deeply-nested SPA views.',
+                        'A depth-50 traversal cap and an 8-second scan deadline keep parsing bounded even on dense, deeply-nested SPA views.',
                     ]}
                     image="/marketing/dashboard-shell.png"
                     imageAlt="BugSafari Command Center, idle and ready to receive a target URL"
-                    badge={{ value: '5,000', label: 'Element Parse Budget' }}
+                    badge={{ value: '50', label: 'Max Traversal Depth' }}
                 />
 
                 <StatRow items={[
@@ -317,7 +321,7 @@ export function FeaturesContent() {
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">01</div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Provenance Attribution</h4>
-                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, network, or timing noise, so only real application defects ever get reported.</p>
+                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, third-party SDK, network, timing noise, or unattributed, so only real application defects ever get reported.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
@@ -347,8 +351,8 @@ export function FeaturesContent() {
                 <div className="space-y-6">
                     <div className="space-y-2">
                         <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Bug Taxonomy</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">12 Deterministic Bug Classes</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every finding maps to one of twelve classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
+                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">16 Deterministic Bug Classes</h2>
+                        <p className="text-zinc-600 max-w-2xl">Every finding maps to one of sixteen classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
                     </div>
                     <BugTaxonomyGrid />
                 </div>
@@ -485,7 +489,7 @@ export function AboutContent() {
                 </div>
 
                 <StatRow items={[
-                    { value: '12', label: 'Bug Classes' },
+                    { value: '16', label: 'Bug Classes' },
                     { value: '5', label: 'Infiltration Profiles' },
                     { value: '3', label: 'Monorepo Packages' },
                     { value: '1', label: 'Shared Contract Layer' },
