@@ -9,6 +9,7 @@ export type RuntimeSubtype =
   | 'NOT_A_FUNCTION'
   | 'STACK_OVERFLOW'
   | 'RANGE_ERROR'
+  | 'API_CONTRACT_VIOLATION'
   | 'SYNTAX_ERROR'
   | 'CHUNK_LOAD_FAILURE'
   | 'UNHANDLED_REJECTION'
@@ -49,6 +50,9 @@ const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['REFERENCE_ERROR', /is not defined/i],
   ['STACK_OVERFLOW', /maximum call stack size exceeded/i],
   ['RANGE_ERROR', /\brangeerror\b|invalid array length/i],
+  // More specific than SYNTAX_ERROR (below): a JSON.parse failure on an HTML/non-JSON
+  // response is a distinct API-contract fault, not a generic malformed-script error.
+  ['API_CONTRACT_VIOLATION', /unexpected token '?<'?|is not valid json|unexpected end of json input|unexpected token \S+.*in json|json\.parse/i],
   ['SYNTAX_ERROR', /\bsyntaxerror\b|unexpected token|unexpected end of/i],
   ['CHUNK_LOAD_FAILURE', /chunkloaderror|loading chunk .* failed|chunk.*not found/i],
 ];
@@ -62,6 +66,7 @@ const SUBTYPE_LABEL: Record<RuntimeSubtype, string> = {
   NOT_A_FUNCTION: 'Call of a non-function',
   STACK_OVERFLOW: 'Infinite recursion / stack overflow',
   RANGE_ERROR: 'Out-of-range value',
+  API_CONTRACT_VIOLATION: 'Unhandled response exception / API contract violation',
   SYNTAX_ERROR: 'Malformed script / syntax error',
   CHUNK_LOAD_FAILURE: 'Code-split chunk failed to load',
   UNHANDLED_REJECTION: 'Unhandled promise rejection',
@@ -85,6 +90,8 @@ const STUDENT_GUIDANCE: Record<RuntimeSubtype, string> = {
     "A function keeps calling itself with no stopping condition. Add a base case, or fix the effect/render loop that re-triggers the same call endlessly.",
   RANGE_ERROR:
     "A value fell outside its allowed range (e.g. a negative array length or too-deep recursion). Validate the number before you use it to size or index.",
+  API_CONTRACT_VIOLATION:
+    "A `fetch`/`axios` call ran `.json()` on a response that wasn't JSON — usually an HTML error or proxy page returned on failure. Check `response.ok` and the `Content-Type` before parsing, wrap the parse in try/catch, and render an error state instead of letting the SyntaxError crash the view.",
   SYNTAX_ERROR:
     "The browser couldn't parse the script — malformed JSON, a bad template, or a build/bundling problem. Check the failing response/source is valid JS/JSON.",
   CHUNK_LOAD_FAILURE:
@@ -196,7 +203,10 @@ export class RuntimeStabilityFinder {
   }
 
   private buildStudentAdvice(subtype: RuntimeSubtype): string {
-    return `${STUDENT_GUIDANCE[subtype]}\n${BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION.remediation}`;
+    // Append the catalog remediation for the bug class this subtype maps to, so the advice
+    // matches the classifier's CWE/title (API-contract faults get their own checklist).
+    const catalogClass = subtype === 'API_CONTRACT_VIOLATION' ? 'API_CONTRACT_VIOLATION' : 'RUNTIME_STABILITY_EXCEPTION';
+    return `${STUDENT_GUIDANCE[subtype]}\n${BUG_CATALOG[catalogClass].remediation}`;
   }
 
   // djb2 — stable, cheap, no crypto dependency.

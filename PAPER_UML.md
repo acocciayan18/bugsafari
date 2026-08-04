@@ -171,10 +171,11 @@ Playwright, Socket.IO or MongoDB directly.
 
 ```mermaid
 flowchart LR
-    TESTER["Tester"]
-    GUEST["Guest Tester"]
+    GUEST["&#128100;<br/>«actor»<br/>Guest Tester"]
+    TESTER["&#128100;<br/>«actor»<br/>Tester"]
 
     subgraph SYSTEM["BugSafari"]
+        direction TB
         UC1(["Register and Sign In"])
         UC2(["Start a Test Run"])
         UC3(["Watch the Live Feed"])
@@ -186,22 +187,24 @@ flowchart LR
         UC9(["Change Settings"])
     end
 
-    TESTER --- UC1
-    TESTER --- UC2
-    TESTER --- UC3
-    TESTER --- UC4
-    TESTER --- UC5
-    TESTER --- UC6
-    TESTER --- UC7
-    TESTER --- UC8
-    TESTER --- UC9
-
     GUEST --- UC2
     GUEST --- UC3
     GUEST --- UC4
+    GUEST --- UC9
 
-    UC6 -.->|"includes"| UC7
-    UC6 -.->|"includes"| UC8
+    TESTER --- UC1
+    TESTER --- UC5
+    TESTER --- UC6
+
+    TESTER -. "«generalization»" .-> GUEST
+
+    UC5 -. "«include»" .-> UC1
+    UC6 -. "«include»" .-> UC1
+    UC7 -. "«extend»" .-> UC6
+    UC8 -. "«extend»" .-> UC6
+
+    classDef actor fill:#eef,stroke:#446,stroke-width:1px;
+    class GUEST,TESTER actor;
 ```
 
 ### Actor permissions
@@ -218,9 +221,17 @@ flowchart LR
 | Verify a Fix | Yes | No |
 | Change Settings | Yes | Local only, not stored |
 
+The **Tester** generalizes the **Guest Tester**: it inherits every guest use case (run,
+watch, pause/stop, settings) and adds the ones that require an account. Drawing the
+generalization once removes the duplicate associations the two actors would otherwise
+share.
+
 A guest can do the testing but not the keeping. The system enforces this in two places:
 the save route rejects a request without a signed-in user, and the dashboard sends a
-guest back to the main screen if they try to open the history pages.
+guest back to the main screen if they try to open the history pages. Because both saving
+and viewing a report presuppose a session, each carries an `«include»` on Register and
+Sign In.
 
-Fix suggestion and fix verification are drawn as included in the report use case because
-both are started from inside a saved report, using one selected finding.
+Get a Fix Suggestion and Verify a Fix are `«extend»`, not `«include»`: neither runs on
+its own and neither is mandatory. Each is started optionally from inside an already-open
+forensic report, acting on one selected finding.

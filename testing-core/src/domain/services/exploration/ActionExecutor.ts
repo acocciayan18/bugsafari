@@ -624,6 +624,9 @@ export class ActionExecutor {
   ): Promise<void> {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
+    // Control noun (field / text box / dropdown / …) so the reproduction playbook
+    // names the actual control type instead of defaulting every input to "field".
+    const kind = elementNoun(target.tagName, target.type);
 
     // 1) Identify: classify the field, resolve the escalation level tried so far
     // for this exact field (0 on first encounter), then synthesize that level's
@@ -694,11 +697,11 @@ export class ActionExecutor {
           // only the first form element, leaving the real target's gates intact).
           const strip = await stripConstraintsSilently(page, target.selector);
           ActiveScenarioTracker.record(
-            describeConstraintBypass(label, strip.strippedAttributes, strip.affectedCount),
+            describeConstraintBypass(label, strip.strippedAttributes, strip.affectedCount, kind),
           );
 
           injection = await this.injectPayload(page, target.selector, payload);
-          ActiveScenarioTracker.record(describeInputInjection(label, payload, redactValue));
+          ActiveScenarioTracker.record(describeInputInjection(label, payload, redactValue, kind));
           if (!injection.delivered) {
             t.emit('ACTION', {
               actionExecuted: 'payload-injection-rejected',
@@ -806,6 +809,7 @@ export class ActionExecutor {
   private async executeExploratoryInput(page: Page, target: InteractiveElement): Promise<void> {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
+    const kind = elementNoun(target.tagName, target.type);
     const value = benignValueFor(classifyInputElement(target));
     // Mask even synthetic values on sensitive fields so the playbook never prints
     // anything that reads as a real credential/identifier.
@@ -814,7 +818,7 @@ export class ActionExecutor {
     ActiveScenarioTracker.begin('Exploratory', page.url() ?? this.deps.getTargetOrigin());
     try {
       await this.injectPayload(page, target.selector, value);
-      ActiveScenarioTracker.record(describeInputInjection(label, value, redactValue));
+      ActiveScenarioTracker.record(describeInputInjection(label, value, redactValue, kind));
       this.deps.recordActionTrace(
         {
           timestamp: new Date().toISOString(),

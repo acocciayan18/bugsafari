@@ -116,6 +116,40 @@ check('Client crash message during ButtonSpammer → RUNTIME_STABILITY_EXCEPTION
   assert.equal(c.testingType, 'concurrency');
 });
 
+check('JSON-parse SyntaxError during ButtonSpammer → API_CONTRACT_VIOLATION (runtime signal beats scenario default)', () => {
+  // The backend returned an HTML error page; the app's JSON.parse threw. The runtime
+  // contract signal must own the verdict, not the concurrency scenario's default class.
+  const c = classifyFault({
+    faultType: 'EXCEPTION',
+    message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    scenario: 'ButtonSpammer',
+  });
+  assert.equal(c.bugClass, 'API_CONTRACT_VIOLATION');
+  assert.equal(c.cwe, 'CWE-754');
+  assert.equal(c.confidence, 'SIGNAL');
+  assert.equal(c.testingType, 'concurrency');
+});
+
+check('A 5xx NETWORK body echoing a JSON.parse frame stays BOUNDARY (contract signal is client-only)', () => {
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 500 GET /api/data',
+    statusCode: 500,
+    content: 'SyntaxError: Unexpected token < at JSON.parse (<anonymous>)',
+    scenario: 'NetworkSaboteur',
+  });
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.severity, 'HIGH');
+});
+
+check('A generic build SyntaxError (no JSON signature) stays a plain runtime exception', () => {
+  const c = classifyFault({
+    faultType: 'EXCEPTION',
+    message: 'SyntaxError: Unexpected end of input',
+  });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+});
+
 check('No-signal fault under DataFuzzer must NOT be a security verdict (bias fix)', () => {
   // A real caught fault with no injection signal + no oracle confirmation must fall
   // back to the fault-type default, never the scenario's expected security bug.

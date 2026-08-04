@@ -235,6 +235,55 @@ export function describeConstraintBypass(
   return `Remove the ${attrs.join(', ')} validation from ${target}${scope}, then submit the form`;
 }
 
+/** Everything the constraint-bypass reproduction playbook needs about the culprit field. */
+export interface ConstraintBypassPlaybookInput {
+  /** Page URL the bypass was confirmed on (opening step); omitted ⇒ no Open step. */
+  url?: string;
+  /** Human label of the specific field that received the payload. */
+  label: string;
+  /** Control noun (field / text box / dropdown …); defaults to 'field'. */
+  kind?: string;
+  /** Wire parameter name (`name`/`id`) of that field — pins the exact input on a multi-field form. */
+  paramName?: string;
+  /** The browser-only guard that was stripped (required, maxlength=40, type=email). */
+  strippedAttribute: string;
+  /** The browser-rejected value the server accepted ('' ⇒ empty submission). */
+  payload: string;
+  /** Mask the value in narration (auth/sensitive fields). */
+  redact?: boolean;
+  /** State-changing method + relative endpoint + status of the accepting request. */
+  method: string;
+  endpoint: string;
+  status: number;
+}
+
+/**
+ * Numbered, developer-friendly reproduction for a client-side constraint bypass.
+ * Names the SPECIFIC field (label + control type + wire parameter) that received the
+ * payload — so a multi-field form no longer reads as a vague "a field was bypassed" —
+ * and states the exact guard removed and the endpoint that accepted the value.
+ */
+export function describeConstraintBypassPlaybook(input: ConstraintBypassPlaybookInput): string[] {
+  const kind = collapse(input.kind) || 'field';
+  const target = describeTarget(input.label, kind);
+  const param = collapse(input.paramName);
+  const paramClause = param && !isSelectorLike(param) ? ` (parameter "${truncate(param, MAX_LABEL_LENGTH)}")` : '';
+  const attr = collapse(input.strippedAttribute) || 'browser';
+  const value = renderPayload(input.payload, input.redact);
+  const inject = value
+    ? `Enter "${value}" into ${target}${paramClause}`
+    : `Submit ${target}${paramClause} with an empty value`;
+
+  const lines: string[] = [];
+  if (collapse(input.url)) lines.push(`Open ${collapse(input.url)}`);
+  lines.push(`Remove the ${attr} validation from ${target}${paramClause} (a browser-only guard)`);
+  lines.push(inject);
+  lines.push(
+    `Submit the form — ${input.method} ${input.endpoint} accepted it (HTTP ${input.status}), so the server never re-validated the rule`,
+  );
+  return lines.map((line, index) => `Step ${index + 1}. ${line}`);
+}
+
 /** Payload-injection step. Redacts auth/password values; truncation lives here only. */
 export function describeInputInjection(label: string, payload?: string, redact?: boolean, kind?: string): string {
   const target = describeTarget(label, kind ?? 'field');
@@ -245,22 +294,48 @@ export function describeInputInjection(label: string, payload?: string, redact?:
   return value ? `Type "${value}" into ${target}` : `Enter a value into ${target}`;
 }
 
-/** Single-element zero-wait concurrent burst (ButtonSpammer). */
-export function describeConcurrentBurst(outcome: BurstSummary, label: string, kind: string): string {
+/**
+ * Single-element burst INTENT — the deliberate action, recorded BEFORE the burst
+ * fires so an immediate crash still yields a reproduction step. Carries no live
+ * metrics (none exist yet); the outcome is appended later as an observation.
+ */
+export function describeConcurrentBurstIntent(label: string, kind: string, attempted: number): string {
+  return `Click ${describeTarget(label, kind)} ${attempted} times as fast as possible`;
+}
+
+/** Multi-sibling burst INTENT (pre-burst). `attempted` overrides the target count when known. */
+export function describeConcurrentBurstSiblingsIntent(targets?: StepTarget[], attempted?: number): string {
+  const named = describeTargetList(targets ?? []);
+  const list = named ? `: ${named}` : '';
+  const count = attempted ?? (targets?.length ?? 0);
+  return `Click ${count} controls at the same time${list}`;
+}
+
+/** Observed burst metrics, rendered as a trailing clause / observation line. */
+export function describeBurstOutcome(outcome: BurstSummary): string {
+  return `${outcome.completed} of ${outcome.attempted} clicks registered in ${outcome.durationMs}ms`;
+}
+
+/**
+ * Honest observation for a burst where ZERO clicks registered — the controls were
+ * not actuable (obscured / detached / covered). Flags the reproduction as invalid so
+ * a coincidental fault is never dressed up as "clicked N times" when nothing landed.
+ */
+export function describeInertBurst(attempted: number): string {
   return (
-    `Click ${describeTarget(label, kind)} ${outcome.attempted} times as fast as possible ` +
-    `(${outcome.completed} of ${outcome.attempted} clicks registered in ${outcome.durationMs}ms)`
+    `Invalid: 0 of ${attempted} clicks registered — the target controls were not actuable ` +
+    `(obscured, detached, or covered), so this burst never interacted with the application.`
   );
 }
 
-/** Multi-sibling zero-wait concurrent burst (InteractionSimulator.concurrentClicker). */
+/** Single-element zero-wait concurrent burst (ButtonSpammer) — intent + outcome. */
+export function describeConcurrentBurst(outcome: BurstSummary, label: string, kind: string): string {
+  return `${describeConcurrentBurstIntent(label, kind, outcome.attempted)} (${describeBurstOutcome(outcome)})`;
+}
+
+/** Multi-sibling zero-wait concurrent burst (InteractionSimulator.concurrentClicker) — intent + outcome. */
 export function describeConcurrentBurstSiblings(outcome: BurstSummary, targets?: StepTarget[]): string {
-  const named = describeTargetList(targets ?? []);
-  const list = named ? `: ${named}` : '';
-  return (
-    `Click ${outcome.attempted} controls at the same time${list} ` +
-    `(${outcome.completed} of ${outcome.attempted} clicks registered in ${outcome.durationMs}ms)`
-  );
+  return `${describeConcurrentBurstSiblingsIntent(targets ?? [], outcome.attempted)} (${describeBurstOutcome(outcome)})`;
 }
 
 /**

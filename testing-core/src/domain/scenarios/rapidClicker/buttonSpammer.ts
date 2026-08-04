@@ -23,7 +23,9 @@ import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/active
 import {
   resolveElementLabel,
   elementNoun,
-  describeConcurrentBurst,
+  describeConcurrentBurstIntent,
+  describeBurstOutcome,
+  describeInertBurst,
 } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
@@ -62,6 +64,22 @@ export const buttonSpammer = {
 
     const recorder = new StressClickMetadataRecorder(metadata);
 
+    // Record the burst as a SINGLE reproduction step BEFORE firing it, so a crash on
+    // the very first click still leaves developers the controls + action that caused it
+    // (the burst used to be recorded only after it settled — an immediate crash then
+    // produced "No reproduction steps were recorded for this fault").
+    const label = target ? resolveElementLabel(target) : '';
+    const kind = elementNoun(target?.tagName, target?.type);
+    ActionRecorder.recordStep({
+      actionType: 'CLICK',
+      humanIdentifier: label,
+      elementKind: kind,
+      selector,
+      url: page.url(),
+      repeatCount: CLICK_COUNT,
+    });
+    ActiveScenarioTracker.record(describeConcurrentBurstIntent(label, kind, CLICK_COUNT));
+
     try {
       // Fire CLICK_COUNT concurrent clicks at the single target (zero-wait).
       const result = await executeConcurrentBurst(
@@ -69,20 +87,13 @@ export const buttonSpammer = {
         Array.from({ length: CLICK_COUNT }, () => selector),
       );
       recorder.record(result);
-
-      // Record the burst as a SINGLE reproduction step so the 20-slot playbook
-      // buffer is not flooded with redundant rapid-click entries.
-      const label = target ? resolveElementLabel(target) : '';
-      const kind = elementNoun(target?.tagName, target?.type);
-      ActionRecorder.recordStep({
-        actionType: 'CLICK',
-        humanIdentifier: label,
-        elementKind: kind,
-        selector,
-        url: page.url(),
-        repeatCount: CLICK_COUNT,
-      });
-      ActiveScenarioTracker.record(describeConcurrentBurst(result, label, kind));
+      // The intent step is already in the window; append the measured outcome. When ZERO
+      // clicks registered the burst never touched the app, so flag the reproduction invalid
+      // instead of implying the clicks landed (an unrelated fault must not inherit a
+      // misleading "clicked N times" playbook).
+      ActiveScenarioTracker.observe(
+        result.completed === 0 ? describeInertBurst(result.attempted) : describeBurstOutcome(result),
+      );
 
       console.log(
         `[StressScenario:ButtonSpammer] Burst completed ${result.completed}/${result.attempted} in ${result.durationMs}ms`,

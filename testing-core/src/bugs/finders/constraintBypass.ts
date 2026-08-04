@@ -3,6 +3,18 @@ import type { InteractiveElement } from '../../domain/entities/InteractiveElemen
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { humanizeElement, resolveElementLabel } from '../../../../shared/reproduction.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+
+// Rapid-click / concurrency stress windows. While one runs, a state-changing 2xx firing
+// in the observation window is far more likely a burst-provoked autosave/telemetry write
+// than a bypassed constraint — probing here manufactured a Client-Side Constraint Bypass
+// out of a Concurrent Stress Burst. The finding is owned by the runtime/race evidence instead.
+const BURST_SCENARIOS: readonly string[] = ['ButtonSpammer', 'CoordinateBombing', 'AsyncStateRacer', 'ConcurrentClicker'];
+
+function isBurstScenarioActive(): boolean {
+  const scenario = ActiveScenarioTracker.getActiveScenarioName();
+  return scenario !== undefined && BURST_SCENARIOS.some((name) => scenario.includes(name));
+}
 
 // Window (ms) to let the submitted request settle so its response can be judged.
 const OBSERVE_WINDOW_MS = 1200;
@@ -178,6 +190,8 @@ export const constraintBypassFinder: BugFinder = {
     const el = ctx.element;
     if (!el) return false;
     if (el.tagName !== 'input' && el.tagName !== 'textarea') return false;
+    // Never probe mid-burst — a concurrent 2xx would be mislabeled a constraint bypass.
+    if (isBurstScenarioActive()) return false;
     return !attemptedSelectors.has(el.selector);
   },
 

@@ -37,7 +37,9 @@ check('reference error', () => detects('foo is not defined', 'REFERENCE_ERROR'))
 check('not a function', () => detects('x.doThing is not a function', 'NOT_A_FUNCTION'));
 check('stack overflow', () => detects('Maximum call stack size exceeded', 'STACK_OVERFLOW'));
 check('range error', () => detects('RangeError: Invalid array length', 'RANGE_ERROR'));
-check('syntax error', () => detects('SyntaxError: Unexpected token <', 'SYNTAX_ERROR'));
+check('generic syntax error (no JSON signature)', () => detects('SyntaxError: Unexpected end of input', 'SYNTAX_ERROR'));
+check('JSON-parse of HTML → API_CONTRACT_VIOLATION', () => detects(`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, 'API_CONTRACT_VIOLATION'));
+check('JSON.parse stack frame → API_CONTRACT_VIOLATION', () => detects('SyntaxError at JSON.parse (<anonymous>)', 'API_CONTRACT_VIOLATION'));
 check('chunk load failure', () => detects('Loading chunk 42 failed', 'CHUNK_LOAD_FAILURE'));
 check('rejection falls back to UNHANDLED_REJECTION when message is generic', () => detects('request failed', 'UNHANDLED_REJECTION', 'REJECTION'));
 check('crash source always classifies as RENDERER_CRASH', () => detects('anything', 'RENDERER_CRASH', 'CRASH'));
@@ -90,6 +92,13 @@ check('student advice is non-empty and carries the catalog remediation', () => {
   assert.ok(finding.studentAdvice.length > 0);
   assert.ok(finding.studentAdvice.includes('Suggested remediation — runtime exception'));
   assert.ok(finding.message.startsWith('[Undefined property access]'));
+});
+
+check('API contract violation advice carries the API-contract remediation, not the runtime one', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` }));
+  assert.ok(finding.studentAdvice.includes('Suggested remediation — API contract violation'));
+  assert.ok(finding.message.startsWith('[Unhandled response exception / API contract violation]'));
 });
 
 check('empty / whitespace / missing message never throws', () => {

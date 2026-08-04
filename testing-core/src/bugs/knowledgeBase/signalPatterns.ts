@@ -18,6 +18,7 @@ export type SignalCategory =
   | 'DEAD_END'
   | 'CLIENT_CRASH'
   | 'COMPONENT_FAIL'
+  | 'API_CONTRACT'
   | 'SERVER_ERROR'
   | 'INFO_LEAK'
   | 'NOSQL_ERROR'
@@ -77,6 +78,17 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /\binternal\/(?:process|modules|bootstrap)\//i,
     /\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis):\/\/\S+/i,
     /\/(?:srv|var\/www|usr\/src|home\/[\w-]+)\/[\w./-]+\.\w{1,4}\b/i,
+  ],
+  // API contract violation — the app assumed a JSON body but the response was HTML/non-JSON
+  // (a proxy/error page), so JSON.parse threw. Narrow, JSON-parse-specific signatures only:
+  // a generic "SyntaxError" in a bundle stays a malformed-script crash, not a contract fault.
+  API_CONTRACT: [
+    /unexpected token '?<'?/i,
+    /is not valid json/i,
+    /unexpected end of json input/i,
+    /unexpected token \S+.*in json/i,
+    /unexpected token o in json/i,
+    /json\.parse/i,
   ],
   // Server-side collapse (error message + response body + status text).
   SERVER_ERROR: [

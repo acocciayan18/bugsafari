@@ -107,6 +107,7 @@ const CATEGORY_SOURCE: Record<SignalCategory, 'url' | 'text' | 'both'> = {
   DEAD_END: 'both',
   CLIENT_CRASH: 'text',
   COMPONENT_FAIL: 'text',
+  API_CONTRACT: 'text',
   SERVER_ERROR: 'text',
   INFO_LEAK: 'text',
   NOSQL_ERROR: 'text',
@@ -127,6 +128,7 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
   COMPONENT_FAIL: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
   INFO_LEAK: ['SECURITY_VULNERABILITY_LEAK'],
   SERVER_ERROR: ['BOUNDARY_STRESS_FAILURE', 'SECURITY_VULNERABILITY_LEAK'],
+  API_CONTRACT: ['API_CONTRACT_VIOLATION'],
   CLIENT_CRASH: ['RUNTIME_STABILITY_EXCEPTION'],
   DEAD_END: ['STRUCTURAL_NAVIGATION_LOGIC'],
   QUERY_MUTATION: ['ROUTE_MUTATION_FAILURE'],
@@ -136,7 +138,10 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
 // in the PAGE. A NETWORK response fault must never be classified from these — a 5xx
 // body routinely echoes a server-side JS stack ("Cannot read properties of undefined
 // … at /srv/app/x.js"), which otherwise mislabels the backend failure a client crash.
-const CLIENT_RENDER_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['CLIENT_CRASH', 'COMPONENT_FAIL']);
+// API_CONTRACT joins them: a JSON.parse SyntaxError is a CLIENT-side exception. A 5xx
+// body echoing a server-side "SyntaxError"/"JSON.parse" frame is the backend's failure
+// (BOUNDARY), so the contract signal must not hijack a NETWORK response fault either.
+const CLIENT_RENDER_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['CLIENT_CRASH', 'COMPONENT_FAIL', 'API_CONTRACT']);
 
 // Injection/leak signal categories — evidence of a SECURITY defect. They are only
 // trustworthy against a network RESPONSE (leaked body, reflected DOM). A client
@@ -157,6 +162,11 @@ const CATEGORY_PRIORITY: SignalCategory[] = [
   // must outrank the generic 5xx SERVER_ERROR so a leak isn't demoted to BOUNDARY.
   'INFO_LEAK',
   'SERVER_ERROR',
+  // A JSON-parse/contract failure is a MORE specific runtime verdict than a generic client
+  // crash, so it outranks CLIENT_CRASH — a SyntaxError from an HTML-where-JSON-expected
+  // response never demotes to a plain stability exception, and (being a matched signal) it
+  // always beats the scenario default.
+  'API_CONTRACT',
   'CLIENT_CRASH',
   'DEAD_END',
   'QUERY_MUTATION',

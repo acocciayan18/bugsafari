@@ -113,6 +113,19 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a regression test asserting the element/handler stays stable',
     ),
   },
+  API_CONTRACT_VIOLATION: {
+    title: 'Unhandled response exception / API contract violation',
+    description: 'The app assumed a JSON response but received HTML/non-JSON (an error or proxy page), so parsing threw an unhandled exception instead of surfacing the failure.',
+    defaultSeverity: 'HIGH',
+    cwe: 'CWE-754',
+    remediation: remediation(
+      'Suggested remediation — API contract violation',
+      '1. Check response.ok and the Content-Type before calling response.json(); handle non-JSON bodies explicitly',
+      '2. Wrap the parse in try/catch and render an error/retry state instead of letting SyntaxError bubble',
+      '3. Fix the endpoint so failures return structured JSON (not an HTML error page) with the right status',
+      '4. Add a test that returns a non-JSON body and asserts the UI shows an error rather than crashing',
+    ),
+  },
   BOUNDARY_STRESS_FAILURE: {
     title: 'Boundary / network stress failure',
     description: 'The app failed under delayed, aborted, or error-status network conditions (5xx / timeout / freeze).',

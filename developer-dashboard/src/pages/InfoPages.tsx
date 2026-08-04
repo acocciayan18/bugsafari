@@ -159,6 +159,7 @@ const BUG_TAXONOMY = [
     ['SPA State Race Condition', 'CWE-362'],
     ['Structural Navigation Logic', 'CWE-835'],
     ['Runtime Stability Exception', 'CWE-248'],
+    ['API Contract Violation', 'CWE-754'],
     ['Boundary Stress Failure', 'CWE-400'],
     ['Fuzz Vulnerability Leak', 'CWE-79'],
     ['Security Vulnerability Leak', 'CWE-200'],

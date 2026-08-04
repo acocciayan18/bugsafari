@@ -210,6 +210,28 @@ export async function scanInteractiveElements(page: Page): Promise<RawScanResult
         '[tabindex]:not([tabindex="-1"])'
       ].join(',');
 
+      // BugSafari injects its own UI into the TARGET page (the highlight overlay, and
+      // any future engine chrome) under the 'bugsafari-' prefix / a data-bugsafari marker.
+      // Those are NOT target-application controls, so they must never enter DOM parsing or
+      // a reproduction playbook. Walk ancestors so a child of an engine node is excluded too.
+      // (Cross-frame / off-origin elements are already dropped downstream via crossBoundary.)
+      const isEngineNode = (node) => {
+        try {
+          let el = node;
+          while (el && el.nodeType === 1) {
+            const id = el.id || '';
+            const cls = typeof el.className === 'string' ? el.className : '';
+            if (id.indexOf('bugsafari-') === 0) return true;
+            if (/(^|\\s)bugsafari-/.test(cls)) return true;
+            if (el.hasAttribute && el.hasAttribute('data-bugsafari')) return true;
+            el = el.parentElement;
+          }
+        } catch (e) {
+          // exotic node without DOM APIs — treat as not-engine so it follows normal filtering
+        }
+        return false;
+      };
+
       const escapeAttribute = (value) => value.replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"');
 
       const nthOfTypeSelector = (element) => {
@@ -417,6 +439,8 @@ const isDisabled = (element) => {
           root.querySelectorAll(query).forEach((el) => {
             if (seenElements.has(el)) return;
             seenElements.add(el);
+            // Skip BugSafari's own injected UI — never a target-application control.
+            if (isEngineNode(el)) return;
             rawElements.push({ element: el, depth, path, crossBoundary: depth > 0 });
           });
         } catch (e) {

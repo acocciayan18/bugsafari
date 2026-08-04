@@ -18,7 +18,9 @@ import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import {
-  describeConcurrentBurstSiblings,
+  describeConcurrentBurstSiblingsIntent,
+  describeBurstOutcome,
+  describeInertBurst,
   elementNoun,
   resolveElementLabel,
 } from '../../services/forensics/narration.js';
@@ -71,27 +73,35 @@ export class InteractionSimulator {
 
     const recorder = new StressClickMetadataRecorder(metadata);
 
+    // Record the burst BEFORE firing it so an immediate crash still names the controls
+    // involved (the step used to be recorded only after the burst settled — a mid-burst
+    // crash then left the finding with no reproduction steps). The re-expandable MACRO
+    // carries the resolved sibling selectors so regression replay re-fires the exact
+    // concurrent burst; `targets` rides alongside so the playbook names the controls.
+    const intent = describeConcurrentBurstSiblingsIntent(named, targetSelectors.length);
+    ActionRecorder.recordStep({
+      actionType: 'MACRO',
+      humanIdentifier: named[0].label,
+      elementKind: named[0].kind,
+      selector: targetSelectors[0],
+      url: page.url(),
+      macro: {
+        scenario: 'ConcurrentSiblingBurst',
+        params: { selectors: targetSelectors, targets: named },
+        summary: intent,
+      },
+    });
+    ActiveScenarioTracker.record(intent);
+
     try {
       const result = await executeConcurrentBurst(page, targetSelectors);
       recorder.record(result);
-      const burstSummary = describeConcurrentBurstSiblings(result, named);
-      // Re-expandable MACRO carrying the resolved sibling selectors so regression
-      // replay re-fires the exact concurrent burst (not param-derivable, unlike the
-      // coordinate/route macros — the selectors must travel with the finding).
-      // `targets` rides alongside so the playbook names the controls, not selectors.
-      ActionRecorder.recordStep({
-        actionType: 'MACRO',
-        humanIdentifier: named[0].label,
-        elementKind: named[0].kind,
-        selector: targetSelectors[0],
-        url: page.url(),
-        macro: {
-          scenario: 'ConcurrentSiblingBurst',
-          params: { selectors: targetSelectors, targets: named },
-          summary: burstSummary,
-        },
-      });
-      ActiveScenarioTracker.record(burstSummary);
+      // Intent step already recorded; append the measured outcome. Zero registered clicks
+      // means no control was actuable — flag the reproduction invalid rather than implying
+      // a burst that never landed.
+      ActiveScenarioTracker.observe(
+        result.completed === 0 ? describeInertBurst(result.attempted) : describeBurstOutcome(result),
+      );
     } finally {
       manager?.endTransaction();
     }

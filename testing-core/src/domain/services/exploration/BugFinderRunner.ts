@@ -2,6 +2,13 @@ import type { BugClass, BugContext, BugFinder, BugFinding } from '../../../bugs/
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
+import { isSensitiveInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
+import {
+  resolveElementLabel,
+  elementNoun,
+  resolveControlName,
+  describeConstraintBypassPlaybook,
+} from '../forensics/narration.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
@@ -137,11 +144,39 @@ export class BugFinderRunner {
     const stateFingerprint = await captureStateFingerprint(ctx.page).catch(() => undefined);
 
     const bypass = finding.evidence?.bypass;
+    // A constraint-bypass finding names the exact input it probed — resolve its control
+    // label + a field-specific playbook here so the card attributes the RIGHT control
+    // (not the last labelled step, typically the button that opened the form) and the
+    // reproduction pins the specific field/parameter that received the payload.
+    const el = ctx.element;
+    const bypassLabel = bypass && el ? resolveControlName({
+      label: resolveElementLabel(el),
+      selector: el.selector,
+      tagName: el.tagName,
+      type: el.type,
+    }) : undefined;
+    const reproductionSteps = bypass && el
+      ? describeConstraintBypassPlaybook({
+          url: safeRoutePath(ctx.page),
+          label: resolveElementLabel(el),
+          kind: elementNoun(el.tagName, el.type),
+          paramName: el.name || el.id || undefined,
+          strippedAttribute: bypass.strippedAttribute,
+          payload: bypass.payload,
+          redact: isSensitiveInputElement(el),
+          method: bypass.method,
+          endpoint: bypass.endpoint,
+          status: bypass.status,
+        })
+      : undefined;
+
     this.deps.registerConfirmedBug({
       bugId: deriveBugId(finding, ctx),
       type: 'FINDER',
       message: finding.evidence?.message ?? finding.title,
       selector: finding.evidence?.selector ?? '',
+      elementLabel: bypassLabel,
+      reproductionSteps,
       // Prefer the actual submitted payload (may be ''); fall back to the action label.
       payloadUsed: bypass ? bypass.payload : finding.evidence?.actionExecuted ?? '',
       advice: definition.remediation,

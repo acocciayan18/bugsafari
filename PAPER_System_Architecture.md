@@ -14,64 +14,70 @@ without touching the engine.
 ## Architecture diagram
 
 ```mermaid
-flowchart TB
-    subgraph PRES["Presentation Layer"]
-        DASH["Watchtower Dashboard<br/>React and Vite"]
+graph TB
+    subgraph PRES["1. Presentation Layer (Watchtower)"]
+        DASH["Watchtower Dashboard<br/>(React / Vite)"]
     end
 
-    subgraph API["Interface Layer"]
-        REST["REST API<br/>Express"]
-        SOCK["Live Stream<br/>Socket.IO"]
-        AUTHM["Authentication and Rate Limiting"]
+    subgraph API["2. Interface Layer (Gateway)"]
+        REST["REST API Gateway<br/>(Express)"]
+        SOCK["Live Telemetry Stream<br/>(Socket.IO)"]
+        AUTHM["Auth & Rate Limiter"]
     end
 
-    subgraph APPL["Application Layer"]
+    subgraph APPL["3. Application Layer"]
         UC["Start Exploration Use Case"]
         SM["Session Manager"]
     end
 
-    subgraph DOM["Domain Layer"]
+    subgraph DOM["4. Domain Layer (Testing Core)"]
         ENGINE["Exploration Engine"]
-        SCORER["Risk Scorer and Perceptron"]
-        NAV["State Navigator and Loop Guard"]
+        SCORER["Risk Scorer & Perceptron"]
+        NAV["State Navigator & Loop Guard"]
         SCEN["Attack Scenarios"]
         FIND["Bug Finders"]
         TELE["Telemetry Monitors"]
     end
 
-    subgraph INFRA["Infrastructure Layer"]
-        BROWSER["Browser Driver<br/>Playwright and Chromium"]
-        REPO["Repositories<br/>Mongoose"]
+    subgraph INFRA["5. Infrastructure Layer"]
+        BROWSER["Browser Driver<br/>(Playwright / Chromium)"]
+        REPO["Repositories<br/>(Mongoose / MongoDB Client)"]
         GEM["AI Advisor Client"]
         SMTP["Mail Client"]
     end
 
-    subgraph EXT["External"]
-        TARGET["Target Web App"]
+    subgraph EXT["6. External Boundary"]
+        TARGET["Target Application under Test"]
         DB[("MongoDB Atlas")]
         GEMAPI["Google Gemini API"]
         MAILSRV["SMTP Server"]
     end
 
-    DASH -->|"control requests over HTTPS"| REST
-    SOCK -->|"live events over WebSocket"| DASH
+    %% Flow Connections
+    DASH -->|"HTTPS Control Commands"| REST
+    SOCK -->|"WebSocket Live Events"| DASH
     REST --> AUTHM
     AUTHM --> UC
     UC --> SM
-    UC --> BROWSER
-    BROWSER --> ENGINE
+    UC --> ENGINE
+    
+    %% Domain Internal Orchestration
     ENGINE --> SCORER
     ENGINE --> NAV
     ENGINE --> SCEN
     ENGINE --> FIND
     ENGINE --> TELE
-    TELE --> SOCK
+    
+    %% Infrastructure Invocations
+    ENGINE --> BROWSER
     ENGINE --> REPO
-    UC --> REPO
+    TELE --> SOCK
     REST --> GEM
-    AUTHM --> SMTP
-    BROWSER -->|"clicks and typed input"| TARGET
-    TARGET -->|"page content and errors"| BROWSER
+    UC --> SMTP
+    
+    %% External System Interactions
+    BROWSER -->|"Actions: Clicks, Fuzzing, Mutate DOM"| TARGET
+    TARGET -->|"Sensory Signals: Errors, XHR, DOM Hashes"| BROWSER
     REPO --> DB
     GEM --> GEMAPI
     SMTP --> MAILSRV

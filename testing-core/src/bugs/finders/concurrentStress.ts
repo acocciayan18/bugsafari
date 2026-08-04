@@ -218,6 +218,14 @@ export const concurrentStressGuard: BugFinder = {
       `[ConcurrentStressGuard] Analyzing stability for concurrent stress: velocity=${metadata.velocity}ms, chain=${metadata.elementChain.join(', ')}`
     );
 
+    // A burst where ZERO clicks registered never interacted with the app. Unless the page
+    // actually crashed, an inert burst (controls obscured/detached) must not manufacture a
+    // stress finding — the reproduction would be misleading (clicksRegistered === 0 gate).
+    if (metadata.completed === 0 && !ctx.crashHalted) {
+      console.log('[ConcurrentStressGuard] 0 clicks registered and no crash — inert burst, suppressing finding');
+      return findings;
+    }
+
     // Gather real stability signals from the live page (crash flags + DOM error text).
     const stabilityData: StabilityData = await gatherStabilityData(ctx);
 
