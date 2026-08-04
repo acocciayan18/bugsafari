@@ -141,19 +141,38 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
   return (
     <div className="rounded-lg border border-(--border-hairline) bg-(--surface-raised)">
       <div className={`flex items-center gap-3 px-4 py-3 ${disabled ? 'opacity-50' : ''}`}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={draft.enabled}
-          aria-label="Authenticate into target"
-          disabled={disabled}
-          onClick={() => set('enabled', !draft.enabled)}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-1 focus-visible:ring-offset-(--surface-raised) ${disabled ? '' : 'cursor-pointer'} ${draft.enabled ? 'bg-(--surface-invert)' : 'bg-(--border-strong)'}`}
-        >
-          <span
-            className={`inline-block h-3.5 w-3.5 rounded-full bg-(--surface-panel) shadow-sm transition-transform duration-150 ${draft.enabled ? 'translate-x-[20px]' : 'translate-x-0.5'}`}
-          />
-        </button>
+       <button
+  type="button"
+  role="switch"
+  aria-checked={draft.enabled}
+  aria-label="Authenticate into target"
+  disabled={disabled}
+  onClick={() => set('enabled', !draft.enabled)}
+  className={`
+    relative inline-flex h-5 w-9 shrink-0 items-center rounded-full
+    transition-all duration-150
+    focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-(--border-focus)
+    focus-visible:ring-offset-1
+    focus-visible:ring-offset-(--surface-raised)
+    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+    ${
+      draft.enabled
+        ? 'bg-blue-500'
+        : 'bg-zinc-700 border border-zinc-600'
+    }
+  `}
+>
+  <span
+    className={`
+      inline-block h-3.5 w-3.5 rounded-full
+      bg-white shadow-md
+      transition-transform duration-150
+      ${draft.enabled ? 'translate-x-[20px]' : 'translate-x-0.5'}
+    `}
+  />
+</button>
         <KeyRound className="h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold r text-(--text-secondary) uppercase font-sans leading-tight">

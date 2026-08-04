@@ -41,12 +41,12 @@ const userSchema = new Schema(
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters'],
     },
-    // Explicit false only on accounts created after email verification shipped.
-    // Pre-existing docs have no field (undefined) and the login guard treats only
-    // an explicit `false` as unverified, so they are never locked out — no backfill.
+    // No default: signup sets an explicit `false`, verify-email sets `true`. Legacy
+    // docs predating verification keep no field (undefined) so the `=== false` guards
+    // grandfather them in. A `default: false` would make Mongoose hydrate those legacy
+    // docs as `false` and wrongly gate them at login — never add one.
     emailVerified: {
       type: Boolean,
-      default: false,
     },
     emailVerificationToken: {
       type: String,

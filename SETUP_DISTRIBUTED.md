@@ -175,9 +175,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "added exploratory testing hardening in bugsfari system"
-git checkout -b 8-4-Ayan
-git push --set-upstream origin 8-4-Ayan
+git commit -m "Fix email verification after password reset"
+git checkout -b 8-4-Ayan-1
+git push --set-upstream origin 8-4-Ayan-1
 
 
 

@@ -24,7 +24,6 @@ import {
   LogOut,
   KeyRound,
   X,
-  Mail,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 
@@ -652,20 +651,12 @@ function AccountSection() {
           <p className="truncate text-sm font-medium text-(--text-primary)">
             {displayName || user?.email || 'User'}
           </p>
-          <p className="truncate text-sm text-(--text-secondary)">{user?.email}</p>
+          {/* Email shows once: primary line when no name, secondary line otherwise. */}
+          {displayName && user?.email && (
+            <p className="truncate text-sm text-(--text-secondary)">{user.email}</p>
+          )}
         </div>
       </div>
-
-      <dl className="divide-y divide-(--border-hairline) rounded-lg border border-(--border-hairline)">
-        
-        <div className="flex items-center gap-3 px-3 py-2.5">
-          <Mail className="h-5 w-5 flex-shrink-0 text-(--text-tertiary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <dt className="text-sm text-(--text-secondary)">Email</dt>
-            <dd className="truncate text-sm text-(--text-primary)">{user?.email || '—'}</dd>
-          </div>
-        </div>
-      </dl>
 
       {/* Security lives inside Account now — only authed users reach this return. */}
       <div className="border-t border-(--border-hairline) pt-5">
@@ -740,11 +731,10 @@ export default function Settings() {
           <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
         {user && (
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex shrink-0 items-center">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
               <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
             </div>
-            <span className="hidden truncate text-sm text-(--text-secondary) md:inline">{user.email}</span>
           </div>
         )}
       </header>
