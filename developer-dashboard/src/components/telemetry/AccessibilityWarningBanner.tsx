@@ -1,4 +1,4 @@
-import { Accessibility } from "lucide-react";
+import { Accessibility, X, XCircle } from "lucide-react";
 
 interface AccessibilityWarningBannerProps {
   count: number;
@@ -27,11 +27,12 @@ export default function AccessibilityWarningBanner({ count, onDismiss }: Accessi
           </p>
         </div>
         <button
-          onClick={onDismiss}
-          className="shrink-0 rounded-md border border-(--status-warning-border) bg-(--surface-panel) px-2.5 py-1.5 text-xs font-semibold text-(--status-warning-fg) transition-colors hover:bg-(--surface-hover) sm:py-1"
-        >
-          Dismiss
-        </button>
+  onClick={onDismiss}
+  aria-label="Dismiss"
+  className="shrink-0 cursor-pointer rounded-md p-1.5 text-(--status-warning-fg) transition-colors  focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
+>
+  <XCircle className="h-5 w-5" />
+</button>
       </div>
     </div>
   );

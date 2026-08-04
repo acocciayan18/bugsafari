@@ -7,12 +7,16 @@ import type {
 } from '../../../../shared/types.js';
 import { resolveControlName } from '../../../../shared/reproduction.js';
 import type { AuthNarrator } from '../../domain/services/auth/AuthNarrator.js';
+import { normalizeUrl } from '../../domain/services/auth/loginDiscovery.js';
 import { LoginFormLocator, type ResolvedSelectors } from './LoginFormLocator.js';
 import { maskField } from './credentialMask.js';
 
 const NAV_TIMEOUT_MS = 20000;
 const FIELD_TIMEOUT_MS = 8000;
 const SUCCESS_TIMEOUT_MS = 12000;
+// After submit fires, let one navigation/URL swap/network-idle signal land, then
+// this brief settle so an SPA finishes its state transition before the oracle reads.
+const POST_SUBMIT_SETTLE_MS = 600;
 
 const AUTH_ERROR_RE = /invalid|incorrect|failed|try again|wrong|unauthori[sz]ed/i;
 
@@ -110,10 +114,8 @@ export class TargetAuthenticator {
     // hides itself, the username renders in plaintext into every live frame.
     await maskField(page, resolved.username);
 
-    try {
-      await page.fill(resolved.username, config.username, { timeout: FIELD_TIMEOUT_MS });
-      await page.fill(resolved.password, config.password, { timeout: FIELD_TIMEOUT_MS });
-    } catch {
+    const entered = await this.enterCredentials(page, resolved, config);
+    if (!entered) {
       return { status: 'failed', reason: 'the resolved login fields could not be filled' };
     }
     narrator?.credentialsEntered(page.url());
@@ -125,15 +127,61 @@ export class TargetAuthenticator {
     await this.submit(page, resolved);
     narrator?.submitted(submitName, formUrl);
 
+    // Give the app one navigation/URL-change/network-idle signal before reading it.
+    await this.settleAfterSubmit(page);
+
     // Clear the password field immediately: any screenshot taken after a FAILED
     // login would otherwise capture the filled control.
     await page.fill(resolved.password, '', { timeout: 2000 }).catch(() => undefined);
 
     narrator?.verifying();
-    const verdict = await this.verify(page, config, resolved);
+    const verdict = await this.verify(page, config, resolved, formUrl);
     return verdict.status === 'authenticated'
       ? { ...verdict, originsVisited: location.originsVisited }
       : verdict;
+  }
+
+  /**
+   * Type both fields like a user: fill sets the value through the native setter
+   * (so React/Vue controlled inputs register it), then input/change/blur are
+   * dispatched so validation and enable-on-valid logic runs before we submit.
+   */
+  private async enterCredentials(
+    page: Page,
+    resolved: ResolvedSelectors,
+    config: TargetCredentialsAuth,
+  ): Promise<boolean> {
+    try {
+      await page.fill(resolved.username, config.username, { timeout: FIELD_TIMEOUT_MS });
+      await this.notifyField(page, resolved.username);
+      await page.fill(resolved.password, config.password, { timeout: FIELD_TIMEOUT_MS });
+      await this.notifyField(page, resolved.password);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Fire the events a real keystroke+blur would, so SPA form state catches up. */
+  private async notifyField(page: Page, selector: string): Promise<void> {
+    for (const type of ['input', 'change', 'blur'] as const) {
+      await page.dispatchEvent(selector, type, undefined, { timeout: 2000 }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Wait for the app to react to submit: whichever of a full navigation, an SPA
+   * URL swap, or network-idle lands first, then a brief settle. Bounded so a login
+   * that neither navigates nor calls out still proceeds to the oracle promptly.
+   */
+  private async settleAfterSubmit(page: Page): Promise<void> {
+    const startUrl = page.url();
+    await Promise.race([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: SUCCESS_TIMEOUT_MS }).catch(() => undefined),
+      page.waitForFunction((from) => window.location.href !== from, startUrl, { timeout: SUCCESS_TIMEOUT_MS }).catch(() => undefined),
+      page.waitForLoadState('networkidle', { timeout: SUCCESS_TIMEOUT_MS }).catch(() => undefined),
+    ]);
+    await page.waitForTimeout(POST_SUBMIT_SETTLE_MS);
   }
 
   /** Name of the submit control for narration, or null when Enter will be used. */
@@ -143,17 +191,33 @@ export class TargetAuthenticator {
     return resolveControlName({ label: label ?? undefined, selector: resolved.submit });
   }
 
-  /** Click submit when one was resolved, else press Enter in the password field. */
+  /**
+   * Prefer clicking the real submit control — that is what a user does and what
+   * SPA click handlers listen for. Only with no clickable submit do we fall back
+   * to Enter, and finally to a programmatic requestSubmit on the owning form.
+   */
   private async submit(page: Page, resolved: ResolvedSelectors): Promise<void> {
     try {
       if (resolved.submit) {
         await page.click(resolved.submit, { timeout: FIELD_TIMEOUT_MS });
-      } else {
-        await page.press(resolved.password, 'Enter', { timeout: FIELD_TIMEOUT_MS });
+        return;
       }
+      await page.press(resolved.password, 'Enter', { timeout: FIELD_TIMEOUT_MS });
     } catch {
-      // Submission may itself navigate away mid-click — verification is the judge.
+      // Enter may be swallowed by a form with no default submit — ask the form itself.
+      await this.requestSubmit(page, resolved.password);
     }
+  }
+
+  /** Last resort: submit the password field's owning form the way the browser would. */
+  private async requestSubmit(page: Page, passwordSelector: string): Promise<void> {
+    await page
+      .evaluate((selector) => {
+        const field = document.querySelector(selector);
+        const form = field?.closest('form');
+        if (form instanceof HTMLFormElement) form.requestSubmit();
+      }, passwordSelector)
+      .catch(() => undefined);
   }
 
   /**
@@ -166,6 +230,7 @@ export class TargetAuthenticator {
     page: Page,
     config: TargetCredentialsAuth,
     resolved: ResolvedSelectors,
+    formUrl: string,
   ): Promise<TargetAuthResult> {
     if (config.successIndicator) {
       const seen = await page
@@ -182,13 +247,19 @@ export class TargetAuthenticator {
       .then(() => true)
       .catch(() => false);
 
+    // A visible auth error is decisive even when the form otherwise cleared.
     if (await this.hasAuthError(page)) {
       return { status: 'failed', reason: 'the login form reported invalid credentials' };
     }
-    if (!passwordGone) {
-      return { status: 'failed', reason: 'the password field is still present after submitting' };
+    if (passwordGone) {
+      return { status: 'authenticated', reason: 'login form cleared', resolution: resolved };
     }
-    return { status: 'authenticated', reason: 'login form cleared', resolution: resolved };
+    // SPA path: the form may stay mounted while the app routes to an authenticated
+    // view. A move off the login URL with no error is success the field probe misses.
+    if (normalizeUrl(page.url()) !== normalizeUrl(formUrl)) {
+      return { status: 'authenticated', reason: 'the app navigated off the login page', resolution: resolved };
+    }
+    return { status: 'failed', reason: 'the password field is still present after submitting' };
   }
 
   /** Login-wall probe: a visible password input anywhere on the current page. */

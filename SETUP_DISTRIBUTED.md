@@ -175,7 +175,7 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Fix email verification after password reset"
+git commit -m "Fix the time error in frontend"
 git checkout -b 8-4-Ayan-1
 git push --set-upstream origin 8-4-Ayan-1
 

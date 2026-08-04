@@ -298,7 +298,6 @@ export default function ClinicalForensicsDashboard({
                 <SessionTimerLive
                   isRunning={isTestRunning}
                   isPaused={testStatus !== 'ACTIVE'}
-                  onTimeUp={onStop}
                 />
               )}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}

@@ -1,82 +1,28 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// SessionTimer.tsx - 10-Minute Session Countdown Component
-// ═══════════════════════════════════════════════════════════════════════════════
-// Real-time countdown visualization for session time limit
-// Displays MM:SS format with progress bar and color transitions
-// Ticks locally between syncs — the backend does not emit live tick telemetry —
-// but seeds/reseeds from the authoritative remainingTimeMs (backend-tracked,
-// pause-aware) on mount and on a genuine new-session start, never on resume.
+// SessionTimer.tsx - session countdown display (pure)
+// Renders MM:SS + progress from the authoritative remainingTimeMs. Runs NO clock
+// of its own: the store (runTimer + engine time-sync) is the single source of
+// truth, so this never drifts from the engine. isRunning/isPaused drive the badge
+// text only, not any countdown.
 
-import { useEffect, useRef, useState } from 'react';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { Clock } from 'lucide-react';
 
 interface SessionTimerProps {
     initialTimeMs?: number;      // Total timebox for this run — Default: 600000 (10 minutes)
-    remainingTimeMs?: number;    // Authoritative remaining time (backend-tracked); seed for the local clock
+    remainingTimeMs?: number;    // Authoritative remaining time (store-tracked, engine-corrected)
     isRunning?: boolean;
     isPaused?: boolean;
-    onTimeUp?: () => void;
     variant?: 'compact' | 'full';  // UI variant: compact (inline) or full (standalone)
 }
 
 const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
 
-function useCountdown(
-    seedRemainingMs: number,
-    isRunning: boolean,
-    isPaused: boolean,
-    onTimeUp?: () => void,
-): number {
-    const [timeRemaining, setTimeRemaining] = useState(seedRemainingMs);
-    const hasTimeUpFired = useRef(false);
-    const wasRunningRef = useRef(isRunning);
-    const isMountedRef = useRef(false);
-    const seedRef = useRef(seedRemainingMs);
-    seedRef.current = seedRemainingMs;
-
-    // Seed the clock on mount (covers refresh/reconnect mid-session, where
-    // seedRemainingMs already reflects backend-tracked elapsed time) and
-    // re-seed only on the false→true edge of isRunning — a genuine new
-    // session starting. Pause→resume (isRunning stays true) never re-seeds,
-    // so the countdown resumes from wherever it was left instead of resetting.
-    useEffect(() => {
-        const justStarted = isRunning && !wasRunningRef.current;
-        if (!isMountedRef.current || justStarted) {
-            setTimeRemaining(seedRef.current);
-            hasTimeUpFired.current = false;
-        }
-        isMountedRef.current = true;
-        wasRunningRef.current = isRunning;
-    }, [isRunning]);
-
-    useEffect(() => {
-        if (!isRunning || isPaused) return;
-        const interval = setInterval(() => {
-            setTimeRemaining((prev) => Math.max(0, prev - 1000));
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [isRunning, isPaused]);
-
-    useEffect(() => {
-        if (timeRemaining <= 0 && !hasTimeUpFired.current) {
-            hasTimeUpFired.current = true;
-            onTimeUp?.();
-        }
-    }, [timeRemaining, onTimeUp]);
-
-    return timeRemaining;
-}
-
 // Compact version for inline display
 function CompactTimer({
     initialTimeMs = DEFAULT_TIMEBOX_MS,
     remainingTimeMs,
-    isRunning: propIsRunning = true,
-    isPaused: propIsPaused = false,
-    onTimeUp,
 }: SessionTimerProps) {
-    const timeRemaining = useCountdown(remainingTimeMs ?? initialTimeMs, propIsRunning, propIsPaused, onTimeUp);
+    const timeRemaining = remainingTimeMs ?? initialTimeMs;
 
     const minutes = Math.floor(timeRemaining / 60000);
     const seconds = Math.floor((timeRemaining % 60000) / 1000);
@@ -101,9 +47,8 @@ function FullTimer({
     remainingTimeMs,
     isRunning: propIsRunning = true,
     isPaused: propIsPaused = false,
-    onTimeUp,
 }: SessionTimerProps) {
-    const timeRemaining = useCountdown(remainingTimeMs ?? initialTimeMs, propIsRunning, propIsPaused, onTimeUp);
+    const timeRemaining = remainingTimeMs ?? initialTimeMs;
 
     const minutes = Math.floor(timeRemaining / 60000);
     const seconds = Math.floor((timeRemaining % 60000) / 1000);

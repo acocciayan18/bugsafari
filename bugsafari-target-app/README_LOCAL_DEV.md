@@ -74,3 +74,5 @@ http://localhost:5174
 ```bash
 docker compose -f ../docker-compose.local.yml --profile target down
 ```
+
+npx cloudflared tunnel --url http://localhost:5174

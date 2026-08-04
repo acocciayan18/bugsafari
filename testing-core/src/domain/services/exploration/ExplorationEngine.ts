@@ -747,8 +747,9 @@ export class ExplorationEngine {
 
   /**
    * Start the timing interval that accumulates active time.
-   * Time only accumulates when NOT paused.
-   * No telemetry is emitted here — the frontend runs its own local countdown.
+   * Time only accumulates when NOT paused. Emits an authoritative time-sync every
+   * ~1s (and an immediate baseline); the frontend timer is a pure display slaved
+   * to it and never runs an independent countdown.
    */
   private startTimingInterval(_telemetry: TelemetryGateway): void {
     this.elapsedActiveTimeMs = 0;
