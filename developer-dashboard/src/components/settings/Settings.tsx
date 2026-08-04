@@ -271,9 +271,19 @@ function ApplicationSettingsSection() {
     }
   }, [isSettingsLoading]);
 
+  // In-flight lock: rapid toggling used to fire concurrent settings PATCHes that
+  // resolve out of order (last-write-wins churn). One save at a time.
+  const savingRef = useRef(false);
+
   const handleThemeSelect = async (mode: ThemeMode) => {
+    if (savingRef.current) return;
     setMode(mode); // Immediate visual feedback — don't wait for the async save
-    await updateSettings({ theme: mode });
+    savingRef.current = true;
+    try {
+      await updateSettings({ theme: mode });
+    } finally {
+      savingRef.current = false;
+    }
   };
 
   // Turning this on is only meaningful once the browser agrees to deliver, so the
@@ -295,7 +305,10 @@ function ApplicationSettingsSection() {
   };
 
   const handleNotificationsToggle = (value: boolean): void => {
-    void (value ? enableNotifications() : updateSettings({ notifications: false }));
+    if (savingRef.current) return;
+    savingRef.current = true;
+    void (value ? enableNotifications() : updateSettings({ notifications: false }))
+      .finally(() => { savingRef.current = false; });
   };
 
   if (isSettingsLoading && !hasLoadedRef.current) {

@@ -265,7 +265,11 @@ export class CanvasFrameRenderer {
   private ctx: CanvasRenderingContext2D;
   private pendingFrame: ArrayBuffer | null = null;
   private imageBitmap: ImageBitmap | null = null;
-  
+  // RAF handle + stop flag so the render loop is actually cancellable (it used to
+  // recurse forever behind a no-op stop, leaking CPU + an ImageBitmap per mount).
+  private rafId: number | null = null;
+  private stopped = false;
+
   // Canvas dimensions
   private width = 0;
   private height = 0;
@@ -309,21 +313,31 @@ export class CanvasFrameRenderer {
    * @returns A function to stop the rendering loop
    */
   public startRenderingLoop(): () => void {
+    this.stopped = false;
     const render = async () => {
+      if (this.stopped) return;
       if (this.pendingFrame) {
         await this.renderFrame(this.pendingFrame);
         this.pendingFrame = null;
       }
-      
+      if (this.stopped) return;
       // Schedule next frame - syncs with monitor refresh rate
-      requestAnimationFrame(render);
+      this.rafId = requestAnimationFrame(render);
     };
 
     // Start the loop
-    requestAnimationFrame(render);
+    this.rafId = requestAnimationFrame(render);
 
-// Return cleanup function (no-op)
-    return () => {};
+    // Real cleanup: halt rescheduling and cancel the pending frame.
+    return () => this.stopRenderingLoop();
+  }
+
+  private stopRenderingLoop(): void {
+    this.stopped = true;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
   }
 
   /**
@@ -372,6 +386,7 @@ export class CanvasFrameRenderer {
    * Cleans up resources.
    */
   public destroy(): void {
+    this.stopRenderingLoop();
     if (this.imageBitmap) {
       this.imageBitmap.close();
       this.imageBitmap = null;

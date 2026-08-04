@@ -15,7 +15,7 @@
 // stream pre-classification, so it is not rendered as a second,
 // duplicate list here.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles } from 'lucide-react';
 import { useParams } from 'react-router-dom';
@@ -243,6 +243,10 @@ function AiInsightsPanel({
   const aiGenerated = Boolean(override) || Boolean(aiAnalysis?.aiGenerated);
   const canGenerate = Boolean(sessionId) && findings.length > 0;
 
+  // Navigating off the report mid-request must not setState on an unmounted tree.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const generate = async () => {
     if (!sessionId) return;
     setStatus('loading');
@@ -259,10 +263,12 @@ function AiInsightsPanel({
           elementLabel: b.elementLabel,
         })),
       });
+      if (!mountedRef.current) return;
       if (result.source === 'ai') setOverride({ rootCause: result.rootCause, recommendations: result.recommendations });
       setReason(result.reason);
       setStatus(result.source === 'ai' ? 'idle' : 'error');
     } catch {
+      if (!mountedRef.current) return;
       setReason('network');
       setStatus('error');
     }
@@ -274,7 +280,7 @@ function AiInsightsPanel({
     <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
       <div className="flex flex-wrap items-center gap-2 text-[13px] font-bold uppercase r text-(--status-neutral-fg)">
         <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-        <span>AI Insights</span>
+        <span>Insights</span>
         {aiAnalysis.riskLevel && (
           <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold uppercase text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk

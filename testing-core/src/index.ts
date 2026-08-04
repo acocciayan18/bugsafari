@@ -272,8 +272,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // session; in production, exit so the orchestrator restarts a clean process.
 process.on('unhandledRejection', (reason) => {
   console.error('[BugSafari] Unhandled promise rejection:', reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : reason);
+  // In production a systematic rejection leak leaves the process in an undefined
+  // state; exit so the orchestrator restarts a clean one (mirrors the worker).
+  // Dev keeps serving so one stray rejection doesn't drop the session.
+  if (process.env.NODE_ENV === 'production') process.exit(1);
 });
 process.on('uncaughtException', (error) => {
   console.error('[BugSafari] Uncaught exception:', error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : error);
+  // Prod exits for a clean restart; dev intentionally keeps serving so a single
+  // fault doesn't drop the whole dev session (state may be degraded until reload).
   if (process.env.NODE_ENV === 'production') process.exit(1);
 });

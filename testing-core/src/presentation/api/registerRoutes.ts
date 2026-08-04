@@ -87,6 +87,7 @@ const HEALTH_CACHE_MS = 5_000;
 const SAVE_FAILURE_RESPONSE: Record<SaveFailureCode, { status: number; code: SaveFailureCode }> = {
   INVALID_USER: { status: 401, code: 'INVALID_USER' },
   OWNED_BY_OTHER: { status: 403, code: 'OWNED_BY_OTHER' },
+  RUN_IN_PROGRESS: { status: 409, code: 'RUN_IN_PROGRESS' },
   VALIDATION_FAILED: { status: 422, code: 'VALIDATION_FAILED' },
   PERSIST_FAILED: { status: 500, code: 'PERSIST_FAILED' },
 };
@@ -98,6 +99,23 @@ function resolveSessionSelector(idOrCode: string): { _id: Types.ObjectId } | { r
   if (code) return { runId: code };
   if (Types.ObjectId.isValid(idOrCode)) return { _id: new Types.ObjectId(idOrCode) };
   return null;
+}
+
+// Ingest bounds for /api/history/save-session (client-supplied body, 2 MB cap). The
+// findings array is length-capped BEFORE the O(n) map+dedup so a large array of tiny
+// findings cannot pressure the event loop; each stateFingerprint is dropped when its
+// serialized size blows the budget (arbitrary Mixed content from a hostile target).
+const MAX_SAVE_FINDINGS = 2000;
+const MAX_FINGERPRINT_BYTES = 32_000;
+
+function capStateFingerprint(fp: unknown): unknown {
+  if (!fp || typeof fp !== 'object') return undefined;
+  try {
+    if (JSON.stringify(fp).length > MAX_FINGERPRINT_BYTES) return undefined;
+  } catch {
+    return undefined;
+  }
+  return fp;
 }
 
 // Lazy Phase-3 safety net: a legacy doc served by id may still lack a runId; mint
@@ -761,6 +779,7 @@ export function registerRoutes(
       // dedup/filter/slice here — every finding is preserved.
       const rawFindings: unknown = request.body?.findings;
       const clientFindings = (Array.isArray(rawFindings) ? rawFindings : [])
+        .slice(0, MAX_SAVE_FINDINGS)
         .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
         .map((f) => ({
           bugId: typeof f.bugId === 'string' ? f.bugId : undefined,
@@ -785,9 +804,7 @@ export function registerRoutes(
           attribution: f.attribution && typeof f.attribution === 'object'
             ? (f.attribution as unknown as FindingAttribution)
             : undefined,
-          stateFingerprint: f.stateFingerprint && typeof f.stateFingerprint === 'object'
-            ? (f.stateFingerprint as unknown as StateFingerprint)
-            : undefined,
+          stateFingerprint: capStateFingerprint(f.stateFingerprint) as StateFingerprint | undefined,
           severity: typeof f.severity === 'string' ? f.severity : undefined,
         }));
       console.log(`[API] Transferred live findings count: ${clientFindings.length}`);

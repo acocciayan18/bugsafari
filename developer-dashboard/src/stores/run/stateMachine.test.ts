@@ -17,6 +17,13 @@ assert.equal(resolveStatus('STARTING', 'ACTIVE'), 'ACTIVE');
 assert.equal(resolveStatus('QUEUED', 'ACTIVE'), 'ACTIVE');
 assert.equal(resolveStatus('PAUSED', 'ACTIVE'), 'ACTIVE', 'resume must be allowed');
 
+// Optimistic control transitions (MF-transition-lock): the targets runCommands sets
+// on click must be valid so the button locks immediately instead of flickering.
+assert.equal(resolveStatus('ACTIVE', 'PAUSING'), 'PAUSING', 'optimistic pause must be allowed');
+assert.equal(resolveStatus('ACTIVE', 'STOPPING'), 'STOPPING', 'optimistic stop must be allowed');
+assert.equal(resolveStatus('PAUSED', 'STOPPING'), 'STOPPING', 'optimistic stop from paused must be allowed');
+assert.equal(resolveStatus('STARTING', 'STOPPING'), 'STOPPING', 'optimistic stop during startup must be allowed');
+
 // Terminal is always reachable from a live state.
 assert.equal(resolveStatus('ACTIVE', 'FINISHED'), 'FINISHED');
 assert.equal(resolveStatus('STARTING', 'STOPPED'), 'STOPPED');

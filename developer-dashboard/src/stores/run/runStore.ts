@@ -51,6 +51,10 @@ export const runRefs = {
     timeSyncSeeded: false,
     queuePhase: 'idle' as 'idle' | 'waiting' | 'active' | 'done',
     cancelInFlight: false,
+    // Synchronous latch across the startTest POST window: two same-tick triggers
+    // (double-click, Enter+click) both pass the state-derived UI gate before runId
+    // is set, so without this both POST and spawn duplicate backend runs.
+    startInFlight: false,
 };
 
 function writeStorage(key: string, value: string | null): void {

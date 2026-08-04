@@ -170,7 +170,14 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   // Buffered like the other channels so a reconnect/restore replays the Console tab
   // instead of losing every row captured before the drop.
   public emitBrowserConsole(message: BrowserConsoleMessage): void {
-    this.recorder?.record('browser-console', message);
-    this.channel().emit('browser-console', message);
+    // Scrub before record/emit: a target can echo a Bearer/JWT into console.* and it
+    // was previously stored and re-served verbatim (emitTelemetry already scrubs).
+    const safe: BrowserConsoleMessage = {
+      ...message,
+      message: safeText(message.message),
+      stackTrace: message.stackTrace ? safeText(message.stackTrace) : message.stackTrace,
+    };
+    this.recorder?.record('browser-console', safe);
+    this.channel().emit('browser-console', safe);
   }
 }

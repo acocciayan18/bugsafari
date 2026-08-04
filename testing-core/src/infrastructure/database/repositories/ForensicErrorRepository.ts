@@ -6,6 +6,7 @@ import {
   ForensicErrorSeverity,
 } from '../models/ForensicErrorModel.js';
 import { MAX_FORENSIC_ROWS } from '../queryLimits.js';
+import { capText, MAX_MESSAGE_LEN, MAX_STACK_LEN, MAX_RESPONSE_TEXT_LEN } from '../logSanitizer.js';
 
 export interface CreateForensicErrorParams {
   forensicRunId: string | Types.ObjectId;
@@ -27,26 +28,6 @@ export interface CreateForensicErrorParams {
   bugClass?: string;
   scenario?: string;
   cwe?: string;
-}
-
-// Free-text ceilings — target responses/messages can carry unbounded payloads.
-const MAX_RESPONSE_TEXT_LEN = 2000;
-const MAX_MESSAGE_LEN = 4000;
-const MAX_STACK_LEN = 8000;
-
-// Redact obvious secrets before persist — tested-app responses may carry tokens/PII.
-function redactSecrets(value: string): string {
-  return value
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
-    .replace(/\beyJ[A-Za-z0-9._-]{10,}/g, '[REDACTED_JWT]')
-    .replace(/((?:password|passwd|pwd|secret|token|api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|client[_-]?secret)"?\s*[:=]\s*"?)[^"\s,&}]+/gi, '$1[REDACTED]');
-}
-
-// Redact then cap a free-text field; undefined passes through untouched.
-function capText(value: string | undefined, max: number): string | undefined {
-  if (value == null) return value;
-  const redacted = redactSecrets(value);
-  return redacted.length > max ? `${redacted.slice(0, max)}…[truncated ${redacted.length - max} chars]` : redacted;
 }
 
 // Single persist-boundary sanitizer — the only place documents are shaped for storage.

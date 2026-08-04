@@ -128,16 +128,7 @@ export function RowActionMenu({
           } ${alignLeft ? 'left-0' : 'right-0'}`}
           role="menu"
         >
-          <button
-            onClick={() => handleItemClick(onViewReport)}
-            disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
-            role="menuitem"
-          >
-            
-            <Scroll className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
-            View Report
-          </button>
+          
           <button
             onClick={() => handleItemClick(onExportRecord)}
             disabled={disabled || isLoading}

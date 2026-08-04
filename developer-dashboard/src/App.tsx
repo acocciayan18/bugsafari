@@ -165,7 +165,9 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
           path="/history"
           element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
             <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
-              <SavedEvaluationSafaris />
+              <RouteErrorBoundary resetKey={location.pathname} label="History">
+                <SavedEvaluationSafaris />
+              </RouteErrorBoundary>
             </SidebarLayout>
           )}
         />
@@ -173,7 +175,9 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
           path="/settings"
           element={
             <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
-              <Settings />
+              <RouteErrorBoundary resetKey={location.pathname} label="Settings">
+                <Settings />
+              </RouteErrorBoundary>
             </SidebarLayout>
           }
         />

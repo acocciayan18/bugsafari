@@ -175,9 +175,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Fix dashboard control flickering during initialization and canonical names"
-git checkout -b 8-3-Ayan-4
-git push --set-upstream origin 8-3-Ayan-4
+git commit -m "added exploratory testing hardening in bugsfari system"
+git checkout -b 8-4-Ayan
+git push --set-upstream origin 8-4-Ayan
 
 
 

@@ -774,6 +774,8 @@ export class ExplorationEngine {
         this.lastTickTimestamp = Date.now();
       }
     }, 100);
+    // unref so a teardown-bypass path can't leave this interval pinning the event loop.
+    this.timingInterval.unref();
   }
 
   /**

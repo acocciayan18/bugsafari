@@ -2,14 +2,24 @@ import { Types } from 'mongoose';
 import { ConsoleLogModel, IConsoleLog } from '../models/ConsoleLogModel.js';
 import type { ConsoleLogEntry } from '../../../../../shared/types.js';
 import { MAX_FORENSIC_ROWS } from '../queryLimits.js';
+import { capText, MAX_MESSAGE_LEN, MAX_STACK_LEN, MAX_URL_LEN } from '../logSanitizer.js';
 
 export class ConsoleLogRepository {
   // Batch-insert a run's console log. Silent no-op on empty input.
   async createMany(forensicRunId: string | Types.ObjectId, entries: ConsoleLogEntry[]): Promise<void> {
     if (!entries.length) return;
     const runId = new Types.ObjectId(forensicRunId);
-    // Explicit Date cast: the wire type is an ISO string, the column is a Date.
-    const documents = entries.map((e) => ({ ...e, forensicRunId: runId, timestamp: new Date(e.timestamp) }));
+    // Redact secrets + cap free text at the persist boundary — a target can echo a
+    // token/PII into console.* and emit unbounded strings. Explicit Date cast: the
+    // wire type is an ISO string, the column is a Date.
+    const documents = entries.map((e) => ({
+      ...e,
+      message: capText(e.message, MAX_MESSAGE_LEN) ?? '',
+      stackTrace: capText(e.stackTrace, MAX_STACK_LEN),
+      url: capText(e.url, MAX_URL_LEN),
+      forensicRunId: runId,
+      timestamp: new Date(e.timestamp),
+    }));
     await ConsoleLogModel.insertMany(documents, { ordered: false });
   }
 

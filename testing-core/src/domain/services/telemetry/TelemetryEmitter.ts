@@ -203,6 +203,8 @@ export class TelemetryEmitter {
       void this.rearmScreencast();
       void this.broadcastFrame(page);
     }, TelemetryEmitter.SCREENCAST_STALL_MS);
+    // unref so a teardown-bypass path can't leave this interval pinning the event loop.
+    this.watchdog.unref();
   }
 
   private onScreencastFrame(session: CDPSession, frame: { data: string; sessionId: number }): void {
@@ -248,6 +250,8 @@ export class TelemetryEmitter {
       }
       await this.broadcastFrame(this.page);
     }, 33);
+    // unref so a teardown-bypass path can't leave this interval pinning the event loop.
+    this.frameCaptureInterval.unref();
   }
 
   public stopFrameCaptureLoop(): void {

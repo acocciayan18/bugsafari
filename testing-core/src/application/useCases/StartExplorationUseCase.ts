@@ -60,6 +60,7 @@ const EXECUTION_STATUS_BY_OUTCOME: Record<RunTerminationOutcome, ExecutionStatus
 export type SaveFailureCode =
     | 'INVALID_USER'
     | 'OWNED_BY_OTHER'
+    | 'RUN_IN_PROGRESS'
     | 'VALIDATION_FAILED'
     | 'PERSIST_FAILED';
 
@@ -264,6 +265,22 @@ export class StartExplorationUseCase {
             clientConsoleLog?: Record<string, unknown>[];
         },
     ): Promise<{ success: boolean; message: string; runId?: string; code?: SaveFailureCode }> {
+        // A run in progress owns the engine's live bug memory (getConfirmedBugsFromMemory
+        // reads the active engine first). Serving a save for a DIFFERENT run while one is
+        // active would persist the live run's findings under the requested run's identity.
+        // Allow only a save whose runCode matches the active run; reject cross-run saves.
+        if (this.state.active) {
+            const requestedCode = normalizeRunCode(options?.runCode);
+            const activeCode = normalizeRunCode(this.lastRunCode);
+            if (!requestedCode || requestedCode !== activeCode) {
+                return {
+                    success: false,
+                    message: 'A test run is currently in progress. Wait for it to finish before saving this session.',
+                    code: 'RUN_IN_PROGRESS',
+                };
+            }
+        }
+
         const { ReproductionPlaybookStore } = await import('../../infrastructure/monitoring/reproductionPlaybookStore.js');
         const actionRecords = ReproductionPlaybookStore.snapshot();
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);

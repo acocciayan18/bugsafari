@@ -2,14 +2,23 @@ import { Types } from 'mongoose';
 import { NetworkLogModel, INetworkLog } from '../models/NetworkLogModel.js';
 import type { NetworkLogEntry } from '../../../../../shared/types.js';
 import { MAX_FORENSIC_ROWS } from '../queryLimits.js';
+import { capText, MAX_MESSAGE_LEN, MAX_URL_LEN } from '../logSanitizer.js';
 
 export class NetworkLogRepository {
   // Batch-insert a run's network log. Silent no-op on empty input.
   async createMany(forensicRunId: string | Types.ObjectId, entries: NetworkLogEntry[]): Promise<void> {
     if (!entries.length) return;
     const runId = new Types.ObjectId(forensicRunId);
-    // Explicit Date cast: the wire type is an ISO string, the column is a Date.
-    const documents = entries.map((e) => ({ ...e, forensicRunId: runId, timestamp: new Date(e.timestamp) }));
+    // Redact secrets + cap free text at the persist boundary — a target URL or error
+    // message can carry a token/PII and unbounded length. Explicit Date cast: the
+    // wire type is an ISO string, the column is a Date.
+    const documents = entries.map((e) => ({
+      ...e,
+      url: capText(e.url, MAX_URL_LEN) ?? '',
+      message: capText(e.message, MAX_MESSAGE_LEN),
+      forensicRunId: runId,
+      timestamp: new Date(e.timestamp),
+    }));
     await NetworkLogModel.insertMany(documents, { ordered: false });
   }
 

@@ -195,6 +195,8 @@ async (job) => {
             .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
         }
       }, SNAPSHOT_INTERVAL_MS);
+      // unref so a teardown-bypass path can't leave this interval pinning the event loop.
+      snapshotTimer.unref();
       claimsByJobId.set(String(job.id ?? ''), { runToken: payload.runToken, userId: payload.requestedBy ?? null });
       let succeeded = false;
       try {

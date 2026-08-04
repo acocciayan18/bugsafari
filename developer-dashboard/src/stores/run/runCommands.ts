@@ -7,7 +7,7 @@ import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID } from './types';
+import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
 
 function writeStorage(key: string, value: string | null): void {
     try {
@@ -60,6 +60,11 @@ export async function startRun(
         return;
     }
 
+    // Synchronous in-flight latch: closes the same-tick double-submit window before
+    // the awaited POST. Backend admission (tryActivate) is the backstop.
+    if (runRefs.startInFlight) return;
+    runRefs.startInFlight = true;
+
     const settings = optimizationSettings ?? defaultOptimizationSettings;
     const timeboxMs = settings['execution-timebox-ms'] ?? defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
 
@@ -102,17 +107,26 @@ export async function startRun(
             : raw;
         if (isAuthOnQueue) toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);
+    } finally {
+        // Release the latch once the POST settles; isActiveSession now gates the UI.
+        runRefs.startInFlight = false;
     }
 }
 
 export function pauseRun(): void {
-    if (useRunStore.getState().status !== 'ACTIVE') return;
+    const status = useRunStore.getState().status;
+    if (status !== 'ACTIVE') return;
     getEngineGateway().pauseTest();
+    // Optimistic transition (via the state machine) so the control locks immediately
+    // instead of staying clickable until the engine's telemetry round-trip lands.
+    useRunStore.setState({ status: resolveStatus(status, 'PAUSING') });
 }
 
 export function resumeRun(): void {
-    if (useRunStore.getState().status !== 'PAUSED') return;
+    const status = useRunStore.getState().status;
+    if (status !== 'PAUSED') return;
     getEngineGateway().resumeTest();
+    useRunStore.setState({ status: resolveStatus(status, 'ACTIVE') });
 }
 
 export async function stopRun(): Promise<void> {
@@ -144,6 +158,8 @@ export async function stopRun(): Promise<void> {
     // (pendingStop) and applies it the instant the engine attaches.
     if (status === 'ACTIVE' || status === 'PAUSED' || status === 'STARTING') {
         gateway.stopTest();
+        // Optimistic transition so Stop/Pause/Resume lock immediately (spam window).
+        useRunStore.setState({ status: resolveStatus(status, 'STOPPING') });
     }
 }
 

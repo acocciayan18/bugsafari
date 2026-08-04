@@ -17,7 +17,7 @@ export type RunTerminationOutcome =
 
 /** Who asked the engine to stop. Carried through teardown so a resulting
  *  browser-closed error is attributed to its real cause, not to the operator. */
-export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'internal-shutdown';
+export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'pause-timeout' | 'internal-shutdown';
 
 /** Terminal outcome implied by each stop trigger. */
 export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
@@ -25,6 +25,7 @@ export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
   timebox: 'timebox',
   'target-crash': 'target-crash',
   'disconnect-grace': 'abandoned',
+  'pause-timeout': 'abandoned',
   'internal-shutdown': 'graceful-shutdown',
 };
 
@@ -45,6 +46,7 @@ export const STOP_REASON_DETAIL: Record<StopReason, string> = {
   timebox: 'Session ended automatically — configured time budget reached.',
   'target-crash': 'Session terminated — the target application stopped responding.',
   'disconnect-grace': 'Session terminated — the operator disconnected and did not return within the grace window.',
+  'pause-timeout': 'Session terminated — it stayed paused past the maximum pause window.',
   'internal-shutdown': 'Session terminated by an internal engine shutdown.',
 };
 

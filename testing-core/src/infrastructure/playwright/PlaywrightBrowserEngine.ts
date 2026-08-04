@@ -231,9 +231,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
     // Diagnostic: Log viewport configuration
     if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
-    const browserVersion = await this.activeBrowser.version();
-    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
-
+    // seededState + attributionUserAgent are pure (no browser I/O), safe before the guard.
     // storageState seeds a pre-authenticated session and MUST be applied at context
     // creation — cookies/origins have to exist before the app's first boot. An
     // unparseable state yields null here and the auth gate below rejects the run.
@@ -244,77 +242,98 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // a scanned party can trace/report a run. Opt-in via env — default keeps the stock
     // Chromium UA, since a non-standard UA can change what a target serves.
     const attributionUserAgent = process.env.BUGSAFARI_USER_AGENT?.trim();
-    this.activeContext = await this.activeBrowser.newContext({
-      viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-      ignoreHTTPSErrors: true,
-      deviceScaleFactor: 1,
-      ...(attributionUserAgent ? { userAgent: attributionUserAgent } : {}),
-      // Structurally validated above; Playwright's own type is narrower than the
-      // shared contract, which cannot depend on the playwright package.
-      ...(seededState ? { storageState: seededState as BrowserContextOptions['storageState'] } : {}),
-    });
-    this.activePage = await this.activeContext.newPage();
 
-    // Install the reflection-oracle execution hook before any navigation so an
-    // injected XSS payload that fires an event handler can positively prove
-    // execution (the raw-reflection check works regardless of this).
-    await installReflectionOracle(this.activePage);
+    // The browser is live but the run-level try/finally below has not begun. Any throw
+    // while creating the context/page, installing the oracle/mask, or running the boot
+    // evaluate must still close the browser — else a failed/duplicate start leaks a
+    // zombie Chromium process. This guard guarantees cleanup on that window.
+    let bootEmitter: TelemetryEmitter | undefined;
+    try {
+      const browserVersion = await this.activeBrowser.version();
+      if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
 
-    // Same constraint: an init script only reaches documents created after it is
-    // registered, and the login flow navigates before the exploration engine does.
-    await installCredentialMask(this.activePage);
+      this.activeContext = await this.activeBrowser.newContext({
+        viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+        ignoreHTTPSErrors: true,
+        deviceScaleFactor: 1,
+        ...(attributionUserAgent ? { userAgent: attributionUserAgent } : {}),
+        // Structurally validated above; Playwright's own type is narrower than the
+        // shared contract, which cannot depend on the playwright package.
+        ...(seededState ? { storageState: seededState as BrowserContextOptions['storageState'] } : {}),
+      });
+      this.activePage = await this.activeContext.newPage();
 
-    // Telemetry channel for the pre-exploration window. The engine builds its own
-    // emitter later; until then this one carries the login narration and starts the
-    // frame loop immediately, so the dashboard streams the target from about:blank
-    // onward instead of showing "establishing telemetry stream" through the login.
-    const bootEmitter = new TelemetryEmitter(telemetry, {
-      isPaused: () => false,
-      isStopRequested: () => this.isStopping,
-    });
-    bootEmitter.startFrameCaptureLoop(this.activePage);
+      // Install the reflection-oracle execution hook before any navigation so an
+      // injected XSS payload that fires an event handler can positively prove
+      // execution (the raw-reflection check works regardless of this).
+      await installReflectionOracle(this.activePage);
 
-    // Capture browser info and system details for telemetry
-    const platformInfo = await this.activePage.evaluate(() => {
-      return {
-        platform: navigator.platform,
-        userAgent: navigator.userAgent,
-        screenWidth: window.screen.width,
-        screenHeight: window.screen.height,
-      };
-    });
+      // Same constraint: an init script only reaches documents created after it is
+      // registered, and the login flow navigates before the exploration engine does.
+      await installCredentialMask(this.activePage);
 
-    // Store browser info for telemetry
-    this.currentBrowserInfo = {
-      browser: 'Chromium',
-      browserVersion: browserVersion,
-      browserEngine: 'Blink',
-      operatingSystem: platformInfo.platform,
-      platform: platformInfo.platform,
-      screenResolution: `${platformInfo.screenWidth}x${platformInfo.screenHeight}`,
-      viewportWidth: VIEWPORT_WIDTH,
-      viewportHeight: VIEWPORT_HEIGHT,
-};
+      // Telemetry channel for the pre-exploration window. The engine builds its own
+      // emitter later; until then this one carries the login narration and starts the
+      // frame loop immediately, so the dashboard streams the target from about:blank
+      // onward instead of showing "establishing telemetry stream" through the login.
+      bootEmitter = new TelemetryEmitter(telemetry, {
+        isPaused: () => false,
+        isStopRequested: () => this.isStopping,
+      });
+      bootEmitter.startFrameCaptureLoop(this.activePage);
 
-    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
-
-    // Diagnostic: verify page viewport. Gated — this is a per-run CDP round-trip whose
-    // only consumer is the log below, so it is pure cost outside debugging.
-    if (VERBOSE) {
-      const initialViewport = await this.activePage.evaluate(() => {
+      // Capture browser info and system details for telemetry
+      const platformInfo = await this.activePage.evaluate(() => {
         return {
-          windowInnerWidth: window.innerWidth,
-          windowInnerHeight: window.innerHeight,
-          documentClientWidth: document.documentElement?.clientWidth ?? 0,
-          documentClientHeight: document.documentElement?.clientHeight ?? 0,
-          bodyClientWidth: document.body?.clientWidth ?? 0,
-          bodyClientHeight: document.body?.clientHeight ?? 0,
-          scrollWidth: document.documentElement?.scrollWidth ?? 0,
-          scrollHeight: document.documentElement?.scrollHeight ?? 0,
+          platform: navigator.platform,
+          userAgent: navigator.userAgent,
+          screenWidth: window.screen.width,
+          screenHeight: window.screen.height,
         };
       });
-      console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
+
+      // Store browser info for telemetry
+      this.currentBrowserInfo = {
+        browser: 'Chromium',
+        browserVersion: browserVersion,
+        browserEngine: 'Blink',
+        operatingSystem: platformInfo.platform,
+        platform: platformInfo.platform,
+        screenResolution: `${platformInfo.screenWidth}x${platformInfo.screenHeight}`,
+        viewportWidth: VIEWPORT_WIDTH,
+        viewportHeight: VIEWPORT_HEIGHT,
+      };
+
+      if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
+
+      // Diagnostic: verify page viewport. Gated — this is a per-run CDP round-trip whose
+      // only consumer is the log below, so it is pure cost outside debugging.
+      if (VERBOSE) {
+        const initialViewport = await this.activePage.evaluate(() => {
+          return {
+            windowInnerWidth: window.innerWidth,
+            windowInnerHeight: window.innerHeight,
+            documentClientWidth: document.documentElement?.clientWidth ?? 0,
+            documentClientHeight: document.documentElement?.clientHeight ?? 0,
+            bodyClientWidth: document.body?.clientWidth ?? 0,
+            bodyClientHeight: document.body?.clientHeight ?? 0,
+            scrollWidth: document.documentElement?.scrollWidth ?? 0,
+            scrollHeight: document.documentElement?.scrollHeight ?? 0,
+          };
+        });
+        console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
+      }
+    } catch (setupError) {
+      // Stop the boot frame loop if it started, then close the browser before rethrow.
+      bootEmitter?.stopFrameCaptureLoop();
+      await this.cleanupResources();
+      this.activeEngine = null;
+      throw setupError;
     }
+
+    // Past the catch (which rethrows) the boot emitter is always set.
+    const boot = bootEmitter;
+    if (!boot) throw new Error('[PlaywrightBrowserEngine] boot telemetry emitter missing after setup');
 
     let result: RunResult;
     try {
@@ -347,7 +366,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         // Narrates every phase to the Live Feed and records the replayable steps
         // into the playbook. The engine exists but has not started, so its trace
         // buffers are already scoped to this run and accept the login steps first.
-        const narrator = new AuthNarrator(bootEmitter, (step) => this.activeEngine?.recordAuthStep(step));
+        const narrator = new AuthNarrator(boot, (step) => this.activeEngine?.recordAuthStep(step));
         const auth = await new TargetAuthenticator().authenticate(this.activePage, targetAuth, targetUrl, narrator);
         authOriginsVisited = auth.originsVisited ?? [];
         if (auth.status !== 'authenticated') {
@@ -411,7 +430,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // Hand the frame stream over: TabWindowManager starts the engine's own 33ms
       // loop on a DIFFERENT emitter instance, so ours must be stopped or its
       // interval outlives the boot window and double-broadcasts for the whole run.
-      bootEmitter.stopFrameCaptureLoop();
+      boot.stopFrameCaptureLoop();
 
       // Pass browserInfo to the engine for telemetry collection
       result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins, restoreSession);
@@ -430,7 +449,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     } finally {
       // Idempotent — covers the early returns (cancellation, auth failure) that
       // never reach the hand-over above.
-      bootEmitter.stopFrameCaptureLoop();
+      boot.stopFrameCaptureLoop();
       this.capturedConfirmedBugs = this.activeEngine?.getConfirmedBugsFromMemory() ?? [];
       this.capturedVisitedRoutes = this.activeEngine?.getVisitedRoutes() ?? this.capturedVisitedRoutes;
       clearScrubValues();

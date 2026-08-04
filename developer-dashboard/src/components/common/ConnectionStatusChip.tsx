@@ -64,7 +64,7 @@ export default function ConnectionStatusChip() {
   const cls = down
     ? 'border-(--status-critical-border) bg-(--status-critical-bg) text-(--status-critical-fg)'
     : 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)';
-  const dot = down ? 'bg-(--status-critical-fg)' : 'bg-(--status-stable-fg)';
+ 
 
   return (
     <div

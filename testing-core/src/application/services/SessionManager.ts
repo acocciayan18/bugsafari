@@ -69,6 +69,10 @@ const HEALTH_MONITOR_ENABLED = process.env.BUGSAFARI_TARGET_HEALTH_MONITOR?.trim
 // run is declared stillborn. Must exceed a cold Playwright launch (30s race in
 // PlaywrightBrowserEngine) with headroom for the pre-launch imports.
 const RESERVATION_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_RESERVATION_TIMEOUT_MS, 45_000);
+// Absolute cap on how long a run may sit PAUSED. The timebox counts active time only,
+// so a connected operator who pauses and stays connected (grace never fires) would pin
+// the browser + fleet slot forever. On expiry the run auto-stops via the normal path.
+const MAX_PAUSE_MS = readPositiveInt(process.env.BUGSAFARI_MAX_PAUSE_MS, 600_000);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const CONSOLE_BUFFER_CAP = 200;
@@ -95,6 +99,10 @@ interface ActiveRun {
   room: string;
   ownerSocketIds: Set<string>;
   manualPaused: boolean;   // paused by the operator
+  // A resume that raced in while a pause was still settling (status PAUSING). The
+  // resume is dropped there (the transition isn't done); this latch replays it the
+  // instant pauseByOperator settles, so rapid pause→resume can't strand the run paused.
+  pendingResume: boolean;
   crashTerminated: boolean; // target server crash confirmed; run being torn down
   // Why the run ended, captured off the terminal telemetry event. Held on the run
   // (not derived from the capped replay buffer) so a restore is always accurate.
@@ -102,6 +110,9 @@ interface ActiveRun {
   terminationReason: string | null;
   health: TargetHealthMonitor;
   graceTimer: ReturnType<typeof setTimeout> | null;
+  // Armed when the run settles to PAUSED; expiry auto-stops it. Cleared on resume,
+  // stop, and teardown so only a genuinely-abandoned pause reaches the deadline.
+  pauseDeadlineTimer: ReturnType<typeof setTimeout> | null;
   // Armed while STARTING; disarmed by beginRun. Expiry declares the run stillborn.
   reservationTimer: ReturnType<typeof setTimeout> | null;
   // A stop issued while STARTING has no engine to reach — remembered so beginRun
@@ -270,6 +281,8 @@ export class SessionManager implements TelemetryRecorder {
       room,
       ownerSocketIds: new Set<string>(),
       manualPaused: false,
+      pendingResume: false,
+      pauseDeadlineTimer: null,
       crashTerminated: false,
       terminationOutcome: null,
       terminationReason: null,
@@ -350,9 +363,30 @@ export class SessionManager implements TelemetryRecorder {
       clearTimeout(this.run.reservationTimer);
       this.run.reservationTimer = null;
     }
+    this.clearPauseDeadline(this.run);
     this.gateway?.setRoom(null);
     this.gateway?.setRecorder(null);
     this.run = null;
+  }
+
+  private clearPauseDeadline(run: ActiveRun): void {
+    if (run.pauseDeadlineTimer) {
+      clearTimeout(run.pauseDeadlineTimer);
+      run.pauseDeadlineTimer = null;
+    }
+  }
+
+  // Auto-stop a run left paused past MAX_PAUSE_MS so an idle pause can't pin the
+  // browser + fleet slot indefinitely (the timebox counts active time only).
+  private armPauseDeadline(run: ActiveRun): void {
+    this.clearPauseDeadline(run);
+    run.pauseDeadlineTimer = setTimeout(() => {
+      if (this.run !== run) return;
+      console.log(`[SessionManager] Run ${run.runToken} exceeded max pause (${MAX_PAUSE_MS}ms) — auto-stopping.`);
+      this.emitMilestone(`Session auto-stopped — paused longer than the ${Math.round(MAX_PAUSE_MS / 1000)}s maximum.`);
+      void this.stopByOperator('pause-timeout');
+    }, MAX_PAUSE_MS);
+    run.pauseDeadlineTimer.unref();
   }
 
   // ── TelemetryRecorder: buffer every outbound payload for reconnect replay ──
@@ -575,13 +609,26 @@ export class SessionManager implements TelemetryRecorder {
     // Idempotent against duplicate events and re-entry while a pause is settling.
     if (run.manualPaused || run.status === 'PAUSING' || run.status === 'STOPPING') return;
     run.manualPaused = true;
+    run.pendingResume = false;
     run.status = 'PAUSING';
     run.engine.pause();
     this.emitEngineAction('engine-pausing', 'Pausing Safari — waiting for in-flight tasks to settle…');
     await Promise.resolve(run.engine.settlePendingTasks?.());
     // A stop that raced in during settlement wins — don't downgrade it to PAUSED.
     if (this.run !== run || (run.status as RunLifecycleStatus) === 'STOPPING') return;
+    // A resume that arrived while settling was latched (not lost); honour it now
+    // instead of finalizing to PAUSED, so rapid pause→resume ends up RUNNING.
+    if (run.pendingResume && typeof run.engine.resume === 'function') {
+      run.pendingResume = false;
+      run.manualPaused = false;
+      run.status = 'RUNNING';
+      this.clearPauseDeadline(run);
+      run.engine.resume();
+      this.emitEngineAction('engine-resumed', 'Safari session resumed by user.');
+      return;
+    }
     run.status = 'PAUSED';
+    this.armPauseDeadline(run);
     void this.persistStatus('PAUSED');
     this.emitEngineAction('engine-paused', 'Safari session paused by user.');
   }
@@ -590,9 +637,16 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run || typeof run.engine.resume !== 'function') return;
     if (!run.manualPaused) return; // already resumed — idempotent no-op against duplicate events
-    if (run.status === 'PAUSING' || run.status === 'STOPPING') return; // let the transition settle first
+    if (run.status === 'STOPPING') return; // a stop in progress wins
+    // Pause still settling: latch the resume so pauseByOperator replays it on settle
+    // rather than dropping it (the lost-command bug under rapid pause→resume).
+    if (run.status === 'PAUSING') {
+      run.pendingResume = true;
+      return;
+    }
     run.manualPaused = false;
     run.status = 'RUNNING';
+    this.clearPauseDeadline(run);
     run.engine.resume();
     this.emitEngineAction('engine-resumed', 'Safari session resumed by user.');
   }
@@ -604,6 +658,7 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run || typeof run.engine.stop !== 'function') return;
     if (run.status === 'STOPPING') return; // idempotent against duplicate stop clicks
+    this.clearPauseDeadline(run); // a stop supersedes any pending pause deadline
     // Booting: there is no engine to stop yet. Stay STARTING and record the intent
     // (with its reason) so beginRun applies it the instant the engine attaches —
     // changing status here would strand the run outside the reservation-upgrade path.
