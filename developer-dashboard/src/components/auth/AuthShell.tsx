@@ -16,7 +16,7 @@ export default function AuthShell({
   eyebrow,
   title,
   subtitle,
-  maxWidth = 'max-w-[400px]',
+  maxWidth = 'max-w-[480px]',
   children,
   footer,
 }: AuthShellProps) {

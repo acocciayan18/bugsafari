@@ -175,14 +175,14 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Align Forensic History UI with Telemetry view"
-git checkout -b 8-5-Ayan
-git push --set-upstream origin 8-5-Ayan
+git commit -m "Make landing page headline fully responsive"
+git checkout -b 8-5-Ayan-1
+git push --set-upstream origin 8-5-Ayan-1
 
 
 
 git add .
-git commit -m "Fix dashboard control flickering during initialization and canonical names"
+git commit -m "Align Forensic History UI with Telemetry view"
 git switch dev
 git merge 8-3-Ayan-4
 git push origin dev

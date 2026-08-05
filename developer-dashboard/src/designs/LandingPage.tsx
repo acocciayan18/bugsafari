@@ -59,8 +59,8 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 border border-zinc-200 bg-zinc-50 rounded-full text-zinc-800 shadow-xs">
                             <span className="font-mono text-xs uppercase st font-bold">Autonomous Exploratory Testing</span>
                         </div>
-                        <h1 className="text-[48px] lg:text-[64px] leading-tight text-black font-extrabold uppercase">
-                            Uncover Every Bug.<br/><span className="text-zinc-400">Effortlessly.</span>
+                        <h1 className="text-[clamp(2rem,6vw,4rem)] leading-[1.1] text-black font-extrabold uppercase break-normal [text-wrap:balance]">
+                            Uncover Every Bug. <span className="text-zinc-400 whitespace-nowrap">Effortlessly.</span>
                         </h1>
                         <p className="text-[16px] leading-[24px] text-zinc-600 max-w-lg">
                             BugSafari autonomously explores your Single-Page App, scores every element with a self-learning model, and turns whatever breaks into a reproducible forensic report — no test scripts required.
