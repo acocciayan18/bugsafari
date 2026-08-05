@@ -82,6 +82,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
     <div ref={containerRef} className="relative">
       <button
         ref={buttonRef}
+        data-tour="telemetry-help"
         onClick={() => setIsOpen((v) => !v)}
         aria-label="What do these tabs show?"
         aria-haspopup="dialog"

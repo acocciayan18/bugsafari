@@ -163,7 +163,7 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m "prefix lock navigation guard"
+git commit -m "Add first-time user onboarding tour to Developer Dashboard"
 git checkout -b dev
 git push origin dev --force
 

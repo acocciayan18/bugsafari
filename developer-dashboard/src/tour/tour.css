@@ -1,0 +1,73 @@
+/* Themes the driver.js popover with the app's design tokens so it tracks light/dark. */
+
+.driver-popover {
+  background-color: var(--surface-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+  max-width: 320px;
+}
+
+.driver-popover-title {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.driver-popover-description {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.driver-popover-progress-text {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.driver-popover-footer button {
+  background-color: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: none;
+  padding: 6px 12px;
+}
+
+.driver-popover-footer button:hover {
+  background-color: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.driver-popover-next-btn {
+  background-color: var(--surface-invert) !important;
+  color: var(--text-oninvert) !important;
+  border-color: var(--surface-invert) !important;
+}
+
+.driver-popover-close-btn {
+  color: var(--text-tertiary);
+}
+
+.driver-popover-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.driver-popover-arrow {
+  border-color: var(--surface-panel);
+}
+
+/* Phones: never let the popover outgrow the viewport, keep tap targets comfortable. */
+@media (max-width: 480px) {
+  .driver-popover {
+    max-width: calc(100vw - 24px);
+  }
+  .driver-popover-footer button {
+    padding: 8px 14px;
+  }
+}

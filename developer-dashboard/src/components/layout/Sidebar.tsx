@@ -74,6 +74,7 @@ export default function Sidebar({
 
   return (
     <section
+      data-tour="sidebar-nav"
       className={`${width} h-full shrink-0 flex flex-col border-r border-(--border-hairline) bg-(--surface-panel) transition-[width] duration-200 ease-in-out overflow-hidden`}
       aria-label="Primary navigation"
     >

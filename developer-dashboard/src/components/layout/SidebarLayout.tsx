@@ -126,6 +126,7 @@ export default function SidebarLayout({
         {isCompact && (
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3">
             <button
+              data-tour="nav-toggle"
               onClick={() => setIsDrawerOpen(true)}
               aria-label="Open navigation"
               aria-expanded={isDrawerOpen}

@@ -20,6 +20,7 @@ import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
+import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, ConsoleFilterBar, AiDiagnosticCard, TelemetryHelpModal, type ConsoleFilter } from '../telemetry';
 import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
@@ -224,6 +225,9 @@ export default function ClinicalForensicsDashboard({
   // Only surfaced pre-launch: mid-run the field mirrors the running target, not a draft.
   const showLocalTargetError = isBlockedTarget && !isActiveSession;
   const showSessionControls = isActiveSession || hasRunCompleted;
+
+  // First-run guided tour — auto-launches once per user while the dashboard sits idle.
+  useDashboardTour(!isActiveSession && !isInitializing && !isQueued);
   // Backend settling in-flight tasks — lock every control until it confirms completion.
   const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
 
@@ -270,6 +274,7 @@ export default function ClinicalForensicsDashboard({
           {/* Single entry point for every pre-launch setting — locked mid-run, since
               the engine reads them once at launch and cannot re-apply them live. */}
           <button
+            data-tour="config"
             onClick={() => setIsConfigOpen(true)}
             disabled={isActiveSession}
             aria-haspopup="dialog"
@@ -355,6 +360,7 @@ export default function ClinicalForensicsDashboard({
               {/* Save Session — only in a terminal state (Completed/Stopped/Failed), never while live; single-save. */}
               {onSaveSessionToHistory && hasRunCompleted && !isActiveSession && (
                <button
+  data-tour="save-session"
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
@@ -410,6 +416,7 @@ export default function ClinicalForensicsDashboard({
           </div>
 
           <button
+            data-tour="start"
             onClick={handleInitialize}
             disabled={isActiveSession || authIncomplete || isBlockedTarget}
             title={
@@ -453,7 +460,7 @@ export default function ClinicalForensicsDashboard({
         {/* FEED PANEL: Browser Frame Viewport */}
         <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
           <div className="flex-1 overflow-hidden bg-(--surface-raised) p-3 pb-2 sm:p-4 sm:pb-2">
-            <div className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
+            <div data-tour="live-feed" className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
               <LiveFeed
                 currentUrl={currentUrl || targetUrl}
                 frame={frameBuffer}
@@ -503,6 +510,7 @@ export default function ClinicalForensicsDashboard({
                   <button
                     key={id}
                     ref={(el) => { tabRefs.current[id] = el; }}
+                    data-tour={id === 'telemetry' ? 'telemetry-tab' : id === 'errors' ? 'findings-tab' : id === 'network' ? 'network-tab' : 'console-tab'}
                     role="tab"
                     id={`terminal-tab-${id}`}
                     aria-selected={selected}
@@ -524,6 +532,7 @@ export default function ClinicalForensicsDashboard({
               {activeTab === 'telemetry' && (
                 <button
   type="button"
+  data-tour="verbose-toggle"
   onClick={() => setShowVerbose((v) => !v)}
   aria-pressed={showVerbose}
   aria-label="Toggle verbose execution trace"
