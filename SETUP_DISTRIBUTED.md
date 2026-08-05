@@ -184,7 +184,7 @@ git push --set-upstream origin 8-5-Ayan-1
 git add .
 git commit -m "Align Forensic History UI with Telemetry view"
 git switch dev
-git merge 8-3-Ayan-4
+git merge 8-5-Ayan-1
 git push origin dev
 
 
