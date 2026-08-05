@@ -41,6 +41,8 @@ import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProf
 import { isActionableNetworkStatus, type RemediationFailureReason } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
+import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
+import ConsoleMessageList from '../common/ConsoleMessageCard';
 import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
 import { requestAiInsights } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
@@ -800,82 +802,18 @@ function EmptyTab({ message }: { message: string }) {
   );
 }
 
-// Full network log — every request (incl. successful), mirroring the live Network tab.
-function statusTint(row: ForensicNetworkLog): { border: string; bg: string; status: string } {
-  const code = row.statusCode ?? 0;
-  if (!row.ok || code >= 500) return { border: 'border-(--status-critical-border)', bg: 'bg-(--status-critical-bg)', status: 'text-(--status-critical-fg)' };
-  if (code >= 400) return { border: 'border-(--status-warning-border)', bg: 'bg-(--status-warning-bg)', status: 'text-(--status-warning-fg)' };
-  return { border: 'border-(--border-hairline)', bg: 'bg-(--surface-panel)', status: 'text-(--status-stable-fg)' };
-}
-
-function NetworkLogList({ rows }: { rows: ForensicNetworkLog[] }) {
-  if (!rows.length) return <EmptyTab message="No network failures were recorded for this session." />;
-  return (
-    <ul className="flex flex-col gap-2">
-      {rows.map((row, i) => {
-        const tint = statusTint(row);
-        return (
-          <li key={i} className={`rounded-md border ${tint.border} ${tint.bg} p-3`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold uppercase text-(--text-oninvert)">{row.method}</span>
-              <span className={`font-mono text-xs font-bold ${tint.status}`}>{row.ok || row.statusCode ? `HTTP ${row.statusCode ?? '?'}` : 'FAILED'}</span>
-              {row.resourceType && (
-                <span className="font-mono text-xs uppercase  text-(--text-tertiary)">{row.resourceType}</span>
-              )}
-              {row.repeatCount && row.repeatCount > 1 && (
-                <span className="font-mono text-xs text-(--text-secondary)">×{row.repeatCount}</span>
-              )}
-            </div>
-            <div className="mt-1 truncate font-mono text-xs text-(--text-secondary)" title={row.url}>{row.url}</div>
-            {row.message && !row.ok && <div className="mt-1 break-words text-[13px] text-(--text-primary)">{row.message}</div>}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-const CONSOLE_LEVEL_STYLES: Record<string, string> = {
-  error: 'bg-(--status-critical-bg) text-(--status-critical-fg)',
-  warning: 'bg-(--status-warning-bg) text-(--status-warning-fg)',
-  info: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
-  debug: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
-  trace: 'bg-(--surface-inset) text-(--text-secondary)',
-  notice: 'bg-(--surface-inset) text-(--text-secondary)',
-  log: 'bg-(--surface-inset) text-(--text-secondary)',
-};
-
-// Full console log — every level, mirroring the live Console tab.
-function ConsoleLogList({ rows }: { rows: ForensicConsoleLog[] }) {
-  if (!rows.length) return <EmptyTab message="No console output was recorded for this session." />;
-  return (
-    <ul className="flex flex-col gap-2">
-      {rows.map((row, i) => (
-        <li key={i} className="rounded-md border border-(--border-hairline) bg-(--surface-panel) p-3">
-  <div className="flex flex-wrap items-center gap-2">
-    <span className={`rounded px-1.5 py-0.5 font-mono text-xs font-bold uppercase ${CONSOLE_LEVEL_STYLES[row.level] ?? CONSOLE_LEVEL_STYLES.log}`}>
-      {row.level}
-    </span>
-    {row.url && (
-      <span className="truncate font-mono text-xs text-(--text-tertiary)" title={row.url}>
-        {row.url}
-      </span>
-    )}
-  </div>
-  {row.message && (
-    <div className="mt-1 break-words font-mono text-[13px] text-(--text-primary)">
-      {row.message}
-    </div>
-  )}
-  {row.stackTrace && (
-    <pre className="mt-2 max-h-40 overflow-auto rounded bg-(--surface-inset) p-2 font-mono text-xs leading-relaxed text-(--text-primary)">
-      {row.stackTrace}
-    </pre>
-  )}
-</li>
-      ))}
-    </ul>
-  );
+// Adapt a persisted network row into the shared card's normalized shape, so the
+// saved Network tab renders through the SAME <NetworkFailureList> as the live tab.
+function networkLogToRow(row: ForensicNetworkLog): NetworkFailureRow {
+  return {
+    method: row.method,
+    statusCode: row.statusCode,
+    url: row.url,
+    ok: row.ok,
+    count: row.repeatCount ?? 1,
+    resourceType: row.resourceType,
+    errorText: !row.ok ? row.message : undefined,
+  };
 }
 
 function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
@@ -1095,8 +1033,17 @@ export default function ForensicReport() {
                 <CleanRunCard />
               )
             )}
-            {activeTab === 'network' && <NetworkLogList rows={networkRows} />}
-            {activeTab === 'console' && <ConsoleLogList rows={consoleRows} />}
+            {activeTab === 'network' && (
+              <NetworkFailureList
+                rows={networkRows.map(networkLogToRow)}
+                emptyMessage="No network failures were recorded for this session."
+              />
+            )}
+            {activeTab === 'console' && (
+              consoleRows.length > 0
+                ? <ConsoleMessageList logs={consoleRows} />
+                : <EmptyTab message="No console output was recorded for this session." />
+            )}
           </section>
 
           <ActionTimelineAppendix steps={report.actionSteps ?? []} />

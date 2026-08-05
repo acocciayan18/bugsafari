@@ -263,7 +263,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-[13px] sm:text-[13px] font-bold tracking-[0.16em] sm:tracking-[0.2em] text-(--text-secondary) uppercase font-sans">
+          <h2 className="text-sm font-bold  text-[var(--text-primary) sm:text-[13px]  uppercase font-sans">
             COMMAND CENTER
           </h2>
 
