@@ -4,9 +4,10 @@
 
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
-import { decideVerdict, MIN_EXECUTED_RATIO } from './verdict.js';
+import { decideVerdict, summarize, MIN_EXECUTED_RATIO } from './verdict.js';
 import { FaultCollector, messagesSimilar, normalizeMessage } from './FaultCollector.js';
 import { isReplayVerifiable } from './replayProbes.js';
+import { detectApiContractViolation } from '../verification/apiContractBody.js';
 import { stripNonRendered } from './ReplaySession.js';
 import type { ReplayStepStats } from '../../../../../shared/types.js';
 
@@ -46,14 +47,38 @@ check('weak-only match → INCONCLUSIVE, never STILL_ACTIVE or RESOLVED', () => 
   assert.equal(d.reason, 'WEAK_MATCH_ONLY');
 });
 
-check('zero recorded steps → INSUFFICIENT_REPLAY', () => {
+// Gap #4 transparency: the verdict stays INCONCLUSIVE (no logic change) but the
+// operator-facing summary must state the still-active lean, not read as neutral.
+check('weak-match summary states the still-active lean (unconfirmed, not fixed)', () => {
+  const d = decideVerdict({ strong: [], weak: [signal], stats: stats(), timelineSource: 'finding' });
+  const text = summarize(d, 'RUNTIME_STABILITY_EXCEPTION', stats()).toLowerCase();
+  assert.ok(text.includes('still-active'));
+  assert.ok(text.includes('unconfirmed'));
+});
+
+check('zero recorded steps → NO_REPLAY_STEPS (nothing to replay)', () => {
   const d = decideVerdict({
     strong: [],
     weak: [],
     stats: stats({ total: 0, executed: 0, finalStepExecuted: false }),
     timelineSource: 'finding',
   });
-  assert.equal(d.reason, 'INSUFFICIENT_REPLAY');
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'NO_REPLAY_STEPS');
+});
+
+// The reported bug: a finding with no recorded timeline caught a bare page-load
+// fault and read "STILL_ACTIVE reproduced after 0 steps". A strong signal with
+// zero recorded steps is NOT attributable to the finding → INCONCLUSIVE.
+check('strong signal but zero recorded steps → INCONCLUSIVE, never STILL_ACTIVE', () => {
+  const d = decideVerdict({
+    strong: [signal],
+    weak: [],
+    stats: stats({ total: 0, executed: 0, finalStepExecuted: false }),
+    timelineSource: 'session',
+  });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'NO_REPLAY_STEPS');
 });
 
 check(`executed ratio below ${MIN_EXECUTED_RATIO} → INSUFFICIENT_REPLAY`, () => {
@@ -191,6 +216,24 @@ check('probe bugClassOverride matching original → strong', () => {
   assert.equal(b.strong.length, 1);
 });
 
+check('API_CONTRACT_VIOLATION override matching original → strong', () => {
+  const c = collect();
+  c.addExternal({
+    faultType: 'NETWORK',
+    statusCode: 200,
+    message: 'API contract violation: HTML document returned where a JSON API response was expected',
+    url: 'http://target.test/api/cart',
+    bugClassOverride: 'API_CONTRACT_VIOLATION',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'API_CONTRACT_VIOLATION',
+    originalFaultType: 'NETWORK',
+    originalMessage: "Unexpected token '<' in JSON",
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 1);
+});
+
 check('different-class fault → other, deduped', () => {
   const c = collect();
   c.addExternal({ faultType: 'NETWORK', message: 'HTTP 500 Internal Server Error', statusCode: 500, url: 'http://target.test/api/a' });
@@ -215,6 +258,84 @@ check('status code echoed in original message corroborates a same-class match', 
     pageContent: '',
   });
   assert.equal(b.strong.length, 1);
+});
+
+check('body-borne Mongo leak → strong same-class NOSQL_INJECTION (still active)', () => {
+  const c = collect();
+  // Evidence lives only in the response body — the status line never names it.
+  // Scenario is threaded exactly as the original finding carried it (DataFuzzer).
+  c.addExternal({
+    faultType: 'NETWORK',
+    message: 'HTTP 500 Internal Server Error',
+    statusCode: 500,
+    content: 'MongoError: unknown top level operator: $where',
+    url: 'http://target.test/api/users',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'NOSQL_INJECTION',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'HTTP 500 Internal Server Error',
+    scenario: 'DataFuzzer',
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 1);
+});
+
+check('body-borne SQL-driver leak → strong same-class SQL_INJECTION (still active)', () => {
+  const c = collect();
+  c.addExternal({
+    faultType: 'NETWORK',
+    message: 'HTTP 500 Internal Server Error',
+    statusCode: 500,
+    content: "You have an error in your SQL syntax near '' at line 1",
+    url: 'http://target.test/api/search',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'SQL_INJECTION',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'HTTP 500 Internal Server Error',
+    scenario: 'DataFuzzer',
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 1);
+});
+
+check('body-borne stack leak → strong SECURITY_VULNERABILITY_LEAK (still active)', () => {
+  const c = collect();
+  c.addExternal({
+    faultType: 'NETWORK',
+    message: 'HTTP 500 Internal Server Error',
+    statusCode: 500,
+    content: 'Error: boom\n    at handler (/srv/app/routes/user.js:42:13)',
+    url: 'http://target.test/api/profile',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'SECURITY_VULNERABILITY_LEAK',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'HTTP 500 Internal Server Error',
+    scenario: 'DataFuzzer',
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 1);
+});
+
+check('clean body (no leak) does not fabricate a NOSQL_INJECTION match', () => {
+  const c = collect();
+  c.addExternal({
+    faultType: 'NETWORK',
+    message: 'HTTP 200 OK',
+    statusCode: 200,
+    content: '{"users":[{"id":1,"name":"ok"}]}',
+    url: 'http://target.test/api/users',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'NOSQL_INJECTION',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'MongoError: unknown operator',
+    scenario: 'DataFuzzer',
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 0);
 });
 
 console.log('stripNonRendered — content scan must not match source code');
@@ -244,15 +365,54 @@ check('content scan on a page whose only signature lives in script source → no
   assert.equal(b.strong.length, 0);
 });
 
+console.log('detectApiContractViolation — schema-level contract check');
+
+check('declared JSON with valid JSON body → no violation', () => {
+  assert.equal(detectApiContractViolation('application/json', '{"items":[]}').violation, false);
+});
+
+check('declared JSON with unparseable body → violation', () => {
+  assert.ok(detectApiContractViolation('application/json; charset=utf-8', '<!doctype html><html></html>').violation);
+});
+
+check('full HTML document on an API call → violation (even with html content-type)', () => {
+  assert.ok(detectApiContractViolation('text/html', '<!DOCTYPE html><html><body>Error</body></html>').violation);
+});
+
+check('HTML fragment (not a full document) → no violation', () => {
+  assert.equal(detectApiContractViolation('text/html', '<div class="row">ok</div>').violation, false);
+});
+
+check('empty / whitespace body → no violation', () => {
+  assert.equal(detectApiContractViolation('application/json', '   ').violation, false);
+  assert.equal(detectApiContractViolation('application/json', '').violation, false);
+});
+
+check('valid JSON without a JSON content-type → no violation', () => {
+  assert.equal(detectApiContractViolation('', '{"ok":true}').violation, false);
+});
+
 console.log('isReplayVerifiable — class gate');
 
 check('replay-detectable classes verifiable; oracle/timing classes are not', () => {
   assert.ok(isReplayVerifiable('RUNTIME_STABILITY_EXCEPTION'));
   assert.ok(isReplayVerifiable('INFINITE_LOADING'));
+  assert.ok(isReplayVerifiable('NOSQL_INJECTION'));
+  assert.ok(isReplayVerifiable('SQL_INJECTION'));
+  assert.ok(isReplayVerifiable('SECURITY_VULNERABILITY_LEAK'));
   assert.ok(!isReplayVerifiable('SPA_STATE_RACE_CONDITION'));
   assert.ok(!isReplayVerifiable('CASCADING_STATE_FAILURE'));
   assert.ok(!isReplayVerifiable('CLIENT_SIDE_CONSTRAINT_BYPASS'));
   assert.ok(!isReplayVerifiable(''));
+});
+
+// Oracle-only classes were demoted: replay has no CONFIRMED reflected-XSS oracle
+// (FUZZ/INPUT_SANITIZATION) and no StorageTamper oracle (CLIENT_TRUST), so verifying
+// them from passive faults would fabricate RESOLVED. They must read as unverifiable.
+check('oracle-only classes are demoted from the verifiable set', () => {
+  assert.ok(!isReplayVerifiable('FUZZ_VULNERABILITY_LEAK'));
+  assert.ok(!isReplayVerifiable('INPUT_SANITIZATION_FAILURE'));
+  assert.ok(!isReplayVerifiable('CLIENT_TRUST_BOUNDARY_VIOLATION'));
 });
 
 console.log(`\nAll ${passed} regression-verdict checks passed.`);

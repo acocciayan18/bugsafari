@@ -1,6 +1,7 @@
 import type { Page, ConsoleMessage, Response, Request } from 'playwright';
 import { classifyFault, type FaultType, type FaultInput } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { SIGNAL_PATTERNS, matchesCategory, type SignalCategory } from '../../../bugs/knowledgeBase/signalPatterns.js';
+import { MAX_SOFT_FAIL_BODY_BYTES, isBodyReadableResourceType } from '../verification/softFailBody.js';
 import type { RegressionSignal } from '../../../../../shared/types.js';
 import type { CollectedFault } from './types.js';
 
@@ -47,13 +48,20 @@ export interface SignalBuckets {
 export class FaultCollector {
   private readonly faults: CollectedFault[] = [];
   private readonly endpoints = new Set<string>();
+  private readonly bodyScans: Array<Promise<void>> = [];
   private bound = false;
 
-  constructor(private readonly page: Page) {}
+  /** @param scanBodies read response bodies for classes whose evidence is body-borne. */
+  constructor(private readonly page: Page, private readonly scanBodies = false) {}
 
   /** URL pathnames the replay actually issued requests to — proves the fault trigger ran. */
   public exercisedEndpoints(): string[] {
     return [...this.endpoints];
+  }
+
+  /** Await pending response-body reads before evaluate — they append content-bearing faults. */
+  public async drainBodies(): Promise<void> {
+    await Promise.all(this.bodyScans).catch(() => undefined);
   }
 
   /** Begin capturing faults. Idempotent. */
@@ -94,13 +102,31 @@ export class FaultCollector {
     this.recordEndpoint(response.url());
     const status = response.status();
     if (status < 400) return;
-    if (!FAULT_RESOURCE_TYPES.has(response.request().resourceType())) return;
-    this.faults.push({
+    const resourceType = response.request().resourceType();
+    if (!FAULT_RESOURCE_TYPES.has(resourceType)) return;
+    const fault: CollectedFault = {
       faultType: 'NETWORK',
       message: `HTTP ${status} ${response.statusText()}`.trim(),
       statusCode: status,
       url: response.url(),
-    });
+    };
+    // Leaked Mongo/stack/soft-fail evidence lives in the body, never the status line —
+    // read it so a body-borne leak reproduces instead of reading clean.
+    if (this.scanBodies && isBodyReadableResourceType(resourceType)) {
+      this.bodyScans.push(
+        response
+          .text()
+          .then((body) => {
+            if (body && body.length <= MAX_SOFT_FAIL_BODY_BYTES) fault.content = body;
+            this.faults.push(fault);
+          })
+          .catch(() => {
+            this.faults.push(fault);
+          }),
+      );
+      return;
+    }
+    this.faults.push(fault);
   };
 
   private readonly onRequestFailed = (request: Request): void => {
@@ -154,6 +180,7 @@ export class FaultCollector {
         message: fault.message,
         statusCode: fault.statusCode,
         url: fault.url,
+        content: fault.content,
         scenario,
       };
       const cls = classifyFault(faultInput);

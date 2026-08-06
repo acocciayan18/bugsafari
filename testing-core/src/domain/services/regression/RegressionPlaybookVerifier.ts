@@ -108,7 +108,14 @@ export class RegressionPlaybookVerifier {
       });
 
       if (!probe.ok) {
-        return this.failed(sessionId, bugId, originalBugClass, startedAt, probe.error ?? 'Replay failed.');
+        return this.failed(
+          sessionId,
+          bugId,
+          originalBugClass,
+          startedAt,
+          probe.error ?? 'Replay failed.',
+          probe.failureReason,
+        );
       }
 
       const decision = decideVerdict({
@@ -263,12 +270,13 @@ export class RegressionPlaybookVerifier {
     bugClass: string,
     startedAt: number,
     error: string,
+    reason: VerifyFixReason = 'REPLAY_ERROR',
   ): VerifyFixResult {
-    obsLog.warn(`[RegressionVerifier] VERIFICATION_FAILED for bug ${bugId}: ${error}`);
+    obsLog.warn(`[RegressionVerifier] VERIFICATION_FAILED (${reason}) for bug ${bugId}: ${error}`);
     return {
       ok: false,
       verdict: 'VERIFICATION_FAILED',
-      reason: 'REPLAY_ERROR',
+      reason,
       sessionId,
       bugId,
       bugClass,

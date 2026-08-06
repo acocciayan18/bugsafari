@@ -29,6 +29,7 @@
     "typescript-eslint": "^8.66.0"
   },
   "dependencies": {
+    "driver.js": "^1.8.0",
     "framer-motion": "^12.43.0",
     "lucide-react": "^1.25.0"
   }

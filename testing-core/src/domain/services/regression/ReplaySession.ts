@@ -12,10 +12,10 @@
 import type { BrowserContext, Page } from 'playwright';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
-import type { ReplayStepStats, StateFingerprint } from '../../../../../shared/types.js';
+import type { ReplayStepStats, StateFingerprint, VerifyFixReason } from '../../../../../shared/types.js';
 import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
 import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
-import { ReplayProbes, HANG_THRESHOLD_MS } from './replayProbes.js';
+import { ReplayProbes, HANG_THRESHOLD_MS, requiresBodyScan } from './replayProbes.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -68,6 +68,8 @@ export interface ReplaySessionResult {
   /** URL pathnames the replay actually requested — proves whether the fault trigger ran. */
   seenEndpoints: string[];
   error?: string;
+  /** Typed failure kind when ok=false — lets the caller explain WHY the replay could not run. */
+  failureReason?: VerifyFixReason;
 }
 
 const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
@@ -107,7 +109,7 @@ export async function runReplaySession(
       // progress delivery is non-critical
     }
   };
-  const failed = (error: string): ReplaySessionResult => ({
+  const failed = (error: string, failureReason?: VerifyFixReason): ReplaySessionResult => ({
     ok: false,
     reproduced: false,
     stepsReplayed: 0,
@@ -117,12 +119,13 @@ export async function runReplaySession(
     otherSignals: [],
     seenEndpoints: [],
     error,
+    failureReason,
   });
 
   await restoreState(context, params.stateFingerprint, targetUrl);
 
   const page = await context.newPage();
-  const collector = new FaultCollector(page);
+  const collector = new FaultCollector(page, requiresBodyScan(bugClass));
   collector.attach();
   const probes = new ReplayProbes(page, collector, bugClass, faultType);
   await probes.arm();
@@ -133,13 +136,13 @@ export async function runReplaySession(
       await navigateWithRetry(page, targetUrl);
     } catch (navError) {
       const message = navError instanceof Error ? navError.message : String(navError);
-      return failed(`Could not load target: ${message}`);
+      return failed(`Could not load target: ${message}`, 'TARGET_UNREACHABLE');
     }
 
     await page.waitForTimeout(PER_STEP_SETTLE_MS);
 
     if (params.guardLoginWall && (await isBlockedByLogin(page, targetUrl))) {
-      return failed('Target requires authentication; the replay never reached the recorded surface.');
+      return failed('Target requires authentication; the replay never reached the recorded surface.', 'AUTH_WALL');
     }
 
     const stats: ReplayStepStats = { ...EMPTY_STATS, total: steps.length };
@@ -162,6 +165,7 @@ export async function runReplaySession(
     // would otherwise match as a reproduced fault the replay never actually executed.
     const pageContent = stripNonRendered(await page.content().catch(() => ''));
     await probes.drain();
+    await collector.drainBodies();
     collector.detach();
 
     const buckets = collector.evaluate({

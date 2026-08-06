@@ -443,9 +443,15 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   UNVERIFIABLE_BUG_CLASS:
     "We can't confirm this kind of bug with replay alone. Re-test it with a live exploration run.",
   WEAK_MATCH_ONLY:
-    "Faults of the same type showed up, but we couldn't confirm they're the original defect, so there isn't enough evidence either way.",
+    "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
+  NO_REPLAY_STEPS:
+    "This finding has no recorded reproduction steps, so there was nothing to replay — Verify Fix can't confirm it. Re-run a live exploration to capture a replayable timeline.",
   LEGACY_TIMELINE:
     'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
+  TARGET_UNREACHABLE:
+    "We couldn't reach the target to replay it — this says nothing about the bug. Check the app is running and retry.",
+  AUTH_WALL:
+    "The replay hit a login wall (the saved session's credentials have expired), so it never reached the recorded surface. Re-test with a fresh authenticated run.",
   REPLAY_ERROR: "We couldn't replay the target, so this result says nothing about the bug. Try again.",
 };
 
@@ -613,7 +619,7 @@ function VerificationResultModal({
 
         {result.verdict === 'VERIFICATION_FAILED' && (
           <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
-            {REASON_TEXT.REPLAY_ERROR}
+            {REASON_TEXT[result.reason] ?? REASON_TEXT.REPLAY_ERROR}
           </div>
         )}
 

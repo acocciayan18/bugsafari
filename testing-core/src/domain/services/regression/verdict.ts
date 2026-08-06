@@ -36,11 +36,17 @@ export interface VerdictDecision {
  */
 export function decideVerdict(input: VerdictInput): VerdictDecision {
   const { strong, weak, stats, timelineSource } = input;
+  // No recorded timeline ⇒ nothing was replayed. Any fault observed is a bare
+  // page-load artifact that cannot be attributed to THIS finding, so it can never
+  // prove STILL_ACTIVE (or RESOLVED) — the replay simply had nothing to do.
+  if (stats.total === 0) {
+    return { verdict: 'INCONCLUSIVE', reason: 'NO_REPLAY_STEPS', matchedSignals: [] };
+  }
   if (strong.length > 0) return { verdict: 'STILL_ACTIVE', reason: 'REPRODUCED', matchedSignals: strong };
   if (weak.length > 0) return { verdict: 'INCONCLUSIVE', reason: 'WEAK_MATCH_ONLY', matchedSignals: weak };
 
-  const ratio = stats.total > 0 ? stats.executed / stats.total : 0;
-  if (stats.total === 0 || ratio < MIN_EXECUTED_RATIO || !stats.finalStepExecuted) {
+  const ratio = stats.executed / stats.total;
+  if (ratio < MIN_EXECUTED_RATIO || !stats.finalStepExecuted) {
     return { verdict: 'INCONCLUSIVE', reason: 'INSUFFICIENT_REPLAY', matchedSignals: [] };
   }
   // A fault defined by a specific request is only "resolved" if the replay actually
@@ -63,7 +69,9 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
     case 'CLEAN_REPLAY':
       return `${stats.executed} of ${stats.total} recorded step(s) executed and no ${bugClass} fault recurred. Defect resolved.`;
     case 'WEAK_MATCH_ONLY':
-      return `Faults of the same class (${bugClass}) occurred but could not be corroborated as the original defect. Not enough evidence to call it resolved.`;
+      return `A same-class ${bugClass} fault recurred but could not be corroborated as the original defect — this leans still-active. Treat as unconfirmed, not fixed.`;
+    case 'NO_REPLAY_STEPS':
+      return `This finding has no recorded reproduction steps, so there was nothing to replay and no fault could be attributed to it. Re-run a live exploration to capture a replayable timeline.`;
     case 'INSUFFICIENT_REPLAY':
       return `Only ${stats.executed} of ${stats.total} recorded step(s) executed (${stats.skipped} skipped, ${stats.failed} failed) — not enough of the reproduction ran to prove the fix.`;
     case 'FAULT_TRIGGER_NOT_EXERCISED':
