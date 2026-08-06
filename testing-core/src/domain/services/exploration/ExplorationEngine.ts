@@ -105,6 +105,18 @@ const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 const ACTED_HISTORY_CAP = 32;
 // Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
 const FORENSIC_FLUSH_THRESHOLD = 50;
+// Per-attempt window and inter-attempt backoff for the initial target navigation.
+const INITIAL_NAV_TIMEOUT_MS = 20000;
+const NAV_RETRY_BACKOFF_MS = 1500;
+// Bounded window to let a 'commit'-only navigation finish loading + paint interactive
+// content before the first parse, so a slow SPA is not misread as a structural dead-end.
+const HYDRATION_SETTLE_MS = 15000;
+// ensureDomReady gates every route change (initial + in-app). Wait for 'load' so a slow
+// route finishes fetching before the selector poll — instant on an already-loaded page —
+// then poll for interactive content. Selector window stays short so a genuine empty page
+// is still classified quickly (the loop retries this gate up to EMPTY_RETRY_LIMIT+1 times).
+const DOM_READY_LOAD_TIMEOUT_MS = 10000;
+const DOM_READY_SELECTOR_TIMEOUT_MS = 5000;
 
 /**
  * Make the culprit interaction the terminal step of a navigation defect's
@@ -1319,11 +1331,53 @@ export class ExplorationEngine {
       });
       await boundaryGuard.install(page);
 
-      obsLog.info('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
-      // Use shorter timeout and better wait strategy to prevent hanging
-      // Also emit immediate frame to prevent "No live frame" timeout
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      obsLog.info('[ExplorationEngine] page.goto completed for targetUrl:', targetUrl);
+      // An authenticated run arrives here already positioned on the live, authenticated
+      // landing page — PlaywrightBrowserEngine logged in and adopted page.url() as the
+      // start. Re-navigating would hard-reload that page and can drop the session just
+      // established (an in-memory token, an SSR cookie-gated route, or a redirect still
+      // settling), bouncing the run onto a login page it then mistakes for its start.
+      // Preserve the session: explore the current page in place, never re-goto.
+      const startInPlace = this.authenticatedRun && /^https?:/i.test(page.url());
+      if (startInPlace) {
+        obsLog.info('[ExplorationEngine] Authenticated run — exploring live page in place:', page.url());
+      } else {
+        obsLog.info('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
+        // A cold or slow link (tunnel cold-start, distant host, throttled network) often
+        // misses a single 20s domcontentloaded window but is still reachable — so the
+        // first navigation gets bounded retries, and the final attempt falls back to
+        // 'commit' (resolves once the response lands) and lets ensureDomReady + the
+        // re-parsing loop gate real readiness, rather than abandoning a live target.
+        const NAV_ATTEMPTS = 3;
+        let navError: unknown;
+        let usedCommitFallback = false;
+        for (let attempt = 1; attempt <= NAV_ATTEMPTS; attempt++) {
+          const waitUntil = attempt < NAV_ATTEMPTS ? 'domcontentloaded' : 'commit';
+          try {
+            await page.goto(targetUrl, { waitUntil, timeout: INITIAL_NAV_TIMEOUT_MS });
+            usedCommitFallback = waitUntil === 'commit';
+            navError = undefined;
+            break;
+          } catch (error) {
+            navError = error;
+            if (attempt >= NAV_ATTEMPTS) break;
+            emitter.emitSystemStatus(`Target slow to respond — retrying navigation (${attempt + 1}/${NAV_ATTEMPTS})…`);
+            await page.waitForTimeout(NAV_RETRY_BACKOFF_MS * attempt);
+          }
+        }
+        if (navError) throw navError;
+        // A 'commit'-only navigation returned before the document parsed; over a slow link
+        // the SPA shell has not rendered yet, so parsing now reads a false structural
+        // dead-end. Give it a bounded window to reach 'load' and paint interactive content
+        // before exploration begins — each wait resolves early once the page is ready.
+        if (usedCommitFallback) {
+          emitter.emitSystemStatus('Target committed slowly — waiting for the app to finish loading before exploring…');
+          await page.waitForLoadState('load', { timeout: HYDRATION_SETTLE_MS }).catch(() => undefined);
+          await page
+            .waitForSelector('button, input, a, select, [style*="cursor: pointer"]', { timeout: HYDRATION_SETTLE_MS })
+            .catch(() => undefined);
+        }
+        obsLog.info('[ExplorationEngine] page.goto completed for targetUrl:', targetUrl);
+      }
 
       // Open the reproduction playbook with the initial navigation step.
       this.recordActionTrace(
@@ -1780,14 +1834,19 @@ export class ExplorationEngine {
   // duplicated confinement-key helper.
 
   private async ensureDomReady(page: Page, telemetry: TelemetryEmitter): Promise<void> {
+    // Hydration-aware, applied to every route change: let the page reach 'load' first so
+    // a slow route finishes fetching its bundle before we look for content — resolves
+    // instantly on an already-loaded page, so fast apps pay nothing — then poll for
+    // interactive content. Both bounded and resolve early once the page is ready.
+    await page.waitForLoadState('load', { timeout: DOM_READY_LOAD_TIMEOUT_MS }).catch(() => undefined);
     try {
       await page.waitForSelector('button, input, a, select, [style*="cursor: pointer"]', {
-        timeout: 5000,
+        timeout: DOM_READY_SELECTOR_TIMEOUT_MS,
       });
     } catch {
       telemetry.emit('ACTION', {
         actionExecuted: 'dom-wait-timeout',
-        message: 'No interactive selector found during 5s wait window.',
+        message: `No interactive selector found during ${Math.round(DOM_READY_SELECTOR_TIMEOUT_MS / 1000)}s wait window.`,
       });
     }
   }

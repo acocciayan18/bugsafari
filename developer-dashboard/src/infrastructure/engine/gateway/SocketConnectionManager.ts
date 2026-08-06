@@ -52,7 +52,11 @@ export class SocketConnectionManager {
   // Connection state tracking
   private connectionStateValue: ConnectionState = 'disconnected';
   private connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private readonly CONNECTION_TIMEOUT_MS = 10000; // 10 second timeout for initial connection
+  // Backstop for a truly dead server, kept ABOVE socket.io's own 20s connect timeout
+  // so a slow (3G) first handshake — legitimately 10-18s — is never falsely reported
+  // disconnected mid-attempt. By 25s socket.io has already emitted connect_error and
+  // moved to 'reconnecting', so this only fires if the transport never advanced at all.
+  private readonly CONNECTION_TIMEOUT_MS = 25000;
 
   // Run token of the active run this client owns — presented on every connect so
   // a refresh / transient drop re-attaches instead of losing the run.

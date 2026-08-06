@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Reduce false-positive Infinite Loading detections"
-git checkout -b 8-6-Ayan-1
-git push --set-upstream origin 8-6-Ayan-1
+git commit -m "Refactor Pause/Stop progress notification UX"
+git checkout -b 8-6-Ayan-2
+git push --set-upstream origin 8-6-Ayan-2
 
 
 

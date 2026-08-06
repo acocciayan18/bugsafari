@@ -385,6 +385,20 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         this.activeEngine.recordAuthenticationMarker();
         // const capture preserves the narrowed (non-undefined) config type inside the closure.
         const authConfig = targetAuth;
+        // Re-auth deterministically: pin restore to the form this login actually
+        // resolved (its URL + selectors) so a mid-run session-restore navigates
+        // straight back to the real login instead of re-guessing conventional auth
+        // routes — the guessing that could strand the page on a non-existent route.
+        const restoreConfig: TargetAuthConfig =
+          authConfig.mode === 'credentials' && auth.resolution && auth.loginUrl
+            ? {
+                ...authConfig,
+                loginUrl: auth.loginUrl,
+                usernameSelector: auth.resolution.username,
+                passwordSelector: auth.resolution.password,
+                submitSelector: auth.resolution.submit || authConfig.submitSelector,
+              }
+            : authConfig;
         restoreSession = async (restorePage): Promise<boolean> => {
           try {
             // storageState mode: re-seed the operator's cookies before re-verifying,
@@ -395,7 +409,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
                 seededState.cookies as Parameters<import('playwright').BrowserContext['addCookies']>[0],
               );
             }
-            const result = await new TargetAuthenticator().authenticate(restorePage, authConfig, targetUrl, narrator);
+            const result = await new TargetAuthenticator().authenticate(restorePage, restoreConfig, targetUrl, narrator);
             return result.status === 'authenticated';
           } catch {
             return false;
