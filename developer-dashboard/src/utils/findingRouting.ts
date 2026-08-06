@@ -4,7 +4,7 @@
 // legacy record, a queued transfer, or a replayed session can never put a DNS
 // failure or a defensive 4xx on the Errors tab.
 
-import { isPromotableReason, routeFindingPayload } from '../../../shared/types.js';
+import { isHarnessArtifact, isInfrastructureFailure, isPromotableReason, NON_APPLICATION_ORIGINS, routeFindingPayload } from '../../../shared/types.js';
 import type { ForensicCrashReport, IncidentReport } from '../types';
 
 // A fault whose headline reads like a network event. Runtime exceptions, races and
@@ -15,7 +15,7 @@ export interface RoutableFinding {
   reason?: string;
   statusCode?: number;
   url?: string;
-  attribution?: { routingReason?: string; bugClass?: string };
+  attribution?: { routingReason?: string; bugClass?: string; origin?: string };
   stackTrace?: string;
 }
 
@@ -25,10 +25,21 @@ export interface RoutableFinding {
  * saved before that field existed.
  */
 export function isReportableFinding(finding: RoutableFinding): boolean {
+  // Provenance is authoritative: a fault attributed to Playwright, the environment,
+  // BugSafari itself, or a browser extension is never a target-app finding.
+  const origin = finding.attribution?.origin;
+  if (origin && NON_APPLICATION_ORIGINS.has(origin)) return false;
+
   const routingReason = finding.attribution?.routingReason;
   if (routingReason) return isPromotableReason(routingReason);
 
   const message = finding.reason ?? '';
+  // Fallback for unclassified/legacy records carrying no provenance: suppress
+  // engine-level exceptions (page.goto timeouts, closed contexts, launch failures)
+  // and infra/environment failures so they never reach the Errors tab.
+  const text = message.toLowerCase();
+  if (isHarnessArtifact(text, (finding.url ?? '').toLowerCase()) || isInfrastructureFailure(text)) return false;
+
   const looksNetwork = NETWORK_HEADLINE.test(message.trim()) || typeof finding.statusCode === 'number';
   if (!looksNetwork) return true;
 

@@ -322,7 +322,7 @@ export const formBypasser: StressScenario = {
         `[Telemetry:ACTION] ${JSON.stringify({
           event: 'ACTION',
           actionExecuted: 'form-bypass',
-          message: `FormBypasser: Stripped constraints from ${result.selector}`,
+          message: `Removed the browser form rules from ${result.selector}`,
           selector: result.selector,
           affectedElements: result.affectedSelectors,
           affectedCount: result.affectedCount,

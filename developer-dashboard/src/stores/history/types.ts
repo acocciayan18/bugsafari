@@ -28,7 +28,7 @@ export interface EvaluationSafari {
     steps: number;
     severity: 'CRITICAL' | 'HIGH' | 'CLEAR';
     severityCount: number;
-    status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED';
+    status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED' | 'ENGINE_ERROR';
     /** Precise termination taxonomy; drives the displayed reason when present. */
     outcome?: RunTerminationOutcome;
     /** Infiltration profile the run executed; absent on rows saved before it was tracked. */
@@ -54,7 +54,7 @@ export const SEVERITY_ORDER: Record<string, number> = { CRITICAL: 3, HIGH: 2, CL
 
 // Clean endings sort above fault endings; unattended endings sit between them.
 export const STATUS_ORDER: Record<string, number> = {
-    COMPLETED: 6, TIMEOUT: 5, STOPPED: 4, HALTED: 3, ABANDONED: 2, CRASHED: 1,
+    COMPLETED: 7, TIMEOUT: 6, STOPPED: 5, HALTED: 4, ABANDONED: 3, ENGINE_ERROR: 2, CRASHED: 1,
 };
 
 export const SORT_FIELD_LABELS: Record<SortField, string> = {
@@ -70,6 +70,7 @@ const SESSION_STATUS_MAP: Record<SessionHistoryEntry['status'], EvaluationSafari
     TimedOut: 'TIMEOUT',
     Halted: 'HALTED',
     Abandoned: 'ABANDONED',
+    EngineError: 'ENGINE_ERROR',
     Running: 'HALTED',
 };
 

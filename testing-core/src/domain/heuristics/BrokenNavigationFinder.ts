@@ -178,10 +178,10 @@ export class BrokenNavigationFinder {
     if (!declaredElsewhere && strikes < DEAD_CLICK_STRIKES) return [];
 
     const evidence = [
-      `The ${kind} ${name} on route ${o.fromRoute} produced no DOM, URL, or network change`,
+      `The ${kind} "${name}" on ${o.fromRoute} changed nothing on the page, in the URL, or on the network`,
       declaredElsewhere
-        ? `It statically declares destination ${o.probedRoute} but never navigates`
-        : `${strikes} consecutive no-op attempts on the same structural shell`,
+        ? `It points to ${o.probedRoute} but never actually goes there`
+        : `${strikes} clicks in a row did nothing on the same screen`,
     ];
     return this.emitOnce({
       kind: 'DEAD_INTERACTION',
@@ -190,8 +190,8 @@ export class BrokenNavigationFinder {
       severity: 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
       message: declaredElsewhere
-        ? `Dead navigation ${kind}: ${name} — links to ${o.probedRoute} but nothing happens on click`
-        : `Dead navigation ${kind}: ${name} — ${strikes} clicks produced no observable change`,
+        ? `Dead ${kind}: "${name}" points to ${o.probedRoute}, but nothing happens when you click it.`
+        : `Dead ${kind}: "${name}" did nothing after ${strikes} clicks.`,
       selector: o.selector,
       elementLabel: name,
       url: o.url,
@@ -222,15 +222,15 @@ export class BrokenNavigationFinder {
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: o.statusCode >= 500 ? 'HIGH' : 'MEDIUM',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
-      message: `Broken route: the ${kind} ${name} navigated ${fromRoute} → ${o.route} (HTTP ${o.statusCode})`,
+      message: `Broken route: the ${kind} "${name}" went from ${fromRoute} to ${o.route}, which returned an error (HTTP ${o.statusCode}).`,
       selector,
       elementLabel: name,
       url: o.url,
       route: o.route,
       statusCode: o.statusCode,
       evidence: [
-        `Interaction with the ${kind} ${name} navigated ${fromRoute} → ${o.route}`,
-        `Main-frame document responded HTTP ${o.statusCode}`,
+        `Using the ${kind} "${name}" went from ${fromRoute} to ${o.route}`,
+        `That page responded with HTTP ${o.statusCode}`,
         `Route verdict: ${o.reason}`,
       ],
       culprit: BrokenNavigationFinder.culpritOf(culprit, o.route, o.url),
@@ -269,7 +269,7 @@ export class BrokenNavigationFinder {
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: 'HIGH',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
-      message: `Redirect loop: HTTP redirect chain revisited ${h.route} ${sightings}× within ${REDIRECT_WINDOW_MS}ms`,
+      message: `Redirect loop: the server kept redirecting back to ${h.route} ${sightings} times within ${REDIRECT_WINDOW_MS}ms.`,
       selector: culprit?.selector ?? '',
       elementLabel: culprit?.name ?? '',
       url: h.url,
@@ -278,7 +278,7 @@ export class BrokenNavigationFinder {
       evidence: [`HTTP redirect chain: ${chain}`],
       hops,
       culprit: culprit ? BrokenNavigationFinder.culpritOf(culprit) : undefined,
-      advice: this.buildAdvice('Bound the redirect chain and break the cycle in the router/server redirect rules.', 'STRUCTURAL_NAVIGATION_LOGIC'),
+      advice: this.buildAdvice('Limit the redirect chain and break the loop in the router or server redirect rules.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
   }
@@ -317,7 +317,7 @@ export class BrokenNavigationFinder {
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: 'HIGH',
       cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
-      message: `Redirect loop: client-side route oscillation revisited ${route} ${sightings}× in rapid succession`,
+      message: `Redirect loop: the app kept bouncing back to ${route} ${sightings} times in quick succession.`,
       selector: culprit?.selector ?? '',
       elementLabel: culprit?.name ?? '',
       url: c.url,
@@ -325,7 +325,7 @@ export class BrokenNavigationFinder {
       evidence: [`Rapid route oscillation: ${chain}`],
       hops,
       culprit: culprit ? BrokenNavigationFinder.culpritOf(culprit, route, c.url) : undefined,
-      advice: this.buildAdvice('Guard the router redirect/guard logic against mutually-redirecting routes.', 'STRUCTURAL_NAVIGATION_LOGIC'),
+      advice: this.buildAdvice('Fix the router rules so two routes cannot keep redirecting to each other.', 'STRUCTURAL_NAVIGATION_LOGIC'),
       corroborated: true,
     });
   }

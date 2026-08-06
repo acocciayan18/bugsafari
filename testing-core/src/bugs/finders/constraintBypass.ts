@@ -238,15 +238,15 @@ export const constraintBypassFinder: BugFinder = {
     const label = resolveElementLabel(element);
     const endpoint = relativeEndpoint(accepted.url);
     const message =
-      `The "${label}" field enforces ${plan.constraint} only in the browser. ` +
-      `After removing that guard and submitting ${describePayload(plan.violating)}, ` +
-      `${accepted.method} ${endpoint} accepted it (HTTP ${accepted.status}). ` +
-      `The server never re-validates this rule, so any client can bypass it.`;
+      `The "${label}" field only checks ${plan.constraint} in the browser. ` +
+      `After that check was removed and ${describePayload(plan.violating)} was submitted, ` +
+      `${accepted.method} ${endpoint} accepted the value (HTTP ${accepted.status}). ` +
+      `The server never re-checks this rule, so anyone can get around it.`;
 
     return [
       {
         bugClass: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
-        title: 'Client-only validation bypassed — server accepted invalid input',
+        title: 'Server accepted a value the browser was supposed to block',
         severity: 'MEDIUM',
         evidence: {
           message,

@@ -4,7 +4,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { ApiHangFinder, isBackgroundTelemetryUrl, type HangObservation, type LoadingProbe } from './ApiHangFinder.js';
+import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type HangObservation, type LoadingProbe } from './ApiHangFinder.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -47,7 +47,7 @@ check('loader present in both probes with overlap reports one defect', () => {
   assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
   assert.equal(r!.defect.severity, 'HIGH');
   assert.equal(r!.defect.cwe, 'CWE-400');
-  assert.ok(r!.defect.message.startsWith('[API hang / infinite loading]'));
+  assert.ok(r!.defect.message.startsWith('[Stuck loading]'));
   assert.equal(f.totalFound(), 1);
 });
 
@@ -96,11 +96,61 @@ check('PENDING_TIMEOUT on a real endpoint with NO loading indicator is not a han
   assert.equal(f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', initial: absent(), confirm: absent() })), null);
 });
 
-check('PENDING_TIMEOUT on a real endpoint WITH a persistent loader is a hang', () => {
+check('PENDING_TIMEOUT with a persistent spinner but NO second signal is not a hang', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/api/profile', pendingMs: 9000 }));
+  assert.equal(r, null);
+  assert.equal(f.totalFound(), 0);
+});
+
+check('PENDING_TIMEOUT with a persistent spinner AND the request still pending is a MEDIUM hang', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/api/profile', pendingMs: 9000, stillPending: true }));
   assert.ok(r);
   assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
+  assert.equal(r!.defect.severity, 'MEDIUM');
+  assert.equal(r!.defect.verificationStatus, 'NEEDS_VERIFICATION');
+  assert.equal(r!.defect.corroborated, false);
+});
+
+check('PENDING_TIMEOUT that settled mid-probe (stillPending false, no other signal) is not a hang', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 9000, stillPending: false }));
+  assert.equal(r, null);
+});
+
+check('PENDING_TIMEOUT with blocked inputs is a corroborated HIGH hang', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 9000, confirm: probe({ inputsBlocked: true }) }));
+  assert.ok(r);
+  assert.equal(r!.defect.severity, 'HIGH');
+  assert.equal(r!.defect.corroborated, true);
+  assert.equal(r!.defect.verificationStatus, 'CONFIRMED');
+});
+
+check('a persistent DECORATIVE indicator alone (overlay) is never a hang', () => {
+  const f = new ApiHangFinder();
+  const overlay = probe({ indicators: ['[class*="overlay"]'], signature: '[class*="overlay"]' });
+  assert.equal(f.evaluate(obs({ initial: overlay, confirm: overlay })), null);
+});
+
+check('a decorative overlay PLUS a persistent spinner is a hang (spinner is the strong signal)', () => {
+  const f = new ApiHangFinder();
+  const both = probe({ indicators: ['[class*="overlay"]', '.spinner'], signature: '.spinner' });
+  const r = f.evaluate(obs({ initial: both, confirm: both }));
+  assert.ok(r);
+  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
+});
+
+check('isLongLivedRequestUrl matches RSC/SSE/websocket/streaming, not plain APIs', () => {
+  assert.ok(isLongLivedRequestUrl('https://sipat-web.vercel.app/dashboard?_rsc=abc12'));
+  assert.ok(isLongLivedRequestUrl('http://app.test/api/events'));
+  assert.ok(isLongLivedRequestUrl('http://app.test/graphql/subscribe'));
+  assert.ok(isLongLivedRequestUrl('http://app.test/x', { accept: 'text/event-stream' }));
+  assert.ok(isLongLivedRequestUrl('http://app.test/x', { upgrade: 'websocket' }));
+  assert.ok(isLongLivedRequestUrl('http://app.test/x', { 'next-router-prefetch': '1' }));
+  assert.equal(isLongLivedRequestUrl('http://app.test/api/orders'), false);
+  assert.equal(isLongLivedRequestUrl('http://app.test/api/streamlined-report'), false);
 });
 
 console.log('\nApiHangFinder — dedup & triggers');
@@ -127,7 +177,7 @@ check('SERVER_ERROR trigger carries the HTTP status in evidence', () => {
 
 check('PENDING_TIMEOUT trigger carries the pending duration in evidence', () => {
   const f = new ApiHangFinder();
-  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 9000 }));
+  const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 9000, stillPending: true }));
   assert.ok(r);
   assert.equal(r!.defect.trigger, 'PENDING_TIMEOUT');
   assert.ok(r!.defect.evidence[0].includes('pending 9000ms'));
@@ -146,7 +196,7 @@ check('inputsBlocked adds a blocked-inputs evidence line', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ confirm: probe({ inputsBlocked: true }) }));
   assert.ok(r);
-  assert.ok(r!.defect.evidence.some((e) => e.includes('Inputs remained disabled')));
+  assert.ok(r!.defect.evidence.some((e) => e.includes('Inputs stayed disabled')));
 });
 
 check('scenarioActive sets corroborated and adds an evidence line', () => {
@@ -162,7 +212,7 @@ check('advice carries the catalog remediation', () => {
   const r = f.evaluate(obs());
   assert.ok(r);
   assert.ok(r!.defect.advice.length > 0);
-  assert.ok(r!.defect.advice.includes('Suggested remediation — infinite loading'));
+  assert.ok(r!.defect.advice.includes('Suggested fix: give loading a way out'));
 });
 
 check('bugId is stable across finder instances for the same endpoint+trigger', () => {

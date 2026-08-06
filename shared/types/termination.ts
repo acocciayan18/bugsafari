@@ -13,7 +13,8 @@ export type RunTerminationOutcome =
   | 'graceful-shutdown'   // controlled bail-out (unrecoverable page state, auth failure)
   | 'target-crash'        // target server confirmed dead by health probes
   | 'abandoned'           // operator disconnected and never returned within the grace window
-  | 'exception';          // genuine unhandled engine/Playwright/infrastructure failure
+  | 'engine-error'        // BugSafari engine / Playwright / environment failure — NOT a target defect
+  | 'exception';          // unhandled failure attributed to the target application
 
 /** Who asked the engine to stop. Carried through teardown so a resulting
  *  browser-closed error is attributed to its real cause, not to the operator. */
@@ -59,7 +60,8 @@ export const TERMINATION_COPY: Record<RunTerminationOutcome, { label: string; de
   'graceful-shutdown': { label: 'Halted', icon: '', detail: 'Session ended early — the engine could not continue safely.' },
   'target-crash': { label: 'Target Crashed', icon: '', detail: 'Session terminated — the target application stopped responding.' },
   abandoned: { label: 'Abandoned', icon: '', detail: 'Session terminated — the operator disconnected and did not return.' },
-  exception: { label: 'Crashed', icon: '', detail: 'Session terminated by an unhandled engine failure.' },
+  'engine-error': { label: 'Engine Error', icon: '', detail: 'Session ended by a BugSafari engine or environment failure — not a defect in the target application.' },
+  exception: { label: 'Crashed', icon: '', detail: 'Session terminated by an unhandled failure in the target application.' },
 };
 
 /** Single source of truth for how a termination reads across every surface. */

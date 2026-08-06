@@ -284,14 +284,14 @@ export class DuplicateActionFinder {
   }
 
   private messageFor(verdict: DuplicateVerdict, method: string, endpoint: string, intervalMs: number, overlapped: boolean): string {
-    const timing = overlapped ? `re-issued ${intervalMs}ms later while the first was still in flight` : `re-issued ${intervalMs}ms later`;
+    const timing = overlapped ? `sent again ${intervalMs}ms later while the first was still running` : `sent again ${intervalMs}ms later`;
     if (verdict === 'GUARDED') {
-      return `[Duplicate action / no client guard] ${method} ${endpoint} — ${timing}; the backend rejected the repeat`;
+      return `[Duplicate request, no browser guard] ${method} ${endpoint} was ${timing}. The server rejected the repeat, but nothing in the browser stopped it.`;
     }
     if (verdict === 'CONFIRMED_DUPLICATE') {
-      return `[Duplicate action / double-submit] ${method} ${endpoint} — ${timing} and both requests succeeded`;
+      return `[Double submit] ${method} ${endpoint} was ${timing}, and both requests succeeded, so the action ran twice.`;
     }
-    return `[Duplicate action / suspected double-submit] ${method} ${endpoint} — ${timing}`;
+    return `[Possible double submit] ${method} ${endpoint} was ${timing}.`;
   }
 
   private evidenceFor(
@@ -305,26 +305,26 @@ export class DuplicateActionFinder {
     interaction?: InteractionContext,
   ): string[] {
     const evidence = [
-      `Request 1: ${first.method} ${first.url} at t+0ms → ${this.describeOutcome(first)}`,
-      `Request 2: ${second.method} ${second.url} at t+${intervalMs}ms → ${this.describeOutcome(second)}`,
-      `Identical method, endpoint and payload signature (${second.signature.split('::')[1] ?? 'none'})`,
+      `Request 1: ${first.method} ${first.url} at t+0ms, result: ${this.describeOutcome(first)}`,
+      `Request 2: ${second.method} ${second.url} at t+${intervalMs}ms, result: ${this.describeOutcome(second)}`,
+      `Same method, address, and value (${second.signature.split('::')[1] ?? 'none'})`,
       overlapped
-        ? 'The repeat was issued while the first request was still in flight — no disable-on-submit or in-flight guard fired'
-        : `The repeat was issued ${intervalMs}ms after the first settled — inside the debounce window a guarded control would cover`,
+        ? 'The repeat was sent while the first request was still running, so no disable-on-submit or in-flight guard stopped it'
+        : `The repeat was sent ${intervalMs}ms after the first finished, inside the window a guarded control would normally block`,
     ];
     if (interaction) {
-      evidence.push(`Triggering control: ${resolveControlName({ label: interaction.label, selector: interaction.selector })}`);
+      evidence.push(`Control that triggered it: ${resolveControlName({ label: interaction.label, selector: interaction.selector })}`);
     }
     if (second.idempotencyKey) {
-      evidence.push(`Both requests carried the same idempotency key (${second.idempotencyKey}) — the backend can dedupe, the client still cannot`);
+      evidence.push(`Both requests carried the same idempotency key (${second.idempotencyKey}), so the server can de-duplicate them but the browser still cannot`);
     } else {
-      evidence.push('Neither request carried an idempotency key — the backend has no way to collapse the repeat');
+      evidence.push('Neither request carried an idempotency key, so the server has no way to collapse the repeat');
     }
     if (verdict === 'GUARDED') {
-      evidence.push(`The backend rejected the repeat with HTTP ${second.status} — no duplicate record was committed`);
+      evidence.push(`The server rejected the repeat with HTTP ${second.status}, so no duplicate record was saved`);
     }
     if (verdict === 'CONFIRMED_DUPLICATE') {
-      evidence.push('Both requests returned success — the action was committed twice');
+      evidence.push('Both requests succeeded, so the action was saved twice');
     }
     if (first.raceScenarioActive || second.raceScenarioActive) {
       evidence.push('Corroborated by an active concurrency/rapid-click stress probe');
@@ -350,16 +350,16 @@ export class DuplicateActionFinder {
       : `Bring ${label} into view on the page under test`;
     const steps = [
       openStep,
-      `Activate ${label} once — the app issues ${first.method} ${this.pathOf(first.url)}`,
-      `Activate ${label} again ${intervalMs}ms later, before the first request settles`,
-      `Observe a second ${second.method} ${this.pathOf(second.url)} with an identical payload`,
+      `Use ${label} once. The app sends ${first.method} ${this.pathOf(first.url)}`,
+      `Use ${label} again ${intervalMs}ms later, before the first request finishes`,
+      `Watch a second ${second.method} ${this.pathOf(second.url)} go out with the same value`,
     ];
     steps.push(
       verdict === 'GUARDED'
-        ? `Observe the backend reject it with HTTP ${second.status} — the control was never disabled between activations`
+        ? `Watch the server reject it with HTTP ${second.status}. The control was never disabled between clicks`
         : verdict === 'CONFIRMED_DUPLICATE'
-          ? `Observe both requests return success (${this.describeOutcome(first)}, ${this.describeOutcome(second)}) — the operation is committed twice`
-          : 'Observe the repeat reach the backend with no client-side guard in between',
+          ? `Watch both requests succeed (${this.describeOutcome(first)}, ${this.describeOutcome(second)}), so the action is saved twice`
+          : 'Watch the repeat reach the server with no browser guard in between',
     );
     return steps;
   }

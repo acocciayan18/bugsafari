@@ -158,7 +158,7 @@ check('a repeat rejected by a backend dedupe guard (409) reports as LOW/GUARDED'
   assert.ok(defect);
   assert.equal(defect!.verdict, 'GUARDED');
   assert.equal(defect!.severity, 'LOW');
-  assert.ok(defect!.message.includes('no client guard'));
+  assert.ok(defect!.message.includes('no browser guard'));
   assert.ok(defect!.evidence.some((e) => e.includes('rejected the repeat with HTTP 409')));
   assert.equal(h.settle(a, 1400, 201), null, 'the earlier success must not re-open a settled GUARDED verdict as CONFIRMED');
 });
@@ -282,7 +282,7 @@ check('the triggering interaction propagates onto the defect', () => {
   assert.ok(defect);
   assert.equal(defect!.selector, '#place-order');
   assert.equal(defect!.elementLabel, 'Place Order');
-  assert.ok(defect!.evidence.some((e) => e.includes('Triggering control: Place Order')));
+  assert.ok(defect!.evidence.some((e) => e.includes('Control that triggered it: Place Order')));
 });
 
 check('steps to reproduce are deterministic and name the action, timing, and outcome', () => {
@@ -299,7 +299,7 @@ check('steps to reproduce are deterministic and name the action, timing, and out
   assert.ok(steps.some((s) => s.includes('Place Order')));
   assert.ok(steps.some((s) => s.includes('180ms')));
   assert.ok(steps.some((s) => s.includes('/api/order')));
-  assert.ok(steps.some((s) => s.includes('committed twice')));
+  assert.ok(steps.some((s) => s.includes('saved twice')));
 });
 
 check('the first reproduction step opens the PAGE, never the API endpoint', () => {
@@ -332,7 +332,7 @@ check('evidence carries both requests, their statuses, and the interval', () => 
   assert.ok(defect);
   assert.ok(defect!.evidence.some((e) => e.includes('Request 1') && e.includes('HTTP 200')));
   assert.ok(defect!.evidence.some((e) => e.includes('Request 2') && e.includes('t+120ms') && e.includes('HTTP 201')));
-  assert.ok(defect!.evidence.some((e) => e.includes('no disable-on-submit or in-flight guard fired')));
+  assert.ok(defect!.evidence.some((e) => e.includes('no disable-on-submit or in-flight guard stopped it')));
   assert.ok(defect!.evidence.some((e) => e.includes('Neither request carried an idempotency key')));
 });
 
@@ -353,7 +353,7 @@ check('advice carries the catalog remediation', () => {
   const b = h.send(1100);
   h.settle(b, 1300, 201);
   const defect = h.settle(a, 1400, 201);
-  assert.ok(defect!.advice.includes('Suggested remediation — race condition'));
+  assert.ok(defect!.advice.includes('Suggested fix: guard against overlapping actions'));
 });
 
 console.log('\nDuplicateActionFinder — scoring, collapse & bounds');

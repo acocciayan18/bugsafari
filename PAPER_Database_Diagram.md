@@ -13,7 +13,7 @@ purpose so the diagram stays readable.
 ## Entity relationship diagram
 
 ```mermaid
-erDiagram
+ |erDiagram
     USERS ||--o{ SESSIONS : "owns"
     USERS ||--o{ REFRESH_TOKENS : "holds"
     USERS ||--o{ BRAIN_CONFIGS : "learns"
@@ -149,7 +149,7 @@ erDiagram
 ## Collections
 
 | Collection | Purpose | Key field |
-| --- | --- | --- |
+| --- | --- | ---
 | users | Accounts and personal settings | `email` is unique; the password is stored as a bcrypt hash |
 | sessions | One document per test run. Also holds the findings and the step trail inside it | `runId` is the short public code shown to the tester, for example `RUN-1A2B3C` |
 | forensic_errors | Each error caught during a run, typed and graded by severity | `forensicRunId` points at the session |

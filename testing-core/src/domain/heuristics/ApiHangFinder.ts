@@ -1,4 +1,8 @@
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
+import { STRONG_LOADING_SELECTORS } from '../../bugs/knowledgeBase/signalPatterns.js';
+import type { FaultConfidence, VerificationStatus } from '../../../../shared/types/verification.js';
+
+const STRONG_SET = new Set<string>(STRONG_LOADING_SELECTORS);
 
 // A duplicate finding never re-registers; cap the ledger so a pathological run stays bounded.
 const MAX_REPORTED = 100;
@@ -20,6 +24,26 @@ export function isBackgroundTelemetryUrl(url?: string): boolean {
   } catch {
     return BACKGROUND_TELEMETRY_RE.test(url);
   }
+}
+
+// Long-lived-by-design request classes. These stay pending for seconds or forever WITHOUT
+// blocking the UI: Next.js RSC prefetch (?_rsc=, RSC:/Next-Router-Prefetch: headers), SSE
+// (Accept: text/event-stream), websocket upgrades, and streaming/poll/subscribe endpoints.
+// A pending timeout on one of these is never an INFINITE_LOADING bug — it must not be watchdogged.
+const LONG_LIVED_URL_RE =
+  /(?:[?&]_rsc=|\/(?:stream|streaming|events|subscribe|subscription|sse|poll|longpoll|long-poll|hub|socket|ws|watch)(?:[/.?#]|$))/i;
+
+/** True for a request that is long-lived by design — a pending timeout on it is not a UI hang. */
+export function isLongLivedRequestUrl(url?: string, headers?: Record<string, string>): boolean {
+  if (headers) {
+    const accept = headers['accept'] ?? headers['Accept'] ?? '';
+    if (/text\/event-stream/i.test(accept)) return true;
+    const upgrade = headers['upgrade'] ?? headers['Upgrade'] ?? '';
+    if (/websocket/i.test(upgrade)) return true;
+    if ('rsc' in headers || 'RSC' in headers || 'next-router-prefetch' in headers || 'Next-Router-Prefetch' in headers) return true;
+  }
+  if (!url) return false;
+  return LONG_LIVED_URL_RE.test(url);
 }
 
 // What provoked the hang check: an errored request, a 5xx, or a request still pending past the watchdog.
@@ -45,6 +69,10 @@ export interface HangObservation {
   initial: LoadingProbe;
   confirm: LoadingProbe;
   scenarioActive: boolean;
+  // True when the triggering request was STILL pending at confirm time. Undefined for
+  // failed/5xx triggers (the request has already settled). A PENDING_TIMEOUT whose request
+  // settled mid-probe is not a hang — the persisting spinner is unrelated.
+  stillPending?: boolean;
   timestampMs: number;
 }
 
@@ -52,7 +80,9 @@ export interface HangObservation {
 export interface ApiHangDefect {
   bugId: string;
   bugClass: 'INFINITE_LOADING';
-  severity: 'HIGH';
+  severity: 'HIGH' | 'MEDIUM';
+  confidence: FaultConfidence;
+  verificationStatus: VerificationStatus;
   cwe: string;
   message: string;
   endpoint: string;
@@ -80,10 +110,18 @@ export class ApiHangFinder {
     // A background telemetry/analytics/beacon timeout is never a user-facing hang — ignore
     // it regardless of any coincidental spinner elsewhere on the page (req: no false positives).
     if (isBackgroundTelemetryUrl(o.url)) return null;
-    // PENDING_TIMEOUT is the weakest trigger (the request has not even failed), so it — like
-    // every trigger — only counts when actual UI evidence persists: a loading indicator present
-    // in BOTH probes. No spinner / freeze ⇒ the request being slow is not an INFINITE_LOADING bug.
-    if (!this.isStuck(o.initial, o.confirm)) return null;
+    // An indicator must PERSIST across both probes (recovered-gracefully gate).
+    const persistent = this.persistentIndicators(o.initial, o.confirm);
+    if (persistent.length === 0) return null;
+    // Decorative overlay/backdrop/skeleton/modal chrome persists on healthy pages, so it alone
+    // never proves a hang — require a genuine loading indicator (spinner/progressbar/aria-busy).
+    if (!persistent.some((i) => STRONG_SET.has(i))) return null;
+    // PENDING_TIMEOUT is the weakest trigger (the request has not even failed): demand a SECOND
+    // corroborating signal beyond the spinner — the request still hanging at confirm time, inputs
+    // blocked, or an active stress probe. Failed/5xx triggers carry that second signal already.
+    if (o.trigger === 'PENDING_TIMEOUT' && !(o.stillPending === true || o.confirm.inputsBlocked || o.scenarioActive)) {
+      return null;
+    }
 
     const method = (o.method ?? '').toString().toUpperCase() || 'GET';
     const bugId = this.bugIdFor(method, o.url ?? '', o.trigger);
@@ -106,11 +144,20 @@ export class ApiHangFinder {
     return this.observations;
   }
 
-  // Stuck = a loading indicator present in both probes with at least one shared indicator.
-  private isStuck(initial: LoadingProbe, confirm: LoadingProbe): boolean {
-    if (!initial?.present || !confirm?.present) return false;
+  // Indicators present in BOTH probes — the ones that actually persisted, not transient loaders.
+  private persistentIndicators(initial: LoadingProbe, confirm: LoadingProbe): string[] {
+    if (!initial?.present || !confirm?.present) return [];
     const before = new Set(initial.indicators ?? []);
-    return (confirm.indicators ?? []).some((i) => before.has(i));
+    return (confirm.indicators ?? []).filter((i) => before.has(i));
+  }
+
+  // Grade a confirmed hang. Failed/5xx are firm HIGH/SIGNAL; a PENDING_TIMEOUT is only HIGH when a
+  // strong second signal (blocked inputs or stress probe) corroborates it, else MEDIUM/NEEDS_VERIFICATION.
+  private grade(o: HangObservation, corroborated: boolean): Pick<ApiHangDefect, 'severity' | 'confidence' | 'verificationStatus'> {
+    if (o.trigger === 'PENDING_TIMEOUT' && !corroborated) {
+      return { severity: 'MEDIUM', confidence: 'INFERRED', verificationStatus: 'NEEDS_VERIFICATION' };
+    }
+    return { severity: 'HIGH', confidence: 'SIGNAL', verificationStatus: corroborated ? 'CONFIRMED' : 'NEEDS_VERIFICATION' };
   }
 
   private bugIdFor(method: string, url: string, trigger: HangTrigger): string {
@@ -133,25 +180,31 @@ export class ApiHangFinder {
     const detail = this.triggerDetail(o);
     const indicators = o.confirm.indicators.join(', ');
     const evidence = [
-      `Failed/hanging request: ${method} ${endpoint} — ${o.trigger}${detail}`,
-      `UI still showing loading indicators after ${gapMs}ms: ${indicators || '(none named)'}`,
-      'No error/timeout fallback rendered on failure',
+      `Failed or hanging request: ${method} ${endpoint} (${o.trigger}${detail})`,
+      `The screen still showed loading after ${gapMs}ms: ${indicators || '(none named)'}`,
+      'No error or timeout screen appeared when it failed',
     ];
-    if (o.confirm.inputsBlocked) evidence.push('Inputs remained disabled/blocked while the request never resolved');
+    if (o.confirm.inputsBlocked) evidence.push('Inputs stayed disabled while the request never finished');
+    if (o.stillPending) evidence.push('The request was still pending when the screen was re-checked');
     if (o.scenarioActive) evidence.push('Corroborated by an active NetworkSaboteur/AsyncStateRacer stress probe');
+    // Corroboration = a second INDEPENDENT signal beyond the persistent spinner: blocked inputs or a stress probe.
+    const corroborated = o.scenarioActive || o.confirm.inputsBlocked;
+    const grade = this.grade(o, corroborated);
     return {
       bugId,
       bugClass: 'INFINITE_LOADING',
-      severity: 'HIGH',
+      severity: grade.severity,
+      confidence: grade.confidence,
+      verificationStatus: grade.verificationStatus,
       cwe: BUG_CATALOG.INFINITE_LOADING.cwe,
-      message: `[API hang / infinite loading] ${method} ${endpoint} — ${o.trigger}, UI stuck loading`,
+      message: `[Stuck loading] ${method} ${endpoint} (${o.trigger}) never finished, so the screen stayed stuck loading.`,
       endpoint,
       method,
       trigger: o.trigger,
       evidence,
       advice: this.buildAdvice(),
       occurrence,
-      corroborated: o.scenarioActive,
+      corroborated,
     };
   }
 
@@ -163,7 +216,7 @@ export class ApiHangFinder {
   }
 
   private buildAdvice(): string {
-    return `The request failed or never resolved and the UI never left its loading state.\n${BUG_CATALOG.INFINITE_LOADING.remediation}`;
+    return `The request failed or never came back, and the screen never left its loading state.\n${BUG_CATALOG.INFINITE_LOADING.remediation}`;
   }
 
   // djb2 — stable, cheap, no crypto dependency.

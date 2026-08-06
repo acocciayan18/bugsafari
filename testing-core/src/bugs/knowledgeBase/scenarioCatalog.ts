@@ -40,7 +40,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     testingType: 'formBypass',
     expectedBugs: ['CLIENT_SIDE_CONSTRAINT_BYPASS', 'INPUT_SANITIZATION_FAILURE'],
     signalCategories: ['SERVER_ERROR', 'CLIENT_CRASH'],
-    description: 'Strips client-side validation to expose missing server-side enforcement.',
+    description: 'Removes the browser form rules to see whether the server still enforces them.',
   },
   DataFuzzer: {
     testingType: 'dataFuzzing',
@@ -48,19 +48,19 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     // error resolves to the precise datastore class (CWE-89 / CWE-943), not CWE-79.
     expectedBugs: ['SQL_INJECTION', 'NOSQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK', 'INPUT_SANITIZATION_FAILURE'],
     signalCategories: ['XSS_REFLECTION', 'SQL_ERROR', 'NOSQL_ERROR', 'SERVER_ERROR', 'CLIENT_CRASH'],
-    description: 'Injects boundary/malformed/injection payloads into classified input fields.',
+    description: 'Types extreme, malformed, and injection values into input fields to see how they are handled.',
   },
   ButtonSpammer: {
     testingType: 'concurrency',
     expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],
     signalCategories: ['CLIENT_CRASH'],
-    description: 'Fires concurrent zero-wait click bursts to trigger state races.',
+    description: 'Clicks a control very fast with no wait to trigger timing bugs.',
   },
   CoordinateBombing: {
     testingType: 'concurrency',
     expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],
     signalCategories: ['CLIENT_CRASH'],
-    description: 'Fires a deterministic sequential grid of viewport clicks to hit overlays/hidden hit-test edges.',
+    description: 'Clicks across a grid of screen positions to catch overlays and hidden clickable edges.',
   },
   AsyncStateRacer: {
     testingType: 'asyncRace',
@@ -71,7 +71,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
       'BOUNDARY_STRESS_FAILURE',
     ],
     signalCategories: ['CLIENT_CRASH', 'SERVER_ERROR'],
-    description: 'Interrupts in-flight async operations to surface teardown races, swallowed rejections, and state desync.',
+    description: 'Interrupts in-progress background requests to surface cleanup bugs, swallowed errors, and out-of-sync state.',
   },
   // Disabled engine-wide — retained so findings persisted by older runs still
   // resolve their attribution instead of falling back to EXPLORATORY.
@@ -79,13 +79,13 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     testingType: 'navigation',
     expectedBugs: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
     signalCategories: ['REDIRECT_LOOP', 'COMPONENT_FAIL', 'DEAD_END', 'QUERY_MUTATION'],
-    description: 'Trashes history and mutates query params to break routing logic.',
+    description: 'Scrambles history and query values to try to break the routing logic.',
   },
   NetworkSaboteur: {
     testingType: 'navigation',
     expectedBugs: ['BOUNDARY_STRESS_FAILURE'],
     signalCategories: ['SERVER_ERROR', 'DEAD_END'],
-    description: 'Delays, aborts, or corrupts the API call an interaction triggers, to test network-fault resilience.',
+    description: 'Delays, cancels, or corrupts the API call an interaction makes, to test how the app copes with network faults.',
   },
   StorageTamper: {
     testingType: 'authState',
@@ -93,13 +93,13 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     // No runtime signal category: this fault is self-asserted by the scenario's
     // own privileged-surface oracle (confirmed=true), not matched from page text.
     signalCategories: [],
-    description: 'Forges client-trusted auth state (storage/JWT) and detects privileged UI unlocked without server authorization.',
+    description: 'Fakes signed-in state in browser storage or the JWT to see if privileged screens unlock without a server check.',
   },
   [EXPLORATORY_SCENARIO]: {
     testingType: 'exploratory',
     expectedBugs: ['RUNTIME_STABILITY_EXCEPTION', 'STRUCTURAL_NAVIGATION_LOGIC', 'BOUNDARY_STRESS_FAILURE'],
     signalCategories: ['CLIENT_CRASH', 'DEAD_END', 'REDIRECT_LOOP', 'SERVER_ERROR'],
-    description: 'DOM-aware scorer-driven interaction with no stress scenario active.',
+    description: 'Free exploration guided by the element scorer, with no stress scenario running.',
   },
 };
 

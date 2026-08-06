@@ -189,7 +189,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
       </div>
 
       {source === 'ai' && status !== 'error' && (
-        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ AI-generated remediation</div>
+        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ AI-generated fix</div>
       )}
       {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">

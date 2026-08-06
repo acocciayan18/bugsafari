@@ -77,7 +77,7 @@ function formatDuration(durationMs: number): string {
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
   const outcome = outcomeFromStatus(status);
   if (outcome && !isCleanTermination(outcome)) {
-    return outcome === 'graceful-shutdown' || outcome === 'abandoned'
+    return outcome === 'graceful-shutdown' || outcome === 'abandoned' || outcome === 'engine-error'
       ? { text: 'text-(--status-warning-fg)', dot: 'bg-(--status-warning-fg)', bg: 'bg-(--status-warning-bg)', border: 'border-(--status-warning-border)' }
       : { text: 'text-(--status-critical-fg)', dot: 'bg-(--status-critical-fg)', bg: 'bg-(--status-critical-bg)', border: 'border-(--status-critical-border)' };
   }

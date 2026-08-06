@@ -671,6 +671,17 @@ export class ExplorationLoop {
    * once per route so a genuinely frozen page yields one finding, not one per step.
    */
   private async reportClientFreeze(page: Page, health: 'unsettled' | 'timeout', ctx: RunContext): Promise<void> {
+    // Intentional teardown (operator stop/cancel, pause, timebox, crash shutdown) aborts the
+    // bounded DOM scan mid-flight, so a 'timeout'/'unsettled' scan here is a shutdown artifact,
+    // not a target render loop. Mark it an expected interruption and never register a finding.
+    if (this.deps.isStopRequested() || this.deps.isPaused()) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'render-freeze-suppressed-teardown',
+        url: page.url(),
+        message: `Scan ended ${health} during session termination — expected interruption, not a client render freeze.`,
+      });
+      return;
+    }
     const url = page.url();
     const routeKey = visitedRouteKey(url);
     if (ctx.freezeReported.has(routeKey)) return;

@@ -12,6 +12,7 @@ const STATUS_FALLBACK: Record<string, RunTerminationOutcome> = {
   TIMEOUT: 'timebox',
   TIMEDOUT: 'timebox',
   ABANDONED: 'abandoned',
+  ENGINEERROR: 'engine-error',
 };
 
 /** Resolve a coarse status of either casing to its termination outcome, or null. */
@@ -38,7 +39,7 @@ export function TerminationBadge({ outcome, status, reason, className = '' }: Te
   const copy = TERMINATION_COPY[resolved];
   const tone = isCleanTermination(resolved)
     ? 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
-    : resolved === 'graceful-shutdown' || resolved === 'abandoned'
+    : resolved === 'graceful-shutdown' || resolved === 'abandoned' || resolved === 'engine-error'
       ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
       : 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]';
 

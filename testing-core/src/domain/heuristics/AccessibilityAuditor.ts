@@ -153,7 +153,7 @@ export class AccessibilityAuditor {
           impact: 'serious',
           selector: selectorFor(el),
           elementName: nameFor(el),
-          description: 'Image has no alt attribute — screen readers cannot describe it.',
+          description: 'This image has no alt text, so screen readers cannot describe it to blind users.',
           suggestedFix: 'Add alt text (or alt="" if the image is purely decorative).',
         });
       });
@@ -187,7 +187,7 @@ export class AccessibilityAuditor {
             impact: 'serious',
             selector: selectorFor(el),
             elementName: nameFor(el),
-            description: 'Interactive control has no accessible name (empty text, no aria-label/title) — screen-reader users hear only its role.',
+            description: 'This control has no readable name (no text, aria-label, or title), so screen-reader users only hear what type it is.',
             suggestedFix: 'Add visible text, an aria-label, or a title attribute.',
           });
         }
@@ -223,7 +223,7 @@ export class AccessibilityAuditor {
             impact: 'minor',
             selector: `#${CSS.escape(id)}`,
             elementName: `#${id}`,
-            description: `id "${id}" is used ${count} times — duplicate ids break label[for]/aria-* references and are invalid HTML.`,
+            description: `The id "${id}" is used ${count} times on the page. Duplicate ids are invalid HTML and break label and aria references.`,
             suggestedFix: 'Make every id unique on the page.',
           });
         }
@@ -238,7 +238,7 @@ export class AccessibilityAuditor {
           impact: 'serious',
           selector: 'html',
           elementName: 'the page',
-          description: 'Document has no lang attribute — assistive tech cannot pick the right pronunciation.',
+          description: 'The page has no language set, so assistive tech cannot choose the right pronunciation.',
           suggestedFix: 'Add a language to the root element, e.g. <html lang="en">.',
         });
       }
@@ -251,7 +251,7 @@ export class AccessibilityAuditor {
           impact: 'serious',
           selector: '',
           elementName: 'the page',
-          description: 'Document has no <title> — users cannot identify the page in tabs/history.',
+          description: 'The page has no title, so users cannot tell it apart in browser tabs or history.',
           suggestedFix: 'Add a concise, descriptive <title>.',
         });
       }

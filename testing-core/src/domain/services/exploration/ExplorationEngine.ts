@@ -14,6 +14,7 @@ import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenario
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
 import { applyReproductionOutcome } from '../verification/confidenceScore.js';
+import { classifyFaultOrigin } from '../verification/index.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
@@ -242,6 +243,10 @@ export class ExplorationEngine {
   // Why stop() was called. Null while running — a browser-closed error observed with
   // no reason recorded is a genuine fault, never an operator stop.
   private stopReason: StopReason | null = null;
+
+  // The exception that unwound run(), captured so completeSession() can attribute the
+  // failure to its origin (engine/Playwright/environment vs the target app). Reset per run.
+  private lastUnhandledError: unknown = null;
 
   // Tracks fire-and-forget DB/telemetry writes so Pause/Stop can flush them before
   // the lifecycle settles (graceful settlement barrier).
@@ -1283,6 +1288,7 @@ export class ExplorationEngine {
     // Captured so the finally block can settle the session with the real outcome
     // instead of the old crashed/completed binary. Null means the loop threw.
     let runResult: RunResult | null = null;
+    this.lastUnhandledError = null;
 
     try {
       // Task 3: Emit granular status for dynamic UI - "Navigating to URL..."
@@ -1425,6 +1431,11 @@ export class ExplorationEngine {
 
       runResult = await new ExplorationLoop(loopDeps).execute(page, maxSteps);
       return runResult;
+    } catch (err) {
+      // Retain the throw so the finally's completeSession() can attribute it; rethrow
+      // to preserve the caller's existing fatal-error handling.
+      this.lastUnhandledError = err;
+      throw err;
     } finally {
       //  Cleanup: dispose stability monitoring to prevent "ghost" heartbeat intervals
       if (this.cleanupStabilityMonitor) {
@@ -1544,7 +1555,20 @@ export class ExplorationEngine {
         reason: STOP_REASON_DETAIL[this.stopReason],
       };
     }
-    return { outcome: 'exception', reason: 'Unhandled exception detected' };
+    // The loop threw with no operator stop. Attribute the failure: a Playwright /
+    // browser / environment error (goto timeout, closed context) is an ENGINE fault
+    // recorded as 'engine-error'; only a target-attributed throw is a 'exception' crash.
+    const err = this.lastUnhandledError;
+    const message = err instanceof Error ? err.message : String(err ?? 'Unhandled exception detected');
+    const origin = classifyFaultOrigin({
+      faultType: 'EXCEPTION',
+      message,
+      url: this.canonicalUrl || undefined,
+      targetOrigin: this.canonicalOrigin || undefined,
+    });
+    return origin.isTargetApp
+      ? { outcome: 'exception', reason: message }
+      : { outcome: 'engine-error', reason: `${origin.reason} ${message}`.trim() };
   }
 
   // Freeze at crash time: stop the engine's own trace recording AND the global

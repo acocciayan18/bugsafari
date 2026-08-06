@@ -237,10 +237,10 @@ export const concurrentStressGuard: BugFinder = {
     if (detectMainThreadHang(stabilityData)) {
       findings.push({
         bugClass: 'RUNTIME_STABILITY_EXCEPTION',
-        title: 'Main Thread Hang Detected - UI Unresponsive',
+        title: 'Page froze and stopped responding during fast clicking',
         severity: 'CRITICAL',
         evidence: {
-          message: `Main thread hang detected during rapid clicking at velocity ${metadata.velocity}ms. UI is unresponsive.`,
+          message: `Clicking every ${metadata.velocity}ms locked up the page so it stopped responding to input. The app cannot keep up with fast repeated clicks.`,
           selector: metadata.elementChain[0] ?? '',
           actionExecuted: `stress-click-hang-vel${metadata.velocity}`,
         },
@@ -251,10 +251,10 @@ export const concurrentStressGuard: BugFinder = {
     if (detectFrameReconciliationErrors(stabilityData)) {
       findings.push({
         bugClass: 'RUNTIME_STABILITY_EXCEPTION',
-        title: 'Frame Reconciliation Error Detected - Rapid Updates Causing Errors',
+        title: 'Fast clicking caused rendering errors',
         severity: 'HIGH',
         evidence: {
-          message: `Frame reconciliation errors detected during rapid clicking. This may indicate a React-like framework issue with nested updates. Message: ${stabilityData.exceptionDetails?.message ?? 'unknown'}`,
+          message: `Fast repeated clicking made the UI throw rendering errors, which usually points to a framework (React-style) problem with too many overlapping updates. Error: ${stabilityData.exceptionDetails?.message ?? 'unknown'}`,
           selector: metadata.elementChain[0] ?? '',
           actionExecuted: `stress-click-reconciliation-vel${metadata.velocity}`,
         },
@@ -265,10 +265,10 @@ export const concurrentStressGuard: BugFinder = {
     if (ctx.crashHalted) {
       findings.push({
         bugClass: 'RUNTIME_STABILITY_EXCEPTION',
-        title: 'Process Halted During Concurrent Stress Test',
+        title: 'App crashed during the fast-clicking stress test',
         severity: 'CRITICAL',
         evidence: {
-          message: `The testing process was halted during concurrent stress testing. This indicates a catastrophic stability failure.`,
+          message: `The app crashed and testing had to stop during the fast-clicking stress test. This is a severe stability failure.`,
           selector: metadata.elementChain[0] ?? '',
           actionExecuted: `stress-click-crash-vel${metadata.velocity}`,
         },
