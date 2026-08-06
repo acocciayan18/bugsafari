@@ -2,6 +2,10 @@ import { Redis } from 'ioredis';
 import type { Server } from 'socket.io';
 import type { RoomEmitter } from '../socket/SocketTelemetryGateway.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[TelemetryBridge]');
+
 // Pub/sub channel carrying every worker-emitted telemetry frame to the API
 // process, which owns the browser-facing Socket.IO server. Isolated worker
 // processes stream live events to the dashboard without a Socket.IO adapter.
@@ -20,7 +24,7 @@ function redisClient(redisUrl: string): Redis {
   // transient blip (reconnect, ECONNRESET), and an EventEmitter 'error' with no
   // listener throws → uncaught exception → the api process exits (ECONNREFUSED for
   // every proxied request until it restarts). ioredis auto-reconnects, so log-and-continue.
-  client.on('error', (err) => console.error('[TelemetryBridge] redis connection error:', err instanceof Error ? err.message : err));
+  client.on('error', (err) => obsLog.error('[TelemetryBridge] redis connection error:', err instanceof Error ? err.message : err));
   return client;
 }
 
@@ -45,7 +49,7 @@ export class RedisTelemetryPublisher implements RoomEmitter {
     this.droppedUnrouted += 1;
     // Rate-limited: a stuck producer must not flood the log with one line per frame.
     if (this.droppedUnrouted === 1 || this.droppedUnrouted % 100 === 0) {
-      console.warn(`[TelemetryBridge] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
+      obsLog.warn(`[TelemetryBridge] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
     }
     return true;
   }
@@ -62,7 +66,7 @@ export class RedisTelemetryPublisher implements RoomEmitter {
   private publish(room: string, event: string, args: unknown[]): void {
     const message: BridgeMessage = { room, event, args };
     void this.pub.publish(TELEMETRY_BRIDGE_CHANNEL, JSON.stringify(message)).catch((error) => {
-      console.error('[TelemetryBridge] publish failed:', error instanceof Error ? error.message : error);
+      obsLog.error('[TelemetryBridge] publish failed:', error instanceof Error ? error.message : error);
     });
   }
 
@@ -89,15 +93,15 @@ export class TelemetryBridgeSubscriber {
         // Defensive: an older worker build could still publish room:null. Drop it
         // rather than fanning one run's telemetry out to every dashboard.
         if (typeof room !== 'string' || !room) {
-          console.warn(`[TelemetryBridge] dropped unrouted frame '${event}' from the fleet.`);
+          obsLog.warn(`[TelemetryBridge] dropped unrouted frame '${event}' from the fleet.`);
           return;
         }
         this.io.to(room).emit(event, ...args);
       } catch (error) {
-        console.error('[TelemetryBridge] drop malformed frame:', error instanceof Error ? error.message : error);
+        obsLog.error('[TelemetryBridge] drop malformed frame:', error instanceof Error ? error.message : error);
       }
     });
-    console.log(`[TelemetryBridge] subscribed to ${TELEMETRY_BRIDGE_CHANNEL} — worker telemetry now reaches the dashboard.`);
+    obsLog.info(`[TelemetryBridge] subscribed to ${TELEMETRY_BRIDGE_CHANNEL} — worker telemetry now reaches the dashboard.`);
   }
 
   public async close(): Promise<void> {

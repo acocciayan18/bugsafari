@@ -4,6 +4,10 @@ import { optionalAuth, type AuthRequest } from '../authentication/authMiddleware
 import { writeLimiter } from '../middleware/rateLimiter.js';
 import { SupportTicketModel } from '../../infrastructure/database/models/SupportTicketModel.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[API]');
+
 const MODES = new Set(['contact', 'ticket', 'feature']);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,11 +45,11 @@ export function registerSupportRoutes(app: Express): void {
         subject,
         description,
       });
-      console.log(`[API]  Support ticket ${ticket.id} recorded (${mode}) from ${request.userId ?? 'guest'}`);
+      obsLog.info(`[API]  Support ticket ${ticket.id} recorded (${mode}) from ${request.userId ?? 'guest'}`);
       response.status(201).json({ ok: true, ticketId: ticket.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('[API]  Support ticket save failed:', message);
+      obsLog.error('[API]  Support ticket save failed:', message);
       response.status(500).json({ error: 'Could not record your request. Please try again.' });
     }
   });

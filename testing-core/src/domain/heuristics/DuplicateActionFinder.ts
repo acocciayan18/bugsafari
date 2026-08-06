@@ -1,5 +1,5 @@
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
-import { resolveControlName } from '../../../../shared/reproduction.js';
+import { resolveControlName, describeRouteStep } from '../../../../shared/reproduction.js';
 
 // State-changing verbs only; reads (GET/HEAD/OPTIONS) can repeat safely and are ignored.
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -36,6 +36,8 @@ export interface RequestObservation {
   raceScenarioActive: boolean;
   timestampMs: number;
   interaction?: InteractionContext;
+  /** Document URL the control fired from — the page a developer opens, never url (an API endpoint). */
+  pageUrl?: string;
 }
 
 // One settled request — status absent means a transport failure or abort.
@@ -87,6 +89,7 @@ interface TrackedRequest {
   idempotencyKey?: string;
   interaction?: InteractionContext;
   raceScenarioActive: boolean;
+  pageUrl?: string;
 }
 
 // Ranks a verdict so a later settlement can upgrade a pair but never downgrade it.
@@ -129,6 +132,7 @@ export class DuplicateActionFinder {
       idempotencyKey: this.idempotencyKeyOf(o.headers),
       interaction: o.interaction,
       raceScenarioActive: o.raceScenarioActive,
+      pageUrl: o.pageUrl,
     };
     this.track(record);
 
@@ -337,8 +341,15 @@ export class DuplicateActionFinder {
     intervalMs: number,
     label: string,
   ): string[] {
+    // The control lives on the PAGE the requests fired from — never the API endpoint
+    // itself. second.url is a data endpoint the control ISSUES (step 2), not a route a
+    // developer browses to; opening it sent them to a backend URL that renders no UI.
+    const pageUrl = second.pageUrl || first.pageUrl;
+    const openStep = pageUrl
+      ? `${describeRouteStep(pageUrl)}, then bring ${label} into view`
+      : `Bring ${label} into view on the page under test`;
     const steps = [
-      `Open ${this.pathOf(second.url)} and bring ${label} into view`,
+      openStep,
       `Activate ${label} once — the app issues ${first.method} ${this.pathOf(first.url)}`,
       `Activate ${label} again ${intervalMs}ms later, before the first request settles`,
       `Observe a second ${second.method} ${this.pathOf(second.url)} with an identical payload`,

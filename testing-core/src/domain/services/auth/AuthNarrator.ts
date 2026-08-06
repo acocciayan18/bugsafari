@@ -3,6 +3,7 @@ import {
   AUTH_ACTION,
   describeAffordanceClick,
   describeAuthFailed,
+  describeAuthRetry,
   describeAuthStart,
   describeAuthSucceeded,
   describeCredentialsEntered,
@@ -106,6 +107,10 @@ export class AuthNarrator {
 
   public verifying(): void {
     this.emit(AUTH_ACTION.verifying, describeVerifying());
+  }
+
+  public retrying(reason: string): void {
+    this.emit(AUTH_ACTION.retrying, describeAuthRetry(reason));
   }
 
   public succeeded(url: string): void {

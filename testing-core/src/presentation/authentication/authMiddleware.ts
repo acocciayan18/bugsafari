@@ -2,6 +2,10 @@ import type { Request, Response, NextFunction } from 'express';
 import { verifyTokenSync } from './authConfig.js';
 import { maskEmail } from './authValidation.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[AUTH]');
+
 export interface AuthRequest extends Request {
   userId?: string;
   userEmail?: string;
@@ -22,7 +26,7 @@ export async function requireAuth(
   const authHeader = request.headers.authorization;
 
   if (!authHeader) {
-    console.warn('[AUTH] requireAuth - rejected: missing Authorization header');
+    obsLog.warn('[AUTH] requireAuth - rejected: missing Authorization header');
     response.status(401).json({
       error: 'Authentication required. Please log in to access this feature.',
       code: 'GUEST_FORBIDDEN',
@@ -31,7 +35,7 @@ export async function requireAuth(
   }
 
   if (!authHeader.startsWith('Bearer ')) {
-    console.warn('[AUTH] requireAuth - rejected: malformed Authorization header (must start with "Bearer ")');
+    obsLog.warn('[AUTH] requireAuth - rejected: malformed Authorization header (must start with "Bearer ")');
     response.status(401).json({
       error: 'Invalid authorization format. Expected "Bearer {token}".',
       code: 'GUEST_FORBIDDEN',
@@ -42,7 +46,7 @@ export async function requireAuth(
   const token = authHeader.substring(7);
 
   if (!token) {
-    console.warn('[AUTH] requireAuth - rejected: empty token after Bearer prefix');
+    obsLog.warn('[AUTH] requireAuth - rejected: empty token after Bearer prefix');
     response.status(401).json({
       error: 'Authentication required. Please log in to access this feature.',
       code: 'GUEST_FORBIDDEN',
@@ -54,7 +58,7 @@ export async function requireAuth(
 
   if (!decoded) {
     // FIX: Log more specific reason - will now be caught by verifyTokenSync logging
-    console.warn('[AUTH] requireAuth - rejected: token verification failed');
+    obsLog.warn('[AUTH] requireAuth - rejected: token verification failed');
     response.status(401).json({
       error: 'Invalid or expired token. Please log in again.',
     });
@@ -64,7 +68,7 @@ export async function requireAuth(
   request.userId = decoded.userId;
   request.userEmail = decoded.email;
   request.isGuest = false;
-  console.log('[AUTH] requireAuth - accepted for user:', maskEmail(decoded.email));
+  obsLog.info('[AUTH] requireAuth - accepted for user:', maskEmail(decoded.email));
   next();
 }
 

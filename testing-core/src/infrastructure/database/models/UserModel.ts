@@ -1,6 +1,10 @@
 import { Schema, model, Document, CallbackError } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+import { createLogger } from '../../observability/logger.js';
+
+const obsLog = createLogger('[UserModel]');
+
 export interface IUser extends Document {
   email: string;
   password: string;
@@ -28,6 +32,7 @@ const userSchema = new Schema(
       unique: true,
       trim: true,
       lowercase: true,
+      maxlength: [254, 'Email must be at most 254 characters'],
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address'],
     },
     name: {
@@ -100,7 +105,7 @@ userSchema.pre<IUser>('save', async function (next) {
     this.password = await bcrypt.hash(this.password, salt);
     next();
   } catch (error: any) {
-    console.error('[UserModel] Password hashing error:', error.message, error.stack);
+    obsLog.error('[UserModel] Password hashing error:', error.message, error.stack);
     next(error as CallbackError);
   }
 });
@@ -113,7 +118,7 @@ userSchema.methods.comparePassword = async function (candidatePassword: string):
   try {
     return await bcrypt.compare(candidatePassword, this.password);
   } catch (error) {
-    console.error('[UserModel] Password comparison error:', error);
+    obsLog.error('[UserModel] Password comparison error:', error);
     return false;
   }
 };

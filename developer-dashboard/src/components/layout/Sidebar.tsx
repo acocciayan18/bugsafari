@@ -38,7 +38,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { view: 'dashboard', label: 'Dashboard', path: '/dashboard', Icon: LayoutDashboard },
-  { view: 'history', label: 'Forensic History', path: '/history', Icon: History, requiresAuth: true },
+  { view: 'history', label: 'History', path: '/history', Icon: History, requiresAuth: true },
   { view: 'settings', label: 'Settings', path: '/settings', Icon: Settings },
 ];
 

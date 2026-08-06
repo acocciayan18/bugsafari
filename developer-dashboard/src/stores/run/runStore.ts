@@ -5,10 +5,12 @@ import type {
     ActiveSessionSnapshot,
     ForensicCrashReport,
     IncidentReport,
+    NetworkPhase,
     ReproductionVerdict,
     SessionHistoryEntry,
     TelemetryEvent,
 } from '../../types';
+import { NETWORK_ACTION } from '../../types';
 import { defaultOptimizationSettings, isCleanTermination } from '../../../../shared/types.js';
 import type { RunTerminationOutcome } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
@@ -91,6 +93,8 @@ export interface RunState {
     status: TestSessionStatus;
     hasRunCompleted: boolean;
     terminationOutcome: RunTerminationOutcome | null;
+    /** Bare engine reason behind the outcome, surfaced under the terminal label. */
+    terminationReason: string | null;
     hasTimeLimitExceeded: boolean;
     currentEngineAction: string;
     isInitializing: boolean;
@@ -114,6 +118,9 @@ export interface RunState {
     reconnectAttempt: number;
     // Socket.IO exhausted its reconnection budget — terminal, needs a manual reload.
     reconnectGaveUp: boolean;
+    // Backend-detected reachability of the TARGET app (independent of the dashboard
+    // socket). Driven by the engine's NETWORK_ACTION telemetry markers.
+    targetNetworkPhase: NetworkPhase;
     isRestoring: boolean;
     isQueued: boolean;
     queuePosition: number | null;
@@ -164,6 +171,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     status: 'IDLE',
     hasRunCompleted: false,
     terminationOutcome: null,
+    terminationReason: null,
     hasTimeLimitExceeded: false,
     currentEngineAction: '',
     isInitializing: false,
@@ -186,6 +194,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     isReconnecting: false,
     reconnectAttempt: 0,
     reconnectGaveUp: false,
+    targetNetworkPhase: 'ONLINE',
     isRestoring: false,
     isQueued: false,
     queuePosition: null,
@@ -285,6 +294,7 @@ export const useRunStore = create<RunState>((set, get) => ({
         if (action && ENGINE_TERMINAL_ACTIONS.has(action)) {
             const outcome = event.meta.terminationOutcome ?? null;
             if (outcome) patch.terminationOutcome = outcome;
+            if (event.meta.terminationReason) patch.terminationReason = event.meta.terminationReason;
             patch.status = outcome
                 ? (isCleanTermination(outcome) && outcome !== 'user-stopped' ? 'FINISHED' : 'STOPPED')
                 : action === 'engine-finished' ? 'FINISHED' : 'STOPPED';
@@ -309,6 +319,12 @@ export const useRunStore = create<RunState>((set, get) => ({
             if (action === 'url-changed' && event.meta.message) patch.currentUrl = event.meta.message;
             if (action === 'system-status' && event.meta.message) patch.currentEngineAction = event.meta.message;
 
+            // Target-reachability markers drive the network status chip (independent of
+            // the dashboard socket): degraded = findings suppressed, paused = auto-retrying.
+            if (action === NETWORK_ACTION.DEGRADED) patch.targetNetworkPhase = 'DEGRADED';
+            else if (action === NETWORK_ACTION.PAUSED) patch.targetNetworkPhase = 'PAUSED_NETWORK';
+            else if (action === NETWORK_ACTION.RECOVERED || action === NETWORK_ACTION.RESUMED) patch.targetNetworkPhase = 'ONLINE';
+
             if (action === 'engine-status' && event.meta.message === 'IDLE') {
                 logger.debug('[runStore] Received explicit IDLE status - resetting all button states');
                 Object.assign(patch, {
@@ -321,6 +337,7 @@ export const useRunStore = create<RunState>((set, get) => ({
                     status: 'IDLE' as TestSessionStatus,
                     liveFrame: null,
                     isReconnecting: false,
+                    targetNetworkPhase: 'ONLINE' as NetworkPhase,
                 });
                 // Run settled — no queue message may outlive it
                 runRefs.queuePhase = 'done';
@@ -445,6 +462,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             // The snapshot field is authoritative — the telemetry buffer is capped and
             // can evict the terminal event on a long run.
             terminationOutcome: live ? null : snapshot.terminationOutcome,
+            terminationReason: live ? null : snapshot.terminationReason,
             isLaunching: false,
             isQueued: queued,
             queuePosition: queued ? snapshot.queuePosition ?? null : null,
@@ -507,8 +525,11 @@ export const useRunStore = create<RunState>((set, get) => ({
             elapsedTimeMs: 0,
             hasRunCompleted: false,
             terminationOutcome: null,
+            terminationReason: null,
             hasTimeLimitExceeded: false,
             isSessionSaved: false,
+            // A new run starts assuming the target is reachable.
+            targetNetworkPhase: 'ONLINE',
             isQueued: false,
             queuePosition: null,
             queueDepth: 0,
@@ -578,6 +599,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             hasRunCompleted: false,
             hasTimeLimitExceeded: false,
             terminationOutcome: null,
+            terminationReason: null,
             queuePosition: null,
             queueDepth: 0,
             queueActiveCount: 0,

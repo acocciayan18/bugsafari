@@ -4,6 +4,10 @@ import jwt from 'jsonwebtoken';
 import { RefreshTokenModel } from '../../infrastructure/database/models/RefreshTokenModel.js';
 import { AUTH_CONFIG } from './authConfig.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[AUTH]');
+
 export interface IssuedTokens {
   token: string;
   refreshToken: string;
@@ -86,7 +90,7 @@ export async function rotateRefreshToken(presented: unknown): Promise<RotationRe
     // (a replay of a rotated/burned value). Burn the whole family on reuse.
     const existing = await RefreshTokenModel.findOne({ tokenHash }).select('familyId userId');
     if (!existing) return { ok: false, reason: 'NOT_FOUND' };
-    console.error(`[AUTH] Refresh token reuse detected for user ${existing.userId} — revoking family ${existing.familyId}`);
+    obsLog.error(`[AUTH] Refresh token reuse detected for user ${existing.userId} — revoking family ${existing.familyId}`);
     await revokeFamily(existing.familyId, 'reuse-detected');
     return { ok: false, reason: 'REUSE_DETECTED' };
   }

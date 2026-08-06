@@ -84,8 +84,13 @@ export function collapseFaultIntoBuffer<T extends IncidentReport | ForensicCrash
   // count — seed from whichever is larger so live ×N and restored ×N never disagree.
   const occurrences = Math.max(incoming.occurrences ?? 1, (existing?.occurrences ?? 0) + 1);
   const merged = { ...incoming, occurrences } as T;
-  const rest = existing ? prev.filter((f) => liveFaultSignature(f) !== sig) : prev;
-  return [merged, ...rest].slice(0, cap);
+  // A repeat bumps the count in place, keeping first-seen order; a new distinct fault
+  // appends to the bottom so the latest finding is always last. Overflow drops from the
+  // head, so the newest faults survive — matching the Network/Console tabs.
+  const next = existing
+    ? prev.map((f) => (liveFaultSignature(f) === sig ? merged : f))
+    : [...prev, merged];
+  return next.length > cap ? next.slice(next.length - cap) : next;
 }
 
 // Group items by a content signature, preserving first-seen order. `occurrenceOf`

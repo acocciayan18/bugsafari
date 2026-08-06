@@ -3,6 +3,10 @@ import { rotateRefreshToken, revokeToken, type RotationFailure } from './refresh
 import { maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[Auth]');
+
 // A failed rotation always reads the same to the client — distinguishing "unknown
 // token" from "replayed token" would tell an attacker which of their values landed.
 const GENERIC_FAILURE = 'Session expired. Please log in again.';
@@ -26,7 +30,7 @@ export async function handleTokenRefresh(
     const result = await rotateRefreshToken(presented);
 
     if (!result.ok) {
-      console.warn(`[Auth] Refresh rejected: ${result.reason}`);
+      obsLog.warn(`[Auth] Refresh rejected: ${result.reason}`);
       const body: AuthErrorBody = {
         error: GENERIC_FAILURE,
         code: result.reason === 'REUSE_DETECTED' ? 'SESSION_REVOKED' : 'REFRESH_INVALID',
@@ -37,7 +41,7 @@ export async function handleTokenRefresh(
 
     // Rotation already loaded the user to sign the token — reuse its email
     // instead of a second identical lookup.
-    console.log(`[Auth] Token rotated for user: ${maskEmail(result.email)}`);
+    obsLog.info(`[Auth] Token rotated for user: ${maskEmail(result.email)}`);
     response.json({
       ok: true,
       token: result.tokens.token,

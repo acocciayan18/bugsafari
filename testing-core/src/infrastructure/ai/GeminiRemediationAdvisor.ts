@@ -1,5 +1,9 @@
 import type { RemediationFailureReason, SuggestFixRequest, SuggestInsightsRequest } from '../../../../shared/types.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[RemediationAdvisor]');
+
 // On-demand LLM generation via Google Gemini. Every failure path resolves to a
 // classified reason instead of a bare null, so the caller can fall back to the
 // deterministic knowledge-base output AND report why the model was skipped.
@@ -56,7 +60,7 @@ function redact(text: string, key: string): string {
 async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiResult> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) {
-    console.error('[RemediationAdvisor] GEMINI_API_KEY is not set — skipping model, using deterministic output.');
+    obsLog.error('[RemediationAdvisor] GEMINI_API_KEY is not set — skipping model, using deterministic output.');
     return { ok: false, reason: 'not_configured' };
   }
 
@@ -66,7 +70,7 @@ async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiRes
   // under this; truncating here bounds a pathological caller regardless.
   const safePrompt = prompt.length > MAX_PROMPT_CHARS ? prompt.slice(0, MAX_PROMPT_CHARS) : prompt;
   if (safePrompt.length < prompt.length) {
-    console.warn(`[RemediationAdvisor] prompt truncated ${prompt.length}->${safePrompt.length} chars (SEC-10 guard)`);
+    obsLog.warn(`[RemediationAdvisor] prompt truncated ${prompt.length}->${safePrompt.length} chars (SEC-10 guard)`);
   }
 
   const controller = new AbortController();
@@ -87,7 +91,7 @@ async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiRes
     const body = (await res.json().catch(() => ({}))) as GeminiPayload;
     if (!res.ok) {
       const reason = classifyStatus(res.status, body);
-      console.error(
+      obsLog.error(
         `[RemediationAdvisor] Gemini ${res.status} (${reason}) model=${MODEL} after ${Date.now() - startedAt}ms:`,
         redact(body?.error?.message ?? '(no message)', key),
       );
@@ -97,7 +101,7 @@ async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiRes
     const text = extractText(body);
     if (!text) {
       const finish = body?.candidates?.[0]?.finishReason ?? body?.promptFeedback?.blockReason ?? 'unknown';
-      console.error(`[RemediationAdvisor] Gemini returned no text (finishReason=${finish}) model=${MODEL} after ${Date.now() - startedAt}ms`);
+      obsLog.error(`[RemediationAdvisor] Gemini returned no text (finishReason=${finish}) model=${MODEL} after ${Date.now() - startedAt}ms`);
       return { ok: false, reason: 'empty_response' };
     }
     return { ok: true, text };
@@ -105,7 +109,7 @@ async function callGemini(prompt: string, jsonOutput = false): Promise<GeminiRes
     const aborted = error instanceof Error && error.name === 'AbortError';
     const reason: RemediationFailureReason = aborted ? 'timeout' : 'network';
     const detail = aborted ? `exceeded ${TIMEOUT_MS}ms` : error instanceof Error ? redact(error.message, key) : String(error);
-    console.error(`[RemediationAdvisor] Gemini call failed (${reason}) model=${MODEL} after ${Date.now() - startedAt}ms:`, detail);
+    obsLog.error(`[RemediationAdvisor] Gemini call failed (${reason}) model=${MODEL} after ${Date.now() - startedAt}ms:`, detail);
     return { ok: false, reason };
   } finally {
     clearTimeout(timer);
@@ -188,7 +192,7 @@ export async function generateInsights(req: SuggestInsightsRequest): Promise<Ins
     ? parsed.recommendations.filter((r): r is string => typeof r === 'string' && r.trim().length > 0)
     : [];
   if (!rootCause && recommendations.length === 0) {
-    console.error(`[RemediationAdvisor] Gemini output was not usable insights JSON (${call.text.length} chars) model=${model()}`);
+    obsLog.error(`[RemediationAdvisor] Gemini output was not usable insights JSON (${call.text.length} chars) model=${model()}`);
     return { ok: false, reason: 'invalid_response' };
   }
   return { ok: true, rootCause, recommendations };

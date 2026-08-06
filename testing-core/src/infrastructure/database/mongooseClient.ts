@@ -6,6 +6,11 @@
 import mongoose from 'mongoose';
 import type { ConnectOptions } from 'mongoose';
 
+import { createLogger } from '../observability/logger.js';
+import { resolveMongoUri } from '../../config/env.js';
+
+const obsLog = createLogger('[mongooseClient]');
+
 const isLocal = (uri: string): boolean => uri.includes('localhost') || uri.includes('127.0.0.1');
 
 /**
@@ -13,7 +18,7 @@ const isLocal = (uri: string): boolean => uri.includes('localhost') || uri.inclu
  */
 function getMongooseOptions(): ConnectOptions {
   const isProduction = process.env.NODE_ENV === 'production';
-  const uri = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/';
+  const uri = getDatabaseUri();
   const isLocalEnv = isLocal(uri);
   // A worker runs one exploration and issues a handful of concurrent queries; the
   // api fans out across many requests. Ten sockets per worker is wasted memory and
@@ -59,11 +64,7 @@ function getMongooseOptions(): ConnectOptions {
  * - Docker Compose fallback: mongodb://mongo:27017/bugsafari
  */
 function getDatabaseUri(): string {
-  return (
-    process.env.MONGODB_URI ??
-    process.env.MONGO_URI ??
-    'mongodb://localhost:27017/'
-  );
+  return resolveMongoUri();
 }
 
 /**
@@ -109,9 +110,9 @@ export async function connectDatabase(): Promise<boolean> {
   const uri = getDatabaseUri();
   const options = getMongooseOptions();
 
-  console.log(`[mongooseClient] Connecting to: ${uri.replace(/\/\/.*:.*@/, '//***:***@')}`);
-  console.log(`[mongooseClient] NODE_ENV: ${process.env.NODE_ENV ?? 'development'}`);
-  console.log(`[mongooseClient] Options: autoIndex=${options.autoIndex}, maxPoolSize=${options.maxPoolSize}`);
+  obsLog.info(`[mongooseClient] Connecting to: ${uri.replace(/\/\/.*:.*@/, '//***:***@')}`);
+  obsLog.info(`[mongooseClient] NODE_ENV: ${process.env.NODE_ENV ?? 'development'}`);
+  obsLog.info(`[mongooseClient] Options: autoIndex=${options.autoIndex}, maxPoolSize=${options.maxPoolSize}`);
 
   connectionInstance = (async () => {
     try {
@@ -121,28 +122,28 @@ export async function connectDatabase(): Promise<boolean> {
       mongoose.connection.on('connected', () => {
         isConnected = true;
         connectionError = null;
-        console.log(`[mongooseClient]  Connection established (${mongoose.connection.name})`);
+        obsLog.info(`[mongooseClient]  Connection established (${mongoose.connection.name})`);
       });
 
       mongoose.connection.on('disconnected', () => {
         isConnected = false;
-        console.log(`[mongooseClient]  Connection disconnected`);
+        obsLog.info(`[mongooseClient]  Connection disconnected`);
       });
 
       mongoose.connection.on('error', (err) => {
         connectionError = err as Error;
-        console.error(`[mongooseClient]  Connection error:`, err);
+        obsLog.error(`[mongooseClient]  Connection error:`, err);
       });
 
       mongoose.connection.on('reconnect', () => {
         isConnected = true;
-        console.log(`[mongooseClient]  Connection reestablished`);
+        obsLog.info(`[mongooseClient]  Connection reestablished`);
       });
 
       return mongoose;
     } catch (err) {
       connectionError = err instanceof Error ? err : new Error(String(err));
-      console.error(`[mongooseClient]  Initial connection failed:`, err);
+      obsLog.error(`[mongooseClient]  Initial connection failed:`, err);
       throw err;
     }
   })();
@@ -163,9 +164,9 @@ export async function disconnectDatabase(): Promise<void> {
   if (connectionInstance) {
     try {
       await mongoose.disconnect();
-      console.log('[mongooseClient]  Disconnected gracefully');
+      obsLog.info('[mongooseClient]  Disconnected gracefully');
     } catch (err) {
-      console.error('[mongooseClient] Error during disconnect:', err);
+      obsLog.error('[mongooseClient] Error during disconnect:', err);
     } finally {
       connectionInstance = null;
       isConnected = false;

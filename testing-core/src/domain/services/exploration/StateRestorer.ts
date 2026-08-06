@@ -5,6 +5,10 @@ import type { StateRestorerDeps } from './types.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { NavigationStep } from '../DIrectedPathFinder.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StateRestorer]');
+
 // Bound on the client state carried across a fallback restore.
 const MAX_RESTORED_STORAGE_KEYS = 32;
 
@@ -207,14 +211,14 @@ export class StateRestorer {
       try {
         await page.click(step.selector, { timeout: 3000 });
       } catch (err) {
-        console.warn(
+        obsLog.warn(
           `[StateRestorer] path replay hop ${i + 1}/${steps.length} click failed (${step.selector}):`,
           err instanceof Error ? err.message : String(err),
         );
         return false;
       }
       if (!(await this.verifyReachedHash(page, step.toHash, 3000))) {
-        console.warn(
+        obsLog.warn(
           `[StateRestorer] path replay hop ${i + 1}/${steps.length} landed off-route (expected ${step.toHash.substring(0, 8)}).`,
         );
         return false;
@@ -266,13 +270,13 @@ export class StateRestorer {
         const hashMatched =
           !landedInvalid && (await this.verifyReachedHash(page, targetHash, 3000));
         if (hashMatched) {
-          console.log('[StateRestorer] restore strategy A (history) succeeded');
+          obsLog.info('[StateRestorer] restore strategy A (history) succeeded');
           this.deps.telemetry.emitSystemStatus('Restored via history navigation.');
           this.recordRestoreTrace(targetUrl, 'history-back');
           return true;
         }
       } catch (err) {
-        console.warn(
+        obsLog.warn(
           '[StateRestorer] restore strategy A (history) failed:',
           err instanceof Error ? err.message : String(err),
         );
@@ -290,12 +294,12 @@ export class StateRestorer {
     try {
       await page.goto(safeTargetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       await this.reseedClientStorage(page, clientState);
-      console.log('[StateRestorer] restore strategy B (deep-link) succeeded');
+      obsLog.info('[StateRestorer] restore strategy B (deep-link) succeeded');
       this.deps.telemetry.emitSystemStatus('Restored via deep-link jump.');
       this.recordRestoreTrace(safeTargetUrl, 'deep-link');
       return true;
     } catch (err) {
-      console.warn(
+      obsLog.warn(
         '[StateRestorer] restore strategy B (deep-link) failed:',
         err instanceof Error ? err.message : String(err),
       );
@@ -306,12 +310,12 @@ export class StateRestorer {
       const rootUrl = this.deps.getTargetOrigin() ?? targetUrl;
       await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await this.reseedClientStorage(page, clientState);
-      console.log('[StateRestorer] restore strategy C (root reload) succeeded');
+      obsLog.info('[StateRestorer] restore strategy C (root reload) succeeded');
       this.deps.telemetry.emitSystemStatus('Restored via hard root reload.');
       this.recordRestoreTrace(rootUrl, 'root-reload');
       return true;
     } catch (err) {
-      console.error(
+      obsLog.error(
         '[StateRestorer] restore strategy C (root reload) failed:',
         err instanceof Error ? err.message : String(err),
       );

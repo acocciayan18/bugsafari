@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
 
+import { createLogger } from '../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[domHasher]');
+
 /**
  * Configuration for the structural hasher. Only the traversal budget and the
  * URL-awareness switch are tunable; all normalization rules are intrinsic to the
@@ -242,7 +246,7 @@ export class DomHasher {
     } catch (error) {
       // Deterministic degraded fingerprint — callers treat identical sentinels as
       // "state unchanged", which is the correct conservative behavior mid-navigation.
-      console.error('DomHasher.hashCompound() error:', error instanceof Error ? error.message : error);
+      obsLog.error('DomHasher.hashCompound() error:', error instanceof Error ? error.message : error);
       const sentinel = sha256('dom-hash-error');
       return { structure: sentinel, interactive: sentinel, routePath: '', combined: sha256(sentinel + ':' + sentinel) };
     }

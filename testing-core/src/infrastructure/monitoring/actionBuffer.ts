@@ -2,6 +2,7 @@ import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro } from '../..
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { narrateActionRecords } from '../../domain/services/forensics/narration.js';
+import { CircularBuffer } from '../../lib/circularBuffer.js';
 
 export interface ActionEntryInput {
   type: ActionType;
@@ -65,14 +66,17 @@ export interface ActionStepInput {
  * Supports both legacy ActionEntryInput and enhanced ActionStepInput.
  */
 export class ActionRecorder {
-  private readonly records: ActionRecord[] = [];
-  
+  // O(1) fixed-capacity ring buffer — replaces the prior Array+shift (O(n) per record).
+  private readonly records: CircularBuffer<ActionRecord>;
+
   // Static instance for singleton pattern (enables static method calls)
   private static _instance: ActionRecorder | null = null;
   // Deep enough to hold a realistic causal chain before minimization runs (was 20).
   private static _defaultCapacity = 60;
 
-  constructor(private readonly capacity = 60) {}
+  constructor(capacity = 60) {
+    this.records = new CircularBuffer<ActionRecord>(capacity);
+  }
 
   /**
    * Get singleton instance of ActionRecorder.
@@ -112,10 +116,6 @@ export class ActionRecorder {
 
     this.records.push(record);
     ReproductionPlaybookStore.push(record);
-
-    while (this.records.length > this.capacity) {
-      this.records.shift();
-    }
   }
 
   /**
@@ -144,17 +144,13 @@ export class ActionRecorder {
 
     this.records.push(record);
     ReproductionPlaybookStore.push(record);
-
-    while (this.records.length > this.capacity) {
-      this.records.shift();
-    }
   }
 
   /**
    * Get current snapshot of recorded actions.
    */
   public snapshot(): ActionRecord[] {
-    return [...this.records];
+    return this.records.snapshot();
   }
 
   /**
@@ -163,7 +159,7 @@ export class ActionRecorder {
    * label resolution stay consistent across every reproduction playbook source.
    */
   public toNarrativeSteps(): string[] {
-    return narrateActionRecords(this.records);
+    return narrateActionRecords(this.records.snapshot());
   }
 
   /**

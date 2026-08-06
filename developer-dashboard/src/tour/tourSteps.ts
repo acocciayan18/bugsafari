@@ -9,7 +9,7 @@ interface TourAnchor {
   selector: string;
   title: string;
   description: string;
-  side?: 'top' | 'right' | 'bottom' | 'left' | 'over';
+  side?: 'top' | 'right' | 'bottom' | 'left';
   align?: 'start' | 'center' | 'end';
 }
 
@@ -38,7 +38,7 @@ function sidebarAnchor(isCompact: boolean): TourAnchor {
   return {
     selector: isCompact ? '[data-tour="nav-toggle"]' : '[data-tour="sidebar-nav"]',
     title: 'Navigation',
-    description: 'Move between Dashboard, Forensic History, and Settings from here.',
+    description: 'Move between Dashboard, History, and Settings from here.',
     side: isCompact ? 'bottom' : 'right',
     align: 'start',
   };
@@ -85,7 +85,7 @@ const DASHBOARD_ANCHORS: TourAnchor[] = [
   {
     selector: '[data-tour="save-session"]',
     title: 'Save & Export',
-    description: 'When a run ends, save it to Forensic History for the full replayable report.',
+    description: 'When a run ends, save it to History for the full replayable report.',
     align: 'end',
   },
 ];

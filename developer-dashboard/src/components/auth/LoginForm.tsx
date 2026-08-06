@@ -9,6 +9,7 @@ import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
 import GuestModeModal from './GuestModeModal';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
 import type { LegalDocId } from '../../legal/content';
@@ -140,6 +141,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                 className="pl-10 w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base  text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0"
                 error={emailError || undefined}
                 invalid={credentialsRejected || authError?.field === 'email'}
+                maxLength={EMAIL_MAX_LENGTH}
+                autoComplete="email"
                 required
               />
             </div>
@@ -161,6 +164,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   placeholder="••••••••"
                   aria-invalid={!!passwordError || credentialsRejected || authError?.field === 'password'}
                   aria-describedby={passwordError ? 'password-error' : undefined}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  autoComplete="current-password"
                   className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || credentialsRejected || authError?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                   required
                 />

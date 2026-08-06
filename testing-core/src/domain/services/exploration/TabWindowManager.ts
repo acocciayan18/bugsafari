@@ -4,6 +4,10 @@ import type { StabilityMonitor } from '../telemetry/StabilityMonitor.js';
 import { StrictUrlLockGuard, type UrlLockScope } from './StrictUrlLockGuard.js';
 import { isWithinTargetSite } from '../../../../../shared/url.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[TabWindowManager]');
+
 export type TabRole = 'primary' | 'secondary';
 export type TabVerdict = 'approved' | 'blocked';
 
@@ -184,7 +188,7 @@ export class TabWindowManager {
       await this.deps.attachAfterNavigation(fresh);
       return fresh;
     } catch (err) {
-      console.error('[TabWindowManager] Page recreation failed:', err instanceof Error ? err.message : String(err));
+      obsLog.error('[TabWindowManager] Page recreation failed:', err instanceof Error ? err.message : String(err));
       return null;
     }
   }

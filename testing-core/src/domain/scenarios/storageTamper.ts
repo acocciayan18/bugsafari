@@ -32,6 +32,10 @@ import type { ChaosTransactionManager, StorageTamperMetadata } from '../chaos/in
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel } from '../services/forensics/narration.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:StorageTamper]');
+
 /** Default target label when the scenario runs without a specific element. */
 const DEFAULT_SELECTOR = 'body';
 /** Bounded reload timeout — a slow re-render must never hang the run. */
@@ -351,7 +355,7 @@ export const storageTamper = {
     const label = target ? resolveElementLabel(target) : 'client auth state';
     const manager = ctx?.chaosManager ?? null;
 
-    console.log(`[StressScenario:StorageTamper] Forging client auth-state on '${page.url()}'`);
+    obsLog.info(`[StressScenario:StorageTamper] Forging client auth-state on '${page.url()}'`);
 
     const metadata: StorageTamperMetadata = {
       targetSelector: selector,
@@ -434,7 +438,7 @@ export const storageTamper = {
       // The GAINED-only ActiveScenarioTracker.record above carries the human step.
     } catch (error) {
       metadata.resultingState = 'error';
-      console.error(
+      obsLog.error(
         `[StressScenario:StorageTamper] Error: ${error instanceof Error ? error.message : 'Unknown'}`,
       );
     } finally {
@@ -445,7 +449,7 @@ export const storageTamper = {
       }
       await safeReload(page);
       manager?.endTransaction();
-      console.log(
+      obsLog.info(
         `[StressScenario:StorageTamper] Completed: keys=${metadata.tamperedKeys.length}, ` +
           `jwtForged=${metadata.jwtForged}, gained=${metadata.privilegedSurfaceGained}, state=${metadata.resultingState}`,
       );

@@ -76,6 +76,10 @@ export interface TelemetryMeta {
   /** Set on the terminal `engine-stopped` event so the UI classifies the ending
    *  without parsing its message. */
   terminationOutcome?: import('./termination.js').RunTerminationOutcome;
+  /** Bare engine reason behind {@link terminationOutcome}, surfaced verbatim on the
+   *  terminal `engine-stopped` event so a surface can show the cause without the
+   *  label prefix that {@link message} carries. */
+  terminationReason?: string;
   statusCode?: number;
   status?: number;
   url?: string;

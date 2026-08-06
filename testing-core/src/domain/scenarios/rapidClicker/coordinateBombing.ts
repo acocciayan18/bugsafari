@@ -24,6 +24,10 @@ import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.
 import { describeCoordinateBombing, resolveElementLabel } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/forensics/metadataRecorder.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:CoordinateBombing]');
+
 /**
  * Deterministic grid coordinate for click `index` over a width×height viewport.
  * Lays the BOMB_COUNT points on the smallest near-square grid, centring each
@@ -51,12 +55,12 @@ export const coordinateBombing = {
     const viewportSize = page.viewportSize();
 
     if (!viewportSize) {
-      console.error('[StressScenario:CoordinateBombing] Unable to get viewport size');
+      obsLog.error('[StressScenario:CoordinateBombing] Unable to get viewport size');
       return;
     }
 
     const { width, height } = viewportSize;
-    console.log(
+    obsLog.info(
       `[StressScenario:CoordinateBombing] Starting deterministic grid bombing on viewport ${width}x${height}`,
     );
 
@@ -104,14 +108,14 @@ export const coordinateBombing = {
         try {
           await page.mouse.click(x, y);
           completed++;
-          console.log(`[StressScenario:CoordinateBombing] Click ${i + 1}/${BOMB_COUNT} at (${x}, ${y})`);
+          obsLog.info(`[StressScenario:CoordinateBombing] Click ${i + 1}/${BOMB_COUNT} at (${x}, ${y})`);
         } catch (error) {
           if (error instanceof Error && isNonFatalNavigationError(error)) {
-            console.log(
+            obsLog.info(
               `[StressScenario:CoordinateBombing] Ignored navigation error on click ${i + 1}: ${error.message}`,
             );
           } else if (error instanceof Error) {
-            console.error(
+            obsLog.error(
               `[StressScenario:CoordinateBombing] Non-fatal error on click ${i + 1}: ${error.message}`,
             );
           }
@@ -135,6 +139,6 @@ export const coordinateBombing = {
       manager?.endTransaction();
     }
 
-    console.log(`[StressScenario:CoordinateBombing] Completed ${completed}/${BOMB_COUNT} coordinate clicks`);
+    obsLog.info(`[StressScenario:CoordinateBombing] Completed ${completed}/${BOMB_COUNT} coordinate clicks`);
   },
 };

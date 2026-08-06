@@ -1,3 +1,6 @@
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ChaosTransactionManager]');
 // ChaosTransactionManager.ts - Chaos Loop Transaction Manager
 // Generalized transaction layer for the entire stress-testing arsenal
 // Now supports Generic class with scenario-specific metadata types
@@ -257,7 +260,7 @@ export class ChaosTransactionManager<T = any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public openTransaction(targetSelector: string, type: ChaosContextType, metadata?: any): void {
     if (this.activeChaosContext !== null) {
-      console.warn(
+      obsLog.warn(
         `[ChaosTransactionManager] Transaction already open for ${this.activeChaosContext.targetSelector}. ` +
         `Closing pending transaction before opening new one.`
       );
@@ -271,7 +274,7 @@ export class ChaosTransactionManager<T = any> {
       timestamp: Date.now(),
     };
 
-    console.log(
+    obsLog.info(
       `[ChaosTransactionManager] Transaction opened: type=${type}, target=${targetSelector}`
     );
   }
@@ -281,11 +284,11 @@ export class ChaosTransactionManager<T = any> {
    */
   public closeTransaction(): void {
     if (this.activeChaosContext === null) {
-      console.log(`[ChaosTransactionManager] No active transaction to close.`);
+      obsLog.info(`[ChaosTransactionManager] No active transaction to close.`);
       return;
     }
 
-    console.log(
+    obsLog.info(
       `[ChaosTransactionManager] Transaction closed: type=${this.activeChaosContext.type}, target=${this.activeChaosContext.targetSelector}`
     );
     this.activeChaosContext = null;

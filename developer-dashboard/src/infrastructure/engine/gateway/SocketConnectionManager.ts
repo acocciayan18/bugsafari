@@ -25,6 +25,20 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecti
 // Backoff for re-presenting the run token when the room isn't there yet.
 const ATTACH_RETRY_DELAYS_MS = [250, 500, 1000, 2000];
 
+// Reconnection budget + exponential-backoff bounds, env-tunable (VITE_*) with safe
+// defaults. randomizationFactor jitters each delay so a fleet of dashboards dropped
+// by one backend blip don't reconnect in lockstep and thunder the server.
+function envInt(raw: unknown, fallback: number): number {
+  const n = typeof raw === 'string' ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+const RECONNECT = {
+  attempts: envInt(import.meta.env?.VITE_SOCKET_RECONNECT_ATTEMPTS, 10),
+  delayMs: envInt(import.meta.env?.VITE_SOCKET_RECONNECT_DELAY_MS, 1000),
+  delayMaxMs: envInt(import.meta.env?.VITE_SOCKET_RECONNECT_DELAY_MAX_MS, 5000),
+  jitter: 0.5,
+};
+
 /**
  * Socket.IO lifecycle + event binding/dispatch for the engine gateway. Owns the
  * socket, connection state, the bind/unbind blocks, every server→client handler,
@@ -76,9 +90,11 @@ export class SocketConnectionManager {
       // Prefer polling first for reliability - will upgrade to websocket if available
       transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: RECONNECT.attempts,
+      reconnectionDelay: RECONNECT.delayMs,
+      reconnectionDelayMax: RECONNECT.delayMaxMs,
+      // Jitter the exponential backoff so many dashboards don't reconnect in lockstep.
+      randomizationFactor: RECONNECT.jitter,
       // Add timeout for connection attempts
       timeout: 20000,
       // Present the JWT on every (re)connect so the backend can bind an

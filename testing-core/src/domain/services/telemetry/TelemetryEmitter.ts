@@ -4,6 +4,11 @@ import type { AccessibilityFinding, TelemetryEvent } from '../../../../../shared
 import type { TelemetryEmitterFlags } from '../exploration/types.js';
 import { isBrowserClosedError } from './StabilityMonitor.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+import { incCounter } from '../../../infrastructure/observability/metrics.js';
+
+const obsLog = createLogger('[TelemetryEmitter]');
+
 // Env-tunable positive integer with a safe fallback. Lets the screencast be retuned
 // per deployment without a rebuild — the feed is operator observability, not a
 // recording, so a constrained box can trade fidelity for CPU/bandwidth.
@@ -170,7 +175,7 @@ export class TelemetryEmitter {
       this.startWatchdog(page);
     } catch (err) {
       if (isBrowserClosedError(err)) return;
-      console.warn(
+      obsLog.warn(
         '[TelemetryEmitter] CDP screencast unavailable, falling back to screenshot loop:',
         err instanceof Error ? err.message : err,
       );
@@ -217,6 +222,9 @@ export class TelemetryEmitter {
       this.deliverFrame(session, frame);
       return;
     }
+    // A frame already held here never ships — pacing coalesces it into this newer one.
+    if (this.pendingFrame) incCounter('bugsafari_screencast_frames_dropped_total', 'Screencast frames coalesced/dropped by fps pacing.');
+    incCounter('bugsafari_screencast_frames_paced_total', 'Screencast frames held to honor the fps cap.');
     this.pendingFrame = { session, sessionId: frame.sessionId, data: frame.data };
     if (!this.ackTimer) {
       this.ackTimer = setTimeout(() => {
@@ -230,6 +238,7 @@ export class TelemetryEmitter {
 
   private deliverFrame(session: CDPSession, frame: { data: string; sessionId: number }): void {
     this.lastFrameEmitMs = Date.now();
+    incCounter('bugsafari_screencast_frames_emitted_total', 'Screencast frames delivered to the gateway.');
     // Ack releases Chrome to capture the next paint — the ack IS the backpressure
     // release. A failed ack means the target/session is gone; safe to ignore.
     session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined);
@@ -316,7 +325,7 @@ export class TelemetryEmitter {
       if (isBrowserClosedError(err)) {
         return;
       }
-      console.warn('[TelemetryEmitter] Frame capture failed:', err instanceof Error ? err.message : err);
+      obsLog.warn('[TelemetryEmitter] Frame capture failed:', err instanceof Error ? err.message : err);
     } finally {
       this.isFrameBroadcastInFlight = false;
     }

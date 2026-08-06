@@ -14,6 +14,10 @@
 
 import { scenarioRandom } from '../../seededRandom.js';
 
+import { createLogger } from '../../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[chaosFallbackStrategy]');
+
 export interface ChaosPayload {
   type: 'ZERO_WIDTH' | 'ZALGA' | 'MULTIBYTE' | 'CONTROL' | 'RANDOM' | 'BOUNDARY' | 'QUERY' | 'SCRIPT' | 'TYPE_MISMATCH';
   value: string;
@@ -138,7 +142,7 @@ const BOUNDARY_TOKENS = ['"', "'", '`', '\\', '/', '<', '>', '{', '}', '[', ']',
 
 const QUERY_TOKENS = [' OR 1=1 ', ' UNION SELECT NULL ', '$gt', '$ne', '../', '%00', '{{constructor}}'];
 
-const SCRIPT_TOKENS = ['<script>', '</script>', 'onerror=', 'console.error(', 'javascript:'];
+const SCRIPT_TOKENS = ['<script>', '</script>', 'onerror=', 'obsLog.error(', 'javascript:'];
 
 const TYPE_MISMATCH_TOKENS = ['null', 'undefined', 'NaN', '-0', 'Infinity', 'true', 'false'];
 
@@ -224,7 +228,7 @@ export function generateChaosPayload(): ChaosPayload {
   }
 
   // Instrumentation: Log the dispatched payload to CLI
-  console.log(` [CHAOS STRATEGY] Dispatched raw invalid character/symbol payload string -> Length: ${payload.value.length}`);
+  obsLog.info(` [CHAOS STRATEGY] Dispatched raw invalid character/symbol payload string -> Length: ${payload.value.length}`);
 
   return payload;
 }

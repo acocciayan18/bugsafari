@@ -59,7 +59,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'concurrent-spam-event': true,
   'execution-timebox-ms': 600000,  // 10 minutes default
   strictUrlLock: false,  // Off by default — opt-in per run
-  subtreeLock: true,  // On by default — confine to the launch route sub-tree
+  subtreeLock: false,  // Off by default — whole-site scope; opt-in to confine to the launch route sub-tree
   'transition-repeat-budget': 3,  // Allow a few repeats, then block the loop source
   'page-saturation-visits': 8,  // gain-less revisits to a shell → fully explored
   'page-saturation-interactions': 25,  // repeat actuations on a shell → fully explored
@@ -69,11 +69,11 @@ export const defaultOptimizationSettings: OptimizationSettings = {
 
 // Operator-facing single boundary choice. Maps to the two engine flags below:
 //  • 'exact'   — pin to the launch URL (strictUrlLock).
-//  • 'subtree' — pin to the launch route + descendants (subtreeLock). Default.
-//  • 'site'    — whole target host + subdomains + auth origins (neither flag).
+//  • 'subtree' — pin to the launch route + descendants (subtreeLock).
+//  • 'site'    — whole target host + subdomains + auth origins (neither flag). Default.
 export type BoundaryLockMode = 'exact' | 'subtree' | 'site';
 
-export const DEFAULT_BOUNDARY_LOCK_MODE: BoundaryLockMode = 'subtree';
+export const DEFAULT_BOUNDARY_LOCK_MODE: BoundaryLockMode = 'site';
 
 // Resolve the UI mode into the two persisted engine flags (single source of truth).
 export function boundaryModeToFlags(
@@ -207,31 +207,31 @@ export const INFILTRATION_PROFILE_CATALOG: InfiltrationProfileOption[] = [
   {
     id: 'CHAOS_INFILTRATION',
     label: 'Chaos Infiltration',
-    description: 'Full-spectrum assault — every testing scenario enabled simultaneously.',
+    description: 'Launches every testing scenario simultaneously to maximize coverage and expose complex interactions across the application.',
     testingTypes: [...ALL_TESTING_TYPE_IDS],
   },
   {
     id: 'DEEP_SEMANTIC_DATA_ATTACK',
     label: 'Deep Semantic Data Attack',
-    description: 'Data-focused — context-aware fuzzing and constraint/form bypass only, escalating payloads across five levels from base cases to polyglot amplification.',
+    description: 'Focuses on intelligent data fuzzing and form constraint bypass using context-aware payloads that escalate through five levels of complexity.',
     testingTypes: ['dataFuzzing', 'formBypass'],
   },
   {
     id: 'HIGH_FREQUENCY_CONCURRENCY_STRAIN',
     label: 'High-Frequency Concurrency Strain',
-    description: 'Concurrency-focused — zero-wait concurrent clicking paired with network sabotage, to surface double-submit and race defects.',
+    description: 'Stresses the application with rapid concurrent interactions and network disruption to uncover race conditions, duplicate submissions, and synchronization issues.',
     testingTypes: ['concurrency', 'navigation'],
   },
   {
     id: 'ASYNC_LIFECYCLE_ASSAULT',
     label: 'Async Lifecycle Assault',
-    description: 'Async-focused — interrupts in-flight requests/transitions to expose race conditions, teardown crashes, swallowed rejections, and state desync.',
+    description: 'Targets asynchronous operations by interrupting requests and page transitions to reveal race conditions, state inconsistencies, and unhandled failures.',
     testingTypes: ['asyncRace'],
   },
   {
     id: 'AUTH_STATE_SUBVERSION',
     label: 'Auth-State Subversion',
-    description: 'Broken-access-control focused — forges client-trusted auth state (localStorage/ sessionStorage/ JWT) once per route and checks whether privileged UI unlocks without server authorization.',
+    description: 'Evaluates broken access control by modifying client-side authentication state and verifying whether privileged functionality becomes accessible without server-side authorization.',
     testingTypes: ['authState'],
   },
 ];

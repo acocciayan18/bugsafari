@@ -15,6 +15,10 @@ import type { ChaosContextType, FuzzMetadata } from '../../domain/chaos/index.js
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 import { confirmPayloadReflection } from './reflectionOracle.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[FuzzGuard]');
+
 // Singleton reference to the active chaos transaction manager
 // In a full implementation, this would be injected via dependency injection
 let chaosManagerAccessor: {
@@ -85,7 +89,7 @@ async function detectXssSignatures(page: BugContext['page'], payload: string | u
     }
     // SANITIZED / ABSENT ⇒ the app handled the payload correctly; no finding.
   } catch {
-    console.log('[FuzzGuard] Could not correlate injected payload for XSS confirmation');
+    obsLog.info('[FuzzGuard] Could not correlate injected payload for XSS confirmation');
   }
   return [];
 }
@@ -125,7 +129,7 @@ async function detectNoSqlErrors(page: BugContext['page']): Promise<string[]> {
     // Give the just-injected payload a brief window to produce console/network errors.
     await new Promise((resolve) => setTimeout(resolve, NOSQL_SETTLE_MS));
   } catch {
-    console.log('[FuzzGuard] Could not analyze network responses for NoSQL errors');
+    obsLog.info('[FuzzGuard] Could not analyze network responses for NoSQL errors');
   } finally {
     page.off('console', onConsole);
     page.off('response', onResponse);
@@ -167,7 +171,7 @@ async function detectCrashSignatures(page: BugContext['page']): Promise<string[]
     }
     
   } catch {
-    console.log('[FuzzGuard] Could not analyze crash signatures');
+    obsLog.info('[FuzzGuard] Could not analyze crash signatures');
   }
   
   return crashes;
@@ -203,18 +207,18 @@ export const fuzzGuard: BugFinder = {
 
     // Verify we have an active FUZZ transaction
     if (!hasActiveFuzzTransaction()) {
-      console.log('[FuzzGuard] No active FUZZ transaction - skipping vulnerability detection');
+      obsLog.info('[FuzzGuard] No active FUZZ transaction - skipping vulnerability detection');
       return findings;
     }
 
     // Get the metadata from the transaction
     const metadata = getActiveFuzzMetadata();
     if (!metadata) {
-      console.log('[FuzzGuard] No fuzz metadata available');
+      obsLog.info('[FuzzGuard] No fuzz metadata available');
       return findings;
     }
     
-    console.log(`[FuzzGuard] Analyzing fuzz response for: ${metadata.category} with strategy: ${metadata.strategy}`);
+    obsLog.info(`[FuzzGuard] Analyzing fuzz response for: ${metadata.category} with strategy: ${metadata.strategy}`);
     
     const page = ctx.page;
     
@@ -271,7 +275,7 @@ export const fuzzGuard: BugFinder = {
     
     // If no specific vulnerabilities found but payload was injected, log the attempt
     if (findings.length === 0) {
-      console.log(`[FuzzGuard] No vulnerabilities detected for payload: ${metadata.payload?.substring(0, 30)}...`);
+      obsLog.info(`[FuzzGuard] No vulnerabilities detected for payload: ${metadata.payload?.substring(0, 30)}...`);
     }
     
     return findings;

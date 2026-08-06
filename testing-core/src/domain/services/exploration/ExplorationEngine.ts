@@ -9,7 +9,7 @@ import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
-import type { DefectCulprit, NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
+import type { DefectCulprit, NavHop, NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
@@ -32,7 +32,7 @@ import type { FindingRepository } from '../../repositories/FindingRepository.js'
 import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightBrowserEngine.js';
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
-import { narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
+import { describeRedirectLoopObservation, narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
 import { forensicErrorRepository, type CreateForensicErrorParams } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { MAX_FORENSIC_ROWS } from '../../../infrastructure/database/queryLimits.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
@@ -65,6 +65,10 @@ import { FormFuzzRegistry } from './FormFuzzRegistry.js';
 import { shouldAttributeNetworkSignal } from './networkAttribution.js';
 import { TabWindowManager } from './TabWindowManager.js';
 import type { CleanActionStep, ConfirmedBug, ExplorationLoopDeps, ForensicErrorParams, RunResult, RunTerminationOutcome, RuntimeMetrics, StopReason } from './types.js';
+
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ExplorationEngine]');
 
 // ─────────────────────────────────────────────────────────────
 // SECURITY PATCHES (Addressing Critical Vulnerabilities)
@@ -121,6 +125,23 @@ function anchorToCulprit(actions: ActionRecord[], culprit?: DefectCulprit): Acti
   return last && last.selector === culprit.selector
     ? [...actions.slice(0, -1), { ...last, ...record }]
     : [...actions, record];
+}
+
+// The real, replayable trigger for a redirect loop: the culprit interaction when the
+// loop was attributable, else the single navigation that lands on the looping route.
+// The loop's own hops are automatic redirects — they belong in the observation, not
+// the action timeline.
+function redirectLoopTrigger(defect: NavigationDefect, buffered: ActionRecord[]): ActionRecord[] {
+  if (defect.culprit) return anchorToCulprit(buffered, defect.culprit);
+  const entry = defect.hops?.[0];
+  const url = entry?.url || entry?.route || defect.url;
+  if (!url) return [];
+  return [{ timestamp: new Date(entry?.timestampMs ?? Date.now()).toISOString(), type: 'NAVIGATION', selector: '', url }];
+}
+
+// "/a (302) → /b (301) → /a" — statuses shown for HTTP redirects, absent on SPA hops.
+function redirectChain(hops?: NavHop[]): string {
+  return (hops ?? []).map((h) => (typeof h.status === 'number' ? `${h.route} (${h.status})` : h.route)).join(' → ');
 }
 
 /**
@@ -305,7 +326,7 @@ export class ExplorationEngine {
     // Public RUN- code stamped on the auto-created session doc so live + history share one id.
     private readonly runCode?: string,
   ) {
-    console.log(`[ExplorationEngine] Optimization settings:`, optimizationSettings);
+    obsLog.info(`[ExplorationEngine] Optimization settings:`, optimizationSettings);
 
     // Resolve the enforced timebox from the caller-supplied settings, falling
     // back to the shared default. Previously this was hardcoded at field
@@ -317,20 +338,20 @@ export class ExplorationEngine {
     // Resolve the navigation-boundary scope. exact > subtree > site; sub-tree is
     // the default when no explicit lock flag is supplied.
     this.boundaryScope = resolveUrlLockScope(optimizationSettings);
-    console.log(`[ExplorationEngine] Navigation boundary scope:`, this.boundaryScope);
+    obsLog.info(`[ExplorationEngine] Navigation boundary scope:`, this.boundaryScope);
     this.dialogReadOnly = optimizationSettings?.['dialog-read-only'] ?? false;
 
     // Resolve the session-wide transition-repeat budget (default 3; 0 disables).
     this.transitionRepeatBudget = optimizationSettings?.['transition-repeat-budget']
       ?? defaultOptimizationSettings['transition-repeat-budget']
       ?? 3;
-    console.log(`[ExplorationEngine] Transition-repeat budget:`, this.transitionRepeatBudget);
+    obsLog.info(`[ExplorationEngine] Transition-repeat budget:`, this.transitionRepeatBudget);
 
     // Resolve the per-form fuzz cap (default 2; 0 disables).
     this.formFuzzCap = optimizationSettings?.['form-fuzz-cap']
       ?? defaultOptimizationSettings['form-fuzz-cap']
       ?? 2;
-    console.log(`[ExplorationEngine] Form fuzz cap:`, this.formFuzzCap);
+    obsLog.info(`[ExplorationEngine] Form fuzz cap:`, this.formFuzzCap);
 
     // Resolve page-saturation caps (per structural shell; 0 disables each cap).
     const maxVisits = optimizationSettings?.['page-saturation-visits']
@@ -340,24 +361,24 @@ export class ExplorationEngine {
     this.clusterRegistry = new StateClusterRegistry({ maxVisits, maxInteractions });
     this.saturationVisits = maxVisits;
     this.saturationInteractions = maxInteractions;
-    console.log(`[ExplorationEngine] Page-saturation caps:`, { maxVisits, maxInteractions });
+    obsLog.info(`[ExplorationEngine] Page-saturation caps:`, { maxVisits, maxInteractions });
 
     // Build the testing-type gate (empty/undefined selection => all enabled).
     this.gate = new ScenarioGate(selectedScenarios);
-    console.log(`[ExplorationEngine] Active testing types:`, this.gate.activeCategories());
+    obsLog.info(`[ExplorationEngine] Active testing types:`, this.gate.activeCategories());
 
     // Reproducibility seed (optional). One seed drives BOTH the edge-selection
     // softmax and fuzz payload/vector choice, so a seeded run replays identically.
     const explorationSeed = optimizationSettings?.['exploration-seed'];
     this.explorationSeed = explorationSeed;
     seedScenarioRandom(explorationSeed);
-    console.log(`[ExplorationEngine] Exploration seed:`, explorationSeed ?? '(unseeded — non-deterministic)');
+    obsLog.info(`[ExplorationEngine] Exploration seed:`, explorationSeed ?? '(unseeded — non-deterministic)');
 
     // Derive and wire the scenario-aware pathfinder mode.
     const pathfinderMode = ExplorationEngine.derivePathfinderMode(selectedScenarios);
     this.pathfinderMode = pathfinderMode;
     this.pathNavigator = new StateGraphNavigator({ mode: pathfinderMode, explorationSeed });
-    console.log(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
+    obsLog.info(`[ExplorationEngine] PathfinderMode: ${pathfinderMode}`);
 
     // Initialize ChaosTransactionManager (transaction lifecycle only — bug
     // evaluation/telemetry now flows through the knowledge-base FaultClassifier
@@ -635,7 +656,7 @@ export class ExplorationEngine {
     this.isPaused = true;
     // Sync the frozen baseline so the client stops interpolating at the exact elapsed.
     this.emitTimeSync();
-    console.log(`[ExplorationEngine] Session PAUSED at ${this.pauseSnapshotTimeMs}ms elapsed`);
+    obsLog.info(`[ExplorationEngine] Session PAUSED at ${this.pauseSnapshotTimeMs}ms elapsed`);
   }
 
   public resume() {
@@ -647,7 +668,7 @@ export class ExplorationEngine {
     this.lastTickTimestamp = Date.now();
     // Resume the client's countdown from the exact authoritative baseline.
     this.emitTimeSync();
-    console.log(`[ExplorationEngine] Session RESUMED with ${remainingTimeMs}ms remaining (elapsed: ${this.elapsedActiveTimeMs}ms)`);
+    obsLog.info(`[ExplorationEngine] Session RESUMED with ${remainingTimeMs}ms remaining (elapsed: ${this.elapsedActiveTimeMs}ms)`);
   }
 
   /**
@@ -876,22 +897,29 @@ export class ExplorationEngine {
           faultUrl: defect.url || lastKnownUrl,
           faultAtMs: Date.now(),
         });
-        // Anchor the trace to the navigation hops that formed the defect (the actual
-        // route chain), not the generic rolling buffer of unrelated fuzz/stress steps.
-        const hopActions: ActionRecord[] | null = defect.hops?.length
-          ? defect.hops.map((h) => ({
-              timestamp: new Date(h.timestampMs).toISOString(),
-              type: 'NAVIGATION',
-              selector: h.route || h.url || '',
-              url: h.url || h.route || '',
-              payload: h.status ? `HTTP ${h.status}` : undefined,
-            }))
-          : null;
         // A navigation defect belongs to ONE control, so its playbook must end on
         // that control's own interaction — never on an unrelated stress-scenario
         // window, which is what the generic snapshot narrative would supply.
-        const reproductionActions = hopActions ?? anchorToCulprit(reproduction.actions, defect.culprit);
-        const reproductionSteps = narrateActionRecords(reproductionActions);
+        //
+        // A redirect loop is special: its hops are AUTOMATIC browser redirects, not
+        // manual steps. The playbook opens with the real triggering action (the
+        // culprit click, or the single navigation that lands on the looping route)
+        // and closes with ONE observation of the loop — never a run of artificial
+        // "Navigate to X" steps mirroring each automatic redirect.
+        const isRedirectLoop = defect.kind === 'REDIRECT_LOOP';
+        const reproductionActions = isRedirectLoop
+          ? redirectLoopTrigger(defect, reproduction.actions)
+          : anchorToCulprit(reproduction.actions, defect.culprit);
+        const actionSteps = narrateActionRecords(reproductionActions);
+        const reproductionSteps = isRedirectLoop
+          ? [
+              ...actionSteps,
+              `Step ${actionSteps.length + 1}. ${describeRedirectLoopObservation(
+                redirectChain(defect.hops),
+                defect.hops?.some((h) => typeof h.status === 'number') ? 'http' : 'client',
+              )}`,
+            ]
+          : actionSteps;
         const stateFingerprint = this.activePage ? await captureStateFingerprint(this.activePage) : undefined;
         const attribution: FindingAttribution = {
           bugClass: defect.bugClass,
@@ -1285,11 +1313,11 @@ export class ExplorationEngine {
       });
       await boundaryGuard.install(page);
 
-      console.log('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
+      obsLog.info('[ExplorationEngine] Starting page.goto for targetUrl:', targetUrl);
       // Use shorter timeout and better wait strategy to prevent hanging
       // Also emit immediate frame to prevent "No live frame" timeout
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      console.log('[ExplorationEngine] page.goto completed for targetUrl:', targetUrl);
+      obsLog.info('[ExplorationEngine] page.goto completed for targetUrl:', targetUrl);
 
       // Open the reproduction playbook with the initial navigation step.
       this.recordActionTrace(
@@ -1485,7 +1513,7 @@ export class ExplorationEngine {
         activeTestingTypes,
       });
     } catch (error) {
-      console.error('[ExplorationEngine] Failed to create Safari session:', error);
+      obsLog.error('[ExplorationEngine] Failed to create Safari session:', error);
       return null;
     }
   }
@@ -1501,7 +1529,7 @@ export class ExplorationEngine {
     try {
       await this.findingRepo.markSessionTerminated(this.sessionId, this.userId, new Date().toISOString(), outcome, reason);
     } catch (error) {
-      console.error('[ExplorationEngine] Failed to complete Safari session:', error);
+      obsLog.error('[ExplorationEngine] Failed to complete Safari session:', error);
     }
   }
 
@@ -1633,7 +1661,7 @@ export class ExplorationEngine {
         weights: brainState.weights,
       });
     } catch (error) {
-      console.error('[ExplorationEngine] Failed to persist brain snapshot:', error);
+      obsLog.error('[ExplorationEngine] Failed to persist brain snapshot:', error);
     }
   }
 
@@ -1646,11 +1674,11 @@ export class ExplorationEngine {
       const prior = await this.findingRepo.loadLatestBrainConfig(targetUrl, this.userId);
       if (prior && Object.keys(prior.weights).length > 0) {
         this.scorer.importBrainState(prior);
-        console.log(`[ExplorationEngine] Warm-started brain for ${targetUrl} (bias=${prior.bias.toFixed(3)})`);
+        obsLog.info(`[ExplorationEngine] Warm-started brain for ${targetUrl} (bias=${prior.bias.toFixed(3)})`);
         emitter.emitMilestone(' Warm-started brain from a prior session for this URL.');
       }
     } catch (error) {
-      console.error('[ExplorationEngine] Brain warm-start failed:', error);
+      obsLog.error('[ExplorationEngine] Brain warm-start failed:', error);
     }
   }
 
@@ -1685,7 +1713,7 @@ export class ExplorationEngine {
       await forensicErrorRepository.createMany(rows);
       this.forensicErrorsPersisted += rows.length;
     } catch (error) {
-      console.error('[ExplorationEngine] Failed to flush forensic errors:', error);
+      obsLog.error('[ExplorationEngine] Failed to flush forensic errors:', error);
     }
   }
 
@@ -1716,7 +1744,7 @@ export class ExplorationEngine {
       try {
         await forensicTelemetryRepository.upsertForRun({ forensicRunId: runId, ...params });
       } catch (error) {
-        console.error('[ExplorationEngine] Failed to persist forensic telemetry:', error);
+        obsLog.error('[ExplorationEngine] Failed to persist forensic telemetry:', error);
       }
     });
     return this.telemetryUpsertChain;

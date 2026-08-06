@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
 import type { LegalDocId } from '../../legal/content';
@@ -173,6 +174,8 @@ export default function SignupForm() {
             className="pl-10 font-(--font-sans)"
             error={showEmailError || undefined}
             invalid={authError?.field === 'email'}
+            maxLength={EMAIL_MAX_LENGTH}
+            autoComplete="email"
             required
           />
         </div>
@@ -193,6 +196,8 @@ export default function SignupForm() {
             className="pl-10 pr-10"
             error={showPasswordError || undefined}
             invalid={authError?.field === 'password'}
+            maxLength={PASSWORD_MAX_LENGTH}
+            autoComplete="new-password"
             required
           />
           <button
@@ -220,6 +225,8 @@ export default function SignupForm() {
             placeholder="••••••••"
             className="pl-10 pr-10"
             error={showConfirmError || undefined}
+            maxLength={PASSWORD_MAX_LENGTH}
+            autoComplete="new-password"
             required
           />
           <button

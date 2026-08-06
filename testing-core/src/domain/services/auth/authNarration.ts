@@ -26,6 +26,7 @@ export const AUTH_ACTION = {
   credentialsEntered: 'auth-credentials-entered',
   submitted: 'auth-submitted',
   verifying: 'auth-verifying',
+  retrying: 'auth-retrying',
   succeeded: 'auth-succeeded',
   failed: 'auth-failed',
 } as const;
@@ -103,6 +104,10 @@ export function describeVerifying(): string {
 
 export function describeAuthSucceeded(url: string): string {
   return `Authenticated — exploring the signed-in surface from ${safeUrl(url)}.`;
+}
+
+export function describeAuthRetry(reason: string): string {
+  return `Sign-in has not confirmed yet (${reason}) — retrying once before giving up.`;
 }
 
 export function describeAuthFailed(reason: string): string {

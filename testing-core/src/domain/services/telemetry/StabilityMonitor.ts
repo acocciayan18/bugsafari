@@ -34,7 +34,9 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS, resolveSeverity } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION } from '../../../../../shared/types.js';
+import { NetworkQuarantine } from '../../../infrastructure/monitoring/NetworkQuarantine.js';
+import { initialDegradeState, onTargetFailure, onTargetSuccess, type DegradeState } from './networkDegradeDecision.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
 import {
   NetworkFaultArbiter,
@@ -58,6 +60,13 @@ const SWEEP_POLICY: SweepPolicy = { thresholdMs: HANG_THRESHOLD_MS, reSweepBaseM
 // Only meaningful traffic (API + navigation) is logged/emitted — static asset
 // noise (images/fonts/stylesheets) is excluded from both the live tab and store.
 const LOGGED_RESOURCE_TYPES = new Set(['xhr', 'fetch', 'document']);
+
+// Consecutive target-origin transport failures (no success between) that flip the
+// run into the degraded window — where findings are quarantined as network noise.
+const TARGET_DEGRADE_STREAK = (() => {
+  const n = Number(process.env.BUGSAFARI_TARGET_DEGRADE_STREAK);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+})();
 
 /** Maps the knowledge-base severity scale to the persisted forensic-error scale. */
 const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', ForensicErrorSeverity> = {
@@ -316,7 +325,50 @@ export class StabilityMonitor {
   // One source-map resolver per page so its decoded-map cache survives across faults.
   private readonly resolvers = new WeakMap<Page, SourceMapResolver>();
 
+  // Browser-view target-degradation streak: a run of consecutive target-origin
+  // transport failures (cleared by any target-origin success) flips NetworkQuarantine
+  // so findings caught while the target is unreachable aren't blamed on the app.
+  private degradeState: DegradeState = initialDegradeState();
+
   constructor(private readonly deps: StabilityMonitorDeps) {}
+
+  // True when a URL belongs to the app under test — third-party failures never count
+  // toward the target-degradation streak (a dead ad/analytics host isn't our outage).
+  private isTargetOriginUrl(url: string): boolean {
+    const origin = this.safeTargetOrigin();
+    if (!origin) return false;
+    try {
+      return new URL(url).origin === origin;
+    } catch {
+      return false;
+    }
+  }
+
+  // A target-origin transport failure: bump the streak; on crossing the threshold,
+  // enter the degraded window and tell the operator findings are being suppressed.
+  private noteTargetTransportFailure(): void {
+    const { state, enterDegraded } = onTargetFailure(this.degradeState, TARGET_DEGRADE_STREAK);
+    this.degradeState = state;
+    if (enterDegraded && NetworkQuarantine.beginDegraded('target transport failures')) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: NETWORK_ACTION.DEGRADED,
+        message: 'Target connection unstable — suppressing findings until it recovers to avoid false reports.',
+      });
+    }
+  }
+
+  // A target-origin response arrived: the target is reachable, so clear the streak
+  // and lift the browser-view quarantine (the health monitor owns the paused path).
+  private noteTargetReachable(): void {
+    const { state, exitDegraded } = onTargetSuccess(this.degradeState);
+    this.degradeState = state;
+    if (exitDegraded && NetworkQuarantine.endDegraded()) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: NETWORK_ACTION.RECOVERED,
+        message: 'Target connection restored — resuming normal finding reporting.',
+      });
+    }
+  }
 
   // Origin of the app under test; never throws, an unavailable origin degrades provenance
   // to UNKNOWN (host-dependent transport failures then stay environment-attributed).
@@ -482,24 +534,31 @@ export class StabilityMonitor {
       targetOrigin: this.safeTargetOrigin(),
     });
 
+    // Network-degraded quarantine: while the target is unreachable, a caught fault is
+    // almost certainly the dead network, not an app bug. Demote it to a NETWORK_ENV
+    // non-report so a connectivity blip can't manufacture a false finding.
+    const quarantined = NetworkQuarantine.isDegraded();
+
     const attribution: FindingAttribution = {
       bugClass: classification.bugClass,
       cwe: classification.cwe,
       scenario: classification.scenario,
       testingType: classification.testingType,
       stepIndex: classification.stepIndex,
-      origin: outcome.origin,
+      origin: quarantined ? 'NETWORK_ENV' : outcome.origin,
       confidence: outcome.confidence,
       verificationStatus: outcome.status,
       confidenceScore: outcome.score,
       corroborated: outcome.corroborated,
     };
     return {
-      report: outcome.report,
+      report: quarantined ? false : outcome.report,
       advice: classification.advice,
       severity: SEVERITY_TO_FORENSIC[classification.severity],
       attribution,
-      reason: outcome.reason,
+      reason: quarantined
+        ? 'Network degraded — target unreachable; fault suppressed to avoid a false report.'
+        : outcome.reason,
     };
   }
 
@@ -794,6 +853,9 @@ export class StabilityMonitor {
   // Feed one settled request to the duplicate finder and report whatever verdict it produces.
   private settleDuplicateCandidate(page: Page, request: Request, status: number | undefined, failed: boolean): void {
     try {
+      // A request that failed because the network is down is not a double-submit
+      // missing-guard defect — don't judge duplicates while the target is degraded.
+      if (NetworkQuarantine.isDegraded()) return;
       // Lookup-only: a request the duplicate finder never saw has no id and nothing to settle.
       const requestId = this.requestIds.get(request);
       if (!requestId) return;
@@ -1006,6 +1068,9 @@ export class StabilityMonitor {
   ): Promise<void> {
     const key = `${trigger.trigger}::${(trigger.url || '').split('#')[0].toLowerCase()}`;
     if (this.confirming.has(key)) return;
+    // A dropped request during a network outage leaves a spinner up for the same
+    // reason the network is down — not an app-side infinite-loading bug. Skip it.
+    if (NetworkQuarantine.isDegraded()) return;
     this.confirming.add(key);
     try {
       const initial = await this.probeLoadingState(page);
@@ -1219,6 +1284,18 @@ export class StabilityMonitor {
    */
   private async promoteNetworkFault(evidence: NetworkFaultEvidence, routing: NetworkRoutingVerdict): Promise<void> {
     const t = this.deps.telemetry;
+    // While the target is unreachable, a failing request is the outage itself, not an
+    // app defect — keep it on the Network tab but never promote it (chaos-injected
+    // failures are deliberate and still report).
+    if (NetworkQuarantine.isDegraded() && routing.reasonCode !== 'CHAOS_INJECTED') {
+      t.emit('NETWORK', {
+        statusCode: evidence.statusCode,
+        url: evidence.url,
+        method: evidence.method,
+        message: `Not reported — target network degraded: ${evidence.reason}`,
+      });
+      return;
+    }
     const isHttpFault = evidence.statusCode !== undefined;
     const faultMessage = isHttpFault
       ? `HTTP ${evidence.statusCode} ${evidence.method} ${evidence.url}`
@@ -1435,6 +1512,7 @@ export class StabilityMonitor {
           raceScenarioActive: isRaceScenarioActive(),
           timestampMs: startedAt,
           interaction: this.deps.getInteractionContext(startedAt) ?? undefined,
+          pageUrl: page.url(),
         });
       } catch {
         // never let the reporter hook throw inside a page listener
@@ -1464,6 +1542,10 @@ export class StabilityMonitor {
       const url = response.url();
       const method = response.request().method();
       const resourceType = response.request().resourceType();
+
+      // The target answered at all (any status) — it's reachable, so clear the
+      // transport-failure streak and lift any browser-view quarantine.
+      if (this.isTargetOriginUrl(url)) this.noteTargetReachable();
 
       // Settle the request in the hang registry; a 5xx fetch/XHR also arms an infinite-loading check.
       this.pending.delete(response.request());
@@ -1625,6 +1707,12 @@ export class StabilityMonitor {
       // Cancellations are harness artifacts (session stop, superseded navigation) —
       // logged for context only, never counted, never parked for promotion.
       const cancelled = routing.reasonCode === 'CANCELLED' || (isAborted && !chaosMode);
+
+      // A genuine target-origin transport failure (not a cancel, chaos, or stress
+      // abort) counts toward the degradation streak that quarantines false findings.
+      if (!cancelled && !chaosMode && !isStressScenarioActive() && this.isTargetOriginUrl(url)) {
+        this.noteTargetTransportFailure();
+      }
 
       this.recordNetworkLog(request, undefined, false, { errorText: reason });
       if (!cancelled) this.deps.recordNetworkFailure();

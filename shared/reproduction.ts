@@ -450,6 +450,17 @@ export function describeRecovery(requeued: number): string {
   return `Retrying ${requeued} unexplored path${requeued === 1 ? '' : 's'} after the app appeared fully explored`;
 }
 
+/**
+ * Redirect-loop observation (CWE-835). A loop's hops are AUTOMATIC browser
+ * redirects, not manual navigations — so they render as ONE observed outcome after
+ * the real triggering action, never as a run of artificial "Navigate to X" steps.
+ */
+export function describeRedirectLoopObservation(chain: string, mechanism: 'http' | 'client'): string {
+  const via = mechanism === 'http' ? 'HTTP redirect chain' : 'client-side route oscillation';
+  const trail = collapse(chain);
+  return `Observe: the application enters an unconditioned redirect loop that never settles (${via}${trail ? `: ${trail}` : ''})`;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Outcome clause + step-kind classification
 // ─────────────────────────────────────────────────────────────
@@ -468,6 +479,25 @@ export function routePath(url?: string): string {
   } catch {
     return raw;
   }
+}
+
+// Data/API endpoints (fetch/XHR/GraphQL targets) — fired BY an interaction, never a
+// page a user browses to. A reproduction step must never say "Navigate to" one: the
+// endpoint is a consequence of an action, so route-step builders skip it and keep the
+// real document URL as the navigation.
+const API_ENDPOINT_RE = /(?:^|\/)(?:api|apis|ajax|graphql|gql|rpc|xhr|webhook|hooks?)(?:\/|\.|$)|\.(?:json|graphql)$/i;
+
+/** True when a URL is a backend request endpoint, not a user-facing document/page. */
+export function isApiEndpoint(url?: string): boolean {
+  const raw = collapse(url);
+  if (!raw) return false;
+  let path: string;
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    path = raw.split(/[?#]/)[0];
+  }
+  return API_ENDPOINT_RE.test(path);
 }
 
 /** Route step — "Navigate to /settings/users". Opens/transitions the playbook's page. */
@@ -604,17 +634,22 @@ export function narrateActionRecords(records: ActionRecord[]): string[] {
   for (const record of records) {
     const route = routePath(record.url);
     const isNav = record.type === 'NAVIGATE' || record.type === 'NAVIGATION';
+    // An API endpoint is a request an action fires, never a page to open — never let one
+    // seed or transition the playbook's route (the real document URL stays the location).
+    const isApi = isApiEndpoint(record.url);
 
     if (isNav) {
-      lines.push(describeRouteStep(record.url));
-      lastRoute = route;
-      lastContainer = ''; // a fresh page — any prior container context is gone
+      if (!isApi) {
+        lines.push(describeRouteStep(record.url));
+        lastRoute = route;
+        lastContainer = ''; // a fresh page — any prior container context is gone
+      }
       continue;
     }
 
     // Explicit route transition: this action runs on a different route than the last
     // step (a click that crossed into a child route, or an async fault on a new page).
-    if (route && route !== lastRoute) {
+    if (route && route !== lastRoute && !isApi) {
       lines.push(describeRouteStep(record.url));
       lastRoute = route;
       lastContainer = '';

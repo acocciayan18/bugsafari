@@ -16,7 +16,7 @@ const COLLAPSE_KEY = 'bugsafari_sidebar_collapsed';
 
 const VIEW_TITLES: Record<ViewType, string> = {
   dashboard: 'Dashboard',
-  history: 'Forensic History',
+  history: 'History',
   settings: 'Settings',
 };
 

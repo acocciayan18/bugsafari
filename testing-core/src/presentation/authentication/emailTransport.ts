@@ -1,6 +1,10 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { maskEmail } from './authValidation.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[EMAIL]');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Email service. Single owner of SMTP transport, sender identity, link building
 // and delivery for every operator-auth email (verification, password reset).
@@ -68,7 +72,7 @@ export function resolveBaseUrl(): string {
 }
 
 if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL && !process.env.RENDER_EXTERNAL_URL) {
-  console.warn('[EMAIL] Neither FRONTEND_URL nor RENDER_EXTERNAL_URL is set in production — email links will point at localhost. Set FRONTEND_URL.');
+  obsLog.warn('[EMAIL] Neither FRONTEND_URL nor RENDER_EXTERNAL_URL is set in production — email links will point at localhost. Set FRONTEND_URL.');
 }
 
 // Render a duration in ms as the coarse human string used in email copy. Floor
@@ -104,21 +108,21 @@ function getTransporter(): Transporter {
 // misconfiguration is visible at boot instead of on the first signup.
 export async function verifyEmailTransport(): Promise<void> {
   if (!isSmtpConfigured()) {
-    console.warn('[EMAIL] Email not configured (no BREVO_API_KEY or SMTP_PASS) — auth emails will not send. Set BREVO_API_KEY (HTTP API, recommended) or SMTP_PASS.');
+    obsLog.warn('[EMAIL] Email not configured (no BREVO_API_KEY or SMTP_PASS) — auth emails will not send. Set BREVO_API_KEY (HTTP API, recommended) or SMTP_PASS.');
     return;
   }
   // Brevo API mode: no cheap verify endpoint, so log the resolved transport instead of
   // probing. Takes priority — it is the send path whenever the key is present.
   if (BREVO_API_KEY) {
     const sender = parseSender();
-    console.log(`[EMAIL] Transport: Brevo HTTP API (from="${sender.name} <${sender.email}>")`);
+    obsLog.info(`[EMAIL] Transport: Brevo HTTP API (from="${sender.name} <${sender.email}>")`);
     return;
   }
   try {
     await getTransporter().verify();
-    console.log(`[EMAIL] SMTP ready: ${SMTP_HOST}:${SMTP_PORT} (secure=${SMTP_SECURE}, user="${SMTP_USER}", from="${SMTP_FROM}")`);
+    obsLog.info(`[EMAIL] SMTP ready: ${SMTP_HOST}:${SMTP_PORT} (secure=${SMTP_SECURE}, user="${SMTP_USER}", from="${SMTP_FROM}")`);
   } catch (error) {
-    console.error(`[EMAIL] SMTP verify failed for ${SMTP_HOST}:${SMTP_PORT} (user="${SMTP_USER}"):`, error instanceof Error ? error.message : error);
+    obsLog.error(`[EMAIL] SMTP verify failed for ${SMTP_HOST}:${SMTP_PORT} (user="${SMTP_USER}"):`, error instanceof Error ? error.message : error);
   }
 }
 
@@ -137,16 +141,16 @@ async function sendViaBrevoApi(to: string, subject: string, html: string, text: 
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 300);
       const message = `Brevo API ${response.status}: ${detail}`;
-      console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
+      obsLog.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
       return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
     }
     const body = (await response.json().catch(() => ({}))) as { messageId?: string };
     const messageId = body.messageId ?? 'brevo-accepted';
-    console.log(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${messageId}`);
+    obsLog.info(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${messageId}`);
     return { ok: true, messageId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
+    obsLog.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
     return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
   } finally {
     clearTimeout(timer);
@@ -157,11 +161,11 @@ async function sendViaBrevoApi(to: string, subject: string, html: string, text: 
 async function sendViaSmtp(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
   try {
     const info = await getTransporter().sendMail({ from: SMTP_FROM, to, subject, html, text });
-    console.log(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)}: ${info.messageId}`);
+    obsLog.info(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)}: ${info.messageId}`);
     return { ok: true, messageId: info.messageId };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)}: ${message}`);
+    obsLog.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)}: ${message}`);
     return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
   }
 }
@@ -230,7 +234,7 @@ export async function sendVerificationEmail(email: string, verifyToken: string):
   const expiresIn = formatDuration(EMAIL_VERIFICATION_TTL_MS);
 
   if (!isSmtpConfigured()) {
-    console.warn(`[EMAIL] Email not configured — verification link for ${maskEmail(email)}: ${verifyLink}`);
+    obsLog.warn(`[EMAIL] Email not configured — verification link for ${maskEmail(email)}: ${verifyLink}`);
     return { ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'SMTP not configured' };
   }
 
@@ -252,7 +256,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
   const expiresIn = formatDuration(RESET_TOKEN_TTL_MS);
 
   if (!isSmtpConfigured()) {
-    console.warn(`[EMAIL] Email not configured — reset link for ${maskEmail(email)}: ${resetLink}`);
+    obsLog.warn(`[EMAIL] Email not configured — reset link for ${maskEmail(email)}: ${resetLink}`);
     return { ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'SMTP not configured' };
   }
 

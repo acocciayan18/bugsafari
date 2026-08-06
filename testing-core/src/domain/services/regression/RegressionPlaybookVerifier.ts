@@ -15,6 +15,10 @@ import { isReplayVerifiable } from './replayProbes.js';
 import { decideVerdict, summarize } from './verdict.js';
 import type { LoadedFinding } from './types.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[RegressionVerifier]');
+
 const LAUNCH_TIMEOUT_MS = 30_000;
 const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
 
@@ -73,7 +77,7 @@ export class RegressionPlaybookVerifier {
       );
     }
 
-    console.log(
+    obsLog.info(
       `[RegressionVerifier] Replaying ${finding.actionSteps.length} step(s) for bug ${bugId} ` +
         `(class=${originalBugClass}, timeline=${finding.timelineSource}) on ${finding.targetUrl}`,
     );
@@ -117,7 +121,7 @@ export class RegressionPlaybookVerifier {
       });
       const summary = summarize(decision, originalBugClass, probe.stepStats);
 
-      console.log(
+      obsLog.info(
         `[RegressionVerifier] Verdict for bug ${bugId}: ${decision.verdict}/${decision.reason} ` +
           `(${decision.matchedSignals.length} signal(s), ${probe.stepStats.executed}/${probe.stepStats.total} executed)`,
       );
@@ -234,7 +238,7 @@ export class RegressionPlaybookVerifier {
     reason: VerifyFixReason,
     summary: string,
   ): VerifyFixResult {
-    console.warn(`[RegressionVerifier] INCONCLUSIVE (${reason}) for bug ${bugId}: ${summary}`);
+    obsLog.warn(`[RegressionVerifier] INCONCLUSIVE (${reason}) for bug ${bugId}: ${summary}`);
     return {
       ok: true,
       verdict: 'INCONCLUSIVE',
@@ -260,7 +264,7 @@ export class RegressionPlaybookVerifier {
     startedAt: number,
     error: string,
   ): VerifyFixResult {
-    console.warn(`[RegressionVerifier] VERIFICATION_FAILED for bug ${bugId}: ${error}`);
+    obsLog.warn(`[RegressionVerifier] VERIFICATION_FAILED for bug ${bugId}: ${error}`);
     return {
       ok: false,
       verdict: 'VERIFICATION_FAILED',

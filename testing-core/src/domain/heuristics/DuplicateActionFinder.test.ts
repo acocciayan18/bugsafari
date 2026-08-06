@@ -302,6 +302,27 @@ check('steps to reproduce are deterministic and name the action, timing, and out
   assert.ok(steps.some((s) => s.includes('committed twice')));
 });
 
+check('the first reproduction step opens the PAGE, never the API endpoint', () => {
+  const h = new Harness();
+  const a = h.send(1000, { interaction, pageUrl: 'http://app.test/checkout' });
+  const b = h.send(1180, { interaction, pageUrl: 'http://app.test/checkout' });
+  h.settle(b, 1300, 201);
+  const steps = h.settle(a, 1400, 201)!.reproductionHint;
+  assert.match(steps[0], /^Navigate to \/checkout/, 'step 1 must open the document URL');
+  assert.ok(!steps.some((s) => /^(Open|Navigate to) \/api\//i.test(s)), 'no step opens an API endpoint as a page');
+  assert.ok(steps.some((s) => s.includes('/api/order')), 'the endpoint still appears as the request the control issues');
+});
+
+check('without a page URL the opening step frames the control, not a route', () => {
+  const h = new Harness();
+  const a = h.send(1000, { interaction });
+  const b = h.send(1180, { interaction });
+  h.settle(b, 1300, 201);
+  const steps = h.settle(a, 1400, 201)!.reproductionHint;
+  assert.match(steps[0], /^Bring Place Order into view/);
+  assert.ok(!steps[0].includes('/api'), 'the opening step never references the API endpoint');
+});
+
 check('evidence carries both requests, their statuses, and the interval', () => {
   const h = new Harness();
   const a = h.send(1000);

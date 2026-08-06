@@ -4,6 +4,11 @@ import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 import { scrubSelectors } from '../../../../shared/reproduction.js';
 
+import { createLogger } from '../observability/logger.js';
+import { incCounter } from '../observability/metrics.js';
+
+const obsLog = createLogger('[SocketTelemetryGateway]');
+
 // Operator-facing free text leaving the engine: credentials the target echoed back
 // and any raw DOM path a producer left in a message are both rewritten here, so no
 // single emitter can leak either onto the wire, the replay buffer, or storage.
@@ -66,8 +71,9 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   // Rate-limited so a stuck producer cannot write one log line per frame.
   private dropUnrouted(event: string): boolean {
     this.droppedUnrouted += 1;
+    incCounter('bugsafari_telemetry_unrouted_dropped_total', 'Telemetry emits dropped for lack of a bound run room.', { event });
     if (this.droppedUnrouted === 1 || this.droppedUnrouted % 100 === 0) {
-      console.warn(`[SocketTelemetryGateway] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
+      obsLog.warn(`[SocketTelemetryGateway] dropped unrouted emit '${event}' (no run room bound; ${this.droppedUnrouted} total)`);
     }
     return true;
   }

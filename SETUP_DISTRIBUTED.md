@@ -92,6 +92,25 @@ podman compose -f docker-compose.local.yml up --build -d
 | Dashboard | http://localhost:5173 |
 | API (REST + Socket.IO) | http://localhost:3000 |
 
+## Network Resilience (env knobs)
+
+All optional; safe defaults ship. Backend vars go on `testing-core`; `VITE_*` are baked into the dashboard at build time.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BUGSAFARI_SESSION_GRACE_MS` | `60000` | Keep a run alive after the last dashboard drops, so a refresh/blip re-attaches instead of losing it. |
+| `BUGSAFARI_TARGET_HEALTH_MONITOR` | `off` | Enable the out-of-loop Node reachability probe. Only turn on where the engine process shares the target's network — it owns crash-terminate + auto-pause. |
+| `BUGSAFARI_TARGET_HEALTH_INTERVAL_MS` | `15000` | Probe cadence. |
+| `BUGSAFARI_TARGET_HEALTH_DEGRADE_THRESHOLD` | `2` | Consecutive failed probes before exploration auto-pauses (transient outage). Clamped below the crash threshold. |
+| `BUGSAFARI_TARGET_HEALTH_CRASH_THRESHOLD` | `3` | Consecutive failed probes before a run is terminated as a Critical Server Crash. |
+| `BUGSAFARI_TARGET_DEGRADE_STREAK` | `3` | Consecutive target-origin transport failures (browser view, always-on) before findings are quarantined as network noise. |
+| `BUGSAFARI_MAX_PAUSE_MS` | `600000` | Backstop: auto-stop a run paused (operator or network) longer than this. |
+| `VITE_SOCKET_RECONNECT_ATTEMPTS` | `10` | Dashboard socket reconnection budget before it latches "reload to resume". |
+| `VITE_SOCKET_RECONNECT_DELAY_MS` | `1000` | Initial reconnect backoff (jittered, exponential up to the max below). |
+| `VITE_SOCKET_RECONNECT_DELAY_MAX_MS` | `5000` | Reconnect backoff ceiling. |
+
+Behavior: a transient target outage pauses exploration and suppresses findings, then auto-resumes on recovery (browser-view quarantine is always on; full auto-pause needs `BUGSAFARI_TARGET_HEALTH_MONITOR=on`). A dashboard drop auto-reconnects with jittered backoff and replays the buffered session on re-attach.
+
 ## Architecture Overview
 
 ```
@@ -175,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Make landing page headline fully responsive"
-git checkout -b 8-5-Ayan-1
-git push --set-upstream origin 8-5-Ayan-1
+git commit -m "Add progress modal for long-running Pause and Stop operations"
+git checkout -b 8-6-Ayan
+git push --set-upstream origin 8-6-Ayan
 
 
 

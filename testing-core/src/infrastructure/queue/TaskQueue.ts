@@ -2,6 +2,10 @@ import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import type { OptimizationSettings, TestingTypeId } from '../../../../shared/types.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[TaskQueue]');
+
 export const SAFARI_TASK_QUEUE_NAME = 'safari-tasks';
 
 export function resolveQueueConnection(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379'): ConnectionOptions {
@@ -103,7 +107,7 @@ export class TaskQueue {
     });
     // BullMQ's Queue is an EventEmitter that emits 'error' on a Redis blip; without a
     // listener that would crash the api process. Log-and-continue (it reconnects).
-    this.queue.on('error', (err) => console.error('[TaskQueue] queue redis error:', err instanceof Error ? err.message : err));
+    this.queue.on('error', (err) => obsLog.error('[TaskQueue] queue redis error:', err instanceof Error ? err.message : err));
   }
 
   public async addSafariTask(input: EnqueueSafariTaskInput): Promise<EnqueuedSafariTask> {
@@ -201,7 +205,7 @@ export class TaskQueue {
       await job.remove();
       return { removed: true, state };
     } catch (error) {
-      console.warn(`[TaskQueue] cancel of job ${jobId} (${state}) failed:`, error instanceof Error ? error.message : error);
+      obsLog.warn(`[TaskQueue] cancel of job ${jobId} (${state}) failed:`, error instanceof Error ? error.message : error);
       return { removed: false, state };
     }
   }

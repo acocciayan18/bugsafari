@@ -14,7 +14,7 @@ import type {
   StopReason,
   TelemetryEvent,
 } from '../../../../shared/types.js';
-import { SESSION_SNAPSHOT_EVENT } from '../../../../shared/types.js';
+import { SESSION_SNAPSHOT_EVENT, NETWORK_ACTION } from '../../../../shared/types.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
@@ -22,7 +22,12 @@ import { TargetHealthMonitor } from './TargetHealthMonitor.js';
 import { ownsRun } from './runOwnership.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+import { NetworkQuarantine } from '../../infrastructure/monitoring/NetworkQuarantine.js';
 import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.js';
+
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[SessionManager]');
 
 /** Minimal control surface the manager needs from the live browser engine. */
 export interface EngineControl {
@@ -58,6 +63,12 @@ const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_I
 const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TIMEOUT_MS, 5_000);
 // Consecutive failed probes before declaring a Critical Server Crash and terminating.
 const HEALTH_CRASH_THRESHOLD = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_CRASH_THRESHOLD, 3);
+// Consecutive failed probes before pausing exploration (transient outage). Kept
+// below the crash threshold so a genuine blip pauses+auto-resumes before any kill.
+const HEALTH_DEGRADE_THRESHOLD = clampBelow(
+  readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_DEGRADE_THRESHOLD, 2),
+  HEALTH_CRASH_THRESHOLD,
+);
 // The health probe runs in the Node process, whose in-container network view can
 // differ from the Playwright browser's (proxy, DNS and egress rules differ).
 // A Node probe that can't reach a target the browser CAN
@@ -82,6 +93,11 @@ function readPositiveInt(raw: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
+// Keep a threshold strictly below its ceiling so degrade always precedes crash.
+function clampBelow(value: number, ceiling: number): number {
+  return value < ceiling ? value : Math.max(1, ceiling - 1);
+}
+
 interface ActiveRun {
   runToken: string;   // opaque bearer token: room key + ownership proof
   runCode: string;    // public RUN- code surfaced to the operator
@@ -99,6 +115,7 @@ interface ActiveRun {
   room: string;
   ownerSocketIds: Set<string>;
   manualPaused: boolean;   // paused by the operator
+  networkPaused: boolean;  // auto-paused by the target-health monitor (transient outage)
   // A resume that raced in while a pause was still settling (status PAUSING). The
   // resume is dropped there (the transition isn't done); this latch replays it the
   // instant pauseByOperator settles, so rapid pause→resume can't strand the run paused.
@@ -206,7 +223,7 @@ export class SessionManager implements TelemetryRecorder {
     this.run.reservationTimer = setTimeout(() => {
       const run = this.run;
       if (!run || run.runToken !== params.runToken || run.status !== 'STARTING') return;
-      console.error(`[SessionManager] Run ${run.runToken} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
+      obsLog.error(`[SessionManager] Run ${run.runToken} never started within ${RESERVATION_TIMEOUT_MS}ms — declaring it stillborn.`);
       this.emitFailure(`Engine failed to start within ${Math.round(RESERVATION_TIMEOUT_MS / 1000)}s. The session was cancelled and all resources released.`);
       this.endRun('CRASHED', params.runToken);
       params.onAbandoned?.();
@@ -214,7 +231,7 @@ export class SessionManager implements TelemetryRecorder {
 
     this.gateway?.setRoom(this.run.room);
     this.gateway?.setRecorder(this);
-    console.log(`[SessionManager] Run ${params.runToken} reserved (room ready, awaiting engine).`);
+    obsLog.info(`[SessionManager] Run ${params.runToken} reserved (room ready, awaiting engine).`);
   }
 
   public beginRun(params: BeginRunParams): void {
@@ -233,11 +250,11 @@ export class SessionManager implements TelemetryRecorder {
       reserved.ownerType = params.userId ? 'authenticated' : 'guest';
       reserved.status = 'RUNNING';
       if (HEALTH_MONITOR_ENABLED) reserved.health.start();
-      console.log(`[SessionManager] Run ${params.runToken} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
+      obsLog.info(`[SessionManager] Run ${params.runToken} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
       // Honour a stop the operator issued while the engine was still booting.
       if (reserved.pendingStop) {
         reserved.pendingStop = false;
-        console.log(`[SessionManager] Run ${params.runToken} had a stop pending from boot — applying now.`);
+        obsLog.info(`[SessionManager] Run ${params.runToken} had a stop pending from boot — applying now.`);
         void this.stopByOperator(reserved.pendingStopReason);
       }
       return;
@@ -254,14 +271,16 @@ export class SessionManager implements TelemetryRecorder {
     this.gateway?.setRoom(this.run.room);
     this.gateway?.setRecorder(this);
     if (HEALTH_MONITOR_ENABLED) this.run.health.start();
-    console.log(`[SessionManager] Run ${params.runToken} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
+    obsLog.info(`[SessionManager] Run ${params.runToken} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
   }
 
   private createRun(params: BeginRunParams, status: RunLifecycleStatus): ActiveRun {
     const room = `run:${params.runToken}`;
     const health = new TargetHealthMonitor(params.targetUrl, HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, {
       onCrash: (failures) => void this.onTargetCrash(failures),
-    }, HEALTH_CRASH_THRESHOLD);
+      onDegraded: (failures) => void this.onTargetDegraded(failures),
+      onRecovered: () => void this.onTargetRecovered(),
+    }, HEALTH_CRASH_THRESHOLD, HEALTH_DEGRADE_THRESHOLD);
 
     // A fresh run supersedes any previously retained final state.
     this.lastTerminal = null;
@@ -281,6 +300,7 @@ export class SessionManager implements TelemetryRecorder {
       room,
       ownerSocketIds: new Set<string>(),
       manualPaused: false,
+      networkPaused: false,
       pendingResume: false,
       pauseDeadlineTimer: null,
       crashTerminated: false,
@@ -326,7 +346,7 @@ export class SessionManager implements TelemetryRecorder {
    */
   private isStaleSettle(runToken: string | undefined, label: string): boolean {
     if (!this.run || runToken === undefined || runToken === this.run.runToken) return false;
-    console.warn(`[SessionManager] Ignoring stale ${label} for run ${runToken} — run ${this.run.runToken} is active now.`);
+    obsLog.warn(`[SessionManager] Ignoring stale ${label} for run ${runToken} — run ${this.run.runToken} is active now.`);
     return true;
   }
 
@@ -349,12 +369,14 @@ export class SessionManager implements TelemetryRecorder {
     // Retain the final state so a post-completion refresh can restore it.
     this.lastTerminal = { snapshot: this.buildSnapshot(this.run), userId: this.run.userId };
     this.teardownRun();
-    console.log(`[SessionManager] Run ${runToken} ended (${status})`);
+    obsLog.info(`[SessionManager] Run ${runToken} ended (${status})`);
   }
 
   private teardownRun(): void {
     if (!this.run) return;
     this.run.health.stop();
+    // Clear the process-wide degraded flag so a reused worker never inherits it.
+    NetworkQuarantine.reset();
     if (this.run.graceTimer) {
       clearTimeout(this.run.graceTimer);
       this.run.graceTimer = null;
@@ -382,7 +404,7 @@ export class SessionManager implements TelemetryRecorder {
     this.clearPauseDeadline(run);
     run.pauseDeadlineTimer = setTimeout(() => {
       if (this.run !== run) return;
-      console.log(`[SessionManager] Run ${run.runToken} exceeded max pause (${MAX_PAUSE_MS}ms) — auto-stopping.`);
+      obsLog.info(`[SessionManager] Run ${run.runToken} exceeded max pause (${MAX_PAUSE_MS}ms) — auto-stopping.`);
       this.emitMilestone(`Session auto-stopped — paused longer than the ${Math.round(MAX_PAUSE_MS / 1000)}s maximum.`);
       void this.stopByOperator('pause-timeout');
     }, MAX_PAUSE_MS);
@@ -455,7 +477,8 @@ export class SessionManager implements TelemetryRecorder {
     const run = this.run;
     if (!run || run.terminationOutcome || !event.meta?.terminationOutcome) return;
     run.terminationOutcome = event.meta.terminationOutcome;
-    run.terminationReason = event.meta.message ?? null;
+    // Prefer the bare reason; fall back to the composed message for legacy events.
+    run.terminationReason = event.meta.terminationReason ?? event.meta.message ?? null;
   }
 
   // Track PAUSEDRUNNING from the engine's own pause/resume telemetry so a
@@ -583,17 +606,17 @@ export class SessionManager implements TelemetryRecorder {
     run.status = 'INTERRUPTED';
     void this.persistStatus('INTERRUPTED');
     this.emitMilestone(`️ Operator disconnected — keeping session alive for ${Math.round(GRACE_MS / 1000)}s to allow reconnect.`);
-    console.log(`[SessionManager] Run ${run.runToken} INTERRUPTED; grace timer armed (${GRACE_MS}ms).`);
+    obsLog.info(`[SessionManager] Run ${run.runToken} INTERRUPTED; grace timer armed (${GRACE_MS}ms).`);
 
     run.graceTimer = setTimeout(() => {
       const active = this.run;
       if (!active || active.runToken !== run.runToken) return;
       active.status = 'DISCONNECTED';
       void this.persistStatus('DISCONNECTED');
-      console.log(`[SessionManager] Run ${active.runToken} grace expired — terminating engine.`);
+      obsLog.info(`[SessionManager] Run ${active.runToken} grace expired — terminating engine.`);
       // Engine.stop() unwinds run() whose finally calls endRun(); nothing else to do.
       void Promise.resolve(active.engine.stop?.('disconnect-grace')).catch((err) =>
-        console.error('[SessionManager] Grace-expiry stop failed:', err),
+        obsLog.error('[SessionManager] Grace-expiry stop failed:', err),
       );
     }, GRACE_MS);
   }
@@ -691,6 +714,38 @@ export class SessionManager implements TelemetryRecorder {
 
   // ── Target health handler (crash escalation only) ───────────────────────────
 
+  // Transient target outage: pause exploration and quarantine findings so a dead
+  // network can't manufacture false bugs. Idempotent; probing continues so recovery
+  // (onTargetRecovered) or a full crash (onTargetCrash) is still detected.
+  private onTargetDegraded(failures: number): void {
+    const run = this.run;
+    if (!run || run.crashTerminated || run.networkPaused) return;
+    run.networkPaused = true;
+    NetworkQuarantine.beginDegraded(`target unreachable after ${failures} probes`);
+    // Halt the loop only if the engine supports it and the operator hasn't paused.
+    // The MAX_PAUSE deadline backstops a target that never recovers.
+    if (!run.manualPaused && run.status === 'RUNNING' && typeof run.engine.pause === 'function') {
+      run.engine.pause();
+      this.armPauseDeadline(run);
+    }
+    this.emitEngineAction(NETWORK_ACTION.PAUSED, `Target ${run.targetUrl} unreachable — pausing exploration and retrying. Findings are suppressed until it recovers.`);
+    obsLog.info(`[SessionManager] Run ${run.runToken} network-paused after ${failures} failed probes.`);
+  }
+
+  // Target reachable again after a transient outage — lift the quarantine and resume.
+  private onTargetRecovered(): void {
+    const run = this.run;
+    if (!run || !run.networkPaused) return;
+    run.networkPaused = false;
+    NetworkQuarantine.endDegraded();
+    if (!run.manualPaused && run.status === 'RUNNING' && typeof run.engine.resume === 'function') {
+      run.engine.resume();
+      this.clearPauseDeadline(run);
+    }
+    this.emitEngineAction(NETWORK_ACTION.RESUMED, `Target ${run.targetUrl} reachable again — resuming exploration.`);
+    obsLog.info(`[SessionManager] Run ${run.runToken} network-resumed after target recovery.`);
+  }
+
   /**
    * Target confirmed dead after `failures` consecutive verification probes — a
    * Critical Server Crash, not a transient navigation blip. Capture the last
@@ -741,7 +796,7 @@ export class SessionManager implements TelemetryRecorder {
     try {
       await Promise.resolve(run.engine.stop?.('target-crash'));
     } catch (err) {
-      console.error('[SessionManager] Crash-termination stop failed:', err);
+      obsLog.error('[SessionManager] Crash-termination stop failed:', err);
       // Engine unresponsive — force teardown so resources are still released. Scoped
       // to THIS run: the await above can outlive it, and the operator may already
       // have launched the next one.
@@ -793,7 +848,7 @@ export class SessionManager implements TelemetryRecorder {
         { $set: { status: dbStatus } },
       );
     } catch (error) {
-      console.error('[SessionManager] Failed to persist run status:', error);
+      obsLog.error('[SessionManager] Failed to persist run status:', error);
     }
   }
 }

@@ -4,6 +4,10 @@ import type { InteractiveElement } from '../domain/entities/InteractiveElement.j
 import { fuzzTextInput } from '../domain/scenarios/fuzzing/dataFuzzer.js';
 import { stripConstraints } from '../domain/scenarios/formBypasser.js';
 
+import { createLogger } from '../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[scenarioAdapters]');
+
 /**
  * Attack profiles for fuzzing operations.
  * These profiles determine which types of payloads to generate.
@@ -34,10 +38,10 @@ export async function fuzzTextWithAttackSurface(
   try {
     await stripConstraints(page, element.selector);
   } catch (err) {
-    console.warn(`[scenarioAdapters] Failed to strip constraints for ${element.selector}:`, err);
+    obsLog.warn(`[scenarioAdapters] Failed to strip constraints for ${element.selector}:`, err);
   }
   
-  console.log(`[scenarioAdapters] Fuzzing with profile "${profile}" on step ${step}`);
+  obsLog.info(`[scenarioAdapters] Fuzzing with profile "${profile}" on step ${step}`);
   return fuzzTextInput(page, element, step);
 }
 

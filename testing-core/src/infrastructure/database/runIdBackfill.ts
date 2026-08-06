@@ -1,6 +1,10 @@
 import { SessionModel } from './models/SessionModel.js';
 import { generateUniqueRunCode } from './runCodeGenerator.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[runIdBackfill]');
+
 // Batch size per pass — bounded so a large legacy collection is walked without
 // holding every doc in memory at once.
 const BACKFILL_BATCH_SIZE = 500;
@@ -27,7 +31,7 @@ export async function backfillRunIds(): Promise<number> {
       } catch (error) {
         const e = error as { code?: number };
         if (e?.code !== 11000) throw error; // only a dup-code race is tolerated
-        console.warn(`[runIdBackfill] runId race on ${String(doc._id)} — skipping, next pass will retry.`);
+        obsLog.warn(`[runIdBackfill] runId race on ${String(doc._id)} — skipping, next pass will retry.`);
       }
     }
 
@@ -35,6 +39,6 @@ export async function backfillRunIds(): Promise<number> {
     if (batch.length < BACKFILL_BATCH_SIZE) break;
   }
 
-  if (assigned > 0) console.log(`[runIdBackfill] Assigned runId to ${assigned} legacy session(s).`);
+  if (assigned > 0) obsLog.info(`[runIdBackfill] Assigned runId to ${assigned} legacy session(s).`);
   return assigned;
 }

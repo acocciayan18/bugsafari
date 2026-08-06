@@ -16,11 +16,17 @@
     "typecheck": "npm run typecheck -w shared --if-present && npm run typecheck -w testing-core && npm run build -w developer-dashboard",
     "test": "npm run test -w shared --if-present && npm run test -w testing-core && npm run test -w developer-dashboard",
     "dev:server": "npm run dev -w testing-core",
-    "dev:client": "npm run dev -w developer-dashboard"
+    "dev:client": "npm run dev -w developer-dashboard",
+    "lint": "eslint .",
+    "format": "prettier --write \"testing-core/src/**/*.ts\" \"shared/**/*.ts\""
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.6",
     "tsc-watch": "^7.2.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.66.0"
   },
   "dependencies": {
     "framer-motion": "^12.43.0",

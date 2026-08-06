@@ -27,6 +27,19 @@ import { ControlBridgePublisher } from './infrastructure/queue/controlBridge.js'
 import { RunRegistry } from './infrastructure/queue/RunRegistry.js';
 import { AuthVault } from './infrastructure/queue/AuthVault.js';
 import { reconcileRunRegistry } from './infrastructure/queue/registryReconciler.js';
+import { createLogger } from './infrastructure/observability/logger.js';
+import { requestLogger } from './infrastructure/observability/requestContext.js';
+import { incCounter } from './infrastructure/observability/metrics.js';
+import { assertBootEnv } from './config/env.js';
+
+// Record a swallowed background-timer failure so it is visible in /metrics, not just logs.
+const countBgFailure = (task: string): void =>
+  incCounter('bugsafari_background_task_failures_total', 'Background timer/task failures that were logged and swallowed.', { task });
+
+const log = createLogger('[BugSafari]');
+
+// Fail closed before opening a port if a critical infra var is missing in prod.
+assertBootEnv('api');
 
 const port = readPort(process.env.BUGSAFARI_PORT ?? process.env.BUGSAFARI_API_PORT, 3000);
 
@@ -40,7 +53,7 @@ app.set('trust proxy', trustProxyHops);
 // A proxy sits in front in production; with hops=0, req.ip is the proxy for every
 // request and all clients collapse into one rate-limit bucket (SEC-16). Warn loudly.
 if (process.env.NODE_ENV === 'production' && trustProxyHops === 0) {
-  console.warn('[BugSafari] ️ TRUST_PROXY_HOPS is 0 in production — behind a reverse proxy this makes rate limiting key on the proxy IP for every client. Set TRUST_PROXY_HOPS=1.');
+  log.warn('[BugSafari] ️ TRUST_PROXY_HOPS is 0 in production — behind a reverse proxy this makes rate limiting key on the proxy IP for every client. Set TRUST_PROXY_HOPS=1.');
 }
 
 // Security response headers for the JSON API (SEC-06). This host serves no HTML, so
@@ -56,6 +69,9 @@ app.use((_req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
+
+// Bind a per-request log context (reqId) and emit one access log per response.
+app.use(requestLogger);
 
 // No CORS middleware here by design: the Caddy reverse proxy owns origin
 // validation and every Access-Control-* header (see deploy/Caddyfile). A second
@@ -100,7 +116,7 @@ sessionManager.initialize(telemetryGateway);
 // This ensures DB is ready before any auth requests are handled
 const dbReady = await connectDatabase();
 if (!dbReady) {
-  console.error('[BugSafari] ️ Database connection failed - auth features may be unavailable');
+  log.error('[BugSafari] ️ Database connection failed - auth features may be unavailable');
 }
 
 // Enforce declared index intent at boot (production runs autoIndex:false). Guarded
@@ -108,11 +124,11 @@ if (!dbReady) {
 // with BUGSAFARI_SKIP_INDEX_SYNC=true when an external release step owns it.
 if (dbReady && process.env.BUGSAFARI_SKIP_INDEX_SYNC !== 'true') {
   syncAllIndexes()
-    .then(({ synced, failed }) => console.log(`[BugSafari] Index sync: ${synced} synced, ${failed} failed`))
+    .then(({ synced, failed }) => log.info(`[BugSafari] Index sync: ${synced} synced, ${failed} failed`))
     // Lazy Phase-3 backfill: stamp a public runId on every legacy doc once the
     // sparse-unique index exists. Non-fatal — a failure must not block startup.
     .then(() => backfillRunIds())
-    .catch((error: unknown) => console.error('[BugSafari] Index sync / runId backfill failed:', error));
+    .catch((error: unknown) => { countBgFailure('index-sync'); log.error('[BugSafari] Index sync / runId backfill failed:', error); });
 }
 
 const findingRepository = dbReady ? new MongoFindingRepository() : undefined;
@@ -129,7 +145,7 @@ const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { a
 // JWT_SECRET, BUGSAFARI_AUTH_KEY, and every operator's socket. An unset variable
 // must not silently defeat it. Mirror the hard-fail authConfig uses for JWT_SECRET.
 if (process.env.NODE_ENV === 'production' && process.env.BUGSAFARI_USE_QUEUE !== '1') {
-  console.error('[BugSafari] FATAL: BUGSAFARI_USE_QUEUE must be "1" in production so runs execute in the isolated worker fleet, not in the api process. Refusing to start.');
+  log.error('[BugSafari] FATAL: BUGSAFARI_USE_QUEUE must be "1" in production so runs execute in the isolated worker fleet, not in the api process. Refusing to start.');
   process.exit(1);
 }
 const taskQueue = process.env.BUGSAFARI_USE_QUEUE === '1' ? new TaskQueue() : undefined;
@@ -143,7 +159,7 @@ let runRegistry: RunRegistry | undefined;
 let authVault: AuthVault | undefined;
 let reconcilerTimer: NodeJS.Timeout | undefined;
 if (taskQueue) {
-  console.log('[BugSafari]  BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
+  log.info('[BugSafari]  BUGSAFARI_USE_QUEUE=1 — /api/start-test will ENQUEUE runs to the Safari worker fleet instead of running in-process.');
   telemetryBridge = new TelemetryBridgeSubscriber(io);
   await telemetryBridge.start();
   queueStatusBroadcaster = new QueueStatusBroadcaster(io, taskQueue);
@@ -163,7 +179,7 @@ if (taskQueue) {
   const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
   const runReconciler = (): void => {
     reconcileRunRegistry(runRegistry!, taskQueue, authVault)
-      .catch((error: unknown) => console.error('[BugSafari] Registry reconciler failed:', error));
+      .catch((error: unknown) => { countBgFailure('registry-reconciler'); log.error('[BugSafari] Registry reconciler failed:', error); });
   };
   reconcilerTimer = setInterval(runReconciler, RECONCILE_INTERVAL_MS);
   reconcilerTimer.unref();
@@ -198,7 +214,7 @@ httpServer.keepAliveTimeout = 61_000;
 httpServer.headersTimeout = 65_000;
 
 httpServer.listen(port, () => {
-  console.log(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
+  log.info(`[BugSafari] API + Socket bridge listening on http://localhost:${port}`);
 });
 
 // Periodic orphan sweep. The TTL index expires abandoned sessions but MongoDB
@@ -214,33 +230,33 @@ if (dbReady && process.env.BUGSAFARI_DISABLE_RETENTION_REAPER !== 'true') {
     reapExpiredSessionChildren()
       .then((totals) => {
         const removed = Object.values(totals).reduce((sum, count) => sum + count, 0);
-        if (removed > 0) console.log('[BugSafari] Retention reaper removed orphans:', totals);
+        if (removed > 0) log.info('[BugSafari] Retention reaper removed orphans:', totals);
       })
-      .catch((error: unknown) => console.error('[BugSafari] Retention reaper failed:', error));
+      .catch((error: unknown) => { countBgFailure('retention-reaper'); log.error('[BugSafari] Retention reaper failed:', error); });
   };
 
   reaperTimer = setInterval(runReaper, REAP_INTERVAL_MS);
   reaperTimer.unref();
   runReaper();
-  console.log(`[BugSafari] Retention reaper enabled (every ${REAP_INTERVAL_MS / 60000} min)`);
+  log.info(`[BugSafari] Retention reaper enabled (every ${REAP_INTERVAL_MS / 60000} min)`);
 }
 
 httpServer.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`[BugSafari] Port ${port} is already in use. Stop the existing process or set BUGSAFARI_PORT.`);
+    log.error(`[BugSafari] Port ${port} is already in use. Stop the existing process or set BUGSAFARI_PORT.`);
     return;
   }
-  console.error('[BugSafari] Server startup error:', error.message);
+  log.error('[BugSafari] Server startup error:', error.message);
 });
 
 // Graceful shutdown handler
 const shutdown = async (signal: string): Promise<void> => {
-  console.log(`[BugSafari] Received ${signal}, shutting down gracefully...`);
+  log.info(`[BugSafari] Received ${signal}, shutting down gracefully...`);
   try {
     if (reaperTimer) clearInterval(reaperTimer);
     if (reconcilerTimer) clearInterval(reconcilerTimer);
     await disconnectDatabase();
-    console.log('[BugSafari] Database disconnected');
+    log.info('[BugSafari] Database disconnected');
     await queueStatusBroadcaster?.close();
     await telemetryBridge?.close();
     await controlPublisher?.close();
@@ -248,15 +264,15 @@ const shutdown = async (signal: string): Promise<void> => {
     await authVault?.close();
     await taskQueue?.close();
   } catch (err) {
-    console.error('[BugSafari] Error during shutdown:', err);
+    log.error('[BugSafari] Error during shutdown:', err);
   }
   httpServer.close(() => {
-    console.log('[BugSafari] HTTP server closed');
+    log.info('[BugSafari] HTTP server closed');
     process.exit(0);
   });
   // Force exit after 5 seconds if server doesn't close
   setTimeout(() => {
-    console.error('[BugSafari] Forced exit after timeout');
+    log.error('[BugSafari] Forced exit after timeout');
     process.exit(1);
   }, 5000);
 };
@@ -271,14 +287,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // then keep serving in development so a single fault doesn't drop the whole dev
 // session; in production, exit so the orchestrator restarts a clean process.
 process.on('unhandledRejection', (reason) => {
-  console.error('[BugSafari] Unhandled promise rejection:', reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : reason);
+  log.error('[BugSafari] Unhandled promise rejection:', reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : reason);
   // In production a systematic rejection leak leaves the process in an undefined
   // state; exit so the orchestrator restarts a clean one (mirrors the worker).
   // Dev keeps serving so one stray rejection doesn't drop the session.
   if (process.env.NODE_ENV === 'production') process.exit(1);
 });
 process.on('uncaughtException', (error) => {
-  console.error('[BugSafari] Uncaught exception:', error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : error);
+  log.error('[BugSafari] Uncaught exception:', error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : error);
   // Prod exits for a clean restart; dev intentionally keeps serving so a single
   // fault doesn't drop the whole dev session (state may be degraded until reload).
   if (process.env.NODE_ENV === 'production') process.exit(1);

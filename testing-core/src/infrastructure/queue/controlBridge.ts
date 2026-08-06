@@ -1,6 +1,10 @@
 import { Redis } from 'ioredis';
 import type { StopReason } from '../../../../shared/types.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[ControlBridge]');
+
 // Pub/sub channel carrying operator run-controls (pause/resume/stop) from the API
 // process — which owns the browser-facing Socket.IO server — to the isolated
 // worker process actually running Playwright. The reverse of the telemetry
@@ -20,7 +24,7 @@ function redisClient(redisUrl: string): Redis {
   const client = new Redis(redisUrl, { maxRetriesPerRequest: null });
   // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
   // EventEmitter 'error' that crashes the process. ioredis auto-reconnects.
-  client.on('error', (err) => console.error('[ControlBridge] redis connection error:', err instanceof Error ? err.message : err));
+  client.on('error', (err) => obsLog.error('[ControlBridge] redis connection error:', err instanceof Error ? err.message : err));
   return client;
 }
 
@@ -35,7 +39,7 @@ export class ControlBridgePublisher {
   public publish(command: OperatorCommand, runToken: string | null, reason?: StopReason): void {
     const message: ControlMessage = { runToken, command, reason };
     void this.pub.publish(CONTROL_BRIDGE_CHANNEL, JSON.stringify(message)).catch((error) => {
-      console.error('[ControlBridge] publish failed:', error instanceof Error ? error.message : error);
+      obsLog.error('[ControlBridge] publish failed:', error instanceof Error ? error.message : error);
     });
   }
 
@@ -62,10 +66,10 @@ export class ControlBridgeSubscriber {
         const { runToken, command, reason } = JSON.parse(raw) as ControlMessage;
         this.handler(command, runToken, reason);
       } catch (error) {
-        console.error('[ControlBridge] drop malformed command:', error instanceof Error ? error.message : error);
+        obsLog.error('[ControlBridge] drop malformed command:', error instanceof Error ? error.message : error);
       }
     });
-    console.log(`[ControlBridge] subscribed to ${CONTROL_BRIDGE_CHANNEL} — dashboard controls now reach worker runs.`);
+    obsLog.info(`[ControlBridge] subscribed to ${CONTROL_BRIDGE_CHANNEL} — dashboard controls now reach worker runs.`);
   }
 
   public async close(): Promise<void> {

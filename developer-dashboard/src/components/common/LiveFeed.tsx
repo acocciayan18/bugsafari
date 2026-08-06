@@ -23,6 +23,8 @@ interface LiveFeedProps {
   liveFrame?: string | null;
   /** Why the run ended — drives the terminal overlay copy. */
   terminationOutcome?: RunTerminationOutcome | null;
+  /** Bare engine reason, shown in the overlay in place of the generic outcome detail. */
+  terminationReason?: string | null;
 }
 
 // Native viewport resolution for canvas rendering
@@ -40,7 +42,8 @@ function LiveFeed({
   hasRunCompleted = false,
   isInitializing = false,
   liveFrame = null,
-  terminationOutcome = null
+  terminationOutcome = null,
+  terminationReason = null
 }: LiveFeedProps) {
   const terminationCopy = terminationOutcome ? TERMINATION_COPY[terminationOutcome] : null;
   // Show the address the engine actually resolves to, not the raw typed input.
@@ -264,7 +267,7 @@ function LiveFeed({
               {terminationCopy?.label ?? 'Exploration Complete'}
             </p>
             <p className="max-w-md text-[13px] text-(--text-secondary)">
-              {terminationCopy?.detail ?? 'Exploration finished.'}
+              {terminationReason ?? terminationCopy?.detail ?? 'Exploration finished.'}
             </p>
           </div>
         )}

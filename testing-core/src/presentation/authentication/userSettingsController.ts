@@ -2,9 +2,13 @@ import type { Express, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import type { AuthRequest } from './authMiddleware.js';
 import { requireAuth } from './authMiddleware.js';
-import { validatePasswordComplexity } from './authValidation.js';
+import { validatePasswordComplexity, isPasswordTooLong, validateName, MAX_NAME_LENGTH } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
 import { writeLimiter, readLimiter, resetPasswordLimiter } from '../middleware/rateLimiter.js';
+
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[Settings]');
 
 /**
  * User Settings Types
@@ -67,7 +71,7 @@ export async function handleGetProfile(
 
         jsonResponse(res, 200, { data: profile });
     } catch (error) {
-        console.error('[Settings] Error fetching profile:', error);
+        obsLog.error('[Settings] Error fetching profile:', error);
         next(error);
     }
 }
@@ -89,19 +93,18 @@ export async function handleUpdateProfile(
             return;
         }
 
-        const { name } = request.body as { name?: string };
+        const { name } = request.body as { name?: unknown };
 
-        // Validate name if provided
-        if (name !== undefined && typeof name !== 'string') {
-            errorResponse(res, 400, 'Name must be a string');
-            return;
-        }
-
+        // Validate + sanitize name when provided (strip control chars, enforce length).
         const updateData: { name?: string } = {};
-        if (name && typeof name === 'string') {
-            const trimmedName = name.trim();
-            if (trimmedName.length > 0 && trimmedName.length <= 100) {
-                updateData.name = trimmedName;
+        if (name !== undefined) {
+            const cleanName = validateName(name);
+            if (cleanName === null) {
+                errorResponse(res, 400, `Name must be a string of at most ${MAX_NAME_LENGTH} characters`);
+                return;
+            }
+            if (cleanName.length > 0) {
+                updateData.name = cleanName;
             }
         }
 
@@ -127,7 +130,7 @@ export async function handleUpdateProfile(
 
         jsonResponse(res, 200, { data: profile });
     } catch (error) {
-        console.error('[Settings] Error updating profile:', error);
+        obsLog.error('[Settings] Error updating profile:', error);
         next(error);
     }
 }
@@ -162,6 +165,13 @@ export async function handleChangePassword(
             return;
         }
 
+        // An over-length current password can never be correct — reject before bcrypt
+        // so it can't be used as a hash-CPU exhaustion vector on an authenticated route.
+        if (isPasswordTooLong(currentPassword)) {
+            errorResponse(res, 403, 'Current password is incorrect');
+            return;
+        }
+
         // Find user
         const user = await UserModel.findById(userId);
 
@@ -186,20 +196,26 @@ export async function handleChangePassword(
             return;
         }
 
+        // Reject reuse of the current password (hash compare, never plaintext).
+        if (await user.comparePassword(newPassword)) {
+            errorResponse(res, 400, 'Your new password must be different from your current password');
+            return;
+        }
+
         // Update password
         user.password = newPassword;
         await user.save();
 
         // Changing the password terminates every session it established.
         const revoked = await revokeAllForUser(userId, 'password-change');
-        console.log(`[Settings] Password changed for ${userId} (${revoked} session(s) revoked)`);
+        obsLog.info(`[Settings] Password changed for ${userId} (${revoked} session(s) revoked)`);
 
         jsonResponse(res, 200, {
             message: 'Password changed successfully. Please sign in again.',
             sessionsRevoked: true,
         });
     } catch (error) {
-        console.error('[Settings] Error changing password:', error);
+        obsLog.error('[Settings] Error changing password:', error);
         next(error);
     }
 }
@@ -250,15 +266,9 @@ export async function handleGetSettings(
 
         jsonResponse(res, 200, { data: settings });
     } catch (error) {
-        console.error('[Settings] Error fetching settings:', error);
-        // Return defaults on error to prevent UX breakage
-        jsonResponse(res, 200, {
-            data: {
-                theme: 'light',
-                notifications: true,
-                autoSave: true
-            }
-        });
+        // A DB failure is a real error, not "no settings" — surface it as a 500 via
+        // the error middleware instead of masking it behind fake 200 defaults.
+        next(error);
     }
 }
 
@@ -339,7 +349,7 @@ export async function handleUpdateSettings(
 
         jsonResponse(res, 200, { data: settings });
     } catch (error) {
-        console.error('[Settings] Error updating settings:', error);
+        obsLog.error('[Settings] Error updating settings:', error);
         next(error);
     }
 }
@@ -360,10 +370,10 @@ export function registerUserSettingsRoutes(app: Express): void {
     app.get('/api/settings', readLimiter, requireAuth, handleGetSettings);
     app.put('/api/settings', writeLimiter, requireAuth, handleUpdateSettings);
 
-    console.log('[API] Registered user settings routes:');
-    console.log('  GET  /api/users/profile');
-    console.log('  PUT  /api/users/profile');
-    console.log('  PUT  /api/users/password');
-    console.log('  GET  /api/settings');
-    console.log('  PUT  /api/settings');
+    obsLog.info('[API] Registered user settings routes:');
+    obsLog.info('  GET  /api/users/profile');
+    obsLog.info('  PUT  /api/users/profile');
+    obsLog.info('  PUT  /api/users/password');
+    obsLog.info('  GET  /api/settings');
+    obsLog.info('  PUT  /api/settings');
 }

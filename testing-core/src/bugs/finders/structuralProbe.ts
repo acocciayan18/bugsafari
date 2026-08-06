@@ -13,6 +13,10 @@ import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, RouteTrashMetadata } from '../../domain/chaos/index.js';
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StructuralProbe]');
+
 // Singleton accessor following fuzzGuard pattern
 let chaosManagerAccessor: {
   getChaosType(): ChaosContextType | null;
@@ -77,7 +81,7 @@ async function detectRedirectLoops(page: BugContext['page']): Promise<string[]> 
       }
     }
   } catch {
-    console.log('[StructuralProbe] Could not analyze redirect loops');
+    obsLog.info('[StructuralProbe] Could not analyze redirect loops');
   }
   
   return signatures;
@@ -100,7 +104,7 @@ async function detectComponentFailures(page: BugContext['page']): Promise<string
       }
     }
   } catch {
-    console.log('[StructuralProbe] Could not analyze component failures');
+    obsLog.info('[StructuralProbe] Could not analyze component failures');
   }
   
   return signatures;
@@ -123,7 +127,7 @@ async function detectQueryMutations(page: BugContext['page']): Promise<string[]>
       }
     }
   } catch {
-    console.log('[StructuralProbe] Could not analyze query mutations');
+    obsLog.info('[StructuralProbe] Could not analyze query mutations');
   }
   
   return signatures;
@@ -158,14 +162,14 @@ export const structuralProbeFinder: BugFinder = {
     const findings: BugFinding[] = [];
     
     if (!hasActiveRouteTrashTransaction()) {
-      console.log('[StructuralProbe] No active ROUTE_TRASH transaction - skipping detection');
+      obsLog.info('[StructuralProbe] No active ROUTE_TRASH transaction - skipping detection');
       return findings;
     }
     
     const metadata = getActiveRouteMetadata();
     const page = ctx.page;
     
-    console.log(`[StructuralProbe] Analyzing route mutation for: ${metadata?.originPath} -> ${metadata?.targetPath}`);
+    obsLog.info(`[StructuralProbe] Analyzing route mutation for: ${metadata?.originPath} -> ${metadata?.targetPath}`);
     
     // Detect redirect loops
     const redirectSignatures = await detectRedirectLoops(page);
@@ -216,7 +220,7 @@ export const structuralProbeFinder: BugFinder = {
     }
     
     if (findings.length === 0) {
-      console.log('[StructuralProbe] No route mutation failures detected');
+      obsLog.info('[StructuralProbe] No route mutation failures detected');
     }
     
     return findings;

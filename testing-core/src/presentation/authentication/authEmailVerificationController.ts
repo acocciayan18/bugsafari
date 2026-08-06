@@ -2,10 +2,14 @@ import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { requireNonEmptyString, maskEmail } from './authValidation.js';
+import { validateEmail, validateToken, maskEmail } from './authValidation.js';
 import { issueTokenPair } from './refreshTokenService.js';
 import { sendVerificationEmail, deliveredOrDevFallback, EMAIL_VERIFICATION_TTL_MS } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
+
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[VERIFY EMAIL]');
 
 // Unknown email, wrong token and expired token are indistinguishable — any split
 // would leak which pending verifications exist.
@@ -34,15 +38,13 @@ export async function handleVerifyEmail(
   try {
     const { email, token } = request.body;
 
-    const sanitizedEmail = requireNonEmptyString(email, 'email');
-    const sanitizedToken = requireNonEmptyString(token, 'token');
-    if (!sanitizedEmail || !sanitizedToken) {
+    // A malformed email/token is indistinguishable from an unknown/expired one.
+    const trimmedEmail = validateEmail(email);
+    const trimmedToken = validateToken(token);
+    if (!trimmedEmail || !trimmedToken) {
       response.status(400).json(VERIFICATION_REJECTION);
       return;
     }
-
-    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
-    const trimmedToken = sanitizedToken.trim();
 
     const user = await UserModel.findOne({ email: trimmedEmail });
     if (!user) {
@@ -66,7 +68,7 @@ export async function handleVerifyEmail(
       !user.emailVerificationExpires ||
       user.emailVerificationExpires < new Date()
     ) {
-      console.warn(`[VERIFY EMAIL] Invalid or expired token for: ${maskEmail(trimmedEmail)}`);
+      obsLog.warn(`[VERIFY EMAIL] Invalid or expired token for: ${maskEmail(trimmedEmail)}`);
       response.status(400).json(VERIFICATION_REJECTION);
       return;
     }
@@ -79,7 +81,7 @@ export async function handleVerifyEmail(
     // Auto-login: the click proves control of the inbox, so hand back a session
     // in the same shape login returns.
     const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
-    console.log(`[VERIFY EMAIL] Account verified: ${maskEmail(trimmedEmail)}`);
+    obsLog.info(`[VERIFY EMAIL] Account verified: ${maskEmail(trimmedEmail)}`);
 
     response.json({
       ok: true,
@@ -106,14 +108,13 @@ export async function handleResendVerification(
   try {
     const { email } = request.body;
 
-    const sanitizedEmail = requireNonEmptyString(email, 'email');
-    if (!sanitizedEmail) {
-      const body: AuthErrorBody = { error: 'Email is required', code: 'VALIDATION_FAILED', field: 'email' };
+    const trimmedEmail = validateEmail(email);
+    if (!trimmedEmail) {
+      const body: AuthErrorBody = { error: 'Please enter a valid email address', code: 'VALIDATION_FAILED', field: 'email' };
       response.status(400).json(body);
       return;
     }
 
-    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
     const user = await UserModel.findOne({ email: trimmedEmail });
 
     if (user && user.emailVerified === false) {
@@ -121,7 +122,7 @@ export async function handleResendVerification(
       user.emailVerificationToken = await bcrypt.hash(verificationToken, 10);
       user.emailVerificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
       await user.save();
-      console.log(`[RESEND VERIFICATION] Re-sent for: ${maskEmail(trimmedEmail)}`);
+      obsLog.info(`[RESEND VERIFICATION] Re-sent for: ${maskEmail(trimmedEmail)}`);
       // Awaited so a real send failure is reported honestly instead of a false success.
       const emailResult = await sendVerificationEmail(trimmedEmail, verificationToken);
       if (!deliveredOrDevFallback(emailResult)) {
@@ -136,7 +137,7 @@ export async function handleResendVerification(
       // No account, or already verified: burn an equivalent bcrypt cycle so this
       // branch is not measurably faster.
       await bcrypt.compare(generateToken(), TIMING_DECOY_HASH);
-      console.log(`[RESEND VERIFICATION] No pending verification for: ${maskEmail(trimmedEmail)}`);
+      obsLog.info(`[RESEND VERIFICATION] No pending verification for: ${maskEmail(trimmedEmail)}`);
     }
 
     response.json({

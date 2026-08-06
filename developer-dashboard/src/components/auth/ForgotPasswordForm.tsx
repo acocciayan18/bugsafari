@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
+import { EMAIL_MAX_LENGTH } from '../../utils/authLimits';
 
 interface ForgotPasswordResponse {
   ok?: boolean;
@@ -113,6 +114,8 @@ export default function ForgotPasswordForm() {
             placeholder="Enter your email"
             error={emailFieldError || undefined}
             invalid={feedback?.field === 'email'}
+            maxLength={EMAIL_MAX_LENGTH}
+            autoComplete="email"
             required
           />
         </div>

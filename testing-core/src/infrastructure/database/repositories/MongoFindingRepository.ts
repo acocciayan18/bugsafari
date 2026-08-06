@@ -12,6 +12,10 @@ import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
 import { createWithRunCodeRetry } from "../runCodeGenerator.js";
 
+import { createLogger } from '../../observability/logger.js';
+
+const obsLog = createLogger('[MongoFindingRepository]');
+
 function toObjectId(id: string): Types.ObjectId | null {
   if (!isValidObjectId(id)) {
     return null;
@@ -46,8 +50,8 @@ const HISTORY_STATUS: Partial<Record<SessionStatus, SessionHistoryRecord['status
 
 export class MongoFindingRepository implements FindingRepository {
 public async createSession(input: CreateSessionInput): Promise<string> {
-    console.log(`[MongoFindingRepository]  Creating session for: ${input.targetUrl}`);
-    console.log(`[MongoFindingRepository] UserId: ${input.userId ?? 'none/unauthenticated'}`);
+    obsLog.info(`[MongoFindingRepository]  Creating session for: ${input.targetUrl}`);
+    obsLog.info(`[MongoFindingRepository] UserId: ${input.userId ?? 'none/unauthenticated'}`);
     
     // Ownership is mandatory: every session must belong to a real authenticated
     // user. Callers (ExplorationEngine) already gate on a valid id; throwing here
@@ -58,7 +62,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     const userIdToUse = new Types.ObjectId(input.userId);
 
     const session = await this.createSessionDoc(userIdToUse, new Date(input.startedAt), input);
-    console.log(`[MongoFindingRepository] Session created: ${session._id} (runId=${session.runId}) for userId: ${userIdToUse}`);
+    obsLog.info(`[MongoFindingRepository] Session created: ${session._id} (runId=${session.runId}) for userId: ${userIdToUse}`);
     return session._id.toString();
   }
 
@@ -146,7 +150,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       if (Object.keys(weights).length === 0) return null;
       return { bias: doc.bias, weights };
     } catch (error) {
-      console.error("[MongoFindingRepository] Error loading brain config:", error);
+      obsLog.error("[MongoFindingRepository] Error loading brain config:", error);
       return null;
     }
   }
@@ -165,14 +169,14 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     userId: string,
     targetUrl?: string,
   ): Promise<string | null> {
-    console.log(
+    obsLog.info(
       "[Repository] markLatestSessionSaved called with targetUrl:",
       targetUrl,
     );
 
     const ownerId = toObjectId(userId);
     if (!ownerId) {
-      console.warn("[Repository] markLatestSessionSaved requires a valid userId");
+      obsLog.warn("[Repository] markLatestSessionSaved requires a valid userId");
       return null;
     }
 
@@ -182,12 +186,12 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       const filter: Record<string, unknown> = targetUrl
         ? { targetUrl, userId: ownerId }
         : { userId: ownerId };
-      console.log("[Repository] Query filter:", JSON.stringify(filter));
+      obsLog.info("[Repository] Query filter:", JSON.stringify(filter));
 
       const latest = await SessionModel.findOne(filter)
         .sort({ startedAt: -1 })
         .lean();
-      console.log(
+      obsLog.info(
         "[Repository] Found session:",
         latest ? {
           _id: latest._id,
@@ -198,19 +202,19 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       );
 
       if (!latest?._id) {
-        console.warn("[Repository] No session found to save");
+        obsLog.warn("[Repository] No session found to save");
         return null;
       }
 
       const sessionId = latest._id.toString();
-      console.log("[Repository] Marking session as saved:", sessionId);
+      obsLog.info("[Repository] Marking session as saved:", sessionId);
 
       await this.markSessionSaved(sessionId, userId);
-      console.log("[Repository] Session marked as saved successfully");
+      obsLog.info("[Repository] Session marked as saved successfully");
 
       return sessionId;
     } catch (error) {
-      console.error("[Repository] Error in markLatestSessionSaved:", error);
+      obsLog.error("[Repository] Error in markLatestSessionSaved:", error);
       throw error;
     }
   }
@@ -259,7 +263,7 @@ public async listSessionHistory(
           brainSnapshotCounts.set(entry._id.toString(), entry.count);
         }
       } catch (countError) {
-        console.error('[Repository] Brain snapshot count aggregation failed:', countError);
+        obsLog.error('[Repository] Brain snapshot count aggregation failed:', countError);
       }
 
       const items: SessionHistoryRecord[] = sessions.map((session) => {
@@ -288,7 +292,7 @@ public async listSessionHistory(
       return { items, total };
     } catch (error) {
       // Return an empty page rather than throwing — the dashboard still loads.
-      console.error('[Repository] Error in listSessionHistory:', error);
+      obsLog.error('[Repository] Error in listSessionHistory:', error);
       return empty;
     }
   }

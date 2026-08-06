@@ -60,6 +60,34 @@ async function run(): Promise<void> {
     assert.equal(crashed, 1, 'crash fires exactly once');
     assert.equal(crashFailures, 3, 'crash reported at the crash threshold');
   });
+
+  await check('transient outage degrades then recovers, each once', async () => {
+    const probes = withProbes([false, false, true, false, true]);
+    let degraded = 0, recovered = 0, crashed = 0;
+    const m = new TargetHealthMonitor('http://t', 10, 5, {
+      onCrash: () => { crashed += 1; },
+      onDegraded: () => { degraded += 1; },
+      onRecovered: () => { recovered += 1; },
+    }, 5, 2);
+    await pump(m, 5);
+    probes.restore();
+    assert.equal(degraded, 1, 'degrade fires once on the 2nd failure');
+    assert.equal(recovered, 1, 'recover fires once when the probe succeeds');
+    assert.equal(crashed, 0, 'a recovered blip never crashes');
+  });
+
+  await check('sustained outage degrades before it crashes', async () => {
+    const probes = withProbes([false, false, false, false]);
+    const order: string[] = [];
+    const m = new TargetHealthMonitor('http://t', 10, 5, {
+      onCrash: () => order.push('crash'),
+      onDegraded: () => order.push('degrade'),
+      onRecovered: () => order.push('recover'),
+    }, 3, 2);
+    await pump(m, 4);
+    probes.restore();
+    assert.deepEqual(order, ['degrade', 'crash'], 'degrade at 2 probes, crash at 3');
+  });
 }
 
 run().then(() => console.log(`\n${passed} checks passed`)).catch((e) => { console.error(e); process.exit(1); });

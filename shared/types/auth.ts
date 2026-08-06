@@ -146,11 +146,38 @@ export function parseStorageState(raw: string, options?: ParseStorageStateOption
   }
 }
 
+/**
+ * Why an authentication attempt failed. Drives the retry gate and lets every
+ * surface name the failure precisely instead of a single generic sentence. Only
+ * meaningful when `status === 'failed'`.
+ */
+export type TargetAuthFailureCategory =
+  | 'invalid-credentials'       // the target rejected the username/password
+  | 'mfa-required'              // a one-time-code / 2FA step a form fill cannot complete
+  | 'captcha'                   // a CAPTCHA challenge blocks the form
+  | 'account-locked'            // lockout / too-many-attempts / suspended
+  | 'form-not-found'            // no login form discoverable on the target
+  | 'success-indicator-missing' // the configured success selector never appeared
+  | 'session-expired'           // storageState mode: the seeded session was rejected
+  | 'page-load-error'           // the page/entry URL could not be loaded (retryable)
+  | 'transient'                 // no decisive signal yet — likely slow/loading (retryable)
+  | 'unknown';                  // fell through with no classifiable signal
+
+// Only genuinely non-decisive failures retry: a visible rejection, MFA, CAPTCHA,
+// or lockout must NOT re-submit (a second attempt could trip a lockout).
+export const RETRYABLE_AUTH_CATEGORIES: readonly TargetAuthFailureCategory[] = ['page-load-error', 'transient'];
+
+export function isRetryableAuthFailure(category?: TargetAuthFailureCategory): boolean {
+  return category !== undefined && RETRYABLE_AUTH_CATEGORIES.includes(category);
+}
+
 /** Outcome of an authentication attempt. Carries no credential material. */
 export interface TargetAuthResult {
   status: 'authenticated' | 'failed' | 'skipped';
   /** Operator-facing reason. MUST NOT contain the username or password. */
   reason: string;
+  /** Classified failure cause. Set when `status === 'failed'`; drives the retry gate. */
+  category?: TargetAuthFailureCategory;
   /** Which selector resolved each field — for operator debugging, never values. */
   resolution?: { username: string; password: string; submit: string };
   /**

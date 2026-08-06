@@ -11,6 +11,10 @@ import { FREEZE_SELECTORS, INPUT_BLOCK_SELECTORS } from '../../bugs/knowledgeBas
 import { isBackgroundTelemetryUrl } from '../../domain/heuristics/ApiHangFinder.js';
 import { scenarioRandom } from './seededRandom.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:NetworkSaboteur]');
+
 type SabotageMode = 'Delayed' | 'Aborted' | 'Mutated';
 
 /**
@@ -449,7 +453,7 @@ function reportSabotageError(telemetry: TelemetryGateway | undefined, error: unk
     telemetry.emitTelemetry(event);
     return;
   }
-  if (!nonFatal) console.error(`[StressScenario:NetworkSaboteur] ${context}: ${message}`);
+  if (!nonFatal) obsLog.error(`[StressScenario:NetworkSaboteur] ${context}: ${message}`);
 }
 
 /**

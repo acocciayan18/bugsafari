@@ -1,5 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const log = createLogger('[ERROR]');
 
 // Errors a route may deliberately surface to the client. Anything else reaching
 // the handler is treated as internal and its detail is withheld.
@@ -61,10 +64,13 @@ export function errorHandler(
   const errorId = randomUUID();
   const { status, message, code } = classify((error ?? {}) as ErrorLike);
 
-  const detail = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
   // Log the path WITHOUT the query string (SEC-19): query strings can carry reset
   // tokens and other sensitive values that must not land in logs.
-  console.error(`[ERROR ${errorId}] ${request.method} ${request.path} -> ${status}\n${detail}`);
+  log.error(`${request.method} ${request.path} -> ${status}`, {
+    errorId,
+    status,
+    err: error instanceof Error ? error : String(error),
+  });
 
   response.status(status).json({ error: message, code, errorId });
 }

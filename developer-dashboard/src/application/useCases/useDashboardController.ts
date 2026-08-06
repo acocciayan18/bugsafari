@@ -218,6 +218,7 @@ export function useDashboardController() {
             status: s.status,
             hasRunCompleted: s.hasRunCompleted,
             terminationOutcome: s.terminationOutcome,
+            terminationReason: s.terminationReason,
             hasTimeLimitExceeded: s.hasTimeLimitExceeded,
             currentEngineAction: s.currentEngineAction,
             isInitializing: s.isInitializing,

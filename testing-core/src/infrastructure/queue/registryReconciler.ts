@@ -2,6 +2,10 @@ import type { RunRegistry } from './RunRegistry.js';
 import type { TaskQueue } from './TaskQueue.js';
 import type { AuthVault } from './AuthVault.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[RegistryReconciler]');
+
 // BullMQ states meaning the job is still going somewhere.
 const LIVE_JOB_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children', 'active']);
 
@@ -36,7 +40,7 @@ export async function reconcileRunRegistry(
     await registry.clear(entry.runToken, entry.userId);
     await authVault?.discard(entry.runToken);
     cleared += 1;
-    console.log(`[RegistryReconciler] Cleared stale run ${entry.runCode} (token=${entry.runToken}, job ${entry.jobId} state=${state})`);
+    obsLog.info(`[RegistryReconciler] Cleared stale run ${entry.runCode} (token=${entry.runToken}, job ${entry.jobId} state=${state})`);
   }
 
   return cleared;

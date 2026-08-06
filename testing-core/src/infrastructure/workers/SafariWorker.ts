@@ -12,6 +12,11 @@ import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { RunRegistry } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
 import { assertPublicTarget } from '../../serverUtils.js';
+import { validateJobPayload } from '../../validation/jobPayload.js';
+
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[SafariWorker]');
 
 export interface SafariWorkerRuntime {
   worker: Worker<SafariTaskPayload>;
@@ -57,7 +62,7 @@ function readWorkerConcurrency(): number {
   }
 
   if (parsed > MAX_SAFE_WORKER_CONCURRENCY) {
-    console.warn(
+    obsLog.warn(
       `[SafariWorker] BUGSAFARI_WORKER_CONCURRENCY=${parsed} requested but clamped to ` +
         `${MAX_SAFE_WORKER_CONCURRENCY}. Shared in-process run state is not isolated — ` +
         `see CONCURRENCY_BLOCKERS in this file. To raise fleet capacity, add worker ` +
@@ -69,15 +74,14 @@ function readWorkerConcurrency(): number {
 }
 
 function validatePayload(job: Job<SafariTaskPayload>): SafariTaskPayload {
-  const targetUrl = job.data.targetUrl?.trim();
-
-  if (!targetUrl) {
-    throw new Error(`Job ${job.id ?? 'unknown'} is missing a targetUrl.`);
+  const result = validateJobPayload(job.data);
+  if (!result.ok) {
+    throw new Error(`Job ${job.id ?? 'unknown'} has an invalid payload: ${result.error}`);
   }
 
   return {
-    ...job.data,
-    targetUrl,
+    ...result.value,
+    targetUrl: result.value.targetUrl.trim(),
   };
 }
 
@@ -133,7 +137,7 @@ export async function createSafariWorker(
     // out its telemetry for the rest of its timebox. The dead run's own room is
     // safe to borrow only when nothing else holds one.
     if (activeRunToken) {
-      console.warn(`[SafariWorker] Skipping failure notice for run ${runToken} — run ${activeRunToken} owns the wire.`);
+      obsLog.warn(`[SafariWorker] Skipping failure notice for run ${runToken} — run ${activeRunToken} owns the wire.`);
       return;
     }
     telemetry.setRoom(`run:${runToken}`);
@@ -158,7 +162,7 @@ async (job) => {
 
       // Set the userId from job payload - ensures saved documents use the real operator ID
       useCase.setUserId(requestedByUserId ?? null);
-      console.log(requestedByUserId
+      obsLog.info(requestedByUserId
         ? `[SafariWorker] Set userId for job: ${requestedByUserId}`
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
@@ -167,7 +171,7 @@ async (job) => {
       // and re-validate the address (SEC-02). The URL is dialed exactly as enqueued.
       const routing = await assertPublicTarget(payload.targetUrl);
       if (!routing.ok) {
-        console.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
+        obsLog.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
         throw new Error(routing.message);
       }
       const engineUrl = payload.targetUrl;
@@ -176,7 +180,7 @@ async (job) => {
       // worker's telemetry room (run:${runToken}) matches the room the dashboard joined.
       // Log the public runCode, never the runToken — the token is a bearer credential
       // that grants attach/pause/stop on the run (SEC-22).
-      console.log(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runCode=${payload.runCode} target=${engineUrl}`);
+      obsLog.info(`[SafariWorker] job-started id=${job.id ?? 'unknown'} runCode=${payload.runCode} target=${engineUrl}`);
       // Throttled snapshot publishing: mirrors the live SessionManager replay
       // buffer into Redis so /api/session/active can serve it from the API process.
       // Match on the token (snapshot.runToken) — snapshot.runId is the public code.
@@ -192,7 +196,7 @@ async (job) => {
         if (snapshot && snapshot.runToken === payload.runToken) {
           lastPublishedRevision = meta.revision;
           void runRegistry.writeSnapshot(payload.runToken, { ...snapshot, jobId: String(job.id ?? '') })
-            .catch((error) => console.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
+            .catch((error) => obsLog.error('[SafariWorker] snapshot publish failed:', error instanceof Error ? error.message : error));
         }
       }, SNAPSHOT_INTERVAL_MS);
       // unref so a teardown-bypass path can't leave this interval pinning the event loop.
@@ -232,14 +236,14 @@ async (job) => {
             // Publish the final state (10 min TTL) so a post-completion refresh
             // restores the finished dashboard instead of resetting to IDLE.
             await runRegistry.writeSnapshot(payload.runToken, { ...terminal, jobId: String(job.id ?? '') }, 600)
-              .catch((error) => console.error('[SafariWorker] terminal snapshot publish failed:', error instanceof Error ? error.message : error));
+              .catch((error) => obsLog.error('[SafariWorker] terminal snapshot publish failed:', error instanceof Error ? error.message : error));
           } else {
             await runRegistry.clear(payload.runToken, payload.requestedBy ?? null)
-              .catch((error) => console.error('[SafariWorker] registry cleanup failed:', error instanceof Error ? error.message : error));
+              .catch((error) => obsLog.error('[SafariWorker] registry cleanup failed:', error instanceof Error ? error.message : error));
           }
         }
       }
-      console.log(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
+      obsLog.info(`[SafariWorker] job-completed id=${job.id ?? 'unknown'} target=${engineUrl}`);
     },
     {
       connection: {
@@ -255,15 +259,15 @@ async (job) => {
   worker.on('ready', () => {
     // Replica identity: with a fleet of N, log lines are otherwise indistinguishable
     // and there is no way to confirm which process claimed a given run.
-    console.log(`[SafariWorker] ready replica=${hostname()}/${process.pid} queue=${SAFARI_TASK_QUEUE_NAME} redis=${redisUrl}`);
+    obsLog.info(`[SafariWorker] ready replica=${hostname()}/${process.pid} queue=${SAFARI_TASK_QUEUE_NAME} redis=${redisUrl}`);
   });
 
   worker.on('active', (job) => {
-    console.log(`[SafariWorker] active job=${job.id ?? 'unknown'}`);
+    obsLog.info(`[SafariWorker] active job=${job.id ?? 'unknown'}`);
   });
 
   worker.on('completed', (job) => {
-    console.log(`[SafariWorker] completed job=${job.id ?? 'unknown'}`);
+    obsLog.info(`[SafariWorker] completed job=${job.id ?? 'unknown'}`);
   });
 
   // A lock lapse fires 'stalled', but Node does not abort the running processor —
@@ -276,14 +280,14 @@ async (job) => {
   worker.on('stalled', (jobId) => {
     const claim = claimsByJobId.get(jobId);
     if (claim) {
-      console.warn(`[SafariWorker] stalled job=${jobId} but processor still active for run ${claim.runToken} — not tearing down; execute() owns cleanup.`);
+      obsLog.warn(`[SafariWorker] stalled job=${jobId} but processor still active for run ${claim.runToken} — not tearing down; execute() owns cleanup.`);
       return;
     }
-    console.error(`[SafariWorker] stalled job=${jobId} — no active claim; run already settled.`);
+    obsLog.error(`[SafariWorker] stalled job=${jobId} — no active claim; run already settled.`);
   });
 
   worker.on('failed', (job, error) => {
-    console.error(`[SafariWorker] failed job=${job?.id ?? 'unknown'} error=${error.message}`);
+    obsLog.error(`[SafariWorker] failed job=${job?.id ?? 'unknown'} error=${error.message}`);
     if (!job?.data?.runToken) return;
     // BullMQ increments attemptsMade only after the processor settles, so during
     // this handler it still counts prior attempts — matching its own retry test
@@ -295,7 +299,7 @@ async (job) => {
   });
 
   worker.on('error', (error) => {
-    console.error(`[SafariWorker] redis-or-worker-error ${error.message}`);
+    obsLog.error(`[SafariWorker] redis-or-worker-error ${error.message}`);
   });
 
   await worker.waitUntilReady();

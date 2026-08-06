@@ -2,10 +2,14 @@ import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
-import { requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
+import { validateEmail, validateToken, requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
 import { sendPasswordResetEmail, deliveredOrDevFallback, RESET_TOKEN_TTL_MS, formatDuration } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
+
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[FORGOT PASSWORD]');
 
 // Unknown email, wrong token and expired token are indistinguishable to the
 // caller — any split would leak which reset links exist.
@@ -46,19 +50,10 @@ export async function handleForgotPassword(
   try {
     const { email } = request.body;
 
-    // Validate and sanitize email
-    const sanitizedEmail = requireNonEmptyString(email, 'email');
+    // Validate + normalize email before any lookup or bcrypt work.
+    const trimmedEmail = validateEmail(email);
 
-    if (!sanitizedEmail) {
-      const body: AuthErrorBody = { error: 'Email is required', code: 'VALIDATION_FAILED', field: 'email' };
-      response.status(400).json(body);
-      return;
-    }
-
-    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
-
-    // Additional validation
-    if (trimmedEmail.length < 5 || !trimmedEmail.includes('@')) {
+    if (!trimmedEmail) {
       const body: AuthErrorBody = {
         error: 'Please enter a valid email address',
         code: 'VALIDATION_FAILED',
@@ -75,7 +70,7 @@ export async function handleForgotPassword(
     // equivalent bcrypt cost, so it cannot be told apart from a known one.
     if (!user) {
       await bcrypt.compare(generateResetToken(), TIMING_DECOY_HASH);
-      console.log(`[FORGOT PASSWORD] No user found for email: ${maskEmail(trimmedEmail)}`);
+      obsLog.info(`[FORGOT PASSWORD] No user found for email: ${maskEmail(trimmedEmail)}`);
       response.json({ ok: true, message: 'If an account exists with that email, a password reset link has been sent.' });
       return;
     }
@@ -87,7 +82,7 @@ export async function handleForgotPassword(
     user.resetPasswordExpires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
     await user.save();
 
-    console.log(`[FORGOT PASSWORD] Reset requested for: ${maskEmail(trimmedEmail)} (expires in ${formatDuration(RESET_TOKEN_TTL_MS)})`);
+    obsLog.info(`[FORGOT PASSWORD] Reset requested for: ${maskEmail(trimmedEmail)} (expires in ${formatDuration(RESET_TOKEN_TTL_MS)})`);
 
     // Awaited so success is reported only after delivery is confirmed. A real send
     // failure surfaces an honest error rather than a false "link sent". (Trade-off:
@@ -117,18 +112,18 @@ export async function handleResetPassword(
   try {
     const { email, token, newPassword } = request.body;
 
-    // Validate inputs
-    const sanitizedEmail = requireNonEmptyString(email, 'email');
-    const sanitizedToken = requireNonEmptyString(token, 'token');
+    // Validate inputs. A malformed email or token means a mangled/forged link — route
+    // it to the link-expired copy (same as an unknown/expired token) so nothing about
+    // which reset links exist is leaked.
+    const trimmedEmail = validateEmail(email);
+    const trimmedToken = validateToken(token);
     const sanitizedPassword = requireNonEmptyString(newPassword, 'newPassword');
 
-    if (!sanitizedEmail || !sanitizedToken || !sanitizedPassword) {
-      // A missing email/token means a mangled link, not a form mistake — route it
-      // to the link-expired copy instead of blaming the password field.
-      if (!sanitizedEmail || !sanitizedToken) {
-        response.status(400).json(RESET_TOKEN_REJECTION);
-        return;
-      }
+    if (!trimmedEmail || !trimmedToken) {
+      response.status(400).json(RESET_TOKEN_REJECTION);
+      return;
+    }
+    if (!sanitizedPassword) {
       const body: AuthErrorBody = {
         error: 'A new password is required',
         code: 'VALIDATION_FAILED',
@@ -138,8 +133,6 @@ export async function handleResetPassword(
       return;
     }
 
-    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
-    const trimmedToken = sanitizedToken.trim();
     const trimmedPassword = sanitizedPassword;
 
     // Validate password complexity
@@ -170,8 +163,19 @@ export async function handleResetPassword(
       !user.resetPasswordExpires ||
       user.resetPasswordExpires < new Date()
     ) {
-      console.warn(`[RESET PASSWORD] Invalid or expired token for: ${maskEmail(trimmedEmail)}`);
+      obsLog.warn(`[RESET PASSWORD] Invalid or expired token for: ${maskEmail(trimmedEmail)}`);
       response.status(400).json(RESET_TOKEN_REJECTION);
+      return;
+    }
+
+    // Reject reuse of the current password (hash compare, never plaintext).
+    if (await user.comparePassword(trimmedPassword)) {
+      const body: AuthErrorBody = {
+        error: 'Your new password must be different from your current password',
+        code: 'PASSWORD_REUSED',
+        field: 'password',
+      };
+      response.status(400).json(body);
       return;
     }
 
@@ -188,7 +192,7 @@ export async function handleResetPassword(
     // one. Outstanding access tokens remain valid until their short TTL lapses.
     const revoked = await revokeAllForUser(user._id.toString(), 'password-reset');
 
-    console.log(`[RESET PASSWORD] Password successfully reset for: ${maskEmail(trimmedEmail)} (${revoked} session(s) revoked)`);
+    obsLog.info(`[RESET PASSWORD] Password successfully reset for: ${maskEmail(trimmedEmail)} (${revoked} session(s) revoked)`);
 
     response.json({
       ok: true,

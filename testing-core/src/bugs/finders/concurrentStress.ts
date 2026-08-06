@@ -13,6 +13,10 @@
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, StressClickMetadata } from '../../domain/chaos/index.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ConcurrentStressGuard]');
+
 // Singleton reference to the active chaos transaction manager
 // In a full implementation, this would be injected via dependency injection
 let chaosManagerAccessor: {
@@ -203,18 +207,18 @@ export const concurrentStressGuard: BugFinder = {
 
     // Verify we have an active STRESS_CLICK transaction
     if (!hasActiveStressClickTransaction()) {
-      console.log('[ConcurrentStressGuard] No active STRESS_CLICK transaction - skipping stability detection');
+      obsLog.info('[ConcurrentStressGuard] No active STRESS_CLICK transaction - skipping stability detection');
       return findings;
     }
 
     // Get the metadata from the transaction
     const metadata = getActiveStressMetadata();
     if (!metadata) {
-      console.log('[ConcurrentStressGuard] No stress click metadata available');
+      obsLog.info('[ConcurrentStressGuard] No stress click metadata available');
       return findings;
     }
 
-    console.log(
+    obsLog.info(
       `[ConcurrentStressGuard] Analyzing stability for concurrent stress: velocity=${metadata.velocity}ms, chain=${metadata.elementChain.join(', ')}`
     );
 
@@ -222,7 +226,7 @@ export const concurrentStressGuard: BugFinder = {
     // actually crashed, an inert burst (controls obscured/detached) must not manufacture a
     // stress finding — the reproduction would be misleading (clicksRegistered === 0 gate).
     if (metadata.completed === 0 && !ctx.crashHalted) {
-      console.log('[ConcurrentStressGuard] 0 clicks registered and no crash — inert burst, suppressing finding');
+      obsLog.info('[ConcurrentStressGuard] 0 clicks registered and no crash — inert burst, suppressing finding');
       return findings;
     }
 
@@ -273,7 +277,7 @@ export const concurrentStressGuard: BugFinder = {
 
     // If no specific issues found but we had a stress click, log the completion
     if (findings.length === 0) {
-      console.log(`[ConcurrentStressGuard] No stability issues detected for stress clicks at ${metadata.velocity}ms velocity`);
+      obsLog.info(`[ConcurrentStressGuard] No stability issues detected for stress clicks at ${metadata.velocity}ms velocity`);
     }
 
     return findings;

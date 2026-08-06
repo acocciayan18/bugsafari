@@ -30,6 +30,10 @@ import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js'
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel, elementNoun, describeTarget } from '../services/forensics/narration.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[BugSafari]');
+
 /** Bounded number of interruption cycles — deterministic and efficient. */
 const RACE_CYCLES = 3;
 /** Delay between the async trigger and the interrupt: sits inside the in-flight window. */
@@ -99,7 +103,7 @@ export const asyncStateRacer = {
     const selector = target?.selector ?? DEFAULT_SELECTOR;
     const label = target ? resolveElementLabel(target) : 'async control';
 
-    console.log(`[StressScenario:AsyncStateRacer] Interruption race on '${selector}' (${RACE_CYCLES} cycles)`);
+    obsLog.info(`[StressScenario:AsyncStateRacer] Interruption race on '${selector}' (${RACE_CYCLES} cycles)`);
 
     // 1) Surface swallowed async failures for the always-on console monitor.
     await installRejectionBridge(page);
@@ -184,7 +188,7 @@ export const asyncStateRacer = {
           `${metadata.nodeGrowth} extra page elements left behind, ended '${metadata.resultingState}'.`,
       );
 
-      console.log(
+      obsLog.info(
         `[StressScenario:AsyncStateRacer] Completed: rejections=${rejections}, ` +
           `heapΔ=${metadata.heapGrowthBytes}B, nodeΔ=${metadata.nodeGrowth}, state=${metadata.resultingState}`,
       );

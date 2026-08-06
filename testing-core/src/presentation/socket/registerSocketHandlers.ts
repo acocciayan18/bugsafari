@@ -22,6 +22,10 @@ import { queueRoom, type QueueStatusBroadcaster } from '../../infrastructure/que
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { RunRegistry } from '../../infrastructure/queue/RunRegistry.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[Socket]');
+
 /** Optional distributed-queue wiring, present only when BUGSAFARI_USE_QUEUE=1. */
 export interface QueueSocketSupport {
   broadcaster: QueueStatusBroadcaster;
@@ -67,7 +71,7 @@ function withinEventBudget(socket: Socket): boolean {
 function joinLimited(socket: Socket, room: string): boolean {
   if (socket.rooms.has(room)) return true;
   if (socket.rooms.size >= MAX_ROOMS_PER_SOCKET) {
-    console.warn(`[Socket]  join cap (${MAX_ROOMS_PER_SOCKET}) reached for ${socket.id} — refusing ${room}`);
+    obsLog.warn(`[Socket]  join cap (${MAX_ROOMS_PER_SOCKET}) reached for ${socket.id} — refusing ${room}`);
     return false;
   }
   void socket.join(room);
@@ -113,7 +117,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     if (!timer) return;
     clearTimeout(timer);
     queueGraceTimers.delete(runToken);
-    console.log(`[Socket] Owner returned to run ${runToken} — abandonment timer cancelled.`);
+    obsLog.info(`[Socket] Owner returned to run ${runToken} — abandonment timer cancelled.`);
   };
 
   const armQueueGrace = (runToken: string): void => {
@@ -127,17 +131,17 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         if (watchers.length > 0) return;
         const entry = await queueSupport.runRegistry.findByRunToken(runToken).catch(() => null);
         if (!entry) return;
-        console.log(`[Socket] Run ${runToken} abandoned past grace — stopping the worker.`);
+        obsLog.info(`[Socket] Run ${runToken} abandoned past grace — stopping the worker.`);
         queueSupport.controlPublisher.publish('stop', runToken);
-      })().catch((error) => console.error('[Socket] Abandonment stop failed:', error));
+      })().catch((error) => obsLog.error('[Socket] Abandonment stop failed:', error));
     }, sessionManager.graceMs);
     timer.unref();
     queueGraceTimers.set(runToken, timer);
-    console.log(`[Socket] Run ${runToken} has no watchers — abandonment timer armed (${sessionManager.graceMs}ms).`);
+    obsLog.info(`[Socket] Run ${runToken} has no watchers — abandonment timer armed (${sessionManager.graceMs}ms).`);
   };
 
   io.on('connection', (socket: Socket) => {
-    console.log(`[Socket] dashboard connected ${socket.id}`);
+    obsLog.info(`[Socket] dashboard connected ${socket.id}`);
 
     // Queue-mode ownership. A null/unknown runToken must NEVER reach the control
     // bridge: the worker treats runToken===null as "apply to my local run", so an
@@ -173,7 +177,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         entry && entry.jobId === jobId && (!entry.userId || entry.userId === socketUserId(socket)),
       );
       if (!authorized) {
-        console.warn(`[Socket]  queue-subscribe rejected: ${socket.id} does not own job ${jobId}`);
+        obsLog.warn(`[Socket]  queue-subscribe rejected: ${socket.id} does not own job ${jobId}`);
         return;
       }
 
@@ -203,7 +207,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       }
       const result = sessionManager.attach(socket, request.runToken, socketUserId(socket));
       if (result.attached) {
-        console.log(`[Socket] ${socket.id} re-attached to active run.`);
+        obsLog.info(`[Socket] ${socket.id} re-attached to active run.`);
       }
       respond(result);
     });
@@ -229,17 +233,17 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       if (controlPublisher) {
         const runToken = socketRunToken();
         if (!(await ownsQueuedRun(runToken))) {
-          console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runToken ?? '(none)'}`);
+          obsLog.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runToken ?? '(none)'}`);
           return;
         }
         controlPublisher.publish(command, runToken, reason);
         return;
       }
       if (!ownsActiveRun()) {
-        console.warn(`[Socket]  ${label} rejected: ${socket.id} does not own the active run`);
+        obsLog.warn(`[Socket]  ${label} rejected: ${socket.id} does not own the active run`);
         return;
       }
-      console.log(`[Socket] Session ${label} manually`);
+      obsLog.info(`[Socket] Session ${label} manually`);
       run();
     };
 
@@ -284,7 +288,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       }
 
       verificationsInFlight.add(userId);
-      console.log(`[Socket] verify-fix requested by user ${userId} for session ${request.sessionId} bug ${request.bugId}`);
+      obsLog.info(`[Socket] verify-fix requested by user ${userId} for session ${request.sessionId} bug ${request.bugId}`);
       try {
         // Race the replay against a hard timeout so a hung browser can never keep
         // this operator's slot (or, previously, the whole process) locked.
@@ -305,7 +309,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         respond(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[Socket] verify-fix failed:', message);
+        obsLog.error('[Socket] verify-fix failed:', message);
         respond(verificationFailedAck(request, `Verification error: ${message}`));
       } finally {
         verificationsInFlight.delete(userId);
@@ -313,7 +317,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     });
 
     socket.on('disconnect', () => {
-      console.log(`[Socket] dashboard disconnected ${socket.id}`);
+      obsLog.info(`[Socket] dashboard disconnected ${socket.id}`);
       // Grace-period keep-alive: the manager keeps the engine running for a
       // configurable window so a refresh / transient drop can reconnect instead
       // of losing the run. Only the LAST owner socket leaving arms the timer.
@@ -325,7 +329,7 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       if (!queueSupport || !runToken) return;
       void io.in(`run:${runToken}`).fetchSockets()
         .then((watchers) => { if (watchers.length === 0) armQueueGrace(runToken); })
-        .catch((error) => console.error('[Socket] Abandonment check failed:', error));
+        .catch((error) => obsLog.error('[Socket] Abandonment check failed:', error));
     });
   });
 }

@@ -149,7 +149,7 @@ export default function TestingConfigModal({
                     <span className="flex flex-col">
                       <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
                         {label}
-                        {id === 'subtree' && (
+                        {id === 'site' && (
                           <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
                         )}
                       </span>

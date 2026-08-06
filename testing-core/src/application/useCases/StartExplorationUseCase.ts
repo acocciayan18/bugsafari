@@ -22,6 +22,10 @@ import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js'
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
 import { ConsoleLogStore } from '../../infrastructure/monitoring/ConsoleLogStore.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StartExplorationUseCase]');
+
 // Hard caps on the arrays embedded in the session document (SEC-27). The 16MB BSON
 // ceiling is a per-document limit; exceeding it fails the whole save, so a pathological
 // run is truncated (with a log) rather than lost entirely.
@@ -30,7 +34,7 @@ const MAX_EMBEDDED_ACTION_STEPS = 2000;
 
 function capEmbedded<T>(items: T[], max: number, label: string): T[] {
   if (items.length <= max) return items;
-  console.warn(`[StartExplorationUseCase] ${label} ${items.length} exceeds ${max} — truncating to bound BSON document size (SEC-27).`);
+  obsLog.warn(`[StartExplorationUseCase] ${label} ${items.length} exceeds ${max} — truncating to bound BSON document size (SEC-27).`);
   return items.slice(0, max);
 }
 
@@ -153,12 +157,12 @@ export class StartExplorationUseCase {
     public setUserId(userId: string | null | undefined): void {
         if (userId && isValidObjectId(userId)) {
             this.currentUserId = userId;
-            console.log(`[StartExplorationUseCase] UserId set to: ${userId}`);
+            obsLog.info(`[StartExplorationUseCase] UserId set to: ${userId}`);
         } else {
             // Clear to null (guest / unauthenticated) — prevents a singleton use case
             // from leaking the previous authenticated user's id into a later guest run.
             this.currentUserId = null;
-            console.log(`[StartExplorationUseCase] UserId cleared (guest/unauthenticated)`);
+            obsLog.info(`[StartExplorationUseCase] UserId cleared (guest/unauthenticated)`);
         }
     }
 
@@ -551,7 +555,7 @@ export class StartExplorationUseCase {
                 source = originalSessionId ? 'reuse-id-create' : 'fallback-create';
             }
 
-            console.log(`[StartExplorationUseCase] ✓ Manual save to sessions (${source}): ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
+            obsLog.info(`[StartExplorationUseCase] ✓ Manual save to sessions (${source}): ${savedDocument._id} | Actions: ${actionRecords.length} | Findings: ${findingsTotal} (source: ${engineBugs.length > 0 ? 'engine-memory' : 'live-transfer'}) | Runtime: ${runtimeMs}ms`);
 
             // Flush the full network/console logs for this run so the saved report's
             // Network/Console tabs mirror the live dashboard. A flush failure must
@@ -578,9 +582,9 @@ export class StartExplorationUseCase {
                     networkLogRepository.createMany(savedDocument._id as Types.ObjectId, netEntries),
                     consoleLogRepository.createMany(savedDocument._id as Types.ObjectId, conEntries),
                 ]);
-                console.log(`[StartExplorationUseCase] ✓ Saved logs: network=${netEntries.length} console=${conEntries.length}`);
+                obsLog.info(`[StartExplorationUseCase] ✓ Saved logs: network=${netEntries.length} console=${conEntries.length}`);
             } catch (logError) {
-                console.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
+                obsLog.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
             }
 
             return { success: true, message: `Saved as ${savedDocument._id}`, runId: savedDocument.runId };
@@ -593,7 +597,7 @@ export class StartExplorationUseCase {
             // failure was a cap breached only on the in-process path, invisible
             // from the message alone.
             const code: SaveFailureCode = name === 'ValidationError' ? 'VALIDATION_FAILED' : 'PERSIST_FAILED';
-            console.error(
+            obsLog.error(
                 `[StartExplorationUseCase] ✗ Manual save failed (${code}/${name}): ${errorMessage}`
                 + ` | runCode=${requestedCode ?? 'none'} sessionId=${originalSessionId?.toString() ?? 'none'}`
                 + ` findings=${caughtBugs.length} actionSteps=${actionSteps.length}`
@@ -618,13 +622,13 @@ export class StartExplorationUseCase {
     private async executeInScope(targetUrl: string, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], runId?: string, targetAuth?: TargetAuthConfig, providedRunCode?: string): Promise<void> {
         // Store optimization settings for use during execution
         this.optimizationSettings = optimizationSettings;
-        console.log(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
-        console.log(`[StartExplorationUseCase] Selected scenarios received:`, selectedScenarios ?? '(all)');
+        obsLog.info(`[StartExplorationUseCase] Optimization settings received:`, optimizationSettings);
+        obsLog.info(`[StartExplorationUseCase] Selected scenarios received:`, selectedScenarios ?? '(all)');
 
         // Phase 3: Get timebox from optimization settings (default: 600000ms = 10 minutes)
         const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
         const TIMEBOX_MS = this.optimizationSettings?.['execution-timebox-ms'] ?? DEFAULT_TIMEBOX_MS;
-        console.log(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
+        obsLog.info(`[StartExplorationUseCase] Timebox enforcement: ${TIMEBOX_MS}ms (${TIMEBOX_MS / 60000} minutes)`);
 
         this.executionStartTime = Date.now();
         let executionStatus: ExecutionStatus = 'COMPLETED';
@@ -716,7 +720,7 @@ export class StartExplorationUseCase {
 // Check if the engine detected timebox exceeded (via its internal timing interval)
             if (result.outcome === 'timebox') {
                 executionStatus = 'TIMEOUT';
-                console.log(`[StartExplorationUseCase] ️ Timebox of ${TIMEBOX_MS}ms exceeded (active time) - engine self-terminated`);
+                obsLog.info(`[StartExplorationUseCase] ️ Timebox of ${TIMEBOX_MS}ms exceeded (active time) - engine self-terminated`);
 
                 this.telemetry.emitTelemetry({
                     timestamp: new Date().toISOString(),
@@ -755,6 +759,9 @@ export class StartExplorationUseCase {
                     actionExecuted: 'engine-stopped',
                     url: targetUrl,
                     terminationOutcome: result.outcome,
+                    // Bare reason for surfaces that render it under the outcome label; the
+                    // composed message keeps the label prefix for single-line contexts.
+                    ...(result.reason ? { terminationReason: result.reason } : {}),
                     message: describeTermination(result.outcome, result.reason),
                 },
             });
@@ -810,7 +817,7 @@ export class StartExplorationUseCase {
             // expiry already ended it. CRASHED preserves the fatal-error lifecycle.
             sessionManager.endRun(executionStatus === 'CRASHED' ? 'CRASHED' : 'COMPLETED', resolvedRunToken);
 
-            console.log('[StartExplorationUseCase] Session terminated, status set to IDLE');
+            obsLog.info('[StartExplorationUseCase] Session terminated, status set to IDLE');
         }
     }
 }

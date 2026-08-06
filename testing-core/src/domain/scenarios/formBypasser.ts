@@ -5,6 +5,10 @@ import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js'
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel, elementNoun, describeConstraintBypass } from '../services/forensics/narration.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[FormBypasser]');
+
 /**
  * Attributes stripped by FormBypasser to force interactions.
  */
@@ -255,9 +259,9 @@ export async function stripConstraintsSilently(
     return JSON.parse(raw) as ConstraintStripResult;
   } catch (error) {
     if (error instanceof Error && isNonFatalError(error)) {
-      console.log(`[FormBypasser] Non-fatal error during silent strip ignored: ${error.message}`);
+      obsLog.info(`[FormBypasser] Non-fatal error during silent strip ignored: ${error.message}`);
     } else {
-      console.error(`[FormBypasser] Silent constraint strip failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      obsLog.error(`[FormBypasser] Silent constraint strip failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     return { selector, affectedCount: 0, affectedSelectors: [], strippedAttributes: [] };
   }
@@ -286,7 +290,7 @@ export const formBypasser: StressScenario = {
 
     try {
       const result = await stripConstraintsSilently(page, selector);
-      console.log(
+      obsLog.info(
         `[Telemetry:ACTION]  FormBypasser: Programmatically stripped HTML constraints from ${result.selector} (${result.affectedCount} elements affected)`
       );
 
@@ -314,7 +318,7 @@ export const formBypasser: StressScenario = {
       }
 
       // Emit detailed telemetry
-      console.log(
+      obsLog.info(
         `[Telemetry:ACTION] ${JSON.stringify({
           event: 'ACTION',
           actionExecuted: 'form-bypass',
@@ -327,12 +331,12 @@ export const formBypasser: StressScenario = {
       );
     } catch (error) {
       if (error instanceof Error && isNonFatalError(error)) {
-        console.log(`[StressScenario:FormBypasser] Non-fatal error ignored: ${error.message}`);
+        obsLog.info(`[StressScenario:FormBypasser] Non-fatal error ignored: ${error.message}`);
         return;
       }
 
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[StressScenario:FormBypasser] Failed during constraint stripping: ${message}`);
+      obsLog.error(`[StressScenario:FormBypasser] Failed during constraint stripping: ${message}`);
     }
   },
 };

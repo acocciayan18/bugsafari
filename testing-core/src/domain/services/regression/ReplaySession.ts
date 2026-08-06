@@ -17,6 +17,10 @@ import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
 import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
 import { ReplayProbes, HANG_THRESHOLD_MS } from './replayProbes.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ReplaySession]');
+
 // Deterministic settle windows so async faults surface without any randomness.
 export const PER_STEP_SETTLE_MS = 400;
 export const FINAL_SETTLE_MS = 800;
@@ -127,7 +131,7 @@ export async function runReplaySession(
     emit('validating', stepsReplayed);
     await page.waitForTimeout(settleFor(bugClass, faultType));
     // Strip inline script/style source before the content-signature scan: page.content()
-    // serializes the whole document, and an app's own `console.error("TypeError…")` literal
+    // serializes the whole document, and an app's own `obsLog.error("TypeError…")` literal
     // would otherwise match as a reproduced fault the replay never actually executed.
     const pageContent = stripNonRendered(await page.content().catch(() => ''));
     await probes.drain();
@@ -164,7 +168,7 @@ async function replayStep(runner: ReplayActionRunner, step: ActionStepTrace): Pr
   if (step.actionType !== 'macro' && (!step.selector || step.selector === 'N/A')) return 'skipped';
   const outcome = await runner.replay(step);
   if (outcome.status === 'error') {
-    console.warn(`[ReplaySession] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
+    obsLog.warn(`[ReplaySession] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);
   }
   return outcome.status;
 }

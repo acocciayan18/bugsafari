@@ -13,6 +13,12 @@ export interface TargetHealthCallbacks {
    * exactly once, after which probing stops — the caller terminates the run.
    */
   onCrash(failures: number): void;
+  // Target unreachable for `failures` probes (>= degradeThreshold, < crashThreshold):
+  // a sustained-but-not-yet-fatal outage. Fired once on entering the degraded state;
+  // the caller pauses exploration. Probing continues so recovery/crash is still seen.
+  onDegraded?(failures: number): void;
+  // A probe succeeded while degraded — the target is back. The caller resumes.
+  onRecovered?(): void;
 }
 
 export class TargetHealthMonitor {
@@ -22,6 +28,8 @@ export class TargetHealthMonitor {
   private consecutiveFailures = 0;
   // Latches once the crash escalation has fired so it can never double-fire.
   private crashReported = false;
+  // True between onDegraded and onRecovered so each transition fires exactly once.
+  private degraded = false;
 
   constructor(
     private readonly targetUrl: string,
@@ -31,6 +39,9 @@ export class TargetHealthMonitor {
     // Consecutive failed probes required to escalate a suspected outage into a
     // confirmed server crash that terminates the run.
     private readonly crashThreshold: number = 3,
+    // Consecutive failed probes required to declare a transient outage and pause
+    // exploration; must be below crashThreshold to give a pause window before a kill.
+    private readonly degradeThreshold: number = 2,
   ) {}
 
   /** Begin probing after one interval's grace so launch navigation isn't misread. */
@@ -58,10 +69,21 @@ export class TargetHealthMonitor {
       if (reachable) {
         // A single reachable probe clears any accumulated transient failures.
         this.consecutiveFailures = 0;
+        // Target came back after a transient outage — lift the pause exactly once.
+        if (this.degraded) {
+          this.degraded = false;
+          this.callbacks.onRecovered?.();
+        }
         return;
       }
 
       this.consecutiveFailures += 1;
+      // Transient outage: pause exploration (findings would be false positives) but
+      // keep probing so recovery or a full crash is still detected. Fires once.
+      if (this.consecutiveFailures >= this.degradeThreshold && !this.degraded && !this.crashReported) {
+        this.degraded = true;
+        this.callbacks.onDegraded?.(this.consecutiveFailures);
+      }
       // Escalate to a confirmed crash once verification has failed enough times;
       // stop probing and let the caller terminate. Latched so it fires once.
       if (this.consecutiveFailures >= this.crashThreshold && !this.crashReported) {

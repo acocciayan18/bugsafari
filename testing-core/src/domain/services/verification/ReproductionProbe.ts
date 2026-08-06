@@ -21,6 +21,10 @@ import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { buildActionSteps } from '../forensics/actionStepMapper.js';
 import { runReplaySession } from '../regression/ReplaySession.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ReproductionProbe]');
+
 // Deep queues are worthless here: by the time a stale candidate replays, the app is
 // many states away and the verdict says nothing. Shed load instead of lying.
 const MAX_QUEUED = 12;
@@ -123,9 +127,9 @@ export class ReproductionProbe {
       // Only when nothing queued is less important do we drop the newcomer.
       if (shouldEvictFor(this.queue, request.severity)) {
         const [victim] = this.queue.splice(lowestSeverityIndex(this.queue), 1);
-        console.warn(`[ReproductionProbe] queue full — evicting ${victim.severity} ${victim.bugId} for ${request.severity} ${request.bugId}`);
+        obsLog.warn(`[ReproductionProbe] queue full — evicting ${victim.severity} ${victim.bugId} for ${request.severity} ${request.bugId}`);
       } else {
-        console.warn(`[ReproductionProbe] queue full (${MAX_QUEUED}) — skipping ${request.severity} repro for ${request.bugId}`);
+        obsLog.warn(`[ReproductionProbe] queue full (${MAX_QUEUED}) — skipping ${request.severity} repro for ${request.bugId}`);
         return;
       }
     }
@@ -168,7 +172,7 @@ export class ReproductionProbe {
         try {
           this.sink(outcome);
         } catch (error) {
-          console.warn(`[ReproductionProbe] sink failed for ${request.bugId}:`, error);
+          obsLog.warn(`[ReproductionProbe] sink failed for ${request.bugId}:`, error);
         }
       }
     }
@@ -251,7 +255,7 @@ export class ReproductionProbe {
       // unset rather than assert a negative — a false "did not reproduce" costs
       // confidence on a finding that may be perfectly real.
       if (!result || !result.ok) {
-        console.warn(`[ReproductionProbe] undecidable for ${request.bugId}: ${result?.error ?? 'timed out'}`);
+        obsLog.warn(`[ReproductionProbe] undecidable for ${request.bugId}: ${result?.error ?? 'timed out'}`);
         return null;
       }
 
@@ -261,7 +265,7 @@ export class ReproductionProbe {
         matchedSignals: result.matchedSignals,
       };
     } catch (error) {
-      console.warn(`[ReproductionProbe] failed for ${request.bugId}:`, error instanceof Error ? error.message : error);
+      obsLog.warn(`[ReproductionProbe] failed for ${request.bugId}:`, error instanceof Error ? error.message : error);
       return null;
     } finally {
       await context?.close().catch(() => undefined);

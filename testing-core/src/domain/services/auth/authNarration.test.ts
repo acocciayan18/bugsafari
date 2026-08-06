@@ -13,6 +13,7 @@ import {
   controlPhrase,
   describeAffordanceClick,
   describeAuthFailed,
+  describeAuthRetry,
   describeAuthStart,
   describeAuthSucceeded,
   describeCredentialsEntered,
@@ -45,6 +46,7 @@ const sequence = [
   describeCredentialsEntered(),
   describeSubmitted('Log in'),
   describeVerifying(),
+  describeAuthRetry('the target has not confirmed the sign-in yet — it may be slow or still loading'),
   describeAuthSucceeded('https://app.test/dashboard'),
   describeAuthFailed('the login form reported invalid credentials'),
 ];
@@ -70,6 +72,13 @@ check('no auth code is empty or collides with an engine lifecycle code', () => {
 
 check('probing two routes reads differently, so neither is deduped away', () => {
   assert.notEqual(describeRouteProbe('https://app.test/login'), describeRouteProbe('https://app.test/signin'));
+});
+
+check('the retry line is distinct from verifying and failed, so none is deduped away', () => {
+  const retry = describeAuthRetry('the entry page could not be loaded');
+  assert.notEqual(retry, describeVerifying());
+  assert.notEqual(retry, describeAuthFailed('the entry page could not be loaded'));
+  assert.equal(retry.includes('"'), false);
 });
 
 console.log('\nauthNarration — nothing confidential reaches an operator surface');

@@ -70,6 +70,8 @@ interface ClinicalForensicsDashboardProps {
   hasRunCompleted?: boolean;
   /** Why the run ended — rendered by the Live Feed's terminal overlay. */
   terminationOutcome?: RunTerminationOutcome | null;
+  /** Bare engine reason, shown under the outcome label in the terminal overlay. */
+  terminationReason?: string | null;
   isSessionSaved?: boolean;
   isInitializing?: boolean;
   liveFrame?: string | null; 
@@ -98,6 +100,7 @@ export default function ClinicalForensicsDashboard({
   currentEngineAction = '',
   hasRunCompleted = false,
   terminationOutcome = null,
+  terminationReason = null,
   isSessionSaved = false,
   isInitializing = false,
   liveFrame = null,
@@ -267,7 +270,7 @@ export default function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-sm font-bold  text-[var(--text-primary) sm:text-[13px]  uppercase font-sans">
+          <h2 className="text-sm font-bold text-(--text-primary) sm:text-[13px] uppercase font-sans">
             COMMAND CENTER
           </h2>
 
@@ -469,6 +472,7 @@ export default function ClinicalForensicsDashboard({
                 isQueued={isQueued}
                 hasRunCompleted={hasRunCompleted}
                 terminationOutcome={terminationOutcome}
+                terminationReason={terminationReason}
                 isInitializing={isInitializing}
                 liveFrame={liveFrame}
               />

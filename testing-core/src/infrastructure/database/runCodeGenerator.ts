@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { RUN_CODE_BYTES, RUN_CODE_PREFIX } from '../../../../shared/runCode.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[runCodeGenerator]');
+
 // Mint one RUN- code: prefix + RUN_CODE_BYTES random bytes as uppercase hex.
 export function generateRunCode(): string {
   return `${RUN_CODE_PREFIX}${randomBytes(RUN_CODE_BYTES).toString('hex').toUpperCase()}`;
@@ -40,7 +44,7 @@ export async function createWithRunCodeRetry<T>(
     } catch (error) {
       if (!isDuplicateRunIdError(error) || attempt === maxAttempts - 1) throw error;
       current = generateRunCode();
-      console.warn(`[runCodeGenerator] runId collision on create — regenerated to ${current}`);
+      obsLog.warn(`[runCodeGenerator] runId collision on create — regenerated to ${current}`);
     }
   }
   throw new Error('createWithRunCodeRetry: exhausted attempts');

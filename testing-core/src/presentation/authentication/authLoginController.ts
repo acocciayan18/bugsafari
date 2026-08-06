@@ -1,8 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
-import { requireNonEmptyString, maskEmail } from './authValidation.js';
+import { validateEmail, requireNonEmptyString, isPasswordTooLong, maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
+
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[Auth]');
 
 // Wrong-email and wrong-password answer identically — telling them apart would
 // turn the login route into an account enumeration oracle.
@@ -24,23 +28,29 @@ export async function handleLogin(
   try {
     const { email, password } = request.body;
 
-    // Validate and sanitize inputs
-    const sanitizedEmail = requireNonEmptyString(email, 'email');
+    // Validate + normalize inputs. Malformed email or an over-length password can
+    // never match a real credential, so reject them up front — this also spares the
+    // DB lookup and bcrypt compare (a password-length DoS guard). Neither check is
+    // account-specific, so it never becomes an enumeration oracle.
+    const trimmedEmail = validateEmail(email);
     const sanitizedPassword = requireNonEmptyString(password, 'password');
 
-    if (!sanitizedEmail || !sanitizedPassword) {
+    if (!trimmedEmail || !sanitizedPassword) {
       const body: AuthErrorBody = {
         error: 'Email and password are required and must be valid strings',
         code: 'VALIDATION_FAILED',
-        field: !sanitizedEmail ? 'email' : 'password',
+        field: !trimmedEmail ? 'email' : 'password',
       };
       response.status(400).json(body);
       return;
     }
 
-    const trimmedEmail = sanitizedEmail.trim().toLowerCase();
+    if (isPasswordTooLong(sanitizedPassword)) {
+      response.status(401).json(CREDENTIAL_REJECTION);
+      return;
+    }
 
-    console.log(`[Auth] Login attempt for: "${maskEmail(trimmedEmail)}"`);
+    obsLog.info(`[Auth] Login attempt for: "${maskEmail(trimmedEmail)}"`);
 
     try {
       // Find user by email
@@ -49,14 +59,14 @@ export async function handleLogin(
       // EXPLICIT VALIDATION GUARD: Ensure user document exists before proceeding
       // This prevents any bypass where user could be null/undefined
       if (!user) {
-        console.log(`[AUTH FAILED]: No user document matched for input criteria.`);
+        obsLog.info(`[AUTH FAILED]: No user document matched for input criteria.`);
         response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
 
       // Additional guard: Verify user object has required properties
       if (!user._id || !user.email || !user.password) {
-        console.error(`[AUTH FAILED]: User document missing required properties.`);
+        obsLog.error(`[AUTH FAILED]: User document missing required properties.`);
         response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
@@ -64,7 +74,7 @@ export async function handleLogin(
       // Verify password using model's comparePassword method (timing-safe via bcrypt)
       const isValidPassword = await user.comparePassword(sanitizedPassword);
       if (!isValidPassword) {
-        console.warn(`[Auth] Invalid password attempt for: ${maskEmail(trimmedEmail)}`);
+        obsLog.warn(`[Auth] Invalid password attempt for: ${maskEmail(trimmedEmail)}`);
         response.status(401).json(CREDENTIAL_REJECTION);
         return;
       }
@@ -74,7 +84,7 @@ export async function handleLogin(
       // it never becomes an enumeration oracle. Only an explicit `false` blocks;
       // accounts predating verification (field undefined) pass through.
       if (user.emailVerified === false) {
-        console.warn(`[Auth] Login blocked, email unverified: ${maskEmail(trimmedEmail)}`);
+        obsLog.warn(`[Auth] Login blocked, email unverified: ${maskEmail(trimmedEmail)}`);
         const body: AuthErrorBody = {
           error: 'Please verify your email address before signing in',
           code: 'EMAIL_UNVERIFIED',
@@ -87,7 +97,7 @@ export async function handleLogin(
       // Short-lived access token plus a rotating refresh token in a new family.
       const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
 
-      console.log(`[Auth] User logged in: ${maskEmail(trimmedEmail)}`);
+      obsLog.info(`[Auth] User logged in: ${maskEmail(trimmedEmail)}`);
 
       response.json({
         ok: true,
@@ -100,11 +110,11 @@ export async function handleLogin(
         expiresIn: tokens.expiresIn,
       });
     } catch (dbError) {
-      console.error('[Auth] Database error during login:', dbError);
+      obsLog.error('[Auth] Database error during login:', dbError);
       throw dbError;
     }
   } catch (err) {
-    console.error('[Auth] Login error:', err);
+    obsLog.error('[Auth] Login error:', err);
     next(err);
   }
 }

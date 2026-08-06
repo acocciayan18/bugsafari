@@ -9,6 +9,7 @@
 export * from './types/telemetry.js';
 export * from './types/telemetryPolicy.js';
 export * from './types/telemetryRouting.js';
+export * from './types/networkStatus.js';
 export * from './types/console.js';
 export * from './types/bug.js';
 export * from './types/forensicLogs.js';

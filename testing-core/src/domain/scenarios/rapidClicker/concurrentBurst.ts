@@ -16,6 +16,10 @@
 import type { Page } from 'playwright';
 import { isNonFatalNavigationError, isObscuredOrDetached } from './utils.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ConcurrentBurst]');
+
 /** Where the burst ended up once all clicks settled. */
 export type BurstResultingState = 'all-completed' | 'partial' | 'error';
 
@@ -73,7 +77,7 @@ export async function executeConcurrentBurst(
         // Obscured/detached targets and mid-flight navigation are expected under
         // a concurrent flood — swallow quietly; surface anything unexpected.
         if (!isNonFatalNavigationError(error) && !isObscuredOrDetached(error)) {
-          console.error(
+          obsLog.error(
             `[ConcurrentBurst] Non-fatal error on click ${index + 1}/${targets.length} (${selector}): ${error.message}`,
           );
         }

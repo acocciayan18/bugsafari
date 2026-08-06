@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master, dev ]
+
+jobs:
+  backend:
+    name: testing-core + shared
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build shared package
+        run: npm run build --workspace shared --if-present
+      - name: Typecheck
+        run: npm run typecheck --workspace testing-core
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests (shared)
+        run: npm test --workspace shared --if-present
+      - name: Unit tests (testing-core)
+        run: npm test --workspace testing-core

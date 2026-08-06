@@ -32,6 +32,7 @@ import { useUserSettings } from '../../hooks/useUserSettings';
 import { useDarkMode } from '../../context/DarkModeContext';
 import { Skeleton } from '../ui/Skeleton';
 import { isDesktopNotifySupported, requestDesktopNotifyPermission } from '../../utils/desktopNotify';
+import { PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
 import type { ThemeMode } from '../../types';
 
 const ICON_SIZE = 'h-5 w-5';
@@ -158,6 +159,7 @@ function PasswordInputField({
           }`}
           placeholder={placeholder || '••••••••'}
           autoComplete={autoComplete}
+          maxLength={PASSWORD_MAX_LENGTH}
           required
         />
         <button

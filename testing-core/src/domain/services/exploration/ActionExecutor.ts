@@ -34,6 +34,10 @@ import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ActionExecutor]');
+
 // A form control the sibling pass decided to drive. Tagged in-page, actuated from
 // Node so every write goes through the framework-safe primitives.
 interface FormSibling {
@@ -380,7 +384,7 @@ export class ActionExecutor {
       );
       attached = true;
     } catch (error) {
-      console.warn('[ActionExecutor] File input actuation failed:', error);
+      obsLog.warn('[ActionExecutor] File input actuation failed:', error);
     }
 
     if (attached) {
@@ -760,7 +764,7 @@ export class ActionExecutor {
           await this.registerFuzzFinding(leak, payload, target, page);
         }
       } catch (error) {
-        console.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
+        obsLog.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
       }
 
       // 5) Escalation feedback: decide the level the NEXT encounter with this
@@ -855,7 +859,7 @@ export class ActionExecutor {
         message: ` Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
       });
     } catch (error) {
-      console.warn('[ActionExecutor] Exploratory input failed:', error);
+      obsLog.warn('[ActionExecutor] Exploratory input failed:', error);
     } finally {
       ActiveScenarioTracker.end();
     }
@@ -1088,11 +1092,11 @@ export class ActionExecutor {
         message: ` Security Fuzzer: Injecting ${category} strategy payload (${payload.length} chars) into ${humanizeElement(target)}`,
       });
     } catch (error) {
-      console.warn('[ActionExecutor] Security fuzzer injection failed:', error);
+      obsLog.warn('[ActionExecutor] Security fuzzer injection failed:', error);
     }
 
     // Trace all payloads injected for security audit
-    console.log(
+    obsLog.info(
       `[SecurityFuzzerPayloads] Enhanced security testing complete on ${selector}: ` +
       `strategy=${category}, payloadLength=${payload.length}`,
     );

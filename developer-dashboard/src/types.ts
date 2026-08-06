@@ -93,6 +93,10 @@ import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, Infiltr
 // so frontend consumers keep importing it from the local barrel without shadowing it.
 export type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../shared/types.js';
 
+// Network-status contract (phase enum + engine action markers) shared with the backend.
+export type { NetworkPhase } from '../../shared/types.js';
+export { NETWORK_ACTION, NETWORK_ACTION_MARKERS } from '../../shared/types.js';
+
 export interface SessionHistoryEntry {
   id: string;
   // Public human-readable run code (RUN-XXXXXX); absent on legacy rows saved before it existed.

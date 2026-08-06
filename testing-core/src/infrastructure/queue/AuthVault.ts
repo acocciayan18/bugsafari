@@ -2,6 +2,10 @@ import { Redis } from 'ioredis';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { TargetAuthConfig } from '../../../../shared/types.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[AuthVault]');
+
 // Long enough for a deep queue, short enough that an abandoned job's credentials
 // are unrecoverable well before anyone could go looking for them.
 const AUTH_TTL_SECONDS = 600;
@@ -53,13 +57,13 @@ export class AuthVault {
   ): AuthVault | null {
     const key = readKey(rawKey);
     if (!key) {
-      console.warn('[AuthVault] BUGSAFARI_AUTH_KEY missing or not 32 bytes — authenticated runs cannot be queued.');
+      obsLog.warn('[AuthVault] BUGSAFARI_AUTH_KEY missing or not 32 bytes — authenticated runs cannot be queued.');
       return null;
     }
     const redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
     // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
     // EventEmitter 'error' that crashes the process. The client auto-reconnects.
-    redis.on('error', (err) => console.error('[AuthVault] redis connection error:', err instanceof Error ? err.message : err));
+    redis.on('error', (err) => obsLog.error('[AuthVault] redis connection error:', err instanceof Error ? err.message : err));
     return new AuthVault(redis, key);
   }
 
@@ -98,7 +102,7 @@ export class AuthVault {
     } catch (error) {
       // A tag mismatch means tampering or a rotated key — never guess, never log
       // the payload. The run fails closed.
-      console.error('[AuthVault] Failed to open sealed credentials:', error instanceof Error ? error.message : error);
+      obsLog.error('[AuthVault] Failed to open sealed credentials:', error instanceof Error ? error.message : error);
       return null;
     }
   }

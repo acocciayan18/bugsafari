@@ -32,6 +32,10 @@ import { detectClientErrorView } from './clientErrorOracle.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[ExplorationLoop]');
+
 // Node-side ceiling for a single scroll page.evaluate — a wedged page main thread
 // would otherwise hang the un-timeouted evaluate and park the whole iteration.
 const SCROLL_EVAL_DEADLINE_MS = 3000;
@@ -1110,7 +1114,7 @@ export class ExplorationLoop {
         });
       }
     } catch (a11yErr) {
-      console.warn(
+      obsLog.warn(
         '[ExplorationLoop] Accessibility audit failed:',
         a11yErr instanceof Error ? a11yErr.message : String(a11yErr),
       );
@@ -1166,7 +1170,7 @@ export class ExplorationLoop {
       });
       this.deps.reportNavigationDefects(defects);
     } catch (navErr) {
-      console.warn(
+      obsLog.warn(
         '[ExplorationLoop] Navigation observation failed:',
         navErr instanceof Error ? navErr.message : String(navErr),
       );
@@ -1196,7 +1200,7 @@ export class ExplorationLoop {
         rankedTargets: ranked,
       });
     } catch (finderErr) {
-      console.warn(
+      obsLog.warn(
         '[ExplorationLoop] Bug-finder sweep failed:',
         finderErr instanceof Error ? finderErr.message : String(finderErr),
       );
@@ -1669,7 +1673,7 @@ export class ExplorationLoop {
       // Detached element / intercepting overlay / click error → unstable edge.
       traversalOk = false;
       actionThrew = true;
-      console.warn(
+      obsLog.warn(
         '[ExplorationLoop] Traversal action failed:',
         actionErr instanceof Error ? actionErr.message : String(actionErr),
       );
@@ -1920,7 +1924,7 @@ export class ExplorationLoop {
     // still be reported as an exception below.
     if (this.deps.isStopRequested() && isEngineLifecycleError(err)) {
       const sanitized = sanitizeException(err instanceof Error ? err : String(err));
-      console.debug(`[ExplorationLoop] Suppressed expected engine lifecycle exception during shutdown: ${sanitized.message}`);
+      obsLog.debug(`[ExplorationLoop] Suppressed expected engine lifecycle exception during shutdown: ${sanitized.message}`);
       return this.stopResult();
     }
 

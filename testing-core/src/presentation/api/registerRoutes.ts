@@ -50,6 +50,11 @@ import {
   type SuggestInsightsResponse,
 } from '../../../../shared/types.js';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+import { renderMetrics } from '../../infrastructure/observability/metrics.js';
+
+const obsLog = createLogger('[API]');
+
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
 const RECENT_SESSION_LOOKUP_LIMIT = 500;
 
@@ -128,7 +133,7 @@ async function ensureRunId(doc: { _id: Types.ObjectId; runId?: string | null }):
     doc.runId = code;
     return code;
   } catch (error) {
-    console.error('[API] Lazy runId backfill failed for', String(doc._id), error instanceof Error ? error.message : error);
+    obsLog.error('[API] Lazy runId backfill failed for', String(doc._id), error instanceof Error ? error.message : error);
     return undefined;
   }
 }
@@ -243,12 +248,12 @@ interface SessionReportData {
 
 function sanitizeTargetUrl(targetUrl: unknown): string | null {
   if (typeof targetUrl !== 'string') {
-    console.error('[SECURITY] targetUrl is not a string');
+    obsLog.error('[SECURITY] targetUrl is not a string');
     return null;
   }
   const trimmed = targetUrl.trim();
   if (!trimmed) {
-    console.error('[SECURITY] targetUrl is empty');
+    obsLog.error('[SECURITY] targetUrl is empty');
     return null;
   }
   // §7.1: the removed "$-in-string" NoSQL check was a vibe-coded control — operator
@@ -257,7 +262,7 @@ function sanitizeTargetUrl(targetUrl: unknown): string | null {
   // regex added no security and rejected valid URLs whose path/query contains '$'.
   // Basic URL format check - must start with http:// or https://
   if (!trimmed.match(/^https?:\/\/.+/)) {
-    console.error('[SECURITY] Invalid URL format in targetUrl');
+    obsLog.error('[SECURITY] Invalid URL format in targetUrl');
     return null;
   }
   return trimmed;
@@ -341,6 +346,18 @@ export function registerRoutes(
     response.status(status).json(body);
   });
 
+  // Prometheus metrics — internal, no tenant data. When BUGSAFARI_METRICS_TOKEN is
+  // set, a matching Bearer is required; otherwise open for local/proxy-guarded use.
+  app.get('/metrics', (request: Request, response: Response): void => {
+    const token = process.env.BUGSAFARI_METRICS_TOKEN;
+    if (token && request.headers.authorization !== `Bearer ${token}`) {
+      response.status(401).json({ error: 'Unauthorized.', code: 'UNAUTHORIZED' });
+      return;
+    }
+    response.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    response.status(200).send(renderMetrics());
+  });
+
   // Explicit Safari stop endpoint — cancels a QUEUED job or terminates a RUNNING
   // one, in either the distributed (worker fleet) or synchronous topology.
   // Uses the same optionalAuth as /api/start-test (guests may still stop a run),
@@ -353,7 +370,7 @@ export function registerRoutes(
     const userId = request.userId ?? null;
     // Client may assert operator/timebox only; anything else coerces to operator.
     const stopReason = coerceClientStopReason(request.body?.reason);
-    console.log(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ? 'provided' : 'n/a'}, reason=${stopReason})`);
+    obsLog.info(`[API]  POST /api/safari/stop received (runToken=${knownRunToken ? 'provided' : 'n/a'}, reason=${stopReason})`);
 
     // ── Distributed topology: the run lives in Redis/BullMQ, not in this process.
     if (taskQueue && runRegistry && (knownRunToken || userId)) {
@@ -367,7 +384,7 @@ export function registerRoutes(
         // A guest entry is possession-proven (its userId is null); an authenticated
         // one demands the matching identity.
         if (entry && entry.userId && entry.userId !== userId) {
-          console.warn('[API]  Stop rejected: requester does not own the queued run');
+          obsLog.warn('[API]  Stop rejected: requester does not own the queued run');
           response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
           return;
         }
@@ -385,7 +402,7 @@ export function registerRoutes(
               return;
             }
             if (!removed) {
-              console.error(`[API]  Could not remove queued job ${entry.jobId} (state=${observed})`);
+              obsLog.error(`[API]  Could not remove queued job ${entry.jobId} (state=${observed})`);
               response.status(409).json({ ok: false, error: 'The queued session could not be cancelled. Please retry.' });
               return;
             }
@@ -393,7 +410,7 @@ export function registerRoutes(
             // No worker will ever consume the sealed credentials now.
             await authVault?.discard(entry.runToken);
             await queueBroadcaster?.broadcastCancelled(entry.jobId).catch(() => undefined);
-            console.log(`[API] Queued job ${entry.jobId} cancelled before pickup`);
+            obsLog.info(`[API] Queued job ${entry.jobId} cancelled before pickup`);
             response.json({ ok: true, cancelled: true, jobId: entry.jobId, message: 'Queued session cancelled.' });
             return;
           }
@@ -404,7 +421,7 @@ export function registerRoutes(
               return;
             }
             controlPublisher.publish('stop', entry.runToken, stopReason);
-            console.log(`[API]  Stop bridged to worker for run ${entry.runToken} (reason=${stopReason})`);
+            obsLog.info(`[API]  Stop bridged to worker for run ${entry.runToken} (reason=${stopReason})`);
             response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
             return;
           }
@@ -416,7 +433,7 @@ export function registerRoutes(
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[API]  Distributed stop failed:', message);
+        obsLog.error('[API]  Distributed stop failed:', message);
         response.status(502).json({ ok: false, error: 'Could not reach the run queue to stop this session.' });
         return;
       }
@@ -425,24 +442,24 @@ export function registerRoutes(
     // ── Synchronous topology: the engine runs in this process.
     const activeEngine = sessionManager.getActiveEngine();
     if (!activeEngine) {
-      console.log('[API] No active engine to stop - already IDLE');
+      obsLog.info('[API] No active engine to stop - already IDLE');
       response.json({ ok: true, alreadyStopped: true, message: 'No active session to stop.' });
       return;
     }
 
     if (!sessionManager.ownsActiveRun(userId, knownRunToken)) {
-      console.warn('[API]  Stop rejected: requester does not own the active session');
+      obsLog.warn('[API]  Stop rejected: requester does not own the active session');
       response.status(403).json({ ok: false, error: 'You do not have permission to stop this session.' });
       return;
     }
 
     try {
       await sessionManager.stopByOperator(stopReason);
-      console.log('[API] Engine stopped successfully via HTTP endpoint');
+      obsLog.info('[API] Engine stopped successfully via HTTP endpoint');
       response.json({ ok: true, stopped: true, message: 'Safari session stopped.' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[API] Error stopping engine:', errorMessage);
+      obsLog.error('[API] Error stopping engine:', errorMessage);
       response.status(500).json({ ok: false, error: `Failed to stop the session: ${errorMessage}` });
     }
   });
@@ -450,12 +467,12 @@ export function registerRoutes(
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
   app.post('/api/start-test', startTestLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log(`[API]  POST /api/start-test received`);
-    console.log(`[API] Auth user: ${request.userId ?? 'guest'}`);
+    obsLog.info(`[API]  POST /api/start-test received`);
+    obsLog.info(`[API] Auth user: ${request.userId ?? 'guest'}`);
 
     const targetUrl = parseTargetUrl(request.body);
     if (!targetUrl) {
-      console.warn(`[API]  Invalid URL in request`);
+      obsLog.warn(`[API]  Invalid URL in request`);
       response.status(400).json({ error: 'A valid url is required.' });
       return;
     }
@@ -467,7 +484,7 @@ export function registerRoutes(
     // bypasses (metadata via public A-record, decimal/octal/hex/short literals).
     const routing = await assertPublicTarget(targetUrl);
     if (!routing.ok) {
-      console.warn(`[API]  Target rejected (${routing.code}): ${routing.message}`);
+      obsLog.warn(`[API]  Target rejected (${routing.code}): ${routing.message}`);
       response.status(422).json({ error: routing.code, message: routing.message });
       return;
     }
@@ -476,7 +493,7 @@ export function registerRoutes(
     // categories BEFORE the queue branch, so a distributed run carries the same gate
     // as a synchronous one (otherwise the worker defaults to all testing types).
     const { profile: infiltrationProfile, selectedScenarios } = parseInfiltration(request.body);
-    console.log(`[API] Infiltration profile ${infiltrationProfile} resolved to:`, selectedScenarios);
+    obsLog.info(`[API] Infiltration profile ${infiltrationProfile} resolved to:`, selectedScenarios);
 
     // Run token the client already holds from a previous launch (localStorage) —
     // possession proves ownership, letting a refreshed client (incl. guests)
@@ -501,7 +518,7 @@ export function registerRoutes(
     // timebox and tuning as a synchronous one.
     const optimizationSettings = request.body?.optimization as OptimizationSettings | undefined;
     clampTimebox(optimizationSettings);
-    console.log(`[API] Optimization settings:`, optimizationSettings);
+    obsLog.info(`[API] Optimization settings:`, optimizationSettings);
 
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
@@ -532,7 +549,7 @@ export function registerRoutes(
           if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
             const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
             if (state === 'active' || WAITING_STATES.has(state)) {
-              console.log(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
+              obsLog.info(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
               // runToken re-joins run:${runToken}; runId is the public code for display.
               response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runToken: existing.runToken, runId: existing.runCode, queued: state !== 'active' });
               return;
@@ -547,7 +564,7 @@ export function registerRoutes(
         // anyone reaching here is genuinely adding to the line.
         const waiting = await taskQueue.waitingCount();
         if (waiting >= maxQueueDepth) {
-          console.warn(`[API] Queue full: ${waiting}/${maxQueueDepth} waiting — rejecting launch for ${targetUrl}`);
+          obsLog.warn(`[API] Queue full: ${waiting}/${maxQueueDepth} waiting — rejecting launch for ${targetUrl}`);
           response.status(503).json({
             error: 'QUEUE_FULL',
             message: `The testing fleet is saturated (${waiting} runs already waiting). Please retry shortly.`,
@@ -596,13 +613,13 @@ export function registerRoutes(
         }
 
         await runRegistry?.register({ ...entry, jobId: enqueued.id });
-        console.log(`[API]  Enqueued safari job ${enqueued.id} runCode=${enqueued.runCode} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
+        obsLog.info(`[API]  Enqueued safari job ${enqueued.id} runCode=${enqueued.runCode} for ${targetUrl} (queue=${enqueued.queueName}, auth=${targetAuth ? 'sealed' : 'none'})`);
         // runToken lets the client join run:${runToken} for bridged worker telemetry;
         // jobId lets it subscribe to queue:${jobId} position pushes; runId is the public code.
         response.status(202).json({ accepted: true, url: targetUrl, jobId: enqueued.id, runToken: enqueued.runToken, runId: enqueued.runCode, queued: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error('[API]  Failed to enqueue safari job:', message);
+        obsLog.error('[API]  Failed to enqueue safari job:', message);
         response.status(502).json({ error: 'Failed to enqueue the run on the worker fleet.' });
       }
       return;
@@ -616,11 +633,11 @@ export function registerRoutes(
       // a refreshed client that re-submits reconnects to its own live session.
       const owned = sessionManager.getSnapshotFor(request.userId ?? null, knownRunId);
       if (owned && LIVE_LIFECYCLES.has(owned.status)) {
-        console.log(`[API] ️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
+        obsLog.info(`[API] ️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
         response.json({ accepted: true, resumed: true, url: owned.targetUrl, runToken: owned.runToken, runId: owned.runId, queued: false });
         return;
       }
-      console.warn(`[API]  Safari already running - rejecting request`);
+      obsLog.warn(`[API]  Safari already running - rejecting request`);
       response.status(429).json({ error: 'A BugSafari run is already active.' });
       return;
     }
@@ -629,7 +646,7 @@ export function registerRoutes(
     // use the real operator ID and resets the singleton's context so a guest run
     // never inherits a previous authenticated user's id. Undefined => guest (no persist).
     useCase.setUserId(request.userId ?? null);
-    console.log(request.userId
+    obsLog.info(request.userId
       ? `[API] ✓ Set userId for exploration session: ${request.userId}`
       : `[API] No authenticated userId - guest session (no persistence)`);
 
@@ -659,16 +676,16 @@ export function registerRoutes(
       onAbandoned: () => useCase.releaseActivation(),
     });
 
-    console.log(`[API] Accepting safari launch for: ${targetUrl} (runCode=${runCode})`);
+    obsLog.info(`[API] Accepting safari launch for: ${targetUrl} (runCode=${runCode})`);
     response.json({ accepted: true, url: targetUrl, runToken, runId: runCode });
-    console.log(`[API] Starting safari in background...`);
+    obsLog.info(`[API] Starting safari in background...`);
     // Fire-and-forget, but never unhandled: a rejection here means the run died
     // before its own finally could report anything, so we must publish the
     // terminal handshake ourselves or the dashboard waits forever.
     void useCase.execute(targetUrl, optimizationSettings, selectedScenarios, runToken, targetAuth, runCode)
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[API]  Safari run ${runToken} failed to start:`, message);
+        obsLog.error(`[API]  Safari run ${runToken} failed to start:`, message);
         sessionManager.failRun(`Engine failed to start: ${message}`, runToken);
         useCase.releaseActivation();
       });
@@ -730,21 +747,21 @@ export function registerRoutes(
       await runRegistry.clear(entry.runToken, entry.userId);
       response.json({ snapshot: null });
     } catch (error) {
-      console.error('[API] /api/session/active distributed lookup failed:', error instanceof Error ? error.message : error);
+      obsLog.error('[API] /api/session/active distributed lookup failed:', error instanceof Error ? error.message : error);
       response.json({ snapshot: null });
     }
   });
 
 // Save session - REQUIRES authentication (no guest saves allowed)
   app.post('/api/history/save-session', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] POST /api/history/save-session called');
-    console.log('[API] Auth user:', request.userId ?? 'none');
-    console.log('[API] Is guest:', request.isGuest);
+    obsLog.info('[API] POST /api/history/save-session called');
+    obsLog.info('[API] Auth user:', request.userId ?? 'none');
+    obsLog.info('[API] Is guest:', request.isGuest);
 
     // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
     // If somehow we reached here without a valid userId, reject as guest
     if (!request.userId) {
-      console.warn('[API]  Guest save attempt rejected: No authenticated userId');
+      obsLog.warn('[API]  Guest save attempt rejected: No authenticated userId');
       response.status(403).json({
         error: 'Registration required to save history.',
         code: 'GUEST_FORBIDDEN',
@@ -762,10 +779,10 @@ export function registerRoutes(
       // (initialUrl) rather than the runtime sub-route captured at save time.
       // Older clients that don't send initialUrl fall back to targetUrl.
       const baseUrl = sanitizeTargetUrl(request.body?.initialUrl) ?? sanitizeTargetUrl(request.body?.targetUrl);
-      console.log('[API] Base target URL to save:', baseUrl);
+      obsLog.info('[API] Base target URL to save:', baseUrl);
 
       if (!baseUrl) {
-        console.warn('[API] No targetUrl provided in request body or invalid format');
+        obsLog.warn('[API] No targetUrl provided in request body or invalid format');
         response.status(400).json({ error: 'targetUrl is required and must be a valid URL.' });
         return;
       }
@@ -807,7 +824,7 @@ export function registerRoutes(
           stateFingerprint: capStateFingerprint(f.stateFingerprint) as StateFingerprint | undefined,
           severity: typeof f.severity === 'string' ? f.severity : undefined,
         }));
-      console.log(`[API] Transferred live findings count: ${clientFindings.length}`);
+      obsLog.info(`[API] Transferred live findings count: ${clientFindings.length}`);
 
       // Full live Network + Console streams transferred from the dashboard so the
       // saved report mirrors the live tabs (the run executes out-of-process, so the
@@ -816,12 +833,12 @@ export function registerRoutes(
         (Array.isArray(v) ? v : []).filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
       const clientNetworkLog = asArray(request.body?.networkLog).slice(0, 2000);
       const clientConsoleLog = asArray(request.body?.consoleLog).slice(0, 1000);
-      console.log(`[API] Transferred network rows: ${clientNetworkLog.length} | console rows: ${clientConsoleLog.length}`);
+      obsLog.info(`[API] Transferred network rows: ${clientNetworkLog.length} | console rows: ${clientConsoleLog.length}`);
 
       // Public RUN- code of the run being saved. It makes the save idempotent and
       // keyed to the right document even when the run executed on a worker.
       const runCode = normalizeRunCode(request.body?.runId) ?? undefined;
-      console.log(`[API] Save identity runId: ${runCode ?? 'not supplied (legacy client)'}`);
+      obsLog.info(`[API] Save identity runId: ${runCode ?? 'not supplied (legacy client)'}`);
 
       // Call manualSaveToHistory to save to sessions collection
       const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, runCode, clientFindings, clientNetworkLog, clientConsoleLog });
@@ -833,7 +850,7 @@ export function registerRoutes(
         // the response to the full server-side log line.
         const { status, code } = SAVE_FAILURE_RESPONSE[result.code ?? 'PERSIST_FAILED'];
         const errorId = randomUUID();
-        console.error(`[API ${errorId}] Manual save failed (${code}) for user ${userId}: ${result.message}`);
+        obsLog.error(`[API ${errorId}] Manual save failed (${code}) for user ${userId}: ${result.message}`);
         response.status(status).json({
           error: code === 'PERSIST_FAILED' ? 'Failed to save the session.' : result.message,
           code,
@@ -842,7 +859,7 @@ export function registerRoutes(
         return;
       }
 
-console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId ?? 'n/a', '| ownerType:', ownerType, '| userId:', userId);
+obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId ?? 'n/a', '| ownerType:', ownerType, '| userId:', userId);
       // Explicitly return 201 Created status for resource creation. runId is the
       // saved doc's public RUN- code for the client to display/deep-link.
       response.status(201).json({ ok: true, message: result.message, runId: result.runId, ownerType });
@@ -850,20 +867,20 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // Reached only on a fault outside manualSaveToHistory's own handling (a
       // dynamic import, a dropped connection). Correlate, don't describe.
       const errorId = randomUUID();
-      console.error(`[API ${errorId}] Unhandled error saving session for user ${userId}:`, error);
+      obsLog.error(`[API ${errorId}] Unhandled error saving session for user ${userId}:`, error);
       response.status(500).json({ error: 'Failed to save the session.', code: 'PERSIST_FAILED', errorId });
     }
   });
 
 // Session history - REQUIRES authentication (returns only user's sessions)
   app.get('/api/history/sessions', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/history/sessions called with query:', request.query);
-    console.log('[API] Auth user:', request.userId ?? 'none');
-    console.log('[API] Is guest:', request.isGuest);
+    obsLog.info('[API] GET /api/history/sessions called with query:', request.query);
+    obsLog.info('[API] Auth user:', request.userId ?? 'none');
+    obsLog.info('[API] Is guest:', request.isGuest);
 
     // GUEST CHECK: requireAuth already validated JWT, but double-check for safety
     if (!request.userId) {
-      console.warn('[API]  Guest history access rejected: No authenticated userId');
+      obsLog.warn('[API]  Guest history access rejected: No authenticated userId');
       response.status(403).json({
         error: 'Registration required to view session history.',
         code: 'GUEST_FORBIDDEN',
@@ -876,7 +893,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
     // Wrap entire endpoint in try/catch for comprehensive error handling
     try {
       if (!findingRepo) {
-        console.warn('[API] findingRepo is undefined - database not connected');
+        obsLog.warn('[API] findingRepo is undefined - database not connected');
         response.json({ sessions: [] });
         return;
       }
@@ -893,7 +910,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       response.json({ sessions: page.items, ...page });
     } catch (error) {
       // Comprehensive error handling with explicit log message
-      console.error('[API] Error in /api/history/sessions:', error);
+      obsLog.error('[API] Error in /api/history/sessions:', error);
       response.status(500).json({ error: 'Failed to fetch session history.', sessions: [] });
     }
   });
@@ -901,14 +918,14 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
 // Safari run history - requires authentication
   // UPDATED: Query sessions collection instead of savedsafaris for unified history
   app.get('/api/history', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/history called');
-    console.log('[API] Authenticated user:', request.userId ?? 'none');
-    console.log('[API] Auth email:', request.userEmail ?? 'none');
+    obsLog.info('[API] GET /api/history called');
+    obsLog.info('[API] Authenticated user:', request.userId ?? 'none');
+    obsLog.info('[API] Auth email:', request.userEmail ?? 'none');
 
     try {
       const userId = request.userId;
       if (!userId) {
-        console.warn('[API] No userId in authenticated request');
+        obsLog.warn('[API] No userId in authenticated request');
         response.status(401).json({ error: 'Authentication required.' });
         return;
       }
@@ -937,16 +954,16 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // Legacy shape is a bare array; the envelope ships only when asked for.
       response.json(isPaginatedRequest(request.query) ? page : page.items);
     } catch (error) {
-      console.error('[API] Error in /api/history:', error);
+      obsLog.error('[API] Error in /api/history:', error);
       response.status(500).json({ error: 'Failed to fetch safari history.' });
     }
   });
 
 // Delete a session by ID (using sessions collection)
   app.delete('/api/history/:id', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] DELETE /api/history/:id called');
-    console.log('[API] Record ID:', request.params.id);
-    console.log('[API] Authenticated user:', request.userId ?? 'none');
+    obsLog.info('[API] DELETE /api/history/:id called');
+    obsLog.info('[API] Record ID:', request.params.id);
+    obsLog.info('[API] Authenticated user:', request.userId ?? 'none');
 
     try {
       const userId = request.userId;
@@ -963,7 +980,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         return;
       }
 
-      console.log('[API] Deleting session record:', selector, 'for user:', userId);
+      obsLog.info('[API] Deleting session record:', selector, 'for user:', userId);
 
       // findOneAndDelete resolves the doc's _id (needed for the cascade) while its
       // filter proves ownership — a RUN- code alone never yields a foreign _id.
@@ -973,7 +990,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       }).lean();
 
       if (!deleted) {
-        console.warn('[API] Delete failed: Record not found or not owned by user');
+        obsLog.warn('[API] Delete failed: Record not found or not owned by user');
         response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
@@ -982,28 +999,28 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // it the run's forensic errors, telemetry, logs and brain configs would
       // linger forever with no parent session.
       const cascaded = await deleteSessionCascade(deleted._id).catch((error: unknown) => {
-        console.error('[API] Cascade delete failed for session', String(deleted._id), error);
+        obsLog.error('[API] Cascade delete failed for session', String(deleted._id), error);
         return null;
       });
 
-      console.log('[API] Record deleted successfully:', String(deleted._id), 'cascade:', cascaded ?? 'failed');
+      obsLog.info('[API] Record deleted successfully:', String(deleted._id), 'cascade:', cascaded ?? 'failed');
       response.json({ ok: true, message: 'Record deleted successfully.' });
     } catch (error) {
-      console.error('[API] Error in DELETE /api/history/:id:', error);
+      obsLog.error('[API] Error in DELETE /api/history/:id:', error);
       response.status(500).json({ error: 'Failed to delete the record.' });
     }
   });
 
 // Export a session record as JSON (using sessions collection)
   app.get('/api/history/export/:id', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/history/export/:id called');
-    console.log('[API] Record ID to export:', request.params.id);
-    console.log('[API] Authenticated user:', request.userId ?? 'none');
+    obsLog.info('[API] GET /api/history/export/:id called');
+    obsLog.info('[API] Record ID to export:', request.params.id);
+    obsLog.info('[API] Authenticated user:', request.userId ?? 'none');
 
     try {
       const userId = request.userId;
       if (!userId) {
-        console.warn('[API] No userId in authenticated request');
+        obsLog.warn('[API] No userId in authenticated request');
         response.status(401).json({ error: 'Authentication required.' });
         return;
       }
@@ -1015,7 +1032,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         return;
       }
 
-      console.log('[API] Fetching session record for export:', selector, 'for user:', userId);
+      obsLog.info('[API] Fetching session record for export:', selector, 'for user:', userId);
 
       // Use SessionModel.findOne with userId for ownership check
       const record = await SessionModel.findOne({
@@ -1024,14 +1041,14 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       }).lean();
 
       if (!record) {
-        console.warn('[API] Record not found or access denied:', selector);
+        obsLog.warn('[API] Record not found or access denied:', selector);
         response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
       // Prefer the public code in the filename; fall back to the _id for legacy docs.
       const exportName = record.runId ?? String(record._id);
-      console.log('[API] Record found for export:', exportName);
+      obsLog.info('[API] Record found for export:', exportName);
       // Strip internal identifiers from the downloaded payload — the export keys
       // off the public runId, never the Mongo _id / owner userId.
       const { _id: _ignoredId, userId: _ignoredUser, __v: _ignoredVersion, ...safeRecord } =
@@ -1040,7 +1057,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       response.setHeader('Content-Disposition', `attachment; filename="safari-${exportName}.json"`);
       response.json(safeRecord);
     } catch (error) {
-      console.error('[API] Error in GET /api/history/export/:id:', error);
+      obsLog.error('[API] Error in GET /api/history/export/:id:', error);
       response.status(500).json({ error: 'Failed to export the record.' });
     }
   });
@@ -1049,7 +1066,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
   // requireAuth + tenant scoping: forensic analyses expose rootCause/riskScore/recommendations,
   // so a run's analysis is readable only by the user who owns that run's session.
   app.get('/api/forensic/analysis', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/forensic/analysis called with query:', request.query);
+    obsLog.info('[API] GET /api/forensic/analysis called with query:', request.query);
 
     try {
       const userId = request.userId;
@@ -1126,7 +1143,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         },
       });
     } catch (error) {
-      console.error('[API] Error in /api/forensic/analysis:', error);
+      obsLog.error('[API] Error in /api/forensic/analysis:', error);
       response.status(500).json({ error: 'Failed to fetch the analysis.', analysis: null });
     }
   });
@@ -1135,7 +1152,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
   // requireAuth + ownership: analyzeRun() is compute-heavy and reads a run's session/errors,
   // so only the session owner may trigger it (prevents anonymous DoS + foreign-session reads).
   app.post('/api/forensic/analyze', analyzeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] POST /api/forensic/analyze called');
+    obsLog.info('[API] POST /api/forensic/analyze called');
 
     try {
       const userId = request.userId;
@@ -1165,7 +1182,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
       }
       const resolvedSessionId = String(ownedDoc._id);
 
-      console.log('[API] Generating forensic analysis for session:', resolvedSessionId);
+      obsLog.info('[API] Generating forensic analysis for session:', resolvedSessionId);
       const result = await forensicAnalysisService.analyzeRun(resolvedSessionId);
 
       if (!result.analysis) {
@@ -1173,7 +1190,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         return;
       }
 
-      console.log('[API] Analysis generated successfully, risk score:', result.analysis.riskScore);
+      obsLog.info('[API] Analysis generated successfully, risk score:', result.analysis.riskScore);
       response.json({
         analysis: {
           rootCause: result.analysis.rootCause,
@@ -1189,7 +1206,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         message: result.exists ? 'Analysis already exists (returned cached)' : 'Analysis generated successfully',
       });
     } catch (error) {
-      console.error('[API] Error in /api/forensic/analyze:', error);
+      obsLog.error('[API] Error in /api/forensic/analyze:', error);
       response.status(500).json({ error: 'Failed to generate the analysis.', analysis: null });
     }
   });
@@ -1217,7 +1234,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
             { $set: { 'forensicTrace.caughtBugs.$.aiAdvice': ai } },
           );
         } catch (error) {
-          console.error('[API] suggest-fix persist failed:', error instanceof Error ? error.message : error);
+          obsLog.error('[API] suggest-fix persist failed:', error instanceof Error ? error.message : error);
         }
       }
     }
@@ -1255,7 +1272,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
           { $set: { aiInsights: { rootCause: result.rootCause, recommendations: result.recommendations } } },
         );
       } catch (error) {
-        console.error('[API] insights persist failed:', error instanceof Error ? error.message : error);
+        obsLog.error('[API] insights persist failed:', error instanceof Error ? error.message : error);
       }
     }
     response.json(result);
@@ -1265,7 +1282,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
 
   //  Complete Forensic Report API - Get comprehensive report for a session
   app.get('/api/forensic/report/:sessionId', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    console.log('[API] GET /api/forensic/report/:sessionId called');
+    obsLog.info('[API] GET /api/forensic/report/:sessionId called');
 
     try {
       const userId = request.userId;
@@ -1280,7 +1297,7 @@ console.log('[API] Saved to sessions:', result.message, '| runId:', result.runId
         return;
       }
 
-console.log('[API] Fetching complete forensic report for session:', selector, 'user:', userId);
+obsLog.info('[API] Fetching complete forensic report for session:', selector, 'user:', userId);
 
       // Fetch session data from sessions collection (unified history)
       const sessionDoc = await SessionModel.findOne({
@@ -1545,10 +1562,10 @@ console.log('[API] Fetching complete forensic report for session:', selector, 'u
         } : undefined,
       };
 
-      console.log('[API] Returning complete forensic report for session:', sessionId);
+      obsLog.info('[API] Returning complete forensic report for session:', sessionId);
       response.json({ report });
     } catch (error) {
-      console.error('[API] Error in /api/forensic/report:', error);
+      obsLog.error('[API] Error in /api/forensic/report:', error);
       response.status(500).json({ error: 'Failed to fetch the report.', report: null });
     }
   });

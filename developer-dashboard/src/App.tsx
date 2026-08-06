@@ -24,6 +24,7 @@ import SidebarLayout from './components/layout/SidebarLayout';
 import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
 import Settings from './components/settings/Settings';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
+import LongOperationProgressCard from './components/common/LongOperationProgressCard';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
@@ -118,6 +119,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   return (
     <ThemeProvider>
       <ConnectionStatusChip />
+      <LongOperationProgressCard />
 
       <Routes>
         <Route
@@ -144,6 +146,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   currentEngineAction={state.currentEngineAction}
                   hasRunCompleted={state.hasRunCompleted}
                   terminationOutcome={state.terminationOutcome}
+                  terminationReason={state.terminationReason}
                   isSessionSaved={state.isSessionSaved}
                   isInitializing={state.isInitializing}
                   liveFrame={state.liveFrame}

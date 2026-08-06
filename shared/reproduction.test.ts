@@ -19,7 +19,9 @@ import {
   describeInertBurst,
   describeRouteStep,
   describeContainerEntry,
+  describeRedirectLoopObservation,
   narrateActionRecords,
+  isApiEndpoint,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
 
@@ -219,6 +221,27 @@ check('playbook weaves route + container context BEFORE the interaction', () => 
   ]);
 });
 
+check('isApiEndpoint distinguishes data endpoints from user-facing pages', () => {
+  for (const api of ['http://app.test/api/orders', '/api/orders', '/ajax/save', '/graphql', 'http://app.test/rpc/do', '/v1/data.json']) {
+    assert.equal(isApiEndpoint(api), true, api);
+  }
+  for (const page of ['http://app.test/settings/users', '/checkout', '/reports?tab=1', '/apiary/list', '', undefined]) {
+    assert.equal(isApiEndpoint(page), false, String(page));
+  }
+});
+
+check('an API endpoint never seeds or transitions the playbook route', () => {
+  const rec = (over: Partial<ActionRecord>): ActionRecord =>
+    ({ timestamp: '', type: 'CLICK', selector: '', url: '', ...over });
+  const steps = narrateActionRecords([
+    rec({ url: 'http://app.test/checkout', elementLabel: 'Pay', elementKind: 'button' }),
+    // A NETWORK step whose url is the API endpoint must NOT become a "Navigate to /api" step.
+    rec({ type: 'NETWORK', url: 'http://app.test/api/pay', humanIdentifier: 'Aborted', elementKind: 'network request' }),
+  ]);
+  assert.ok(!steps.some((s) => /Navigate to \/api\//.test(s)), 'no API endpoint is rendered as a page navigation');
+  assert.equal(steps[0], 'Step 1. Navigate to /checkout');
+});
+
 check('a child-route transition mid-flow is an explicit step', () => {
   const rec = (over: Partial<ActionRecord>): ActionRecord =>
     ({ timestamp: '', type: 'CLICK', selector: '', url: '', ...over });
@@ -247,6 +270,17 @@ check('the same container is not re-announced on consecutive steps', () => {
     'Step 3. Type "Ann" into the "Name" field',
     'Step 4. Click the "Save" button',
   ]);
+});
+
+check('redirect-loop observation renders the automatic chain as ONE observed outcome', () => {
+  assert.equal(
+    describeRedirectLoopObservation('/a (302) → /b (301) → /a', 'http'),
+    'Observe: the application enters an unconditioned redirect loop that never settles (HTTP redirect chain: /a (302) → /b (301) → /a)',
+  );
+  assert.equal(
+    describeRedirectLoopObservation('/a → /b → /a', 'client'),
+    'Observe: the application enters an unconditioned redirect loop that never settles (client-side route oscillation: /a → /b → /a)',
+  );
 });
 
 console.log(`\n${passed} checks passed`);

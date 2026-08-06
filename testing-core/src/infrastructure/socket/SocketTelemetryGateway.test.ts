@@ -114,13 +114,18 @@ function emitEveryChannel(gateway: SocketTelemetryGateway): void {
 {
   const io = fakeIo();
   const gateway = new SocketTelemetryGateway(io);
-  const original = console.warn;
+  // The drop warning goes through the structured logger, whose dev sink is stdout;
+  // count only lines carrying the drop signature so other logs don't inflate it.
+  const original = process.stdout.write.bind(process.stdout);
   let warnings = 0;
-  console.warn = (): void => { warnings += 1; };
+  process.stdout.write = ((chunk: unknown): boolean => {
+    if (typeof chunk === 'string' && chunk.includes('dropped unrouted emit')) warnings += 1;
+    return true;
+  }) as typeof process.stdout.write;
   try {
     for (let i = 0; i < 250; i++) gateway.emitLiveFrame(`frame-${i}`);
   } finally {
-    console.warn = original;
+    process.stdout.write = original;
   }
   // 1st, 100th, 200th.
   assert.equal(warnings, 3, `expected 3 rate-limited warnings for 250 drops, got ${warnings}`);

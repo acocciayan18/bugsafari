@@ -44,6 +44,11 @@ const COPY: Record<AuthFeedbackCode, CopyEntry> = {
     message: "That password doesn't meet the security requirements.",
     hint: 'Use at least 8 characters with one uppercase letter, one number, and one special character.',
   },
+  PASSWORD_REUSED: {
+    severity: 'validation',
+    message: 'Your new password must be different from your current password.',
+    hint: 'Choose a password you have not used on this account before.',
+  },
   INVALID_CREDENTIALS: {
     severity: 'auth',
     message: 'Email or password is incorrect.',

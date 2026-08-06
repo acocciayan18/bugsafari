@@ -14,6 +14,10 @@ import { UserModel } from './models/UserModel.js';
 import { SupportTicketModel } from './models/SupportTicketModel.js';
 import { RefreshTokenModel } from './models/RefreshTokenModel.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[indexSync]');
+
 export const INDEXED_MODELS: Model<unknown>[] = [
   SessionModel,
   ForensicErrorModel,
@@ -43,15 +47,15 @@ export async function syncAllIndexes(options: { verbose?: boolean } = {}): Promi
     const name = model.collection.collectionName;
     try {
       const dropped = await model.syncIndexes();
-      console.log(`[indexSync] ${name}: dropped=${JSON.stringify(dropped)}`);
+      obsLog.info(`[indexSync] ${name}: dropped=${JSON.stringify(dropped)}`);
       if (options.verbose) {
         for (const index of await model.collection.indexes()) {
-          console.log(`    ${index.name} ${JSON.stringify(index.key)}${index.expireAfterSeconds !== undefined ? ` ttl=${index.expireAfterSeconds}s` : ''}`);
+          obsLog.info(`    ${index.name} ${JSON.stringify(index.key)}${index.expireAfterSeconds !== undefined ? ` ttl=${index.expireAfterSeconds}s` : ''}`);
         }
       }
     } catch (error) {
       failed += 1;
-      console.error(`[indexSync] ${name} FAILED:`, error instanceof Error ? error.message : error);
+      obsLog.error(`[indexSync] ${name} FAILED:`, error instanceof Error ? error.message : error);
     }
   }
   return { synced: INDEXED_MODELS.length - failed, failed };

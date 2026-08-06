@@ -92,15 +92,24 @@ check('re-hydrating the same snapshot is idempotent (distinct rows preserved)', 
   assert.deepEqual(counts(first), counts(second), 'a repeated restore produces identical counts (idempotent)');
 });
 
-// A high-frequency fault must not flood the cap and evict a rarer distinct fault.
-check('cap keeps distinct faults; hot fault moves to front without evicting', () => {
+// A high-frequency fault must not flood the cap and evict a rarer distinct fault:
+// a repeat collapses in place (no new slot), so no eviction, and first-seen order holds.
+check('cap keeps distinct faults; a repeat collapses in place without reordering', () => {
   let buf: IncidentReport[] = [];
   buf = collapseFaultIntoBuffer(buf, incident({ reason: 'rare', url: 'https://app/rare' }), 2);
   buf = collapseFaultIntoBuffer(buf, incident({ reason: 'hot', url: 'https://app/hot' }), 2);
   buf = collapseFaultIntoBuffer(buf, incident({ reason: 'hot', url: 'https://app/hot' }), 2);
   assert.equal(buf.length, 2);
-  assert.ok(buf.some((f) => f.reason === 'rare'), 'the rarer distinct fault survives');
-  assert.equal(buf[0].reason, 'hot', 'the repeated fault is refreshed to the front');
+  assert.equal(buf[0].reason, 'rare', 'first-seen order holds — the repeat does not jump position');
+  assert.equal(buf[1].reason, 'hot', 'the repeated fault stays in place with its bumped count');
+});
+
+// New distinct faults append to the bottom so the latest finding is always last.
+check('distinct faults accumulate oldest → newest (latest last)', () => {
+  let buf: IncidentReport[] = [];
+  buf = collapseFaultIntoBuffer(buf, incident({ reason: 'first', url: 'https://app/1' }));
+  buf = collapseFaultIntoBuffer(buf, incident({ reason: 'second', url: 'https://app/2' }));
+  assert.deepEqual(buf.map((f) => f.reason), ['first', 'second']);
 });
 
 // Grouping preserves accumulated counts so a collapsed buffer renders the true total.

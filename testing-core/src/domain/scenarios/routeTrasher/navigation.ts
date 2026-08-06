@@ -1,6 +1,10 @@
 import type { Page } from 'playwright';
 import { wait, isNonFatalNavigationError } from '../rapidClicker/utils.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:RouteTrasher]');
+
 // SPA-safe settle window: wait for async rendering to finish after a navigation
 // before the next action fires, so we never drive the client router mid-render.
 const SETTLE_TIMEOUT_MS = 2000;
@@ -59,7 +63,7 @@ export async function safeNavigation(
     return true;
   } catch (error) {
     if (!isIgnorableNavError(error)) {
-      console.error(
+      obsLog.error(
         `[StressScenario:RouteTrasher] Navigation error on ${action}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -114,7 +118,7 @@ export async function safeGoto(page: Page, url: string, timeout: number = 1000):
     return true;
   } catch (error) {
     if (!isIgnorableNavError(error)) {
-      console.error(
+      obsLog.error(
         `[StressScenario:RouteTrasher] Navigation error on goto ${url}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }

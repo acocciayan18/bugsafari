@@ -97,8 +97,8 @@ interface TargetAuthPanelProps {
 
 // text-base under `sm` keeps iOS from zooming the viewport on focus.
 const FIELD_CLASS =
-  'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
-const LABEL_CLASS = 'block text-[12px] font-bold uppercase r text-(--text-tertiary) mb-1 font-sans';
+  'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-base  font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
+const LABEL_CLASS = 'block text-[13px] font-medium text-(--text-primary) mb-1 font-sans';
 
 // Session state temporarily disabled — button rendered inert, not removed.
 const METHOD_OPTIONS: ReadonlyArray<{ id: TargetAuthMethod; label: string; disabled?: boolean }> = [

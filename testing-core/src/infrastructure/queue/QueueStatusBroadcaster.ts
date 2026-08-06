@@ -3,6 +3,10 @@ import type { Server } from 'socket.io';
 import { QUEUE_UPDATE_EVENT, type QueueJobState, type QueueUpdate } from '../../../../shared/types.js';
 import { SAFARI_TASK_QUEUE_NAME, resolveQueueConnection, type QueuePositions, type TaskQueue } from './TaskQueue.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[QueueStatus]');
+
 // Room a client joins (keyed by jobId) to receive its own queue position pushes.
 export function queueRoom(jobId: string): string {
   return `queue:${jobId}`;
@@ -55,7 +59,7 @@ export class QueueStatusBroadcaster {
     this.events = new QueueEvents(SAFARI_TASK_QUEUE_NAME, { connection: resolveQueueConnection(redisUrl) });
     // QueueEvents emits 'error' on a Redis blip; an unhandled EventEmitter 'error'
     // crashes the api process. Log-and-continue — it reconnects on its own.
-    this.events.on('error', (err) => console.error('[QueueStatus] queue-events redis error:', err instanceof Error ? err.message : err));
+    this.events.on('error', (err) => obsLog.error('[QueueStatus] queue-events redis error:', err instanceof Error ? err.message : err));
   }
 
   public async start(): Promise<void> {
@@ -67,10 +71,10 @@ export class QueueStatusBroadcaster {
     // Emits nothing when the queue is empty — the waiting list drives the fan-out.
     this.resyncTimer = setInterval(() => {
       void this.broadcastPositions().catch((error: unknown) =>
-        console.error('[QueueStatus] resync failed:', error instanceof Error ? error.message : error));
+        obsLog.error('[QueueStatus] resync failed:', error instanceof Error ? error.message : error));
     }, RESYNC_INTERVAL_MS);
     this.resyncTimer.unref();
-    console.log(`[QueueStatus] broadcasting position updates for queue=${SAFARI_TASK_QUEUE_NAME} (resync every ${RESYNC_INTERVAL_MS / 1000}s)`);
+    obsLog.info(`[QueueStatus] broadcasting position updates for queue=${SAFARI_TASK_QUEUE_NAME} (resync every ${RESYNC_INTERVAL_MS / 1000}s)`);
   }
 
   // Push the current position of a specific job to a freshly-subscribed socket —

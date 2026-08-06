@@ -14,6 +14,10 @@ import { setScrubValues, clearScrubValues } from '../../domain/services/telemetr
 import { TelemetryEmitter } from '../../domain/services/telemetry/TelemetryEmitter.js';
 import { AuthNarrator } from '../../domain/services/auth/AuthNarrator.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[PlaywrightBrowserEngine]');
+
 // Env-tunable positive-integer viewport dimension with a safe fallback.
 function readViewportInt(name: string, fallback: number): number {
   const parsed = Number.parseInt(process.env[name] ?? '', 10);
@@ -121,7 +125,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       // Force engine stop first - critical for zombie prevention
       if (this.activeEngine) {
         this.activeEngine.stop(reason);
-        console.log('[PlaywrightBrowserEngine] Engine stop requested');
+        obsLog.info('[PlaywrightBrowserEngine] Engine stop requested');
         // Graceful shutdown: flush pending telemetry/DB writes BEFORE closing the
         // browser, so a stop can't strand in-flight forensic persistence.
         await this.activeEngine.settlePendingTasks();
@@ -130,7 +134,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       this.activeEngine = null;
       await this.cleanupResources();
     } catch (err) {
-      console.error('[PlaywrightBrowserEngine] Stop error:', err instanceof Error ? err.message : String(err));
+      obsLog.error('[PlaywrightBrowserEngine] Stop error:', err instanceof Error ? err.message : String(err));
       // Ensure cleanup runs even on error
       await this.cleanupResources();
     } finally {
@@ -147,14 +151,14 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     // never persist another run's (or another user's) findings.
     this.capturedConfirmedBugs = [];
     this.optimizationSettings = optimizationSettings;
-    console.log(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
-    console.log(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
+    obsLog.info(`[PlaywrightBrowserEngine] Using optimization settings:`, optimizationSettings);
+    obsLog.info(`[PlaywrightBrowserEngine] Selected scenarios:`, selectedScenarios ?? '(all)');
     this.activeEngine = new AutonomousExplorationEngine(this.findingRepo, optimizationSettings, selectedScenarios, userId, this.runCode ?? undefined);
     // Launch browser with proper headless mode and timeout handling
     // Use headless: true for automated testing (no GUI)
     // Add explicit timeout to prevent hangs during browser startup
     const browserLaunchTimeoutMs = 30000;
-    console.log('[PlaywrightBrowserEngine] Starting browser launch', {
+    obsLog.info('[PlaywrightBrowserEngine] Starting browser launch', {
       headless: true,
       launchTimeoutMs: browserLaunchTimeoutMs,
       env: {
@@ -211,13 +215,13 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         'primary',
       );
     } catch (launchError) {
-      console.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
-      console.log('[PlaywrightBrowserEngine] Attempting fallback launch with minimal args...');
+      obsLog.error('[PlaywrightBrowserEngine] Browser launch failed:', launchError);
+      obsLog.info('[PlaywrightBrowserEngine] Attempting fallback launch with minimal args...');
 
       try {
         this.activeBrowser = await launchBounded(['--no-sandbox', '--disable-setuid-sandbox'], 'fallback');
       } catch (fallbackError) {
-        console.error('[PlaywrightBrowserEngine] Fallback browser launch failed:', fallbackError);
+        obsLog.error('[PlaywrightBrowserEngine] Fallback browser launch failed:', fallbackError);
         throw fallbackError;
       }
     }
@@ -230,7 +234,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     const VIEWPORT_HEIGHT = readViewportInt('BUGSAFARI_VIEWPORT_HEIGHT', 900);
 
     // Diagnostic: Log viewport configuration
-    if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
+    if (VERBOSE) obsLog.info(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
     // seededState + attributionUserAgent are pure (no browser I/O), safe before the guard.
     // storageState seeds a pre-authenticated session and MUST be applied at context
     // creation — cookies/origins have to exist before the app's first boot. An
@@ -250,7 +254,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     let bootEmitter: TelemetryEmitter | undefined;
     try {
       const browserVersion = await this.activeBrowser.version();
-      if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
+      if (VERBOSE) obsLog.info(`[PlaywrightBrowserEngine] Screen: ${browserVersion}`);
 
       this.activeContext = await this.activeBrowser.newContext({
         viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
@@ -304,7 +308,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         viewportHeight: VIEWPORT_HEIGHT,
       };
 
-      if (VERBOSE) console.log(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
+      if (VERBOSE) obsLog.info(`[PlaywrightBrowserEngine] Browser info captured:`, this.currentBrowserInfo);
 
       // Diagnostic: verify page viewport. Gated — this is a per-run CDP round-trip whose
       // only consumer is the log below, so it is pure cost outside debugging.
@@ -321,7 +325,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
             scrollHeight: document.documentElement?.scrollHeight ?? 0,
           };
         });
-        console.log(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
+        obsLog.info(`[PlaywrightBrowserEngine] Initial viewport metrics:`, JSON.stringify(initialViewport));
       }
     } catch (setupError) {
       // Stop the boot frame loop if it started, then close the browser before rethrow.
@@ -516,7 +520,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       try {
         await page.close();
       } catch (err) {
-        console.error('[PlaywrightBrowserEngine] Failed closing page:', err instanceof Error ? err.message : String(err));
+        obsLog.error('[PlaywrightBrowserEngine] Failed closing page:', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -525,7 +529,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       try {
         await context.close();
       } catch (err) {
-        console.error('[PlaywrightBrowserEngine] Failed closing context:', err instanceof Error ? err.message : String(err));
+        obsLog.error('[PlaywrightBrowserEngine] Failed closing context:', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -533,18 +537,18 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     if (browser) {
       try {
         await browser.close();
-        console.log('[PlaywrightBrowserEngine] Browser closed successfully');
+        obsLog.info('[PlaywrightBrowserEngine] Browser closed successfully');
       } catch (err) {
-        console.error('[PlaywrightBrowserEngine] Failed killing zombie browser:', err instanceof Error ? err.message : String(err));
+        obsLog.error('[PlaywrightBrowserEngine] Failed killing zombie browser:', err instanceof Error ? err.message : String(err));
         // Try force kill as last resort
         try {
           if (!browser.isConnected()) {
-            console.log('[PlaywrightBrowserEngine] Browser already disconnected');
+            obsLog.info('[PlaywrightBrowserEngine] Browser already disconnected');
           } else {
             await browser.close();
           }
         } catch (forceErr) {
-          console.error('[PlaywrightBrowserEngine] Force kill failed:', forceErr instanceof Error ? forceErr.message : String(forceErr));
+          obsLog.error('[PlaywrightBrowserEngine] Force kill failed:', forceErr instanceof Error ? forceErr.message : String(forceErr));
         }
       }
     }

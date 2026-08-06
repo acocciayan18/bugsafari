@@ -8,6 +8,10 @@
 
 import jwt from 'jsonwebtoken';
 
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[authConfig]');
+
 // Determine environment mode
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development' || !isProduction;
@@ -32,7 +36,7 @@ if (!JWT_SECRET) {
   // IMPORTANT: This MUST match JWT_SECRET in docker-compose.local.yml, root .env, and testing-core/.env
   // to avoid cross-context token verification (401) failures.
   JWT_SECRET = DEV_FALLBACK_SECRET;
-  console.warn(
+  obsLog.warn(
     `[authConfig] JWT_SECRET env var not set — using development fallback "${JWT_SECRET}". ` +
     'If tokens minted elsewhere 401 here, the launch context is using a different secret.',
   );
@@ -153,18 +157,18 @@ export function verifyTokenSync(token: string): AuthPayload | null {
     // A validly-signed token missing string userId/email must fail cleanly here,
     // not blow up downstream in `new Types.ObjectId(undefined)`.
     if (typeof decoded.userId !== 'string' || typeof decoded.email !== 'string') {
-      console.warn('[AUTH] Token verification failed: userId/email claim missing or non-string');
+      obsLog.warn('[AUTH] Token verification failed: userId/email claim missing or non-string');
       return null;
     }
     return { userId: decoded.userId, email: decoded.email };
   } catch (err) {
     // FIX: Log specific reason for verification failure to help diagnose 401 issues
     if (err instanceof jwt.TokenExpiredError) {
-      console.warn('[AUTH] Token verification failed: Token has expired');
+      obsLog.warn('[AUTH] Token verification failed: Token has expired');
     } else if (err instanceof jwt.JsonWebTokenError) {
-      console.warn('[AUTH] Token verification failed: Invalid token', err.message);
+      obsLog.warn('[AUTH] Token verification failed: Invalid token', err.message);
     } else {
-      console.warn('[AUTH] Token verification failed:', err instanceof Error ? err.message : 'Unknown error');
+      obsLog.warn('[AUTH] Token verification failed:', err instanceof Error ? err.message : 'Unknown error');
     }
     return null;
   }

@@ -18,6 +18,10 @@ import {
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[DataFuzzer]');
+
 // Shared state-hasher for fuzz-step forensics. Reused across steps; its combined
 // structural+interactive fingerprint is what "meaningful state change" is measured against.
 const fuzzHasher = new DomHasher();
@@ -65,10 +69,10 @@ export function setupFuzzGuardAccessor(): void {
   import('../../../bugs/finders/fuzzGuard.js').then((module) => {
     if (chaosManagerInstance) {
       module.setChaosManagerAccessor(chaosManagerInstance);
-      console.log('[DataFuzzer] fuzzGuard accessor configured');
+      obsLog.info('[DataFuzzer] fuzzGuard accessor configured');
     }
   }).catch((err) => {
-    console.error('[DataFuzzer] Failed to setup fuzzGuard accessor:', err);
+    obsLog.error('[DataFuzzer] Failed to setup fuzzGuard accessor:', err);
   });
 }
 
@@ -240,7 +244,7 @@ export const dataFuzzer: StressScenario = {
 
   async execute(page: Page, target?: InteractiveElement): Promise<void> {
     if (!target?.selector) {
-      console.log('[StressScenario:DataFuzzer] Skipping - no target selector provided');
+      obsLog.info('[StressScenario:DataFuzzer] Skipping - no target selector provided');
       return;
     }
 
@@ -249,15 +253,15 @@ export const dataFuzzer: StressScenario = {
 
     // Classify the input element using heuristic-driven classifier
     const category = classifyInputElement(target);
-    console.log(` [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
+    obsLog.info(` [HEURISTIC CLASSIFIER] Classified input target "${target.id || selector}" as -> ${category}`);
     const fuzzLabel = resolveElementLabel(target);
     const fuzzKind = elementNoun(target.tagName, target.type);
 
-    console.log(`[StressScenario:DataFuzzer] Starting adaptive fuzzing on '${selector}' (${tagName})`);
+    obsLog.info(`[StressScenario:DataFuzzer] Starting adaptive fuzzing on '${selector}' (${tagName})`);
 
     // Validate target is an input field
     if (!isInputField(tagName)) {
-      console.log(`[StressScenario:DataFuzzer] Skipping - '${selector}' is not an input field`);
+      obsLog.info(`[StressScenario:DataFuzzer] Skipping - '${selector}' is not an input field`);
       return;
     }
 
@@ -300,7 +304,7 @@ export const dataFuzzer: StressScenario = {
         chaosManagerInstance.startTransaction(selector, 'FUZZ', fuzzMetadata);
       }
 
-      console.log(
+      obsLog.info(
         ` [ADAPTIVE FUZZ] L${level}/${MAX_ESCALATION_LEVEL} ${category} → ${description} (len=${payload.length}) on '${selector}'`
       );
 
@@ -329,7 +333,7 @@ export const dataFuzzer: StressScenario = {
           }
           const injected = await injectPayload(page, selector, tagName, payload);
           if (!injected) {
-            console.warn(`[StressScenario:DataFuzzer] Injection reported failure for '${selector}' at L${level}`);
+            obsLog.warn(`[StressScenario:DataFuzzer] Injection reported failure for '${selector}' at L${level}`);
           }
           ActiveScenarioTracker.record(describeInputInjection(fuzzLabel, payload, redactValue, fuzzKind));
           // Structured reproduction buffer: record the fuzz injection as a TYPE
@@ -344,13 +348,13 @@ export const dataFuzzer: StressScenario = {
             redactValue,
           });
           const submissionMethod = await triggerFormSubmission(page, selector);
-          console.log(`[StressScenario:DataFuzzer] Submit via "${submissionMethod}" (L${level})`);
+          obsLog.info(`[StressScenario:DataFuzzer] Submit via "${submissionMethod}" (L${level})`);
           // Race probe on auth fields: a zero-wait double-submit exposes
           // double-login/double-register and in-flight-lock gaps. L0 only.
           if (category === 'DATABASE_AUTH' && level === 0) {
             const fired = await concurrentDoubleSubmit(page, selector);
             if (fired > 1) {
-              console.log(`[StressScenario:DataFuzzer] Race probe fired ${fired}× concurrent submits on '${selector}'`);
+              obsLog.info(`[StressScenario:DataFuzzer] Race probe fired ${fired}× concurrent submits on '${selector}'`);
             }
           }
         },
@@ -360,7 +364,7 @@ export const dataFuzzer: StressScenario = {
         chaosManagerInstance.closeTransaction();
       }
 
-      console.log(
+      obsLog.info(
         `[StressScenario:DataFuzzer] L${level} result → stateChanged=${snapshot.stateChanged}, ` +
         `api=${snapshot.apiResponses.length}, anomalies=${snapshot.consoleAnomalies.length}`
       );
@@ -372,9 +376,9 @@ export const dataFuzzer: StressScenario = {
     }
 
     if (meaningfulLevel >= 0) {
-      console.log(`[StressScenario:DataFuzzer] Meaningful reaction at escalation L${meaningfulLevel} for '${selector}'`);
+      obsLog.info(`[StressScenario:DataFuzzer] Meaningful reaction at escalation L${meaningfulLevel} for '${selector}'`);
     } else {
-      console.log(
+      obsLog.info(
         `[StressScenario:DataFuzzer] No state change after full escalation (L0..${MAX_ESCALATION_LEVEL}) on '${selector}'`
       );
     }

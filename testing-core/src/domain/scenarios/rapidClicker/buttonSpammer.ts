@@ -29,6 +29,10 @@ import {
 } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder } from '../../services/forensics/metadataRecorder.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:ButtonSpammer]');
+
 export const buttonSpammer = {
   name: 'ButtonSpammer',
 
@@ -39,7 +43,7 @@ export const buttonSpammer = {
   ): Promise<void> {
     const selector = target?.selector ?? 'button, [role="button"], a';
 
-    console.log(
+    obsLog.info(
       `[StressScenario:ButtonSpammer] Starting zero-wait burst of ${CLICK_COUNT} clicks on '${selector}'`,
     );
 
@@ -57,7 +61,7 @@ export const buttonSpammer = {
     if (manager) {
       manager.startTransaction(selector, 'STRESS_CLICK', metadata);
     } else {
-      console.log(
+      obsLog.info(
         '[StressScenario:ButtonSpammer] No ChaosTransactionManager provided - running without transaction tracking',
       );
     }
@@ -95,7 +99,7 @@ export const buttonSpammer = {
         result.completed === 0 ? describeInertBurst(result.attempted) : describeBurstOutcome(result),
       );
 
-      console.log(
+      obsLog.info(
         `[StressScenario:ButtonSpammer] Burst completed ${result.completed}/${result.attempted} in ${result.durationMs}ms`,
       );
     } finally {

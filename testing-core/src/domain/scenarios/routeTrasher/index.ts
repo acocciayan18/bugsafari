@@ -28,6 +28,10 @@ import {
   describeRouteTrashWhiteScreen,
 } from '../../services/forensics/narration.js';
 
+import { createLogger } from '../../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[StressScenario:RouteTrasher]');
+
 // One shared DOM hasher for the run — its combined fingerprint is what every
 // navigation snapshot measures "did the DOM actually update" against.
 const navHasher = new DomHasher();
@@ -108,14 +112,14 @@ export const routeTrasher = {
       // so the recorder's mutations flow straight into the live transaction.
       manager.startTransaction(targetSelector, 'ROUTE_TRASH', metadata);
     } else {
-      console.log(
+      obsLog.info(
         '[StressScenario:RouteTrasher] No ChaosTransactionManager provided - running without transaction tracking',
       );
     }
 
     const recorder = new RouteTrashMetadataRecorder(metadata);
 
-    console.log(`[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`);
+    obsLog.info(`[StressScenario:RouteTrasher] Starting route trashing with ${repetitions} repetitions`);
     const trashSummary = describeRouteTrashStart(repetitions, originPath);
     ActiveScenarioTracker.record(trashSummary);
     // One re-expandable MACRO for the finding's replay timeline. The history
@@ -262,7 +266,7 @@ export const routeTrasher = {
         finalUrl = page.url();
         recorder.finalize(returnedToOrigin ? 'restored-to-origin' : 'drifted', finalUrl);
       } catch (error) {
-        console.warn(
+        obsLog.warn(
           `[StressScenario:RouteTrasher] Origin restore failed: ${error instanceof Error ? error.message : String(error)}`,
         );
         finalUrl = page.url();
@@ -274,14 +278,14 @@ export const routeTrasher = {
       try {
         await page.waitForLoadState('networkidle', { timeout: 2000 });
       } catch {
-        console.log('[StressScenario:RouteTrasher] Network idle timeout, proceeding with transaction end');
+        obsLog.info('[StressScenario:RouteTrasher] Network idle timeout, proceeding with transaction end');
       }
       await wait(100);
 
       manager?.endTransaction();
     }
 
-    console.log(
+    obsLog.info(
       `[StressScenario:RouteTrasher] Completed ${completed}/${attempted} navigation actions ` +
         `(returnedToOrigin=${returnedToOrigin}, inconsistencies=${inconsistencies}, ` +
         `serverErrors=${serverErrors}, defensiveResponses=${defensiveResponses}, clientCrashes=${clientCrashes})`,

@@ -30,5 +30,11 @@ RUN npm prune --omit=dev
 # Expose REST / WebSocket API port
 EXPOSE 3000
 
+# Drop root: the Playwright base image ships a non-privileged `pwuser` with a home
+# and browser sandbox already provisioned. The app writes nothing under /app at
+# runtime (temp/screenshots go to /tmp and the browser profile), so read-only /app
+# owned by root is fine. Least privilege for any RCE via a rendered target page.
+USER pwuser
+
 # 6. Execution entrypoint
 CMD ["node", "testing-core/dist/testing-core/src/index.js"]

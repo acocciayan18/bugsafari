@@ -1,6 +1,10 @@
 import { Redis } from 'ioredis';
 import type { ActiveSessionSnapshot } from '../../../../shared/types.js';
 
+import { createLogger } from '../observability/logger.js';
+
+const obsLog = createLogger('[RunRegistry]');
+
 // Registry entries outlive the job's removeOnComplete window (1h) with margin.
 const ENTRY_TTL_SECONDS = 2 * 60 * 60;
 // Snapshot is refreshed every ~2s by the worker; expiry means the worker died.
@@ -32,7 +36,7 @@ export class RunRegistry {
     this.redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
     // Prevent an unhandled ioredis 'error' event from crashing the process on a
     // transient Redis blip; the client auto-reconnects (maxRetriesPerRequest:null).
-    this.redis.on('error', (err) => console.error('[RunRegistry] redis connection error:', err instanceof Error ? err.message : err));
+    this.redis.on('error', (err) => obsLog.error('[RunRegistry] redis connection error:', err instanceof Error ? err.message : err));
   }
 
   private runKey(runToken: string): string {

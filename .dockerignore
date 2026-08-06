@@ -21,3 +21,7 @@ codemaps
 *.md
 *.log
 logs
+
+# Tests are never run from the image; excluded from the build (tsconfig) already.
+**/*.test.ts
+**/*.spec.ts
