@@ -877,6 +877,9 @@ export class ExplorationEngine {
     // Fresh run: a stop reason from a previous run must never leak forward.
     this.stopReason = null;
     this.isStopRequested = false;
+    // Clear the one-shot timebox latch so a reused engine instance can still
+    // terminate via the timebox path — it is never reset elsewhere.
+    this.timeboxExceeded = false;
 
     // Last navigated URL — shared via closure with the stability monitor and loop.
     let lastKnownUrl = '';

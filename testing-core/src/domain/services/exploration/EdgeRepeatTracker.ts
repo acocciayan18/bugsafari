@@ -16,7 +16,9 @@
  */
 
 // Upper bound on tracked (structure, selector) keys so long runs can't grow
-// memory without limit. FIFO eviction of the oldest key.
+// memory without limit. LRU eviction: each recorded repeat refreshes the key's
+// recency (delete+set), so an actively-looping control is never evicted while a
+// stale one-off key ages out first — plain FIFO could drop a hot hub edge.
 const MAX_KEYS = 5000;
 
 export class EdgeRepeatTracker {
@@ -40,6 +42,8 @@ export class EdgeRepeatTracker {
       if (oldest !== undefined) this.repeats.delete(oldest);
     }
     const next = (this.repeats.get(k) ?? 0) + 1;
+    // delete+set moves the key to most-recently-used so LRU eviction spares it.
+    this.repeats.delete(k);
     this.repeats.set(k, next);
     return next;
   }

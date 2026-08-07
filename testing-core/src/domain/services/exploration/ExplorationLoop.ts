@@ -1572,7 +1572,14 @@ export class ExplorationLoop {
     this.lastProbedRoute = this.lastProbedHref ? normalizeRoutePath(this.lastProbedHref) || null : null;
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
-    if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {
+    // Route-normalize both sides — the rest of the engine keys cycles on the
+    // normalized route (query dropped), so a raw-href match missed an ancestor
+    // reached with a different ?page=/cache-buster and re-traversed the loop.
+    const probedRoute = probe.href ? normalizeRoutePath(probe.href) : null;
+    if (
+      probedRoute &&
+      this.deps.pathNavigator.ancestorUrls().some((u) => u && normalizeRoutePath(u) === probedRoute)
+    ) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       // Actuated-and-resolved: a cyclic control leads nowhere new — count it covered
       // so it stops inflating hasUnexploredControls() and driving endless re-seeds.

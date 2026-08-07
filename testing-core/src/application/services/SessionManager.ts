@@ -155,6 +155,9 @@ interface ActiveRun {
   telemetryPersistBuffer: TelemetryEventRow[];
   telemetryPersistedCount: number;
   telemetryFlushChain: Promise<void>;
+  // One-shot latch: true once the durable cap was hit and the operator was told the
+  // DB tail is truncated, so the warning is emitted once, not per dropped event.
+  telemetryCapSignaled: boolean;
   // Replay ring buffers (bounded).
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
@@ -338,6 +341,7 @@ export class SessionManager implements TelemetryRecorder {
       telemetryPersistBuffer: [],
       telemetryPersistedCount: 0,
       telemetryFlushChain: Promise.resolve(),
+      telemetryCapSignaled: false,
       telemetry: [],
       reports: [],
       incidents: [],
@@ -505,7 +509,18 @@ export class SessionManager implements TelemetryRecorder {
   private persistTelemetryEvent(run: ActiveRun, event: TelemetryEvent): void {
     if (run.sessionId === null) run.sessionId = run.engine.getLastSessionId?.() ?? null;
     if (run.sessionId === null) return; // pre-session boot; the in-memory buffer still covers it
-    if (run.telemetryPersistedCount + run.telemetryPersistBuffer.length >= MAX_FORENSIC_ROWS) return;
+    if (run.telemetryPersistedCount + run.telemetryPersistBuffer.length >= MAX_FORENSIC_ROWS) {
+      // Cap hit: keep streaming live, but tell the operator once that the durable DB
+      // record stops here — a restored session must never look complete when it isn't.
+      if (!run.telemetryCapSignaled) {
+        run.telemetryCapSignaled = true;
+        obsLog.warn(`[SessionManager] Durable telemetry cap (${MAX_FORENSIC_ROWS}) reached — live stream continues; DB tail truncated.`);
+        this.emitMilestone(
+          `Forensic persistence cap (${MAX_FORENSIC_ROWS} events) reached — live telemetry continues, but the durable record is truncated from here; a restored session will omit later events.`,
+        );
+      }
+      return;
+    }
     run.telemetryPersistBuffer.push({
       seq: run.telemetrySeq++,
       timestamp: new Date(event.timestamp),
