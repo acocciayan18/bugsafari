@@ -118,8 +118,7 @@ export default function NetworkFailureList({
   if (rows.length === 0) {
     return (
       <div className="text-(--text-secondary) py-4">
-        <div className="text-(--text-primary) mb-2 font-bold">Network Failures</div>
-        <div className="text-(--text-tertiary) italic text-[13px] leading-relaxed">{emptyMessage}</div>
+        <div className="text-(--text-secondary)  text-[13px] leading-relaxed">{emptyMessage}</div>
       </div>
     );
   }

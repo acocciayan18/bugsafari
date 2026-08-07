@@ -29,4 +29,7 @@ export enum SessionStatus {
   TIMED_OUT = 'TimedOut',
   HALTED = 'Halted',
   ABANDONED = 'Abandoned',
+  // A BugSafari engine / Playwright / environment failure — distinct from a Crashed
+  // target app, so History can tell "our engine broke" from "the app under test broke".
+  ENGINE_ERROR = 'EngineError',
 }

@@ -15,6 +15,7 @@ import {
   isBodyReadableResourceType,
   MAX_SOFT_FAIL_BODY_BYTES,
 } from '../verification/softFailBody.js';
+import { detectApiContractViolation } from '../verification/apiContractBody.js';
 
 // A first-party request still pending this long after the timeline finished is a hang.
 export const HANG_THRESHOLD_MS = 8_000;
@@ -23,19 +24,21 @@ const FREEZE_PROBE_TIMEOUT_MS = 5_000;
 const HANG_RESOURCE_TYPES = new Set(['xhr', 'fetch', 'document']);
 
 /**
- * Classes a deterministic replay can actually evidence. Everything else
- * (race timing, cascade attribution, constraint-bypass oracles) must be
+ * Classes a deterministic replay can actually evidence. Everything else must be
  * INCONCLUSIVE/UNVERIFIABLE — replay observation can never prove or refute them.
+ * Excluded on purpose because replay has no oracle: FUZZ_VULNERABILITY_LEAK and
+ * INPUT_SANITIZATION_FAILURE hinge on a CONFIRMED reflected-XSS oracle the replay
+ * never runs (a body-leaked datastore error reclassifies to NOSQL/SQL, not FUZZ),
+ * and CLIENT_TRUST_BOUNDARY_VIOLATION needs the StorageTamper privileged-route
+ * oracle. Verifying them from passive faults alone fabricates RESOLVED.
  */
 export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
   'RUNTIME_STABILITY_EXCEPTION',
   'API_CONTRACT_VIOLATION',
   'BOUNDARY_STRESS_FAILURE',
   'NOSQL_INJECTION',
-  'FUZZ_VULNERABILITY_LEAK',
+  'SQL_INJECTION',
   'SECURITY_VULNERABILITY_LEAK',
-  'INPUT_SANITIZATION_FAILURE',
-  'CLIENT_TRUST_BOUNDARY_VIOLATION',
   'ROUTE_MUTATION_FAILURE',
   'STRUCTURAL_NAVIGATION_LOGIC',
   'INFINITE_LOADING',
@@ -43,6 +46,24 @@ export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
 
 export function isReplayVerifiable(bugClass: string): boolean {
   return REPLAY_VERIFIABLE_CLASSES.has(bugClass);
+}
+
+/**
+ * Classes whose live evidence lives in the RESPONSE BODY (a leaked Mongo/BSON error,
+ * a stack/path/connection-string, a soft 404/redirect), not the status line. Replay
+ * must read bodies for these or a still-active leak reads clean → false RESOLVED.
+ */
+const BODY_SCAN_CLASSES: ReadonlySet<string> = new Set([
+  'NOSQL_INJECTION',
+  'SQL_INJECTION',
+  'SECURITY_VULNERABILITY_LEAK',
+  'ROUTE_MUTATION_FAILURE',
+  'STRUCTURAL_NAVIGATION_LOGIC',
+]);
+
+/** True when the finding's class can only be reproduced by scanning response bodies. */
+export function requiresBodyScan(bugClass: string): boolean {
+  return BODY_SCAN_CLASSES.has(bugClass);
 }
 
 declare global {
@@ -89,6 +110,9 @@ export class ReplayProbes {
     }
     if (this.bugClass === 'BOUNDARY_STRESS_FAILURE') {
       this.page.on('response', this.onResponse);
+    }
+    if (this.bugClass === 'API_CONTRACT_VIOLATION') {
+      this.page.on('response', this.onApiContractResponse);
     }
   }
 
@@ -146,6 +170,7 @@ export class ReplayProbes {
     this.page.off('requestfinished', this.onRequestSettled);
     this.page.off('requestfailed', this.onRequestSettled);
     this.page.off('response', this.onResponse);
+    this.page.off('response', this.onApiContractResponse);
     this.pendingRequests.clear();
   }
 
@@ -178,6 +203,33 @@ export class ReplayProbes {
             message: `Masked failure in ${status} body (${verdict.matched})`,
             url: response.url(),
             bugClassOverride: 'BOUNDARY_STRESS_FAILURE',
+          });
+        })
+        .catch(() => undefined),
+    );
+  };
+
+  // Schema check for API_CONTRACT_VIOLATION: a 2xx API response whose body is the
+  // wrong shape (JSON-declared but unparseable, or a full HTML page) is a contract
+  // break the app may now swallow silently — flag it from the response itself.
+  private readonly onApiContractResponse = (response: Response): void => {
+    const status = response.status();
+    if (status < 200 || status >= 300) return;
+    if (!isBodyReadableResourceType(response.request().resourceType())) return;
+    const contentType = response.headers()['content-type'] ?? '';
+    this.bodyScans.push(
+      response
+        .text()
+        .then((body) => {
+          if (body.length > MAX_SOFT_FAIL_BODY_BYTES) return;
+          const verdict = detectApiContractViolation(contentType, body);
+          if (!verdict.violation) return;
+          this.collector.addExternal({
+            faultType: 'NETWORK',
+            statusCode: status,
+            message: `API contract violation: ${verdict.matched}`,
+            url: response.url(),
+            bugClassOverride: 'API_CONTRACT_VIOLATION',
           });
         })
         .catch(() => undefined),

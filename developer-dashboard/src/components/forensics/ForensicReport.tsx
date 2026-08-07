@@ -77,7 +77,7 @@ function formatDuration(durationMs: number): string {
 function statusTheme(status: string): { text: string; dot: string; bg: string; border: string } {
   const outcome = outcomeFromStatus(status);
   if (outcome && !isCleanTermination(outcome)) {
-    return outcome === 'graceful-shutdown' || outcome === 'abandoned'
+    return outcome === 'graceful-shutdown' || outcome === 'abandoned' || outcome === 'engine-error'
       ? { text: 'text-(--status-warning-fg)', dot: 'bg-(--status-warning-fg)', bg: 'bg-(--status-warning-bg)', border: 'border-(--status-warning-border)' }
       : { text: 'text-(--status-critical-fg)', dot: 'bg-(--status-critical-fg)', bg: 'bg-(--status-critical-bg)', border: 'border-(--status-critical-border)' };
   }
@@ -443,9 +443,17 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   UNVERIFIABLE_BUG_CLASS:
     "We can't confirm this kind of bug with replay alone. Re-test it with a live exploration run.",
   WEAK_MATCH_ONLY:
-    "Faults of the same type showed up, but we couldn't confirm they're the original defect, so there isn't enough evidence either way.",
+    "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
+  NO_REPLAY_STEPS:
+    "This finding has no recorded reproduction steps, so there was nothing to replay — Verify Fix can't confirm it. Re-run a live exploration to capture a replayable timeline.",
+  UNCONFIRMED_RESOLUTION:
+    "The first replay was clean, but a confirmation replay disagreed — this fault reproduces intermittently, so we can't confirm it's fixed. Re-test against a stable build.",
   LEGACY_TIMELINE:
     'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
+  TARGET_UNREACHABLE:
+    "We couldn't reach the target to replay it — this says nothing about the bug. Check the app is running and retry.",
+  AUTH_WALL:
+    "The replay hit a login wall (the saved session's credentials have expired), so it never reached the recorded surface. Re-test with a fresh authenticated run.",
   REPLAY_ERROR: "We couldn't replay the target, so this result says nothing about the bug. Try again.",
 };
 
@@ -613,7 +621,7 @@ function VerificationResultModal({
 
         {result.verdict === 'VERIFICATION_FAILED' && (
           <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
-            {REASON_TEXT.REPLAY_ERROR}
+            {REASON_TEXT[result.reason] ?? REASON_TEXT.REPLAY_ERROR}
           </div>
         )}
 

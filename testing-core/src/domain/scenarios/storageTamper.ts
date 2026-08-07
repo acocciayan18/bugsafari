@@ -413,20 +413,20 @@ export const storageTamper = {
 
       if (verdict === 'GAINED') {
         const keys = result.tamperedKeys.join(', ') || '(seeded canonical flags)';
-        const forgeDetail = `(keys: ${keys}${result.jwtForged ? '; JWT re-minted alg=none role=admin' : ''})`;
+        const forgeDetail = `(keys: ${keys}${result.jwtForged ? '; JWT re-minted with alg=none and role=admin' : ''})`;
         const evidence = serverConfirmed
-          ? `Privileged surface markers rose ${before} → ${after} after forging client auth-state ${forgeDetail}, ` +
-            `AND a privileged same-origin request returned 2xx under the forged state. ` +
-            `The server honored tampered client state — broken access control (server authorization bypassed).`
-          : `Privileged surface markers rose ${before} → ${after} after forging client auth-state ${forgeDetail}. ` +
-            `The client rendered privileged UI from untrusted client state, but no privileged server request was ` +
-            `observed to succeed — server-side enforcement is UNVERIFIED. Confirm whether protected data/actions are ` +
-            `actually reachable under the forged state before treating this as an access-control bypass.`;
+          ? `Signs of privileged access went from ${before} to ${after} after faking the signed-in state in the browser ${forgeDetail}, ` +
+            `and a privileged request to the same site then succeeded (2xx) under that fake state. ` +
+            `The server trusted the faked browser data, which is broken access control (the server check was bypassed).`
+          : `Signs of privileged access went from ${before} to ${after} after faking the signed-in state in the browser ${forgeDetail}. ` +
+            `The app showed privileged screens from this untrusted browser data, but no privileged server request was seen to succeed, ` +
+            `so it is not yet confirmed that the server enforces access. Check whether protected data or actions are actually reachable ` +
+            `under the fake state before treating this as a confirmed access-control bypass.`;
         ActiveScenarioTracker.record(evidence);
         ctx?.registerFinding?.({
           message: serverConfirmed
-            ? `Broken access control: server honored forged client auth-state on ${page.url()}`
-            : `Client renders privileged UI from forged storage (server enforcement unverified) on ${page.url()}`,
+            ? `Broken access control: the server trusted faked signed-in data from the browser on ${page.url()}`
+            : `The app showed privileged screens from faked browser data (server enforcement not yet confirmed) on ${page.url()}`,
           selector,
           evidence,
           serverConfirmed,

@@ -50,7 +50,9 @@ export interface ClusterCoverageSnapshot {
 }
 
 // Bounds so a pathological SPA (thousands of distinct shells / controls) cannot
-// grow the registry without limit. FIFO eviction of the oldest cluster.
+// grow the registry without limit. LRU eviction (least-recently-accessed): plain
+// FIFO evicted the oldest-INSERTED cluster — normally the entry/home hub, whose
+// triggered-set loss forced full re-exploration (mirrors the GraphStore P3-06 fix).
 const MAX_CLUSTERS = 2000;
 const MAX_SELECTORS_PER_CLUSTER = 2000;
 
@@ -170,6 +172,7 @@ export class StateClusterRegistry {
     if (!structureHash || !selector) return;
     const cluster = this.clusters.get(structureHash);
     if (!cluster) return;
+    this.touch(structureHash, cluster); // activity on this shell refreshes LRU recency
     // A triggered control is by definition discovered — keep the sets consistent.
     if (cluster.discovered.size < MAX_SELECTORS_PER_CLUSTER) cluster.discovered.add(selector);
     if (!cluster.triggered.has(selector)) {
@@ -290,17 +293,27 @@ export class StateClusterRegistry {
     };
   }
 
-  private ensureCluster(structureHash: string, step: number): ClusterMetrics {
-    let cluster = this.clusters.get(structureHash);
-    if (cluster) return cluster;
+  /** Refresh LRU recency: re-insert so this cluster becomes most-recently-used. */
+  private touch(structureHash: string, cluster: ClusterMetrics): void {
+    this.clusters.delete(structureHash);
+    this.clusters.set(structureHash, cluster);
+  }
 
-    // FIFO-evict the oldest cluster (insertion order) once at capacity.
+  private ensureCluster(structureHash: string, step: number): ClusterMetrics {
+    const existing = this.clusters.get(structureHash);
+    if (existing) {
+      this.touch(structureHash, existing);
+      return existing;
+    }
+
+    // LRU-evict the least-recently-accessed cluster (insertion order = access order,
+    // kept current by touch()) once at capacity.
     if (this.clusters.size >= MAX_CLUSTERS) {
       const oldest = this.clusters.keys().next().value;
       if (oldest !== undefined) this.clusters.delete(oldest);
     }
 
-    cluster = {
+    const cluster: ClusterMetrics = {
       structureHash,
       visitCount: 0,
       urls: new Set<string>(),

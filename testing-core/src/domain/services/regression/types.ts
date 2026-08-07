@@ -8,6 +8,8 @@ export interface CollectedFault {
   message: string;
   statusCode?: number;
   url?: string;
+  /** Response body scanned for body-borne signatures (leaked Mongo/stack/soft-fail). */
+  content?: string;
   /** Set by ported replay probes whose classes classifyFault cannot produce. */
   bugClassOverride?: string;
 }

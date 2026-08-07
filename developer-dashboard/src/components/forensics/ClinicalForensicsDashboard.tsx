@@ -2,7 +2,7 @@
 // ClinicalForensicsDashboard.tsx - FORENSIC TELEMETRY VIEW
 // ═══════════════════════════════════════════════════════════════
 
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
@@ -19,6 +19,7 @@ import SessionTimerLive from '../common/SessionTimerLive';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
+import LongOperationProgressCard from '../common/LongOperationProgressCard';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, ConsoleFilterBar, AiDiagnosticCard, TelemetryHelpModal, type ConsoleFilter } from '../telemetry';
@@ -29,6 +30,28 @@ import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/t
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode } from '../../types';
+
+// A Pause/Stop that settles within this window shows no transitional label — the
+// control locks instantly (status guards + backend idempotency), but "Pausing…"/
+// "Stopping…" surfaces only when the operation genuinely runs long.
+const TRANSITION_LABEL_DELAY_MS = 1000;
+
+// Delay the "Pausing…"/"Stopping…" label past the settle window. Returns null until
+// the status has held PAUSING/STOPPING for TRANSITION_LABEL_DELAY_MS, then the label;
+// clears the instant the transition settles.
+function useTransitionLabel(status: TestSessionStatus): string | null {
+  const target = status === 'PAUSING' ? 'Pausing…' : status === 'STOPPING' ? 'Stopping…' : null;
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!target) {
+      setLabel(null);
+      return;
+    }
+    const timer = setTimeout(() => setLabel(target), TRANSITION_LABEL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [target]);
+  return label;
+}
 
 type TerminalTab = 'telemetry' | 'errors' | 'network' | 'console';
 
@@ -231,8 +254,19 @@ export default function ClinicalForensicsDashboard({
 
   // First-run guided tour — auto-launches once per user while the dashboard sits idle.
   useDashboardTour(!isActiveSession && !isInitializing && !isQueued);
-  // Backend settling in-flight tasks — lock every control until it confirms completion.
-  const transitionLabel = testStatus === 'PAUSING' ? 'Pausing…' : testStatus === 'STOPPING' ? 'Stopping…' : null;
+  // Backend settling in-flight tasks. The control already locked (status left
+  // ACTIVE/PAUSED), so this surfaces "Pausing…"/"Stopping…" only past the 1s settle
+  // window — a fast transition finishes with no flash.
+  const transitionLabel = useTransitionLabel(testStatus);
+
+  // Status-pill text, held to the pre-transition steady state until the label
+  // surfaces — so the pill never flashes PAUSING/STOPPING for a sub-1s settle.
+  const steadyStatusRef = useRef<TestSessionStatus>(testStatus);
+  if (testStatus !== 'PAUSING' && testStatus !== 'STOPPING') steadyStatusRef.current = testStatus;
+  const displayStatus =
+    !transitionLabel && (testStatus === 'PAUSING' || testStatus === 'STOPPING')
+      ? steadyStatusRef.current
+      : testStatus;
 
   // Falls back to the default profile's own label rather than a hardcoded string,
   // so renaming a profile in the shared catalog can never leave a stale name here.
@@ -299,7 +333,7 @@ export default function ClinicalForensicsDashboard({
 
           {/* Session controls and Timer management */}
           {showSessionControls && (
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:ml-auto">
+            <div className="relative flex flex-wrap items-center gap-2 sm:gap-3 md:ml-auto">
               {/* Stopwatch is hidden while queued — it must not tick until a worker
                   promotes the run to RUNNING; a standby chip stands in its place. */}
               {!isQueued && (
@@ -379,6 +413,8 @@ export default function ClinicalForensicsDashboard({
   {isSessionSaved ? 'Saved' : 'Save Session'}
 </button>
               )}
+              {/* Anchored near Resume/Stop — surfaces only past the settle window. */}
+              <LongOperationProgressCard />
             </div>
           )}
         </div>
@@ -483,20 +519,20 @@ export default function ClinicalForensicsDashboard({
           <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-between rounded-lg  bg-(--surface-panel) px-3 py-2 sm:mx-3 sm:mb-1 sm:px-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${testStatus === 'ACTIVE'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${displayStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
-                : testStatus === 'PAUSED'
+                : displayStatus === 'PAUSED'
                   ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'
                   : isQueued || transitionLabel
                     ? 'border-(--status-neutral-border) bg-(--status-neutral-bg) text-(--status-neutral-fg)'
                     : 'border-(--status-neutral-border) bg-(--status-neutral-bg) text-(--status-neutral-fg)'
                 }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${testStatus === 'ACTIVE' ? 'bg-(--status-stable-fg) animate-pulse'
-                  : testStatus === 'PAUSED' ? 'bg-(--status-warning-fg)'
+                <span className={`h-1.5 w-1.5 rounded-full ${displayStatus === 'ACTIVE' ? 'bg-(--status-stable-fg) animate-pulse'
+                  : displayStatus === 'PAUSED' ? 'bg-(--status-warning-fg)'
                     : isQueued || transitionLabel ? 'bg-(--status-neutral-fg) animate-pulse'
                     : 'bg-(--status-neutral-fg)'
                   }`} />
-                {testStatus}
+                {displayStatus}
               </span>
             </div>
           </div>
@@ -595,7 +631,7 @@ export default function ClinicalForensicsDashboard({
                       })}
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-                          <span className="h-3 w-3 rounded-full bg-(--surface-invert) animate-ping"></span>
+                          <span className="h-2 w-2 rounded-full bg-(--surface-invert) animate-ping"></span>
                           <span className="font-mono text-[13px]">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>
@@ -604,7 +640,7 @@ export default function ClinicalForensicsDashboard({
                     </>
                   ) : formattedTelemetry.length === 0 ? (
                     <div className="text-(--text-secondary) py-4">
-                      <span className="text-(--text-primary)">█</span> Ready for telemetry...
+                    Ready for telemetry...
                     </div>
                   ) : (
                     <>
@@ -621,7 +657,7 @@ export default function ClinicalForensicsDashboard({
                         );
                       })}
                       <div className="py-2 text-(--text-primary)">
-                        <span className="text-(--text-primary)">█</span> Ready for telemetry...
+                      Ready for telemetry...
                       </div>
                     </>
                   )}

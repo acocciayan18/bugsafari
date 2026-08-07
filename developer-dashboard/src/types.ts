@@ -102,7 +102,7 @@ export interface SessionHistoryEntry {
   // Public human-readable run code (RUN-XXXXXX); absent on legacy rows saved before it existed.
   runId?: string;
   targetUrl: string;
-  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
+  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned' | 'EngineError';
   startedAt: string;
   finishedAt?: string;
   endedReason?: string;

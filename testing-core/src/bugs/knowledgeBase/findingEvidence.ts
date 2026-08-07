@@ -26,14 +26,14 @@ function withSpecifics(advice: string, specifics?: FindingSpecifics): string {
   const lines: string[] = [];
   if (specifics.method || specifics.endpoint) {
     const status = specifics.statusCode !== undefined ? ` (HTTP ${specifics.statusCode})` : '';
-    lines.push(`• Endpoint: ${[specifics.method, specifics.endpoint].filter(Boolean).join(' ')}${status}`);
+    lines.push(`• Address: ${[specifics.method, specifics.endpoint].filter(Boolean).join(' ')}${status}`);
   }
   if (specifics.field) lines.push(`• Field: ${specifics.field}`);
   if (specifics.payload) {
     const p = specifics.payload.length > MAX_SPECIFIC_PAYLOAD ? `${specifics.payload.slice(0, MAX_SPECIFIC_PAYLOAD)}…` : specifics.payload;
-    lines.push(`• Payload that triggered it: ${p}`);
+    lines.push(`• Value that triggered it: ${p}`);
   }
-  if (specifics.location) lines.push(`• Originates at: ${specifics.location}`);
+  if (specifics.location) lines.push(`• Starts in the code at: ${specifics.location}`);
   if (lines.length === 0) return advice;
   return `For this finding\n${lines.join('\n')}\n\n${advice}`;
 }
@@ -93,7 +93,7 @@ export function ensureFindingEvidence(input: FindingEvidenceInput): FindingEvide
   let reproductionPlaybook = input.reproductionPlaybook;
   if (reproductionPlaybook.length === 0) {
     reproductionPlaybook = [
-      `Step 1. ${input.context ? `Reproduce by repeating the interaction on ${input.context}` : 'Repeat the last interaction on the affected page'} — no earlier steps were recorded before this fault.`,
+      `Step 1. ${input.context ? `Reproduce by repeating the interaction on ${input.context}` : 'Repeat the last interaction on the affected page'}. No earlier steps were recorded before this fault.`,
     ];
     filled.push('reproductionPlaybook');
   }

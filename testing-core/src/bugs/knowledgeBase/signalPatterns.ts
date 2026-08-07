@@ -197,6 +197,20 @@ export const FREEZE_SELECTORS: readonly string[] = [
   '[role="progressbar"]',
 ];
 
+// Genuine "still working" indicators — a subset of FREEZE_SELECTORS. Decorative
+// overlay/backdrop/skeleton/modal chrome is EXCLUDED: those persist on healthy pages
+// (heroes, nav backdrops, lazy placeholders) and alone must never prove a hang. A hang
+// requires one of THESE persisting; the decorative ones only corroborate.
+export const STRONG_LOADING_SELECTORS: readonly string[] = [
+  '[aria-busy="true"]',
+  '.loading',
+  '.spinner',
+  '.infinite-spinner',
+  '[data-loading="true"]',
+  '[role="progressbar"]',
+  'text:loading',
+];
+
 /** Input selectors whose disabled state indicates a UI blocked by a stuck request. */
 export const INPUT_BLOCK_SELECTORS: readonly string[] = [
   'input[aria-disabled="true"]',

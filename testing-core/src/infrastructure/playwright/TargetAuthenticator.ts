@@ -169,7 +169,7 @@ export class TargetAuthenticator {
     narrator?.verifying();
     const verdict = await this.verify(page, config, resolved, formUrl, isFinalAttempt);
     return verdict.status === 'authenticated'
-      ? { ...verdict, originsVisited: location.originsVisited }
+      ? { ...verdict, originsVisited: location.originsVisited, loginUrl: location.url }
       : verdict;
   }
 

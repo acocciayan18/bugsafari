@@ -227,18 +227,18 @@ export const injectionDifferentialFinder: BugFinder = {
       const label = resolveElementLabel(element);
       const where = describeTarget(label, elementNoun(element.tagName, element.type));
       const detail = authBypass
-        ? `A benign value was rejected (HTTP ${baseline.status}) but the ${kind} operator payload was accepted (HTTP ${operator.status}) at ${safePathname(operator.url)} — the operator was interpreted, not treated as a literal string (authorization/injection bypass).`
-        : `Both requests returned 2xx, but the ${kind} operator payload's response grew from ${baseline.bodyLen} to ${operator.bodyLen} bytes at ${safePathname(operator.url)} — the operator broadened the query result set.`;
+        ? `A normal value was rejected (HTTP ${baseline.status}) but the ${kind} operator value was accepted (HTTP ${operator.status}) at ${safePathname(operator.url)}. The server ran the operator instead of treating it as plain text, which can bypass authorization or injection checks.`
+        : `Both requests succeeded (2xx), but the ${kind} operator value made the response grow from ${baseline.bodyLen} to ${operator.bodyLen} bytes at ${safePathname(operator.url)}. The operator widened the query and returned more data than it should.`;
 
       return [
         {
           bugClass,
           severity: authBypass ? 'CRITICAL' : 'HIGH',
           title: authBypass
-            ? `${kind} operator payload bypassed server validation (differential auth/injection)`
-            : `${kind} operator payload broadened query results (differential injection)`,
+            ? `${kind} operator value slipped past the server checks`
+            : `${kind} operator value returned more data than expected`,
           evidence: {
-            message: `${detail} Injected into ${where}. Payload: ${payload}`,
+            message: `${detail} This value went into ${where}. Value sent: ${payload}`,
             selector: element.selector,
             actionExecuted: 'injection-differential',
             stateHash: ctx.stateHash,

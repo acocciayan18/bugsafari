@@ -176,10 +176,10 @@ export const structuralProbeFinder: BugFinder = {
     if (redirectSignatures.length > 0) {
       findings.push({
         bugClass: 'ROUTE_MUTATION_FAILURE',
-        title: 'Infinite Redirect Loop Detected',
+        title: 'Page kept redirecting in a loop',
         severity: 'CRITICAL',
         evidence: {
-          message: `Redirect loop detected during route mutation. Origin: ${metadata?.originPath}, Navigation: ${metadata?.navigationType}`,
+          message: `Changing the URL sent the app into an endless redirect loop, so it never landed on a real page. Started from: ${metadata?.originPath} (navigation: ${metadata?.navigationType}).`,
           selector: metadata?.injectedPath,
           actionExecuted: 'route-trasher-redirect-loop',
           stateHash: ctx.stateHash,
@@ -192,10 +192,10 @@ export const structuralProbeFinder: BugFinder = {
     if (componentSignatures.length > 0) {
       findings.push({
         bugClass: 'ROUTE_MUTATION_FAILURE',
-        title: 'Component Resolution Failure',
+        title: 'Screen failed to load after the URL changed',
         severity: 'HIGH',
         evidence: {
-          message: `Component resolution failed after route mutation. Origin: ${metadata?.originPath}, Type: ${metadata?.navigationType}`,
+          message: `After the URL changed, the app could not load the screen for that route (a broken or missing component). Started from: ${metadata?.originPath} (navigation: ${metadata?.navigationType}).`,
           selector: metadata?.injectedPath,
           actionExecuted: 'route-trasher-component-fail',
           stateHash: ctx.stateHash,
@@ -208,10 +208,10 @@ export const structuralProbeFinder: BugFinder = {
     if (querySignatures.length > 0) {
       findings.push({
         bugClass: 'ROUTE_MUTATION_FAILURE',
-        title: 'Malformed Query Mutation Detected',
+        title: 'Broken query values left in the URL',
         severity: 'MEDIUM',
         evidence: {
-          message: `Malformed query parameters detected. Origin: ${metadata?.originPath}`,
+          message: `The URL was left with malformed query values that the app did not clean up. Started from: ${metadata?.originPath}.`,
           selector: metadata?.injectedPath,
           actionExecuted: 'route-trasher-query-mutation',
           stateHash: ctx.stateHash,

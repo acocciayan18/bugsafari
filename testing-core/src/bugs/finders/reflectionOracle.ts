@@ -9,6 +9,7 @@
 // sanitized correctly, so it must NOT be flagged.
 
 import type { Page } from 'playwright';
+import { scenarioRandom } from '../../domain/scenarios/seededRandom.js';
 
 export type ReflectionVerdict =
   | 'CONFIRMED' // injected payload executed or reflected unescaped → real vulnerability
@@ -76,9 +77,11 @@ function normalizeMarkup(s: string): string {
     .replace(/\s*>\s*/g, '>');
 }
 
-/** Unique per-injection marker so reflection is correlated to THIS payload, not ambient markup. */
+/** Unique per-injection marker so reflection is correlated to THIS payload, not ambient markup.
+ *  Draws from the scoped seeded PRNG so a seeded replay re-injects the SAME marker (raw
+ *  Math.random broke reflection reproducibility); identical Math.random fallback when unseeded. */
 export function makeNonce(step: number): string {
-  return `BGSF${step}_${Math.random().toString(36).slice(2, 8)}`;
+  return `BGSF${step}_${Math.floor(scenarioRandom() * 2 ** 31).toString(36)}`;
 }
 
 /**

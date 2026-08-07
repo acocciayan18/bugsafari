@@ -671,6 +671,17 @@ export class ExplorationLoop {
    * once per route so a genuinely frozen page yields one finding, not one per step.
    */
   private async reportClientFreeze(page: Page, health: 'unsettled' | 'timeout', ctx: RunContext): Promise<void> {
+    // Intentional teardown (operator stop/cancel, pause, timebox, crash shutdown) aborts the
+    // bounded DOM scan mid-flight, so a 'timeout'/'unsettled' scan here is a shutdown artifact,
+    // not a target render loop. Mark it an expected interruption and never register a finding.
+    if (this.deps.isStopRequested() || this.deps.isPaused()) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'render-freeze-suppressed-teardown',
+        url: page.url(),
+        message: `Scan ended ${health} during session termination — expected interruption, not a client render freeze.`,
+      });
+      return;
+    }
     const url = page.url();
     const routeKey = visitedRouteKey(url);
     if (ctx.freezeReported.has(routeKey)) return;
@@ -1561,7 +1572,14 @@ export class ExplorationLoop {
     this.lastProbedRoute = this.lastProbedHref ? normalizeRoutePath(this.lastProbedHref) || null : null;
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
-    if (probe.href && this.deps.pathNavigator.ancestorUrls().includes(probe.href)) {
+    // Route-normalize both sides — the rest of the engine keys cycles on the
+    // normalized route (query dropped), so a raw-href match missed an ancestor
+    // reached with a different ?page=/cache-buster and re-traversed the loop.
+    const probedRoute = probe.href ? normalizeRoutePath(probe.href) : null;
+    if (
+      probedRoute &&
+      this.deps.pathNavigator.ancestorUrls().some((u) => u && normalizeRoutePath(u) === probedRoute)
+    ) {
       this.deps.pathNavigator.markEdgeCyclic(currentHash, target.selector);
       // Actuated-and-resolved: a cyclic control leads nowhere new — count it covered
       // so it stops inflating hasUnexploredControls() and driving endless re-seeds.

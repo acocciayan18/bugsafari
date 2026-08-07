@@ -284,7 +284,7 @@ export function describeConstraintBypassPlaybook(input: ConstraintBypassPlaybook
   lines.push(`Remove the ${attr} validation from ${target}${paramClause} (a browser-only guard)`);
   lines.push(inject);
   lines.push(
-    `Submit the form — ${input.method} ${input.endpoint} accepted it (HTTP ${input.status}), so the server never re-validated the rule`,
+    `Submit the form. ${input.method} ${input.endpoint} accepted it (HTTP ${input.status}), so the server never re-checked the rule`,
   );
   return lines.map((line, index) => `Step ${index + 1}. ${line}`);
 }
@@ -328,8 +328,8 @@ export function describeBurstOutcome(outcome: BurstSummary): string {
  */
 export function describeInertBurst(attempted: number): string {
   return (
-    `Invalid: 0 of ${attempted} clicks registered — the target controls were not actuable ` +
-    `(obscured, detached, or covered), so this burst never interacted with the application.`
+    `Invalid: 0 of ${attempted} clicks registered. The target controls could not be clicked ` +
+    `(hidden, removed, or covered), so this burst never actually interacted with the app.`
   );
 }
 
@@ -402,7 +402,7 @@ export function describeRouteTrashNavigation(
   direction: 'back' | 'forward',
   url: string,
 ): string {
-  return `Round ${iteration}: press browser ${direction === 'back' ? 'Back' : 'Forward'} → ${url}`;
+  return `Round ${iteration}: press browser ${direction === 'back' ? 'Back' : 'Forward'}, landing on ${url}`;
 }
 
 /** RouteTrasher inconsistency: the URL changed but the DOM did not update to match. */
@@ -417,12 +417,12 @@ export function describeRouteTrashDrift(landed: string, originPath: string): str
 
 /** RouteTrasher: a mutation provoked one or more backend 5xx failures (MEDIUM). */
 export function describeRouteTrashServerError(navType: string, count: number, url: string): string {
-  return `[MEDIUM] ${navigationLabel(navType)} caused ${count} server error(s) (HTTP 5xx) at ${url} — the route or its parameters are likely unvalidated.`;
+  return `[MEDIUM] ${navigationLabel(navType)} caused ${count} server error(s) (HTTP 5xx) at ${url}. The route or its values are likely not being checked.`;
 }
 
 /** RouteTrasher: expected defensive 4xx responses, handled gracefully (INFORMATIONAL). */
 export function describeRouteTrashDefensive(navType: string, count: number, url: string): string {
-  return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${url} — handled correctly, no bug.`;
+  return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${url}. This was handled correctly, so it is not a bug.`;
 }
 
 /** RouteTrasher: an unhandled client-side exception fired during a mutation (CRITICAL). */
@@ -432,7 +432,7 @@ export function describeRouteTrashClientCrash(navType: string, count: number, ur
 
 /** RouteTrasher: a mutation left the app on a white/blank screen (CRITICAL). */
 export function describeRouteTrashWhiteScreen(navType: string, url: string): string {
-  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${url} — the view failed to render.`;
+  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${url}. The view failed to render.`;
 }
 
 /** NetworkSaboteur step. */
@@ -534,7 +534,7 @@ export function describeOutcome(outcome?: ActionOutcome): string {
   if (outcome.navigatedTo) parts.push(`the app moved to ${outcome.navigatedTo}`);
   if (typeof outcome.httpStatus === 'number') parts.push(`the server responded HTTP ${outcome.httpStatus}`);
   if (parts.length === 0 && outcome.domChanged === false) parts.push('nothing on the page changed');
-  return parts.length ? ` → ${parts.join(', ')}` : '';
+  return parts.length ? `. Result: ${parts.join(', ')}` : '';
 }
 
 /** The step kind for an action record — drives the UI action-type chip. */
@@ -607,7 +607,7 @@ function describeSingleAction(record: ActionRecord): string {
 
     case 'NETWORK':
       return record.payload
-        ? `${describeNetworkSabotage(rawLabel)} — affected request: ${record.payload}`
+        ? `${describeNetworkSabotage(rawLabel)} (affected request: ${record.payload})`
         : describeNetworkSabotage(rawLabel);
 
     case 'HOVER':

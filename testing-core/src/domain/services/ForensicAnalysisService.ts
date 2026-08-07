@@ -226,9 +226,10 @@ export class ForensicAnalysisService {
       const firstException = jsExceptions[0];
       const message = firstException.message;
       
-      // Extract meaningful error type from message
-      if (message.includes('Cannot read property') || message.includes('undefined')) {
-        return `Test failed due to JavaScript error: attempting to access property of undefined value.`;
+      // Extract meaningful error type from message. Modern V8 throws "Cannot read
+      // properties of null/undefined", so match both phrasings + null variant.
+      if (/cannot read propert(y|ies) of/i.test(message) || message.includes('undefined')) {
+        return `Test failed due to JavaScript error: attempting to access property of null/undefined value.`;
       }
       if (message.includes('is not a function')) {
         return `Test failed due to JavaScript error: calling method on non-function value.`;
@@ -339,7 +340,7 @@ export class ForensicAnalysisService {
       jsExceptions.forEach(exception => {
         const message = exception.message;
 
-        if (message.includes('Cannot read property') || message.includes('undefined')) {
+        if (/cannot read propert(y|ies) of/i.test(message) || message.includes('undefined')) {
           recommendations.push('Handle null/undefined values before accessing properties');
         }
         if (message.includes('is not a function')) {

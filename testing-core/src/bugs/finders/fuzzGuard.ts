@@ -232,10 +232,10 @@ export const fuzzGuard: BugFinder = {
     if (xssSignatures.length > 0) {
       findings.push({
         bugClass: 'FUZZ_VULNERABILITY_LEAK',
-        title: `Reflected XSS detected - payload may bypass sanitization`,
+        title: `Injected script ran on the page (reflected XSS)`,
         severity: 'CRITICAL',
         evidence: {
-          message: `XSS signatures detected in DOM after injecting ${metadata.payload?.substring(0, 50)}... into ${metadata.category} field. Signatures: ${xssSignatures.join(', ')}`,
+          message: `After typing ${metadata.payload?.substring(0, 50)}... into the ${metadata.category} field, the injected script appeared unescaped in the page. This means a user-supplied value can run as code in the browser. Matches: ${xssSignatures.join(', ')}`,
           selector: ctx.element?.selector,
           actionExecuted: 'fuzz-xss-detection',
           stateHash: ctx.stateHash,
@@ -247,10 +247,10 @@ export const fuzzGuard: BugFinder = {
     if (noSqlErrors.length > 0) {
       findings.push({
         bugClass: 'FUZZ_VULNERABILITY_LEAK',
-        title: `NoSQL/MongoDB syntax error detected - possible injection point`,
+        title: `Database error leaked after an injected value (possible NoSQL injection)`,
         severity: 'HIGH',
         evidence: {
-          message: `NoSQL error patterns detected after injecting payload. This may indicate a NoSQL injection vulnerability. Errors: ${noSqlErrors.join('; ').substring(0, 200)}`,
+          message: `After sending a crafted value, the page returned a raw database (NoSQL/MongoDB) error. This suggests the value reached the database unchecked, which can allow injection. Errors: ${noSqlErrors.join('; ').substring(0, 200)}`,
           selector: ctx.element?.selector,
           actionExecuted: 'fuzz-nosql-detection',
           stateHash: ctx.stateHash,
@@ -262,10 +262,10 @@ export const fuzzGuard: BugFinder = {
     if (crashSignatures.length > 0) {
       findings.push({
         bugClass: 'FUZZ_VULNERABILITY_LEAK',
-        title: `Server-side instability detected following fuzz injection`,
+        title: `Server became unstable after a test value was sent`,
         severity: 'HIGH',
         evidence: {
-          message: `Crash signatures detected after fuzzing. Potential server instability. Signatures: ${crashSignatures.join('; ')}`,
+          message: `Sending test values made the server crash or return crash traces, so it does not handle unexpected input safely. Matches: ${crashSignatures.join('; ')}`,
           selector: ctx.element?.selector,
           actionExecuted: 'fuzz-crash-detection',
           stateHash: ctx.stateHash,

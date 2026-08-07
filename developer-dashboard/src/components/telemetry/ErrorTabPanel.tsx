@@ -36,7 +36,7 @@ export default function ErrorTabPanel({
   return (
     <div className="flex flex-col gap-4 p-2" role="log" aria-live="assertive" aria-relevant="additions" aria-label="Captured findings">
       {incidentGroups.length === 0 && reportGroups.length === 0 ? (
-        <div className="text-(--text-secondary) italic py-4">No findings captured yet.</div>
+        <div className="text-(--text-secondary)  py-2">No findings captured yet.</div>
       ) : (
         <>
           {incidentGroups.map(({ item: incident, count }, idx) => (

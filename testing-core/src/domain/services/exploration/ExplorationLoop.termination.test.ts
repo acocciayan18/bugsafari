@@ -101,4 +101,59 @@ check('a real app exception during a stop still reports as an exception', async 
   assert.equal(result.outcome, 'exception');
 });
 
+// Client Render Freeze (CWE-835) must never fire from an intentional shutdown: a
+// Stop/Pause aborts the bounded DOM scan mid-flight, so the resulting timeout/unsettled
+// scan is a teardown artifact, not a target render loop. A genuine freeze while the
+// session is actively running must still be reported.
+interface FreezeCapture {
+  loop: ExplorationLoop;
+  registered: Array<{ attribution?: { bugClass?: string } }>;
+  actions: string[];
+}
+
+function makeFreezeLoop(opts: { stopRequested?: boolean; paused?: boolean }): FreezeCapture {
+  const registered: Array<{ attribution?: { bugClass?: string } }> = [];
+  const actions: string[] = [];
+  const loop = new ExplorationLoop({
+    isStopRequested: () => opts.stopRequested ?? false,
+    isPaused: () => opts.paused ?? false,
+    getStopReason: () => null,
+    registerConfirmedBug: (b: { attribution?: { bugClass?: string } }) => { registered.push(b); },
+    telemetry: {
+      emit: (_t: string, meta: { actionExecuted?: string }) => { if (meta?.actionExecuted) actions.push(meta.actionExecuted); },
+      emitMilestone: () => {},
+    },
+  } as unknown as ExplorationLoopDeps);
+  return { loop, registered, actions };
+}
+
+function reportFreeze(loop: ExplorationLoop): Promise<void> {
+  const page = { url: () => 'https://example.test/dashboard', isClosed: () => false } as never;
+  const ctx = { freezeReported: new Set<string>() } as never;
+  return (loop as unknown as {
+    reportClientFreeze(p: never, h: 'unsettled' | 'timeout', c: never): Promise<void>;
+  }).reportClientFreeze(page, 'timeout', ctx);
+}
+
+check('render freeze during an operator stop is suppressed, not a finding', async () => {
+  const cap = makeFreezeLoop({ stopRequested: true });
+  await reportFreeze(cap.loop);
+  assert.equal(cap.registered.length, 0);
+  assert.ok(cap.actions.includes('render-freeze-suppressed-teardown'));
+});
+
+check('render freeze while paused is suppressed, not a finding', async () => {
+  const cap = makeFreezeLoop({ paused: true });
+  await reportFreeze(cap.loop);
+  assert.equal(cap.registered.length, 0);
+  assert.ok(cap.actions.includes('render-freeze-suppressed-teardown'));
+});
+
+check('a genuine render freeze while actively running still reports', async () => {
+  const cap = makeFreezeLoop({});
+  await reportFreeze(cap.loop);
+  assert.equal(cap.registered.length, 1);
+  assert.equal(cap.registered[0].attribution?.bugClass, 'CLIENT_RENDER_FREEZE');
+});
+
 setTimeout(() => console.log(`\n${passed} checks passed.`), 0);

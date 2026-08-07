@@ -181,6 +181,12 @@ export interface TargetAuthResult {
   /** Which selector resolved each field — for operator debugging, never values. */
   resolution?: { username: string; password: string; submit: string };
   /**
+   * The URL the login form was actually found at. Set on a successful credential
+   * login so an in-run re-auth (session-restore) can navigate straight back to the
+   * discovered form instead of re-guessing conventional auth routes.
+   */
+  loginUrl?: string;
+  /**
    * Origins the login traversed, including any identity provider a Sign In control
    * redirected to. The engine unions these into its boundary allow-list so a
    * mid-run bounce back to the IdP is not treated as leaving the target.

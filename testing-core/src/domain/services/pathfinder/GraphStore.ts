@@ -2,6 +2,15 @@ import type { StateHash, EdgeSelector, GraphNode, GraphEdge, PathfinderElement }
 import type { EventLog } from './EventLog.js';
 import { shortHash } from './utils.js';
 
+/** Evict oldest entries (insertion order) from a Set/Map until it fits `cap`. */
+function boundOldest<K>(collection: { size: number; keys(): IterableIterator<K>; delete(key: K): boolean }, cap: number): void {
+  while (collection.size > cap) {
+    const oldest = collection.keys().next().value as K | undefined;
+    if (oldest === undefined) return;
+    collection.delete(oldest);
+  }
+}
+
 /**
  * Owns the in-memory state graph (nodes + edges), node lifecycle (creation,
  * LRU eviction), and edge mutation (block/cyclic/unstable/branch). Also owns
@@ -11,17 +20,17 @@ import { shortHash } from './utils.js';
  */
 export class GraphStore {
   private readonly nodes = new Map<StateHash, GraphNode>();
-  // Hashes of every node we have ever seen (survives node eviction). NOTE: this is
-  // also written for a child hash confirmed before its node exists, so "seen" does
-  // NOT mean "was explored then evicted" — tombstoning reads evictedHashes instead.
-  private readonly seenHashes = new Set<StateHash>();
   // Hashes of nodes the cap actually evicted. Read by ensureNode so a state that was
-  // already explored comes back as a tombstone rather than as fresh frontier.
+  // already explored comes back as a tombstone rather than as fresh frontier. FIFO-
+  // bounded (insertion order) so a query/data-volatile SPA can't grow it past the
+  // node cap it backstops — losing an old tombstone only risks re-exploring a long-
+  // gone state once.
   private readonly evictedHashes = new Set<StateHash>();
   // Look-ahead destination memory: last-known child hash reached by traversing a
   // NAVIGATION selector (anchor), keyed by selector so the same navbar link on a
   // different node inherits it. Anchor-only because a link's target is stable
-  // across pages, whereas a generic 'Submit' goes different places per form.
+  // across pages, whereas a generic 'Submit' goes different places per form. FIFO-
+  // bounded like evictedHashes.
   private readonly selectorDestinations = new Map<EdgeSelector, StateHash>();
   // Per-node argmax cache for Best-First selection. Presence = "clean"; any
   // edge add/score/status change deletes the entry (invalidateEdgeIndex).
@@ -123,16 +132,18 @@ export class GraphStore {
       return existing;
     }
 
-    // Evict least-recently-visited node if cap reached
-    if (this.nodes.size >= this.maxNodes) {
-      this.evictLeastRecentlyUsed();
-    }
-
     // Re-admitting a hash the cap actually evicted: it comes back as a TOMBSTONE,
     // not fresh frontier. Eviction used to leave no readable trace at all, so an
     // evicted state returned as a brand-new `discovered` node with an empty edge
     // map and the engine re-clicked every edge it had already exhausted.
+    // Read BEFORE evicting below: the eviction bounds the tombstone set, which at a
+    // tiny cap could otherwise drop the very hash we are re-admitting this call.
     const evicted = this.evictedHashes.has(hash);
+
+    // Evict least-recently-visited node if cap reached
+    if (this.nodes.size >= this.maxNodes) {
+      this.evictLeastRecentlyUsed();
+    }
 
     const node: GraphNode = {
       hash,
@@ -147,7 +158,6 @@ export class GraphStore {
     };
 
     this.nodes.set(hash, node);
-    this.seenHashes.add(hash);
 
     this.eventLog.recordEvent(
       'node-registered',
@@ -183,6 +193,9 @@ export class GraphStore {
     // Record the eviction so ensureNode re-admits this state as a tombstone rather
     // than as unexplored frontier.
     this.evictedHashes.add(evicted.hash);
+    // Bound the tombstone set to the node cap so it never outgrows the graph it
+    // backstops. Evicting the oldest tombstone only re-admits a long-gone state once.
+    boundOldest(this.evictedHashes, this.maxNodes);
     this.capReached = true;
     this.evictions += 1;
     this.eventLog.recordEvent(
@@ -275,15 +288,11 @@ export class GraphStore {
     // Record the navigation destination for cross-node look-ahead suppression.
     if ((edge.elementType ?? '').toLowerCase() === 'a') {
       this.selectorDestinations.set(selector, childHash);
+      // FIFO-bound the nav-destination memory to the node cap (query-volatile SPAs
+      // mint anchors without limit); losing an old entry only drops a look-ahead hint.
+      boundOldest(this.selectorDestinations, this.maxNodes);
     }
     this.invalidateEdgeIndex(fromHash);
-
-    // Ensure the child node is recorded in the graph even if elements
-    // haven't been scored yet (we may be mid-navigation)
-    if (!this.nodes.has(childHash)) {
-      // Will be fully populated on the next registerStateAndDecide call
-      this.seenHashes.add(childHash);
-    }
 
     return edge;
   }

@@ -33,6 +33,7 @@ const OUTCOME_STATUS: Record<RunTerminationOutcome, SessionStatus> = {
   'graceful-shutdown': SessionStatus.HALTED,
   'target-crash': SessionStatus.CRASHED,
   abandoned: SessionStatus.ABANDONED,
+  'engine-error': SessionStatus.ENGINE_ERROR,
   exception: SessionStatus.CRASHED,
 };
 
@@ -45,6 +46,7 @@ const HISTORY_STATUS: Partial<Record<SessionStatus, SessionHistoryRecord['status
   [SessionStatus.TIMED_OUT]: 'TimedOut',
   [SessionStatus.HALTED]: 'Halted',
   [SessionStatus.ABANDONED]: 'Abandoned',
+  [SessionStatus.ENGINE_ERROR]: 'EngineError',
 };
 
 

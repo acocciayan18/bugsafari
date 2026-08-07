@@ -21,6 +21,7 @@ import { FuzzForensicLog } from '../../infrastructure/monitoring/fuzzForensics.j
 import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js';
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
 import { ConsoleLogStore } from '../../infrastructure/monitoring/ConsoleLogStore.js';
+import { classifyFaultOrigin } from '../../domain/services/verification/index.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
 
@@ -55,6 +56,7 @@ const EXECUTION_STATUS_BY_OUTCOME: Record<RunTerminationOutcome, ExecutionStatus
     'graceful-shutdown': 'HALTED',
     'target-crash': 'CRASHED',
     abandoned: 'ABANDONED',
+    'engine-error': 'CRASHED',
     exception: 'CRASHED',
 };
 
@@ -776,28 +778,42 @@ export class StartExplorationUseCase {
             const lastActions = ReproductionPlaybookStore.snapshot();
             metrics.totalActions = lastActions.length;
 
+            // Attribute the fatal error before it can become a finding. A Playwright /
+            // browser / environment failure (page.goto timeout, launch failure, closed
+            // context, DNS) is an ENGINE fault, not a target-app defect — it goes to
+            // diagnostics/session status, never the Findings tab. Only a fault attributed
+            // to the target app is emitted as a forensic finding.
+            const origin = classifyFaultOrigin({ faultType: 'EXCEPTION', message, url: targetUrl, targetOrigin: targetUrl });
+
             this.telemetry.emitTelemetry({
                 timestamp: new Date().toISOString(),
                 type: 'EXCEPTION',
                 meta: {
-                    message: `Fatal engine error: ${message}`,
+                    message: origin.isTargetApp
+                        ? `Fatal engine error: ${message}`
+                        : `Engine error (${origin.origin}) — not a target-app defect: ${message}`,
                     exceptionDetails: { message, stackTrace },
                 },
             });
 
-            this.telemetry.emitForensicReport({
-                timestamp: new Date().toISOString(),
-                reason: `Fatal engine error: ${message}`,
-                url: targetUrl,
-                stackTrace,
-                breadcrumbs: lastActions.map((a) => ({
-                    timestamp: a.timestamp,
-                    selector: a.selector,
-                    action: a.type,
-                    payload: a.payload,
-                    score: undefined,
-                })),
-            });
+            if (origin.isTargetApp) {
+                this.telemetry.emitForensicReport({
+                    timestamp: new Date().toISOString(),
+                    reason: `Fatal engine error: ${message}`,
+                    url: targetUrl,
+                    stackTrace,
+                    breadcrumbs: lastActions.map((a) => ({
+                        timestamp: a.timestamp,
+                        selector: a.selector,
+                        action: a.type,
+                        payload: a.payload,
+                        score: undefined,
+                    })),
+                });
+            } else {
+                // Engine/runtime failure — diagnostics only. No forensic report ⇒ no finding.
+                obsLog.error(`[StartExplorationUseCase] Engine-level failure (${origin.origin}), suppressed from Findings: ${origin.reason} | ${message}`, error);
+            }
         } finally {
             // CRITICAL: Emit explicit IDLE status to ensure deterministic state handshake
             // This prevents zombie backend processes by synchronizing UI state with actual engine state

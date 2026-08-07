@@ -36,7 +36,7 @@ export interface SessionHistoryRecord {
   /** Public RUN- code. Absent on legacy docs until the backfill assigns one. */
   runId?: string;
   targetUrl: string;
-  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned';
+  status: 'Running' | 'Completed' | 'Crashed' | 'Stopped' | 'TimedOut' | 'Halted' | 'Abandoned' | 'EngineError';
   startedAt: string;
   finishedAt?: string;
   endedReason?: string;

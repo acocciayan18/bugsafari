@@ -23,7 +23,7 @@ import { scrubCredentials } from './credentialScrub.js';
 import { resolveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
-import { ApiHangFinder, isBackgroundTelemetryUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
+import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import type {
@@ -723,6 +723,8 @@ export class StabilityMonitor {
       url,
       stackTrace,
       breadcrumbs,
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: remediation,
       attribution: complete.attribution,
@@ -1014,6 +1016,9 @@ export class StabilityMonitor {
     // A fire-and-forget telemetry/analytics/beacon that never settles is not a UI hang —
     // never watchdog it, so its pending timeout can't manufacture an INFINITE_LOADING finding.
     if (isBackgroundTelemetryUrl(request.url())) return;
+    // Long-lived-by-design traffic (Next.js RSC prefetch ?_rsc=, SSE, websocket, streaming/poll)
+    // stays pending for seconds without blocking the UI — never watchdog it for PENDING_TIMEOUT.
+    if (isLongLivedRequestUrl(request.url(), this.safeHeaders(request))) return;
     if (this.pending.size >= MAX_PENDING) {
       // Evict the request with the least detection value left: one whose sweep budget is
       // exhausted, else one already probed. The oldest never-probed request is the
@@ -1047,16 +1052,20 @@ export class StabilityMonitor {
   // instead of emitting duplicate findings.
   private sweepPending(page: Page): void {
     const now = Date.now();
-    for (const [, meta] of this.pending) {
+    for (const [request, meta] of this.pending) {
       if (!isSweepDue(meta, now, SWEEP_POLICY)) continue;
       Object.assign(meta, advanceSweep(meta, now, SWEEP_POLICY));
-      void this.confirmStuckLoading(page, {
-        trigger: 'PENDING_TIMEOUT',
-        url: meta.url,
-        method: meta.method,
-        pendingMs: now - meta.startMs,
-        startMs: meta.startMs,
-      });
+      void this.confirmStuckLoading(
+        page,
+        {
+          trigger: 'PENDING_TIMEOUT',
+          url: meta.url,
+          method: meta.method,
+          pendingMs: now - meta.startMs,
+          startMs: meta.startMs,
+        },
+        request,
+      );
     }
   }
 
@@ -1065,7 +1074,11 @@ export class StabilityMonitor {
   private async confirmStuckLoading(
     page: Page,
     trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; startMs?: number; failureDetail?: string },
+    request?: Request,
   ): Promise<void> {
+    // Engine shutdown/pause aborts in-flight requests, so a spinner left up by teardown is
+    // not an app-side infinite-loading bug — skip the two-probe check during termination.
+    if (this.deps.isEngineStopping()) return;
     const key = `${trigger.trigger}::${(trigger.url || '').split('#')[0].toLowerCase()}`;
     if (this.confirming.has(key)) return;
     // A dropped request during a network outage leaves a spinner up for the same
@@ -1077,6 +1090,9 @@ export class StabilityMonitor {
       if (!initial.present) return;
       await page.waitForTimeout(CONFIRM_MS);
       const confirm = await this.probeLoadingState(page);
+      // For PENDING_TIMEOUT the request must STILL be hanging after the confirm gap — if it settled
+      // mid-probe, the persisting spinner is unrelated to it and this is not a hang caused by this call.
+      const stillPending = request ? this.pending.has(request) : undefined;
       const result = this.apiHangFinder.evaluate({
         method: trigger.method,
         url: trigger.url,
@@ -1088,6 +1104,7 @@ export class StabilityMonitor {
         initial,
         confirm,
         scenarioActive: isStressScenarioActive(),
+        stillPending,
         timestampMs: Date.now(),
       });
       if (!result) return;
@@ -1185,7 +1202,8 @@ export class StabilityMonitor {
         testingType: scenario.testingType,
         stepIndex: reproduction.actions.length,
         origin: 'TARGET_APP',
-        confidence: 'SIGNAL',
+        confidence: defect.confidence,
+        verificationStatus: defect.verificationStatus,
         corroborated: defect.corroborated,
       },
       advice: defect.advice,
@@ -1198,7 +1216,7 @@ export class StabilityMonitor {
       url,
       method: defect.method,
       message: ` ${defect.message}`,
-      severity: 'WARNING',
+      severity: defect.severity === 'MEDIUM' ? 'INFO' : 'WARNING',
       attribution,
     });
     t.emitMilestone(` API hang: ${defect.method} ${url}`);
@@ -1232,6 +1250,8 @@ export class StabilityMonitor {
       url,
       stackTrace,
       breadcrumbs,
+      reproductionActions: reproduction.actions,
+      stateFingerprint,
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution,
@@ -1431,6 +1451,8 @@ export class StabilityMonitor {
       statusCode: evidence.statusCode,
       stackTrace: evidence.detail,
       breadcrumbs: evidence.breadcrumbs,
+      reproductionActions: evidence.reproduction.actions,
+      stateFingerprint: evidence.stateFingerprint,
       reproductionPlaybook: complete.reproductionPlaybook,
       advice: complete.advice,
       attribution: complete.attribution,

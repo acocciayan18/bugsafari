@@ -59,49 +59,49 @@ const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
 
 // Human title shown as the finding message prefix.
 const SUBTYPE_LABEL: Record<RuntimeSubtype, string> = {
-  UNDEFINED_PROPERTY: 'Undefined property access',
-  NULL_ACCESS: 'Null property access',
-  NOT_ITERABLE: 'Non-iterable iteration',
-  REFERENCE_ERROR: 'Reference error',
-  NOT_A_FUNCTION: 'Call of a non-function',
-  STACK_OVERFLOW: 'Infinite recursion / stack overflow',
-  RANGE_ERROR: 'Out-of-range value',
-  API_CONTRACT_VIOLATION: 'Unhandled response exception / API contract violation',
-  SYNTAX_ERROR: 'Malformed script / syntax error',
-  CHUNK_LOAD_FAILURE: 'Code-split chunk failed to load',
-  UNHANDLED_REJECTION: 'Unhandled promise rejection',
-  RENDERER_CRASH: 'Renderer process crash',
-  GENERIC_EXCEPTION: 'Unhandled runtime exception',
+  UNDEFINED_PROPERTY: 'Read a field on a value that was undefined',
+  NULL_ACCESS: 'Read a field on a value that was null',
+  NOT_ITERABLE: 'Tried to loop over something that is not a list',
+  REFERENCE_ERROR: 'Used a name that does not exist',
+  NOT_A_FUNCTION: 'Called something that is not a function',
+  STACK_OVERFLOW: 'Endless recursion (stack overflow)',
+  RANGE_ERROR: 'Value out of the allowed range',
+  API_CONTRACT_VIOLATION: 'Server reply was not the JSON the app expected',
+  SYNTAX_ERROR: 'Script could not be parsed (syntax error)',
+  CHUNK_LOAD_FAILURE: 'A page bundle failed to load',
+  UNHANDLED_REJECTION: 'A promise failed with nothing to catch it',
+  RENDERER_CRASH: 'The browser tab crashed',
+  GENERIC_EXCEPTION: 'Unhandled error on the page',
 };
 
 // Plain-language what/why/fix guidance aimed at students, per subtype.
 const STUDENT_GUIDANCE: Record<RuntimeSubtype, string> = {
   UNDEFINED_PROPERTY:
-    "You read a field on a value that was `undefined` — the object never got assigned before use. Guard with `obj?.field` or check `if (obj)` before touching it; often the data hasn't loaded yet.",
+    "The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.",
   NULL_ACCESS:
-    "You read a field on `null` — usually a missing DOM element (`querySelector` returned null) or an empty API result. Verify the lookup succeeded before using it.",
+    "The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.",
   NOT_ITERABLE:
-    "You looped over something that isn't a list (it was `undefined`/`null`/an object). Default it to `[]` before the loop, or confirm the API returned an array.",
+    "The code looped over something that is not a list (it was `undefined`, `null`, or an object). Set it to `[]` before the loop, or confirm the API returned an array.",
   REFERENCE_ERROR:
-    "You used a name that doesn't exist in scope — a typo, a missing import, or a variable used before declaration. Check the spelling and that it's imported/declared.",
+    "The code used a name that does not exist here: a typo, a missing import, or a variable used before it was declared. Check the spelling and that it is imported or declared.",
   NOT_A_FUNCTION:
-    "You called something that isn't a function — a typo, a value that's actually undefined, or a method that doesn't exist on that type. Log the value before calling it.",
+    "The code called something that is not a function: a typo, a value that is actually undefined, or a method that does not exist on that type. Log the value before calling it.",
   STACK_OVERFLOW:
-    "A function keeps calling itself with no stopping condition. Add a base case, or fix the effect/render loop that re-triggers the same call endlessly.",
+    "A function keeps calling itself with no way to stop. Add a stopping condition, or fix the effect or render loop that keeps re-triggering the same call.",
   RANGE_ERROR:
-    "A value fell outside its allowed range (e.g. a negative array length or too-deep recursion). Validate the number before you use it to size or index.",
+    "A value fell outside its allowed range (for example a negative array length or recursion that went too deep). Check the number before using it to size or index.",
   API_CONTRACT_VIOLATION:
-    "A `fetch`/`axios` call ran `.json()` on a response that wasn't JSON — usually an HTML error or proxy page returned on failure. Check `response.ok` and the `Content-Type` before parsing, wrap the parse in try/catch, and render an error state instead of letting the SyntaxError crash the view.",
+    "A `fetch` or `axios` call ran `.json()` on a reply that was not JSON, usually an HTML error or proxy page returned on failure. Check `response.ok` and the `Content-Type` before parsing, wrap the parse in try/catch, and show an error screen instead of letting the error crash the view.",
   SYNTAX_ERROR:
-    "The browser couldn't parse the script — malformed JSON, a bad template, or a build/bundling problem. Check the failing response/source is valid JS/JSON.",
+    "The browser could not parse the script: malformed JSON, a broken template, or a build problem. Confirm the failing reply or source is valid JS or JSON.",
   CHUNK_LOAD_FAILURE:
-    "A lazily-loaded bundle failed to download — a stale deploy or a network hiccup. Add a retry/refresh fallback around the dynamic import.",
+    "A page bundle failed to download, often after a new deploy or a network hiccup. Add a retry or refresh fallback around the dynamic import.",
   UNHANDLED_REJECTION:
-    "A promise rejected and nothing caught it — a failed `await`/`.then` with no `.catch`. Wrap the async call in try/catch and surface the error to the user.",
+    "A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.",
   RENDERER_CRASH:
-    "The browser tab itself crashed — usually out-of-memory from a leak or a runaway loop, or a huge allocation. Profile memory and bound the work done per frame.",
+    "The browser tab itself crashed, usually out of memory from a leak or a runaway loop, or one huge allocation. Check memory use and limit the work done per frame.",
   GENERIC_EXCEPTION:
-    "An unhandled exception destabilized the page. Reproduce with the checklist, wrap the failing operation in try/catch, and guard its inputs.",
+    "An unhandled error left the page unstable. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.",
 };
 
 // Passive runtime-error classifier. Pure and event-fed: StabilityMonitor pushes raw
@@ -184,9 +184,9 @@ export class RuntimeStabilityFinder {
     record: { bugId: string; occurrence: number; firstSeenMs: number; lastSeenMs: number },
   ): RuntimeFinding {
     const evidence = [
-      `Source: ${o.source} — ${message}`,
+      `Source: ${o.source}. ${message}`,
       `Signature: ${signature}`,
-      record.occurrence > 1 ? `Recurred ${record.occurrence}× this run` : 'First occurrence this run',
+      record.occurrence > 1 ? `Seen ${record.occurrence} times this run` : 'First time this run',
     ];
     if (o.stack) evidence.push(`Stack (top): ${o.stack.split('\n')[0].trim()}`);
     return {

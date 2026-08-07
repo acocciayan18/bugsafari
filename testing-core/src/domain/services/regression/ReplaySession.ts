@@ -12,10 +12,10 @@
 import type { BrowserContext, Page } from 'playwright';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
-import type { ReplayStepStats, StateFingerprint } from '../../../../../shared/types.js';
+import type { ReplayStepStats, StateFingerprint, VerifyFixReason } from '../../../../../shared/types.js';
 import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
 import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
-import { ReplayProbes, HANG_THRESHOLD_MS } from './replayProbes.js';
+import { ReplayProbes, HANG_THRESHOLD_MS, requiresBodyScan } from './replayProbes.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -27,6 +27,11 @@ export const FINAL_SETTLE_MS = 800;
 const NETWORK_SETTLE_MS = 3_000;
 const HANG_SETTLE_MS = HANG_THRESHOLD_MS + 2_000;
 const NAV_TIMEOUT_MS = 30_000;
+// Retry + backoff + bounded hydration wait for the replay's target load, mirroring the
+// exploration engine — so a slow or cold link does not make every finding undecidable.
+const NAV_ATTEMPTS = 3;
+const NAV_RETRY_BACKOFF_MS = 1_500;
+const HYDRATION_SETTLE_MS = 15_000;
 
 export interface ReplaySessionParams {
   targetUrl: string;
@@ -63,9 +68,33 @@ export interface ReplaySessionResult {
   /** URL pathnames the replay actually requested — proves whether the fault trigger ran. */
   seenEndpoints: string[];
   error?: string;
+  /** Typed failure kind when ok=false — lets the caller explain WHY the replay could not run. */
+  failureReason?: VerifyFixReason;
 }
 
 const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
+
+// Load the replay target with bounded retries. Earlier attempts wait for domcontentloaded;
+// the final attempt falls back to 'commit' + a bounded 'load' wait so a slow-but-reachable
+// target still hydrates before the timeline replays, instead of reading as undecidable.
+async function navigateWithRetry(page: Page, targetUrl: string): Promise<void> {
+  let navError: unknown;
+  for (let attempt = 1; attempt <= NAV_ATTEMPTS; attempt++) {
+    const waitUntil = attempt < NAV_ATTEMPTS ? 'domcontentloaded' : 'commit';
+    try {
+      await page.goto(targetUrl, { waitUntil, timeout: NAV_TIMEOUT_MS });
+      if (waitUntil === 'commit') {
+        await page.waitForLoadState('load', { timeout: HYDRATION_SETTLE_MS }).catch(() => undefined);
+      }
+      return;
+    } catch (error) {
+      navError = error;
+      if (attempt >= NAV_ATTEMPTS) break;
+      await page.waitForTimeout(NAV_RETRY_BACKOFF_MS * attempt);
+    }
+  }
+  throw navError;
+}
 
 /** Replay one finding's timeline in `context` and report whether its fault recurred. */
 export async function runReplaySession(
@@ -80,7 +109,7 @@ export async function runReplaySession(
       // progress delivery is non-critical
     }
   };
-  const failed = (error: string): ReplaySessionResult => ({
+  const failed = (error: string, failureReason?: VerifyFixReason): ReplaySessionResult => ({
     ok: false,
     reproduced: false,
     stepsReplayed: 0,
@@ -90,12 +119,13 @@ export async function runReplaySession(
     otherSignals: [],
     seenEndpoints: [],
     error,
+    failureReason,
   });
 
   await restoreState(context, params.stateFingerprint, targetUrl);
 
   const page = await context.newPage();
-  const collector = new FaultCollector(page);
+  const collector = new FaultCollector(page, requiresBodyScan(bugClass));
   collector.attach();
   const probes = new ReplayProbes(page, collector, bugClass, faultType);
   await probes.arm();
@@ -103,16 +133,16 @@ export async function runReplaySession(
 
   try {
     try {
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+      await navigateWithRetry(page, targetUrl);
     } catch (navError) {
       const message = navError instanceof Error ? navError.message : String(navError);
-      return failed(`Could not load target: ${message}`);
+      return failed(`Could not load target: ${message}`, 'TARGET_UNREACHABLE');
     }
 
     await page.waitForTimeout(PER_STEP_SETTLE_MS);
 
     if (params.guardLoginWall && (await isBlockedByLogin(page, targetUrl))) {
-      return failed('Target requires authentication; the replay never reached the recorded surface.');
+      return failed('Target requires authentication; the replay never reached the recorded surface.', 'AUTH_WALL');
     }
 
     const stats: ReplayStepStats = { ...EMPTY_STATS, total: steps.length };
@@ -135,6 +165,7 @@ export async function runReplaySession(
     // would otherwise match as a reproduced fault the replay never actually executed.
     const pageContent = stripNonRendered(await page.content().catch(() => ''));
     await probes.drain();
+    await collector.drainBodies();
     collector.detach();
 
     const buckets = collector.evaluate({

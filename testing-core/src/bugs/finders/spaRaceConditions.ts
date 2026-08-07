@@ -165,16 +165,16 @@ export const spaRaceConditionsFinder: BugFinder = {
     if (damage.crashes.length === 0 && !damage.stuckLoading) return [];
 
     const detail = damage.crashes.length > 0
-      ? `Client crashed during the burst: ${damage.crashes.join(' | ')}`
-      : 'UI remained in a loading/blocked state after the burst settled';
+      ? `The page crashed during the burst of events: ${damage.crashes.join(' | ')}`
+      : 'The page stayed stuck in a loading or blocked state after the burst finished';
 
     return [
       {
         bugClass: 'SPA_STATE_RACE_CONDITION',
-        title: 'SPA state race under concurrent events',
+        title: 'Overlapping events left the page in a bad state',
         severity: damage.crashes.length > 0 ? 'HIGH' : 'MEDIUM',
         evidence: {
-          message: `${detail}. Fired ${result.completed}/${result.attempted} concurrent events.`,
+          message: `${detail}. ${result.completed} of ${result.attempted} overlapping events fired at once.`,
           actionExecuted: 'spa-race-concurrent-events',
           stateHash: ctx.stateHash,
         },

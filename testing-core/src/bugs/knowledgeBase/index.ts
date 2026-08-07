@@ -8,6 +8,7 @@
 export {
   SIGNAL_PATTERNS,
   FREEZE_SELECTORS,
+  STRONG_LOADING_SELECTORS,
   INPUT_BLOCK_SELECTORS,
   matchesCategory,
   type SignalCategory,

@@ -86,8 +86,8 @@ export const noSqlInjectionFinder: BugFinder = {
     if (!evidence.serverFault && !evidence.operatorLeak) return [];
 
     const detail = evidence.operatorLeak
-      ? `Backend leaked a NoSQL driver/operator error: "${evidence.operatorLeak}"`
-      : `Backend answered ${evidence.serverFault?.status} at ${evidence.serverFault?.url}`;
+      ? `The server returned a raw NoSQL database error: "${evidence.operatorLeak}"`
+      : `The server returned status ${evidence.serverFault?.status} at ${evidence.serverFault?.url}`;
 
     return [
       {
@@ -95,9 +95,9 @@ export const noSqlInjectionFinder: BugFinder = {
         // A leaked operator error is direct evidence the fragment reached the query;
         // a 5xx alone only proves the input was not handled safely.
         severity: evidence.operatorLeak ? 'CRITICAL' : 'HIGH',
-        title: 'NoSQL operator fragment mishandled by the backend',
+        title: 'Database operator was not handled safely by the server',
         evidence: {
-          message: `${detail}. Injected into ${describeTarget(resolveElementLabel(element), elementNoun(element.tagName, element.type))}. Payload prefix: ${payload.slice(0, 80)}`,
+          message: `${detail}. This value went into ${describeTarget(resolveElementLabel(element), elementNoun(element.tagName, element.type))}, and the operator reached the database instead of being treated as plain text. Value sent (start): ${payload.slice(0, 80)}`,
           selector: element.selector,
           actionExecuted: 'fuzz-nosql-injection',
           stateHash: ctx.stateHash,

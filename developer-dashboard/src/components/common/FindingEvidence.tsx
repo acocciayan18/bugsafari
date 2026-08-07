@@ -112,7 +112,7 @@ function Reproduction({ view }: { view: FindingView }) {
   }
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-[13px] italic text-(--text-tertiary)">
-      No reproduction steps were recorded for this fault.
+      No steps to reproduce this finding were recorded.
     </div>
   );
 }

@@ -90,15 +90,15 @@ check('student advice is non-empty and carries the catalog remediation', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: "Cannot read properties of undefined (reading 'z')" }));
   assert.ok(finding.studentAdvice.length > 0);
-  assert.ok(finding.studentAdvice.includes('Suggested remediation — runtime exception'));
-  assert.ok(finding.message.startsWith('[Undefined property access]'));
+  assert.ok(finding.studentAdvice.includes('Suggested fix: catch and guard the failing code'));
+  assert.ok(finding.message.startsWith('[Read a field on a value that was undefined]'));
 });
 
 check('API contract violation advice carries the API-contract remediation, not the runtime one', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` }));
-  assert.ok(finding.studentAdvice.includes('Suggested remediation — API contract violation'));
-  assert.ok(finding.message.startsWith('[Unhandled response exception / API contract violation]'));
+  assert.ok(finding.studentAdvice.includes('Suggested fix: verify the reply before reading it'));
+  assert.ok(finding.message.startsWith('[Server reply was not the JSON the app expected]'));
 });
 
 check('empty / whitespace / missing message never throws', () => {

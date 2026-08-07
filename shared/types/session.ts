@@ -68,6 +68,9 @@ export interface ActiveSessionSnapshot {
   browserConsole: BrowserConsoleMessage[];
   /** Latest base64 JPEG frame (no data: prefix); only the newest is retained. */
   lastFrame: string | null;
+  /** Forensic run id (Mongo). Lets a restore backfill the full telemetry stream
+   *  from the durable `telemetry_events` collection past the capped replay buffer. */
+  sessionId?: string | null;
   /** Distributed-queue context (BUGSAFARI_USE_QUEUE only) — lets a restored client re-subscribe to its job. */
   jobId?: string | null;
   queuePosition?: number | null;
