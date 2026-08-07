@@ -15,6 +15,11 @@ const DISPLAY_TICK_MS = 250;
 // terminal telemetry (stuck / unreachable) does the client nudge a stop — long
 // enough that the normal path never triggers it, so no race with the engine.
 const TIMEBOX_GRACE_MS = 20000;
+// Backend lifecycles that prove the engine is still alive and owns the timebox — a
+// client stop here would kill a healthy run finishing on its own clock.
+const LIVE_BACKEND_STATUSES = new Set(['STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
+// One liveness-gated nudge probe in flight at a time.
+let nudgeInFlight = false;
 
 function computeElapsedMs(status: TestSessionStatus): number {
     return interpolateElapsedMs(status, runRefs.timeSyncSeeded, runRefs.serverElapsedMs, runRefs.serverElapsedAt, Date.now());
@@ -31,12 +36,29 @@ function tick(): void {
         return;
     }
     // At zero: wait for the engine's terminal telemetry. Only nudge on a genuine
-    // overrun (engine stuck/unreachable past the grace) — then flip locally too.
+    // overrun (engine stuck/unreachable past the grace), and only after confirming
+    // the backend no longer reports a live run — never stop a healthy engine.
     if (zeroSince === 0) zeroSince = Date.now();
-    if (expiryDispatched || Date.now() - zeroSince < TIMEBOX_GRACE_MS) return;
-    expiryDispatched = true;
-    store.handleTimeLimitExceeded();
-    void getEngineGateway().forceStop('timebox').catch((error) => console.error('[runTimer] Timebox fallback stop failed:', error));
+    if (expiryDispatched || nudgeInFlight || Date.now() - zeroSince < TIMEBOX_GRACE_MS) return;
+    void maybeNudgeTimeboxStop();
+}
+
+// Liveness-gated timebox backstop: probe the backend before nudging. If it still
+// reports a live lifecycle, the engine owns the timebox — suppress and let its own
+// telemetry settle the run. Only stop when the run is truly unreachable/terminal.
+async function maybeNudgeTimeboxStop(): Promise<void> {
+    nudgeInFlight = true;
+    try {
+        const snapshot = await getEngineGateway().fetchActiveSession();
+        if (snapshot && LIVE_BACKEND_STATUSES.has(snapshot.status)) return; // engine alive — don't kill it
+        expiryDispatched = true;
+        useRunStore.getState().handleTimeLimitExceeded();
+        await getEngineGateway().forceStop('timebox');
+    } catch (error) {
+        console.error('[runTimer] Timebox fallback stop failed:', error);
+    } finally {
+        nudgeInFlight = false;
+    }
 }
 
 function stop(): void {
@@ -48,6 +70,7 @@ function stop(): void {
 function start(): void {
     if (interval) return;
     expiryDispatched = false;
+    nudgeInFlight = false;
     zeroSince = 0;
     // Restart interpolation from the current authoritative elapsed on every ACTIVE
     // (re)entry — so a resume never counts the paused gap even before the engine's

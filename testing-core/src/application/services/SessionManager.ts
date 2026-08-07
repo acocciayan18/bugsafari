@@ -26,6 +26,8 @@ import { NetworkQuarantine } from '../../infrastructure/monitoring/NetworkQuaran
 import type { OperatorCommand } from '../../infrastructure/queue/controlBridge.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
+import { telemetryEventRepository, type TelemetryEventRow } from '../../infrastructure/database/repositories/TelemetryEventRepository.js';
+import { MAX_FORENSIC_ROWS } from '../../infrastructure/database/queryLimits.js';
 
 const obsLog = createLogger('[SessionManager]');
 
@@ -59,6 +61,10 @@ export interface ReserveRunParams extends Omit<BeginRunParams, 'engine'> {
 
 // Env-tunable knobs (all optional; safe defaults).
 const GRACE_MS = readPositiveInt(process.env.BUGSAFARI_SESSION_GRACE_MS, 60_000);
+// Legacy resource-reclaim teardown of an abandoned run. OFF by default so a network
+// drop or closed tab never terminates an autonomous run — the timebox / MAX_PAUSE_MS
+// remain the sole terminators. Set to 'on' to restore the grace-expiry engine stop.
+const TERMINATE_ON_ABANDON = process.env.BUGSAFARI_TERMINATE_ON_ABANDON?.trim().toLowerCase() === 'on';
 const HEALTH_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_INTERVAL_MS, 15_000);
 const HEALTH_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_TARGET_HEALTH_TIMEOUT_MS, 5_000);
 // Consecutive failed probes before declaring a Critical Server Crash and terminating.
@@ -87,6 +93,9 @@ const MAX_PAUSE_MS = readPositiveInt(process.env.BUGSAFARI_MAX_PAUSE_MS, 600_000
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const CONSOLE_BUFFER_CAP = 200;
+// Batch size before draining the telemetry-event persist buffer to Mongo. Keeps the
+// durable stream write off the hot path — record() only appends; the flush is chained.
+const TELEMETRY_PERSIST_FLUSH = 25;
 
 function readPositiveInt(raw: string | undefined, fallback: number): number {
   const n = raw ? Number(raw) : NaN;
@@ -138,6 +147,14 @@ interface ActiveRun {
   // The reason carried by that deferred stop, replayed with it so a timebox/shutdown
   // stop during boot is not silently re-attributed to the operator.
   pendingStopReason: StopReason;
+  // Forensic run id, resolved lazily from the engine once the session doc exists;
+  // the key under which the durable telemetry stream is persisted + restored.
+  sessionId: string | null;
+  // Durable telemetry-event persistence state (batched, backend-direct to Mongo).
+  telemetrySeq: number;
+  telemetryPersistBuffer: TelemetryEventRow[];
+  telemetryPersistedCount: number;
+  telemetryFlushChain: Promise<void>;
   // Replay ring buffers (bounded).
   telemetry: TelemetryEvent[];
   reports: ForensicCrashReport[];
@@ -173,6 +190,11 @@ export class SessionManager implements TelemetryRecorder {
 
   public get graceMs(): number {
     return GRACE_MS;
+  }
+
+  /** Whether an abandoned run (no client for graceMs) is torn down. Off by default. */
+  public get terminateOnAbandon(): boolean {
+    return TERMINATE_ON_ABANDON;
   }
 
   public hasActiveRun(): boolean {
@@ -311,6 +333,11 @@ export class SessionManager implements TelemetryRecorder {
       reservationTimer: null,
       pendingStop: false,
       pendingStopReason: 'operator',
+      sessionId: null,
+      telemetrySeq: 0,
+      telemetryPersistBuffer: [],
+      telemetryPersistedCount: 0,
+      telemetryFlushChain: Promise.resolve(),
       telemetry: [],
       reports: [],
       incidents: [],
@@ -374,6 +401,7 @@ export class SessionManager implements TelemetryRecorder {
 
   private teardownRun(): void {
     if (!this.run) return;
+    this.flushTelemetryEvents(this.run); // best-effort drain of the final sub-batch
     this.run.health.stop();
     // Clear the process-wide degraded flag so a reused worker never inherits it.
     NetworkQuarantine.reset();
@@ -426,6 +454,7 @@ export class SessionManager implements TelemetryRecorder {
     switch (kind) {
       case 'telemetry':
         pushCapped(run.telemetry, payload as TelemetryEvent, TELEMETRY_BUFFER_CAP);
+        this.persistTelemetryEvent(run, payload as TelemetryEvent);
         this.observeTerminationFrom(payload as TelemetryEvent);
         this.observeStatusFrom(payload as TelemetryEvent);
         break;
@@ -468,6 +497,39 @@ export class SessionManager implements TelemetryRecorder {
       confidenceScore: verdict.confidenceScore,
       verificationStatus: verdict.verificationStatus,
     };
+  }
+
+  // Buffer a telemetry event for durable, batched persistence to Mongo — the
+  // full-stream backing that outlives the capped in-memory replay buffer. Runs in
+  // whichever process owns the engine (API in-proc, or the worker in queue mode).
+  private persistTelemetryEvent(run: ActiveRun, event: TelemetryEvent): void {
+    if (run.sessionId === null) run.sessionId = run.engine.getLastSessionId?.() ?? null;
+    if (run.sessionId === null) return; // pre-session boot; the in-memory buffer still covers it
+    if (run.telemetryPersistedCount + run.telemetryPersistBuffer.length >= MAX_FORENSIC_ROWS) return;
+    run.telemetryPersistBuffer.push({
+      seq: run.telemetrySeq++,
+      timestamp: new Date(event.timestamp),
+      type: event.type,
+      meta: event.meta,
+    });
+    if (run.telemetryPersistBuffer.length >= TELEMETRY_PERSIST_FLUSH) this.flushTelemetryEvents(run);
+  }
+
+  // Drain the telemetry-persist buffer to Mongo in one batch. Serialized onto a
+  // per-run chain so concurrent drains can't interleave; never throws.
+  private flushTelemetryEvents(run: ActiveRun): void {
+    if (!run.sessionId || run.telemetryPersistBuffer.length === 0) return;
+    const batch = run.telemetryPersistBuffer;
+    run.telemetryPersistBuffer = [];
+    const sessionId = run.sessionId;
+    run.telemetryFlushChain = run.telemetryFlushChain.then(async () => {
+      try {
+        await telemetryEventRepository.createMany(sessionId, batch);
+        run.telemetryPersistedCount += batch.length;
+      } catch (error) {
+        obsLog.error('[SessionManager] Failed to persist telemetry events:', error);
+      }
+    });
   }
 
   // Pin the termination the moment the engine declares one, so the reason survives
@@ -587,6 +649,7 @@ export class SessionManager implements TelemetryRecorder {
       accessibility: [...run.accessibility],
       browserConsole: [...run.browserConsole],
       lastFrame: run.lastFrame,
+      sessionId: run.sessionId ?? run.engine.getLastSessionId?.() ?? null,
     };
   }
 
@@ -599,6 +662,16 @@ export class SessionManager implements TelemetryRecorder {
     run.ownerSocketIds.delete(socketId);
 
     if (run.ownerSocketIds.size > 0) return; // another tab/socket still attached
+
+    // Autonomous default: a disconnect never touches the engine. Leave status at its
+    // live value so a reconnecting client and the persisted status both stay truthful;
+    // the timebox / MAX_PAUSE_MS remain the sole terminators.
+    if (!TERMINATE_ON_ABANDON) {
+      this.emitMilestone('Operator disconnected — run continues autonomously.');
+      obsLog.info(`[SessionManager] Run ${run.runToken} lost its last client; continuing (terminate-on-abandon off).`);
+      return;
+    }
+
     // STARTING included: an operator who closes the tab mid-boot must not leave a
     // browser launching into nothing once the engine finally comes up.
     if (run.status !== 'RUNNING' && run.status !== 'PAUSED' && run.status !== 'STARTING') return;

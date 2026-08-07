@@ -121,7 +121,8 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
   };
 
   const armQueueGrace = (runToken: string): void => {
-    if (!queueSupport || queueGraceTimers.has(runToken)) return;
+    // Off by default: an abandoned worker run is not stopped, it runs to its timebox.
+    if (!queueSupport || !sessionManager.terminateOnAbandon || queueGraceTimers.has(runToken)) return;
     const timer = setTimeout(() => {
       queueGraceTimers.delete(runToken);
       void (async () => {

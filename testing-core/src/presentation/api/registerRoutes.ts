@@ -21,6 +21,7 @@ import { forensicErrorRepository } from '../../infrastructure/database/repositor
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
+import { telemetryEventRepository } from '../../infrastructure/database/repositories/TelemetryEventRepository.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { generateRunCode, generateUniqueRunCode } from '../../infrastructure/database/runCodeGenerator.js';
 import { normalizeRunCode } from '../../../../shared/runCode.js';
@@ -48,6 +49,7 @@ import {
   type SuggestFixResponse,
   type SuggestInsightsRequest,
   type SuggestInsightsResponse,
+  type TelemetryEvent,
 } from '../../../../shared/types.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
@@ -291,6 +293,19 @@ export function registerRoutes(
   const WAITING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children']);
   // Lifecycle states in which the run is still live (controls stay bound to it).
   const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
+
+  // Backfill a restore snapshot's telemetry from the durable Mongo stream so a
+  // refreshed/reconnected client recovers the full history, not just the capped
+  // replay tail. Only replaces when the DB holds strictly more than the buffer,
+  // so an empty/lagging collection never truncates a good in-memory snapshot.
+  const hydrateTelemetryFromDb = async <T extends { sessionId?: string | null; telemetry?: TelemetryEvent[] } | null>(
+    snapshot: T,
+  ): Promise<T> => {
+    if (!snapshot?.sessionId || !snapshot.telemetry) return snapshot;
+    const rows = await telemetryEventRepository.findByRunId(snapshot.sessionId).catch(() => []);
+    if (rows.length > snapshot.telemetry.length) snapshot.telemetry = rows;
+    return snapshot;
+  };
 
   // Backlog ceiling for the distributed path, read once at wiring time.
   const maxQueueDepth = readMaxQueueDepth();
@@ -699,7 +714,7 @@ export function registerRoutes(
     const runToken = extractStringParam(request.query.runToken);
     const local = sessionManager.getSnapshotFor(request.userId ?? null, runToken);
     if (local || !taskQueue || !runRegistry) {
-      response.json({ snapshot: local });
+      response.json({ snapshot: local ? await hydrateTelemetryFromDb(local) : null });
       return;
     }
 
@@ -732,7 +747,7 @@ export function registerRoutes(
         const snapshot = workerSnapshot
           ? { ...workerSnapshot, jobId: entry.jobId }
           : { ...queuedSnapshot(entry, null, 0), status: 'RUNNING' as const };
-        response.json({ snapshot });
+        response.json({ snapshot: await hydrateTelemetryFromDb(snapshot) });
         return;
       }
 
@@ -741,7 +756,7 @@ export function registerRoutes(
       // otherwise the entry is stale — clean it up.
       const finalSnapshot = await runRegistry.readSnapshot(entry.runToken);
       if (finalSnapshot && !LIVE_LIFECYCLES.has(finalSnapshot.status)) {
-        response.json({ snapshot: { ...finalSnapshot, jobId: entry.jobId } });
+        response.json({ snapshot: await hydrateTelemetryFromDb({ ...finalSnapshot, jobId: entry.jobId }) });
         return;
       }
       await runRegistry.clear(entry.runToken, entry.userId);
