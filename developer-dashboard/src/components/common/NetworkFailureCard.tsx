@@ -25,10 +25,10 @@ function HeaderList({ title, headers }: { title: string; headers?: Record<string
   if (entries.length === 0) return null;
   return (
     <div className="mt-1">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{title}</div>
+      <div className="text-[13px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{title}</div>
       <div className="mt-0.5 space-y-0.5">
         {entries.map(([k, v]) => (
-          <div key={k} className="font-mono text-[11px] text-(--text-secondary) break-all">
+          <div key={k} className="font-mono text-[13px] text-(--text-secondary) break-all">
             <span className="text-(--text-tertiary)">{k}:</span> {v}
           </div>
         ))}
@@ -71,7 +71,7 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
             {method} {statusCode || 'ERR'}
           </span>
           <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+            className={`rounded px-1.5 py-0.5 text-[13px] font-bold uppercase ${
               ok ? 'bg-(--status-stable-bg) text-(--status-stable-fg)' : 'bg-(--status-critical-bg) text-(--status-critical-fg)'
             }`}
           >
@@ -90,7 +90,7 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
         <div className="px-3 py-2 text-xs text-(--text-secondary) border-t border-(--border-hairline) space-y-1">
           {errorText && <div className="font-mono break-all">{errorText}</div>}
           {traceId && (
-            <div className="font-mono text-[11px]">
+            <div className="font-mono text-[13px]">
               <span className="text-(--text-tertiary)">trace id:</span> {traceId}
             </div>
           )}

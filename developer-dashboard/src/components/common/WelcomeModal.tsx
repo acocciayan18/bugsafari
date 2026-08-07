@@ -41,11 +41,11 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
       maxWidthClassName="max-w-lg"
       closeOnBackdrop={false}
       backdropClassName="bg-transparent"
-      panelSurfaceClassName="border-zinc-200 bg-white shadow-2xl shadow-zinc-300/50"
+      panelSurfaceClassName="border-zinc-200 bg-[#f4f4f5] shadow-2xl shadow-zinc-300/50"
     >
       <div className="border-b border-zinc-200 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0 space-y-2">
-          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[10px] font-bold uppercase st text-zinc-800">
+          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[13px] font-bold uppercase st text-zinc-800">
             Work in progress
           </span>
           <h2 id="welcome-notice-title" className="text-[24px] font-extrabold uppercase leading-tight tracking-tight text-black">

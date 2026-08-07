@@ -103,7 +103,7 @@ export default function ConnectionStatusChip() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[12px] font-semibold shadow-sm backdrop-blur ${cls}`}
+      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[13px] font-semibold shadow-sm backdrop-blur ${cls}`}
     >
       {label}
     </div>

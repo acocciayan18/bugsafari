@@ -532,7 +532,7 @@ function VerifyFixControl({
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
-      <div className="text-[9px] font-semibold uppercase r text-(--text-tertiary)">{label}</div>
+      <div className="text-[13px] font-semibold uppercase r text-(--text-tertiary)">{label}</div>
       <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
@@ -542,7 +542,7 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
     <li className="rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[9px] font-bold uppercase  text-(--text-oninvert)">
+        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[13px] font-bold uppercase  text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (

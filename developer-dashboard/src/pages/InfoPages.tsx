@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+    Radar, Brain, ClipboardCheck, Target, Map, History, Ban,
+    Filter, Scale, RefreshCcw, Lock, Settings, Play, Eye,
+    CheckCircle2, Rocket, ShieldCheck, BadgeCheck, ListChecks,
+} from 'lucide-react';
 import { SECTION_META } from './sectionMeta';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE } from '../types';
 
@@ -7,18 +12,18 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
     const navigate = useNavigate();
 
     return (
-        <div className="bg-white text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
+        <div className="bg-[#f4f4f5] text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
             {/* Top Navigation Bar */}
-            <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-[#f4f4f5]/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
                 <div className="flex justify-between items-center w-full px-6 py-4 max-w-[1440px] mx-auto">
                     <div className="flex items-center gap-8">
                         <button onClick={() => navigate('/')} className="text-[24px] font-extrabold text-black tracking-tighter uppercase text-left bg-transparent border-none cursor-pointer">
                             BUGSAFARI
                         </button>
                         <div className="hidden md:flex items-center gap-6">
-                            <button onClick={() => navigate('/explore')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Explore') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>Explore</button>
-                            <button onClick={() => navigate('/features')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Core Features') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>Features</button>
-                            <button onClick={() => navigate('/community')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Community') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>Community</button>
+                            <button onClick={() => navigate('/explore')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Works') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>How It Works</button>
+                            <button onClick={() => navigate('/features')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Does') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>Features</button>
+                            <button onClick={() => navigate('/community')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('Who') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>Who It's For</button>
                             <button onClick={() => navigate('/about')} className={`font-mono text-[13px] font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes('About') ? 'text-black border-b border-black pb-1' : 'text-zinc-500 hover:text-black'}`}>About</button>
                         </div>
                     </div>
@@ -33,7 +38,7 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
                 </div>
             </nav>
 
-            <main className="pt-32 pb-24 px-6 max-w-[1440px] mx-auto">
+            <main className="pt-6 pb-6 px-6 max-w-[1440px] mx-auto">
                 <div className="space-y-4 mb-16 border-b border-zinc-200 pb-8">
                     <h1 className="text-[40px] lg:text-[56px] font-extrabold uppercase tracking-tight">{title}</h1>
                     <p className="text-[16px] text-zinc-600 max-w-2xl">{subtitle}</p>
@@ -50,7 +55,7 @@ function StatRow({ items }: { items: { value: string; label: string }[] }) {
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-zinc-200 border border-zinc-200 rounded-xl overflow-hidden">
             {items.map((it) => (
-                <div key={it.label} className="bg-white p-6 text-center space-y-1">
+                <div key={it.label} className="bg-[#f4f4f5] p-6 text-center space-y-1">
                     <div className="text-3xl font-extrabold tracking-tight">{it.value}</div>
                     <div className="text-xs font-mono uppercase  text-zinc-500">{it.label}</div>
                 </div>
@@ -93,7 +98,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
 
 function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
     return (
-        <div className="border border-zinc-200 rounded-2xl divide-y divide-zinc-200 bg-white overflow-hidden">
+        <div className="border border-zinc-200 rounded-2xl divide-y divide-zinc-200 bg-[#f4f4f5] overflow-hidden">
             {items.map((it) => (
                 <details key={it.q} className="group p-6">
                     <summary className="cursor-pointer list-none flex justify-between items-center gap-4 font-bold text-base">
@@ -115,7 +120,7 @@ function DarkCta({ heading, sub }: { heading: string; sub: string }) {
             <p className="text-zinc-400 max-w-xl mx-auto">{sub}</p>
             <button
                 onClick={() => navigate('/login')}
-                className="px-8 py-3 font-mono text-[13px] font-semibold bg-white text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
+                className="px-8 py-3 font-mono text-[13px] font-semibold bg-[#f4f4f5] text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
             >
                 Start Testing Free
             </button>
@@ -129,7 +134,7 @@ function ProfileTabs() {
     const [active, setActive] = useState(0);
     const profile = INFILTRATION_PROFILE_CATALOG[active];
     return (
-        <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white">
+        <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-[#f4f4f5]">
             <div className="flex overflow-x-auto border-b border-zinc-200 scroll-rail">
                 {INFILTRATION_PROFILE_CATALOG.map((p, i) => (
                     <button
@@ -153,32 +158,31 @@ function ProfileTabs() {
 }
 
 const BUG_TAXONOMY = [
-    ['Input Sanitization Failure', 'CWE-20'],
-    ['Client-Side Constraint Bypass', 'CWE-602'],
-    ['NoSQL Injection', 'CWE-943'],
-    ['SPA State Race Condition', 'CWE-362'],
-    ['Structural Navigation Logic', 'CWE-835'],
-    ['Runtime Stability Exception', 'CWE-248'],
-    ['API Contract Violation', 'CWE-754'],
-    ['Boundary Stress Failure', 'CWE-400'],
-    ['Fuzz Vulnerability Leak', 'CWE-79'],
-    ['Security Vulnerability Leak', 'CWE-200'],
-    ['Cascading State Failure', 'CWE-754'],
-    ['Client Trust Boundary Violation', 'CWE-602'],
-    ['Infinite Loading', 'CWE-400'],
-    ['SQL Injection', 'CWE-89'],
-    ['Route Mutation Failure', 'CWE-835'],
-    ['Client Render Freeze', 'CWE-835'],
-    ['Session Synchronization Fault', 'CWE-613'],
+    ['Forms that accept bad input', 'Forms'],
+    ['Rules enforced only in the browser', 'Security'],
+    ['Database injection attacks', 'Security'],
+    ['Actions that clash when rushed', 'Timing'],
+    ['Pages that trap you in a loop', 'Navigation'],
+    ['Crashes and unhandled errors', 'Stability'],
+    ['Broken responses from the server', 'Backend'],
+    ['Failures under heavy load', 'Load'],
+    ['Unexpected input breaking the page', 'Input'],
+    ['Leaked private information', 'Security'],
+    ['One failure knocking out others', 'Stability'],
+    ['Trusting the browser too much', 'Security'],
+    ['Endless loading spinners', 'Load'],
+    ['Broken page routing', 'Navigation'],
+    ['Frozen, unresponsive screens', 'Stability'],
+    ['Sessions that fall out of sync', 'Accounts'],
 ];
 
 function BugTaxonomyGrid() {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {BUG_TAXONOMY.map(([name, cwe]) => (
+            {BUG_TAXONOMY.map(([name, tag]) => (
                 <div key={name} className="flex items-center justify-between gap-3 px-4 py-3 border border-zinc-200 rounded-lg bg-zinc-50/50">
                     <span className="text-[13px] font-semibold">{name}</span>
-                    <span className="font-mono text-xs text-zinc-400 shrink-0">{cwe}</span>
+                    <span className="font-mono text-xs text-zinc-400 shrink-0 uppercase">{tag}</span>
                 </div>
             ))}
         </div>
@@ -189,66 +193,66 @@ export function ExploreContent() {
     return (
             <div className="space-y-16">
                 <SplitSection
-                    eyebrow="Scriptless Discovery"
-                    heading="No Fixtures. No Hand-Written Paths."
-                    description="Every step, a recursive DOM parser extracts the live page's visible interactive candidates, verifies each one with elementFromPoint to reject anything hidden behind an overlay, and drops ancestor elements that only wrap other candidates so nothing gets double-weighted."
+                    eyebrow="No Setup Needed"
+                    heading="No Test Scripts. No Wiring. Just Go."
+                    description="Every step, BugSafari looks at your live page and finds everything a real person could interact with — buttons, links, menus, form fields. It skips anything hidden or off-screen, so it only tests what actually matters."
                     bullets={[
-                        'Detects the active modal/overlay layer before scoring so exploration never fights a dialog it cannot see past.',
-                        'Candidates are normalized into typed interactive-element structures shared across the whole engine.',
-                        'A depth-50 traversal cap and an 8-second scan deadline keep parsing bounded even on dense, deeply-nested SPA views.',
+                        'Knows when a popup or dialog is open and works with it instead of getting confused.',
+                        'Handles busy, crowded pages without missing the controls that count.',
+                        'Stays fast even on large apps by keeping every scan short and focused.',
                     ]}
                     image="/marketing/dashboard-shell.png"
-                    imageAlt="BugSafari Command Center, idle and ready to receive a target URL"
-                    badge={{ value: '50', label: 'Max Traversal Depth' }}
+                    imageAlt="The BugSafari dashboard, ready to start a test"
+                    badge={{ value: '0', label: 'Setup Steps' }}
                 />
 
                 <StatRow items={[
-                    { value: '24', label: 'Perceptron Features' },
-                    { value: '5', label: 'Loop-Prevention Layers' },
-                    { value: '500', label: 'State-Graph Node Cap' },
-                    { value: '20', label: 'Step Action Buffer' },
+                    { value: '16', label: 'Types of bugs caught' },
+                    { value: '5', label: 'Ways to test' },
+                    { value: 'Live', label: 'Results as it runs' },
+                    { value: '0', label: 'Scripts to write' },
                 ]} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
-                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">01</div>
-                        <h3 className="text-xl font-bold uppercase">Adaptive Risk Prioritization</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Every candidate is scored as risk = heuristic × 0.6 + sigmoid(perceptron) × 100 × 0.4, minus penalties. A 24-feature single-layer perceptron learns live via a momentum-augmented delta rule, boosting login, payment, delete, and other state-changing controls above low-value noise.</p>
+                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><Target className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <h3 className="text-xl font-bold uppercase">Focuses On What Matters</h3>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">It puts its energy into the riskiest parts of your app first — logins, payments, deletes — the actions most likely to hide a real problem, instead of clicking around at random.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
-                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">02</div>
-                        <h3 className="text-xl font-bold uppercase">State Graph Navigation</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">StateGraphNavigator tracks every transition and chooses explore-edge, backtrack, or exhausted using a diversity-penalized selection with softmax exploration, biasing toward edges that lead somewhere new instead of somewhere already saturated.</p>
+                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><Map className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <h3 className="text-xl font-bold uppercase">Explores Everywhere</h3>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">It keeps a map of where it has been and steers toward the screens it hasn't seen yet, so more of your app gets covered in every run.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
-                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">03</div>
-                        <h3 className="text-xl font-bold uppercase">Structural DOM Hashing</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Each page state is fingerprinted into a structure signature (normalized skeleton, dynamic classes stripped) and an interactive signature (document-ordered element tokens), combined into one hash so the engine recognizes a state it has already visited.</p>
+                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><History className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <h3 className="text-xl font-bold uppercase">Remembers Where It's Been</h3>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">It recognizes screens it has already visited, so it never wastes time testing the same thing twice and keeps moving toward something new.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
-                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold shrink-0">04</div>
-                        <h3 className="text-xl font-bold uppercase">Five-Layer Loop Prevention</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Consecutive-repeat strikes, forward look-ahead, reactive ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking work together so the engine never spends its run clicking the same dead end.</p>
+                        <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><Ban className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <h3 className="text-xl font-bold uppercase">Never Gets Stuck</h3>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Built-in limits stop it from clicking the same dead end over and over, so every run keeps making real progress instead of spinning in circles.</p>
                     </div>
                 </div>
 
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Infiltration Profiles</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">One Target URL, Five Ways In</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every run picks one profile, which gates which scenario families fire and derives the pathfinder's mode: exploration, coverage, or targeted probe.</p>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Testing Modes</span>
+                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">One App, Five Ways To Test It</h2>
+                        <p className="text-zinc-600 max-w-2xl">Pick a mode and BugSafari focuses on a certain kind of problem — from throwing tricky data at your forms to stress-testing what happens under pressure.</p>
                     </div>
                     <ProfileTabs />
                 </div>
 
                 <FaqAccordion items={[
-                    { q: 'Do I need to write test scripts?', a: 'No. The recursive DOM parser discovers interactive elements straight from the live page on every step. There is no fixture, selector list, or path to hand-author before a run.' },
-                    { q: 'How does it avoid clicking the same button forever?', a: 'Five independent layers (repeat-strike thresholds, forward look-ahead, ancestor-hash detection, per-edge repeat budgets, and route-exhaustion tracking) keep the state graph moving toward unexplored territory instead of circling.' },
-                    { q: 'Can a run wander off the target site?', a: 'Only if Strict Boundary Lock is off. When enabled, a page.route interceptor plus an init-script sandbox blocks any off-origin navigation before it commits.' },
-                    { q: 'What happens when the app runs out of new states?', a: 'A cluster is marked saturated once every discovered control has been triggered, then the engine runs up to two adaptive recovery rounds before terminating with a boundary-saturated outcome.' },
+                    { q: 'Do I need to write test scripts?', a: 'No. BugSafari finds things to test on its own, straight from your live app. There is nothing to write or set up first.' },
+                    { q: 'How does it avoid clicking the same button forever?', a: 'It keeps track of where it has been and steers toward new screens, with built-in limits that stop it circling the same dead end.' },
+                    { q: 'Can a run wander off my site?', a: 'You can lock a run to a single site. When that is on, BugSafari stays put and never follows links off your app.' },
+                    { q: 'What happens when it has seen everything?', a: 'Once it has tried everything it can find, it makes a couple more passes to be thorough, then finishes and hands you the report.' },
                 ]} />
 
-                <DarkCta heading="Watch It Explore Your App" sub="Point BugSafari at a target URL and see the state graph, the risk scores, and the live telemetry build in real time." />
+                <DarkCta heading="Watch It Explore Your App" sub="Point BugSafari at your app and see it find, test, and report bugs in real time." />
             </div>
     );
 }
@@ -265,85 +269,85 @@ export function FeaturesContent() {
     return (
             <div className="space-y-16">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
-                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">AI</div>
-                            <h3 className="text-xl font-bold uppercase mb-2">Scriptless Traversal</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">A recursive DOM parser discovers every interactive candidate live, verifies visibility with elementFromPoint, and hands each one to the risk model, with no manual test script or selector map required.</p>
+                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><Radar className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                            <h3 className="text-xl font-bold uppercase mb-2">Tests Itself</h3>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">BugSafari finds every button, link, and form on its own and tries each one — no test script or setup required from you.</p>
                         </div>
-                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Zero Configuration</div>
+                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Zero Setup</div>
                     </div>
 
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
-                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">ML</div>
-                            <h3 className="text-xl font-bold uppercase mb-2">Adaptive Intelligence</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 24-feature single-layer perceptron scores every candidate and updates its weights after every observed outcome (a fault, a network call, a repeated state) via a momentum-augmented delta rule.</p>
+                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><Brain className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                            <h3 className="text-xl font-bold uppercase mb-2">Learns As It Goes</h3>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">It watches what happens after each action and gets better at spotting where bugs are most likely to hide in your app.</p>
                         </div>
-                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Self-Learning Core</div>
+                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Gets Smarter</div>
                     </div>
 
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
-                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold mb-6 shrink-0">RT</div>
-                            <h3 className="text-xl font-bold uppercase mb-2">Real-Time Forensics</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">A 20-step circular action buffer plus narrated reproduction steps capture exactly what happened, so any saved finding can be deterministically replayed to verify a fix.</p>
+                            <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><ClipboardCheck className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
+                            <h3 className="text-xl font-bold uppercase mb-2">Proves What Broke</h3>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">Every bug it finds comes with the exact steps to reproduce it, so you can see the problem yourself and confirm the fix later.</p>
                         </div>
-                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Verify Fix Replay</div>
+                        <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Reproduce &amp; Verify</div>
                     </div>
                 </div>
 
                 <SplitSection
-                    eyebrow="Attack Scenarios"
-                    heading="Five Ways to Stress a Target"
-                    description="Each infiltration profile gates a different family of live scenarios, from concurrent-click bursts to escalating fuzz payloads, so a run can be tuned to exactly the kind of defect you're hunting."
+                    eyebrow="Testing Modes"
+                    heading="Five Ways To Stress Your App"
+                    description="Each mode focuses on a different kind of problem, so you can aim a run at exactly what you're worried about — from tricky form input to what happens under pressure."
                     bullets={[
-                        'DataFuzzer classifies inputs into 7 categories and escalates payloads across 5 levels, from base cases to polyglot amplification.',
-                        'FormBypasser strips disabled, readonly, and pattern constraints to test whether validation is actually enforced server-side.',
-                        'AsyncStateRacer fires an action without awaiting it, then interrupts mid-flight to expose teardown races and swallowed rejections.',
+                        'Throws tricky and unexpected data at your forms to see what slips through.',
+                        'Checks whether the rules you set in the browser are actually enforced on the server.',
+                        'Interrupts actions mid-way to catch timing bugs that only show up under pressure.',
                     ]}
                     image="/marketing/profile-selector.png"
-                    imageAlt="BugSafari Testing Configuration modal showing the five Infiltration Profiles"
+                    imageAlt="The BugSafari setup screen showing its five testing modes"
                     reverse
                 />
 
                 <div>
                     <div className="mb-6 space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Infiltration Matrix</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">Pick a Profile, Not a Script</h2>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Testing Modes</span>
+                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">Pick A Mode, Not A Script</h2>
                     </div>
                     <ProfileTabs />
                 </div>
 
                 <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-8">
-                    <h2 className="text-2xl font-extrabold uppercase tracking-tight">Advanced Platform Capabilities</h2>
+                    <h2 className="text-2xl font-extrabold uppercase tracking-tight">More Ways It Helps You</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
-                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">01</div>
+                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Filter className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
-                                <h4 className="font-bold text-lg">Provenance Attribution</h4>
-                                <p className="text-[13px] text-zinc-600">Every candidate fault is classified as target-app, BugSafari, Playwright, browser extension, third-party SDK, network, timing noise, or unattributed, so only real application defects ever get reported.</p>
+                                <h4 className="font-bold text-lg">Only Reports Real Bugs</h4>
+                                <p className="text-[13px] text-zinc-600">It tells the difference between a real problem in your app and noise from the browser or network, so you're not chasing false alarms.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
-                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">02</div>
+                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Scale className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
-                                <h4 className="font-bold text-lg">Deterministic Fault Classification</h4>
-                                <p className="text-[13px] text-zinc-600">One shared knowledge base resolves bug class, severity, and remediation from a runtime signal. The same signal always yields the same verdict, no matter which detector saw it.</p>
+                                <h4 className="font-bold text-lg">Consistent Results</h4>
+                                <p className="text-[13px] text-zinc-600">The same problem always gets the same label, a clear severity, and plain advice on how to fix it — every single time.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
-                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">03</div>
+                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><RefreshCcw className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
-                                <h4 className="font-bold text-lg">Verify Fix Regression Replay</h4>
-                                <p className="text-[13px] text-zinc-600">Open a fresh isolated browser, restore the exact storage state, and replay a saved finding's own recorded actions to confirm whether it's resolved, still active, or inconclusive.</p>
+                                <h4 className="font-bold text-lg">Verify Your Fix</h4>
+                                <p className="text-[13px] text-zinc-600">After you patch a bug, replay it with one click to confirm it's actually gone — no guessing whether the fix worked.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
-                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0 font-mono text-xs font-bold">04</div>
+                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
-                                <h4 className="font-bold text-lg">Strict Boundary Lock</h4>
-                                <p className="text-[13px] text-zinc-600">A route interceptor plus an init-script sandbox neutralizes off-origin navigation, keeping exploration confined to the exact target URL when you need it to be.</p>
+                                <h4 className="font-bold text-lg">Stay On Your Site</h4>
+                                <p className="text-[13px] text-zinc-600">Lock a run to a single site so it never wanders off to somewhere you didn't mean to test.</p>
                             </div>
                         </div>
                     </div>
@@ -351,14 +355,14 @@ export function FeaturesContent() {
 
                 <div className="space-y-6">
                     <div className="space-y-2">
-                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Bug Taxonomy</span>
-                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">16 Deterministic Bug Classes</h2>
-                        <p className="text-zinc-600 max-w-2xl">Every finding maps to one of sixteen classes, each carrying a default severity, a CWE reference, and remediation guidance.</p>
+                        <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">What It Catches</span>
+                        <h2 className="text-2xl font-extrabold uppercase tracking-tight">The Kinds Of Bugs It Finds</h2>
+                        <p className="text-zinc-600 max-w-2xl">From broken forms to security gaps, every bug comes with a clear label and plain advice on how to fix it.</p>
                     </div>
                     <BugTaxonomyGrid />
                 </div>
 
-                <DarkCta heading="See Every Feature Live" sub="Run BugSafari against your own app and watch scoring, scenarios, and forensic capture work together in one session." />
+                <DarkCta heading="See Everything It Can Do" sub="Run BugSafari against your own app and watch it find, prove, and report bugs in one session." />
             </div>
     );
 }
@@ -376,64 +380,64 @@ export function CommunityContent() {
             <div className="space-y-16">
                 <SplitSection
                     eyebrow="Who It's For"
-                    heading="Built for Builders Under Deadline"
-                    description="The primary audience is student developers and independent engineers who need rapid feedback on unstable behavior before demos, submissions, or deployment milestones. BugSafari acts as an automated resilience probe that surfaces high-impact failures early and leaves enough evidence to understand what happened."
+                    heading="Built For Builders On A Deadline"
+                    description="BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early — and leaves you enough detail to actually understand them."
                     bullets={[
-                        'No QA team required. One person can start a run, read the forensic report, and know exactly what broke and why.',
-                        'Guest mode lets anyone try a full live run against their own app with zero signup.',
-                        'Registered accounts keep history, export findings as JSON, and verify a fix once it ships.',
+                        'No QA team needed. One person can run it, read the report, and know exactly what broke and why.',
+                        'Guest mode lets anyone try a full test on their own app with no signup.',
+                        'Sign up to save your history, export your results, and re-check a fix later.',
                     ]}
                     image="/marketing/dashboard-shell.png"
-                    imageAlt="BugSafari Command Center ready to launch a run"
-                    badge={{ value: '0', label: 'Setup Steps to Try It' }}
+                    imageAlt="The BugSafari dashboard ready to start a run"
+                    badge={{ value: '0', label: 'Setup Steps To Try' }}
                 />
 
                 <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-8">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">How It Fits Your Workflow</h2>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 01</span>
-                            <h4 className="font-bold text-lg">Configure</h4>
-                            <p className="text-xs text-zinc-600">Enter a target URL, choose one of five Infiltration Profiles, and optionally lock exploration to that exact domain.</p>
+                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <Settings className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <h4 className="font-bold text-lg">Set Up</h4>
+                            <p className="text-xs text-zinc-600">Enter your app's address and pick how you want it tested. Optionally lock the run to that one site.</p>
                         </div>
-                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 02</span>
-                            <h4 className="font-bold text-lg">Launch</h4>
-                            <p className="text-xs text-zinc-600">One click starts a headless Chromium session. Pause or resume anytime without losing progress.</p>
+                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <Play className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <h4 className="font-bold text-lg">Start</h4>
+                            <p className="text-xs text-zinc-600">One click starts the test. Pause or resume anytime without losing your progress.</p>
                         </div>
-                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 03</span>
-                            <h4 className="font-bold text-lg">Watch Live</h4>
-                            <p className="text-xs text-zinc-600">Telemetry, Findings, Network, and Console stream over sockets in real time as the engine explores.</p>
+                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <Eye className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <h4 className="font-bold text-lg">Watch</h4>
+                            <p className="text-xs text-zinc-600">See bugs, network activity, and errors stream in live as BugSafari explores your app.</p>
                         </div>
-                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <span className="font-mono text-xs font-bold text-zinc-400 uppercase">Step 04</span>
+                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <CheckCircle2 className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
                             <h4 className="font-bold text-lg">Verify</h4>
-                            <p className="text-xs text-zinc-600">Save the run, open its forensic report, and hit Verify Fix to replay any finding after you patch it.</p>
+                            <p className="text-xs text-zinc-600">Save the run, read the report, and re-check any bug with one click after you fix it.</p>
                         </div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
-                        <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">01</div>
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4">
+                        <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><Rocket className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="text-xl font-bold uppercase">Try Before You Sign Up</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same exploration engine and live dashboard as a registered account. The only difference is that a guest run isn't written to history. It lasts only as long as your session.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same test and live dashboard as a full account. The only difference: guest runs aren't saved after your session ends.</p>
                     </div>
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
-                        <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center font-mono font-bold text-[13px]">02</div>
-                        <h3 className="text-xl font-bold uppercase">Own Your Findings</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">Every history query and forensic record is scoped to the owning account. Save a session once and it's yours to search, export, and re-verify whenever you come back to it.</p>
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4">
+                        <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><ShieldCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <h3 className="text-xl font-bold uppercase">Your Results Stay Yours</h3>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">Every saved run and report belongs only to your account. Search it, export it, and come back to re-check it whenever you need to.</p>
                     </div>
                 </div>
 
                 <FaqAccordion items={[
-                    { q: 'Do I need an account to try it?', a: 'No. Guest mode lets you enter a target URL, pick a profile, and watch a full live run with the same telemetry and reporting the registered dashboard uses. Sessions just aren\'t saved.' },
-                    { q: 'What do I get by registering?', a: 'Saved run history with search and filtering, a full-detail forensic report per session, JSON export, and the ability to re-verify a finding with Verify Fix after you ship a patch.' },
-                    { q: 'Is my target app data isolated from other users?', a: 'Yes. Every history and forensic query filters on the owning account at the database level, and a run can additionally be re-attached only by whoever started it.' },
+                    { q: 'Do I need an account to try it?', a: 'No. Guest mode lets you run a full live test with the same dashboard and report as a full account. Your run just isn\'t saved.' },
+                    { q: 'What do I get by signing up?', a: 'Saved history you can search, a full report for each run, export to a file, and the ability to re-check a bug after you fix it.' },
+                    { q: 'Is my data kept separate from other users?', a: 'Yes. Every saved run and report is tied to your account and only visible to you.' },
                 ]} />
 
-                <DarkCta heading="Bring Your Own App" sub="Whether you're prepping a demo tonight or hardening something before deploy, start a run and see what BugSafari finds." />
+                <DarkCta heading="Bring Your Own App" sub="Prepping a demo tonight or hardening something before launch? Start a run and see what BugSafari finds." />
             </div>
     );
 }
@@ -450,60 +454,72 @@ export function AboutContent() {
     return (
             <div className="space-y-16">
                 <div className="space-y-6 text-zinc-700 leading-relaxed text-base max-w-4xl">
-                    <p>BugSafari was born out of a simple frustration: modern Single-Page Applications hide subtle regressions, timing races, and validation bypasses that scripted, linear test suites never think to try. Randomized "monkey" testing has the opposite problem: plenty of activity, little structural intelligence, weak reproducibility, and low forensic value.</p>
-                    <p>So we built an autonomous, scriptless exploration engine: it parses your app's live DOM, scores every interactive element with a self-learning perceptron, stress-tests state under concurrency and async chaos, fuzzes inputs with escalating payloads, and turns whatever breaks into a reproducible, replayable forensic record, with no fixtures and no hand-written paths.</p>
+                    <p>BugSafari started with a simple frustration: modern web apps hide small, sneaky problems — broken forms, timing glitches, security gaps — that normal tests never think to try. And random "just click everything" tools make a mess without really telling you what went wrong.</p>
+                    <p>So we built something in between: a tester that explores your app like a curious user, learns where trouble is likely to hide, pushes your app the way real users eventually will, and turns whatever breaks into a clear, repeatable report — with nothing for you to script or set up.</p>
                 </div>
 
                 <SplitSection
-                    eyebrow="Under the Hood"
-                    heading="One Engine, Five Cognitive Pillars"
-                    description="Adaptive risk prioritization, state-aware navigation, high-speed behavioral simulation, generative attack synthesis, and real-time forensic isolation work together in a single decoupled architecture spanning the exploration engine, the dashboard, and a shared typed contract layer."
+                    eyebrow="What Makes It Different"
+                    heading="A Tester That Thinks"
+                    description="Instead of following a fixed script, BugSafari decides where to go next, tries the things a real user would, and keeps proof of everything it finds."
                     bullets={[
-                        'testing-core hosts the headless exploration engine, scoring, scenarios, and Mongo-backed persistence.',
-                        'developer-dashboard is the React operator console for live telemetry, history, and forensic reports.',
-                        'A shared contract layer keeps both sides byte-identical on every event and record shape.',
+                        'It focuses on the risky parts of your app instead of clicking at random.',
+                        'It remembers where it has been, so it covers more without repeating itself.',
+                        'It captures exactly what happened, so every bug can be reproduced.',
                     ]}
                     image="/marketing/dashboard-shell.png"
-                    imageAlt="The real BugSafari Command Center shell"
+                    imageAlt="The BugSafari dashboard during a live test"
                 />
 
-                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-white shadow-sm space-y-8">
-                    <h2 className="text-2xl font-extrabold uppercase tracking-tight">Our Core Principles</h2>
+                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-[#f4f4f5] shadow-sm space-y-8">
+                    <h2 className="text-2xl font-extrabold uppercase tracking-tight">What We Care About</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">01. Type Safety First</h4>
-                            <p className="text-[13px] text-zinc-600">Strict TypeScript boundaries and explicit contracts across every package, enforced by one shared types layer the engine and dashboard both import from.</p>
+                        <div className="flex gap-3">
+                            <BadgeCheck className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="space-y-1">
+                                <h4 className="font-bold text-lg text-black uppercase">Honest Results</h4>
+                                <p className="text-[13px] text-zinc-600">It only reports real problems in your app, not noise from the browser or the network, so you never chase false alarms.</p>
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">02. Deterministic Classification</h4>
-                            <p className="text-[13px] text-zinc-600">Every fault resolves through one shared knowledge base, so the same signal always yields the same class, severity, and remediation, no matter which detector saw it first.</p>
+                        <div className="flex gap-3">
+                            <ListChecks className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="space-y-1">
+                                <h4 className="font-bold text-lg text-black uppercase">Clear Answers</h4>
+                                <p className="text-[13px] text-zinc-600">Every bug comes with a plain label, a severity, and simple advice on how to fix it — no decoding required.</p>
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">03. Failure Isolation</h4>
-                            <p className="text-[13px] text-zinc-600">Runtime and browser failures are handled defensively so one crashing scenario or finder never takes the rest of a run down with it.</p>
+                        <div className="flex gap-3">
+                            <ShieldCheck className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="space-y-1">
+                                <h4 className="font-bold text-lg text-black uppercase">Nothing Breaks The Run</h4>
+                                <p className="text-[13px] text-zinc-600">One failing test never takes down the rest. The run keeps going and still hands you a complete report.</p>
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <h4 className="font-bold text-lg text-black uppercase font-mono text-[13px] ">04. Persistence Discipline</h4>
-                            <p className="text-[13px] text-zinc-600">Sessions, findings, action traces, and learned brain snapshots are Mongo-backed and scoped to the owning account, kept entirely out of domain logic.</p>
+                        <div className="flex gap-3">
+                            <Lock className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="space-y-1">
+                                <h4 className="font-bold text-lg text-black uppercase">Your Data Is Yours</h4>
+                                <p className="text-[13px] text-zinc-600">Saved runs and reports stay tied to your account and out of everyone else's reach.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <StatRow items={[
-                    { value: '16', label: 'Bug Classes' },
-                    { value: '5', label: 'Infiltration Profiles' },
-                    { value: '3', label: 'Monorepo Packages' },
-                    { value: '1', label: 'Shared Contract Layer' },
+                    { value: '16', label: 'Bug types caught' },
+                    { value: '5', label: 'Testing modes' },
+                    { value: 'Live', label: 'Real-time results' },
+                    { value: '0', label: 'Scripts to write' },
                 ]} />
 
                 <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">Who We Build For</h2>
                     <p className="text-[13px] text-zinc-600 leading-relaxed max-w-3xl">
-                        BugSafari's primary audience is student developers and independent engineers who need rapid feedback on unstable behavior before demos, submissions, or deployment milestones. It's designed to act as an automated resilience probe: one that surfaces high-impact failures early and leaves enough evidence behind to actually understand what happened, not just that something broke.
+                        BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early and leaves you enough detail to understand exactly what happened — not just that something broke.
                     </p>
                 </div>
 
-                <DarkCta heading="Put It to Work" sub="Start a free run and see BugSafari's exploration, scoring, and forensic reporting on your own application." />
+                <DarkCta heading="Put It To Work" sub="Start a free run and see what BugSafari finds in your own app." />
             </div>
     );
 }

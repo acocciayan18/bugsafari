@@ -25,7 +25,7 @@ export function LegalFooter({ onOpenDoc }: LegalFooterProps) {
   return (
     <nav
       aria-label="Privacy and legal"
-      className="mt-5 border-t border-(--border-hairline) px-1 pt-3 pb-safe text-center text-[12px] leading-[1.6] text-pretty text-(--text-tertiary)"
+      className="mt-5 border-t border-(--border-hairline) px-1 pt-3 pb-safe text-center text-[13px] leading-[1.6] text-pretty text-(--text-tertiary)"
     >
       <p>
         Read our <InlineLink onClick={() => onOpenDoc('privacy')}>Privacy Notice</InlineLink>,{' '}

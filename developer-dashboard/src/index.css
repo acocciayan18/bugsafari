@@ -327,6 +327,6 @@
 
   /* Expandable code block container */
   .code-block {
-    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-white rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
+    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-[#f4f4f5] rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
   }
 }

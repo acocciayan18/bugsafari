@@ -47,14 +47,14 @@ export default function SlidingAuthForm() {
                 {/* Back button positioned inside the card, above login form */}
                 <button
                     onClick={handleBack}
-                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-white/90 hover:bg-white shadow-md hover:shadow-lg transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 text-[13px] font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
+                    className="absolute -top-12 left-0 z-30 flex items-center gap-1 px-3 py-2 rounded-lg bg-[#f4f4f5]/90 hover:bg-[#f4f4f5] shadow-md hover:shadow-lg transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 text-[13px] font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-blue focus-visible:ring-offset-2"
                     aria-label="Back to homepage"
                 >
                     <ArrowLeft className="h-4 w-4"  aria-hidden="true" />
                     Back
                 </button>
 
-                <div className="relative bg-white/95 shadow-2xl rounded-xl overflow-hidden flex h-full w-full">
+                <div className="relative bg-[#f4f4f5]/95 shadow-2xl rounded-xl overflow-hidden flex h-full w-full">
 
 {/* Left Panel: Login Form */}
                     <div
@@ -116,7 +116,7 @@ export default function SlidingAuthForm() {
                                     }
                                 </p>
                                 <button
-                                    className="h-12 px-6 bg-white font-bold rounded-md shadow-lg hover:shadow-xl transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                                    className="h-12 px-6 bg-[#f4f4f5] font-bold rounded-md shadow-lg hover:shadow-xl transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                                     onClick={handleToggle}
                                     disabled={isAnimating}
                                     style={{

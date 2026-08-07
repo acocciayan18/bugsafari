@@ -167,7 +167,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
   <span
     className={`
       inline-block h-3.5 w-3.5 rounded-full
-      bg-white shadow-md
+      bg-[#f4f4f5] shadow-md
       transition-transform duration-150
       ${draft.enabled ? 'translate-x-[20px]' : 'translate-x-0.5'}
     `}

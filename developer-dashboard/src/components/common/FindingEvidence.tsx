@@ -63,7 +63,7 @@ function BypassRow({ label, children }: { label: string; children: ReactNode }) 
 }
 
 const Chip = ({ text }: { text: string }) => (
-  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-[12px] text-(--text-secondary)">
+  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-[13px] text-(--text-secondary)">
     {text}
   </code>
 );
