@@ -48,6 +48,8 @@ export interface ReplaySessionParams {
   stateFingerprint?: StateFingerprint;
   /** True ⇒ refuse when the replay lands on a login wall (a stale saved finding). */
   guardLoginWall?: boolean;
+  /** Pathname of the request that defined the fault — drives the constraint-bypass oracle. */
+  faultEndpoint?: string;
   onProgress?: (phase: 'replaying' | 'validating', stepsReplayed: number, totalSteps: number) => void;
 }
 
@@ -67,6 +69,8 @@ export interface ReplaySessionResult {
   otherSignals: SignalBuckets['other'];
   /** URL pathnames the replay actually requested — proves whether the fault trigger ran. */
   seenEndpoints: string[];
+  /** True when a page navigation aborted mid-replay — the faulting state may never have loaded. */
+  replayIncomplete: boolean;
   error?: string;
   /** Typed failure kind when ok=false — lets the caller explain WHY the replay could not run. */
   failureReason?: VerifyFixReason;
@@ -118,6 +122,7 @@ export async function runReplaySession(
     weakSignals: [],
     otherSignals: [],
     seenEndpoints: [],
+    replayIncomplete: false,
     error,
     failureReason,
   });
@@ -127,7 +132,7 @@ export async function runReplaySession(
   const page = await context.newPage();
   const collector = new FaultCollector(page, requiresBodyScan(bugClass));
   collector.attach();
-  const probes = new ReplayProbes(page, collector, bugClass, faultType);
+  const probes = new ReplayProbes(page, collector, bugClass, faultType, params.faultEndpoint);
   await probes.arm();
   const runner = new ReplayActionRunner(page, targetUrl);
 
@@ -184,6 +189,7 @@ export async function runReplaySession(
       weakSignals: buckets.weak,
       otherSignals: buckets.other,
       seenEndpoints: collector.exercisedEndpoints(),
+      replayIncomplete: collector.hadNavigationFailure(),
     };
   } catch (error) {
     return failed(`Replay error: ${error instanceof Error ? error.message : String(error)}`);
@@ -196,7 +202,11 @@ export async function runReplaySession(
 
 /** A persisted blank selector ('N/A') can never resolve — count it skipped without invoking the runner. */
 async function replayStep(runner: ReplayActionRunner, step: ActionStepTrace): Promise<ReplayStepStatus> {
-  if (step.actionType !== 'macro' && (!step.selector || step.selector === 'N/A')) return 'skipped';
+  // Navigation steps carry their destination in `url` (not the selector), so they must
+  // reach the runner even with a blank selector — it will navigate by URL.
+  if (step.actionType !== 'macro' && step.actionType !== 'navigation' && (!step.selector || step.selector === 'N/A')) {
+    return 'skipped';
+  }
   const outcome = await runner.replay(step);
   if (outcome.status === 'error') {
     obsLog.warn(`[ReplaySession] Step ${step.stepNumber} (${step.actionType}) error: ${outcome.detail}`);

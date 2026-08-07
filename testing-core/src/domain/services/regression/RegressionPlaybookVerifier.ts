@@ -94,6 +94,7 @@ export class RegressionPlaybookVerifier {
           timelineSource: finding.timelineSource,
           faultEndpoint: this.faultEndpoint(finding),
           seenEndpoints: p.seenEndpoints,
+          replayIncomplete: p.replayIncomplete,
         });
 
       const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);
@@ -176,6 +177,7 @@ export class RegressionPlaybookVerifier {
         scenario: finding.bug.attribution?.scenario,
         stateFingerprint: finding.bug.stateFingerprint,
         guardLoginWall: true,
+        faultEndpoint: this.faultEndpoint(finding),
         onProgress: (phase, done, total) => emit(phase, done, total),
       });
     } finally {
@@ -221,19 +223,25 @@ export class RegressionPlaybookVerifier {
   }
 
   /**
-   * Pathname of the request that produced the fault, parsed from the finding message
-   * (e.g. "HTTP 200 Error: POST http://host/api/login" → "/api/login"). Empty when the
-   * fault has no associated request — the endpoint-exercised gate then does not apply.
+   * Pathname of the request that produced the fault, parsed from the finding message —
+   * either a full URL ("POST http://host/api/login" → "/api/login") or a method-prefixed
+   * relative path ("POST /backend/login.php" → "/backend/login.php"). Empty when the fault
+   * has no associated request — the endpoint-exercised gate then does not apply.
    */
   private faultEndpoint(finding: LoadedFinding): string | undefined {
-    const url = finding.bug.message?.match(/https?:\/\/[^\s"')]+/i)?.[0];
-    if (!url) return undefined;
-    try {
-      const path = new URL(url).pathname;
-      return path === '/' ? undefined : path;
-    } catch {
-      return undefined;
+    const message = finding.bug.message ?? '';
+    const absolute = message.match(/https?:\/\/[^\s"')]+/i)?.[0];
+    if (absolute) {
+      try {
+        const path = new URL(absolute).pathname;
+        if (path !== '/') return path;
+      } catch {
+        /* fall through to the relative form */
+      }
     }
+    // Relative form: an HTTP method immediately followed by a rooted path.
+    const relative = message.match(/\b(?:GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s"')?#]+)/i)?.[1];
+    return relative && relative !== '/' ? relative : undefined;
   }
 
   /** Prefer the persisted knowledge-base class; otherwise derive it deterministically. */

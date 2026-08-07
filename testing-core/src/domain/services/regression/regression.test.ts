@@ -114,6 +114,19 @@ check('clean fully-executed per-finding replay → RESOLVED', () => {
   assert.equal(d.reason, 'CLEAN_REPLAY');
 });
 
+// A page navigation aborted mid-replay (e.g. ERR_ABORTED) ⇒ the faulting page never
+// loaded, so a clean run is not proof of a fix — must be INCONCLUSIVE, not RESOLVED.
+check('clean replay but a navigation aborted → INCOMPLETE_REPLAY, not RESOLVED', () => {
+  const d = decideVerdict({ strong: [], weak: [], stats: stats(), timelineSource: 'finding', replayIncomplete: true });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'INCOMPLETE_REPLAY');
+});
+
+check('reproduction still wins over an incomplete replay (strong → STILL_ACTIVE)', () => {
+  const d = decideVerdict({ strong: [signal], weak: [], stats: stats(), timelineSource: 'finding', replayIncomplete: true });
+  assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
 check('clean replay that never hit the fault endpoint → INCONCLUSIVE, not RESOLVED', () => {
   const d = decideVerdict({
     strong: [], weak: [], stats: stats(), timelineSource: 'finding',
@@ -240,6 +253,24 @@ check('probe bugClassOverride matching original → strong', () => {
     originalBugClass: 'INFINITE_LOADING',
     originalFaultType: 'NETWORK',
     originalMessage: 'stuck loading',
+    pageContent: '',
+  });
+  assert.equal(b.strong.length, 1);
+});
+
+check('CLIENT_SIDE_CONSTRAINT_BYPASS override (endpoint still accepted invalid) → strong', () => {
+  const c = collect();
+  c.addExternal({
+    faultType: 'NETWORK',
+    statusCode: 200,
+    message: 'Constraint bypass reproduced: /backend/login.php accepted the invalid value (HTTP 200)',
+    url: 'http://target.test/backend/login.php',
+    bugClassOverride: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
+  });
+  const b = c.evaluate({
+    originalBugClass: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'POST /backend/login.php accepted the value (HTTP 200)',
     pageContent: '',
   });
   assert.equal(b.strong.length, 1);
@@ -429,9 +460,11 @@ check('replay-detectable classes verifiable; oracle/timing classes are not', () 
   assert.ok(isReplayVerifiable('NOSQL_INJECTION'));
   assert.ok(isReplayVerifiable('SQL_INJECTION'));
   assert.ok(isReplayVerifiable('SECURITY_VULNERABILITY_LEAK'));
+  // Verifiable via the endpoint-acceptance oracle: re-submit the invalid value and see
+  // whether the server still accepts it (2xx) or now rejects it (4xx).
+  assert.ok(isReplayVerifiable('CLIENT_SIDE_CONSTRAINT_BYPASS'));
   assert.ok(!isReplayVerifiable('SPA_STATE_RACE_CONDITION'));
   assert.ok(!isReplayVerifiable('CASCADING_STATE_FAILURE'));
-  assert.ok(!isReplayVerifiable('CLIENT_SIDE_CONSTRAINT_BYPASS'));
   assert.ok(!isReplayVerifiable(''));
 });
 
