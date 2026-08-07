@@ -131,4 +131,41 @@ function emitEveryChannel(gateway: SocketTelemetryGateway): void {
   assert.equal(warnings, 3, `expected 3 rate-limited warnings for 250 drops, got ${warnings}`);
 }
 
-console.log('✓ SocketTelemetryGateway — room scoping, unrouted drops, no fleet-wide broadcast');
+// ── The forensic-report's synthesized incident carries the replayable timeline ──
+// It arrives after the real incident and wins the frontend collapse, so if it drops
+// reproductionActions/stateFingerprint the saved finding replays zero steps (Verify Fix
+// bug). Capture the incident-report payload and assert the timeline is forwarded.
+{
+  const captured: Array<Record<string, unknown>> = [];
+  const io: RoomEmitter = {
+    emit() { return true; },
+    to() {
+      return {
+        emit(event: string, ...args: unknown[]): boolean {
+          if (event === 'incident-report') captured.push(args[0] as Record<string, unknown>);
+          return true;
+        },
+      };
+    },
+  };
+  const gateway = new SocketTelemetryGateway(io);
+  gateway.setRoom('run:token-A');
+  const actions = [{ timestamp: new Date().toISOString(), type: 'INPUT', selector: '#email', url: 'https://target.test/login', payload: 'x' }];
+  gateway.emitForensicReport({
+    timestamp: new Date().toISOString(),
+    reason: 'crash',
+    url: 'https://target.test/login',
+    breadcrumbs: [],
+    reproductionPlaybook: ['Step 1. Type into email'],
+    reproductionActions: actions,
+    stateFingerprint: { cookies: [], localStorage: {}, sessionStorage: {} },
+  } as never);
+
+  assert.equal(captured.length, 1, 'emitForensicReport synthesizes exactly one incident-report');
+  const incident = captured[0];
+  assert.ok(Array.isArray(incident.reproductionActions), 'synthesized incident forwards reproductionActions');
+  assert.equal((incident.reproductionActions as unknown[]).length, 1, 'the replayable timeline is preserved, not dropped');
+  assert.ok(incident.stateFingerprint, 'synthesized incident forwards the fault-time state fingerprint');
+}
+
+console.log('✓ SocketTelemetryGateway — room scoping, unrouted drops, no fleet-wide broadcast, forensic timeline forwarded');

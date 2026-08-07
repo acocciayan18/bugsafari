@@ -228,6 +228,13 @@ export interface ForensicCrashReport {
   breadcrumbs: ActionBreadcrumb[];
   // Pre-generated sequential narrative steps for human reproduction
   reproductionPlaybook?: string[];
+  // Minimized replayable action timeline — MUST be forwarded into the synthesized
+  // incident so Verify Fix has steps to replay: the forensic-report incident arrives
+  // after the real one and wins the frontend collapse, so an omission here strips the
+  // timeline from the saved finding (narrative survives, actionSteps go to zero).
+  reproductionActions?: ActionRecord[];
+  // Client-state snapshot restored before regression replay (carried for the same reason).
+  stateFingerprint?: StateFingerprint;
   // Per-finding remediation (buildRemediation output) — see IncidentReport.advice.
   advice?: string;
   // Deterministic classification + scenario/step attribution for this crash.

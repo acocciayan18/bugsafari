@@ -61,6 +61,18 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   return { verdict: 'RESOLVED', reason: 'CLEAN_REPLAY', matchedSignals: [] };
 }
 
+/**
+ * A would-be RESOLVED is only trusted when a second, independent replay also stays
+ * clean — a single clean run is flaky against a live target (backend data/timing).
+ * Reproduction on the retry flips to STILL_ACTIVE (a fault seen twice is proof it is
+ * present); any non-clean or un-runnable retry means the fix could not be confirmed.
+ * @param second the retry's verdict, or null when the retry could not run.
+ */
+export function confirmResolution(second: VerdictDecision | null): VerdictDecision {
+  if (second && (second.verdict === 'STILL_ACTIVE' || second.verdict === 'RESOLVED')) return second;
+  return { verdict: 'INCONCLUSIVE', reason: 'UNCONFIRMED_RESOLUTION', matchedSignals: [] };
+}
+
 /** Operator-facing one-liner for each decision, grounded in the actual evidence. */
 export function summarize(decision: VerdictDecision, bugClass: string, stats: ReplayStepStats): string {
   switch (decision.reason) {
@@ -72,6 +84,8 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
       return `A same-class ${bugClass} fault recurred but could not be corroborated as the original defect — this leans still-active. Treat as unconfirmed, not fixed.`;
     case 'NO_REPLAY_STEPS':
       return `This finding has no recorded reproduction steps, so there was nothing to replay and no fault could be attributed to it. Re-run a live exploration to capture a replayable timeline.`;
+    case 'UNCONFIRMED_RESOLUTION':
+      return `The first replay came back clean, but a confirmation replay did not agree — the fault reproduces intermittently, so the fix cannot be confirmed. Re-test against a stable build.`;
     case 'INSUFFICIENT_REPLAY':
       return `Only ${stats.executed} of ${stats.total} recorded step(s) executed (${stats.skipped} skipped, ${stats.failed} failed) — not enough of the reproduction ran to prove the fix.`;
     case 'FAULT_TRIGGER_NOT_EXERCISED':

@@ -23,6 +23,7 @@ export type VerifyFixReason =
   | 'UNVERIFIABLE_BUG_CLASS' // class has no replay-time detector
   | 'WEAK_MATCH_ONLY' // same-class faults seen but uncorroborated
   | 'NO_REPLAY_STEPS' // finding has no recorded timeline — nothing to replay, no fault is attributable
+  | 'UNCONFIRMED_RESOLUTION' // one clean replay, but a confirmation replay disagreed (flaky) — not provably fixed
   | 'LEGACY_TIMELINE' // session-global fallback timeline; clean run not provable
   | 'TARGET_UNREACHABLE' // replay could not load the live target — says nothing about the bug
   | 'AUTH_WALL' // replay hit a login wall (stale credentials); never reached the recorded surface

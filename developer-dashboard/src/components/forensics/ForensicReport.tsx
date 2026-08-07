@@ -446,6 +446,8 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
     "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
   NO_REPLAY_STEPS:
     "This finding has no recorded reproduction steps, so there was nothing to replay — Verify Fix can't confirm it. Re-run a live exploration to capture a replayable timeline.",
+  UNCONFIRMED_RESOLUTION:
+    "The first replay was clean, but a confirmation replay disagreed — this fault reproduces intermittently, so we can't confirm it's fixed. Re-test against a stable build.",
   LEGACY_TIMELINE:
     'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
   TARGET_UNREACHABLE:

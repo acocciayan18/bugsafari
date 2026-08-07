@@ -9,10 +9,10 @@ import type {
   VerifyFixProgress,
   ReplayStepStats,
 } from '../../../../../shared/types.js';
-import { runReplaySession } from './ReplaySession.js';
+import { runReplaySession, type ReplaySessionResult } from './ReplaySession.js';
 import { normalizeRunCode } from '../../../../../shared/runCode.js';
 import { isReplayVerifiable } from './replayProbes.js';
-import { decideVerdict, summarize } from './verdict.js';
+import { decideVerdict, confirmResolution, summarize, type VerdictDecision } from './verdict.js';
 import type { LoadedFinding } from './types.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
@@ -85,52 +85,42 @@ export class RegressionPlaybookVerifier {
     let browser: Browser | undefined;
     try {
       browser = await this.launchBrowser();
-      const context = await browser.newContext({
-        viewport: { width: 1440, height: 900 },
-        ignoreHTTPSErrors: true,
-        deviceScaleFactor: 1,
-      });
 
-      // Auth wall guard is ON: credentials are ephemeral, so a finding from an
-      // authenticated run replays against a login page days later. Every step would
-      // miss its selector, no fault would surface, and the bug would be declared
-      // RESOLVED — a false negative. Refuse to guess instead.
-      const probe = await runReplaySession(context, {
-        targetUrl: finding.targetUrl,
-        steps: finding.actionSteps,
-        bugClass: originalBugClass,
-        faultType: originalFaultType,
-        originalMessage: finding.bug.message ?? '',
-        scenario: finding.bug.attribution?.scenario,
-        stateFingerprint: finding.bug.stateFingerprint,
-        guardLoginWall: true,
-        onProgress: (phase, done, total) => emit(phase, done, total),
-      });
+      const decide = (p: ReplaySessionResult): VerdictDecision =>
+        decideVerdict({
+          strong: p.matchedSignals,
+          weak: p.weakSignals,
+          stats: p.stepStats,
+          timelineSource: finding.timelineSource,
+          faultEndpoint: this.faultEndpoint(finding),
+          seenEndpoints: p.seenEndpoints,
+        });
 
+      const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);
       if (!probe.ok) {
-        return this.failed(
-          sessionId,
-          bugId,
-          originalBugClass,
-          startedAt,
-          probe.error ?? 'Replay failed.',
-          probe.failureReason,
-        );
+        return this.failed(sessionId, bugId, originalBugClass, startedAt, probe.error ?? 'Replay failed.', probe.failureReason);
       }
 
-      const decision = decideVerdict({
-        strong: probe.matchedSignals,
-        weak: probe.weakSignals,
-        stats: probe.stepStats,
-        timelineSource: finding.timelineSource,
-        faultEndpoint: this.faultEndpoint(finding),
-        seenEndpoints: probe.seenEndpoints,
-      });
-      const summary = summarize(decision, originalBugClass, probe.stepStats);
+      let decision = decide(probe);
+      let evidence = probe;
+
+      // A single clean replay is flaky against a live target (backend data/timing),
+      // so a would-be RESOLVED is confirmed with a SECOND independent replay before we
+      // call a bug fixed. Reproduction on the retry flips to STILL_ACTIVE; a disagreeing
+      // or un-runnable retry means the fix can't be confirmed (UNCONFIRMED_RESOLUTION).
+      // Reproduction and inconclusive verdicts are already conservative — no re-run.
+      if (decision.verdict === 'RESOLVED') {
+        const confirm = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);
+        decision = confirmResolution(confirm.ok ? decide(confirm) : null);
+        if (confirm.ok && decision.verdict !== 'RESOLVED') evidence = confirm;
+        obsLog.info(`[RegressionVerifier] Confirmation replay for bug ${bugId}: ${decision.verdict}/${decision.reason}`);
+      }
+
+      const summary = summarize(decision, originalBugClass, evidence.stepStats);
 
       obsLog.info(
         `[RegressionVerifier] Verdict for bug ${bugId}: ${decision.verdict}/${decision.reason} ` +
-          `(${decision.matchedSignals.length} signal(s), ${probe.stepStats.executed}/${probe.stepStats.total} executed)`,
+          `(${decision.matchedSignals.length} signal(s), ${evidence.stepStats.executed}/${evidence.stepStats.total} executed)`,
       );
 
       return {
@@ -140,10 +130,10 @@ export class RegressionPlaybookVerifier {
         sessionId,
         bugId,
         bugClass: originalBugClass,
-        stepsReplayed: probe.stepsReplayed,
-        stepStats: probe.stepStats,
+        stepsReplayed: evidence.stepsReplayed,
+        stepStats: evidence.stepStats,
         matchedSignals: decision.matchedSignals,
-        otherSignals: probe.otherSignals,
+        otherSignals: evidence.otherSignals,
         timelineSource: finding.timelineSource,
         summary,
         durationMs: Date.now() - startedAt,
@@ -155,6 +145,41 @@ export class RegressionPlaybookVerifier {
       if (browser) {
         await browser.close().catch(() => undefined);
       }
+    }
+  }
+
+  /**
+   * One isolated replay attempt: a FRESH context (no cookie/init-script bleed between
+   * attempts) replays the finding's timeline and reports whether its fault recurred.
+   * The auth-wall guard is ON — a stale authenticated finding replayed against a login
+   * page would miss every selector and read RESOLVED, a false negative we refuse.
+   */
+  private async attempt(
+    browser: Browser,
+    finding: LoadedFinding,
+    bugClass: string,
+    faultType: FaultType,
+    emit: (phase: 'replaying' | 'validating', done: number, total: number) => void,
+  ): Promise<ReplaySessionResult> {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      ignoreHTTPSErrors: true,
+      deviceScaleFactor: 1,
+    });
+    try {
+      return await runReplaySession(context, {
+        targetUrl: finding.targetUrl,
+        steps: finding.actionSteps,
+        bugClass,
+        faultType,
+        originalMessage: finding.bug.message ?? '',
+        scenario: finding.bug.attribution?.scenario,
+        stateFingerprint: finding.bug.stateFingerprint,
+        guardLoginWall: true,
+        onProgress: (phase, done, total) => emit(phase, done, total),
+      });
+    } finally {
+      await context.close().catch(() => undefined);
     }
   }
 

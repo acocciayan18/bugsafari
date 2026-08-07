@@ -1625,12 +1625,12 @@ export class ExplorationEngine {
       : { outcome: 'engine-error', reason: `${origin.reason} ${message}`.trim() };
   }
 
-  // Freeze at crash time: stop the engine's own trace recording AND the global
-  // playbook buffer, so post-fault scenario writes (which bypass recordActionTrace
-  // by pushing to ReproductionPlaybookStore directly) can't overwrite the causal chain.
+  // Freeze the LIVE operator breadcrumb timeline at crash time so a post-fault tail
+  // doesn't flood it. The reproduction buffer (ReproductionPlaybookStore) deliberately
+  // keeps recording — each finding snapshots it at its own fault instant, so freezing it
+  // globally made every finding after the first inherit the first fault's timeline.
   private freezeRecording(): void {
     this.freezeActionTraceRecording = true;
-    ReproductionPlaybookStore.freeze();
   }
 
   // Resolve which control the engine was actuating at `atMs`, so a request observed by
@@ -1681,15 +1681,9 @@ export class ExplorationEngine {
   // Records an executed action into the in-memory breadcrumb + reproduction buffers only.
   // High-frequency action traces are WebSocket/in-memory telemetry — never persisted to Mongo.
   private recordActionTrace(trace: ActionBreadcrumb, clean?: CleanActionStep): void {
-    if (this.freezeActionTraceRecording) {
-      return;
-    }
-
-    this.actions.push(trace);
-
-    // Push a clean, human-descriptive record into the canonical playbook buffer
-    // so crash-time narrative serialization reads accurate action types, visible
-    // labels, live URLs, and real fuzz/text values instead of internal engine verbs.
+    // Build a clean, human-descriptive record for the canonical playbook buffer so
+    // crash-time narrative serialization reads accurate action types, visible labels,
+    // live URLs, and real fuzz/text values instead of internal engine verbs.
     // Real execution time: elapsed since noteActedTarget stamped the action start.
     // Guarded to a sane window so replay/restore traces don't record a stale delta.
     const sinceActionMs = this.lastActedAtMs > 0 ? Date.now() - this.lastActedAtMs : -1;
@@ -1712,7 +1706,15 @@ export class ExplorationEngine {
       containerLabel: clean?.containerLabel,
       containerKind: clean?.containerKind,
     };
+    // ALWAYS feed the reproduction buffer — even after a fault — so each finding
+    // snapshots its own causal chain. Post-fault noise is dropped per-fault by the
+    // minimizer's fault-time cutoff, not by freezing the whole buffer.
     ReproductionPlaybookStore.push(actionRecord);
+
+    // The live operator breadcrumb timeline still freezes at crash time so a post-fault
+    // tail can't flood it — display-only; the reproduction buffer above is authoritative.
+    if (this.freezeActionTraceRecording) return;
+    this.actions.push(trace);
   }
 
   private async persistBrainSnapshot(source: 'start' | 'runtime' | 'finish' | 'crash', step?: number): Promise<void> {

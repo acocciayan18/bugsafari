@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
-import { decideVerdict, summarize, MIN_EXECUTED_RATIO } from './verdict.js';
+import { decideVerdict, confirmResolution, summarize, MIN_EXECUTED_RATIO } from './verdict.js';
 import { FaultCollector, messagesSimilar, normalizeMessage } from './FaultCollector.js';
 import { isReplayVerifiable } from './replayProbes.js';
 import { detectApiContractViolation } from '../verification/apiContractBody.js';
@@ -138,6 +138,35 @@ check('reproduction still wins over the endpoint gate (strong signal → STILL_A
     faultEndpoint: '/api/login', seenEndpoints: ['/'],
   });
   assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
+console.log('confirmResolution — a clean replay must be confirmed by a second');
+
+const resolved = { verdict: 'RESOLVED' as const, reason: 'CLEAN_REPLAY' as const, matchedSignals: [] };
+const stillActive = { verdict: 'STILL_ACTIVE' as const, reason: 'REPRODUCED' as const, matchedSignals: [signal] };
+const inconclusive = { verdict: 'INCONCLUSIVE' as const, reason: 'INSUFFICIENT_REPLAY' as const, matchedSignals: [] };
+
+check('retry reproduces the fault → STILL_ACTIVE (flaky bug is present)', () => {
+  const d = confirmResolution(stillActive);
+  assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
+check('retry also clean → RESOLVED confirmed', () => {
+  const d = confirmResolution(resolved);
+  assert.equal(d.verdict, 'RESOLVED');
+  assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
+check('retry inconclusive → UNCONFIRMED_RESOLUTION, never RESOLVED', () => {
+  const d = confirmResolution(inconclusive);
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'UNCONFIRMED_RESOLUTION');
+});
+
+check('retry could not run (null) → UNCONFIRMED_RESOLUTION, never RESOLVED', () => {
+  const d = confirmResolution(null);
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'UNCONFIRMED_RESOLUTION');
 });
 
 console.log('messagesSimilar — deterministic error-identity check');

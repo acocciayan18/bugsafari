@@ -132,8 +132,12 @@ export class SocketTelemetryGateway implements TelemetryGateway {
       // Forward the frozen steps + remediation + classification so the synthesized
       // incident is a FULL copy. Omitting attribution/severity/culprit here degraded
       // it: this incident arrives after the real one and wins the frontend collapse,
-      // stripping the bug class + severity + culprit from the saved finding.
+      // stripping the bug class + severity + culprit from the saved finding. The
+      // replayable timeline + fault-time state must ride along too, or Verify Fix
+      // replays zero steps (the narrative survives but actionSteps go to zero).
       reproductionPlaybook: report.reproductionPlaybook,
+      reproductionActions: report.reproductionActions,
+      stateFingerprint: report.stateFingerprint,
       advice: report.advice,
       attribution: report.attribution,
       severity: report.severity,
