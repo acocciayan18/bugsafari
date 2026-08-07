@@ -7,7 +7,7 @@ export type TelemetryTone = 'critical' | 'warning' | 'success' | 'system' | 'sco
 
 // Tone → leading marker glyph + marker/text color. Severity carries color, not words.
 const TONE_STYLE: Record<TelemetryTone, { marker: string; markerClass: string; textClass: string }> = {
-  critical: { marker: '●', markerClass: 'text-(--status-critical-fg)', textClass: 'text-(--status-critical-fg) font-semibold' },
+  critical: { marker: 'x', markerClass: 'text-(--status-critical-fg)', textClass: 'text-(--status-critical-fg) font-semibold' },
   warning: { marker: '▸', markerClass: 'text-(--status-warning-fg)', textClass: 'text-(--status-warning-fg)' },
   success: { marker: '✓', markerClass: 'text-(--status-stable-fg)', textClass: 'text-(--text-primary)' },
   system: { marker: '·', markerClass: 'text-(--text-tertiary)', textClass: 'text-(--text-secondary)' },

@@ -631,7 +631,7 @@ export default function ClinicalForensicsDashboard({
                       })}
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-                          <span className="h-3 w-3 rounded-full bg-(--surface-invert) animate-ping"></span>
+                          <span className="h-2 w-2 rounded-full bg-(--surface-invert) animate-ping"></span>
                           <span className="font-mono text-[13px]">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>
@@ -640,7 +640,7 @@ export default function ClinicalForensicsDashboard({
                     </>
                   ) : formattedTelemetry.length === 0 ? (
                     <div className="text-(--text-secondary) py-4">
-                      <span className="text-(--text-primary)">█</span> Ready for telemetry...
+                    Ready for telemetry...
                     </div>
                   ) : (
                     <>
@@ -657,7 +657,7 @@ export default function ClinicalForensicsDashboard({
                         );
                       })}
                       <div className="py-2 text-(--text-primary)">
-                        <span className="text-(--text-primary)">█</span> Ready for telemetry...
+                      Ready for telemetry...
                       </div>
                     </>
                   )}

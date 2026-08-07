@@ -79,7 +79,7 @@ export default function LongOperationProgressCard() {
     <div
       role="status"
       aria-live="polite"
-      className="absolute right-0 top-full mt-2 z-9999 w-[min(20rem,calc(100vw-1.5rem))] rounded-[10px] border border-(--border-strong) bg-(--surface-panel) p-4 shadow-lg backdrop-blur"
+      className="fixed bottom-3 right-3 z-9999 w-[min(20rem,calc(100vw-1.5rem))] rounded-[10px] border border-(--border-strong) bg-(--surface-panel) p-4 shadow-lg backdrop-blur"
     >
       <div className="flex items-center gap-2">
         <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-(--status-stable-fg)" strokeWidth={2} aria-hidden="true" />

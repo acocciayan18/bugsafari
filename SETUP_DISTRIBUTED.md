@@ -201,9 +201,9 @@ git push --set-upstream origin 8-6-Ayan-2
 
 
 git add .
-git commit -m "Align Forensic History UI with Telemetry view"
+git commit -m "Enhance telemetry event handling and improve error messaging; refactor eviction strategies for state management"
 git switch dev
-git merge 8-5-Ayan-1
+git merge 8-7-Tibo-3
 git push origin dev
 
 
