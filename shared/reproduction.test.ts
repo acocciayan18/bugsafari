@@ -236,7 +236,7 @@ check('an API endpoint never seeds or transitions the playbook route', () => {
   const steps = narrateActionRecords([
     rec({ url: 'http://app.test/checkout', elementLabel: 'Pay', elementKind: 'button' }),
     // A NETWORK step whose url is the API endpoint must NOT become a "Navigate to /api" step.
-    rec({ type: 'NETWORK', url: 'http://app.test/api/pay', humanIdentifier: 'Aborted', elementKind: 'network request' }),
+    rec({ type: 'NETWORK', url: 'http://app.test/api/pay', elementLabel: 'Aborted', elementKind: 'network request' }),
   ]);
   assert.ok(!steps.some((s) => /Navigate to \/api\//.test(s)), 'no API endpoint is rendered as a page navigation');
   assert.equal(steps[0], 'Step 1. Navigate to /checkout');
