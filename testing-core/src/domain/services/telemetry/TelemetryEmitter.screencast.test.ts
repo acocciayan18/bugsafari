@@ -31,7 +31,13 @@ async function main(): Promise<void> {
     isStopRequested: () => false,
   });
 
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  } catch {
+    console.log('⚠ skipped: no Chromium available — run inside the engine container (browsers at /ms-playwright)');
+    return;
+  }
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   await page.goto(ANIMATED_PAGE);
