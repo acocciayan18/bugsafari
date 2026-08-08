@@ -13,6 +13,7 @@ import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
+import type { ActionRecord } from '../../../../../shared/types.js';
 
 export interface BugFinderRunnerDeps {
   finders: readonly BugFinder[];
@@ -172,6 +173,29 @@ export class BugFinderRunner {
         })
       : undefined;
 
+    // Structured, replayable timeline for the bypass — without it Verify Fix has only the
+    // narrative and reads NO_REPLAY_STEPS. Navigate to the fault page, then a single SUBMIT
+    // step carries the field selector + the invalid payload + the stripped attribute; the
+    // replay strips the client guard, injects the value, and submits the enclosing form.
+    const pageUrl = ctx.page.url();
+    const now = new Date().toISOString();
+    const reproductionActions: ActionRecord[] | undefined = bypass && el
+      ? [
+          { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
+          {
+            timestamp: now,
+            type: 'SUBMIT',
+            selector: el.selector,
+            url: pageUrl,
+            payload: bypass.payload,
+            elementLabel: bypassLabel,
+            elementKind: elementNoun(el.tagName, el.type),
+            strippedAttributes: bypass.strippedAttribute ? [bypass.strippedAttribute] : undefined,
+            redactValue: isSensitiveInputElement(el),
+          },
+        ]
+      : undefined;
+
     this.deps.registerConfirmedBug({
       bugId: deriveBugId(finding, ctx),
       type: 'FINDER',
@@ -179,6 +203,7 @@ export class BugFinderRunner {
       selector: finding.evidence?.selector ?? '',
       elementLabel: bypassLabel,
       reproductionSteps,
+      reproductionActions,
       // Prefer the actual submitted payload (may be ''); fall back to the action label.
       payloadUsed: bypass ? bypass.payload : finding.evidence?.actionExecuted ?? '',
       advice: definition.remediation,
