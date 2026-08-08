@@ -8,7 +8,7 @@
 // body scan, freeze heartbeat) and names which classes replay can verify at all.
 
 import type { Page, Request, Response } from 'playwright';
-import type { FaultCollector } from './FaultCollector.js';
+import { pathOf, type FaultCollector } from './FaultCollector.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import {
   detectSoftFailBody,
@@ -42,6 +42,10 @@ export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
   'ROUTE_MUTATION_FAILURE',
   'STRUCTURAL_NAVIGATION_LOGIC',
   'INFINITE_LOADING',
+  // The replay re-runs the recorded bypass (strip client validation → submit the invalid
+  // value) and observes the fault endpoint: still 2xx ⇒ the server accepted it, constraint
+  // still bypassable (STILL_ACTIVE); 4xx ⇒ the server now rejects it (RESOLVED).
+  'CLIENT_SIDE_CONSTRAINT_BYPASS',
 ]);
 
 export function isReplayVerifiable(bugClass: string): boolean {
@@ -88,6 +92,9 @@ export class ReplayProbes {
     private readonly collector: FaultCollector,
     private readonly bugClass: string,
     private readonly faultType: FaultType,
+    // Pathname of the request that defined the fault — the constraint-bypass oracle
+    // watches it for a still-accepting 2xx response.
+    private readonly faultEndpoint?: string,
   ) {}
 
   public async arm(): Promise<void> {
@@ -113,6 +120,9 @@ export class ReplayProbes {
     }
     if (this.bugClass === 'API_CONTRACT_VIOLATION') {
       this.page.on('response', this.onApiContractResponse);
+    }
+    if (this.bugClass === 'CLIENT_SIDE_CONSTRAINT_BYPASS' && this.faultEndpoint) {
+      this.page.on('response', this.onConstraintResponse);
     }
   }
 
@@ -171,6 +181,7 @@ export class ReplayProbes {
     this.page.off('requestfailed', this.onRequestSettled);
     this.page.off('response', this.onResponse);
     this.page.off('response', this.onApiContractResponse);
+    this.page.off('response', this.onConstraintResponse);
     this.pendingRequests.clear();
   }
 
@@ -234,6 +245,23 @@ export class ReplayProbes {
         })
         .catch(() => undefined),
     );
+  };
+
+  // Constraint-bypass oracle: the recorded steps strip the client validation and submit
+  // the invalid value. If the fault endpoint still returns a 2xx, the server accepted it
+  // without re-checking — the bypass is still live. A 4xx means the server now rejects it
+  // (handled by the absence of this signal ⇒ RESOLVED).
+  private readonly onConstraintResponse = (response: Response): void => {
+    if (!this.faultEndpoint || pathOf(response.url()) !== this.faultEndpoint) return;
+    const status = response.status();
+    if (status < 200 || status >= 300) return;
+    this.collector.addExternal({
+      faultType: 'NETWORK',
+      statusCode: status,
+      message: `Constraint bypass reproduced: ${this.faultEndpoint} accepted the invalid value (HTTP ${status}) with client validation stripped`,
+      url: response.url(),
+      bugClassOverride: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
+    });
   };
 
   private safeUrl(): string | undefined {

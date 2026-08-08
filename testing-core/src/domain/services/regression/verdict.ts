@@ -18,6 +18,8 @@ export interface VerdictInput {
   faultEndpoint?: string;
   /** Pathnames the replay actually requested — used to prove the fault trigger ran. */
   seenEndpoints?: string[];
+  /** True when a page navigation aborted mid-replay — the faulting state may never have loaded. */
+  replayIncomplete?: boolean;
 }
 
 export interface VerdictDecision {
@@ -58,6 +60,11 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   if (timelineSource === 'session') {
     return { verdict: 'INCONCLUSIVE', reason: 'LEGACY_TIMELINE', matchedSignals: [] };
   }
+  // A page navigation aborted mid-replay ⇒ the replay never reached the faulting page,
+  // so the absence of the fault is not evidence of a fix. Never call it RESOLVED.
+  if (input.replayIncomplete) {
+    return { verdict: 'INCONCLUSIVE', reason: 'INCOMPLETE_REPLAY', matchedSignals: [] };
+  }
   return { verdict: 'RESOLVED', reason: 'CLEAN_REPLAY', matchedSignals: [] };
 }
 
@@ -86,6 +93,8 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
       return `This finding has no recorded reproduction steps, so there was nothing to replay and no fault could be attributed to it. Re-run a live exploration to capture a replayable timeline.`;
     case 'UNCONFIRMED_RESOLUTION':
       return `The first replay came back clean, but a confirmation replay did not agree — the fault reproduces intermittently, so the fix cannot be confirmed. Re-test against a stable build.`;
+    case 'INCOMPLETE_REPLAY':
+      return `A page navigation aborted during replay, so the faulting page never fully loaded — a clean run can't prove the ${bugClass} defect is fixed. Re-test against a stable build.`;
     case 'INSUFFICIENT_REPLAY':
       return `Only ${stats.executed} of ${stats.total} recorded step(s) executed (${stats.skipped} skipped, ${stats.failed} failed) — not enough of the reproduction ran to prove the fix.`;
     case 'FAULT_TRIGGER_NOT_EXERCISED':

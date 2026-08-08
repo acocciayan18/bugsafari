@@ -65,6 +65,8 @@ export interface DuplicateActionDefect {
   method: string;
   selector: string;
   elementLabel: string;
+  /** Document URL the control fired from (never the API endpoint) — for the reproduction trace. */
+  pageUrl?: string;
   evidence: string[];
   reproductionHint: string[];
   advice: string;
@@ -252,6 +254,9 @@ export class DuplicateActionFinder {
       method: second.method,
       selector: interaction?.selector ?? '',
       elementLabel: label,
+      // Document URL the control fired from — the page a developer opens to reproduce,
+      // never `endpoint` (an API path). Drives the fallback reproduction trace.
+      pageUrl: second.pageUrl ?? first.pageUrl,
       evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, interaction),
       reproductionHint: this.reproductionFor(first, second, verdict, intervalMs, label),
       advice: this.adviceFor(verdict),

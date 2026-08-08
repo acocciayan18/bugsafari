@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -362,6 +362,9 @@ const questionIcon: VerdictIcon = (c) => (
 const xIcon: VerdictIcon = (c) => (
   <CircleX className={c} strokeWidth={1.75} aria-hidden="true" />
 );
+const slashIcon: VerdictIcon = (c) => (
+  <CircleSlash className={c} strokeWidth={1.75} aria-hidden="true" />
+);
 
 interface VerdictMeta {
   label: string;
@@ -441,13 +444,15 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   FAULT_TRIGGER_NOT_EXERCISED:
     'The replay never re-triggered the request that caused the original fault, so a clean run cannot prove it is fixed.',
   UNVERIFIABLE_BUG_CLASS:
-    "We can't confirm this kind of bug with replay alone. Re-test it with a live exploration run.",
+    "Automated replay can't confirm this kind of bug (it needs a live oracle or non-deterministic timing). The recorded steps are for manual reproduction — re-test with a live exploration run.",
   WEAK_MATCH_ONLY:
     "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
   NO_REPLAY_STEPS:
     "This finding has no recorded reproduction steps, so there was nothing to replay — Verify Fix can't confirm it. Re-run a live exploration to capture a replayable timeline.",
   UNCONFIRMED_RESOLUTION:
     "The first replay was clean, but a confirmation replay disagreed — this fault reproduces intermittently, so we can't confirm it's fixed. Re-test against a stable build.",
+  INCOMPLETE_REPLAY:
+    "A page navigation aborted during replay, so the faulting page never fully loaded — a clean run can't prove this is fixed. Re-test against a stable build.",
   LEGACY_TIMELINE:
     'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
   TARGET_UNREACHABLE:
@@ -457,8 +462,34 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   REPLAY_ERROR: "We couldn't replay the target, so this result says nothing about the bug. Try again.",
 };
 
+// A distinct, calmer badge for findings replay fundamentally CAN'T check — a class with
+// no replay-time detector, or a finding with no recorded steps. These aren't "inconclusive
+// evidence"; there was nothing to replay, so they read "Not Replayable" (neutral), not the
+// amber "Inconclusive" that implies a real-but-ambiguous run.
+const NOT_REPLAYABLE_META: VerdictMeta = {
+  label: 'Not Replayable',
+  badge: 'bg-(--status-neutral-fg) text-(--text-oninvert) hover:opacity-90',
+  chip: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--status-neutral-border)',
+  dot: 'bg-(--status-neutral-fg)',
+  cardBorder: 'border-(--status-neutral-border)',
+  cardHeaderBg: 'bg-(--status-neutral-bg) border-(--status-neutral-border)',
+  cardTitle: 'text-(--status-neutral-fg)',
+  cardSub: 'text-(--status-neutral-fg)',
+  numberBg: 'bg-(--status-neutral-fg)',
+  modalBar: 'bg-(--status-neutral-fg)',
+  icon: slashIcon,
+};
+
+const NOT_REPLAYABLE_REASONS = new Set<VerifyFixReason>(['UNVERIFIABLE_BUG_CLASS', 'NO_REPLAY_STEPS']);
+
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
   return VERDICT_META[verdict] ?? VERDICT_META.INCONCLUSIVE;
+}
+
+/** Badge/theme for a settled result — a "can't replay this" reason reads Not Replayable. */
+function metaForResult(result: { verdict: RegressionVerdict; reason: VerifyFixReason }): VerdictMeta {
+  if (result.verdict === 'INCONCLUSIVE' && NOT_REPLAYABLE_REASONS.has(result.reason)) return NOT_REPLAYABLE_META;
+  return verdictMetaOf(result.verdict);
 }
 
 /** Human phase label for the running pill (real per-step counts when known). */
@@ -494,7 +525,7 @@ function VerifyFixControl({
   }
 
   if (status.state === 'done') {
-    const meta = verdictMetaOf(status.result.verdict);
+    const meta = metaForResult(status.result);
     return (
       <button
         type="button"
@@ -566,7 +597,7 @@ function VerificationResultModal({
   onReverify: () => void;
   onClose: () => void;
 }) {
-  const meta = verdictMetaOf(result.verdict);
+  const meta = metaForResult(result);
   const titleId = `verify-result-${result.bugId}`;
 
   return (
@@ -695,7 +726,7 @@ function ReportFindingCard({
 
   // Settled verdict drives both the card theme and the header status chip.
   const settled = status.state === 'done' ? status.result : null;
-  const verdictMeta = settled ? verdictMetaOf(settled.verdict) : null;
+  const verdictMeta = settled ? metaForResult(settled) : null;
 
   const triggerVerify = (): void => {
     if (canVerify && sessionId) onVerify({ sessionId, bugId: bug.bugId });

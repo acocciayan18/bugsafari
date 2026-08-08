@@ -49,6 +49,7 @@ export class FaultCollector {
   private readonly faults: CollectedFault[] = [];
   private readonly endpoints = new Set<string>();
   private readonly bodyScans: Array<Promise<void>> = [];
+  private navigationFailed = false;
   private bound = false;
 
   /** @param scanBodies read response bodies for classes whose evidence is body-borne. */
@@ -131,10 +132,19 @@ export class FaultCollector {
 
   private readonly onRequestFailed = (request: Request): void => {
     this.recordEndpoint(request.url());
+    // A failed DOCUMENT navigation (e.g. ERR_ABORTED when a later step navigates away)
+    // means the replay never reached that page's state, so a clean verdict can't be
+    // trusted — the faulting page may never have loaded. Tracked to block RESOLVED.
+    if (request.resourceType() === 'document') this.navigationFailed = true;
     if (!FAULT_RESOURCE_TYPES.has(request.resourceType())) return;
     const reason = request.failure()?.errorText ?? 'request failed';
     this.faults.push({ faultType: 'NETWORK', message: `Request failed: ${reason}`, url: request.url() });
   };
+
+  /** True when a page navigation failed to load during replay — the replay is incomplete. */
+  public hadNavigationFailure(): boolean {
+    return this.navigationFailed;
+  }
 
   private recordEndpoint(url: string): void {
     const path = pathOf(url);
