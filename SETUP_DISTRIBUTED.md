@@ -203,7 +203,7 @@ git push --set-upstream origin 8-8-Ayan
 git add .
 git commit -m "update some landing page"
 git switch dev
-git merge 8-7-Tibo-3
+git merge 8-8-Ayan
 git push origin dev
 
 
