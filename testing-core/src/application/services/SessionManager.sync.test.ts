@@ -4,6 +4,9 @@ import type { EngineControl } from './SessionManager.js';
 // Short grace so the abandon-teardown path can be exercised in real time. Must be
 // set BEFORE the module evaluates its GRACE_MS constant, hence the dynamic import.
 process.env.BUGSAFARI_SESSION_GRACE_MS = '40';
+// S2/S3 exercise the opt-in abandon-teardown path (off by default: a disconnect
+// leaves an autonomous run RUNNING). Enable it so the grace mechanics are covered.
+process.env.BUGSAFARI_TERMINATE_ON_ABANDON = 'on';
 const { SessionManager } = await import('./SessionManager.js');
 
 // Verifies the synchronization contract every live client depends on: attach/replay,
