@@ -171,7 +171,12 @@ export class BugFinderRunner {
           endpoint: bypass.endpoint,
           status: bypass.status,
         })
-      : undefined;
+      : finding.evidence?.payload && el
+        ? [
+            `Step 1. Navigate to ${safeRoutePath(ctx.page)}`,
+            `Step 2. Type the test value into the ${resolveElementLabel(el)} ${elementNoun(el.tagName, el.type)} and observe the response`,
+          ]
+        : undefined;
 
     // Structured, replayable timeline for the bypass — without it Verify Fix has only the
     // narrative and reads NO_REPLAY_STEPS. Navigate to the fault page, then a single SUBMIT
@@ -179,29 +184,47 @@ export class BugFinderRunner {
     // replay strips the client guard, injects the value, and submits the enclosing form.
     const pageUrl = ctx.page.url();
     const now = new Date().toISOString();
-    const reproductionActions: ActionRecord[] | undefined = bypass && el
-      ? [
-          { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
-          {
-            timestamp: now,
-            type: 'SUBMIT',
-            selector: el.selector,
-            url: pageUrl,
-            payload: bypass.payload,
-            elementLabel: bypassLabel,
-            elementKind: elementNoun(el.tagName, el.type),
-            strippedAttributes: bypass.strippedAttribute ? [bypass.strippedAttribute] : undefined,
-            redactValue: isSensitiveInputElement(el),
-          },
-        ]
-      : undefined;
+    // A fuzz finding is a payload typed into a field — non-replayable (needs a reflected-XSS
+    // oracle) but its trace names the exact field + value a developer must reproduce.
+    const fuzzPayload = finding.evidence?.payload;
+    let reproductionActions: ActionRecord[] | undefined;
+    if (bypass && el) {
+      reproductionActions = [
+        { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
+        {
+          timestamp: now,
+          type: 'SUBMIT',
+          selector: el.selector,
+          url: pageUrl,
+          payload: bypass.payload,
+          elementLabel: bypassLabel,
+          elementKind: elementNoun(el.tagName, el.type),
+          strippedAttributes: bypass.strippedAttribute ? [bypass.strippedAttribute] : undefined,
+          redactValue: isSensitiveInputElement(el),
+        },
+      ];
+    } else if (fuzzPayload && el) {
+      reproductionActions = [
+        { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
+        {
+          timestamp: now,
+          type: 'INPUT',
+          selector: el.selector,
+          url: pageUrl,
+          payload: fuzzPayload,
+          elementLabel: resolveElementLabel(el),
+          elementKind: elementNoun(el.tagName, el.type),
+          redactValue: isSensitiveInputElement(el),
+        },
+      ];
+    }
 
     this.deps.registerConfirmedBug({
       bugId: deriveBugId(finding, ctx),
       type: 'FINDER',
       message: finding.evidence?.message ?? finding.title,
       selector: finding.evidence?.selector ?? '',
-      elementLabel: bypassLabel,
+      elementLabel: bypassLabel ?? (el ? resolveElementLabel(el) : undefined),
       reproductionSteps,
       reproductionActions,
       // Prefer the actual submitted payload (may be ''); fall back to the action label.

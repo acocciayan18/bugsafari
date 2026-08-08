@@ -33,6 +33,9 @@ export interface BugFinding {
     statusCode?: number;
     durationMs?: number;
     isCascadingFailure?: boolean;
+    // The exact injected value — set by the fuzz finder so a human-reproduction trace
+    // (navigate → type this into the field) can name the payload, not just the field.
+    payload?: string;
     // Structured bypass evidence — set only by the constraint-bypass finder.
     bypass?: ConstraintBypassDetail;
     previousContext?: {

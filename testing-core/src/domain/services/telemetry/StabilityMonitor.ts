@@ -889,6 +889,17 @@ export class StabilityMonitor {
     // The finder's causal pair is the authoritative reproduction; the scenario narrative
     // is appended as the surrounding context that led up to it.
     const reproductionPlaybook = [...defect.reproductionHint, ...reproduction.narrative];
+    // A race snapshot is often empty (the double-submit fires on an API endpoint the
+    // minimizer can't anchor to a page). Fall back to a defect-built trace so the finding
+    // still carries a human-reproduction timeline: open the page, double-fire the control.
+    const reproductionActions = reproduction.actions.length > 0
+      ? reproduction.actions
+      : defect.selector
+        ? [
+            { timestamp, type: 'NAVIGATE' as const, selector: defect.pageUrl ?? page.url(), url: defect.pageUrl ?? page.url() },
+            { timestamp, type: 'CLICK' as const, selector: defect.selector, url: defect.pageUrl ?? page.url(), elementLabel: defect.elementLabel, repeatCount: 2 },
+          ]
+        : reproduction.actions;
     const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
@@ -953,7 +964,7 @@ export class StabilityMonitor {
         url,
         stackTrace,
         steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-        reproductionActions: reproduction.actions,
+        reproductionActions,
         stateFingerprint,
         reproductionPlaybook: complete.reproductionPlaybook,
         advice: complete.advice,
@@ -968,6 +979,8 @@ export class StabilityMonitor {
         url,
         stackTrace,
         breadcrumbs,
+        reproductionActions,
+        stateFingerprint,
         reproductionPlaybook: complete.reproductionPlaybook,
         advice: complete.advice,
         attribution,

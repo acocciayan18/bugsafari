@@ -237,6 +237,7 @@ export const fuzzGuard: BugFinder = {
         evidence: {
           message: `After typing ${metadata.payload?.substring(0, 50)}... into the ${metadata.category} field, the injected script appeared unescaped in the page. This means a user-supplied value can run as code in the browser. Matches: ${xssSignatures.join(', ')}`,
           selector: ctx.element?.selector,
+          payload: metadata.payload,
           actionExecuted: 'fuzz-xss-detection',
           stateHash: ctx.stateHash,
         },
@@ -252,6 +253,7 @@ export const fuzzGuard: BugFinder = {
         evidence: {
           message: `After sending a crafted value, the page returned a raw database (NoSQL/MongoDB) error. This suggests the value reached the database unchecked, which can allow injection. Errors: ${noSqlErrors.join('; ').substring(0, 200)}`,
           selector: ctx.element?.selector,
+          payload: metadata.payload,
           actionExecuted: 'fuzz-nosql-detection',
           stateHash: ctx.stateHash,
         },
@@ -267,6 +269,7 @@ export const fuzzGuard: BugFinder = {
         evidence: {
           message: `Sending test values made the server crash or return crash traces, so it does not handle unexpected input safely. Matches: ${crashSignatures.join('; ')}`,
           selector: ctx.element?.selector,
+          payload: metadata.payload,
           actionExecuted: 'fuzz-crash-detection',
           stateHash: ctx.stateHash,
         },

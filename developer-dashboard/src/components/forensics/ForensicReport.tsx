@@ -444,7 +444,7 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   FAULT_TRIGGER_NOT_EXERCISED:
     'The replay never re-triggered the request that caused the original fault, so a clean run cannot prove it is fixed.',
   UNVERIFIABLE_BUG_CLASS:
-    "We can't confirm this kind of bug with replay alone. Re-test it with a live exploration run.",
+    "Automated replay can't confirm this kind of bug (it needs a live oracle or non-deterministic timing). The recorded steps are for manual reproduction — re-test with a live exploration run.",
   WEAK_MATCH_ONLY:
     "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
   NO_REPLAY_STEPS:
