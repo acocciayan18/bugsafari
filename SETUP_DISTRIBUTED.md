@@ -201,7 +201,7 @@ git push --set-upstream origin 8-8-Ayan
 
 
 git add .
-git commit -m "fix ci "
+git commit -m "fix ci"
 git switch dev
 git merge 8-8-Tibo-3
 git push origin dev
