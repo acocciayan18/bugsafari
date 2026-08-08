@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Refactor Pause/Stop progress notification UX"
-git checkout -b 8-6-Ayan-2
-git push --set-upstream origin 8-6-Ayan-2
+git commit -m "update some md files"
+git checkout -b 8-8-Ayan
+git push --set-upstream origin 8-8-Ayan
 
 
 

@@ -22,9 +22,9 @@ const TOPICS: HelpTopic[] = [
     label: 'Telemetry',
     icon: Activity,
     what: 'A live feed of every step the exploration engine takes as it clicks, types, and navigates the target app.',
-    collects: ['Actions executed (clicks, form fills, navigation)', 'Heuristic score updates for scored elements', 'System status messages and AI diagnostics'],
+    collects: ['Actions executed (clicks, form fills, navigation)', 'Heuristic score updates for scored elements', 'System status messages and diagnostics'],
     why: 'Lets you follow the engine\'s decision-making in real time, so you can see exactly what path led to a bug.',
-    examples: ['"clicked button.submit-order"', '"score update: target increased to 0.82"', 'AI-suggested fix attached to a runtime exception'],
+    examples: ['"clicked button.submit-order"', '"score update: target increased to 0.82"', 'Suggested fix attached to a runtime exception'],
   },
   {
     id: 'errors',

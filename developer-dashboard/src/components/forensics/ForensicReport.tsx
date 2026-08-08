@@ -289,7 +289,7 @@ function AiInsightsPanel({
           </span>
         )}
         {aiGenerated && (
-          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold normal-case text-(--status-neutral-fg)">✦ AI-generated</span>
+          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold normal-case text-(--status-neutral-fg)">✦ Automatically Generated</span>
         )}
         {/* Generate once per run: hidden once AI insights exist (fresh or persisted),
             so a successful result is shown directly and never regenerated. It returns
@@ -303,7 +303,7 @@ function AiInsightsPanel({
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' ? 'Retry with AI' : 'Generate with AI'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' ? 'Retry' : 'Generate Insights'}</>}
           </button>
         )}
       </div>

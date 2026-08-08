@@ -260,7 +260,7 @@ export async function requestSuggestedFix(payload: SuggestFixRequest): Promise<S
 export async function requestAiInsights(payload: SuggestInsightsRequest): Promise<SuggestInsightsResponse> {
   const response = await fetchWithAuthRetry('/api/forensic/insights', getFetchOptions('POST', payload));
   if (!response.ok) {
-    throw new Error(`Could not generate AI insights (${response.status})`);
+    throw new Error(`Could not generate insights (${response.status})`);
   }
   return (await response.json()) as SuggestInsightsResponse;
 }

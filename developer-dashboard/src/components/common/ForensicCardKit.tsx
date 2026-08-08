@@ -14,20 +14,20 @@ import { requestSuggestedFix } from '../../services/historyService';
 // Operator-facing cause for a fallback. Shared by the per-finding fix block and the
 // session-level AI Insights panel so both explain the same failure the same way.
 const FALLBACK_REASON_TEXT: Record<RemediationFailureReason, string> = {
-  not_configured: 'AI suggestions are turned off right now.',
-  auth: "AI suggestions aren't available right now. Try again shortly.",
-  rate_limited: 'AI is busy right now. Try again in a moment.',
-  model_unavailable: 'AI suggestions are unavailable right now. Try again shortly.',
-  bad_request: "We couldn't get an AI suggestion for this one.",
-  provider_error: 'AI ran into a problem. Try again in a moment.',
-  timeout: 'AI took too long to respond. Try again.',
-  network: "We couldn't reach AI. Check your connection and try again.",
-  invalid_response: "AI sent back something we couldn't use. Try again.",
-  empty_response: "AI didn't return anything. Try again.",
+  not_configured: 'Suggested fixes are turned off right now.',
+  auth: "Suggested fixes aren't available right now. Try again shortly.",
+  rate_limited: 'The service is busy right now. Try again in a moment.',
+  model_unavailable: 'Suggested fixes are unavailable right now. Try again shortly.',
+  bad_request: "We couldn't generate a suggested fix for this one.",
+  provider_error: 'Something went wrong. Try again in a moment.',
+  timeout: 'The request took too long to respond. Try again.',
+  network: "We couldn't reach the service. Check your connection and try again.",
+  invalid_response: "We got back something we couldn't use. Try again.",
+  empty_response: "Nothing came back. Try again.",
 };
 
 export const fallbackReasonText = (reason?: RemediationFailureReason): string =>
-  (reason && FALLBACK_REASON_TEXT[reason]) || 'AI suggestions are unavailable right now.';
+  (reason && FALLBACK_REASON_TEXT[reason]) || 'Suggested fixes are unavailable right now.';
 
 export const copyToClipboard = async (text: string, label = 'Content') => {
   try {
@@ -182,14 +182,14 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
           >
             {status === 'loading'
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry AI Fix' : 'Generate AI Fix'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry Fix' : 'Generate Fix'}</>}
           </button>
         ) : <span />}
         {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
       </div>
 
       {source === 'ai' && status !== 'error' && (
-        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ AI-generated fix</div>
+        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ Automatically generated fix</div>
       )}
       {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
