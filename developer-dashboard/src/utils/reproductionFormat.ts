@@ -11,6 +11,7 @@ import {
   describeOutcome,
   describeReplayMacro,
   describeRouteStep,
+  describeStepLocation,
   describeTarget,
   maskPayload,
   type StepKind,
@@ -80,12 +81,16 @@ function kindFor(actionType: string): StepKind {
 // payloadDisplay), so the input instruction omits it.
 export function humanizeActionStep(
   step: ForensicActionStep,
-): { kind: StepKind; instruction: string; payloadDisplay: string } {
+): { kind: StepKind; instruction: string; payloadDisplay: string; location: string } {
   const kind = kindFor(step.actionType);
   const observed = describeOutcome(step.outcome);
+  // Navigation steps already read the route; the location subline would be redundant.
+  const location = kind === 'navigation'
+    ? ''
+    : describeStepLocation({ url: step.url, containerLabel: step.containerLabel, containerKind: step.containerKind });
   if (kind === 'macro') {
     const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
-    return { kind, instruction: `${action}${observed}`, payloadDisplay: '' };
+    return { kind, instruction: `${action}${observed}`, payloadDisplay: '', location };
   }
   const label = stepLabel(step);
   const noun = stepNoun(step, kind);
@@ -96,7 +101,7 @@ export function humanizeActionStep(
     : `Click ${describeTarget(label, noun)}`;
   const repeats = step.repeatCount ?? 1;
   const repeated = repeats > 1 ? `${action}, repeated ${repeats} times in quick succession` : action;
-  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue) };
+  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue), location };
 }
 
 // Guess a chip kind for a pre-rendered narrative line (string fallback path).
@@ -134,13 +139,17 @@ export function toMarkdownChecklist(steps: string[], observations: string[]): st
   return lines.join('\n');
 }
 
-// Markdown checklist directly from a structured action-step trace.
+// Markdown checklist directly from a structured action-step trace. The WHERE subline
+// is emitted only when it changes, so same-page steps don't repeat the location.
 export function actionStepsToMarkdown(steps: ForensicActionStep[]): string {
+  let lastLocation = '';
   return steps
     .map((step) => {
-      const { instruction, payloadDisplay } = humanizeActionStep(step);
+      const { instruction, payloadDisplay, location } = humanizeActionStep(step);
       const payload = payloadDisplay ? ` \`${payloadDisplay}\`` : '';
-      return `- [ ] ${instruction}${payload}`;
+      const where = location && location !== lastLocation ? `\n  ↳ ${location}` : '';
+      if (location) lastLocation = location;
+      return `- [ ] ${instruction}${payload}${where}`;
     })
     .join('\n');
 }

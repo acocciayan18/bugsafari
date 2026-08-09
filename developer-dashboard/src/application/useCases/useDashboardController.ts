@@ -117,8 +117,12 @@ function useEngineLivenessProbe(
     hasLiveFrame: boolean,
     status: TestSessionStatus,
 ): void {
-    // A queued job has no engine yet; its wait is bounded by the queue, not by us.
-    const armed = isTestRunning && status !== 'QUEUED' && (isInitializing || !hasLiveFrame);
+    // Arm through QUEUED too. Excluding it is what stranded the UI in "Queuing" when a
+    // queue 'active' push was lost (Redis blip / dropped frame): the worker ran on while
+    // the dashboard never learned it started, and only a refresh recovered it. The probe
+    // reconciles a stale QUEUED against the backend's real status, exactly as a refresh
+    // does — a genuine wait returns a QUEUED snapshot (no drift) and is left untouched.
+    const armed = isTestRunning && (isInitializing || !hasLiveFrame || status === 'QUEUED');
 
     useEffect(() => {
         if (!armed) return;

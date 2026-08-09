@@ -152,6 +152,10 @@ export interface ForensicActionStep {
   redactValue?: boolean;
   /** Page URL the step ran on — the destination shown on a navigation step. */
   url?: string;
+  /** Human name of the UI container the step ran in — frames WHERE the step happened. */
+  containerLabel?: string;
+  /** Container kind (modal, dialog, tab, panel, section, form…). */
+  containerKind?: string;
   /** What was observed right after the step (navigation, HTTP status, DOM change). */
   outcome?: ActionOutcome;
 }

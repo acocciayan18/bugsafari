@@ -42,6 +42,8 @@ export function buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
     affectedCount:      record.affectedCount,
     redactValue:        record.redactValue,
     url:                record.url,
+    containerLabel:     record.containerLabel,
+    containerKind:      record.containerKind,
     outcome:            record.outcome,
     macro:              record.macro,
   }));

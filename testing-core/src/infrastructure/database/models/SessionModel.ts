@@ -103,6 +103,10 @@ export interface ActionStepTrace {
   redactValue?: boolean;
   /** Page URL the step ran on — rendered as the destination of a navigation step. */
   url?: string;
+  /** Human name of the UI container the step ran in — frames WHERE the step happened. */
+  containerLabel?: string;
+  /** Container kind (modal, dialog, tab, panel, section, form…). */
+  containerKind?: string;
   /** What was observed right after the step (navigation, HTTP status, DOM change). */
   outcome?: ActionOutcome;
   /** Present only on a 'macro' step — the re-expandable stress-scenario descriptor. */
@@ -147,6 +151,8 @@ const ActionStepSchemaFields = {
   affectedCount:      { type: Number, required: false, default: null },
   redactValue:        { type: Boolean, required: false, default: null },
   url:                { type: String, required: false, default: null },
+  containerLabel:     { type: String, required: false, default: null },
+  containerKind:      { type: String, required: false, default: null },
   outcome: {
     type: {
       navigatedTo: { type: String, required: false, default: null },

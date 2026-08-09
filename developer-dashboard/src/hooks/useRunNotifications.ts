@@ -6,6 +6,8 @@ import { useEffect } from 'react';
 import { useRunStore } from '../stores/run/runStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { notifyDesktop } from '../utils/desktopNotify';
+import { playSuccessSound, playErrorSound } from '../utils/notifySound';
+import { isCleanTermination } from '../types';
 
 export function useRunNotifications(): void {
   useEffect(() => {
@@ -29,6 +31,14 @@ export function useRunNotifications(): void {
       }
 
       if (state.hasRunCompleted && !prev.hasRunCompleted) {
+        // Away-only, like the banner: a visible tab already shows the terminal state.
+        // One sound per terminal transition — dedup is the !prev guard, no repeats.
+        if (document.hidden) {
+          const outcome = state.terminationOutcome;
+          const success = outcome ? isCleanTermination(outcome) : state.status === 'FINISHED';
+          (success ? playSuccessSound : playErrorSound)();
+        }
+
         notifyDesktop(
           'Exploration finished',
           findings > 0 ? `${findings} finding${findings === 1 ? '' : 's'} captured.` : 'No findings captured.',

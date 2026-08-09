@@ -19,10 +19,14 @@ import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 // instruction + payload code chip). The single source for structured reproduction,
 // used by both the per-finding evidence and the saved report's appendix.
 export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
+  let lastLocation = '';
   return (
     <ol className="custom-scrollbar max-h-96 space-y-1.5 overflow-y-auto overscroll-contain">
       {steps.map((step) => {
-        const { kind, instruction, payloadDisplay } = humanizeActionStep(step);
+        const { kind, instruction, payloadDisplay, location } = humanizeActionStep(step);
+        // Show the WHERE subline only when it changes, so same-page steps don't repeat it.
+        const where = location && location !== lastLocation ? location : '';
+        if (location) lastLocation = location;
         return (
           <li
             key={step.stepNumber}
@@ -34,6 +38,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             </span>
             <div className="w-full min-w-0 sm:w-auto sm:flex-1">
               <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
+              {where && <div className="mt-0.5 text-xs text-(--text-secondary) break-words">{where}</div>}
               {payloadDisplay && (
                 <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
                   {payloadDisplay}

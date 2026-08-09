@@ -527,6 +527,32 @@ export function describeContainerEntry(label?: string, kind?: string): string {
   return named ? `${verb} the "${truncate(name, MAX_LABEL_LENGTH)}" ${k}` : `${verb} the ${k}`;
 }
 
+// Locative container clause — "in the "Create User" modal", "on the "Billing" tab
+// panel". Skips an unnamed in-flow container (same rule as describeContainerEntry).
+function locativeContainer(label?: string, kind?: string): string {
+  const k = collapse(kind);
+  if (!k) return '';
+  const name = collapse(label);
+  const named = Boolean(name) && !isSelectorLike(name);
+  if (!named && !OVERLAY_CONTAINER_RE.test(k)) return '';
+  const prep = TAB_CONTAINER_RE.test(k) ? 'on' : 'in';
+  return named ? `${prep} the "${truncate(name, MAX_LABEL_LENGTH)}" ${k}` : `${prep} the ${k}`;
+}
+
+/**
+ * Compact WHERE phrase for a single step — the page route and the UI container the
+ * action ran in ("on /settings/users · in the "Create User" modal"). Uses only
+ * captured state (document url + nearest container); returns '' when neither is known.
+ */
+export function describeStepLocation(input: { url?: string; containerLabel?: string; containerKind?: string }): string {
+  const route = isApiEndpoint(input.url) ? '' : routePath(input.url);
+  const parts: string[] = [];
+  if (route) parts.push(`on ${route}`);
+  const container = locativeContainer(input.containerLabel, input.containerKind);
+  if (container) parts.push(container);
+  return parts.join(' · ');
+}
+
 /** Render an observed outcome as a trailing clause, or '' when nothing was observed. */
 export function describeOutcome(outcome?: ActionOutcome): string {
   if (!outcome) return '';

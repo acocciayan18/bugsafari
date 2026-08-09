@@ -22,6 +22,7 @@ import {
   describeRedirectLoopObservation,
   narrateActionRecords,
   isApiEndpoint,
+  describeStepLocation,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
 
@@ -281,6 +282,25 @@ check('redirect-loop observation renders the automatic chain as ONE observed out
     describeRedirectLoopObservation('/a → /b → /a', 'client'),
     'Observe: the application enters an unconditioned redirect loop that never settles (client-side route oscillation: /a → /b → /a)',
   );
+});
+
+check('describeStepLocation frames the route and named container of a step', () => {
+  assert.equal(
+    describeStepLocation({ url: 'http://app.test/settings/users', containerLabel: 'Create User', containerKind: 'modal' }),
+    'on /settings/users · in the "Create User" modal',
+  );
+  assert.equal(describeStepLocation({ url: 'http://app.test/login' }), 'on /login');
+  assert.equal(
+    describeStepLocation({ url: 'http://app.test/billing', containerLabel: 'Billing', containerKind: 'tab panel' }),
+    'on /billing · on the "Billing" tab panel',
+  );
+});
+
+check('describeStepLocation skips API endpoints and unnamed in-flow containers', () => {
+  assert.equal(describeStepLocation({ url: 'http://app.test/api/orders' }), '');
+  assert.equal(describeStepLocation({ url: '', containerKind: 'section' }), '');
+  assert.equal(describeStepLocation({}), '');
+  assert.equal(describeStepLocation({ containerKind: 'modal' }), 'in the modal');
 });
 
 console.log(`\n${passed} checks passed`);
