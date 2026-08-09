@@ -25,7 +25,7 @@ bugsafari.duckdns.org {
 			Access-Control-Allow-Origin "{re.origin.0}"
 			Access-Control-Allow-Credentials "true"
 			Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-			Access-Control-Allow-Headers "Content-Type, Authorization"
+			Access-Control-Allow-Headers "Content-Type, Authorization, x-bugsafari-access"
 			Access-Control-Max-Age "86400"
 			Vary Origin
 		}
