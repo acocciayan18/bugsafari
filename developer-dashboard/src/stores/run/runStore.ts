@@ -274,6 +274,14 @@ export const useRunStore = create<RunState>((set, get) => ({
     // Authoritative clock landed — reset the interpolation baseline and correct the
     // display immediately (snaps a paused/frozen timer to the exact engine elapsed).
     applyTimeSync: (elapsedActiveMs, timeboxMs) => {
+        // A same-run clock only advances. Once seeded, drop a stale sync that would
+        // rewind elapsed under an unchanged timebox (a lagging worker frame, a late
+        // pre-pause packet) — it would jump the display back toward the full box. A
+        // fresh run clears timeSyncSeeded first, and a timebox change means a new
+        // run/config, so both still re-baseline correctly.
+        if (runRefs.timeSyncSeeded && timeboxMs === get().activeTimeboxMs && elapsedActiveMs < runRefs.serverElapsedMs) {
+            return;
+        }
         runRefs.serverElapsedMs = elapsedActiveMs;
         runRefs.serverElapsedAt = Date.now();
         runRefs.timeSyncSeeded = true;
@@ -445,34 +453,66 @@ export const useRunStore = create<RunState>((set, get) => ({
         const gateway = getEngineGateway();
         const live = lifecycleIsLive(snapshot.status);
         const queued = snapshot.status === 'QUEUED';
-        const snapshotRemaining = Math.max(0, snapshot.timeboxMs - snapshot.elapsedTimeMs);
+
+        // A hydrate is a RESTORE primitive. When it lands for the SAME run already
+        // held locally (reconnect, liveness probe, mid-run refetch), the live socket
+        // stream is fresher than this lagging, capped, frame-less snapshot — a blind
+        // replace would WIPE findings/telemetry, rewind the timer, and blank the feed.
+        // Reconcile non-destructively for a same run: keep the richer local buffers,
+        // never move the timer backward, never blank a present live frame. A fresh
+        // restore (empty local / different run) still hydrates wholesale.
+        const prev = get();
+        const sameRun = !!snapshot.runToken && snapshot.runToken === gateway.getRunId();
 
         runRefs.runStarted = true;
-        // Re-seed the authoritative baseline from the snapshot's engine elapsed; the
-        // next time-sync corrects within ~1s. Interpolate only for a live run.
-        runRefs.serverElapsedMs = snapshot.elapsedTimeMs;
+
+        // Buffers arrive oldest→newest; fold through the same collapse so a restore
+        // holds one entry per fault (newest-first) with counts.
+        const snapTelemetry = snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-TELEMETRY_CAP);
+        const snapNetwork = snapshot.telemetry.filter((e) => e.type === 'NETWORK').slice(-NETWORK_CAP);
+        const snapReports = snapshot.reports.reduce<ForensicCrashReport[]>((buf, r) => collapseFaultIntoBuffer(buf, r), []);
+        const snapIncidents = snapshot.incidents.reduce<IncidentReport[]>((buf, i) => collapseFaultIntoBuffer(buf, i), []);
+        const snapConsole = (snapshot.browserConsole ?? []).slice(-CONSOLE_BUFFER_CAP);
+        const snapAccessibility = (snapshot.accessibility ?? []).length;
+
+        // Same-run reconcile keeps whichever side carries more — never shrinks live data.
+        const keepLonger = <T,>(local: T[], snap: T[]): T[] => (sameRun && local.length > snap.length ? local : snap);
+        const telemetry = keepLonger(prev.telemetry, snapTelemetry);
+        const networkEvents = keepLonger(prev.networkEvents, snapNetwork);
+        const reports = keepLonger(prev.reports, snapReports);
+        const incidents = keepLonger(prev.incidents, snapIncidents);
+        const browserConsole = keepLonger(prev.browserConsole, snapConsole);
+        const accessibilityCount = sameRun ? Math.max(prev.accessibilityCount, snapAccessibility) : snapAccessibility;
+
+        // Same-run elapsed can only advance — a lagging snapshot must not rewind the clock.
+        const elapsedTimeMs = sameRun ? Math.max(prev.elapsedTimeMs, snapshot.elapsedTimeMs) : snapshot.elapsedTimeMs;
+        const remainingTimeMs = Math.max(0, snapshot.timeboxMs - elapsedTimeMs);
+
+        // Re-seed the authoritative baseline; the next time-sync corrects within ~1s.
+        runRefs.serverElapsedMs = elapsedTimeMs;
         runRefs.serverElapsedAt = Date.now();
         runRefs.timeSyncSeeded = live;
         runRefs.queuePhase = queued ? 'waiting' : live ? 'active' : 'done';
         if (!queued) toast.dismiss(STATUS_TOAST_ID);
 
-        const frame = snapshot.lastFrame
+        const snapshotFrame = snapshot.lastFrame
             ? (snapshot.lastFrame.startsWith('data:') ? snapshot.lastFrame : `data:image/jpeg;base64,${snapshot.lastFrame}`)
             : null;
+        // The periodic registry snapshot omits the frame — a frame-less same-run LIVE
+        // hydrate must keep the frame already on screen instead of blanking the feed.
+        const frame = snapshotFrame ?? (sameRun && live ? prev.liveFrame : null);
 
         set({
-            telemetry: snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-TELEMETRY_CAP),
-            networkEvents: snapshot.telemetry.filter((e) => e.type === 'NETWORK').slice(-NETWORK_CAP),
-            accessibilityCount: (snapshot.accessibility ?? []).length,
-            // Buffers arrive oldest→newest; fold through the same collapse so a restored
-            // session holds one entry per fault (newest-first) with counts.
-            reports: snapshot.reports.reduce<ForensicCrashReport[]>((buf, r) => collapseFaultIntoBuffer(buf, r), []),
-            incidents: snapshot.incidents.reduce<IncidentReport[]>((buf, i) => collapseFaultIntoBuffer(buf, i), []),
-            browserConsole: (snapshot.browserConsole ?? []).slice(-CONSOLE_BUFFER_CAP),
+            telemetry,
+            networkEvents,
+            accessibilityCount,
+            reports,
+            incidents,
+            browserConsole,
             currentUrl: normalizeTargetUrl(snapshot.currentUrl || snapshot.targetUrl) ?? snapshot.targetUrl,
             activeTimeboxMs: snapshot.timeboxMs,
-            elapsedTimeMs: snapshot.elapsedTimeMs,
-            remainingTimeMs: snapshotRemaining,
+            elapsedTimeMs,
+            remainingTimeMs,
             status: lifecycleToStatus(snapshot.status),
             isTestRunning: live,
             hasRunCompleted: !live,
@@ -486,9 +526,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             queueDepth: queued ? snapshot.queueDepth ?? 0 : 0,
             queueActiveCount: queued ? snapshot.queueActiveCount ?? 0 : 0,
             queueWorkerCount: queued ? snapshot.queueWorkerCount ?? null : null,
-            // Deterministic init flag, derived from the snapshot rather than left as
-            // whatever the local state happened to hold: a frame means the feed is up,
-            // a live-but-frameless run is still booting, and queued/terminal is not.
+            // Deterministic init flag: a frame means the feed is up, a live-but-frameless
+            // run is still booting, and queued/terminal is not.
             ...(frame
                 ? { liveFrame: frame, latestFrame: frame, isInitializing: false, isThinking: false }
                 : { isInitializing: live && !queued, isThinking: false }),

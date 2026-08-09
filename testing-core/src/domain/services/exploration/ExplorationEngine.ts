@@ -82,6 +82,10 @@ const obsLog = createLogger('[ExplorationEngine]');
  */
 const MAX_CONFIRMED_BUGS = 500;
 
+// Upper bound on how long a Pause waits for the loop's current step to finish
+// before settling to PAUSED anyway — so a wedged step can never hang the pause.
+const PAUSE_SETTLE_TIMEOUT_MS = 10_000;
+
 // Steps between sweeps of 'cadenced' finders — matches the network-sabotage cadence.
 const BUG_FINDER_CADENCE = 10;
 // Per-run ceiling on finder-produced findings, so a chatty finder can't dominate the ledger.
@@ -251,6 +255,9 @@ export class ExplorationEngine {
   private readonly formFuzzCap: number;
 
   private isPaused = false;
+  // True while the ExplorationLoop is mid-step; lets a Pause wait for the current
+  // iteration to finish (no straggler telemetry/findings after "Paused").
+  private loopActive = false;
   private isStopRequested = false;
   // Why stop() was called. Null while running — a browser-closed error observed with
   // no reason recorded is a genuine fault, never an operator stop.
@@ -720,6 +727,17 @@ export class ExplorationEngine {
   // Settlement barrier: await every in-flight fire-and-forget write so Pause/Stop
   // flush pending telemetry + DB persistence before the lifecycle transitions.
   public async settlePendingTasks(): Promise<void> {
+    // Pause (no stop): wait — bounded — for the exploration loop to park at its
+    // pause barrier so no in-flight step keeps clicking/emitting/registering after
+    // the lifecycle settles to PAUSED. A stop tears the loop down instead (its own
+    // finally settles), so the wait is skipped there. Bounded so a wedged step can
+    // never hang the pause; a resume racing in (isPaused flips false) also exits it.
+    if (!this.isStopRequested) {
+      const deadline = Date.now() + PAUSE_SETTLE_TIMEOUT_MS;
+      while (this.loopActive && this.isPaused && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    }
     // Under a stop, cancel the verification backlog rather than draining it — a
     // stopped run must not keep spawning replay sessions. Pause (no stop requested)
     // still drains so verdicts complete and the run stays resumable.
@@ -886,6 +904,7 @@ export class ExplorationEngine {
     // Fresh run: a stop reason from a previous run must never leak forward.
     this.stopReason = null;
     this.isStopRequested = false;
+    this.loopActive = false;
     // Clear the one-shot timebox latch so a reused engine instance can still
     // terminate via the timebox path — it is never reset elsewhere.
     this.timeboxExceeded = false;
@@ -1460,6 +1479,7 @@ export class ExplorationEngine {
         isStopRequested: () => this.isStopRequested,
         getStopReason: () => this.stopReason,
         isPaused: () => this.isPaused,
+        setLoopActivity: (active) => { this.loopActive = active; },
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         isTimeboxExceeded: () => this.isTimeboxExceeded(),
         getTimeboxMs: () => this.timeboxMs,

@@ -244,6 +244,10 @@ export interface ExplorationLoopDeps {
    *  operator stop from a crash/disconnect/shutdown teardown that closed the browser. */
   getStopReason(): StopReason | null;
   isPaused(): boolean;
+  /** Report whether the loop is mid-step (true) or parked/idle (false), so a Pause
+   *  can wait for the current iteration to finish before settling to PAUSED — no
+   *  step keeps clicking/emitting/registering findings after "Paused". */
+  setLoopActivity?(active: boolean): void;
   /** Terminating one-shot: true when the timebox is exceeded; latches and stops the
    * timer. Only the top-of-loop gate calls this, so it alone reports outcome:'timebox'. */
   checkTimebox(): boolean;

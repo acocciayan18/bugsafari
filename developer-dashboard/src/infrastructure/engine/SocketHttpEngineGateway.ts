@@ -37,6 +37,10 @@ export class SocketHttpEngineGateway implements EngineGateway {
     this.connection.setRunId(runId);
   }
 
+  public getRunId(): string | null {
+    return this.runId;
+  }
+
   public fetchActiveSession(): Promise<ActiveSessionSnapshot | null> {
     return this.http.fetchActiveSession(this.runId);
   }

@@ -232,6 +232,11 @@ export class ExplorationLoop {
     };
 
     for (let step = 1; ; step++) {
+      // Mark idle at the top: while parked here (budget/stop/timebox/pause gates) no
+      // step work runs, so a Pause can settle without a straggler emit. Set busy again
+      // only once the pause gate lets this iteration proceed to real work below.
+      this.deps.setLoopActivity?.(false);
+
       if (this.checkBudgetGate(step, ctx) === 'break') break;
 
       if (this.deps.isStopRequested()) {
@@ -250,6 +255,9 @@ export class ExplorationLoop {
 
       const pauseGate = await this.waitWhilePaused();
       if (pauseGate.kind === 'return') return pauseGate.result;
+
+      // Past every gate — this iteration is about to do (emitting) work.
+      this.deps.setLoopActivity?.(true);
 
       try {
         // Universal page-health gate: recover from invalid contexts (about:blank,
