@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Fix production email verification flow"
+git commit -m "Add system-wide access lock for BugSafari development"
 git push origin HEAD:dev --force
 
 
