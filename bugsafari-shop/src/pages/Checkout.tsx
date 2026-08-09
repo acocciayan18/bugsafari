@@ -47,8 +47,8 @@ export default function Checkout() {
       });
       clear();
       nav(`/order/${r.order.orderNumber}`, { state: { order: r.order } });
-    } catch (e: any) {
-      setError(e.message || 'Could not place order.');
+    } catch (e: unknown) {
+      setError((e instanceof Error ? e.message : '') || 'Could not place order.');
       setPlacing(false);
     }
   };

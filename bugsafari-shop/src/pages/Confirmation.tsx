@@ -2,7 +2,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 
 export default function Confirmation() {
   const { orderNumber } = useParams();
-  const { state } = useLocation() as { state?: { order?: any } };
+  const { state } = useLocation() as { state?: { order?: { id?: string; total?: number } } };
   const order = state?.order;
 
   return (

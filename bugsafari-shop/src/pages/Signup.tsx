@@ -21,8 +21,8 @@ export default function Signup() {
     try {
       await signup(form.name, form.email, form.password);
       nav('/profile');
-    } catch (err: any) {
-      setError(err.message || 'Signup failed');
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || 'Signup failed');
       setBusy(false);
     }
   };
