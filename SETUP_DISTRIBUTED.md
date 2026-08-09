@@ -182,7 +182,7 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m "Fix production CORS issue with Vercel and Oracle backend"
+git commit -m " Add system-wide access lock for BugSafari development"
 git checkout -b dev
 git push origin dev --force
 
