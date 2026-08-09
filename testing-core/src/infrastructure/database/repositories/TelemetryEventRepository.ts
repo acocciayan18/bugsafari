@@ -11,6 +11,13 @@ export interface TelemetryEventRow {
   meta: unknown;
 }
 
+// Persisted row → wire TelemetryEvent (drops seq, ISO-stamps the timestamp).
+const toTelemetryEvent = (r: ITelemetryEvent): TelemetryEvent => ({
+  timestamp: r.timestamp.toISOString(),
+  type: r.type,
+  meta: r.meta,
+});
+
 export class TelemetryEventRepository {
   // Batch-insert a run's telemetry events. Silent no-op on empty input; unordered
   // so one bad row never aborts the batch.
@@ -28,11 +35,19 @@ export class TelemetryEventRepository {
       .limit(MAX_FORENSIC_ROWS)
       .lean<ITelemetryEvent[]>()
       .exec();
-    return rows.map((r) => ({
-      timestamp: r.timestamp.toISOString(),
-      type: r.type,
-      meta: r.meta,
-    }));
+    return rows.map(toTelemetryEvent);
+  }
+
+  // Most-recent `limit` events in emit order — for the reconnect snapshot, which the
+  // client caps to its display window anyway. Queries the tail (seq desc) then
+  // restores order, so a mature run ships ~limit rows instead of the full stream.
+  async findRecentByRunId(forensicRunId: string | Types.ObjectId, limit: number): Promise<TelemetryEvent[]> {
+    const rows = await TelemetryEventModel.find({ forensicRunId: new Types.ObjectId(forensicRunId) })
+      .sort({ seq: -1 })
+      .limit(Math.max(1, limit))
+      .lean<ITelemetryEvent[]>()
+      .exec();
+    return rows.reverse().map(toTelemetryEvent);
   }
 
   async countByRunId(forensicRunId: string | Types.ObjectId): Promise<number> {

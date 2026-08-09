@@ -23,6 +23,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        // Split heavy vendors into their own chunks so the landing/auth entry doesn't
+        // ship animation/socket code it never uses. id-guarded so an absent lib emits
+        // nothing (no "no module matched" warning).
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('framer-motion')) return 'vendor-motion'
+          if (id.includes('socket.io') || id.includes('engine.io')) return 'vendor-socket'
+          if (id.includes('gsap') || id.includes('ogl')) return 'vendor-anim'
+          if (id.includes('driver.js')) return 'vendor-tour'
+          if (id.includes('react-router') || id.includes('react-dom') || /[\\/]react[\\/]/.test(id)) return 'vendor-react'
+        },
+      },
+    },
   },
   define: {
     __APP_VERSION__: JSON.stringify(version),

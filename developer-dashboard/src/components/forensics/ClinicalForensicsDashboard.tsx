@@ -2,7 +2,7 @@
 // ClinicalForensicsDashboard.tsx - FORENSIC TELEMETRY VIEW
 // ═══════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
@@ -106,7 +106,7 @@ interface ClinicalForensicsDashboardProps {
   children?: ReactNode;
 }
 
-export default function ClinicalForensicsDashboard({
+function ClinicalForensicsDashboard({
   targetUrl = '',
   currentUrl,
   frameBuffer = null,
@@ -219,10 +219,14 @@ export default function ClinicalForensicsDashboard({
 
   // Badge reflects DISTINCT fault cards the Errors tab renders (mirrored crash
   // reports deduped, identical repeats collapsed), not the raw occurrence count.
-  const dedupedReports = dedupeReportsAgainstIncidents(errors.incidents, errors.reports);
-  const errorCount =
-    groupBySignature(errors.incidents, liveFaultSignature).length +
-    groupBySignature(dedupedReports, liveFaultSignature).length;
+  // Memoized: a frame-only flush must not re-run the O(reports×incidents) dedup.
+  const errorCount = useMemo(() => {
+    const dedupedReports = dedupeReportsAgainstIncidents(errors.incidents, errors.reports);
+    return (
+      groupBySignature(errors.incidents, liveFaultSignature).length +
+      groupBySignature(dedupedReports, liveFaultSignature).length
+    );
+  }, [errors.incidents, errors.reports]);
   // Scroll growth uses raw occurrence totals (not distinct-card length) so a
   // repeat of an already-collapsed fault still nudges the view.
   const occurrenceTotal = (faults: { occurrences?: number }[]): number =>
@@ -289,12 +293,13 @@ export default function ClinicalForensicsDashboard({
   const showConfigModal = isConfigOpen && !isActiveSession;
 
   // Per-tab badge counts, keyed to the tab model so the tablist can render generically.
-  const tabCounts: Record<TerminalTab, number> = {
+  // Memoized so the whole-buffer dedupeNetworkEvents scan skips frame-only flushes.
+  const tabCounts: Record<TerminalTab, number> = useMemo(() => ({
     telemetry: 0,
     errors: errorCount,
     network: dedupeNetworkEvents(networkEvents).length,
     console: browserConsole.length,
-  };
+  }), [errorCount, networkEvents, browserConsole.length]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-(--surface-app)">
@@ -675,3 +680,7 @@ export default function ClinicalForensicsDashboard({
     </div>
   );
 }
+
+// Memoized: props arrive from a useShallow slice, so a frame-only flush that leaves
+// this subtree's inputs unchanged skips the whole re-render.
+export default memo(ClinicalForensicsDashboard);

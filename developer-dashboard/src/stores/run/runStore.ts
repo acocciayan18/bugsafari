@@ -139,9 +139,12 @@ export interface RunState {
     setSessionHistory: (history: SessionHistoryEntry[]) => void;
     pushTelemetry: (event: TelemetryEvent) => void;
     incrementAccessibility: () => void;
+    incrementAccessibilityBy: (n: number) => void;
     dismissAccessibilityBanner: () => void;
     addReport: (report: ForensicCrashReport) => void;
+    addReports: (reports: ForensicCrashReport[]) => void;
     addIncident: (incident: IncidentReport) => void;
+    addIncidents: (incidents: IncidentReport[]) => void;
     applyReproductionVerdict: (verdict: ReproductionVerdict) => void;
     appendConsole: (message: BrowserConsoleMessage) => void;
     appendConsoleBatch: (messages: BrowserConsoleMessage[]) => void;
@@ -217,8 +220,18 @@ export const useRunStore = create<RunState>((set, get) => ({
     markSessionSaved: () => set({ isSessionSaved: true }),
     dismissAccessibilityBanner: () => set({ accessibilityBannerDismissed: true }),
     incrementAccessibility: () => set((s) => ({ accessibilityCount: s.accessibilityCount + 1 })),
+    incrementAccessibilityBy: (n) => { if (n > 0) set((s) => ({ accessibilityCount: s.accessibilityCount + n })); },
     addReport: (report) => set((s) => ({ reports: collapseFaultIntoBuffer(s.reports, report) })),
+    // Fold a coalesced burst through the same collapse reducer in ONE commit.
+    addReports: (reports) => {
+        if (reports.length === 0) return;
+        set((s) => ({ reports: reports.reduce((buf, r) => collapseFaultIntoBuffer(buf, r), s.reports) }));
+    },
     addIncident: (incident) => set((s) => ({ incidents: collapseFaultIntoBuffer(s.incidents, incident) })),
+    addIncidents: (incidents) => {
+        if (incidents.length === 0) return;
+        set((s) => ({ incidents: incidents.reduce((buf, i) => collapseFaultIntoBuffer(buf, i), s.incidents) }));
+    },
 
     // A reproduction verdict lands seconds after its finding — patch that card's
     // verification in place rather than appending a second one.

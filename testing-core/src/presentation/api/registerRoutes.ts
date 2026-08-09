@@ -22,6 +22,7 @@ import { forensicTelemetryRepository } from '../../infrastructure/database/repos
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
 import { telemetryEventRepository } from '../../infrastructure/database/repositories/TelemetryEventRepository.js';
+import { SNAPSHOT_TELEMETRY_LIMIT } from '../../infrastructure/database/queryLimits.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import { generateRunCode, generateUniqueRunCode } from '../../infrastructure/database/runCodeGenerator.js';
 import { normalizeRunCode } from '../../../../shared/runCode.js';
@@ -295,14 +296,17 @@ export function registerRoutes(
   const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
 
   // Backfill a restore snapshot's telemetry from the durable Mongo stream so a
-  // refreshed/reconnected client recovers the full history, not just the capped
-  // replay tail. Only replaces when the DB holds strictly more than the buffer,
-  // so an empty/lagging collection never truncates a good in-memory snapshot.
+  // refreshed/reconnected client recovers the recent history, not just the capped
+  // in-memory replay tail. Reads only the most-recent SNAPSHOT_TELEMETRY_LIMIT rows —
+  // the client slices to that same window on hydrate, so shipping the full 5000-row
+  // stream only inflated the payload and the synchronous parse before first paint.
+  // Only replaces when the DB holds strictly more than the buffer, so an
+  // empty/lagging collection never truncates a good in-memory snapshot.
   const hydrateTelemetryFromDb = async <T extends { sessionId?: string | null; telemetry?: TelemetryEvent[] } | null>(
     snapshot: T,
   ): Promise<T> => {
     if (!snapshot?.sessionId || !snapshot.telemetry) return snapshot;
-    const rows = await telemetryEventRepository.findByRunId(snapshot.sessionId).catch(() => []);
+    const rows = await telemetryEventRepository.findRecentByRunId(snapshot.sessionId, SNAPSHOT_TELEMETRY_LIMIT).catch(() => []);
     if (rows.length > snapshot.telemetry.length) snapshot.telemetry = rows;
     return snapshot;
   };

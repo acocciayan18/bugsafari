@@ -4,16 +4,15 @@
 // Uses AuthContext for centralized authentication state management
 // AuthGuard handles route protection automatically
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { LoaderCircle } from 'lucide-react';
 import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { useRunNotifications } from './hooks/useRunNotifications';
 import { useSettingsStore } from './stores/settingsStore';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
-import ClinicalForensicsDashboard from './components/forensics/ClinicalForensicsDashboard';
-import ForensicReport from './components/forensics/ForensicReport';
 import GuestSavePromptModal from './components/auth/GuestSavePromptModal';
 import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
@@ -21,14 +20,27 @@ import ForgotPasswordForm from './components/auth/ForgotPasswordForm';
 import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import VerifyEmailForm from './components/auth/VerifyEmailForm';
 import SidebarLayout from './components/layout/SidebarLayout';
-import SavedEvaluationSafaris from './components/history/SavedEvaluationSafaris';
-import Settings from './components/settings/Settings';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
 import { defaultOptimizationSettings, boundaryModeToFlags } from '../../shared/types.js';
+
+// Split the authenticated workspace out of the entry bundle: none of these paint on
+// the landing/auth/info routes a first-time visitor hits, so they should not be in
+// the JS those routes download.
+const ClinicalForensicsDashboard = lazy(() => import('./components/forensics/ClinicalForensicsDashboard'));
+const ForensicReport = lazy(() => import('./components/forensics/ForensicReport'));
+const SavedEvaluationSafaris = lazy(() => import('./components/history/SavedEvaluationSafaris'));
+const Settings = lazy(() => import('./components/settings/Settings'));
+
+// Lightweight fallback while a lazy workspace chunk loads — never a blank screen.
+const RouteFallback = () => (
+  <div className="flex flex-1 items-center justify-center p-8">
+    <LoaderCircle className="h-6 w-6 animate-spin text-(--text-tertiary)" strokeWidth={1.75} aria-label="Loading" />
+  </div>
+);
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 
@@ -119,6 +131,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     <ThemeProvider>
       <ConnectionStatusChip />
 
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route
           path="/dashboard"
@@ -198,6 +211,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
         <Route path="/about" element={<AboutPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
 
       <GuestSavePromptModal
         isOpen={showGuestSavePrompt}

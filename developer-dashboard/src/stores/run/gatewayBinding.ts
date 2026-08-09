@@ -1,4 +1,5 @@
 import type { EngineGateway, BrowserConsoleMessage } from '../../application/ports/EngineGateway';
+import type { ForensicCrashReport, IncidentReport } from '../../types';
 import type { TelemetryEvent } from '../../types';
 import { useRunStore } from './runStore';
 import { RUN_ID_STORAGE_KEY, TELEMETRY_CAP, CONSOLE_BUFFER_CAP } from './types';
@@ -18,6 +19,9 @@ const FLUSH_WINDOW_MS = 80;
 // unbounded before the next flush; the store re-caps on commit regardless.
 const PENDING_TELEMETRY_LIMIT = TELEMETRY_CAP * 2;
 const PENDING_CONSOLE_LIMIT = CONSOLE_BUFFER_CAP * 2;
+// Fault cards collapse-dedupe to ~100 in the store; bound the pre-flush burst buffer
+// so a backgrounded tab can't grow it unbounded before the next drain.
+const PENDING_FAULT_LIMIT = 200;
 
 // The gateway stays a plain infrastructure port — it never imports a store. This
 // binding is the seam that adapts its handler slots onto store actions.
@@ -27,6 +31,9 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     let flushHandle: ReturnType<typeof setTimeout> | null = null;
     let pendingTelemetry: TelemetryEvent[] = [];
     let pendingConsole: BrowserConsoleMessage[] = [];
+    let pendingReports: ForensicCrashReport[] = [];
+    let pendingIncidents: IncidentReport[] = [];
+    let pendingAccessibility = 0;
     let pendingFrame: string | null = null;
     // One-shot diagnostic: proves the live-frame channel actually reaches the client
     // (pairs with the engine's "first live frame emitted" log to localize a white feed).
@@ -43,6 +50,23 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
             const batch = pendingConsole;
             pendingConsole = [];
             s().appendConsoleBatch(batch);
+        }
+        // Fault streams: a crash burst emits dozens per window — fold each stream in
+        // one commit instead of one set() per event.
+        if (pendingReports.length > 0) {
+            const batch = pendingReports;
+            pendingReports = [];
+            s().addReports(batch);
+        }
+        if (pendingIncidents.length > 0) {
+            const batch = pendingIncidents;
+            pendingIncidents = [];
+            s().addIncidents(batch);
+        }
+        if (pendingAccessibility > 0) {
+            const n = pendingAccessibility;
+            pendingAccessibility = 0;
+            s().incrementAccessibilityBy(n);
         }
         if (pendingTelemetry.length > 0) {
             const batch = pendingTelemetry;
@@ -63,9 +87,19 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     gateway.onSessionSnapshot((snapshot) => s().hydrateFromSnapshot(snapshot));
     gateway.onQueueUpdate((update) => s().applyQueueUpdate(update));
     gateway.onTimeSync((p) => s().applyTimeSync(p.elapsedActiveMs, p.timeboxMs));
-    gateway.onAccessibility(() => s().incrementAccessibility());
-    gateway.onForensicReport((report) => s().addReport(report));
-    gateway.onIncidentReport((incident) => s().addIncident(incident));
+    // Fault streams share the frame/telemetry flush window so a crash burst commits
+    // once, not once per event. The store still collapse-dedupes on drain.
+    gateway.onAccessibility(() => { pendingAccessibility += 1; schedule(); });
+    gateway.onForensicReport((report) => {
+        pendingReports.push(report);
+        if (pendingReports.length > PENDING_FAULT_LIMIT) pendingReports = pendingReports.slice(-PENDING_FAULT_LIMIT);
+        schedule();
+    });
+    gateway.onIncidentReport((incident) => {
+        pendingIncidents.push(incident);
+        if (pendingIncidents.length > PENDING_FAULT_LIMIT) pendingIncidents = pendingIncidents.slice(-PENDING_FAULT_LIMIT);
+        schedule();
+    });
     gateway.onReproductionVerdict((verdict) => s().applyReproductionVerdict(verdict));
     gateway.onUrlChanged((url) => s().setCurrentUrl(url));
 

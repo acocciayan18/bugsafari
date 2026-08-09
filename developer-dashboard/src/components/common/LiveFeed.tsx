@@ -31,6 +31,19 @@ interface LiveFeedProps {
 const NATIVE_VIEWPORT_WIDTH = 1440;
 const NATIVE_VIEWPORT_HEIGHT = 900;
 
+// createImageBitmap decodes the JPEG off the main thread, unlike Image.onload which
+// competes with the ~12 Hz React renders. Absent in older Safari — caller falls back.
+const canDecodeOffThread = typeof createImageBitmap === 'function';
+
+// Bare base64 (or a data: URL) → Blob, so the bytes can hand off to createImageBitmap.
+function frameToBlob(frame: string): Blob {
+  const base64 = frame.startsWith('data:') ? frame.slice(frame.indexOf(',') + 1) : frame;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: 'image/jpeg' });
+}
+
 function LiveFeed({
   frame,
   currentUrl,
@@ -184,17 +197,35 @@ function LiveFeed({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Tag this decode; only the latest generation is allowed to paint.
+    // Tag this decode; only the latest generation is allowed to paint. The guard is
+    // re-checked AFTER the async decode so a superseded frame never overwrites a newer.
     const generation = ++frameGenRef.current;
-    const img = imageRef.current ?? (imageRef.current = new Image());
-    img.onload = () => {
+    const paint = (source: CanvasImageSource): void => {
       // A newer frame superseded this one, or the canvas unmounted — drop the paint.
       if (generation !== frameGenRef.current || !canvasRef.current) return;
       // Draw image to fill canvas (object-fit: cover behavior); canvas internal
       // resolution is already set to cover dimensions.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     };
+
+    // Fast path: decode off the main thread so it never blocks a React commit.
+    if (canDecodeOffThread) {
+      let bitmap: ImageBitmap | null = null;
+      createImageBitmap(frameToBlob(renderFrame))
+        .then((bmp) => {
+          bitmap = bmp;
+          if (generation !== frameGenRef.current) { bmp.close(); return; }
+          paint(bmp);
+          bmp.close();
+        })
+        .catch(() => { /* malformed frame — the next one repaints */ });
+      return () => { bitmap?.close(); };
+    }
+
+    // Fallback: reused Image + onload for browsers without createImageBitmap.
+    const img = imageRef.current ?? (imageRef.current = new Image());
+    img.onload = () => paint(img);
     img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
 
     return () => { img.onload = null; };
