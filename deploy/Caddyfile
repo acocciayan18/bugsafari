@@ -45,7 +45,7 @@ bugsafari.duckdns.org {
 		}
 
 		# Caddy proxies WebSocket upgrades and forwards X-Forwarded-For by default —
-		# no header_up needed. Exploration runs are long-lived, hence the timeout.
+		
 		reverse_proxy api:3000 {
 			transport http {
 				read_timeout 600s
