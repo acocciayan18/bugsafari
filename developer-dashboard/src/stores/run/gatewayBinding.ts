@@ -3,6 +3,7 @@ import type { TelemetryEvent } from '../../types';
 import { useRunStore } from './runStore';
 import { RUN_ID_STORAGE_KEY, TELEMETRY_CAP, CONSOLE_BUFFER_CAP } from './types';
 import { shouldFetchHistory, shouldRestoreSession, type SessionBootstrap } from './sessionBootstrap';
+import { logger } from '../../utils/logger';
 
 export type { SessionBootstrap } from './sessionBootstrap';
 
@@ -27,6 +28,9 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     let pendingTelemetry: TelemetryEvent[] = [];
     let pendingConsole: BrowserConsoleMessage[] = [];
     let pendingFrame: string | null = null;
+    // One-shot diagnostic: proves the live-frame channel actually reaches the client
+    // (pairs with the engine's "first live frame emitted" log to localize a white feed).
+    let firstFrameLogged = false;
 
     const flush = (): void => {
         flushHandle = null;
@@ -74,6 +78,10 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
         schedule();
     });
     gateway.onLiveFrame((frame) => {
+        if (!firstFrameLogged) {
+            firstFrameLogged = true;
+            logger.debug(`[gatewayBinding] first live-frame received from engine (${frame.length} chars)`);
+        }
         pendingFrame = frame;
         schedule();
     });

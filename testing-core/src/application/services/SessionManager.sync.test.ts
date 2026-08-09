@@ -7,6 +7,8 @@ process.env.BUGSAFARI_SESSION_GRACE_MS = '40';
 // S2/S3 exercise the opt-in abandon-teardown path (off by default: a disconnect
 // leaves an autonomous run RUNNING). Enable it so the grace mechanics are covered.
 process.env.BUGSAFARI_TERMINATE_ON_ABANDON = 'on';
+// Short stop deadline so S10 can exercise the hung-stop force-release in real time.
+process.env.BUGSAFARI_STOP_TIMEOUT_MS = '40';
 const { SessionManager } = await import('./SessionManager.js');
 
 // Verifies the synchronization contract every live client depends on: attach/replay,
@@ -210,6 +212,33 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   // An unscoped settle still works, so callers that cannot name their run are unchanged.
   sm.endRun('COMPLETED');
   assert.strictEqual(gw.room, null, 'S9: an unscoped settle releases the active run');
+}
+
+// ── S10: a hung stop force-releases the run + frees the admission slot ──────────
+// A failed/hung engine.stop() must never pin the singleton: the watchdog emits the
+// terminal IDLE handshake, settles the lifecycle, and fires the activation releaser
+// so a new run can start — the exact lock that survived logout/login before.
+{
+  const { sm, gw } = newManager();
+  let released = 0;
+  sm.setActivationReleaser(() => { released++; });
+  const hung: EngineControl = {
+    // Never resolves — models a browser.close()/settlePendingTasks that hangs.
+    stop() { return new Promise<void>(() => { /* never settles */ }); },
+    async settlePendingTasks() { /* no-op */ },
+    getElapsedActiveTimeMs() { return 0; },
+    getLastSessionId() { return null; },
+  };
+  sm.beginRun({ runToken: 'r10', runCode: 'RUN-0000AA', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: hung });
+  gw.emitted.length = 0;
+  await sm.stopByOperator('operator'); // returns within the deadline despite the hung stop
+  await delay(80);
+  assert.strictEqual(sm.hasActiveRun(), false, 'S10: watchdog force-released the hung run');
+  assert.strictEqual(released, 1, 'S10: activation slot freed exactly once so a new run can start');
+  assert.ok(
+    gw.emitted.some((e) => e.meta?.actionExecuted === 'engine-status' && e.meta?.message === 'IDLE'),
+    'S10: terminal IDLE handshake emitted for the force-released run',
+  );
 }
 
 console.log('SessionManager.sync.test.ts passed');

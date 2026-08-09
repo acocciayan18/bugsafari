@@ -105,6 +105,8 @@ export class ReproductionProbe {
   private draining: Promise<void> | null = null;
   private disposed = false;
   private readonly seen = new Set<string>();
+  // Sidecar context of the replay currently in flight — closed by dispose() to abort it.
+  private activeContext: BrowserContext | null = null;
 
   constructor(
     private readonly browser: Browser,
@@ -149,10 +151,15 @@ export class ReproductionProbe {
     await this.draining;
   }
 
-  /** Stop accepting work and drop the backlog; an in-flight replay unwinds on its own. */
+  /** Stop accepting work, drop the backlog, and abort the in-flight replay. */
   public dispose(): void {
     this.disposed = true;
     this.queue.length = 0;
+    // Abort the in-flight replay so a forced termination (timebox/stop) can't keep a
+    // sidecar session running past the run: closing its context rejects the pending
+    // playwright ops, which probeOnce catches and unwinds.
+    void this.activeContext?.close().catch(() => undefined);
+    this.activeContext = null;
   }
 
   private drain(): Promise<void> {
@@ -234,6 +241,8 @@ export class ReproductionProbe {
         // Inherit the live session so an authenticated run replays past the login wall.
         storageState: await this.liveContext.storageState().catch(() => undefined),
       });
+      // Track for dispose() so a forced termination can abort this replay mid-flight.
+      this.activeContext = context;
 
       const result = await withTimeout(
         runReplaySession(context, {
@@ -268,6 +277,7 @@ export class ReproductionProbe {
       obsLog.warn(`[ReproductionProbe] failed for ${request.bugId}:`, error instanceof Error ? error.message : error);
       return null;
     } finally {
+      if (this.activeContext === context) this.activeContext = null;
       await context?.close().catch(() => undefined);
     }
   }

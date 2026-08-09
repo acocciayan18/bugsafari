@@ -79,6 +79,12 @@ function LiveFeed({
     const containerWidth = containerRect.width;
     const containerHeight = containerRect.height;
 
+    // Not laid out yet (0 or NaN dims) — fall back to native so scale is never 0,
+    // which would size the canvas 0x0 and paint every frame into nothing (white).
+    if (!(containerWidth > 0) || !(containerHeight > 0)) {
+      return { canvasWidth: NATIVE_VIEWPORT_WIDTH, canvasHeight: NATIVE_VIEWPORT_HEIGHT, scale: 1 };
+    }
+
     // Calculate scale for object-fit: cover behavior
     // Use Math.max to ensure image covers ENTIRE container (no whitespace)
     // This means the image will overflow/crop if aspect ratios don't match
@@ -103,11 +109,25 @@ function LiveFeed({
     if (!containerRef.current || !canvasRef.current) return;
 
     const coverData = calculateCoverDimensions();
+    const canvas = canvasRef.current;
 
-    // Set canvas INTERNAL resolution to scaled dimensions
-    // This implements object-fit: cover - the image fills the canvas without stretching
-    canvasRef.current.width = coverData.canvasWidth;
-    canvasRef.current.height = coverData.canvasHeight;
+    // Only resize on a real change — assigning width/height clears the bitmap, so a
+    // no-op ResizeObserver tick must not wipe the frame currently on screen.
+    if (canvas.width !== coverData.canvasWidth || canvas.height !== coverData.canvasHeight) {
+      canvas.width = coverData.canvasWidth;
+      canvas.height = coverData.canvasHeight;
+    }
+
+    // Repaint the last decoded frame after a resize/layout shift so the viewport is
+    // self-healing — it never stays white while frames are momentarily not arriving.
+    const img = imageRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+    }
   }, [calculateCoverDimensions]);
 
   // Initialize canvas dimensions with object-fit: cover

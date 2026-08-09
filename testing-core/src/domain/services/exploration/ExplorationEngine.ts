@@ -720,6 +720,10 @@ export class ExplorationEngine {
   // Settlement barrier: await every in-flight fire-and-forget write so Pause/Stop
   // flush pending telemetry + DB persistence before the lifecycle transitions.
   public async settlePendingTasks(): Promise<void> {
+    // Under a stop, cancel the verification backlog rather than draining it — a
+    // stopped run must not keep spawning replay sessions. Pause (no stop requested)
+    // still drains so verdicts complete and the run stays resumable.
+    if (this.isStopRequested) this.reproductionProbe?.dispose();
     // Reproduction replays first: their verdicts re-register findings, which the
     // task settle below is responsible for flushing.
     await this.reproductionProbe?.settle();
@@ -766,6 +770,11 @@ export class ExplorationEngine {
     if (this.isTimeboxExceeded(this.timeboxMs) && !this.timeboxExceeded) {
       this.timeboxExceeded = true;
       this.stopTimingInterval();
+
+      // Pin the authoritative clock at the limit and push a final sync so the frontend
+      // timer (slaved to it) snaps to zero remaining instead of freezing mid-countdown.
+      this.elapsedActiveTimeMs = Math.max(this.elapsedActiveTimeMs, this.timeboxMs);
+      this.emitTimeSync();
 
       // Emit timebox completion as INFO (not exception)
       // This signals normal completion, not an error
@@ -1500,8 +1509,15 @@ export class ExplorationEngine {
         this.cleanupStabilityMonitor = null;
       }
 
-      // Drain the in-flight replay before the browser closes, then refuse new work —
-      // a probe outlasting its browser would log a stream of disconnect noise.
+      // A forced termination (timebox reached or a stop) must not let replay/
+      // verification keep running after the run is declared over: drop the backlog
+      // and abort the in-flight replay now. Findings already collected are preserved
+      // (only their unrun verdicts are skipped). A run that ended naturally drains so
+      // pending verdicts finish. Settle either way so the in-flight replay unwinds
+      // before the browser closes — a probe outlasting its browser logs disconnect noise.
+      if (this.isStopRequested || this.timeboxExceeded || this.isTimeboxExceeded()) {
+        this.reproductionProbe?.dispose();
+      }
       await this.reproductionProbe?.settle();
       this.reproductionProbe?.dispose();
       this.reproductionProbe = null;

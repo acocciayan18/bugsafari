@@ -137,6 +137,10 @@ const browserEngine = new PlaywrightBrowserEngine(findingRepository);
 // /api/start-test route; no default id is baked in (guests persist nothing).
 // Pass findingRepository to use case for domain-level bug filtering.
 const useCase = new StartExplorationUseCase(browserEngine, telemetryGateway, { active: false }, findingRepository);
+// Free the in-process admission slot when the SessionManager force-releases a run
+// whose stop hung — the normal release runs in execute()'s finally, which a
+// non-unwinding run() never reaches, so without this the slot stays pinned.
+sessionManager.setActivationReleaser(() => useCase.releaseActivation());
 // Opt-in producer: only when BUGSAFARI_USE_QUEUE=1 do we build the queue (which
 // opens a Redis connection) and route /api/start-test through the worker fleet.
 // Unset => taskQueue stays undefined and the synchronous path is byte-identical.

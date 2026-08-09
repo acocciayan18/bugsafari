@@ -62,6 +62,10 @@ export class TelemetryEmitter {
   // Legacy fallback loop (used only when a CDP screencast cannot be started).
   private frameCaptureInterval: ReturnType<typeof setInterval> | null = null;
   private isFrameBroadcastInFlight = false;
+  // One-shot log the first time a frame reaches the gateway — pairs with the
+  // dashboard's "first live-frame received" to localize a white feed to the exact
+  // half (engine not emitting vs client not painting) that broke.
+  private firstFrameLogged = false;
 
   constructor(
     public readonly gateway: TelemetryGateway,
@@ -166,6 +170,7 @@ export class TelemetryEmitter {
       this.cdpSession = session;
       this.screencastActive = true;
       this.lastFrameEmitMs = Date.now();
+      obsLog.info('[TelemetryEmitter] CDP screencast active — streaming live frames.');
       // Chrome STOPS the screencast on navigation, so re-arm it the instant the main
       // frame commits a new document — otherwise the feed freezes on the old URL.
       this.navHandler = (frame) => {
@@ -243,11 +248,19 @@ export class TelemetryEmitter {
     // release. A failed ack means the target/session is gone; safe to ignore.
     session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined);
     if (this.flags.isStopRequested() || this.flags.isPaused()) return;
+    this.noteFrameEmitted();
     if (this.gateway.emitLiveFrameBinary) {
       this.gateway.emitLiveFrameBinary(Buffer.from(frame.data, 'base64'));
     } else {
       this.gateway.emitLiveFrame(frame.data); // CDP frame.data is already base64 JPEG
     }
+  }
+
+  // Log the first frame handed to the gateway so a white feed is trivially bisected.
+  private noteFrameEmitted(): void {
+    if (this.firstFrameLogged) return;
+    this.firstFrameLogged = true;
+    obsLog.info('[TelemetryEmitter] first live frame emitted to gateway.');
   }
 
   /** Legacy fallback: pull a JPEG screenshot every 33 ms. Only used when a CDP
@@ -316,6 +329,7 @@ export class TelemetryEmitter {
         ),
       ]);
 
+      this.noteFrameEmitted();
       if (this.gateway.emitLiveFrameBinary) {
         this.gateway.emitLiveFrameBinary(screenshot);
       } else {

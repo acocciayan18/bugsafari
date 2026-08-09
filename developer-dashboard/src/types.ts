@@ -166,6 +166,7 @@ export interface ForensicNetworkLog {
   resourceType?: string;
   ok: boolean;
   message?: string;
+  errorText?: string;
   repeatCount?: number;
 }
 

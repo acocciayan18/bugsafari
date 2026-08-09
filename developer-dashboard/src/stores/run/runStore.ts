@@ -245,7 +245,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     pushTelemetry: (event) => set((s) => ({ telemetry: appendCapped(s.telemetry, event, TELEMETRY_CAP) })),
 
     setLiveFrame: (frame) => {
-        const dataUrl = `data:image/jpeg;base64,${frame}`;
+        // Wire frames are raw base64; tolerate an already-wrapped data URL so a
+        // double prefix can never produce a broken image the canvas won't paint.
+        const dataUrl = frame.startsWith('data:') ? frame : `data:image/jpeg;base64,${frame}`;
         // First frame is the authoritative "engine is running" signal for in-process
         // runs (which get no queue 'active' push) — promote STARTING→ACTIVE here.
         set((s) => ({
@@ -441,7 +443,9 @@ export const useRunStore = create<RunState>((set, get) => ({
         runRefs.queuePhase = queued ? 'waiting' : live ? 'active' : 'done';
         if (!queued) toast.dismiss(STATUS_TOAST_ID);
 
-        const frame = snapshot.lastFrame ? `data:image/jpeg;base64,${snapshot.lastFrame}` : null;
+        const frame = snapshot.lastFrame
+            ? (snapshot.lastFrame.startsWith('data:') ? snapshot.lastFrame : `data:image/jpeg;base64,${snapshot.lastFrame}`)
+            : null;
 
         set({
             telemetry: snapshot.telemetry.filter((e) => e.type !== 'NETWORK').slice(-TELEMETRY_CAP),

@@ -183,10 +183,13 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
         // The run executes out-of-process, so these buffers are the only complete
         // source at save time. Dedup by method+url+status so a polled endpoint
         // collapses to one row with a repeatCount instead of flooding the tab.
-        const networkMap = new Map<string, { timestamp: string; method: string; url: string; statusCode?: number; durationMs?: number; ok: boolean; message?: string; repeatCount: number }>();
+        const networkMap = new Map<string, { timestamp: string; method: string; url: string; statusCode?: number; durationMs?: number; ok: boolean; errorText?: string; repeatCount: number }>();
         for (const e of networkEvents) {
-            if (e.type !== 'NETWORK') continue;
-            // Only actionable failures are saved — successes are noise (matches the live tab).
+            // Same gate as the live Network tab (isActionableNetworkFailure): only a GENUINE
+            // observed request (rawNetwork) that actually failed. Excludes BugSafari's own
+            // NETWORK-channel findings/diagnostics — which carry no statusCode and no
+            // rawNetwork flag — so saved history matches the live tab exactly.
+            if (e.type !== 'NETWORK' || e.meta?.rawNetwork !== true) continue;
             if (!isActionableNetworkStatus(e.meta?.statusCode)) continue;
             const method = e.meta?.method ?? 'GET';
             const url = e.meta?.url ?? '';
@@ -203,8 +206,8 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
                     url,
                     statusCode,
                     durationMs: e.meta?.durationMs,
-                    ok: typeof statusCode === 'number' ? statusCode < 400 : true,
-                    message: e.meta?.message,
+                    ok: e.meta?.ok === true,
+                    errorText: e.meta?.errorText,
                     repeatCount: 1,
                 });
             }

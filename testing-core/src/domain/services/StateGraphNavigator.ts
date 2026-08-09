@@ -52,6 +52,7 @@ import { TraversalStack } from './pathfinder/TraversalStack.js';
 import { GraphStore } from './pathfinder/GraphStore.js';
 import { EdgeSelector as EdgeSelectorEngine } from './pathfinder/EdgeSelector.js';
 import { shortestPath } from './pathfinder/PathPlanner.js';
+import { routeKey } from '../../ml/domHasher.js';
 
 export type { StateGraphNavigatorConfig } from './pathfinder/config.js';
 
@@ -76,6 +77,19 @@ export class StateGraphNavigator {
   private readonly edgeSelector: EdgeSelectorEngine;
 
   private readonly config: StateGraphNavigatorConfig;
+
+  // Routes confirmed non-traversable this run (structural dead end / error state),
+  // keyed by routeKey (origin + normalized path). Excluded from frontier selection
+  // even when re-entry mints a fresh combined-hash node — a route set survives the
+  // per-node cap resets that recoverFromExhaustion applies. Cleared on revival.
+  private readonly deadEndRoutes = new Set<string>();
+
+  // Barren-stagnation escape. escapeLevel>0 switches the global frontier from
+  // score-first exploit to novelty-first explore and cools down recently-tried
+  // regions, so a run that stops gaining coverage changes HOW it explores instead
+  // of re-selecting the same attractor. Reset to 0 on genuine progress.
+  private escapeLevel = 0;
+  private readonly recentFrontierRoutes: string[] = [];
 
   constructor(config: Partial<StateGraphNavigatorConfig> = {}) {
     // Merge precedence: DEFAULT_CONFIG < mode preset < caller config (caller wins).
@@ -559,6 +573,9 @@ export class StateGraphNavigator {
         continue;
       }
 
+      // Committed target — record its region so escape mode cools it down next round.
+      this.recordFrontierRoute(routeKey(frontier.node.url));
+
       const path = shortestPath(this.graphStore, abandoned.hash, frontier.node.hash);
       this.traversalStack.alignTo(frontier.node.hash);
       // alignTo empties the stack when the target is off it — which, for a
@@ -610,22 +627,68 @@ export class StateGraphNavigator {
   private pickGlobalFrontierTarget(
     excludeHash: StateHash,
   ): { node: GraphNode; edge: GraphEdge; priority: number; noveltyBonus: number } | null {
-    let best: { node: GraphNode; edge: GraphEdge; priority: number; noveltyBonus: number } | null = null;
+    type Frontier = { node: GraphNode; edge: GraphEdge; priority: number; noveltyBonus: number };
+    const escaping = this.escapeLevel > 0;
+    const cooling = escaping ? this.coolingRoutes() : null;
+
+    // `fallback` ignores the escape cooldown so a cooled-off region can never be
+    // the sole cause of a null frontier (which would false-trip graph exhaustion);
+    // `best` respects it. Return the cooled pick when one exists, else the fallback.
+    let best: Frontier | null = null;
+    let fallback: Frontier | null = null;
     for (const candidate of this.graphStore.values()) {
       if (candidate.hash === excludeHash) continue;
       // Skip force-closed nodes (branch/return-cap/route blocks). Nodes AT the
       // return cap stay candidates: selectGlobalFrontier's increment-then-check
       // closes their frontier on the next win, mirroring the legacy walk.
       if (candidate.status === 'skipped') continue;
+      // Route-level dead-end exclusion: a route proven a structural dead end / error
+      // state is never re-selected, even when a re-entry minted a fresh combined hash.
+      const candKey = routeKey(candidate.url);
+      if (this.deadEndRoutes.has(candKey)) continue;
       const edge = this.peekBestUnvisitedEdge(candidate);
       if (!edge) continue;
       const noveltyBonus = this.config.frontierNoveltyWeight / (1 + candidate.visitCount);
-      const priority = edge.score + noveltyBonus;
-      if (best === null || priority > best.priority) {
-        best = { node: candidate, edge, priority, noveltyBonus };
-      }
+      const entry: Frontier = { node: candidate, edge, priority: edge.score + noveltyBonus, noveltyBonus };
+      if (this.isBetterFrontier(entry, fallback, escaping)) fallback = entry;
+      if (cooling?.has(candKey)) continue; // region tried too recently — cool it down
+      if (this.isBetterFrontier(entry, best, escaping)) best = entry;
     }
-    return best;
+    return best ?? fallback;
+  }
+
+  /**
+   * Frontier comparator. Normal mode exploits — highest `score + noveltyBonus`.
+   * Escape mode explores — the least-visited node wins (steering out of the stuck
+   * attractor into unexplored regions), tie-broken by raw edge score. Strict
+   * comparisons keep first-seen ties deterministic (Map insertion order).
+   */
+  private isBetterFrontier(
+    entry: { node: GraphNode; edge: GraphEdge; priority: number },
+    current: { node: GraphNode; edge: GraphEdge; priority: number } | null,
+    escaping: boolean,
+  ): boolean {
+    if (current === null) return true;
+    if (escaping) {
+      if (entry.node.visitCount !== current.node.visitCount) {
+        return entry.node.visitCount < current.node.visitCount;
+      }
+      return entry.edge.score > current.edge.score;
+    }
+    return entry.priority > current.priority;
+  }
+
+  /** Recently-tried frontier regions to cool down; window widens with escapeLevel. */
+  private coolingRoutes(): Set<string> {
+    const depth = Math.min(this.recentFrontierRoutes.length, this.escapeLevel * 2);
+    return new Set(this.recentFrontierRoutes.slice(this.recentFrontierRoutes.length - depth));
+  }
+
+  /** Record a committed frontier target so escape mode can cool its region down. */
+  private recordFrontierRoute(key: string): void {
+    const MAX_RECENT = 16;
+    this.recentFrontierRoutes.push(key);
+    if (this.recentFrontierRoutes.length > MAX_RECENT) this.recentFrontierRoutes.shift();
   }
 
   /**
@@ -653,6 +716,33 @@ export class StateGraphNavigator {
   /** Look-ahead: `selector` is a nav control whose known destination is saturated. */
   public isNavDestinationSaturated(selector: EdgeSelector): boolean {
     return this.graphStore.destinationSaturatedFor(selector);
+  }
+
+  /** Mark a route (routeKey) a confirmed dead end — excluded from frontier picks. */
+  public markRouteDeadEnd(key: string): void {
+    this.deadEndRoutes.add(key);
+  }
+
+  /** Re-admit a route to the frontier after it revived (renders content again). */
+  public clearRouteDeadEnd(key: string): void {
+    this.deadEndRoutes.delete(key);
+  }
+
+  /**
+   * Escalate the barren-stagnation escape: the engine has recovered/backtracked
+   * repeatedly without new coverage. Raising the level pushes the global frontier
+   * further toward novelty-first selection and widens the recently-tried cooldown,
+   * so exploration is steered into unexplored regions rather than re-selecting the
+   * stuck attractor. Reset by noteProgress() on genuine progress.
+   */
+  public enterEscapeMode(): void {
+    this.escapeLevel += 1;
+  }
+
+  /** Genuine progress reached — leave escape mode and clear the region cooldown. */
+  public noteProgress(): void {
+    this.escapeLevel = 0;
+    this.recentFrontierRoutes.length = 0;
   }
 
   /**

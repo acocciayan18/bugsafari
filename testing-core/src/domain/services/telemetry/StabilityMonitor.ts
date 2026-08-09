@@ -248,10 +248,11 @@ const TRACE_HEADER_KEYS = [
 ];
 
 // Headers worth surfacing on a Network row. Deliberately EXCLUDES authorization,
-// cookie, and set-cookie (least privilege — never echo credentials to the UI).
+// cookie, and set-cookie (least privilege — never echo credentials to the UI) and
+// server-fingerprint/size noise (content-length, server, x-powered-by).
 const KEEP_HEADER_KEYS: ReadonlySet<string> = new Set<string>([
-  'content-type', 'content-length', 'cache-control', 'retry-after', 'server',
-  'x-powered-by', 'location', 'x-ratelimit-remaining', 'x-ratelimit-limit', 'accept',
+  'content-type', 'cache-control', 'retry-after',
+  'location', 'x-ratelimit-remaining', 'x-ratelimit-limit', 'accept',
   ...TRACE_HEADER_KEYS,
 ]);
 

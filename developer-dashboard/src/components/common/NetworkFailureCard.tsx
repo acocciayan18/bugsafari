@@ -5,7 +5,8 @@
 
 import { routeNetworkEvent } from '../../../../shared/types.js';
 
-// Normalized, source-agnostic shape both callers adapt into.
+// Normalized, source-agnostic shape both callers adapt into. Only the fields worth
+// showing an operator: method, status/error code, endpoint, error text, count, time.
 export interface NetworkFailureRow {
   method: string;
   statusCode?: number;
@@ -14,31 +15,19 @@ export interface NetworkFailureRow {
   count: number;
   resourceType?: string;
   errorText?: string;
-  traceId?: string;
-  requestHeaders?: Record<string, string>;
-  responseHeaders?: Record<string, string>;
+  timestamp?: string;
 }
 
-// One "key: value" header block.
-function HeaderList({ title, headers }: { title: string; headers?: Record<string, string> }) {
-  const entries = headers ? Object.entries(headers) : [];
-  if (entries.length === 0) return null;
-  return (
-    <div className="mt-1">
-      <div className="text-[13px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{title}</div>
-      <div className="mt-0.5 space-y-0.5">
-        {entries.map(([k, v]) => (
-          <div key={k} className="font-mono text-[13px] text-(--text-secondary) break-all">
-            <span className="text-(--text-tertiary)">{k}:</span> {v}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+// Short local time, or nothing for a missing/unparseable stamp.
+function shortTime(timestamp?: string): string | undefined {
+  if (!timestamp) return undefined;
+  const t = Date.parse(timestamp);
+  return Number.isNaN(t) ? undefined : new Date(t).toLocaleTimeString();
 }
 
 export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
-  const { method, statusCode, url, ok, count, errorText, traceId } = row;
+  const { method, statusCode, url, ok, count, errorText } = row;
+  const time = shortTime(row.timestamp);
 
   // Tier from the shared routing tree — same call the engine made deciding this was
   // a Network row. A transport failure (no status) is infrastructure, painted amber.
@@ -82,27 +71,15 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
             {routed.reasonCode.replace(/_/g, ' ').toLowerCase()}
           </span>
         </div>
+        {time && <span className="shrink-0 text-xs text-(--text-tertiary)">{time}</span>}
       </div>
 
       <div className="px-3 py-2 text-[13px] font-mono text-(--text-secondary) break-all">{url}</div>
 
-      {(errorText || traceId) && (
-        <div className="px-3 py-2 text-xs text-(--text-secondary) border-t border-(--border-hairline) space-y-1">
-          {errorText && <div className="font-mono break-all">{errorText}</div>}
-          {traceId && (
-            <div className="font-mono text-[13px]">
-              <span className="text-(--text-tertiary)">trace id:</span> {traceId}
-            </div>
-          )}
-        </div>
-      )}
-
-      {(row.responseHeaders || row.requestHeaders) && (
-        <div className="px-3 py-2 border-t border-(--border-hairline)">
-          <HeaderList title="Response headers" headers={row.responseHeaders} />
-          <HeaderList title="Request headers" headers={row.requestHeaders} />
-        </div>
-      )}
+      <div className="px-3 py-2 text-xs text-(--text-secondary) border-t border-(--border-hairline) space-y-1">
+        <div className="leading-relaxed">{routed.reason}</div>
+        {errorText && <div className="font-mono break-all text-(--text-tertiary)">{errorText}</div>}
+      </div>
     </div>
   );
 }

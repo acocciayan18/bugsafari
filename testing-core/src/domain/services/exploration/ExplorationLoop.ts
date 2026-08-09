@@ -6,7 +6,7 @@ import {
   STOP_REASON_OUTCOME,
 } from '../../../../../shared/types.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
-import { normalizeRoutePath } from '../../../ml/domHasher.js';
+import { normalizeRoutePath, routeKey } from '../../../ml/domHasher.js';
 import type { CompoundStateHash } from '../../../ml/domHasher.js';
 import type {
   PathfinderElement,
@@ -101,11 +101,7 @@ type StepGate = { kind: 'proceed' } | { kind: 'continue' } | { kind: 'return'; r
  * set grew without bound on query-volatile SPAs.
  */
 function visitedRouteKey(url: string): string {
-  try {
-    return new URL(url).origin + normalizeRoutePath(url);
-  } catch {
-    return url;
-  }
+  return routeKey(url);
 }
 
 /** Bound an insertion-ordered Set by evicting its oldest entries. */
@@ -130,6 +126,9 @@ interface RunContext {
   recentStructures: string[];
   penaltyStepsRemaining: number;
   recoveryRounds: number;
+  // Consecutive dead-end/recovery unwinds since the last genuine progress. Drives
+  // the adaptive-escape escalation; reset to 0 on any novel state.
+  barrenRecoveries: number;
   sabotageStepCounter: number;
   budget: number;
   budgetExtensions: number;
@@ -219,6 +218,7 @@ export class ExplorationLoop {
       recentStructures: [],
       penaltyStepsRemaining: 0,
       recoveryRounds: 0,
+      barrenRecoveries: 0,
       sabotageStepCounter: 0,
       budget: maxSteps,
       budgetExtensions: 0,
@@ -243,7 +243,7 @@ export class ExplorationLoop {
       // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
       // ─────────────────────────────────────────────────────────────
       if (this.deps.checkTimebox()) {
-        const reason = `Time budget of ${this.deps.getTimeboxMs() / 60000} min of active execution reached — exploration ended automatically.`;
+        const reason = `Time limit of ${this.deps.getTimeboxMs() / 60000} min reached.`;
         // The authoritative terminal line is emitted once by StartExplorationUseCase.
         return { completed: false, reason, outcome: 'timebox' };
       }
@@ -342,6 +342,7 @@ export class ExplorationLoop {
         let target: InteractiveElement = ranked[0];
 
         if (decision.kind === 'exhausted') {
+          this.noteBarrenUnwind(ctx);
           const exhaustedGate = await this.handleExhaustedDecision(page, ctx, fingerprint.currentUrl, step);
           if (exhaustedGate.kind === 'return') return exhaustedGate.result;
           continue;
@@ -725,8 +726,11 @@ export class ExplorationLoop {
 
     // Page-context validity + strict-lock confinement are enforced by the
     // per-iteration ensurePageHealth() gate in execute(); here we only wait for
-    // interactive content to appear.
-    await this.deps.ensureDomReady(page);
+    // interactive content to appear. A route already confirmed a dead end skips
+    // the wait entirely — re-paying ensureDomReady's ~5s interactive-selector
+    // timeout on a page proven empty is the core recovery-loop time sink.
+    const knownDeadEnd = ctx.deadEndUrls.has(visitedRouteKey(page.url()));
+    if (!knownDeadEnd) await this.deps.ensureDomReady(page);
 
     let elements = await this.deps.parser.parse(page);
 
@@ -770,6 +774,17 @@ export class ExplorationLoop {
     // Interactive content present — clear any pending empty-check retry state.
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
+
+    // Revival: a route previously classified a dead end now renders controls
+    // (late/dynamic render, or unlocked by another state). Un-mark it so it is
+    // explored again and re-admitted to the navigator's frontier.
+    const revivedKey = visitedRouteKey(page.url());
+    if (ctx.deadEndUrls.delete(revivedKey)) {
+      this.deps.pathNavigator.clearRouteDeadEnd(revivedKey);
+      this.deps.telemetry.emitMilestone(
+        ` Dead-end route now renders content — re-admitting ${page.url()} to exploration.`,
+      );
+    }
 
     // Shell identity for every coverage/penalty lookup below. Measured HERE, after
     // the parse (which can itself mutate the page via hover-reveal), because this
@@ -1297,6 +1312,27 @@ export class ExplorationLoop {
     return { completed: true, reason, outcome: 'boundary-saturated' };
   }
 
+  /**
+   * Count one barren dead-end/recovery unwind since the last novel state. Every
+   * coverageStallWindow consecutive barren unwinds escalates the navigator's
+   * adaptive escape (novelty-first frontier + region cooldown), so a run that
+   * stops gaining coverage CHANGES how it explores instead of re-selecting the
+   * same dead attractor. Reset in applyNoveltyRewardAndTelemetry on any novel state.
+   */
+  private noteBarrenUnwind(ctx: RunContext): void {
+    ctx.barrenRecoveries += 1;
+    if (ctx.barrenRecoveries % ctx.coverageStallWindow === 0) {
+      this.deps.pathNavigator.enterEscapeMode();
+      this.deps.telemetry.emitMilestone(
+        ` Stagnation escape (level ${ctx.barrenRecoveries / ctx.coverageStallWindow}) — diversifying frontier strategy toward unexplored regions.`,
+      );
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'stagnation-escape',
+        message: `No new coverage across ${ctx.barrenRecoveries} recovery unwinds — switching the global frontier to novelty-first selection.`,
+      });
+    }
+  }
+
   private async handleExhaustedDecision(page: Page, ctx: RunContext, currentUrl: string, step: number): Promise<StepGate> {
     // Adaptive recovery before accepting termination: re-evaluate soft-blocked
     // edges (unstable/branch/sweep — never true cycles), reset the boredom
@@ -1364,7 +1400,11 @@ export class ExplorationLoop {
    */
   private async handleStructuralDeadEnd(page: Page, ctx: RunContext, step: number): Promise<StepGate> {
     const url = page.url();
-    ctx.deadEndUrls.add(visitedRouteKey(url));
+    const key = visitedRouteKey(url);
+    ctx.deadEndUrls.add(key);
+    // Feed the route to the navigator so the frontier scan never re-targets it.
+    this.deps.pathNavigator.markRouteDeadEnd(key);
+    this.noteBarrenUnwind(ctx);
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 
@@ -1399,7 +1439,11 @@ export class ExplorationLoop {
     step: number,
   ): Promise<StepGate> {
     const url = page.url();
-    ctx.deadEndUrls.add(visitedRouteKey(url));
+    const key = visitedRouteKey(url);
+    ctx.deadEndUrls.add(key);
+    // Feed the route to the navigator so the frontier scan never re-targets it.
+    this.deps.pathNavigator.markRouteDeadEnd(key);
+    this.noteBarrenUnwind(ctx);
     ctx.emptyCheckUrl = '';
     ctx.emptyCheckCount = 0;
 
@@ -1854,8 +1898,11 @@ export class ExplorationLoop {
     });
 
     if (isNovelState) {
-      // Genuine progress — refresh the adaptive-recovery budget.
+      // Genuine progress — refresh the adaptive-recovery budget and leave the
+      // barren-stagnation escape (novelty-first frontier reverts to score-first).
       ctx.recoveryRounds = 0;
+      ctx.barrenRecoveries = 0;
+      this.deps.pathNavigator.noteProgress();
       // Productive transition — clear this control's accumulated loop repeats so a
       // sometimes-useful control (e.g. pagination) is never permanently blocked.
       this.deps.edgeRepeat.recordProductive(fromStructure, target.selector);

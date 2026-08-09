@@ -138,7 +138,7 @@
   /* Dark Theme Typography Hierarchy */
   --text-primary: #f4f4f5;      /* Off-white text to limit optical bleeding */
   --text-secondary: #a1a1aa;    /* Clean soft readable slate body content */
-  --text-tertiary: #52525b;     /* Muted code trace metadata indicators */
+  --text-tertiary: #72727b;     /* Muted code trace metadata indicators */
   --text-disabled: #3f3f46;     /* Locked control items */
 
   /* Dark Theme Inverted Actions */
@@ -150,7 +150,7 @@
   /* Low-Strain Alert Matrix Blocks */
   --status-warning-fg: #fb923c;
   --status-warning-bg: #1c0d02;
-  --status-warning-border: #431407;
+  --status-warning-border: #431407; 
   
   --status-critical-fg: #f87171;   /* Balanced soft screen-safe red alert accent */
   --status-critical-bg: #1a0808;   /* Zero saturation background tone */

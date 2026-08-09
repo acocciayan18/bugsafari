@@ -851,7 +851,8 @@ function networkLogToRow(row: ForensicNetworkLog): NetworkFailureRow {
     ok: row.ok,
     count: row.repeatCount ?? 1,
     resourceType: row.resourceType,
-    errorText: !row.ok ? row.message : undefined,
+    errorText: row.errorText ?? (!row.ok ? row.message : undefined),
+    timestamp: row.timestamp,
   };
 }
 

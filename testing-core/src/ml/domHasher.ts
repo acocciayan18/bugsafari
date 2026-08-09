@@ -47,6 +47,18 @@ export function normalizeRoutePath(url: string): string {
   }
 }
 
+// Route identity shared by every per-run visited/dead-end set and the navigator's
+// frontier exclusion: origin + normalized route path, query dropped. Both sides
+// MUST key on this exact string so "mark route dead" and "exclude from frontier"
+// can never diverge. Unparseable input falls back to the raw url.
+export function routeKey(url: string): string {
+  try {
+    return new URL(url).origin + normalizeRoutePath(url);
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Compound state fingerprint. Three orthogonal signatures let callers reason
  * about *how* a state differs, not just *whether* it differs:

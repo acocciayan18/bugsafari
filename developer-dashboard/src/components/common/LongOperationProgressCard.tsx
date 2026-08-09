@@ -95,7 +95,7 @@ export default function LongOperationProgressCard() {
       </div>
       <p className="mt-2.5 text-xs text-(--text-secondary)">{reason}.</p>
       <p className="mt-2.5 text-xs font-medium text-(--text-tertiary)">
-        This delay is expected — please wait while BugSafari finishes. You can keep using the dashboard.
+        Expected delay. Please wait while BugSafari finishes.
       </p>
     </div>
   );

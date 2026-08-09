@@ -44,9 +44,7 @@ function eventToRow(event: TelemetryEvent, count: number): NetworkFailureRow {
     ok: meta?.ok === true,
     count,
     errorText: meta?.errorText || undefined,
-    traceId: meta?.traceId || undefined,
-    requestHeaders: meta?.requestHeaders,
-    responseHeaders: meta?.responseHeaders,
+    timestamp: event.timestamp,
   };
 }
 

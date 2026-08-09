@@ -90,6 +90,14 @@ const RESERVATION_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_RESERVATION
 // so a connected operator who pauses and stays connected (grace never fires) would pin
 // the browser + fleet slot forever. On expiry the run auto-stops via the normal path.
 const MAX_PAUSE_MS = readPositiveInt(process.env.BUGSAFARI_MAX_PAUSE_MS, 600_000);
+// Hard ceiling on a graceful stop. A hung engine.stop() (browser.close / a stuck
+// settlePendingTasks) or a run() that never observes cancellation would otherwise
+// pin the singleton — and its in-process admission slot — for the process lifetime,
+// blocking every later launch even across logout/login. On expiry the run is
+// force-released: the terminal IDLE handshake is emitted, the lifecycle settles, and
+// the slot frees. Trade-off: a genuinely-stuck run is abandoned (its browser may leak)
+// so a new test can start — chosen deliberately over a permanent lock.
+const STOP_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_STOP_TIMEOUT_MS, 20_000);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const CONSOLE_BUFFER_CAP = 200;
@@ -136,6 +144,10 @@ interface ActiveRun {
   terminationReason: string | null;
   health: TargetHealthMonitor;
   graceTimer: ReturnType<typeof setTimeout> | null;
+  // Armed the moment a stop is dispatched; force-releases the run if it hasn't torn
+  // down within STOP_TIMEOUT_MS (a hung engine.stop / non-unwinding run()). Cleared
+  // in teardownRun so a clean stop never trips it.
+  stopWatchdogTimer: ReturnType<typeof setTimeout> | null;
   // Armed when the run settles to PAUSED; expiry auto-stops it. Cleared on resume,
   // stop, and teardown so only a genuinely-abandoned pause reaches the deadline.
   pauseDeadlineTimer: ReturnType<typeof setTimeout> | null;
@@ -185,10 +197,19 @@ export class SessionManager implements TelemetryRecorder {
   // Final snapshot of the most recently ended run, kept until the next run
   // begins so a refresh restores the completed/stopped state instead of IDLE.
   private lastTerminal: { snapshot: ActiveSessionSnapshot; userId: string | null } | null = null;
+  // Frees the in-process admission slot on a force-release. Set by the API process
+  // (→ useCase.releaseActivation); left null in the worker, whose slot is the BullMQ
+  // job itself and settles when the processor returns.
+  private onRelease: (() => void) | null = null;
 
   /** Wire the manager to the shared telemetry gateway (room-scoped emitter). */
   public initialize(gateway: SocketTelemetryGateway): void {
     this.gateway = gateway;
+  }
+
+  /** Register the callback that frees the admission slot when a run is force-released. */
+  public setActivationReleaser(release: (() => void) | null): void {
+    this.onRelease = release;
   }
 
   public get graceMs(): number {
@@ -333,6 +354,7 @@ export class SessionManager implements TelemetryRecorder {
       terminationReason: null,
       health,
       graceTimer: null,
+      stopWatchdogTimer: null,
       reservationTimer: null,
       pendingStop: false,
       pendingStopReason: 'operator',
@@ -412,6 +434,10 @@ export class SessionManager implements TelemetryRecorder {
     if (this.run.graceTimer) {
       clearTimeout(this.run.graceTimer);
       this.run.graceTimer = null;
+    }
+    if (this.run.stopWatchdogTimer) {
+      clearTimeout(this.run.stopWatchdogTimer);
+      this.run.stopWatchdogTimer = null;
     }
     if (this.run.reservationTimer) {
       clearTimeout(this.run.reservationTimer);
@@ -781,8 +807,51 @@ export class SessionManager implements TelemetryRecorder {
     }
     run.status = 'STOPPING';
     this.emitEngineAction('engine-stopping', 'Stopping Safari — flushing telemetry and pending writes…');
-    await Promise.resolve(run.engine.stop(reason));
-    // endRun() is invoked by the run's own finally block; status settles to IDLE there.
+    // Arm the backstop BEFORE dispatching: a hung engine.stop() must not pin the slot.
+    this.armStopWatchdog(run, reason);
+    // Race the graceful stop against the deadline so this call never blocks longer
+    // than STOP_TIMEOUT_MS even if engine.stop() hangs — the watchdog then force-
+    // releases. On a clean stop, run()'s finally calls endRun() (clearing the
+    // watchdog) and status settles to IDLE there. The deadline timer is always
+    // cleared, so a fast stop leaves nothing pending on the event loop.
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => { deadlineTimer = setTimeout(resolve, STOP_TIMEOUT_MS); });
+    try {
+      await Promise.race([Promise.resolve(run.engine.stop(reason)), deadline]);
+    } catch (error) {
+      obsLog.error('[SessionManager] engine.stop threw during operator stop:', error instanceof Error ? error.message : error);
+    } finally {
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+    }
+  }
+
+  // Force-release the run if a dispatched stop hasn't settled in time. Fires once;
+  // teardownRun clears the timer on a clean stop so this never runs for a good stop.
+  private armStopWatchdog(run: ActiveRun, reason: StopReason): void {
+    if (run.stopWatchdogTimer) clearTimeout(run.stopWatchdogTimer);
+    run.stopWatchdogTimer = setTimeout(() => {
+      if (this.run !== run) return; // already torn down cleanly
+      this.forceRelease(
+        `Session stop did not settle within ${Math.round(STOP_TIMEOUT_MS / 1000)}s (reason=${reason}) — the run was force-terminated and all resources released.`,
+        run.runToken,
+      );
+    }, STOP_TIMEOUT_MS);
+    run.stopWatchdogTimer.unref();
+  }
+
+  /**
+   * Hard release when a graceful stop cannot settle — a hung engine.stop(), a run()
+   * that never unwinds, or an abandoned session torn down on logout. Emits the
+   * terminal IDLE handshake the stuck run() will never emit itself, settles the
+   * lifecycle (flushing telemetry + persisting status via endRun/teardownRun), and
+   * frees the in-process admission slot so a new run can start immediately.
+   */
+  public forceRelease(message: string, runToken?: string): void {
+    if (!this.run || this.isStaleSettle(runToken, 'forceRelease')) return;
+    obsLog.error(`[SessionManager] Force-releasing run ${this.run.runToken}: ${message}`);
+    this.emitFailure(message);
+    this.endRun('CRASHED', runToken);
+    this.onRelease?.();
   }
 
   /** RunId of the active run, or null. Used to scope cross-process controls. */

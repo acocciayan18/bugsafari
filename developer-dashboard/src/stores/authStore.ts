@@ -12,7 +12,7 @@ import {
     getRefreshToken,
 } from '../utils/authRefresh';
 import { navigateTo } from './authBridge';
-import { RUN_SCOPED_STORAGE_KEYS } from './run/types';
+import { RUN_ID_STORAGE_KEY, RUN_SCOPED_STORAGE_KEYS } from './run/types';
 import type { AuthUser, LoginCredentials, SignupCredentials } from '../context/AuthContext';
 
 interface AuthResponse {
@@ -75,6 +75,25 @@ function readStoredUser(): AuthUser | null {
     } catch {
         return null;
     }
+}
+
+// Release any backend run the outgoing identity owns BEFORE its tokens are dropped,
+// so a stuck or abandoned session can't block the next login. Fire-and-forget by
+// design: local teardown never waits, and the backend force-releases the run if its
+// engine won't settle. Must run while the current auth token is still readable —
+// an authenticated run is stopped by matching identity, a guest run by runToken.
+function releaseBackendRun(): void {
+    const runToken = localStorage.getItem(RUN_ID_STORAGE_KEY);
+    if (!runToken) return;
+    const authToken = localStorage.getItem('bugsafari_token');
+    void fetch(apiUrl('/api/safari/stop'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ runToken, reason: 'operator' }),
+    }).catch(() => undefined);
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -151,6 +170,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     // A guest session must never inherit a stale identity, or the backend would
     // treat the run as authenticated and persist it.
     continueAsGuest: () => {
+        // Kill any run the outgoing (authenticated) identity still owns before its
+        // token is cleared, so the guest session starts unblocked.
+        releaseBackendRun();
         clearSession();
         // Drop any prior authenticated user's cached identity so a guest never inherits it.
         localStorage.removeItem('bugsafari_displayName');
@@ -161,6 +183,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     },
 
     logout: () => {
+        // Release the backend run this identity owns before its tokens are dropped —
+        // otherwise a stuck/abandoned session survives logout and blocks the next login.
+        releaseBackendRun();
         // Fire-and-forget revoke so the refresh token can't be replayed; local teardown never waits
         const refresh = getRefreshToken();
         if (refresh) {
