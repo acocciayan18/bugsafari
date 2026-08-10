@@ -30,15 +30,15 @@ export default function AccessGate({ children }: { children: ReactNode }) {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-900 text-white">
             <Lock className="h-6 w-6" strokeWidth={1.75} />
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-neutral-900">BugSafari</h1>
-           <p className="mt-2 text-sm text-neutral-600">
-  Thanks for taking part in the BugSafari survey.
-</p>
-<p className="mt-1 text-sm text-neutral-600">
-  We’re still cooking up something better. BugSafari is currently in development as we work to make it more useful for student developers.
-</p>
-          </div>
+         <div>
+  <h1 className="text-lg font-bold text-neutral-900">BugSafari</h1>
+  <p className="mt-2 text-sm text-neutral-600">
+    Thanks for taking part in the BugSafari survey, but access is currently limited.
+  </p>
+  <p className="mt-1 text-sm text-neutral-600">
+    We’re still cooking up something better and working to make BugSafari more useful for student developers.
+  </p>
+</div>
         </div>
 
         <input
