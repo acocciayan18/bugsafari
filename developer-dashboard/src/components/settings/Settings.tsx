@@ -620,7 +620,7 @@ function AccountSection() {
         <div className="pt-4 border-t border-(--border-hairline)">
           <button
             onClick={logout}
-            className="inline-flex w-fit items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+            className="inline-flex w-fit items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Exit Guest Mode
@@ -735,7 +735,7 @@ export default function Settings() {
       className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)"
     >
       {/* Breadcrumb duplicates the compact top bar — desktop only. */}
-      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
+      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-4 sm:px-6 lg:flex">
         <div className="flex min-w-0 items-center">
           <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>

@@ -16,16 +16,25 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
     <Modal isOpen={isOpen} onClose={onClose} titleId="guest-mode-title" maxWidthClassName="max-w-lg">
       <div className="flex items-start justify-between gap-3 border-b border-(--border-hairline) px-3 pt-5 py-3 sm:gap-4 sm:px-5">
         <div className="flex min-w-0 items-start gap-2.5">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-(--text-secondary)" strokeWidth={1.75} aria-hidden="true" />
-          <div className="min-w-0">
-            <h3 id="guest-mode-title" className="text-sm font-semibold text-(--text-primary)">
-              Continue as Guest?
-            </h3>
-            <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
-              Guest mode runs the full testing engine, but nothing is saved.
-            </p>
-          </div>
-        </div>
+  <Info
+    className="h-4 w-4 mt-1 shrink-0 text-(--text-secondary)"
+    strokeWidth={1.75}
+    aria-hidden="true"
+  />
+
+  <div className="min-w-0">
+    <h3
+      id="guest-mode-title"
+      className="text-md font-semibold text-(--text-primary)"
+    >
+      Continue as Guest?
+    </h3>
+
+    <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
+      Guest mode runs the full testing engine, but nothing is saved.
+    </p>
+  </div>
+</div>
         <button
           onClick={onClose}
           aria-label="Close"
@@ -55,10 +64,10 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
       </div>
 
       <div className="flex flex-col-reverse gap-2 border-t border-(--border-hairline) px-3 pb-5 py-3 sm:flex-row sm:justify-end sm:px-5">
-        <Button variant="secondary" size="sm" className="w-full sm:w-auto " onClick={onContinue}>
+        <Button variant="secondary" size="md" className="w-full sm:w-auto " onClick={onContinue}>
           Continue as Guest
         </Button>
-        <Button variant="primary" size="sm" className="w-full sm:w-auto " onClick={onCreateAccount}>
+        <Button variant="primary" size="md" className="w-full sm:w-auto " onClick={onCreateAccount}>
           Create Account
         </Button>
       </div>

@@ -1346,7 +1346,7 @@ export class ExplorationLoop {
     }
 
     const reason =
-      `Boundary Saturation Reached — configured scope fully explored (${limits.join('; ')}). ` +
+      `Configured Scope Fully Explored (${limits.join('; ')}). ` +
       'The application graph beyond the boundary was not explored.';
     this.deps.telemetry.emit('ACTION', { actionExecuted: 'boundary-saturation', message: reason });
     return { completed: true, reason, outcome: 'boundary-saturated' };

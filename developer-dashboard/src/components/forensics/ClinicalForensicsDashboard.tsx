@@ -442,7 +442,7 @@ function ClinicalForensicsDashboard({
                 if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
               }}
               disabled={isActiveSession}
-              className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
+              className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-normal font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
               placeholder="Enter a URL"
             />
             {/* Overlays the page rather than reflowing it — the field keeps its position. */}

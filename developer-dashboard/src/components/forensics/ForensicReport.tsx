@@ -101,8 +101,8 @@ function riskTheme(score: number): string {
 function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-caption font-medium   text-(--text-secondary)">{label}</div>
-      <div className={`mt-0.5 text-[13px] font-bold tabular-nums ${valueClassName}`}>{value}</div>
+      <div className="text-[13px] font-medium  text-(--text-secondary)">{label}</div>
+      <div className={`mt-0.5 text-sm font-medium tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
 }
