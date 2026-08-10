@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Add custom tFix forensic report scrolling and element data consistence"
+git commit -m "Fix BugSafari HTTP 200 soft-fail detection and classification"
 git push origin HEAD:dev --force
 
 
