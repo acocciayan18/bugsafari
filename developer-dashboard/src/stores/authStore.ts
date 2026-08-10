@@ -9,7 +9,8 @@ import {
     onSessionRevoked,
     persistSession,
     clearSession,
-    getRefreshToken,
+    hasStoredSession,
+    parseStoredUser,
 } from '../utils/authRefresh';
 import { navigateTo } from './authBridge';
 import { RUN_ID_STORAGE_KEY, RUN_SCOPED_STORAGE_KEYS } from './run/types';
@@ -17,7 +18,6 @@ import type { AuthUser, LoginCredentials, SignupCredentials } from '../context/A
 
 interface AuthResponse {
     token?: string;
-    refreshToken?: string;
     user?: AuthUser;
 }
 
@@ -44,9 +44,9 @@ interface AuthState {
     refreshToken: () => Promise<boolean>;
     clearAuthError: () => void;
     setSession: (token: string | null, user: AuthUser | null) => void;
-    // Persist + publish a full session from a token pair (login-equivalent path
-    // used by email verification auto-login).
-    establishSession: (token: string, refreshToken: string, user: AuthUser) => void;
+    // Persist + publish a full session (login-equivalent path used by email
+    // verification auto-login). The refresh token is set server-side as a cookie.
+    establishSession: (token: string, user: AuthUser) => void;
 }
 
 // Derived, never stored — a stored copy would drift from token/user.
@@ -57,8 +57,8 @@ export const selectIsAuthLoading = (s: AuthState) => s.token !== null && s.user 
 // routine rotates for a fresh pair rather than dropping the identity.
 function readStoredToken(): string | null {
     const stored = localStorage.getItem('bugsafari_token');
-    if (stored && isTokenExpired(stored) && !getRefreshToken()) {
-        console.warn('[authStore] Access token expired with no refresh token, clearing session');
+    if (stored && isTokenExpired(stored) && !hasStoredSession()) {
+        console.warn('[authStore] Access token expired with no recoverable session, clearing session');
         clearSession();
         return null;
     }
@@ -67,14 +67,8 @@ function readStoredToken(): string | null {
 
 function readStoredUser(): AuthUser | null {
     const stored = localStorage.getItem('bugsafari_token');
-    if (stored && isTokenExpired(stored) && !getRefreshToken()) return null;
-    const storedUser = localStorage.getItem('bugsafari_user');
-    if (!storedUser) return null;
-    try {
-        return JSON.parse(storedUser);
-    } catch {
-        return null;
-    }
+    if (stored && isTokenExpired(stored) && !hasStoredSession()) return null;
+    return parseStoredUser(localStorage.getItem('bugsafari_user'));
 }
 
 // Release any backend run the outgoing identity owns BEFORE its tokens are dropped,
@@ -105,9 +99,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     setSession: (token, user) => set({ token, user }),
 
-    establishSession: (token, refreshToken, user) => {
+    establishSession: (token, user) => {
         set({ token, user, isGuestMode: false });
-        persistSession(token, refreshToken, user);
+        persistSession(token, user);
         localStorage.removeItem('bugsafari_guest');
     },
 
@@ -124,16 +118,16 @@ export const useAuthStore = create<AuthState>((set) => ({
             return false;
         }
 
-        const { token, refreshToken, user } = result.data;
-        if (!token || !refreshToken || !user) {
-            console.error('[authStore] Login accepted but the token pair was incomplete:', result.data);
+        const { token, user } = result.data;
+        if (!token || !user) {
+            console.error('[authStore] Login accepted but the session payload was incomplete:', result.data);
             set({ authError: buildFeedback('UNEXPECTED_RESPONSE'), isLoading: false });
             return false;
         }
 
         // React state first so an immediate re-login never reads a stale cache
         set({ token, user, isGuestMode: false, isLoading: false });
-        persistSession(token, refreshToken, user);
+        persistSession(token, user);
         localStorage.removeItem('bugsafari_guest');
         console.log('[authStore] Login successful:', user.email);
         navigateTo('/dashboard');
@@ -186,13 +180,14 @@ export const useAuthStore = create<AuthState>((set) => ({
         // Release the backend run this identity owns before its tokens are dropped —
         // otherwise a stuck/abandoned session survives logout and blocks the next login.
         releaseBackendRun();
-        // Fire-and-forget revoke so the refresh token can't be replayed; local teardown never waits
-        const refresh = getRefreshToken();
-        if (refresh) {
+        // Fire-and-forget revoke so the refresh token can't be replayed; local teardown
+        // never waits. The httpOnly cookie carries the token and is cleared server-side.
+        if (hasStoredSession()) {
             void fetch(apiUrl('/api/auth/logout'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refreshToken: refresh }),
+                credentials: 'include',
+                body: '{}',
             }).catch(() => undefined);
         }
 
@@ -276,11 +271,11 @@ export function initAuthStore(): void {
 
     // Cross-tab sync: 'storage' fires only in OTHER tabs, never the one that wrote
     window.addEventListener('storage', (event: StorageEvent) => {
-        const watched = ['bugsafari_token', 'bugsafari_refresh', 'bugsafari_user', 'bugsafari_guest'];
+        const watched = ['bugsafari_token', 'bugsafari_session', 'bugsafari_user', 'bugsafari_guest'];
         if (!watched.includes(event.key ?? '')) return;
 
         const nextToken = localStorage.getItem('bugsafari_token');
-        const nextUser = localStorage.getItem('bugsafari_user');
+        const nextUser = parseStoredUser(localStorage.getItem('bugsafari_user'));
 
         if (!nextToken || !nextUser) {
             useAuthStore.setState({
@@ -291,16 +286,12 @@ export function initAuthStore(): void {
             return;
         }
 
-        // Recoverable in the other tab while it still holds a refresh token
-        if (isTokenExpired(nextToken) && !getRefreshToken()) {
+        // Recoverable in the other tab while its refresh session persists
+        if (isTokenExpired(nextToken) && !hasStoredSession()) {
             setSession(null, null);
             return;
         }
 
-        try {
-            useAuthStore.setState({ token: nextToken, user: JSON.parse(nextUser), isGuestMode: false });
-        } catch {
-            // Malformed stored user from the other tab — keep current state
-        }
+        useAuthStore.setState({ token: nextToken, user: nextUser, isGuestMode: false });
     });
 }

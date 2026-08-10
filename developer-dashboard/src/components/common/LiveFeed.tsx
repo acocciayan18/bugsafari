@@ -4,7 +4,6 @@
 
 import { memo, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
-import { LiveFeedRenderer } from '../../infrastructure/socket/BinaryFrameReceiver';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import type { RunTerminationOutcome } from '../../types';
 import { TERMINATION_COPY } from '../../types';
@@ -16,8 +15,6 @@ interface LiveFeedProps {
   isConnected?: boolean;
   isTestRunning: boolean;
   isQueued?: boolean;
-  useBinaryStream?: boolean;
-  binaryWsUrl?: string;
   hasRunCompleted?: boolean;
   isInitializing?: boolean;
   liveFrame?: string | null;
@@ -50,8 +47,6 @@ function LiveFeed({
   targetUrl,
   isTestRunning,
   isQueued = false,
-  useBinaryStream = false,
-  binaryWsUrl = 'ws://localhost:8765',
   hasRunCompleted = false,
   isInitializing = false,
   liveFrame = null,
@@ -65,7 +60,6 @@ function LiveFeed({
   const isSecureUrl = displayUrl.startsWith('https://');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<LiveFeedRenderer | null>(null);
   // One reused decoder + a generation counter so an older frame's late decode can
   // never paint over a newer one, and a pending decode is dropped on unmount.
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -162,37 +156,11 @@ function LiveFeed({
     };
   }, [updateCanvasSize]);
 
-  // Binary stream handling
-  useEffect(() => {
-    if (!useBinaryStream || !canvasRef.current || rendererRef.current) {
-      return;
-    }
-
-    try {
-      rendererRef.current = new LiveFeedRenderer({
-        canvasElement: canvasRef.current,
-        wsUrl: binaryWsUrl,
-        frameWidth: NATIVE_VIEWPORT_WIDTH,
-        frameHeight: NATIVE_VIEWPORT_HEIGHT,
-      });
-
-      rendererRef.current.connect();
-      rendererRef.current.start();
-
-      return () => {
-        rendererRef.current?.destroy();
-        rendererRef.current = null;
-      };
-    } catch (error) {
-      console.error('[LiveFeed] Failed to initialize binary renderer:', error);
-    }
-  }, [useBinaryStream, binaryWsUrl]);
-
 // Frame rendering - uses object-fit: cover (fills canvas, cropped if needed)
   const renderFrame = liveFrame || frame;
 
   useEffect(() => {
-    if (!renderFrame || useBinaryStream || !canvasRef.current) return;
+    if (!renderFrame || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -229,7 +197,7 @@ function LiveFeed({
     img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
 
     return () => { img.onload = null; };
-  }, [renderFrame, useBinaryStream]);
+  }, [renderFrame]);
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden bg-(--surface-panel) shadow-md rounded-md border border-(--border-hairline)">
@@ -262,7 +230,7 @@ function LiveFeed({
             </span>
           )}
 
-          {!isQueued && !isTestRunning && !useBinaryStream && (
+          {!isQueued && !isTestRunning && (
             <span className="whitespace-nowrap text-xs text-(--text-tertiary) sm:text-[13px]">Ready</span>
           )}
 

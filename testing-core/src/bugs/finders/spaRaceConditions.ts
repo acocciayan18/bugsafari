@@ -2,8 +2,13 @@ import type { Page } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import { FREEZE_SELECTORS, matchesCategory } from '../knowledgeBase/signalPatterns.js';
-import { classifyInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
+import { classifyInputElement, isSensitiveInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../domain/scenarios/fuzzing/payloadEscalator.js';
+import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
+import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { nextBurstId } from '../../infrastructure/monitoring/burstCorrelation.js';
+import { resolveElementLabel, elementNoun, narrateActionRecords } from '../../domain/services/forensics/narration.js';
+import { safeRoutePath } from '../../domain/services/exploration/bugIdentity.js';
 
 // Grace period for the burst's async work to resolve before judging the UI stuck.
 const SETTLE_MS = 1500;
@@ -14,6 +19,8 @@ const SETTLE_MS = 1500;
 export interface ConcurrentStressResult {
   attempted: number;
   completed: number;
+  // Correlation id of the pre-recorded burst; absent when no target was actuable.
+  burstId?: string;
 }
 
 /**
@@ -44,9 +51,22 @@ export async function burstConcurrentStress(
   const clickable = candidates.filter((element) => !isFillableInput(element)).slice(0, maxConcurrent);
   const fillable = candidates.filter(isFillableInput).slice(0, maxInputs);
 
+  // One id ties every intended action of this burst together. Log the INTENT of each
+  // action BEFORE firing so a crash mid-burst still leaves a reproduction trail — the
+  // finding used to arrive with none because the burst was never recorded (audit).
+  const burstId = nextBurstId();
+  const url = page.url();
   const promises: Promise<boolean>[] = [];
 
   for (const element of clickable) {
+    ActionRecorder.recordStep({
+      actionType: 'CLICK',
+      humanIdentifier: resolveElementLabel(element),
+      elementKind: elementNoun(element.tagName, element.type),
+      selector: element.selector,
+      url,
+      burstId,
+    });
     promises.push(
       page
         .locator(element.selector)
@@ -66,6 +86,16 @@ export async function burstConcurrentStress(
       0,
       deriveFuzzSeed(`race:${element.selector}:${step}`, category),
     ).value;
+    ActionRecorder.recordStep({
+      actionType: 'TYPE',
+      humanIdentifier: resolveElementLabel(element),
+      elementKind: elementNoun(element.tagName, element.type),
+      selector: element.selector,
+      url,
+      value,
+      redactValue: isSensitiveInputElement(element),
+      burstId,
+    });
     promises.push(
       page
         .locator(element.selector)
@@ -81,6 +111,7 @@ export async function burstConcurrentStress(
   return {
     attempted: promises.length,
     completed: results.filter(Boolean).length,
+    burstId,
   };
 }
 
@@ -168,6 +199,16 @@ export const spaRaceConditionsFinder: BugFinder = {
       ? `The page crashed during the burst of events: ${damage.crashes.join(' | ')}`
       : 'The page stayed stuck in a loading or blocked state after the burst finished';
 
+    // Reproduction from the burst's own pre-recorded intents (filtered by its id, so it
+    // can never inherit an unrelated scenario's steps). The narrative and the replayable
+    // actions describe the same sequence a developer must fire to reproduce the race.
+    const burstActions = result.burstId
+      ? ReproductionPlaybookStore.snapshot().filter((action) => action.burstId === result.burstId)
+      : [];
+    const reproductionPlaybook = burstActions.length > 0
+      ? narrateActionRecords(burstActions)
+      : [`Step 1. On ${safeRoutePath(ctx.page) || urlBefore}, fire ${result.attempted} overlapping UI events (rapid concurrent clicks/inputs) at once and observe the app fail to settle.`];
+
     return [
       {
         bugClass: 'SPA_STATE_RACE_CONDITION',
@@ -177,6 +218,8 @@ export const spaRaceConditionsFinder: BugFinder = {
           message: `${detail}. ${result.completed} of ${result.attempted} overlapping events fired at once.`,
           actionExecuted: 'spa-race-concurrent-events',
           stateHash: ctx.stateHash,
+          reproductionPlaybook,
+          reproductionActions: burstActions.length > 0 ? burstActions : undefined,
         },
       },
     ];

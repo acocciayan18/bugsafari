@@ -111,7 +111,7 @@ export class ActionExecutor {
     target: InteractiveElement,
     ranked: InteractiveElement[],
     revisitedPage: boolean,
-  ): Promise<void> {
+  ): Promise<{ interacted: boolean }> {
     // Classify first so the gliding active-indicator can color by interaction kind.
     const scope = classifyInteractionScope(target);
     await this.deps.highlighter.moveHighlight(page, target.selector, HIGHLIGHT_ACTION[scope] ?? 'click');
@@ -137,16 +137,14 @@ export class ActionExecutor {
           selector: target.selector,
           message: ` Form fuzz cap (${this.deps.formFuzzCap}) reached for ${humanizeElement(target)} — excluding form from further fuzzing.`,
         });
-        return;
+        return { interacted: false };
       }
       if (this.deps.gate.isEnabled('dataFuzzing')) {
-        await this.executeInputFuzzing(page, target, 'fuzz');
-      } else {
-        // Any non-fuzz profile still exercises the field with a benign value+submit
-        // so inputs are never silently skipped (they drive validation/API/state).
-        await this.executeExploratoryInput(page, target);
+        return { interacted: await this.executeInputFuzzing(page, target, 'fuzz') };
       }
-      return;
+      // Any non-fuzz profile still exercises the field with a benign value+submit
+      // so inputs are never silently skipped (they drive validation/API/state).
+      return { interacted: await this.executeExploratoryInput(page, target) };
     }
 
     // SUPPORTING FORM CONTROLS — toggles and dropdowns are navigation substrate
@@ -154,19 +152,16 @@ export class ActionExecutor {
     // independent of payload gating, so a data-attack campaign can reach submit
     // instead of stalling on an unchecked box or unselected dropdown.
     if (scope === 'toggle') {
-      await this.actuateToggle(page, target);
-      return;
+      return { interacted: await this.actuateToggle(page, target) };
     }
     if (scope === 'dropdown') {
-      await this.actuateDropdown(page, target);
-      return;
+      return { interacted: await this.actuateDropdown(page, target) };
     }
 
     // FILE inputs — exercise upload validation/API by setting a synthetic in-memory
     // file directly (no blocking native chooser).
     if (scope === 'file') {
-      await this.actuateFileInput(page, target);
-      return;
+      return { interacted: await this.actuateFileInput(page, target) };
     }
 
     // INERT controls (hidden inputs) cannot be safely driven. Skip without interaction.
@@ -176,15 +171,18 @@ export class ActionExecutor {
         selector: target.selector,
         message: `Skipped non-actuable control ${humanizeElement(target)}.`,
       });
-      return;
+      return { interacted: false };
     }
 
     // CLICKABLE NAVIGATION CONTROL.
     // 1) Navigation substrate — ALWAYS traverse the navigator-chosen edge so the
     //    state graph keeps expanding regardless of which payload scenarios are
     //    active. Restricting Data Fuzzing (or any scenario) restricts payload
-    //    execution only, never navigation.
-    await this.navigateTarget(page, target);
+    //    execution only, never navigation. `interacted` is whether the click
+    //    actually actuated — an unresolved (obscured/detached/driver-timeout)
+    //    click is 0 successful interactions, so downstream never mistakes it for
+    //    an app defect.
+    const interacted = await this.navigateTarget(page, target);
 
     // Cascade back-off: skip the stress/concurrency payload (navigation above already ran) until the failure burst clears.
     if (this.deps.isNetworkCascading()) {
@@ -193,7 +191,7 @@ export class ActionExecutor {
         selector: target.selector,
         message: ` Network failure cascade detected — skipping stress-scenario payload on ${humanizeElement(target)} to avoid piling onto an unstable page.`,
       });
-      return;
+      return { interacted };
     }
 
     // 2) Payload layer — run the deterministic, operator-gated stress scenario for
@@ -213,6 +211,8 @@ export class ActionExecutor {
         ActiveScenarioTracker.end();
       }
     }
+
+    return { interacted };
   }
 
   /**
@@ -221,7 +221,7 @@ export class ActionExecutor {
    * design — payload scenarios layer on top, but navigation always runs so the
    * StateGraphNavigator can keep discovering new application states.
    */
-  private async navigateTarget(page: Page, target: InteractiveElement): Promise<void> {
+  private async navigateTarget(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
     const kind = elementNoun(target.tagName, target.type);
     this.deps.telemetry.emitMilestone(describeNavigation(label, kind));
@@ -255,6 +255,9 @@ export class ActionExecutor {
         },
       );
     }
+    // Actuated = a real click landed (trusted/forced/dispatched). An unresolved
+    // rung is 0 successful interactions — the control could not be driven at all.
+    return click.actuated;
   }
 
   /**
@@ -264,7 +267,7 @@ export class ActionExecutor {
    * trusted `check()` (idempotent, actionability-aware) and falls back to a direct
    * state set + framework event dispatch when the control is obscured/detached.
    */
-  private async actuateToggle(page: Page, target: InteractiveElement): Promise<void> {
+  private async actuateToggle(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
 
     // Strip client constraints (disabled/readonly) so the toggle can be driven.
@@ -304,6 +307,7 @@ export class ActionExecutor {
         ? `️ Enabled toggle "${label}" to progress the form/workflow.`
         : `Toggle "${label}" could not be actuated (obscured or detached).`,
     });
+    return checked;
   }
 
   /**
@@ -313,7 +317,7 @@ export class ActionExecutor {
    * Playwright's `selectOption()` (fires input/change) and falls back to a direct
    * value set + event dispatch.
    */
-  private async actuateDropdown(page: Page, target: InteractiveElement): Promise<void> {
+  private async actuateDropdown(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
 
     await page
@@ -355,6 +359,7 @@ export class ActionExecutor {
         ? ` Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
         : `Dropdown "${label}" had no selectable option.`,
     });
+    return selected;
   }
 
   /**
@@ -363,7 +368,7 @@ export class ActionExecutor {
    * owning form so upload validation / backend handling is exercised. Strips
    * disabled/accept constraints first so the file is accepted regardless of gates.
    */
-  private async actuateFileInput(page: Page, target: InteractiveElement): Promise<void> {
+  private async actuateFileInput(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
     await page
       .evaluate((sel) => {
@@ -405,6 +410,7 @@ export class ActionExecutor {
         ? ` Attached synthetic file to "${label}" and submitted to exercise upload validation.`
         : `File input "${label}" could not be actuated.`,
     });
+    return attached;
   }
 
   /**
@@ -633,7 +639,7 @@ export class ActionExecutor {
     page: Page,
     target: InteractiveElement,
     mode: 'fuzz' | 'exploratory',
-  ): Promise<void> {
+  ): Promise<boolean> {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
     // Control noun (field / text box / dropdown / …) so the reproduction playbook
@@ -748,23 +754,27 @@ export class ActionExecutor {
       // 4b) Payload-correlated leak confirmation while the FUZZ transaction is still
       // open: fuzzGuard reports a finding ONLY when the injected payload actually
       // reflected unescaped or executed (reflection oracle) — never on tag presence.
-      try {
-        // stateHash is intentionally empty: this path is payload-correlated, not
-        // state-correlated — the finding's identity derives from payload + selector.
-        const ctx: BugContext = {
-          page,
-          targetUrl: this.deps.getTargetOrigin(),
-          step: level,
-          stateHash: '',
-          crashHalted: false,
-          element: target,
-        };
-        const leaks = await fuzzGuard.run(ctx);
-        for (const leak of leaks) {
-          await this.registerFuzzFinding(leak, payload, target, page);
+      // Gated on delivery: a payload the field never took is 0 successful
+      // interactions, so there is nothing to have leaked (verify-before-finding).
+      if (injection.delivered) {
+        try {
+          // stateHash is intentionally empty: this path is payload-correlated, not
+          // state-correlated — the finding's identity derives from payload + selector.
+          const ctx: BugContext = {
+            page,
+            targetUrl: this.deps.getTargetOrigin(),
+            step: level,
+            stateHash: '',
+            crashHalted: false,
+            element: target,
+          };
+          const leaks = await fuzzGuard.run(ctx);
+          for (const leak of leaks) {
+            await this.registerFuzzFinding(leak, payload, target, page);
+          }
+        } catch (error) {
+          obsLog.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
         }
-      } catch (error) {
-        obsLog.warn('[ActionExecutor] Fuzz leak confirmation failed:', error);
       }
 
       // 5) Escalation feedback: decide the level the NEXT encounter with this
@@ -811,6 +821,9 @@ export class ActionExecutor {
       this.deps.fuzzManager.closeTransaction();
       ActiveScenarioTracker.end();
     }
+    // Delivered = the field actually took the payload — a real interaction. A
+    // rejected value (controlled input discarded it) is 0 successful interactions.
+    return injection.delivered;
   }
 
   /**
@@ -820,7 +833,7 @@ export class ActionExecutor {
    * fuzzGuard, and attributes to an 'Exploratory' window — so the label is truthful
    * and a non-fuzz profile never secretly attacks the target.
    */
-  private async executeExploratoryInput(page: Page, target: InteractiveElement): Promise<void> {
+  private async executeExploratoryInput(page: Page, target: InteractiveElement): Promise<boolean> {
     const t = this.deps.telemetry;
     const label = resolveElementLabel(target);
     const kind = elementNoun(target.tagName, target.type);
@@ -831,7 +844,7 @@ export class ActionExecutor {
 
     ActiveScenarioTracker.begin('Exploratory', page.url() ?? this.deps.getTargetOrigin());
     try {
-      await this.injectPayload(page, target.selector, value);
+      const injection = await this.injectPayload(page, target.selector, value);
       ActiveScenarioTracker.record(describeInputInjection(label, value, redactValue, kind));
       this.deps.recordActionTrace(
         {
@@ -858,8 +871,10 @@ export class ActionExecutor {
         selector: target.selector,
         message: ` Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
       });
+      return injection.delivered;
     } catch (error) {
       obsLog.warn('[ActionExecutor] Exploratory input failed:', error);
+      return false;
     } finally {
       ActiveScenarioTracker.end();
     }

@@ -10,6 +10,7 @@ import {
   describeConstraintBypassPlaybook,
 } from '../forensics/narration.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
+import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
@@ -219,17 +220,33 @@ export class BugFinderRunner {
       ];
     }
 
+    // Precedence: finder-supplied reproduction (concurrent-burst finders pre-record their
+    // own) → bypass/fuzz synthesis above → never-empty fallback so no finding card is blank.
+    const ensured = ensureFindingEvidence({
+      attribution: {
+        bugClass: finding.bugClass,
+        cwe: definition.cwe,
+        scenario: attribution.scenario,
+        testingType: attribution.testingType,
+        stepIndex: ctx.step,
+      },
+      advice: definition.remediation,
+      reproductionPlaybook: finding.evidence?.reproductionPlaybook ?? reproductionSteps ?? [],
+      context: `${finding.title} (${safeRoutePath(ctx.page)})`,
+    });
+    const finalReproductionActions = finding.evidence?.reproductionActions ?? reproductionActions;
+
     this.deps.registerConfirmedBug({
       bugId: deriveBugId(finding, ctx),
       type: 'FINDER',
       message: finding.evidence?.message ?? finding.title,
       selector: finding.evidence?.selector ?? '',
       elementLabel: bypassLabel ?? (el ? resolveElementLabel(el) : undefined),
-      reproductionSteps,
-      reproductionActions,
+      reproductionSteps: ensured.reproductionPlaybook,
+      reproductionActions: finalReproductionActions,
       // Prefer the actual submitted payload (may be ''); fall back to the action label.
       payloadUsed: bypass ? bypass.payload : finding.evidence?.actionExecuted ?? '',
-      advice: definition.remediation,
+      advice: ensured.advice,
       timestamp: new Date(),
       severity: finding.severity,
       stateFingerprint,

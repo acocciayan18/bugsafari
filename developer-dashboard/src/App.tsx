@@ -143,7 +143,6 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                 <ClinicalForensicsDashboard
                   targetUrl={targetUrl}
                   currentUrl={state.currentUrl}
-                  frameBuffer={state.latestFrame}
                   telemetry={state.telemetry}
                   networkEvents={state.networkEvents}
                   accessibilityCount={state.accessibilityCount}
@@ -160,7 +159,6 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   terminationReason={state.terminationReason}
                   isSessionSaved={state.isSessionSaved}
                   isInitializing={state.isInitializing}
-                  liveFrame={state.liveFrame}
                   onPause={pauseTest}
                   onResume={resumeTest}
                   onStop={stopTest}

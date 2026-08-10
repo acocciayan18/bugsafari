@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { issueTokenPair } from './refreshTokenService.js';
+import { setRefreshCookie } from './refreshCookie.js';
 import { validateEmail, requireNonEmptyString, isPasswordTooLong, maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
@@ -99,6 +100,8 @@ export async function handleLogin(
 
       obsLog.info(`[Auth] User logged in: ${maskEmail(trimmedEmail)}`);
 
+      // Refresh token leaves in an httpOnly cookie, never the JS-readable body.
+      setRefreshCookie(response, tokens.refreshToken);
       response.json({
         ok: true,
         user: {
@@ -106,7 +109,6 @@ export async function handleLogin(
           email: trimmedEmail,
         },
         token: tokens.token,
-        refreshToken: tokens.refreshToken,
         expiresIn: tokens.expiresIn,
       });
     } catch (dbError) {

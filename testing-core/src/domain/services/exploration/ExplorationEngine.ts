@@ -875,7 +875,7 @@ export class ExplorationEngine {
   }
 
   /** `authOrigins` are ORIGINS only — the target's auth config never enters the engine. */
-  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 60, browserInfo?: BrowserInfo, authOrigins: readonly string[] = [], restoreSession?: SessionRestoreFn): Promise<RunResult> {
+  public async run(page: Page, targetUrl: string, telemetry: TelemetryGateway, maxSteps = 150, browserInfo?: BrowserInfo, authOrigins: readonly string[] = [], restoreSession?: SessionRestoreFn): Promise<RunResult> {
     // Initialize runtime metrics tracking
     this.runtimeMetrics = {
       startTime: Date.now(),

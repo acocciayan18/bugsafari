@@ -13,7 +13,6 @@ interface VerifyResponse {
   ok?: boolean;
   alreadyVerified?: boolean;
   token?: string;
-  refreshToken?: string;
   user?: AuthUser;
 }
 
@@ -59,13 +58,13 @@ export default function VerifyEmailForm() {
         return;
       }
 
-      const { token: accessToken, refreshToken, user } = result.data;
-      if (!accessToken || !refreshToken || !user) {
+      const { token: accessToken, user } = result.data;
+      if (!accessToken || !user) {
         setStatus('error');
         return;
       }
 
-      establishSession(accessToken, refreshToken, user);
+      establishSession(accessToken, user);
       authSuccessToast(AUTH_SUCCESS.emailVerified);
       setStatus('done');
       navigate('/dashboard');

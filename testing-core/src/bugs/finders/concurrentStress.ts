@@ -12,6 +12,7 @@
 
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, StressClickMetadata } from '../../domain/chaos/index.js';
+import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
 
@@ -278,6 +279,18 @@ export const concurrentStressGuard: BugFinder = {
     // If no specific issues found but we had a stress click, log the completion
     if (findings.length === 0) {
       obsLog.info(`[ConcurrentStressGuard] No stability issues detected for stress clicks at ${metadata.velocity}ms velocity`);
+      return findings;
+    }
+
+    // Attach the burst's reproduction. The ButtonSpammer/ConcurrentClicker window (still
+    // retained as last-closed) pre-recorded the burst, so this flush IS this burst's
+    // steps — carried onto every finding so the card never reads "No steps to reproduce".
+    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: ctx.page.url() });
+    for (const finding of findings) {
+      if (finding.evidence) {
+        finding.evidence.reproductionPlaybook = reproduction.narrative;
+        finding.evidence.reproductionActions = reproduction.actions.length > 0 ? reproduction.actions : undefined;
+      }
     }
 
     return findings;

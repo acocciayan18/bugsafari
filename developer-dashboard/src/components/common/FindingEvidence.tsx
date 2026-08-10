@@ -20,7 +20,7 @@ import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
   let lastLocation = '';
   return (
-    <ol className="custom-scrollbar max-h-96 space-y-1.5 overflow-y-auto overscroll-contain">
+    <ol className="custom-scrollbar max-h-80 sm:max-h-96 space-y-1.5 overflow-y-auto overscroll-auto scroll-smooth">
       {steps.map((step) => {
         const { kind, instruction, payloadDisplay, location } = humanizeActionStep(step);
         // Show the WHERE subline only when it changes, so same-page steps don't repeat it.

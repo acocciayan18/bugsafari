@@ -103,10 +103,14 @@ const stepLabel = (step: LabelledStep | undefined): string | undefined => {
   return label && !isSelectorLike(label) ? label : undefined;
 };
 
-// Human name for the culprit control, resolved in the same priority the engine
-// uses: an explicit backend label → the recorded step matching the culprit
-// selector → the last recorded step with any label → a concise semantic fallback
-// derived from the selector. Never returns a raw DOM path.
+// Human name for the culprit control, resolved from data that is IDENTICAL across
+// the live and saved surfaces so the Element never drifts: an explicit backend
+// label → the recorded step matching the culprit selector → a concise semantic
+// fallback derived from that selector → dropped when no control is known. The last
+// resort is intentionally NOT an arbitrary backward step-walk: that surfaced the
+// last labelled step of whichever timeline was handed in (full breadcrumbs live vs
+// minimized actionSteps saved), diverging the two views and leaking navigation/URL/
+// diagnostic text as the Element. Never returns a raw DOM path or error text.
 export function resolveCulpritLabel(
   explicit: string | undefined,
   selector: string | undefined,
@@ -115,15 +119,10 @@ export function resolveCulpritLabel(
   const named = (explicit ?? '').trim();
   if (named && !isSelectorLike(named)) return named;
   if (selector) {
-    const match = steps?.find((s) => s.selector === selector);
-    const matched = stepLabel(match);
-    if (matched) return matched;
+    const matched = stepLabel(steps?.find((s) => s.selector === selector));
+    return matched ?? semanticFallbackFromSelector(selector);
   }
-  for (let i = (steps?.length ?? 0) - 1; i >= 0; i--) {
-    const label = stepLabel(steps![i]);
-    if (label) return label;
-  }
-  return selector ? semanticFallbackFromSelector(selector) : undefined;
+  return undefined;
 }
 
 // Plain-text export of ONE finding — the payload behind the card's Copy button.
@@ -163,7 +162,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     timestamp: inc.timestamp,
     url: inc.url,
     selector: resolveCulprit(inc.culpritSelector, inc.steps),
-    elementLabel: resolveCulpritLabel(inc.culpritLabel, resolveCulprit(inc.culpritSelector, inc.steps), inc.steps),
+    elementLabel: resolveCulpritLabel(inc.culpritLabel, inc.culpritSelector, inc.steps),
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
     reproductionSteps: inc.reproductionPlaybook ?? [],
@@ -190,7 +189,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     timestamp: rep.timestamp,
     url: rep.url,
     selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs),
-    elementLabel: resolveCulpritLabel(rep.culpritLabel, resolveCulprit(rep.culpritSelector, rep.breadcrumbs), rep.breadcrumbs),
+    elementLabel: resolveCulpritLabel(rep.culpritLabel, rep.culpritSelector, rep.breadcrumbs),
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
     reproductionSteps: rep.reproductionPlaybook ?? [],
@@ -214,7 +213,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     occurrences,
     timestamp: bug.timestamp,
     selector: resolveCulprit(bug.selector, bug.actionSteps),
-    elementLabel: resolveCulpritLabel(bug.elementLabel, resolveCulprit(bug.selector, bug.actionSteps), bug.actionSteps),
+    elementLabel: resolveCulpritLabel(bug.elementLabel, bug.selector, bug.actionSteps),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,

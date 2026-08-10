@@ -451,7 +451,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       boot.stopFrameCaptureLoop();
 
       // Pass browserInfo to the engine for telemetry collection
-      result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 60, this.currentBrowserInfo, authOrigins, restoreSession);
+      result = await this.activeEngine.run(this.activePage, explorationUrl, telemetry, 150, this.currentBrowserInfo, authOrigins, restoreSession);
     } catch (err: unknown) {
       //  RACE CONDITION FIX: only treat this as an expected, graceful stop
       // when stop() actually tagged this run as cancelled. Previously this

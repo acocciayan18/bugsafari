@@ -75,10 +75,14 @@ export default function FindingsPanel({
   entries,
   emptyState,
   live = false,
+  showFilters = true,
+  bare = false,
 }: {
   entries: FindingEntry[];
   emptyState: ReactNode;
   live?: boolean;
+  showFilters?: boolean;
+  bare?: boolean;
 }) {
   const [catFilter, setCatFilter] = useState<Set<BugCategory>>(new Set());
   const [sevFilter, setSevFilter] = useState<Set<FaultSeverity>>(new Set());
@@ -142,6 +146,7 @@ export default function FindingsPanel({
   return (
     <div className="flex flex-col gap-3">
       {/* Toolbar — filter by family + severity, then sort. Wraps on narrow screens. */}
+      {!bare && (
       <div className="flex flex-col gap-2 rounded-lg border border-(--border-hairline) bg-(--surface-panel) p-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-semibold text-(--text-secondary)">{summary}</span>
@@ -169,6 +174,7 @@ export default function FindingsPanel({
           </div>
         </div>
 
+        {showFilters && (
         <div className="scroll-rail flex flex-wrap items-center gap-1.5">
           {BUG_CATEGORY_ORDER.filter((c) => catCounts.has(c)).map((c) => (
             <FilterChip
@@ -190,7 +196,9 @@ export default function FindingsPanel({
             />
           ))}
         </div>
+        )}
       </div>
+      )}
 
       {/* Results */}
       {filtered.length === 0 ? (
@@ -205,7 +213,7 @@ export default function FindingsPanel({
           className="flex flex-col gap-4"
           {...(live ? { role: 'log' as const, 'aria-live': 'assertive' as const, 'aria-relevant': 'additions' as const, 'aria-label': 'Captured findings' } : {})}
         >
-          {sort === 'newest'
+          {bare || sort === 'newest'
             ? filtered.map((entry, index) => <div key={entry.key}>{entry.render(index)}</div>)
             : groups.map(({ sev, rows }) => {
                 const isCollapsed = collapsed.has(sev);

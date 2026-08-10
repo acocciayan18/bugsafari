@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { validateEmail, validateToken, maskEmail } from './authValidation.js';
 import { issueTokenPair } from './refreshTokenService.js';
+import { setRefreshCookie } from './refreshCookie.js';
 import { sendVerificationEmail, deliveredOrDevFallback, EMAIL_VERIFICATION_TTL_MS } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
@@ -83,11 +84,12 @@ export async function handleVerifyEmail(
     const tokens = await issueTokenPair(user._id.toString(), trimmedEmail);
     obsLog.info(`[VERIFY EMAIL] Account verified: ${maskEmail(trimmedEmail)}`);
 
+    // Refresh token leaves in an httpOnly cookie, never the JS-readable body.
+    setRefreshCookie(response, tokens.refreshToken);
     response.json({
       ok: true,
       user: { id: user._id.toString(), email: trimmedEmail },
       token: tokens.token,
-      refreshToken: tokens.refreshToken,
       expiresIn: tokens.expiresIn,
     });
   } catch (err) {

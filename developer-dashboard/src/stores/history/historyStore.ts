@@ -29,6 +29,9 @@ export interface HistoryState {
     sortConfig: SortConfig;
     currentPage: number;
 
+    // Last card the user opened — the list scrolls it back into view on return, then clears it.
+    lastViewedId: string | null;
+
     reportCache: Record<string, ForensicReportResponse>;
 
     fetchSessions: (force?: boolean) => Promise<void>;
@@ -38,6 +41,7 @@ export interface HistoryState {
     setActiveFilter: (activeFilter: SeverityFilter) => void;
     setSortConfig: (update: (previous: SortConfig) => SortConfig) => void;
     setCurrentPage: (update: (previous: number) => number) => void;
+    setLastViewedId: (id: string | null) => void;
     reset: () => void;
 }
 
@@ -50,6 +54,7 @@ const INITIAL = {
     activeFilter: 'ALL' as SeverityFilter,
     sortConfig: { field: 'date', direction: 'desc' } as SortConfig,
     currentPage: 1,
+    lastViewedId: null as string | null,
     reportCache: {} as Record<string, ForensicReportResponse>,
 };
 
@@ -124,6 +129,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setActiveFilter: (activeFilter) => set({ activeFilter, currentPage: 1 }),
     setSortConfig: (update) => set((s) => ({ sortConfig: update(s.sortConfig), currentPage: 1 })),
     setCurrentPage: (update) => set((s) => ({ currentPage: Math.max(1, update(s.currentPage)) })),
+    setLastViewedId: (lastViewedId) => set({ lastViewedId }),
 
     reset: () => {
         inflightReports.clear();

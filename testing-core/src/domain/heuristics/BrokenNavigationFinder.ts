@@ -66,6 +66,11 @@ export interface InteractionObservation {
   traversalOk: boolean;
   landedInvalid: boolean;
   actionThrew: boolean;
+  /** True when the engine ACTUALLY actuated the control this step (click landed /
+   *  value delivered). Absent is treated as actuated for back-compat; an explicit
+   *  false means 0 successful interactions — the missing route change is BugSafari's
+   *  own miss (obscured/detached/driver timeout), never an app dead-link. */
+  actuated?: boolean;
   networkActivity: boolean;
   /** True when BugSafari's own boundary lock cancelled this control's navigation. */
   navigationBlocked?: boolean;
@@ -142,6 +147,17 @@ export class BrokenNavigationFinder {
 
   /** Dead-interaction oracle: nav-intent control that repeatedly changes nothing. */
   public observeInteraction(o: InteractionObservation): NavigationDefect[] {
+    const key = `${o.fromStructure}::${o.selector}`;
+    // 0 successful interactions: the engine could not actuate this control at all
+    // (obscured/detached overlay, or a Playwright actionability wait timeout —
+    // trustedClick returns without throwing, so actionThrew stays false and this
+    // would otherwise be mistaken for a dead app link on the first miss). The absent
+    // route change carries no evidence about the app: no strike, no finding, and it
+    // must not become the culprit any later async fault is pinned to.
+    if (o.actuated === false) {
+      this.deadClickStrikes.delete(key);
+      return [];
+    }
     const label = resolveControlName({ label: o.elementLabel, selector: o.selector });
     const name = label.startsWith('<') ? label : `"${label}"`;
     const kind = (o.elementKind ?? '').trim() || 'control';
@@ -155,7 +171,6 @@ export class BrokenNavigationFinder {
       url: o.url,
       atMs: o.timestampMs,
     };
-    const key = `${o.fromStructure}::${o.selector}`;
     if (o.traversalOk || o.toRoute !== o.fromRoute || o.networkActivity) {
       // A control that ever works is never dead — clear its strike history.
       this.deadClickStrikes.delete(key);

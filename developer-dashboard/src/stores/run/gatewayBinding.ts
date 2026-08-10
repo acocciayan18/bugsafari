@@ -34,18 +34,54 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     let pendingReports: ForensicCrashReport[] = [];
     let pendingIncidents: IncidentReport[] = [];
     let pendingAccessibility = 0;
-    let pendingFrame: string | null = null;
     // One-shot diagnostic: proves the live-frame channel actually reaches the client
     // (pairs with the engine's "first live frame emitted" log to localize a white feed).
     let firstFrameLogged = false;
 
+    // Frames ride their OWN rAF-paced commit, decoupled from the 80ms telemetry batch:
+    // the engine streams up to 30 fps with source backpressure, so tying frames to the
+    // telemetry window needlessly capped the feed at ~12 fps and added up to 80ms of lag.
+    // Only the newest frame is kept — intermediate ones are stale. Since the feed now
+    // subscribes to liveFrame in isolation (LiveFeedConnected), a per-frame commit
+    // re-renders only the viewport, never the dashboard.
+    let pendingFrame: string | null = null;
+    let frameHandle: number | ReturnType<typeof setTimeout> | null = null;
+    const hasRaf = typeof requestAnimationFrame === 'function';
+
+    const commitFrame = (): void => {
+        frameHandle = null;
+        if (pendingFrame === null) return;
+        const frame = pendingFrame;
+        pendingFrame = null;
+        s().setLiveFrame(frame);
+    };
+    const scheduleFrame = (): void => {
+        if (frameHandle !== null) return;
+        frameHandle = hasRaf ? requestAnimationFrame(commitFrame) : setTimeout(commitFrame, 16);
+    };
+    const cancelFrame = (): void => {
+        if (frameHandle === null) return;
+        if (hasRaf) cancelAnimationFrame(frameHandle as number);
+        else clearTimeout(frameHandle as ReturnType<typeof setTimeout>);
+        frameHandle = null;
+        pendingFrame = null;
+    };
+
+    // On a socket drop, discard everything staged pre-drop. A drop shorter than the
+    // flush window would otherwise flush these AFTER hydrateFromSnapshot restored the
+    // authoritative state, appending duplicate telemetry lines and a stale frame.
+    const resetPending = (): void => {
+        if (flushHandle !== null) { clearTimeout(flushHandle); flushHandle = null; }
+        cancelFrame();
+        pendingTelemetry = [];
+        pendingConsole = [];
+        pendingReports = [];
+        pendingIncidents = [];
+        pendingAccessibility = 0;
+    };
+
     const flush = (): void => {
         flushHandle = null;
-        // Draw only the newest frame from the window — intermediate ones are stale.
-        if (pendingFrame !== null) {
-            s().setLiveFrame(pendingFrame);
-            pendingFrame = null;
-        }
         if (pendingConsole.length > 0) {
             const batch = pendingConsole;
             pendingConsole = [];
@@ -81,7 +117,10 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
         if (flushHandle === null) flushHandle = setTimeout(flush, FLUSH_WINDOW_MS);
     };
 
-    gateway.onConnected((connected) => s().setConnected(connected));
+    gateway.onConnected((connected) => {
+        if (!connected) resetPending();
+        s().setConnected(connected);
+    });
     gateway.onReconnecting((attempt) => s().setReconnecting(attempt));
     gateway.onReconnectFailed(() => s().setReconnectFailed());
     gateway.onSessionSnapshot((snapshot) => s().hydrateFromSnapshot(snapshot));
@@ -117,7 +156,7 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
             logger.debug(`[gatewayBinding] first live-frame received from engine (${frame.length} chars)`);
         }
         pendingFrame = frame;
-        schedule();
+        scheduleFrame();
     });
     gateway.onBrowserConsole((message) => {
         pendingConsole.push(message);

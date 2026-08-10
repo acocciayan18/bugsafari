@@ -59,6 +59,9 @@ export interface ActionStepInput {
   /** UI container the acted element sits in — frames + disambiguates the step. */
   containerLabel?: string;
   containerKind?: string;
+
+  /** Correlation id shared by every intended action of one concurrent burst. */
+  burstId?: string;
 }
 
 /**
@@ -140,6 +143,7 @@ export class ActionRecorder {
       redactValue: step.redactValue,
       containerLabel: step.containerLabel,
       containerKind: step.containerKind,
+      burstId: step.burstId,
     };
 
     this.records.push(record);

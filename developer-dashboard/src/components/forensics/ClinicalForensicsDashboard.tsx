@@ -14,7 +14,7 @@ import {
 import TestingConfigModal from '../common/TestingConfigModal';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import type { RunTerminationOutcome } from '../../types';
-import LiveFeed from '../common/LiveFeed';
+import LiveFeedConnected from '../common/LiveFeedConnected';
 import SessionTimerLive from '../common/SessionTimerLive';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
@@ -22,7 +22,7 @@ import JumpToBottomButton from '../common/JumpToBottomButton';
 import LongOperationProgressCard from '../common/LongOperationProgressCard';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
-import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, ConsoleFilterBar, AiDiagnosticCard, TelemetryHelpModal, type ConsoleFilter } from '../telemetry';
+import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
 import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
@@ -74,8 +74,7 @@ function TabCount({ count }: { count: number }) {
 
 interface ClinicalForensicsDashboardProps {
   targetUrl: string;
-  currentUrl?: string; 
-  frameBuffer: string | null;
+  currentUrl?: string;
   telemetry: TelemetryEvent[] | string[];
   networkEvents: TelemetryEvent[];
   accessibilityCount?: number;
@@ -97,7 +96,6 @@ interface ClinicalForensicsDashboardProps {
   terminationReason?: string | null;
   isSessionSaved?: boolean;
   isInitializing?: boolean;
-  liveFrame?: string | null; 
   onPause?: () => void;
   onStop?: () => void;
   onResume?: () => void;
@@ -109,7 +107,6 @@ interface ClinicalForensicsDashboardProps {
 function ClinicalForensicsDashboard({
   targetUrl = '',
   currentUrl,
-  frameBuffer = null,
   telemetry = [],
   networkEvents = [],
   accessibilityCount = 0,
@@ -126,7 +123,6 @@ function ClinicalForensicsDashboard({
   terminationReason = null,
   isSessionSaved = false,
   isInitializing = false,
-  liveFrame = null,
   onPause,
   onResume,
   onStop,
@@ -159,8 +155,6 @@ function ClinicalForensicsDashboard({
   };
   // Off by default: hide per-step execution trace; flip to reveal the full log for debugging.
   const [showVerbose, setShowVerbose] = useState(false);
-  // Owned here so the Console filter bar can render in the fixed header instead of the scroll body.
-  const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all');
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(DEFAULT_BOUNDARY_LOCK_MODE);
@@ -309,8 +303,8 @@ function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-sm font-bold text-(--text-primary) sm:text-[13px] uppercase font-sans">
-            COMMAND CENTER
+          <h2 className="text-sm font-bold text-(--text-primary)  uppercase">
+            DASHBOARD
           </h2>
 
           {/* Single entry point for every pre-launch setting — locked mid-run, since
@@ -505,9 +499,8 @@ function ClinicalForensicsDashboard({
         <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
           <div className="flex-1 overflow-hidden bg-(--surface-raised) p-3 pb-2 sm:p-4 sm:pb-2">
             <div data-tour="live-feed" className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
-              <LiveFeed
+              <LiveFeedConnected
                 currentUrl={currentUrl || targetUrl}
-                frame={frameBuffer}
                 isConnected={isConnected}
                 isTestRunning={isTestRunning}
                 isQueued={isQueued}
@@ -515,7 +508,6 @@ function ClinicalForensicsDashboard({
                 terminationOutcome={terminationOutcome}
                 terminationReason={terminationReason}
                 isInitializing={isInitializing}
-                liveFrame={liveFrame}
               />
             </div>
           </div>
@@ -595,15 +587,6 @@ function ClinicalForensicsDashboard({
             </div>
           </div>
 
-          {/* Console severity filters — part of the fixed header block, so the log rows scroll under it. */}
-          {activeTab === 'console' && (
-            <ConsoleFilterBar
-              browserConsole={browserConsole}
-              filter={consoleFilter}
-              onFilterChange={setConsoleFilter}
-            />
-          )}
-
           {/* Core Logs Output Viewer Container */}
           <div className="relative min-h-0 flex-1 overflow-hidden">
             <div
@@ -671,7 +654,7 @@ function ClinicalForensicsDashboard({
 
               {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
               {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
-              {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} filter={consoleFilter} />}
+              {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} filter="all" />}
             </div>
             <JumpToBottomButton visible={!atBottom} onClick={scrollToBottom} />
           </div>

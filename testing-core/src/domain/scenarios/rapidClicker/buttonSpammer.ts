@@ -20,6 +20,7 @@ import { CLICK_COUNT } from './utils.js';
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
+import { nextBurstId } from '../../../infrastructure/monitoring/burstCorrelation.js';
 import {
   resolveElementLabel,
   elementNoun,
@@ -81,6 +82,7 @@ export const buttonSpammer = {
       selector,
       url: page.url(),
       repeatCount: CLICK_COUNT,
+      burstId: nextBurstId(),
     });
     ActiveScenarioTracker.record(describeConcurrentBurstIntent(label, kind, CLICK_COUNT));
 

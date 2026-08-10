@@ -24,7 +24,7 @@ export interface StateGraphNavigatorConfig {
    * Maximum depth of the DFS traversal stack. If the engine navigates deeper
    * than this limit the oldest frame is silently dropped (prevents unbounded
    * memory growth on infinite-scroll / auth-gated flows).
-   * Default: 60
+   * Default: 80
    */
   maxStackDepth: number;
 
@@ -32,7 +32,7 @@ export interface StateGraphNavigatorConfig {
    * Maximum number of graph nodes to retain. Once reached, the oldest
    * (by visitedAt) nodes are evicted. Their hashes remain in the
    * `seenHashes` set so we never re-register them.
-   * Default: 500
+   * Default: 1000
    */
   maxNodes: number;
 
@@ -190,8 +190,8 @@ export interface StateGraphNavigatorConfig {
 export const DEFAULT_CONFIG: StateGraphNavigatorConfig = {
   loopStrikeThreshold: 3,
   branchBlockThreshold: 2,
-  maxStackDepth: 60,
-  maxNodes: 500,
+  maxStackDepth: 80,
+  maxNodes: 1000,
   boredomThreshold: 15,
   adaptiveBoredom: true,
   boredomDensityWindow: 5,

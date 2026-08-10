@@ -21,13 +21,14 @@ import {
 import { ChaosInjectionRegistry } from '../../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { scrubCredentials } from './credentialScrub.js';
 import { resolveControlName } from '../../../../../shared/reproduction.js';
-import { RuntimeStabilityFinder, type RuntimeObservation } from '../../heuristics/RuntimeStabilityFinder.js';
+import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import type {
   ActionBreadcrumb,
+  FaultConfidence,
   FaultSeverity,
   FindingAttribution,
   NetworkRoutingVerdict,
@@ -75,6 +76,15 @@ const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', Foren
   HIGH: ForensicErrorSeverity.HIGH,
   CRITICAL: ForensicErrorSeverity.CRITICAL,
 };
+
+// Evidence-strength ordering — lets a caller raise (never lower) the confidence used
+// for scoring. An uncaught page exception is first-party proof the app threw, so its
+// floor is CONFIRMED regardless of how the message-text classifier ranked it.
+const CONFIDENCE_RANK: Record<FaultConfidence, number> = { INFERRED: 0, SIGNAL: 1, CONFIRMED: 2 };
+
+// Runtime subtypes that make the tab unusable outright — escalated to CRITICAL over the
+// RUNTIME_STABILITY_EXCEPTION HIGH default.
+const CRITICAL_RUNTIME_SUBTYPES: ReadonlySet<RuntimeSubtype> = new Set<RuntimeSubtype>(['RENDERER_CRASH', 'STACK_OVERFLOW']);
 
 /** Maps the resolved 5-tier FaultSeverity to the persisted forensic-error scale. */
 const FAULT_TO_FORENSIC: Record<FaultSeverity, ForensicErrorSeverity> = {
@@ -138,6 +148,28 @@ export function sanitizeException(error: Error | string): { message: string; sta
     message: scrubCredentials(`${errorType}: ${message}`),
     stackTrace: scrubCredentials(stackTrace),
   };
+}
+
+// A stack frame line: V8 ("    at fn (file:line:col)") or SpiderMonkey ("fn@url:line:col").
+const STACK_FRAME_RE = /^\s*(?:at\s|[^\s@]*@[^\s]*:\d+)/;
+
+/**
+ * Split a raw runtime fault into its human diagnostic message and its stack trace so
+ * the two never share one field. A pageerror already separates them (message + stack),
+ * but a console error usually arrives as one blob ("Error: x\n    at f (a.js:1:1)…").
+ * The leading non-frame lines are the message; the "at …" frames are the stack. An
+ * explicit stack always wins; a plain message with no frames yields an empty stack.
+ */
+export function separateMessageAndStack(rawMessage: string, stack?: string): { message: string; stackTrace: string } {
+  const normalized = (rawMessage ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n');
+  const firstFrame = lines.findIndex((line) => STACK_FRAME_RE.test(line));
+  const messageLines = firstFrame >= 0 ? lines.slice(0, firstFrame) : lines;
+  const message = messageLines.join('\n').trim() || normalized.trim() || 'Unknown runtime error';
+  const explicitStack = (stack ?? '').trim();
+  if (explicitStack) return { message, stackTrace: explicitStack };
+  const embeddedStack = firstFrame >= 0 ? lines.slice(firstFrame).join('\n').trim() : '';
+  return { message, stackTrace: embeddedStack };
 }
 
 // Remediation is now sourced from the knowledge-base bug catalog via the
@@ -401,6 +433,20 @@ export class StabilityMonitor {
     }
   }
 
+  // Human name of the control active at fault time — the accessible label/text when the
+  // interaction context knows it, else a semantic descriptor distilled from the selector.
+  // Never a raw CSS path (resolveControlName guarantees it). Absent when no control was
+  // active, so the UI shows a specific label instead of a generic tag or a selector.
+  private culpritLabelAt(atMs: number): string | undefined {
+    try {
+      const ctx = this.deps.getInteractionContext(atMs);
+      if (!ctx?.label && !ctx?.selector) return undefined;
+      return resolveControlName({ label: ctx.label, selector: ctx.selector });
+    } catch {
+      return undefined;
+    }
+  }
+
   // Culprit for a network fault, resolved at the request's START — when the control
   // that fired it was active — not its settle time (which may land on a later action).
   private culpritForRequest(request: Request): string | undefined {
@@ -512,6 +558,9 @@ export class StabilityMonitor {
       url?: string;
       content?: string;
       evidence?: VerificationCandidate['evidence'];
+      // Raises (never lowers) the confidence used for scoring. Provenance still gates
+      // first — a harness/driver/SDK fault is rejected before the floor can matter.
+      confidenceFloor?: FaultConfidence;
     },
   ): { report: boolean; advice: string; severity: ForensicErrorSeverity; attribution: FindingAttribution; reason: string } {
     const classification = classifyFault({
@@ -524,10 +573,15 @@ export class StabilityMonitor {
       stepIndex: ActiveScenarioTracker.getCurrentStepIndex(),
     });
 
+    const confidence =
+      opts?.confidenceFloor && CONFIDENCE_RANK[opts.confidenceFloor] > CONFIDENCE_RANK[classification.confidence]
+        ? opts.confidenceFloor
+        : classification.confidence;
+
     const outcome = this.verifier.evaluate({
       faultType,
       message,
-      confidence: classification.confidence,
+      confidence,
       statusCode: opts?.statusCode,
       url: opts?.url,
       content: opts?.content,
@@ -616,8 +670,10 @@ export class StabilityMonitor {
     faultAtMs: number = Date.now(),
   ): Promise<void> {
     const t = this.deps.telemetry;
-    const message = rawMessage || 'Unknown runtime error';
-    const stackTrace = stack ?? message;
+    // Keep the human diagnostic line and the stack frames in separate fields — a console
+    // error often arrives as one blob (message + "at …" frames), so splitting it means
+    // the finding shows a clean reason and the stack renders on its own.
+    const { message, stackTrace } = separateMessageAndStack(rawMessage, stack);
     const url = page.url();
     const timestamp = new Date().toISOString();
     const breadcrumbs = this.deps.getBreadcrumbs();
@@ -634,10 +690,16 @@ export class StabilityMonitor {
 
     // A fault whose root cause is not the target app (harness/driver/browser/env) is
     // demoted to informational telemetry and never registered as a bug.
+    // An uncaught page exception / rejection / renderer crash is first-party proof the
+    // app itself threw — the strongest possible runtime signal. Floor its confidence at
+    // CONFIRMED so a genuine, provenance-cleared fault reads as a confirmed finding, not
+    // an under-evidenced one. CONSOLE output is not necessarily an uncaught error, so it
+    // keeps the message-text classifier's own confidence.
     const verdict = this.verifyFault(faultType, message, {
       url,
       content: stackTrace,
       evidence: { hasMessage: true, hasStackTrace: Boolean(stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
+      confidenceFloor: source === 'CONSOLE' ? undefined : 'CONFIRMED',
     });
     const { severity, attribution } = verdict;
     if (!verdict.report) {
@@ -654,7 +716,7 @@ export class StabilityMonitor {
     await this.promotePendingNetworkFaults(faultAtMs);
 
     // Classify into a subtype + student-friendly remediation and dedup by signature.
-    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack, url, timestampMs: faultAtMs });
+    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack: stackTrace || stack, url, timestampMs: faultAtMs });
 
     // Collapse: a repeat of an already-reported signature never re-registers a bug.
     // Surface it as a throttled informational note so the recurrence stays visible.
@@ -684,7 +746,7 @@ export class StabilityMonitor {
     const reason = finding.message;
     // Best-effort source-map resolution of the raw stack's top frames (undefined
     // when the target ships no reachable maps).
-    const resolvedStackTrace = await this.getResolver(page).resolve(stack);
+    const resolvedStackTrace = await this.getResolver(page).resolve(stackTrace || stack);
 
     t.emit('EXCEPTION', {
       message: ` ${finding.message}`,
@@ -693,14 +755,25 @@ export class StabilityMonitor {
       attribution: complete.attribution,
     });
 
+    // A tab crash or a stack overflow leaves the page unusable → CRITICAL. Any other
+    // uncaught fault (we floored its confidence to CONFIRMED above) takes the HIGH
+    // RUNTIME_STABILITY_EXCEPTION bug-class default — the classifier's own severity was
+    // capped to MEDIUM under its INFERRED verdict, which no longer applies. CONSOLE
+    // output keeps that conservative classifier severity.
+    const severityBase = CRITICAL_RUNTIME_SUBTYPES.has(finding.subtype)
+      ? 'CRITICAL'
+      : source === 'CONSOLE'
+        ? severity
+        : undefined;
     const faultSeverity = resolveSeverity({
-      severity,
+      severity: severityBase,
       bugClass: complete.attribution.bugClass,
       confidence: complete.attribution.confidence,
       verificationStatus: complete.attribution.verificationStatus,
     });
 
     const culpritSelector = this.culpritSelectorAt(faultAtMs);
+    const culpritLabel = this.culpritLabelAt(faultAtMs);
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,
       timestamp,
@@ -716,6 +789,7 @@ export class StabilityMonitor {
       severity: faultSeverity,
       resolvedStackTrace,
       culpritSelector,
+      culpritLabel,
     });
 
     t.gateway.emitForensicReport({
@@ -732,6 +806,7 @@ export class StabilityMonitor {
       severity: faultSeverity,
       resolvedStackTrace,
       culpritSelector,
+      culpritLabel,
     });
 
     // Persist to forensic_errors so saved history mirrors the live Errors tab.
@@ -752,7 +827,8 @@ export class StabilityMonitor {
       bugId: finding.bugId,
       type: 'EXCEPTION',
       message: finding.message,
-      selector: this.culpritSelectorAt(faultAtMs) ?? '',
+      selector: culpritSelector ?? '',
+      elementLabel: culpritLabel,
       payloadUsed: source,
       advice: remediation,
       stackTrace,

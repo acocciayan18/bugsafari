@@ -196,19 +196,17 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
             type="button"
             onClick={generate}
             disabled={status === 'loading'}
-            className="inline-flex items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+            className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
           >
             {status === 'loading'
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry Fix' : 'Generate Fix'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}</>}
           </button>
         ) : <span />}
         {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
       </div>
 
-      {source === 'ai' && status !== 'error' && (
-        <div className="mb-1.5 text-xs font-medium text-(--text-tertiary)">✦ Automatically generated fix</div>
-      )}
+     
       {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
           {fallbackReasonText(reason)} Showing the saved fix instead.

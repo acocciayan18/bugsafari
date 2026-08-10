@@ -16,23 +16,37 @@ const TOKEN_REFRESHED_EVENT = 'bugsafari:token-refreshed';
 export const SESSION_REVOKED_EVENT = 'bugsafari:session-revoked';
 
 export const TOKEN_KEY = 'bugsafari_token';
-export const REFRESH_KEY = 'bugsafari_refresh';
 export const USER_KEY = 'bugsafari_user';
+// Non-sensitive presence hint. The refresh token now lives in an httpOnly cookie
+// JS cannot read, so this flag is how boot logic knows a refresh is worth attempting
+// instead of a pointless 401 on every guest/logged-out load. Lifecycle mirrors the cookie.
+export const SESSION_FLAG_KEY = 'bugsafari_session';
 
-export function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_KEY);
+export function hasStoredSession(): boolean {
+  return localStorage.getItem(SESSION_FLAG_KEY) === '1';
 }
 
-export function persistSession(token: string, refreshToken: string, user: RefreshedAuth['user']): void {
+export function persistSession(token: string, user: RefreshedAuth['user']): void {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(REFRESH_KEY, refreshToken);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(SESSION_FLAG_KEY, '1');
 }
 
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(SESSION_FLAG_KEY);
+}
+
+// Storage is attacker-writable — a tampered/corrupt user must never reach React
+// state, where a non-string email crashes the first render that indexes it.
+export function parseStoredUser(raw: string | null): RefreshedAuth['user'] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown>;
+    if (v && typeof v.id === 'string' && typeof v.email === 'string') return { id: v.id, email: v.email };
+  } catch { /* corrupt payload */ }
+  return null;
 }
 
 // Concurrent 401s must not each burn a rotation — the server revokes the whole
@@ -50,15 +64,19 @@ let inFlight: Promise<RefreshedAuth | null> | null = null;
 export async function refreshAuthToken(_currentToken?: string | null): Promise<RefreshedAuth | null> {
   if (inFlight) return inFlight;
 
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+  // No JS-readable refresh token to gate on anymore — the httpOnly cookie carries it.
+  // A load with no prior session skips the round-trip via the presence flag.
+  if (!hasStoredSession()) return null;
 
   inFlight = (async () => {
     try {
+      // credentials:'include' so the httpOnly refresh cookie rides along; the body
+      // is empty because the token is never in JS reach.
       const response = await fetch(apiUrl('/api/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        credentials: 'include',
+        body: '{}',
       });
 
       if (!response.ok) {
@@ -74,12 +92,11 @@ export async function refreshAuthToken(_currentToken?: string | null): Promise<R
 
       const data = await response.json() as {
         token?: string;
-        refreshToken?: string;
         user?: { id: string; email: string };
       };
-      if (!data.token || !data.refreshToken || !data.user) return null;
+      if (!data.token || !data.user) return null;
 
-      persistSession(data.token, data.refreshToken, data.user);
+      persistSession(data.token, data.user);
 
       const detail: RefreshedAuth = { token: data.token, user: data.user };
       window.dispatchEvent(new CustomEvent<RefreshedAuth>(TOKEN_REFRESHED_EVENT, { detail }));

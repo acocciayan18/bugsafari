@@ -68,6 +68,7 @@ export default function ErrorTabPanel({
       <FindingsPanel
         entries={entries}
         live
+        showFilters={false}
         emptyState={<div className="text-(--text-secondary) py-2">No findings captured yet.</div>}
       />
     </div>

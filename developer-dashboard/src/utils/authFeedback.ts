@@ -195,6 +195,8 @@ export async function postAuth<T>(path: string, body: unknown): Promise<AuthRequ
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // Auth routes issue/clear the httpOnly refresh cookie — it only rides with credentials.
+      credentials: 'include',
       body: JSON.stringify(body),
     });
   } catch (error) {

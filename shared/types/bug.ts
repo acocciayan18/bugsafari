@@ -127,6 +127,8 @@ export interface ActionRecord {
   containerLabel?: string;
   /** Container kind noun for that context: modal, dialog, tab, panel, section, form, … */
   containerKind?: string;
+  /** Correlates the concurrent actions of a single burst (stress/race) — one id per burst. */
+  burstId?: string;
 }
 
 /**

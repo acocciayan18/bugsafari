@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { rotateRefreshToken, revokeToken, type RotationFailure } from './refreshTokenService.js';
+import { readRefreshToken, setRefreshCookie, clearRefreshCookie } from './refreshCookie.js';
 import { maskEmail } from './authValidation.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
@@ -26,11 +27,14 @@ export async function handleTokenRefresh(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const presented = (request.body as { refreshToken?: unknown } | undefined)?.refreshToken;
+    const presented = readRefreshToken(request);
     const result = await rotateRefreshToken(presented);
 
     if (!result.ok) {
       obsLog.warn(`[Auth] Refresh rejected: ${result.reason}`);
+      // The presented cookie is now useless (dead/rotated/burned) — drop it so a
+      // revoked session can't keep replaying it on every reload.
+      clearRefreshCookie(response);
       const body: AuthErrorBody = {
         error: GENERIC_FAILURE,
         code: result.reason === 'REUSE_DETECTED' ? 'SESSION_REVOKED' : 'REFRESH_INVALID',
@@ -42,10 +46,11 @@ export async function handleTokenRefresh(
     // Rotation already loaded the user to sign the token — reuse its email
     // instead of a second identical lookup.
     obsLog.info(`[Auth] Token rotated for user: ${maskEmail(result.email)}`);
+    // Rotate the httpOnly cookie in lockstep; the successor never touches the body.
+    setRefreshCookie(response, result.tokens.refreshToken);
     response.json({
       ok: true,
       token: result.tokens.token,
-      refreshToken: result.tokens.refreshToken,
       expiresIn: result.tokens.expiresIn,
       user: { id: result.userId, email: result.email },
     });
@@ -65,7 +70,8 @@ export async function handleLogout(
   next: NextFunction,
 ): Promise<void> {
   try {
-    await revokeToken((request.body as { refreshToken?: unknown } | undefined)?.refreshToken, 'logout');
+    await revokeToken(readRefreshToken(request), 'logout');
+    clearRefreshCookie(response);
     response.json({ ok: true });
   } catch (err) {
     next(err);

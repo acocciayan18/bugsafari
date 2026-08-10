@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Add custom tooltip for CWE labels"
-git checkout -b 8-10-Ayan
-git push --set-upstream origin 8-10-Ayan
+git commit -m "Add custom tFix forensic report scrolling and element data consistence"
+git checkout -b 8-10-Ayan-1
+git push --set-upstream origin 8-10-Ayan-1
 
 
 

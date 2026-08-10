@@ -211,7 +211,8 @@ export class ExplorationLoop {
       stagnationForceBacktrack: 3, // score at/above which we force a backtrack
       maxRecoveryRounds: 2,
       sabotageCadence: 10,
-      hardCap: maxSteps * 5,
+      hardCap: Math.min(maxSteps * 5, 750), // absolute ceiling — never exceed 750 regardless of caller budget
+
       extensionSteps: Math.max(10, Math.ceil(maxSteps / 2)),
       coverageStallWindow: 12,
       previousCombined: '',
@@ -412,7 +413,7 @@ export class ExplorationLoop {
         // The edge stays 'traversing' in the navigator until we observe a new
         // stable DOM state; an unverified/failed click is isolated as unstable
         // and the parent is restored locally (never collapses the graph).
-        const { traversalOk, childHash, childStructure, landedInvalid, actionThrew } = await this.executeAndVerifyAction(
+        const { traversalOk, childHash, childStructure, landedInvalid, actionThrew, interacted } = await this.executeAndVerifyAction(
           page,
           ctx,
           step,
@@ -429,11 +430,24 @@ export class ExplorationLoop {
           traversalOk,
           landedInvalid,
           actionThrew,
+          actuated: interacted,
         });
 
         //  Finder sweep on the DOM the interaction actually produced — before
         // applyTraversalOutcome, which may restore the parent and destroy it.
-        await this.runBugFinders(page, step, fingerprint.currentHash, target, ranked);
+        // Skipped when the target was never actually driven: a sweep after a
+        // failed/obscured/driver-timed-out actuation would attribute pre-existing
+        // or engine-caused faults to a phantom interaction (0 successful
+        // interactions = internal testing noise, not a target-app finding).
+        if (interacted) {
+          await this.runBugFinders(page, step, fingerprint.currentHash, target, ranked);
+        } else {
+          this.deps.telemetry.emit('ACTION', {
+            actionExecuted: 'finder-sweep-skipped-no-interaction',
+            selector: target.selector,
+            message: `Skipped bug-finder sweep on ${humanizeElement(target)} — the control was not successfully actuated this step (no interaction to attribute a finding to).`,
+          });
+        }
 
         await this.applyTraversalOutcome(
           page,
@@ -691,6 +705,23 @@ export class ExplorationLoop {
       });
       return;
     }
+    // Driver-timeout corroboration: a 'timeout' scan means page.evaluate stopped
+    // answering entirely — which a wedged app main thread AND a broken/overloaded
+    // Playwright driver both produce. Require supporting evidence that the app was
+    // genuinely reachable this run (at least one successful interaction landed)
+    // before blaming the app; otherwise it is an unattributable driver/env wait
+    // timeout, reported as a suppressed diagnostic, not a CLIENT_RENDER_FREEZE. The
+    // 'unsettled' path is unaffected — a DOM node count that never stops changing is
+    // itself app-side evidence.
+    if (health === 'timeout' && this.deps.runtimeMetrics.interactionCount === 0) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'render-freeze-suppressed-uncorroborated',
+        url: page.url(),
+        message: `Script evaluation timed out at ${safeRoutePath(page)} with no successful interaction yet this run — treating as a driver/environment wait timeout, not a client render freeze.`,
+      });
+      return;
+    }
+
     const url = page.url();
     const routeKey = visitedRouteKey(url);
     if (ctx.freezeReported.has(routeKey)) return;
@@ -1181,7 +1212,7 @@ export class ExplorationLoop {
     page: Page,
     compound: CompoundStateHash,
     target: InteractiveElement,
-    outcome: { traversalOk: boolean; landedInvalid: boolean; actionThrew: boolean },
+    outcome: { traversalOk: boolean; landedInvalid: boolean; actionThrew: boolean; actuated: boolean },
   ): void {
     try {
       const url = page.isClosed() ? '' : page.url();
@@ -1197,6 +1228,7 @@ export class ExplorationLoop {
         traversalOk: outcome.traversalOk,
         landedInvalid: outcome.landedInvalid,
         actionThrew: outcome.actionThrew,
+        actuated: outcome.actuated,
         networkActivity: this.deps.hadNetworkActivitySinceAction(),
         navigationBlocked: this.navigationBlockedByLock(),
         url,
@@ -1713,7 +1745,7 @@ export class ExplorationLoop {
     revisitedPage: boolean,
     currentHash: string,
     exploreScore: number,
-  ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean; actionThrew: boolean }> {
+  ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean; actionThrew: boolean; interacted: boolean }> {
     // Emit exploration milestone
     const humanTarget = humanizeElement(target);
     this.deps.telemetry.emitMilestone(` Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
@@ -1725,6 +1757,10 @@ export class ExplorationLoop {
     let childHash = currentHash;
     let childStructure = '';
     let actionThrew = false;
+    // Whether the target was ACTUALLY driven (click actuated / value delivered).
+    // An unresolved click or rejected value is 0 successful interactions — a
+    // BugSafari/driver miss, never evidence about the app under test.
+    let interacted = false;
     // Armed across the action AND its verification, so the intercepted request is
     // one this interaction actually caused and a delayed response can still land.
     const armed = await this.armSabotageIfDue(page, ctx);
@@ -1732,7 +1768,8 @@ export class ExplorationLoop {
       // Attribute async signals (network xhr/fetch, detected faults) fired
       // during/after this action to the acting element for compound rewards.
       this.deps.noteActedTarget(target);
-      await this.deps.actionExecutor.executeWeightedAction(page, target, ranked, revisitedPage);
+      const actionResult = await this.deps.actionExecutor.executeWeightedAction(page, target, ranked, revisitedPage);
+      interacted = actionResult.interacted;
       const verification = await this.deps.stateRestorer.verifyTraversal(page, currentHash, 3000);
       traversalOk = verification.ok;
       childHash = verification.childHash;
@@ -1784,8 +1821,9 @@ export class ExplorationLoop {
       );
     }
 
-    // Phase 3: Track interaction count
-    this.deps.runtimeMetrics.interactionCount++;
+    // Phase 3: Track interaction count — only a SUCCESSFUL interaction counts, so
+    // the metric reflects real interactions with the app, not failed attempts.
+    if (interacted) this.deps.runtimeMetrics.interactionCount++;
 
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'action-executed',
@@ -1795,7 +1833,7 @@ export class ExplorationLoop {
 
     await this.deps.persistBrainSnapshot('runtime', step);
 
-    return { traversalOk, childHash, childStructure, landedInvalid, actionThrew };
+    return { traversalOk, childHash, childStructure, landedInvalid, actionThrew, interacted };
   }
 
   private async applyTraversalOutcome(

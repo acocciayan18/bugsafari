@@ -67,7 +67,7 @@ export default function TestingConfigModal({
       isOpen={isOpen}
       onClose={onClose}
       titleId="testing-config-title"
-      maxWidthClassName="max-w-3xl"
+      maxWidthClassName="max-w-4xl"
       closeOnBackdrop={false}
       backdropClassName="bg-transparent backdrop-blur-[3px]"
     >
@@ -112,7 +112,8 @@ export default function TestingConfigModal({
         ))}
       </div>
 
-      <div className="min-h-[240px] p-3 sm:p-4">
+      {/* Fixed height + inner scroll so the modal never resizes or shifts between tabs. */}
+      <div className="custom-scrollbar h-[420px] overflow-y-auto p-3 sm:p-4">
         {activeTab === 'infiltration' && (
           <div role="tabpanel" id="config-panel-infiltration" aria-labelledby="config-tab-infiltration" className="space-y-4">
             <InfiltrationProfileSelector profile={profile} onProfileChange={onProfileChange} />
@@ -169,15 +170,18 @@ export default function TestingConfigModal({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) px-4 py-3">
-        <span className="text-xs text-(--text-tertiary) font-sans">Applied on the next run.</span>
-        <button
-          onClick={onClose}
-          className="rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) hover:cursor-pointer text-(--text-oninvert) px-4 py-2 text-xs font-bold uppercase r transition-colors"
-        >
-          Done
-        </button>
-      </div>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3">
+  <span className="text-xs text-(--text-tertiary) font-sans">
+    Applied on the next run.
+  </span>
+
+  <button
+    onClick={onClose}
+    className="rounded-lg bg-(--surface-invert) px-6 py-2 text-xs font-bold uppercase text-(--text-oninvert) transition-colors hover:cursor-pointer hover:bg-(--surface-invert-hover)"
+  >
+    Done
+  </button>
+</div>
     </Modal>
   );
 }

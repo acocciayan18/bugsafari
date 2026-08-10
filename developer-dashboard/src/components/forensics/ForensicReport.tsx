@@ -17,7 +17,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
@@ -44,6 +45,7 @@ import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
 import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
 import ConsoleMessageList from '../common/ConsoleMessageCard';
+import { ConsoleFilterBar, type ConsoleFilter } from '../telemetry';
 import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
 import { requestAiInsights } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
@@ -134,12 +136,11 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
     {report.url || 'N/A'}
   </div>
 </div>
-<div className="flex flex-wrap items-center gap-2 text-xs text-(--text-secondary)">
+<div className="flex flex-wrap items-center mt-1 gap-2 text-xs text-(--text-secondary)">
           {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
           <span className="inline-flex items-center gap-1.5 py-0.5 rounded text-(--text-secondary) font-mono font-medium ">
             <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
             <span>{runCode}</span>
-            <CopyButton text={runCode} label="Run ID" />
           </span>
 
     {/* Vertical Hairline Divider */}
@@ -289,9 +290,7 @@ function AiInsightsPanel({
             {aiAnalysis.riskLevel} risk
           </span>
         )}
-        {aiGenerated && (
-          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold normal-case text-(--status-neutral-fg)">✦ Automatically Generated</span>
-        )}
+        
         {/* Generate once per run: hidden once AI insights exist (fresh or persisted),
             so a successful result is shown directly and never regenerated. It returns
             only when generation failed or fell back to the deterministic analysis. */}
@@ -300,11 +299,11 @@ function AiInsightsPanel({
             type="button"
             onClick={generate}
             disabled={status === 'loading'}
-            className="ml-auto inline-flex items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' ? 'Retry' : 'Generate Insights'}</>}
+              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' ? 'Retry' : 'Get Insights'}</>}
           </button>
         )}
       </div>
@@ -438,29 +437,44 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
 
 // Operator-facing explanation for each non-terminal-proof reason.
 const REASON_TEXT: Record<VerifyFixReason, string> = {
-  REPRODUCED: 'The original fault came back during replay, so the defect is still present.',
-  CLEAN_REPLAY: 'The recorded steps replayed cleanly, and none of the original fault signals came back.',
+  REPRODUCED:
+    'The original error happened again during replay. The defect is still present and needs further investigation.',
+
+  CLEAN_REPLAY:
+    'The recorded steps completed successfully, and none of the original error signals appeared. This is a good indication that the issue may be resolved.',
+
   INSUFFICIENT_REPLAY:
-    'Too few of the recorded steps actually ran (selectors may have changed), so a clean run does not prove the fix.',
+    'Only some of the recorded steps were completed, possibly because selectors or page elements have changed. A clean result is not enough to confirm that the fix works.',
+
   FAULT_TRIGGER_NOT_EXERCISED:
-    'The replay never re-triggered the request that caused the original fault, so a clean run cannot prove it is fixed.',
+    'The replay did not reach the request or action that originally caused the error. The result cannot confirm that the issue has been fixed.',
+
   UNVERIFIABLE_BUG_CLASS:
-    "Automated replay can't confirm this kind of bug (it needs a live oracle or non-deterministic timing). The recorded steps are for manual reproduction — re-test with a live exploration run.",
+    'This type of issue cannot be reliably confirmed through automated replay because it may depend on live conditions or timing. Run a new exploration and test the issue manually.',
+
   WEAK_MATCH_ONLY:
-    "A fault of the same type recurred but couldn't be confirmed as the original defect — this leans toward still-active. Treat it as unconfirmed, not fixed.",
+    'A similar error appeared during replay, but it could not be confirmed as the original defect. Treat the issue as unresolved until it can be verified with another test.',
+
   NO_REPLAY_STEPS:
-    "This finding has no recorded reproduction steps, so there was nothing to replay — Verify Fix can't confirm it. Re-run a live exploration to capture a replayable timeline.",
+    'No reproduction steps were recorded for this finding, so there is nothing to replay. Run a new exploration to capture the steps needed to verify the issue.',
+
   UNCONFIRMED_RESOLUTION:
-    "The first replay was clean, but a confirmation replay disagreed — this fault reproduces intermittently, so we can't confirm it's fixed. Re-test against a stable build.",
+    'The first replay completed successfully, but a second replay produced a different result. The issue may occur intermittently, so the fix cannot be confirmed yet.',
+
   INCOMPLETE_REPLAY:
-    "A page navigation aborted during replay, so the faulting page never fully loaded — a clean run can't prove this is fixed. Re-test against a stable build.",
+    'The replay stopped before the affected page finished loading. Because the faulty state was not reached, the result cannot confirm that the issue is fixed.',
+
   LEGACY_TIMELINE:
-    'This finding predates per-finding timelines, so the session-wide replay may never reach the faulting state and a clean run is not proof.',
+    'This finding was created before detailed reproduction timelines were available. The replay may not reach the exact state where the issue occurred, so the result cannot confirm the fix.',
+
   TARGET_UNREACHABLE:
-    "We couldn't reach the target to replay it — this says nothing about the bug. Check the app is running and retry.",
+    'BugSafari could not reach the target application during replay. This does not indicate whether the issue is fixed. Check that your application is running and try again.',
+
   AUTH_WALL:
-    "The replay hit a login wall (the saved session's credentials have expired), so it never reached the recorded surface. Re-test with a fresh authenticated run.",
-  REPLAY_ERROR: "We couldn't replay the target, so this result says nothing about the bug. Try again.",
+    'The replay reached a login screen because the saved authentication session is no longer valid. Run the test again with a fresh authenticated session.',
+
+  REPLAY_ERROR:
+    'BugSafari could not complete the replay because an error occurred. This result does not confirm whether the issue is fixed. Check the target application and try again.',
 };
 
 // A distinct, calmer badge for findings replay fundamentally CAN'T check — a class with
@@ -817,17 +831,18 @@ function TabCount({ count }: { count: number }) {
   );
 }
 
-function TabButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+function TabButton({ label, count, active, onClick, Icon }: { label: string; count: number; active: boolean; onClick: () => void; Icon: LucideIcon }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex shrink-0 items-center whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
+      className={`flex shrink-0 items-center cursor-pointer gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
         active
           ? 'border-(--border-strong) text-(--text-primary)'
           : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
       }`}
     >
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {label}
       <TabCount count={count} />
     </button>
@@ -1004,6 +1019,11 @@ export default function ForensicReport() {
       .map((e) => ({ timestamp: e.createdAt ?? '', level: 'error' as const, type: e.type ?? 'CONSOLE', message: e.message ?? '', stackTrace: e.stackTrace }));
   }, [report, reportErrors]);
   const [activeTab, setActiveTab] = useState<'findings' | 'network' | 'console'>('findings');
+  const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all');
+  const visibleConsole = useMemo(
+    () => (consoleFilter === 'all' ? consoleRows : consoleRows.filter((r) => r.level === consoleFilter)),
+    [consoleRows, consoleFilter],
+  );
   const { statuses, verify } = useRegressionVerifier();
 
   if (isLoading) return <ForensicReportSkeleton />;
@@ -1023,13 +1043,13 @@ export default function ForensicReport() {
   return (
     <div className="flex h-full w-full flex-col bg-(--surface-app)">
       {/* Header */}
-      <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-4">
+      <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-3">
         {/* Back leads the header (left) for intuitive back-navigation flow. */}
         <button
           onClick={() => window.history.back()}
           className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
-         <ArrowLeft className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+         <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
          Back
         </button>
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
@@ -1050,13 +1070,14 @@ export default function ForensicReport() {
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
             <div className="scroll-rail mb-4 flex items-center gap-1 border-b border-(--border-hairline)">
-              <TabButton label="Findings" count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
-              <TabButton label="Network" count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
-              <TabButton label="Console" count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
+              <TabButton label="Findings" Icon={TriangleAlert} count={runtimeBugs.length} active={activeTab === 'findings'} onClick={() => setActiveTab('findings')} />
+              <TabButton label="Network" Icon={Network} count={networkRows.length} active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
+              <TabButton label="Console" Icon={Terminal} count={consoleRows.length} active={activeTab === 'console'} onClick={() => setActiveTab('console')} />
             </div>
 
             {activeTab === 'findings' && (
               <FindingsPanel
+                bare
                 emptyState={<CleanRunCard />}
                 entries={runtimeBugs.map((bug, i): FindingEntry => ({
                   key: bug.bugId || String(i),
@@ -1081,9 +1102,18 @@ export default function ForensicReport() {
               />
             )}
             {activeTab === 'console' && (
-              consoleRows.length > 0
-                ? <ConsoleMessageList logs={consoleRows} />
-                : <EmptyTab message="No console output was recorded for this session." />
+              consoleRows.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  <div className="overflow-hidden rounded-lg border border-(--border-hairline)">
+                    <ConsoleFilterBar browserConsole={consoleRows} filter={consoleFilter} onFilterChange={setConsoleFilter} />
+                  </div>
+                  {visibleConsole.length > 0
+                    ? <ConsoleMessageList logs={visibleConsole} />
+                    : <EmptyTab message={`No ${consoleFilter} logs were recorded for this session.`} />}
+                </div>
+              ) : (
+                <EmptyTab message="No console output was recorded for this session." />
+              )
             )}
           </section>
 

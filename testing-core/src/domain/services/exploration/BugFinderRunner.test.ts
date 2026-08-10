@@ -245,6 +245,39 @@ async function main(): Promise<void> {
     assert.ok(bug.bugId.startsWith('finder-ROUTE_MUTATION_FAILURE-'));
   });
 
+  await check('a finder finding with no reproduction never registers an empty playbook', async () => {
+    // The stress/race regression: a finder that supplies no bypass/fuzz/reproduction
+    // used to reach the ledger with reproductionSteps=undefined → the dashboard showed
+    // "No steps to reproduce this finding were recorded." The central fallback fills it.
+    const { runner, registered } = makeRunner([
+      alwaysFinder({
+        bugClass: 'RUNTIME_STABILITY_EXCEPTION',
+        run: async () => [finding({ bugClass: 'RUNTIME_STABILITY_EXCEPTION', evidence: { message: 'crash' } })],
+      }),
+    ]);
+    await runner.sweep(fakeContext());
+    const bug = registered[0];
+    assert.ok(Array.isArray(bug.reproductionSteps) && bug.reproductionSteps.length > 0, 'a fallback step is always present');
+  });
+
+  await check('a finder-supplied reproduction is carried through verbatim', async () => {
+    const playbook = ['Step 1. Navigate to /orders', 'Step 2. Fire 4 overlapping events at once'];
+    const actions = [{ timestamp: 't', type: 'CLICK' as const, selector: '#a', url: 'https://target.test/orders', burstId: 'burst-1' }];
+    const { runner, registered } = makeRunner([
+      alwaysFinder({
+        bugClass: 'SPA_STATE_RACE_CONDITION',
+        run: async () => [finding({
+          bugClass: 'SPA_STATE_RACE_CONDITION',
+          evidence: { message: 'race', reproductionPlaybook: playbook, reproductionActions: actions },
+        })],
+      }),
+    ]);
+    await runner.sweep(fakeContext());
+    const bug = registered[0];
+    assert.deepEqual(bug.reproductionSteps, playbook, 'the finder-owned narrative wins');
+    assert.deepEqual(bug.reproductionActions, actions, 'the replayable timeline is carried');
+  });
+
   console.log(`\nBugFinderRunner: ${passed} checks passed.`);
 }
 

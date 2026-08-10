@@ -111,13 +111,17 @@ interface FreezeCapture {
   actions: string[];
 }
 
-function makeFreezeLoop(opts: { stopRequested?: boolean; paused?: boolean }): FreezeCapture {
+function makeFreezeLoop(opts: { stopRequested?: boolean; paused?: boolean; interactionCount?: number }): FreezeCapture {
   const registered: Array<{ attribution?: { bugClass?: string } }> = [];
   const actions: string[] = [];
   const loop = new ExplorationLoop({
     isStopRequested: () => opts.stopRequested ?? false,
     isPaused: () => opts.paused ?? false,
     getStopReason: () => null,
+    // interactionCount corroborates a 'timeout' freeze: >0 proves the app was
+    // genuinely reachable this run, so a total script-eval timeout is the app
+    // wedging rather than a driver/environment wait timeout.
+    runtimeMetrics: { interactionCount: opts.interactionCount ?? 1 },
     registerConfirmedBug: (b: { attribution?: { bugClass?: string } }) => { registered.push(b); },
     telemetry: {
       emit: (_t: string, meta: { actionExecuted?: string }) => { if (meta?.actionExecuted) actions.push(meta.actionExecuted); },
@@ -127,12 +131,12 @@ function makeFreezeLoop(opts: { stopRequested?: boolean; paused?: boolean }): Fr
   return { loop, registered, actions };
 }
 
-function reportFreeze(loop: ExplorationLoop): Promise<void> {
+function reportFreeze(loop: ExplorationLoop, health: 'unsettled' | 'timeout' = 'timeout'): Promise<void> {
   const page = { url: () => 'https://example.test/dashboard', isClosed: () => false } as never;
   const ctx = { freezeReported: new Set<string>() } as never;
   return (loop as unknown as {
     reportClientFreeze(p: never, h: 'unsettled' | 'timeout', c: never): Promise<void>;
-  }).reportClientFreeze(page, 'timeout', ctx);
+  }).reportClientFreeze(page, health, ctx);
 }
 
 check('render freeze during an operator stop is suppressed, not a finding', async () => {
@@ -149,9 +153,23 @@ check('render freeze while paused is suppressed, not a finding', async () => {
   assert.ok(cap.actions.includes('render-freeze-suppressed-teardown'));
 });
 
-check('a genuine render freeze while actively running still reports', async () => {
-  const cap = makeFreezeLoop({});
+check('a corroborated render freeze (interaction landed, then wedged) still reports', async () => {
+  const cap = makeFreezeLoop({ interactionCount: 1 });
   await reportFreeze(cap.loop);
+  assert.equal(cap.registered.length, 1);
+  assert.equal(cap.registered[0].attribution?.bugClass, 'CLIENT_RENDER_FREEZE');
+});
+
+check('a driver wait timeout with no successful interaction is suppressed, not a freeze', async () => {
+  const cap = makeFreezeLoop({ interactionCount: 0 });
+  await reportFreeze(cap.loop, 'timeout');
+  assert.equal(cap.registered.length, 0);
+  assert.ok(cap.actions.includes('render-freeze-suppressed-uncorroborated'));
+});
+
+check('an unsettled DOM freeze reports even before any interaction (app-side evidence)', async () => {
+  const cap = makeFreezeLoop({ interactionCount: 0 });
+  await reportFreeze(cap.loop, 'unsettled');
   assert.equal(cap.registered.length, 1);
   assert.equal(cap.registered[0].attribution?.bugClass, 'CLIENT_RENDER_FREEZE');
 });

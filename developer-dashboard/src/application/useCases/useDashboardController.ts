@@ -226,14 +226,17 @@ export function useDashboardController() {
             hasTimeLimitExceeded: s.hasTimeLimitExceeded,
             currentEngineAction: s.currentEngineAction,
             isInitializing: s.isInitializing,
-            liveFrame: s.liveFrame,
+            // Only the presence flag lives in this broad slice — the frame string
+            // itself is consumed by LiveFeedConnected's isolated subscription, so a
+            // ~30 fps frame stream never re-renders the whole dashboard. This boolean
+            // flips at most twice per run (first frame, terminal).
+            hasLiveFrame: s.liveFrame !== null,
             telemetry: s.telemetry,
             networkEvents: s.networkEvents,
             accessibilityCount: s.accessibilityCount,
             accessibilityBannerDismissed: s.accessibilityBannerDismissed,
             reports: s.reports,
             incidents: s.incidents,
-            latestFrame: s.latestFrame,
             currentUrl: s.currentUrl,
             sessionHistory: s.sessionHistory,
             isSavingSession: s.isSavingSession,
@@ -249,7 +252,7 @@ export function useDashboardController() {
         })),
     );
 
-    useEngineLivenessProbe(state.isInitializing, state.isTestRunning, state.liveFrame !== null, state.status);
+    useEngineLivenessProbe(state.isInitializing, state.isTestRunning, state.hasLiveFrame, state.status);
     useTransitionRedelivery(state.status);
 
     const actions = useMemo(() => ({

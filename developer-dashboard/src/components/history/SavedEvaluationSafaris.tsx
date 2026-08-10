@@ -2,7 +2,7 @@
 // SavedEvaluationSafaris - Forensic History Page
 // ═══════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,6 +15,8 @@ import { deleteRecord as deleteSafariRecord, exportRecord } from '../../services
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
+import { useTour } from '../../tour/useTour';
+import { buildHistoryTourSteps } from '../../tour/tourSteps';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
 import { INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
@@ -28,8 +30,8 @@ export default function SavedEvaluationSafaris() {
   const { token, isAuthLoading } = useAuth();
 
   const {
-    isLoading, error, searchQuery, activeFilter, sortConfig,
-    fetchSessions, removeSession, setSearchQuery, setActiveFilter, setSortConfig, setCurrentPage,
+    isLoading, error, searchQuery, activeFilter, sortConfig, lastViewedId,
+    fetchSessions, removeSession, setSearchQuery, setActiveFilter, setSortConfig, setCurrentPage, setLastViewedId,
   } = useHistoryStore(
     useShallow((s) => ({
       isLoading: s.isLoading,
@@ -37,16 +39,36 @@ export default function SavedEvaluationSafaris() {
       searchQuery: s.searchQuery,
       activeFilter: s.activeFilter,
       sortConfig: s.sortConfig,
+      lastViewedId: s.lastViewedId,
       fetchSessions: s.fetchSessions,
       removeSession: s.removeSession,
       setSearchQuery: s.setSearchQuery,
       setActiveFilter: s.setActiveFilter,
       setSortConfig: s.setSortConfig,
       setCurrentPage: s.setCurrentPage,
+      setLastViewedId: s.setLastViewedId,
     }))
   );
 
   const view = useHistoryView();
+
+  // On-demand tour, replayed from the Help (?) control — not auto-launched, so the
+  // page never interrupts on arrival.
+  const { startTour } = useTour({ tourId: 'history', enabled: false, buildSteps: buildHistoryTourSteps });
+
+  // Row elements by id — lets the view scroll the last-opened card back after a report visit.
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // On return from a report, bring the previously opened card into view and focus it,
+  // then consume the marker so later filter/sort changes don't yank the scroll around.
+  useEffect(() => {
+    if (isLoading || !lastViewedId) return;
+    const el = cardRefs.current.get(lastViewedId);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    el.focus({ preventScroll: true });
+    setLastViewedId(null);
+  }, [isLoading, lastViewedId, view.page, setLastViewedId]);
 
   // The delete dialog is component-scoped and ephemeral — no consumer outside this view.
   const [deleteState, setDeleteState] = useState<{ isOpen: boolean; recordId: string | null; targetUrl: string; isDeleting: boolean }>({
@@ -60,6 +82,7 @@ export default function SavedEvaluationSafaris() {
   }, [token, isAuthLoading, fetchSessions]);
 
   const handleViewReport = (recordId: string) => {
+    setLastViewedId(recordId);
     navigate(`/history/forensic-report/${recordId}`);
   };
 
@@ -117,7 +140,12 @@ export default function SavedEvaluationSafaris() {
           >
             <RefreshCcw className={`h-4 w-4 cursor-pointer text-[var(--text-secondary)] ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-          <button className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors">
+          <button
+            onClick={startTour}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--surface-hover)] transition-colors"
+            title="Take a tour of this page"
+            aria-label="Take a tour of this page"
+          >
             <CircleQuestionMark className="h-4 w-4 text-[var(--text-secondary)]" />
           </button>
         </div>
@@ -133,7 +161,7 @@ export default function SavedEvaluationSafaris() {
               </h2>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 xl:gap-6">
-              <div className="relative min-w-0 sm:w-56 xl:w-72">
+              <div data-tour="history-search" className="relative min-w-0 sm:w-56 xl:w-72">
                 <div
                   className="
                     flex h-10 w-full items-center rounded-md
@@ -189,7 +217,7 @@ export default function SavedEvaluationSafaris() {
                     : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               </div>
-              <div className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
+              <div data-tour="history-filters" className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as SeverityFilter[]).map((filter) => (
                   <button
                     key={filter}
@@ -208,7 +236,7 @@ export default function SavedEvaluationSafaris() {
           </div>
         </div>
 
-        <div className="divide-y divide-[var(--border-hairline)]">
+        <div data-tour="history-list" className="divide-y divide-[var(--border-hairline)]">
           {isLoading ? (
             // Skeleton rows mirror the real row geometry, so nothing shifts on arrival.
             <div role="status" aria-label="Loading history" className="divide-y divide-[var(--border-hairline)]">
@@ -258,9 +286,17 @@ export default function SavedEvaluationSafaris() {
               </span>
               <span className="text-[13px] text-[var(--text-secondary)]">
                 {view.totalCount === 0
-                  ? 'Run your first autonomous test and save it to see results here'
+                  ? 'Run your first test on the Dashboard and save it to see results here'
                   : 'Adjust the search or severity filter to widen the results'}
               </span>
+              {view.totalCount === 0 && (
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
+                >
+                  Go to Dashboard
+                </button>
+              )}
             </div>
           ) : (
             view.page.map((evalItem, index) => (
@@ -272,6 +308,7 @@ export default function SavedEvaluationSafaris() {
                 transition={{ duration: 0.2, ease: 'easeOut', delay: Math.min(index, 8) * 0.025 }}
               >
                 <div
+                  ref={(el) => { if (el) cardRefs.current.set(evalItem.id, el); else cardRefs.current.delete(evalItem.id); }}
                   className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--border-focus)]"
                   role="button"
                   tabIndex={0}

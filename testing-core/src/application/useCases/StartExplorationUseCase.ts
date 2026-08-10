@@ -17,6 +17,7 @@ import { buildActionSteps } from '../../domain/services/forensics/actionStepMapp
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
+import { resetBurstCounter } from '../../infrastructure/monitoring/burstCorrelation.js';
 import { FuzzForensicLog } from '../../infrastructure/monitoring/fuzzForensics.js';
 import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js';
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
@@ -680,6 +681,7 @@ export class StartExplorationUseCase {
         try {
             // Scope every forensic store to this run before the engine touches them.
             ReproductionPlaybookStore.reset();
+            resetBurstCounter();
             FuzzForensicLog.reset();
             NavForensicLog.reset();
             NetworkLogStore.reset();

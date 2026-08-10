@@ -17,6 +17,7 @@ import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/i
 import { executeConcurrentBurst } from './concurrentBurst.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
+import { nextBurstId } from '../../../infrastructure/monitoring/burstCorrelation.js';
 import {
   describeConcurrentBurstSiblingsIntent,
   describeBurstOutcome,
@@ -85,6 +86,7 @@ export class InteractionSimulator {
       elementKind: named[0].kind,
       selector: targetSelectors[0],
       url: page.url(),
+      burstId: nextBurstId(),
       macro: {
         scenario: 'ConcurrentSiblingBurst',
         params: { selectors: targetSelectors, targets: named },

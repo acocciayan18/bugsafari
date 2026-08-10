@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
-import type { ConstraintBypassDetail, TestingTypeId } from '../../../shared/types.js';
+import type { ActionRecord, ConstraintBypassDetail, TestingTypeId } from '../../../shared/types.js';
 
 export type BugClass =
   | 'INPUT_SANITIZATION_FAILURE'
@@ -38,6 +38,10 @@ export interface BugFinding {
     payload?: string;
     // Structured bypass evidence — set only by the constraint-bypass finder.
     bypass?: ConstraintBypassDetail;
+    // Reproduction a finder captured itself (concurrent-burst finders pre-record their
+    // intended actions). When present, the runner attaches these instead of synthesizing.
+    reproductionPlaybook?: string[];
+    reproductionActions?: ActionRecord[];
     previousContext?: {
       type: string;
       timestamp: number;

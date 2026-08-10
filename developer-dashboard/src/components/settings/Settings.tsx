@@ -24,6 +24,7 @@ import {
   LogOut,
   KeyRound,
   X,
+  CircleQuestionMark,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 
@@ -33,6 +34,8 @@ import { useDarkMode } from '../../context/DarkModeContext';
 import { Skeleton } from '../ui/Skeleton';
 import { isDesktopNotifySupported, requestDesktopNotifyPermission } from '../../utils/desktopNotify';
 import { PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
+import { useTour } from '../../tour/useTour';
+import { buildSettingsTourSteps } from '../../tour/tourSteps';
 import type { ThemeMode } from '../../types';
 
 const ICON_SIZE = 'h-5 w-5';
@@ -49,14 +52,16 @@ const CARD_MOTION = { hidden: { opacity: 0, y: 12 }, shown: { opacity: 1, y: 0 }
 // Card shell — every settings group renders inside one of these
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SettingsCard({ icon, title, description, children }: {
+function SettingsCard({ icon, title, description, children, dataTour }: {
   icon: ReactNode;
   title: string;
   description: string;
   children: ReactNode;
+  dataTour?: string;
 }) {
   return (
     <motion.section
+      data-tour={dataTour}
       variants={CARD_MOTION}
       transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm"
@@ -712,6 +717,10 @@ function AccountSection() {
 export default function Settings() {
   const { user, isAuthenticated } = useAuth();
 
+  // On-demand tour, replayed from the Help (?) control — not auto-launched, so the
+  // page never interrupts on arrival.
+  const { startTour } = useTour({ tourId: 'settings', enabled: false, buildSteps: buildSettingsTourSteps });
+
   useEffect(() => {
     if (!isAuthenticated) {
       console.log('[Settings] User not authenticated');
@@ -742,11 +751,21 @@ export default function Settings() {
       </header>
 
       <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
-        <div className="border-b border-(--border-hairline) px-4 py-4 sm:px-6">
-          <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
-          <p className="mt-1 text-sm text-(--text-secondary) sm:text-sm">
-            Manage your account preferences and application configuration
-          </p>
+        <div className="flex items-start justify-between gap-3 border-b border-(--border-hairline) px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
+            <p className="mt-1 text-sm text-(--text-secondary) sm:text-sm">
+              Manage your account preferences and application configuration
+            </p>
+          </div>
+          <button
+            onClick={startTour}
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors"
+            title="Take a tour of this page"
+            aria-label="Take a tour of this page"
+          >
+            <CircleQuestionMark className="h-4 w-4 text-(--text-secondary)" />
+          </button>
         </div>
 
         <motion.div
@@ -756,6 +775,7 @@ export default function Settings() {
           className="grid w-full grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6"
         >
           <SettingsCard
+            dataTour="settings-account"
             icon={<User className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Account"
             description="Your profile, security, and identity"
@@ -764,6 +784,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            dataTour="settings-app"
             icon={<Palette className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Application"
             description="Appearance and behavior"
