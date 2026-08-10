@@ -86,7 +86,7 @@ const CONSOLE = PAGE('Reporting', `
     });
   </script>`);
 
-// BOUNDARY_STRESS_FAILURE — backend 5xx. .catch keeps the only finding the 5xx.
+// SERVER_API_FAILURE — backend 5xx. .catch keeps the only finding the 5xx.
 const PAY = PAGE('Billing', `
   <h1>Billing</h1>
   <button id="pay-now">Pay now</button>

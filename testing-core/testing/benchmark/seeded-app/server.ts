@@ -18,7 +18,7 @@ const HTML = `<!doctype html>
 
   <!-- SEEDED: uncaught TypeError on click → RUNTIME_STABILITY_EXCEPTION -->
   <button id="delete-account">Delete account</button>
-  <!-- SEEDED: backend 500 → BOUNDARY_STRESS_FAILURE -->
+  <!-- SEEDED: backend 500 → SERVER_API_FAILURE -->
   <button id="pay-now">Pay now</button>
   <!-- SEEDED: NoSQL error soft-fail body → NOSQL_INJECTION -->
   <button id="login-btn">Log in</button>

@@ -1311,9 +1311,9 @@ export class ExplorationLoop {
   private boundaryConstraints(): string[] {
     const limits: string[] = [];
     if (this.deps.boundaryScope === 'exact') {
-      limits.push('strict URL lock — exploration pinned to the launch URL');
+      limits.push('Exploration is limited to the launch URL');
     } else if (this.deps.boundaryScope === 'subtree') {
-      limits.push('sub-tree lock — exploration pinned to the launch route and its child pages');
+      limits.push('Exploration is limited to the launch route and its child pages.');
     }
     const active = this.deps.gate.activeCategories();
     if (active.length < ALL_TESTING_TYPE_IDS.length) {

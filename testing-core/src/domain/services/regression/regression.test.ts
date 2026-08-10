@@ -312,7 +312,7 @@ check('status code echoed in original message corroborates a same-class match', 
   const c = collect();
   c.addExternal({ faultType: 'NETWORK', message: 'HTTP 503 Service Unavailable', statusCode: 503 });
   const b = c.evaluate({
-    originalBugClass: 'BOUNDARY_STRESS_FAILURE',
+    originalBugClass: 'SERVER_API_FAILURE',
     originalFaultType: 'NETWORK',
     originalMessage: 'HTTP 503 Service Unavailable',
     pageContent: '',

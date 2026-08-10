@@ -29,6 +29,7 @@ const CWE_CATALOG: Record<string, CweInfo> = {
   'CWE-602': { name: 'Client-Side Enforcement of Server-Side Security', plain: 'A security rule is enforced only in the browser, where a user can simply remove it.' },
   'CWE-613': { name: 'Insufficient Session Expiration', plain: 'The login session is not kept or expired correctly, so it can be lost or reused unexpectedly.' },
   'CWE-754': { name: 'Improper Check for Unusual or Exceptional Conditions', plain: 'The app does not handle an unexpected reply or error condition, so it breaks instead of recovering.' },
+  'CWE-755': { name: 'Improper Handling of Exceptional Conditions', plain: 'The server hit an error it did not handle (a 5xx), so the request failed instead of returning a proper result.' },
   'CWE-835': { name: "Loop with Unreachable Exit Condition ('Infinite Loop')", plain: 'Code keeps looping or redrawing with no way out, so it never settles.' },
   'CWE-943': { name: 'Improper Neutralization of Data Query Logic (NoSQL Injection)', plain: 'Query operators from user input reach the database untouched and change what the query returns.' },
 };

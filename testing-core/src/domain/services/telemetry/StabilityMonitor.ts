@@ -465,6 +465,15 @@ export class StabilityMonitor {
     return this.culpritSelectorAt(start ?? this.requestSettledAtMs(request));
   }
 
+  // Human label of the control that FIRED a network request, resolved at the request's
+  // START — same instant as culpritForRequest. Under a rapid stress scenario the settle
+  // time lands on a LATER, unrelated click; resolving at start keeps the finding focused
+  // on the element that actually triggered the failure, not a combined/adjacent action.
+  private triggeringActionForRequest(request: Request): string | undefined {
+    const start = this.requestStartTimes.get(request);
+    return this.triggeringActionFor(start ?? this.requestSettledAtMs(request));
+  }
+
   // Wall-clock duration of a settled request; prefers Playwright's precise timing.
   private computeRequestDuration(request: Request): number | undefined {
     try {
@@ -1784,7 +1793,7 @@ export class StabilityMonitor {
       // failure. One immutable snapshot, frozen at the moment this response failed,
       // bound identically to the live telemetry and the saved confirmed bug.
       const durationMs = this.computeRequestDuration(response.request());
-      const triggeringAction = this.triggeringActionFor(settledAtMs);
+      const triggeringAction = this.triggeringActionForRequest(response.request());
       const detail = [
         `Request: ${method} ${url}`,
         `Status: HTTP ${status} (${verdict.reason})`,
@@ -1884,7 +1893,7 @@ export class StabilityMonitor {
 
       // Every transport failure is a Network-tab row, whatever the promotion verdict.
       const failedDurationMs = this.computeRequestDuration(request);
-      const triggeringAction = this.triggeringActionFor(failedAtMs);
+      const triggeringAction = this.triggeringActionForRequest(request);
       t.emit('NETWORK', {
         url,
         method,

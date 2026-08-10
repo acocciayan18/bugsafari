@@ -79,14 +79,14 @@ check('a client crash during the race classifies as RUNTIME_STABILITY_EXCEPTION 
   assert.equal(c.severity, 'HIGH');
 });
 
-check('a 5xx from an interrupted request classifies as BOUNDARY_STRESS_FAILURE / asyncRace', () => {
+check('a 5xx from an interrupted request classifies as SERVER_API_FAILURE / asyncRace', () => {
   const c = classifyFault({
     faultType: 'NETWORK',
     message: '500 Internal Server Error',
     statusCode: 500,
     scenario: 'AsyncStateRacer',
   });
-  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
   assert.equal(c.testingType, 'asyncRace');
   assert.equal(c.severity, 'HIGH');
 });

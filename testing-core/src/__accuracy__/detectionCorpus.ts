@@ -58,7 +58,7 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
   {
     name: 'server-error: 500 internal',
     input: { faultType: 'NETWORK', message: '500 Internal Server Error', statusCode: 500 },
-    expected: 'BOUNDARY_STRESS_FAILURE',
+    expected: 'SERVER_API_FAILURE',
     expectSecurity: false,
   },
   {
@@ -173,7 +173,7 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     // raw tag-presence without the execution oracle is not proof of an executable
     // reflection. Pre-fix this classified as FUZZ_VULNERABILITY_LEAK (security FP);
     // XSS_REFLECTION is now oracle-gated on every fault type, so it falls to the
-    // network boundary verdict.
+    // server-error verdict for the 5xx.
     name: 'benign: unconfirmed <script> echoed in a 5xx body under data-fuzz',
     input: {
       faultType: 'NETWORK',
@@ -182,7 +182,7 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
       statusCode: 500,
       scenario: 'DataFuzzer',
     },
-    expected: 'BOUNDARY_STRESS_FAILURE',
+    expected: 'SERVER_API_FAILURE',
     expectSecurity: false,
   },
 ];

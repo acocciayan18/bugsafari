@@ -58,16 +58,28 @@ check('Oracle-CONFIRMED reflected XSS during DataFuzzer → FUZZ_VULNERABILITY_L
   assert.equal(c.cwe, 'CWE-79');
 });
 
-check('HTTP 500 during NetworkSaboteur → BOUNDARY_STRESS_FAILURE / HIGH', () => {
+check('HTTP 500 during NetworkSaboteur → SERVER_API_FAILURE / HIGH (server error, not resource exhaustion)', () => {
   const c = classifyFault({
     faultType: 'NETWORK',
     message: 'HTTP 500 GET /api/data',
     statusCode: 500,
     scenario: 'NetworkSaboteur',
   });
-  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
+  assert.equal(c.cwe, 'CWE-755');
   assert.equal(c.severity, 'HIGH');
   assert.equal(c.testingType, 'navigation');
+});
+
+check('Every 5xx (500/502/503/504) → SERVER_API_FAILURE / CWE-755 / CONFIRMED, never CWE-400', () => {
+  for (const statusCode of [500, 502, 503, 504]) {
+    const c = classifyFault({ faultType: 'NETWORK', message: `HTTP ${statusCode} GET /api/drop`, statusCode, scenario: 'NetworkSaboteur' });
+    assert.equal(c.bugClass, 'SERVER_API_FAILURE', `status ${statusCode}`);
+    assert.equal(c.cwe, 'CWE-755', `status ${statusCode}`);
+    assert.notEqual(c.cwe, 'CWE-400', `status ${statusCode}`);
+    assert.equal(c.confidence, 'CONFIRMED', `status ${statusCode}`);
+    assert.equal(c.severity, 'HIGH', `status ${statusCode}`);
+  }
 });
 
 check('Redirect loop during RouteTrasher → ROUTE_MUTATION_FAILURE', () => {
@@ -130,7 +142,7 @@ check('JSON-parse SyntaxError during ButtonSpammer → API_CONTRACT_VIOLATION (r
   assert.equal(c.testingType, 'concurrency');
 });
 
-check('A 5xx NETWORK body echoing a JSON.parse frame stays BOUNDARY (contract signal is client-only)', () => {
+check('A 5xx NETWORK body echoing a JSON.parse frame stays SERVER_API_FAILURE (contract signal is client-only)', () => {
   const c = classifyFault({
     faultType: 'NETWORK',
     message: 'HTTP 500 GET /api/data',
@@ -138,7 +150,7 @@ check('A 5xx NETWORK body echoing a JSON.parse frame stays BOUNDARY (contract si
     content: 'SyntaxError: Unexpected token < at JSON.parse (<anonymous>)',
     scenario: 'NetworkSaboteur',
   });
-  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
   assert.equal(c.severity, 'HIGH');
 });
 
@@ -184,24 +196,24 @@ check('INFERRED runtime fault is severity-capped at MEDIUM', () => {
 
 check('Directly-observed HTTP 5xx is CONFIRMED (captured response is hard evidence)', () => {
   const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 500 GET /api/data', statusCode: 500, scenario: 'NetworkSaboteur' });
-  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
   assert.equal(c.confidence, 'CONFIRMED');
   assert.equal(c.severity, 'HIGH');
 });
 
-check('HTTP 5xx whose body/label echoes navigation text stays BOUNDARY, never CWE-835', () => {
-  // A 500 body echoing "failed to load"/"network error" (DEAD_END) or a redirect token
+check('HTTP 5xx whose body/label echoes navigation text stays SERVER_API_FAILURE, never CWE-835', () => {
+  // A 502 body echoing "failed to load"/"network error" (DEAD_END) or a redirect token
   // must not hijack the server error into a navigation verdict — CWE-835 is reserved for
-  // genuine freezes/loops. Server error stays BOUNDARY_STRESS_FAILURE (CWE-400), CONFIRMED.
+  // genuine freezes/loops. Server error stays SERVER_API_FAILURE (CWE-755), CONFIRMED.
   const c = classifyFault({
     faultType: 'NETWORK',
-    message: 'HTTP 503 GET /api/orders',
-    statusCode: 503,
+    message: 'HTTP 502 GET /api/orders',
+    statusCode: 502,
     content: 'failed to load resource; too many redirects; page not found',
     scenario: 'Exploratory',
   });
-  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
-  assert.equal(c.cwe, 'CWE-400');
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
+  assert.equal(c.cwe, 'CWE-755');
   assert.equal(c.confidence, 'CONFIRMED');
 });
 

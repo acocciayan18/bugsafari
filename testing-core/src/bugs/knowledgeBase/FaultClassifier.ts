@@ -133,7 +133,7 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
   REDIRECT_LOOP: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
   COMPONENT_FAIL: ['ROUTE_MUTATION_FAILURE', 'STRUCTURAL_NAVIGATION_LOGIC'],
   INFO_LEAK: ['SECURITY_VULNERABILITY_LEAK'],
-  SERVER_ERROR: ['BOUNDARY_STRESS_FAILURE', 'SECURITY_VULNERABILITY_LEAK'],
+  SERVER_ERROR: ['SERVER_API_FAILURE', 'SECURITY_VULNERABILITY_LEAK'],
   API_CONTRACT: ['API_CONTRACT_VIOLATION'],
   CLIENT_CRASH: ['RUNTIME_STABILITY_EXCEPTION'],
   DEAD_END: ['STRUCTURAL_NAVIGATION_LOGIC'],
@@ -234,10 +234,11 @@ function resolveBugClass(
   // A matched signal (or an oracle confirmation) is hard evidence; CONFIRMED wins.
   const signalConfidence: FaultConfidence = input.confirmed ? 'CONFIRMED' : 'SIGNAL';
 
-  // 0. A directly-observed HTTP 5xx is a SERVER/API error (BOUNDARY_STRESS_FAILURE,
-  //    CWE-400), never a navigation/redirect verdict (CWE-835) — a 5xx body or the
-  //    triggering control's label echoing "failed to load"/"redirect"/"404" must not
-  //    hijack it into STRUCTURAL_NAVIGATION_LOGIC/ROUTE_MUTATION_FAILURE. Capturing the
+  // 0. A directly-observed HTTP 5xx (500/502/503/504) is a SERVER/API failure
+  //    (SERVER_API_FAILURE, CWE-755), NOT resource exhaustion (CWE-400 stays reserved for
+  //    genuine timeouts/overload) and never a navigation/redirect verdict (CWE-835) — a 5xx
+  //    body or the triggering control's label echoing "failed to load"/"redirect"/"404" must
+  //    not hijack it into STRUCTURAL_NAVIGATION_LOGIC/ROUTE_MUTATION_FAILURE. Capturing the
   //    response IS hard evidence, so it is CONFIRMED. Direct body evidence of a leak or
   //    injection (a leaked stack, a raw SQL/Mongo error) is a MORE specific and equally
   //    direct verdict, so it still wins; CWE-835 stays reserved for genuine freezes/loops.
@@ -245,7 +246,7 @@ function resolveBugClass(
     for (const category of categories) {
       if (DIRECT_LEAK_CATEGORIES.has(category)) return { bugClass: SIGNAL_TO_BUGCLASS[category][0], confidence: 'CONFIRMED' };
     }
-    return { bugClass: 'BOUNDARY_STRESS_FAILURE', confidence: 'CONFIRMED' };
+    return { bugClass: 'SERVER_API_FAILURE', confidence: 'CONFIRMED' };
   }
 
   // 0b. A 2xx whose body declares a failure (soft-fail): the response WAS captured, so

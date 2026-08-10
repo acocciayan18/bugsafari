@@ -15,10 +15,10 @@ export const SEEDED_DEFECTS: readonly SeededDefect[] = [
   { id: 'login-btn', label: 'Login → NoSQL error body', expectedBugClass: 'NOSQL_INJECTION', depth: 'flat' },
   { id: 'login-btn', label: 'Login → unguarded double-submit', expectedBugClass: 'SPA_STATE_RACE_CONDITION', depth: 'flat' },
   { id: 'search', label: 'Search → reflected XSS (innerHTML)', expectedBugClass: 'FUZZ_VULNERABILITY_LEAK', depth: 'flat' },
-  { id: 'pay-now', label: 'Pay now → HTTP 500', expectedBugClass: 'BOUNDARY_STRESS_FAILURE', depth: 'flat' },
-  { id: 'submit-order', label: 'Submit order → HTTP 500 (checkout step 3)', expectedBugClass: 'BOUNDARY_STRESS_FAILURE', depth: 'multi-step' },
+  { id: 'pay-now', label: 'Pay now → HTTP 500', expectedBugClass: 'SERVER_API_FAILURE', depth: 'flat' },
+  { id: 'submit-order', label: 'Submit order → HTTP 500 (checkout step 3)', expectedBugClass: 'SERVER_API_FAILURE', depth: 'multi-step' },
   { id: 'delete-profile', label: 'Delete profile → uncaught TypeError (async-rendered)', expectedBugClass: 'RUNTIME_STABILITY_EXCEPTION', depth: 'dynamic' },
-  { id: 'slow-pay', label: 'Slow pay → HTTP 500 settling ~1.5s later', expectedBugClass: 'BOUNDARY_STRESS_FAILURE', depth: 'async-lag' },
+  { id: 'slow-pay', label: 'Slow pay → HTTP 500 settling ~1.5s later', expectedBugClass: 'SERVER_API_FAILURE', depth: 'async-lag' },
 ];
 
 /** Controls that must NEVER produce a finding (precision anchors). */

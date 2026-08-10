@@ -35,6 +35,7 @@ const HANG_RESOURCE_TYPES = new Set(['xhr', 'fetch', 'document']);
 export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
   'RUNTIME_STABILITY_EXCEPTION',
   'API_CONTRACT_VIOLATION',
+  'SERVER_API_FAILURE',
   'BOUNDARY_STRESS_FAILURE',
   'NOSQL_INJECTION',
   'SQL_INJECTION',
