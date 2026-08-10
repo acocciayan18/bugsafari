@@ -18,16 +18,8 @@ export interface NetworkFailureRow {
   timestamp?: string;
 }
 
-// Short local time, or nothing for a missing/unparseable stamp.
-function shortTime(timestamp?: string): string | undefined {
-  if (!timestamp) return undefined;
-  const t = Date.parse(timestamp);
-  return Number.isNaN(t) ? undefined : new Date(t).toLocaleTimeString();
-}
-
 export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
   const { method, statusCode, url, ok, count, errorText } = row;
-  const time = shortTime(row.timestamp);
 
   // Tier from the shared routing tree — same call the engine made deciding this was
   // a Network row. A transport failure (no status) is infrastructure, painted amber.
@@ -71,7 +63,6 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
             {routed.reasonCode.replace(/_/g, ' ').toLowerCase()}
           </span>
         </div>
-        {time && <span className="shrink-0 text-xs text-(--text-tertiary)">{time}</span>}
       </div>
 
       <div className="px-3 py-2 text-[13px] font-mono text-(--text-secondary) break-all">{url}</div>

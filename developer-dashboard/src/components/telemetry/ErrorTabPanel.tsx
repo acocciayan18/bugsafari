@@ -9,6 +9,7 @@ import { reportableIncidents, reportableReports } from '../../utils/findingRouti
 import { incidentToFindingView, reportToFindingView } from '../../utils/findingView';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import FindingCard from '../common/FindingCard';
+import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
 
 interface ErrorTabPanelProps {
   errors: {
@@ -33,35 +34,42 @@ export default function ErrorTabPanel({
   const incidentGroups = groupBySignature<IncidentReport>(errorIncidents, liveFaultSignature, (i) => i.occurrences ?? 1);
   const reportGroups = groupBySignature<ForensicCrashReport>(errorReports, liveFaultSignature, (r) => r.occurrences ?? 1);
 
-  return (
-    <div className="flex flex-col gap-4 p-2" role="log" aria-live="assertive" aria-relevant="additions" aria-label="Captured findings">
-      {incidentGroups.length === 0 && reportGroups.length === 0 ? (
-        <div className="text-(--text-secondary)  py-2">No findings captured yet.</div>
-      ) : (
-        <>
-          {incidentGroups.map(({ item: incident, count }, idx) => (
-            <FindingCard
-              key={`incident-${liveFaultSignature(incident)}`}
-              view={incidentToFindingView(incident, count)}
-              index={idx}
-              showBypass={false}
-            >
-              <AiDiagnosticCard ai={incident.aiDiagnostics} />
-            </FindingCard>
-          ))}
+  // One entry per finding — the panel filters/sorts/groups by `view` and defers each
+  // card back to `render`, so live cards stay identical to the saved report's.
+  const entries: FindingEntry[] = [
+    ...incidentGroups.map(({ item: incident, count }): FindingEntry => {
+      const view = incidentToFindingView(incident, count);
+      return {
+        key: `incident-${liveFaultSignature(incident)}`,
+        view,
+        render: (index) => (
+          <FindingCard view={view} index={index} showBypass={false}>
+            <AiDiagnosticCard ai={incident.aiDiagnostics} />
+          </FindingCard>
+        ),
+      };
+    }),
+    ...reportGroups.map(({ item: report, count }): FindingEntry => {
+      const view = reportToFindingView(report, count);
+      return {
+        key: `report-${liveFaultSignature(report)}`,
+        view,
+        render: (index) => (
+          <FindingCard view={view} index={index} showBypass={false}>
+            <AiDiagnosticCard ai={report.aiDiagnostics} />
+          </FindingCard>
+        ),
+      };
+    }),
+  ];
 
-          {reportGroups.map(({ item: report, count }, idx) => (
-            <FindingCard
-              key={`report-${liveFaultSignature(report)}`}
-              view={reportToFindingView(report, count)}
-              index={incidentGroups.length + idx}
-              showBypass={false}
-            >
-              <AiDiagnosticCard ai={report.aiDiagnostics} />
-            </FindingCard>
-          ))}
-        </>
-      )}
+  return (
+    <div className="p-2">
+      <FindingsPanel
+        entries={entries}
+        live
+        emptyState={<div className="text-(--text-secondary) py-2">No findings captured yet.</div>}
+      />
     </div>
   );
 }

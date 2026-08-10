@@ -7,7 +7,6 @@ import { useState } from 'react';
 import { AlertCircle, AlertTriangle, Info, Bug, Terminal, Activity, ChevronDown, Link2 } from 'lucide-react';
 import type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../types';
 import { CopyButton } from './ForensicCardKit';
-import { formatLogTimestamp } from '../../utils/datetime';
 
 // Per-level presentation: icon + label + tone classes so severity reads at a glance.
 interface LevelStyle {
@@ -73,14 +72,6 @@ const LEVEL_STYLES: Record<BrowserConsoleLevel, LevelStyle> = {
 // Long messages collapse to keep the list scannable; expand reveals the rest.
 const CLAMP_THRESHOLD = 220;
 
-// Millisecond precision moves to the row tooltip — it only matters when two logs
-// land inside the same second, which is not worth the width in every row.
-function preciseTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return timestamp;
-  return `${date.toLocaleTimeString('en-GB', { hour12: false })}.${String(date.getMilliseconds()).padStart(3, '0')}`;
-}
-
 // Source location string from the message's url/line/column, when present.
 function sourceLabel(log: BrowserConsoleMessage): string | null {
   if (!log.url) return null;
@@ -112,13 +103,7 @@ export function ConsoleCard({ log }: { log: BrowserConsoleMessage }) {
         {log.type && log.type !== log.level && (
           <span className="truncate text-xs font-medium text-(--text-tertiary)">{log.type}</span>
         )}
-        <span
-          title={preciseTime(log.timestamp)}
-          className="ml-auto shrink-0 tabular-nums text-xs text-(--text-tertiary)"
-        >
-          {formatLogTimestamp(log.timestamp)}
-        </span>
-        <span className="shrink-0 transition-opacity group-focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+        <span className="ml-auto shrink-0 transition-opacity group-focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
           <CopyButton text={log.message} label="Log" />
         </span>
       </div>

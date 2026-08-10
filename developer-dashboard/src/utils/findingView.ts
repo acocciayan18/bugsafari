@@ -12,8 +12,8 @@ import type {
   ForensicCrashReport,
   IncidentReport,
 } from '../types';
-import type { ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
-import { resolveSeverity } from '../../../shared/types.js';
+import type { BugCategory, ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
+import { resolveCategory, resolveSeverity } from '../../../shared/types.js';
 import { isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
@@ -27,6 +27,8 @@ export interface FindingView {
   /** Primary human-readable fault text (reason ≡ message). */
   message: string;
   severity?: string;
+  /** Broad, student-friendly bug family — drives grouping/filtering + the category label. */
+  category: BugCategory;
   occurrences: number;
   timestamp?: string;
   url?: string;
@@ -156,6 +158,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
       verificationStatus: inc.attribution?.verificationStatus,
       statusCode: inc.statusCode,
     }),
+    category: resolveCategory(inc.attribution?.bugClass),
     occurrences,
     timestamp: inc.timestamp,
     url: inc.url,
@@ -182,6 +185,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
       verificationStatus: rep.attribution?.verificationStatus,
       statusCode: rep.statusCode,
     }),
+    category: resolveCategory(rep.attribution?.bugClass),
     occurrences,
     timestamp: rep.timestamp,
     url: rep.url,
@@ -206,6 +210,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
       confidence: bug.attribution?.confidence,
       verificationStatus: bug.attribution?.verificationStatus,
     }),
+    category: resolveCategory(bug.attribution?.bugClass ?? bug.type),
     occurrences,
     timestamp: bug.timestamp,
     selector: resolveCulprit(bug.selector, bug.actionSteps),

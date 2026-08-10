@@ -11,7 +11,6 @@ import type { ForensicActionStep } from '../../types';
 import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, splitObservations } from '../../utils/reproductionFormat';
-import { formatReportTime } from '../../utils/datetime';
 import ReproductionChecklist, { ObservationsBlock } from '../telemetry/ReproductionChecklist';
 import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 
@@ -44,10 +43,9 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
                   {payloadDisplay}
                 </code>
               )}
-              <div className="mt-0.5 text-xs text-(--text-tertiary)">
-                {typeof step.durationMs === 'number' ? `${step.durationMs}ms · ` : ''}
-                {formatReportTime(step.timestamp)}
-              </div>
+              {typeof step.durationMs === 'number' && (
+                <div className="mt-0.5 text-xs text-(--text-tertiary)">{step.durationMs}ms</div>
+              )}
             </div>
           </li>
         );

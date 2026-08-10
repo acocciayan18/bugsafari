@@ -41,6 +41,7 @@ import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProf
 import { isActionableNetworkStatus, type RemediationFailureReason } from '../../../../shared/types.js';
 import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
+import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
 import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
 import ConsoleMessageList from '../common/ConsoleMessageCard';
 import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
@@ -1055,11 +1056,13 @@ export default function ForensicReport() {
             </div>
 
             {activeTab === 'findings' && (
-              runtimeBugs.length > 0 ? (
-                <div className="flex flex-col gap-4">
-                  {runtimeBugs.map((bug, index) => (
+              <FindingsPanel
+                emptyState={<CleanRunCard />}
+                entries={runtimeBugs.map((bug, i): FindingEntry => ({
+                  key: bug.bugId || String(i),
+                  view: caughtBugToFindingView(bug, bug.occurrences ?? 1),
+                  render: (index) => (
                     <ReportFindingCard
-                      key={bug.bugId || index}
                       bug={bug}
                       index={index}
                       occurrences={bug.occurrences ?? 1}
@@ -1067,11 +1070,9 @@ export default function ForensicReport() {
                       status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
                       onVerify={verify}
                     />
-                  ))}
-                </div>
-              ) : (
-                <CleanRunCard />
-              )
+                  ),
+                }))}
+              />
             )}
             {activeTab === 'network' && (
               <NetworkFailureList

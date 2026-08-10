@@ -13,7 +13,8 @@ import type { ReactNode } from 'react';
 import { Bug } from 'lucide-react';
 import type { FindingAttribution } from '../../types';
 import { buildFindingSummary, humanizeFindingTitle, type FindingView } from '../../utils/findingView';
-import { CopyButton, SeverityBadge } from './ForensicCardKit';
+import { CategoryBadge, CopyButton, SeverityBadge } from './ForensicCardKit';
+import CweBadge from './CweBadge';
 import FindingEvidence from './FindingEvidence';
 
 export interface FindingCardTheme {
@@ -55,14 +56,11 @@ export function FindingMetaBar({ attribution }: { attribution?: FindingAttributi
     ? `${attribution.verificationStatus.replace(/_/g, ' ')}${typeof attribution.confidenceScore === 'number' ? ` ${Math.round(attribution.confidenceScore * 100)}%` : ''}`
     : undefined;
 
-  const pills: Array<{ label: string; value: string; title?: string }> = [];
-  if (attribution?.cwe) pills.push({ label: 'CWE', value: attribution.cwe, title: 'MITRE CWE identifier' });
-  if (verification) pills.push({ label: 'Status', value: verification, title: 'How this finding was verified' });
-
-  if (pills.length === 0) return null;
+  if (!attribution?.cwe && !verification) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {pills.map((pill) => <MetaPill key={pill.label} {...pill} />)}
+      {attribution?.cwe && <CweBadge cwe={attribution.cwe} />}
+      {verification && <MetaPill label="Status" value={verification} title="How this finding was verified" />}
     </div>
   );
 }
@@ -101,6 +99,7 @@ export default function FindingCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
+            <CategoryBadge category={view.category} />
             {view.occurrences > 1 && (
               <span
                 title={`This fault occurred ${view.occurrences} times this session`}

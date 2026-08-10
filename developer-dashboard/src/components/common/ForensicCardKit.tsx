@@ -7,8 +7,9 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react';
-import { Copy, Sparkles, Loader2 } from 'lucide-react';
-import type { RemediationFailureReason, SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
+import { Copy, Sparkles, Loader2, Info } from 'lucide-react';
+import type { BugCategory, RemediationFailureReason, SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
+import { BUG_CATEGORY_META } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
 
 // Operator-facing cause for a fallback. Shared by the per-finding fix block and the
@@ -123,6 +124,23 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
       className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase  ${style.cls}`}
     >
       {style.label}
+    </span>
+  );
+};
+
+// Broad bug-family label with an info affordance — the title carries a plain-English
+// blurb explaining the family in student-friendly terms. Shared by the live Errors
+// tab and the saved report so both label a finding's category identically.
+export const CategoryBadge = ({ category }: { category?: BugCategory }) => {
+  const meta = category ? BUG_CATEGORY_META[category] : undefined;
+  if (!meta) return null;
+  return (
+    <span
+      title={meta.blurb}
+      className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-semibold text-(--text-secondary)"
+    >
+      {meta.label}
+      <Info className="h-3 w-3 text-(--text-tertiary)" aria-hidden="true" />
     </span>
   );
 };
