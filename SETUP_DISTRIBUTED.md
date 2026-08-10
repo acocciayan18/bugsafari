@@ -182,13 +182,13 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m "location context reproduction"
+git commit -m "Add custom tooltip for CWE labels"
 git checkout -b dev
 git push origin dev --force
 
 
 git add .
-git commit -m "Add system-wide access lock for BugSafari development"
+git commit -m "Add custom tooltip for CWE labels"
 git push origin HEAD:dev --force
 
 
