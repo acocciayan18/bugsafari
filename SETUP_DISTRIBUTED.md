@@ -182,7 +182,7 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m " Add system-wide access lock for BugSafari development"
+git commit -m "location context reproduction"
 git checkout -b dev
 git push origin dev --force
 
