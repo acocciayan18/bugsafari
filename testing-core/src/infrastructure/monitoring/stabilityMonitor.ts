@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { ActionRecord, FindingAttribution, StateFingerprint } from '../../../../shared/types.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
+import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 import { captureStateFingerprint } from './stateFingerprint.js';
 
@@ -11,6 +12,20 @@ const HEARTBEAT_TIMEOUT_MS = 5_000;
 // its responsiveness a bounded number of times before declaring a real UI freeze.
 const RECOVERY_SETTLE_MS = 500;
 const STABILITY_RETRIES = 3;
+// Recovery re-probes are SHORT on purpose. A thread that genuinely recovered (a
+// transient driver/GC stall) answers a trivial evaluate in well under a second; a
+// full HEARTBEAT_TIMEOUT_MS re-probe instead just waits out a still-running freeze
+// and reads "recovered", so any freeze shorter than ~3×5s silently escaped.
+const RECOVERY_PROBE_TIMEOUT_MS = 750;
+// In-page watchdog tick. A FINITE freeze that ends inside the recovery window fools
+// the outside-in heartbeat, so a timer ticking INSIDE the page — itself blocked by the
+// frozen main thread — measures the true block duration from the gap between ticks.
+const WATCHDOG_TICK_MS = 1_000;
+// A measured main-thread block at/above this is a client render freeze (CWE-835).
+const FREEZE_BLOCK_THRESHOLD_MS = HEARTBEAT_TIMEOUT_MS;
+// Collapse the outside-in heartbeat and the in-page watchdog (which can both fire for
+// one freeze) into a single finding within this window.
+const FREEZE_DEDUP_MS = 10_000;
 
 type Cleanup = () => void;
 
@@ -89,11 +104,19 @@ export function setupStabilityMonitoring(
   let heartbeatInterval: NodeJS.Timeout | null = null;
   let heartbeatInFlight = false;
   let lastHeartbeatAlertAt = 0;
+  // Single chokepoint so the outside-in heartbeat and the in-page watchdog never
+  // double-report one freeze.
+  let lastFreezeFindingAt = 0;
 
   // Emit a confirmed UI-freeze finding. Genuine server faults (5xx / requestfailed
   // / pageerror) are owned solely by the primary domain StabilityMonitor, so this
-  // detector only ever reports a sustained local browser lock-up.
-  const emitFreezeFinding = async (faultAtMs: number): Promise<void> => {
+  // detector only ever reports a sustained local browser lock-up. `blockMs`, when
+  // known (in-page watchdog), is the measured main-thread block duration.
+  const emitFreezeFinding = async (faultAtMs: number, blockMs?: number): Promise<void> => {
+    const nowMs = Date.now();
+    if (nowMs - lastFreezeFindingAt < FREEZE_DEDUP_MS) return;
+    lastFreezeFindingAt = nowMs;
+
     const timestamp = new Date().toISOString();
     const url = page.url();
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
@@ -102,10 +125,22 @@ export function setupStabilityMonitoring(
     const stateFingerprint = await captureStateFingerprint(page, { cookiesOnly: true });
 
     const faultType: FaultType = 'FREEZE';
-    const reason = "System Lock-up Detected: The browser's Main Thread is unresponsive.";
-    const banner = " System Lock-up Detected: The browser's Main Thread is unresponsive. Interaction is impossible.";
-    const stackTrace = 'Heartbeat evaluate call exceeded 5000ms timeout.';
-    const { advice, attribution } = classify(faultType, reason, { url });
+    const seconds = blockMs ? Math.round(blockMs / 1000) : undefined;
+    const reason = `Client render freeze: the main thread was blocked${seconds ? ` for ~${seconds}s` : ''}, so the page could not respond to input or repaint.`;
+    const banner = ` ${reason} Interaction is impossible while it lasts.`;
+    const stackTrace = blockMs
+      ? `In-page watchdog measured a ${Math.round(blockMs)}ms main-thread tick gap (threshold ${FREEZE_BLOCK_THRESHOLD_MS}ms).`
+      : `Heartbeat evaluate call exceeded ${HEARTBEAT_TIMEOUT_MS}ms timeout.`;
+    // A sustained, measured main-thread lock-up IS a client render freeze (CWE-835),
+    // not a generic stability exception — attribute it explicitly (bug class + CWE +
+    // remediation from the catalog) while keeping scenario/step from the classifier.
+    const { attribution: scenarioAttribution } = classify(faultType, reason, { url });
+    const advice = BUG_CATALOG.CLIENT_RENDER_FREEZE.remediation;
+    const attribution: FindingAttribution = {
+      ...scenarioAttribution,
+      bugClass: 'CLIENT_RENDER_FREEZE',
+      cwe: BUG_CATALOG.CLIENT_RENDER_FREEZE.cwe,
+    };
 
     telemetry.emitTelemetry({
       timestamp,
@@ -186,10 +221,10 @@ export function setupStabilityMonitoring(
   };
 
   // Probe the main thread once; true if it answered within the timeout.
-  const threadResponsive = async (): Promise<boolean> => {
+  const threadResponsive = async (timeoutMs: number = HEARTBEAT_TIMEOUT_MS): Promise<boolean> => {
     if (disposed || page.isClosed()) return false;
     try {
-      await withTimeout(page.evaluate(() => true), HEARTBEAT_TIMEOUT_MS);
+      await withTimeout(page.evaluate(() => true), timeoutMs);
       return true;
     } catch {
       return false;
@@ -197,12 +232,15 @@ export function setupStabilityMonitoring(
   };
 
   // Give the browser a brief window to recover, re-validating page stability a
-  // bounded number of times. Returns true once the main thread is responsive again.
+  // bounded number of times. Re-probes use a SHORT timeout so a thread still wedged
+  // answers slowly enough to fail — a full re-probe would just block until the freeze
+  // ended and mislabel a real multi-second lock-up as "recovered". Returns true only
+  // when the main thread answers a short probe, i.e. it genuinely recovered.
   const validatePageStability = async (): Promise<boolean> => {
     for (let attempt = 0; attempt < STABILITY_RETRIES; attempt += 1) {
       if (disposed || page.isClosed()) return false;
       await sleep(RECOVERY_SETTLE_MS);
-      if (await threadResponsive()) return true;
+      if (await threadResponsive(RECOVERY_PROBE_TIMEOUT_MS)) return true;
     }
     return false;
   };
@@ -249,6 +287,50 @@ export function setupStabilityMonitoring(
       heartbeatInFlight = false;
     }
   };
+
+  // In-page main-thread watchdog. The outside-in heartbeat above can be fooled by a
+  // FINITE freeze that ends inside its recovery window (the probe just waits the freeze
+  // out and reads "recovered"). A timer ticking INSIDE the page is itself blocked by the
+  // frozen main thread, so the gap between two ticks IS the block duration — measured in
+  // the target, immune to CDP/driver timing and to zero-interaction driver-wait timeouts.
+  // It fires once the thread resumes (only then can the timer run), which is exactly when
+  // the freeze can be reported. A pure driver/Playwright timeout produces no in-page gap,
+  // so it can never manufacture a false freeze here.
+  const onMainThreadStall = (gapMs: number): void => {
+    if (isTeardown()) return;
+    if (typeof gapMs !== 'number' || !Number.isFinite(gapMs) || gapMs < FREEZE_BLOCK_THRESHOLD_MS) return;
+    // Onset = now minus the measured block; anchors the reproduction before the freeze.
+    void emitFreezeFinding(Date.now() - Math.round(gapMs), gapMs);
+  };
+  // Installs the ticking watchdog in a document. Idempotent per document. The reporter
+  // hook is read lazily (at tick time), so it works even if exposeFunction has not yet
+  // finished binding when this first runs.
+  const installWatchdog = ([tickMs, thresholdMs]: [number, number]): void => {
+    const w = window as unknown as { __bugsafariFreezeWatch?: boolean; __bugsafariOnMainThreadStall?: (g: number) => void };
+    if (w.__bugsafariFreezeWatch) return;
+    w.__bugsafariFreezeWatch = true;
+    let last = performance.now();
+    setInterval(() => {
+      const now = performance.now();
+      const gap = now - last;
+      last = now;
+      // A gap far past the tick interval means the main thread was blocked that long.
+      if (gap >= thresholdMs) {
+        try {
+          w.__bugsafariOnMainThreadStall?.(gap);
+        } catch {
+          // never let the reporter hook throw inside the page
+        }
+      }
+    }, tickMs);
+  };
+  const watchdogArgs: [number, number] = [WATCHDOG_TICK_MS, FREEZE_BLOCK_THRESHOLD_MS];
+  page.exposeFunction('__bugsafariOnMainThreadStall', onMainThreadStall).catch(() => undefined);
+  // Monitoring attaches AFTER navigation (see attachAfterNavigation), so the target
+  // document is already loaded — inject now. addInitScript covers any later full-document
+  // load; both are guarded idempotent so an SPA never stacks two watchdog intervals.
+  page.evaluate(installWatchdog, watchdogArgs).catch(() => undefined);
+  page.addInitScript(installWatchdog, watchdogArgs).catch(() => undefined);
 
   heartbeatInterval = setInterval(() => {
     void runHeartbeat();

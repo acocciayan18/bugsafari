@@ -97,7 +97,7 @@ check('student advice is non-empty and carries the catalog remediation', () => {
 check('API contract violation advice carries the API-contract remediation, not the runtime one', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` }));
-  assert.ok(finding.studentAdvice.includes('Suggested fix: verify the reply before reading it'));
+  assert.ok(finding.studentAdvice.includes('Suggested fix: verify the reply before trusting it'));
   assert.ok(finding.message.startsWith('[Server reply was not the JSON the app expected]'));
 });
 

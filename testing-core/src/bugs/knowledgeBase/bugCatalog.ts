@@ -114,16 +114,16 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
     ),
   },
   API_CONTRACT_VIOLATION: {
-    title: 'Server reply was not the JSON the app expected',
-    description: 'The app expected JSON but got HTML or another format (often an error or proxy page), so reading the reply threw an error instead of showing the real failure.',
+    title: 'Server reply did not match the expected contract',
+    description: 'The reply broke the contract the app relied on — either a non-JSON body (an HTML error or proxy page) where JSON was required, or a 200 success whose body actually declared an error. Either way the app read it as success and missed the real failure.',
     defaultSeverity: 'HIGH',
     cwe: 'CWE-754',
     remediation: remediation(
-      'Suggested fix: verify the reply before reading it',
-      '1. Check response.ok and the Content-Type before calling response.json(), and handle non-JSON replies on purpose',
-      '2. Wrap the parse in try/catch and show an error or retry screen instead of letting the error crash the page',
-      '3. Fix the endpoint so failures return proper JSON with the right status, not an HTML error page',
-      '4. Add a test that returns a non-JSON reply and confirms the UI shows an error instead of crashing',
+      'Suggested fix: verify the reply before trusting it',
+      '1. Check response.ok, the HTTP status, and the Content-Type before calling response.json(), and handle non-JSON replies on purpose',
+      '2. When the body carries its own error flag (error:true, success:false, status:"error"), treat it as a failure and surface it instead of showing success',
+      '3. Fix the endpoint so real failures return the correct status (4xx/5xx) with proper JSON, not a 200 or an HTML error page',
+      '4. Add a test that returns an error body and confirms the UI shows the failure instead of crashing or showing success',
     ),
   },
   BOUNDARY_STRESS_FAILURE: {

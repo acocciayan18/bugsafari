@@ -302,6 +302,17 @@ function pickHeaders(headers?: Record<string, string>): Record<string, string> |
   return Object.keys(out).length ? out : undefined;
 }
 
+// Clean endpoint path for display: strips the ephemeral tunnel origin + query so a
+// finding reads "GET /api/soft-fail", not a random trycloudflare host. Falls back to
+// the query-stripped raw value if the URL is relative/unparseable.
+function endpointPath(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).pathname || rawUrl;
+  } catch {
+    return rawUrl.split('?')[0] ?? rawUrl;
+  }
+}
+
 // First present trace/correlation id across the curated header keys.
 function extractTraceId(headers?: Record<string, string>): string | undefined {
   if (!headers) return undefined;
@@ -561,6 +572,8 @@ export class StabilityMonitor {
       // Raises (never lowers) the confidence used for scoring. Provenance still gates
       // first — a harness/driver/SDK fault is rejected before the floor can matter.
       confidenceFloor?: FaultConfidence;
+      // A 2xx whose body declared a failure — classify as an API contract violation.
+      softFail?: boolean;
     },
   ): { report: boolean; advice: string; severity: ForensicErrorSeverity; attribution: FindingAttribution; reason: string } {
     const classification = classifyFault({
@@ -569,6 +582,7 @@ export class StabilityMonitor {
       statusCode: opts?.statusCode,
       url: opts?.url,
       content: opts?.content,
+      softFail: opts?.softFail,
       scenario: ActiveScenarioTracker.getActiveScenarioName(),
       stepIndex: ActiveScenarioTracker.getCurrentStepIndex(),
     });
@@ -1007,6 +1021,12 @@ export class StabilityMonitor {
       context: `${defect.method} ${url}`,
     });
     const attribution: FindingAttribution = complete.attribution;
+    // Human name of the double-fired control, resolved from the finder's own label so
+    // live Telemetry and saved history name the same Element (not a bare <tag>). No
+    // acted control ⇒ name the repeated endpoint itself so the Element is never blank.
+    const culpritLabel = defect.selector
+      ? resolveControlName({ label: defect.elementLabel, selector: defect.selector })
+      : `${defect.method} ${url}`;
 
     t.emit('NETWORK', {
       url,
@@ -1048,6 +1068,7 @@ export class StabilityMonitor {
         attribution,
         severity,
         culpritSelector: defect.selector || undefined,
+        culpritLabel,
       });
 
       t.gateway.emitForensicReport({
@@ -1063,6 +1084,7 @@ export class StabilityMonitor {
         attribution,
         severity,
         culpritSelector: defect.selector || undefined,
+        culpritLabel,
       });
 
       this.deps.persistForensicError({
@@ -1086,6 +1108,7 @@ export class StabilityMonitor {
       type: 'DUPLICATE_ACTION',
       message: defect.message,
       selector: defect.selector,
+      elementLabel: culpritLabel,
       payloadUsed: defect.method,
       advice: complete.advice,
       stackTrace,
@@ -1318,6 +1341,12 @@ export class StabilityMonitor {
       verificationStatus: attribution.verificationStatus,
     });
 
+    // Name the control the hung request fired from, so live Telemetry matches the
+    // saved Element instead of falling back to a bare <tag> from the breadcrumbs.
+    // No acted control (a background/polled call) ⇒ name the hung endpoint itself.
+    const culpritSelector = this.culpritSelectorAt(faultAtMs);
+    const culpritLabel = this.culpritLabelAt(faultAtMs) ?? `${defect.method} ${url}`;
+
     t.gateway.emitIncidentReport({
       bugId: defect.bugId,
       timestamp,
@@ -1331,7 +1360,8 @@ export class StabilityMonitor {
       advice: complete.advice,
       attribution,
       severity,
-      culpritSelector: this.culpritSelectorAt(faultAtMs),
+      culpritSelector,
+      culpritLabel,
     });
 
     t.gateway.emitForensicReport({
@@ -1346,7 +1376,8 @@ export class StabilityMonitor {
       advice: complete.advice,
       attribution,
       severity,
-      culpritSelector: this.culpritSelectorAt(faultAtMs),
+      culpritSelector,
+      culpritLabel,
     });
 
     this.deps.persistForensicError({
@@ -1367,7 +1398,8 @@ export class StabilityMonitor {
       bugId: defect.bugId,
       type: 'INFINITE_LOADING',
       message: defect.message,
-      selector: this.culpritSelectorAt(faultAtMs) ?? '',
+      selector: culpritSelector ?? '',
+      elementLabel: culpritLabel,
       payloadUsed: defect.method,
       advice: complete.advice,
       stackTrace,
@@ -1407,15 +1439,26 @@ export class StabilityMonitor {
       return;
     }
     const isHttpFault = evidence.statusCode !== undefined;
+    // A 2xx whose body declared an error — routed here as a masked failure.
+    const isSoftFail = routing.reasonCode === 'SOFT_FAIL_BODY';
+    // The finding's locus: the control that fired the request when one is known, else the
+    // failing API endpoint itself (a background/polled call has no acted element). Guarantees
+    // the Element cell is never blank on a network finding (requirement: element or endpoint).
+    // The endpoint is shown as a clean path (tunnel origin + query stripped), e.g. GET /api/soft-fail.
+    const endpointRef = `${evidence.method} ${endpointPath(evidence.url)}`;
+    const culpritLabel = evidence.triggeringAction || endpointRef;
+    // Headline carries the clean endpoint path so an ephemeral tunnel host never leaks
+    // into the finding title; the reason clause is only appended when present (no empty ()).
     const faultMessage = isHttpFault
-      ? `HTTP ${evidence.statusCode} ${evidence.method} ${evidence.url}`
-      : `Network Request Failed: ${evidence.reason}`;
+      ? `HTTP ${evidence.statusCode} ${endpointRef}`
+      : `Network request failed: ${endpointRef}${evidence.reason ? ` (${evidence.reason})` : ''}`;
     const playbook = evidence.reproduction.narrative;
 
     const verification = this.verifyFault('NETWORK', faultMessage, {
       statusCode: evidence.statusCode,
       url: evidence.url,
       content: evidence.bodyContent || evidence.detail,
+      softFail: isSoftFail,
       evidence: {
         hasMessage: true,
         hasStatusCode: isHttpFault,
@@ -1456,7 +1499,7 @@ export class StabilityMonitor {
       context: `${evidence.method} ${evidence.url}`,
       specifics: {
         method: evidence.method,
-        endpoint: evidence.url.split('?')[0],
+        endpoint: endpointPath(evidence.url),
         statusCode: evidence.statusCode,
       },
     });
@@ -1483,7 +1526,7 @@ export class StabilityMonitor {
     // Stable id keyed on the fault signature (class/status + method + endpoint), so
     // every repeat of the same failing endpoint collapses into ONE finding instead of
     // flooding the ledger with per-request instances (raw instances stay on the Network tab).
-    const endpointKey = `${evidence.method}-${evidence.url.split('?')[0]}`;
+    const endpointKey = `${evidence.method}-${endpointPath(evidence.url)}`;
     const bugId = isSecurityBugClass(complete.attribution.bugClass)
       ? `softfail-${complete.attribution.bugClass}-${endpointKey}`
       : `${isHttpFault ? `http-${evidence.statusCode}` : 'network-failed'}-${endpointKey}`;
@@ -1532,6 +1575,7 @@ export class StabilityMonitor {
       attribution: complete.attribution,
       severity: displaySeverity,
       culpritSelector: evidence.culpritSelector,
+      culpritLabel,
     });
 
     t.gateway.emitForensicReport({
@@ -1548,6 +1592,7 @@ export class StabilityMonitor {
       attribution: complete.attribution,
       severity: displaySeverity,
       culpritSelector: evidence.culpritSelector,
+      culpritLabel,
     });
 
     this.deps.persistForensicError({
@@ -1571,6 +1616,7 @@ export class StabilityMonitor {
       type: 'NETWORK',
       message: headline,
       selector: evidence.culpritSelector ?? '',
+      elementLabel: culpritLabel,
       payloadUsed: evidence.method,
       advice: complete.advice,
       stackTrace: evidence.detail,

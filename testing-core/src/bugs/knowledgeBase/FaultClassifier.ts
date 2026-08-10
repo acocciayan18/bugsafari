@@ -53,6 +53,12 @@ export interface FaultInput {
    * in Fix B; additive/ignored until then.
    */
   confirmed?: boolean;
+  /**
+   * The response was a 2xx whose body declared a failure (a masked/soft-fail). Set by
+   * the network handler from the routing verdict. Promotes the fault to an API contract
+   * violation (an input/exception fault) on hard evidence, never resource exhaustion.
+   */
+  softFail?: boolean;
 }
 
 /**
@@ -143,6 +149,11 @@ const SIGNAL_TO_BUGCLASS: Record<SignalCategory, BugClass[]> = {
 // (BOUNDARY), so the contract signal must not hijack a NETWORK response fault either.
 const CLIENT_RENDER_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['CLIENT_CRASH', 'COMPONENT_FAIL', 'API_CONTRACT']);
 
+// Direct body-evidence leak categories on a NETWORK response: a leaked stack/path
+// (INFO_LEAK) or a raw datastore error (SQL/NOSQL). On a 5xx these ARE hard evidence
+// (the body was captured), so they may still win over the generic server verdict.
+const DIRECT_LEAK_CATEGORIES: ReadonlySet<SignalCategory> = new Set(['INFO_LEAK', 'SQL_ERROR', 'NOSQL_ERROR']);
+
 // Injection/leak signal categories — evidence of a SECURITY defect. They are only
 // trustworthy against a network RESPONSE (leaked body, reflected DOM). A client
 // exception's own stack trace routinely trips INFO_LEAK (`at fn (url:line:col)`) and
@@ -222,6 +233,32 @@ function resolveBugClass(
   const expected = new Set(expectedBugs);
   // A matched signal (or an oracle confirmation) is hard evidence; CONFIRMED wins.
   const signalConfidence: FaultConfidence = input.confirmed ? 'CONFIRMED' : 'SIGNAL';
+
+  // 0. A directly-observed HTTP 5xx is a SERVER/API error (BOUNDARY_STRESS_FAILURE,
+  //    CWE-400), never a navigation/redirect verdict (CWE-835) — a 5xx body or the
+  //    triggering control's label echoing "failed to load"/"redirect"/"404" must not
+  //    hijack it into STRUCTURAL_NAVIGATION_LOGIC/ROUTE_MUTATION_FAILURE. Capturing the
+  //    response IS hard evidence, so it is CONFIRMED. Direct body evidence of a leak or
+  //    injection (a leaked stack, a raw SQL/Mongo error) is a MORE specific and equally
+  //    direct verdict, so it still wins; CWE-835 stays reserved for genuine freezes/loops.
+  if (input.faultType === 'NETWORK' && input.statusCode !== undefined && input.statusCode >= 500) {
+    for (const category of categories) {
+      if (DIRECT_LEAK_CATEGORIES.has(category)) return { bugClass: SIGNAL_TO_BUGCLASS[category][0], confidence: 'CONFIRMED' };
+    }
+    return { bugClass: 'BOUNDARY_STRESS_FAILURE', confidence: 'CONFIRMED' };
+  }
+
+  // 0b. A 2xx whose body declares a failure (soft-fail): the response WAS captured, so
+  //     the masked failure is hard evidence (CONFIRMED). A leaked stack or a raw SQL/Mongo
+  //     error in that body is a more specific, equally-direct verdict and still wins;
+  //     otherwise the backend returned an error the app accepted as success — an API
+  //     contract violation (an input/exception fault), never resource exhaustion (BOUNDARY).
+  if (input.softFail) {
+    for (const category of categories) {
+      if (DIRECT_LEAK_CATEGORIES.has(category)) return { bugClass: SIGNAL_TO_BUGCLASS[category][0], confidence: 'CONFIRMED' };
+    }
+    return { bugClass: 'API_CONTRACT_VIOLATION', confidence: 'CONFIRMED' };
+  }
 
   // 1. A matched signal whose candidate the scenario expects — strongest evidence.
   for (const category of categories) {

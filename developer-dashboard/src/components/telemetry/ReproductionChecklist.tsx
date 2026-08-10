@@ -33,7 +33,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <div className="min-w-0 text-xs font-bold uppercase r text-(--text-secondary)">
+        <div className="min-w-0 text-xs font-bold uppercase text-(--text-secondary)">
            Reproduction Playbook
         </div>
         {steps.length > 0 && (
@@ -56,7 +56,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
                 className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
               >
                 <span className="mt-px shrink-0 text-xs font-mono text-(--text-tertiary)">{idx + 1}</span>
-                <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase  ${chipClass(kind)}`}>
+                <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${chipClass(kind)}`}>
                   {chipLabel(kind)}
                 </span>
                 <span className="w-full min-w-0 text-[13px] leading-relaxed text-(--text-primary) break-words sm:w-auto sm:flex-1">{step}</span>
@@ -80,7 +80,7 @@ export function ObservationsBlock({ observations }: { observations: string[] }) 
   if (observations.length === 0) return null;
   return (
     <div className="mt-2">
-      <div className="mb-1 text-xs font-bold uppercase r text-(--status-critical-fg)">
+      <div className="mb-1 text-xs font-bold uppercase text-(--status-critical-fg)">
         Observed result
       </div>
       <ul className="space-y-1">

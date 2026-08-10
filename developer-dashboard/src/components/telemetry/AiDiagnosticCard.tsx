@@ -54,7 +54,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
         <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px] break-words">
-          <span className="font-mono text-xs font-bold uppercase r block text-(--text-secondary) mb-1">
+          <span className="font-mono text-xs font-bold uppercase block text-(--text-secondary) mb-1">
              Suggested fix:
           </span>
           <p className="leading-normal">{ai.suggestedFix}</p>

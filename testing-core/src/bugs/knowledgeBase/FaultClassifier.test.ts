@@ -182,10 +182,88 @@ check('INFERRED runtime fault is severity-capped at MEDIUM', () => {
   assert.equal(c.severity, 'MEDIUM');
 });
 
-check('5xx escalation outranks the INFERRED cap', () => {
+check('Directly-observed HTTP 5xx is CONFIRMED (captured response is hard evidence)', () => {
   const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 500 GET /api/data', statusCode: 500, scenario: 'NetworkSaboteur' });
-  assert.equal(c.confidence, 'INFERRED');
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.confidence, 'CONFIRMED');
   assert.equal(c.severity, 'HIGH');
+});
+
+check('HTTP 5xx whose body/label echoes navigation text stays BOUNDARY, never CWE-835', () => {
+  // A 500 body echoing "failed to load"/"network error" (DEAD_END) or a redirect token
+  // must not hijack the server error into a navigation verdict — CWE-835 is reserved for
+  // genuine freezes/loops. Server error stays BOUNDARY_STRESS_FAILURE (CWE-400), CONFIRMED.
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 503 GET /api/orders',
+    statusCode: 503,
+    content: 'failed to load resource; too many redirects; page not found',
+    scenario: 'Exploratory',
+  });
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.cwe, 'CWE-400');
+  assert.equal(c.confidence, 'CONFIRMED');
+});
+
+check('HTTP 5xx leaking a server stack frame → SECURITY_VULNERABILITY_LEAK / CONFIRMED', () => {
+  // Direct body evidence of information exposure is a more specific, equally-direct
+  // verdict than the generic server error, so it still wins over BOUNDARY on a 5xx.
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 500 GET /api/data',
+    statusCode: 500,
+    content: 'Error\n    at handler (/srv/app/routes/data.js:42:11)',
+    scenario: 'Exploratory',
+  });
+  assert.equal(c.bugClass, 'SECURITY_VULNERABILITY_LEAK');
+  assert.equal(c.cwe, 'CWE-200');
+  assert.equal(c.confidence, 'CONFIRMED');
+});
+
+check('HTTP 200 soft-fail (error payload) → API_CONTRACT_VIOLATION / CONFIRMED, not BOUNDARY', () => {
+  // A 2xx whose body declares a failure is a masked contract break (an input/exception
+  // fault), never resource exhaustion. Capturing the response is hard evidence ⇒ CONFIRMED.
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 200 POST /api/soft-fail',
+    statusCode: 200,
+    content: '{"success":false,"error":"validation failed"}',
+    softFail: true,
+    scenario: 'DataFuzzer',
+  });
+  assert.equal(c.bugClass, 'API_CONTRACT_VIOLATION');
+  assert.equal(c.cwe, 'CWE-754');
+  assert.equal(c.confidence, 'CONFIRMED');
+  assert.equal(c.severity, 'HIGH');
+  assert.ok(/error flag|error body|surface/i.test(c.advice), 'advice must match the error, not retries/timeouts');
+});
+
+check('HTTP 200 soft-fail leaking a server stack frame stays SECURITY_VULNERABILITY_LEAK', () => {
+  // Direct body evidence of information exposure is a more specific, equally-direct verdict
+  // than the generic contract break, so it still wins even on a masked 2xx.
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 200 GET /api/soft-fail',
+    statusCode: 200,
+    content: 'Error\n    at handler (/srv/app/routes/data.js:42:11)',
+    softFail: true,
+    scenario: 'Exploratory',
+  });
+  assert.equal(c.bugClass, 'SECURITY_VULNERABILITY_LEAK');
+  assert.equal(c.confidence, 'CONFIRMED');
+});
+
+check('HTTP 200 soft-fail with a server-error body is NOT resource exhaustion (BOUNDARY)', () => {
+  const c = classifyFault({
+    faultType: 'NETWORK',
+    message: 'HTTP 200 GET /api/soft-fail',
+    statusCode: 200,
+    content: 'Internal Server Error: something failed',
+    softFail: true,
+    scenario: 'NetworkSaboteur',
+  });
+  assert.equal(c.bugClass, 'API_CONTRACT_VIOLATION');
+  assert.notEqual(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
 });
 
 check('Determinism — same input yields identical classification', () => {

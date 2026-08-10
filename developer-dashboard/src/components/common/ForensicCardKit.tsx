@@ -121,7 +121,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   return (
     <span
       title={`Severity: ${style.label}`}
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase  ${style.cls}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase ${style.cls}`}
     >
       {style.label}
     </span>
@@ -175,47 +175,44 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
     }
   };
 
-  if (!displayed && !context) {
-    return (
-      <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3 text-[13px] italic text-(--text-tertiary)">
-        No suggested fix for this finding yet.
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
-      {/* Header row: AI action (saved report only) on the left, copy on the right. */}
-      <div className="mb-1 flex items-center justify-between gap-2">
-        {/* Generate once per finding: the button is hidden the moment a genuine AI
-            fix exists (source === 'ai', incl. a persisted one seeded on load) so we
-            never spend an API call regenerating a successful response. It reappears
-            only when generation failed or fell back to the knowledge-base fix. */}
-        {context && source !== 'ai' ? (
-          <button
-            type="button"
-            onClick={generate}
-            disabled={status === 'loading'}
-            className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
-          >
-            {status === 'loading'
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-              : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}</>}
-          </button>
-        ) : <span />}
-        {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
+    <div>
+      {/* Heading row: label on the left, AI action + copy on the right, all one line. */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-caption font-bold uppercase text-(--text-secondary)">Suggested Fix</span>
+        <div className="flex items-center gap-2">
+          {/* Generate once per finding: the button is hidden the moment a genuine AI
+              fix exists (source === 'ai', incl. a persisted one seeded on load) so we
+              never spend an API call regenerating a successful response. It reappears
+              only when generation failed or fell back to the knowledge-base fix. */}
+          {context && source !== 'ai' && (
+            <button
+              type="button"
+              onClick={generate}
+              disabled={status === 'loading'}
+              className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+            >
+              {status === 'loading'
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
+                : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}</>}
+            </button>
+          )}
+          {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
+        </div>
       </div>
 
-     
       {(status === 'error' || (source === 'fallback' && status === 'idle')) && (
         <div className="mb-1.5 text-xs font-medium text-(--status-critical-fg)">
           {fallbackReasonText(reason)} Showing the saved fix instead.
         </div>
       )}
 
-      {displayed
-        ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
-        : <div className="text-[13px] italic text-(--text-tertiary)">No suggested fix yet. Generate one above.</div>}
+      {/* Content container: the fix text alone, boxed below the heading. */}
+      <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
+        {displayed
+          ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
+          : <div className="text-[13px] italic text-(--text-tertiary)">{context ? 'No suggested fix yet. Generate one above.' : 'No suggested fix for this finding yet.'}</div>}
+      </div>
     </div>
   );
 };

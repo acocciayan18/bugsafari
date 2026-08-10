@@ -40,7 +40,7 @@ function MetaPill({ label, value, title }: { label: string; value: string; title
       title={title}
       className="inline-flex items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-inset) px-2 py-1"
     >
-      <span className="text-xs font-semibold uppercase r text-(--text-tertiary)">{label}</span>
+      <span className="text-xs font-semibold uppercase text-(--text-tertiary)">{label}</span>
       <span className="text-xs font-semibold text-(--text-primary)">{value}</span>
     </span>
   );
@@ -122,18 +122,18 @@ export default function FindingCard({
         <FindingMetaBar attribution={view.attribution} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Message</div>
+            <div className="text-caption font-semibold uppercase text-(--text-secondary)">Message</div>
             <div className="mt-0.5 break-words text-[13px] text-(--text-primary)">{view.message || 'No details provided'}</div>
           </div>
           {element && (
             <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Element</div>
+              <div className="text-caption font-semibold uppercase text-(--text-secondary)">Element</div>
               <div className="mt-0.5 truncate text-[13px] text-(--text-primary)" title={element}>{element}</div>
             </div>
           )}
           {view.payloadUsed && (
             <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase  text-(--text-secondary)">Payload Used</div>
+              <div className="text-caption font-semibold uppercase text-(--text-secondary)">Payload Used</div>
               <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={view.payloadUsed}>{view.payloadUsed}</div>
             </div>
           )}
