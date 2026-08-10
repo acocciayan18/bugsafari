@@ -12,9 +12,9 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
     const navigate = useNavigate();
 
     return (
-        <div className="bg-[#f4f4f5] text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
+        <div className="bg-nova-light text-black min-h-screen font-sans selection:bg-[#121212] selection:text-white">
             {/* Top Navigation Bar */}
-            <nav className="fixed top-0 left-0 right-0 z-50 bg-[#f4f4f5]/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-nova-light/95 backdrop-blur-md border-b border-zinc-200 shadow-sm">
                 <div className="flex justify-between items-center w-full px-6 py-4 max-w-[1440px] mx-auto">
                     <div className="flex items-center gap-8">
                         <button onClick={() => navigate('/')} className="text-[24px] font-extrabold text-black tracking-tighter uppercase text-left bg-transparent border-none cursor-pointer">
@@ -39,7 +39,7 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
             </nav>
 
             <main className="pt-6 pb-6 px-6 max-w-[1440px] mx-auto">
-                <div className="space-y-4 mb-16 border-b border-zinc-200 pb-8">
+                <div className="space-y-3 mb-10 border-b border-zinc-200 pb-6">
                     <h1 className="text-[40px] lg:text-[56px] font-extrabold uppercase tracking-tight">{title}</h1>
                     <p className="text-[16px] text-zinc-600 max-w-2xl">{subtitle}</p>
                 </div>
@@ -55,7 +55,7 @@ function StatRow({ items }: { items: { value: string; label: string }[] }) {
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-zinc-200 border border-zinc-200 rounded-xl overflow-hidden">
             {items.map((it) => (
-                <div key={it.label} className="bg-[#f4f4f5] p-6 text-center space-y-1">
+                <div key={it.label} className="bg-white p-6 text-center space-y-1">
                     <div className="text-3xl font-extrabold tracking-tight">{it.value}</div>
                     <div className="text-xs font-mono uppercase  text-zinc-500">{it.label}</div>
                 </div>
@@ -98,7 +98,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
 
 function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
     return (
-        <div className="border border-zinc-200 rounded-2xl divide-y divide-zinc-200 bg-[#f4f4f5] overflow-hidden">
+        <div className="border border-zinc-200 rounded-2xl divide-y divide-zinc-200 bg-white overflow-hidden">
             {items.map((it) => (
                 <details key={it.q} className="group p-6">
                     <summary className="cursor-pointer list-none flex justify-between items-center gap-4 font-bold text-base">
@@ -115,12 +115,12 @@ function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
 function DarkCta({ heading, sub }: { heading: string; sub: string }) {
     const navigate = useNavigate();
     return (
-        <div className="bg-[#121212] text-white rounded-2xl p-10 lg:p-16 text-center space-y-6">
+        <div className="bg-[#121212] text-white rounded-2xl p-8 lg:p-12 text-center space-y-5">
             <h2 className="text-2xl lg:text-4xl font-extrabold uppercase tracking-tight">{heading}</h2>
             <p className="text-zinc-400 max-w-xl mx-auto">{sub}</p>
             <button
                 onClick={() => navigate('/login')}
-                className="px-8 py-3 font-mono text-[13px] font-semibold bg-[#f4f4f5] text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
+                className="px-8 py-3 font-mono text-[13px] font-semibold bg-white text-black rounded-lg hover:bg-zinc-200 transition-all cursor-pointer"
             >
                 Start Testing Free
             </button>
@@ -128,13 +128,13 @@ function DarkCta({ heading, sub }: { heading: string; sub: string }) {
     );
 }
 
-// Rendered straight from the shared catalog the engine gates on — a local copy
+// Rendered straight from the shared catalog the engine gates on; a local copy
 // silently drifted from what the profiles actually do.
 function ProfileTabs() {
     const [active, setActive] = useState(0);
     const profile = INFILTRATION_PROFILE_CATALOG[active];
     return (
-        <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-[#f4f4f5]">
+        <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white">
             <div className="flex overflow-x-auto border-b border-zinc-200 scroll-rail">
                 {INFILTRATION_PROFILE_CATALOG.map((p, i) => (
                     <button
@@ -191,11 +191,11 @@ function BugTaxonomyGrid() {
 
 export function ExploreContent() {
     return (
-            <div className="space-y-16">
+            <div className="space-y-12">
                 <SplitSection
                     eyebrow="No Setup Needed"
                     heading="No Test Scripts. No Wiring. Just Go."
-                    description="Every step, BugSafari looks at your live page and finds everything a real person could interact with — buttons, links, menus, form fields. It skips anything hidden or off-screen, so it only tests what actually matters."
+                    description="At every step, BugSafari looks at your live page and finds everything a real person could interact with, such as buttons, links, menus, and form fields. It skips anything hidden or off-screen, so it only tests what matters."
                     bullets={[
                         'Knows when a popup or dialog is open and works with it instead of getting confused.',
                         'Handles busy, crowded pages without missing the controls that count.',
@@ -217,7 +217,7 @@ export function ExploreContent() {
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><Target className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="text-xl font-bold uppercase">Focuses On What Matters</h3>
-                        <p className="text-zinc-600 text-[13px] leading-relaxed">It puts its energy into the riskiest parts of your app first — logins, payments, deletes — the actions most likely to hide a real problem, instead of clicking around at random.</p>
+                        <p className="text-zinc-600 text-[13px] leading-relaxed">It focuses on the riskiest parts of your app first, like logins, payments, and deletes, the actions most likely to hide a real problem, instead of clicking around at random.</p>
                     </div>
                     <div className="p-8 border border-zinc-200 rounded-xl bg-zinc-50/50 space-y-4 shadow-xs">
                         <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center shrink-0"><Map className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
@@ -240,7 +240,7 @@ export function ExploreContent() {
                     <div className="space-y-2">
                         <span className="font-mono text-xs font-bold text-zinc-400 uppercase st">Testing Modes</span>
                         <h2 className="text-2xl font-extrabold uppercase tracking-tight">One App, Five Ways To Test It</h2>
-                        <p className="text-zinc-600 max-w-2xl">Pick a mode and BugSafari focuses on a certain kind of problem — from throwing tricky data at your forms to stress-testing what happens under pressure.</p>
+                        <p className="text-zinc-600 max-w-2xl">Pick a mode and BugSafari focuses on one kind of problem, from throwing tricky data at your forms to stress-testing what happens under pressure.</p>
                     </div>
                     <ProfileTabs />
                 </div>
@@ -267,18 +267,18 @@ export function ExplorePage() {
 
 export function FeaturesContent() {
     return (
-            <div className="space-y-16">
+            <div className="space-y-12">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
                             <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><Radar className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h3 className="text-xl font-bold uppercase mb-2">Tests Itself</h3>
-                            <p className="text-[13px] text-zinc-600 leading-relaxed">BugSafari finds every button, link, and form on its own and tries each one — no test script or setup required from you.</p>
+                            <p className="text-[13px] text-zinc-600 leading-relaxed">BugSafari finds every button, link, and form on its own and tries each one, with no test script or setup required.</p>
                         </div>
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Zero Setup</div>
                     </div>
 
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
                             <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><Brain className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h3 className="text-xl font-bold uppercase mb-2">Learns As It Goes</h3>
@@ -287,7 +287,7 @@ export function FeaturesContent() {
                         <div className="pt-4 border-t border-zinc-100 font-mono text-xs text-zinc-400 font-bold uppercase">Gets Smarter</div>
                     </div>
 
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4 flex flex-col justify-between">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4 flex flex-col justify-between">
                         <div>
                             <div className="w-12 h-12 bg-[#121212] text-white rounded-lg flex items-center justify-center mb-6 shrink-0"><ClipboardCheck className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h3 className="text-xl font-bold uppercase mb-2">Proves What Broke</h3>
@@ -300,7 +300,7 @@ export function FeaturesContent() {
                 <SplitSection
                     eyebrow="Testing Modes"
                     heading="Five Ways To Stress Your App"
-                    description="Each mode focuses on a different kind of problem, so you can aim a run at exactly what you're worried about — from tricky form input to what happens under pressure."
+                    description="Each mode focuses on a different kind of problem, so you can aim a run at exactly what you're worried about, from tricky form input to what happens under pressure."
                     bullets={[
                         'Throws tricky and unexpected data at your forms to see what slips through.',
                         'Checks whether the rules you set in the browser are actually enforced on the server.',
@@ -319,31 +319,31 @@ export function FeaturesContent() {
                     <ProfileTabs />
                 </div>
 
-                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-8">
+                <div className="border border-zinc-200 rounded-2xl p-6 lg:p-10 bg-zinc-50/50 space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">More Ways It Helps You</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Filter className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Only Reports Real Bugs</h4>
                                 <p className="text-[13px] text-zinc-600">It tells the difference between a real problem in your app and noise from the browser or network, so you're not chasing false alarms.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Scale className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Consistent Results</h4>
-                                <p className="text-[13px] text-zinc-600">The same problem always gets the same label, a clear severity, and plain advice on how to fix it — every single time.</p>
+                                <p className="text-[13px] text-zinc-600">The same problem always gets the same label, a clear severity, and plain advice on how to fix it, every single time.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><RefreshCcw className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Verify Your Fix</h4>
-                                <p className="text-[13px] text-zinc-600">After you patch a bug, replay it with one click to confirm it's actually gone — no guessing whether the fix worked.</p>
+                                <p className="text-[13px] text-zinc-600">After you patch a bug, replay it with one click to confirm it's actually gone, with no guessing whether the fix worked.</p>
                             </div>
                         </div>
-                        <div className="flex gap-4 items-start bg-[#f4f4f5] p-6 rounded-xl border border-zinc-200 shadow-xs">
+                        <div className="flex gap-4 items-start bg-white p-6 rounded-xl border border-zinc-200 shadow-xs">
                             <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg">Stay On Your Site</h4>
@@ -377,11 +377,11 @@ export function FeaturesPage() {
 
 export function CommunityContent() {
     return (
-            <div className="space-y-16">
+            <div className="space-y-12">
                 <SplitSection
                     eyebrow="Who It's For"
                     heading="Built For Builders On A Deadline"
-                    description="BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early — and leaves you enough detail to actually understand them."
+                    description="BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early and leaves you enough detail to actually understand them."
                     bullets={[
                         'No QA team needed. One person can run it, read the report, and know exactly what broke and why.',
                         'Guest mode lets anyone try a full test on their own app with no signup.',
@@ -392,26 +392,26 @@ export function CommunityContent() {
                     badge={{ value: '0', label: 'Setup Steps To Try' }}
                 />
 
-                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-8">
+                <div className="border border-zinc-200 rounded-2xl p-6 lg:p-10 bg-zinc-50/50 space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">How It Fits Your Workflow</h2>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <Settings className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><Settings className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h4 className="font-bold text-lg">Set Up</h4>
                             <p className="text-xs text-zinc-600">Enter your app's address and pick how you want it tested. Optionally lock the run to that one site.</p>
                         </div>
-                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <Play className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><Play className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h4 className="font-bold text-lg">Start</h4>
                             <p className="text-xs text-zinc-600">One click starts the test. Pause or resume anytime without losing your progress.</p>
                         </div>
-                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <Eye className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h4 className="font-bold text-lg">Watch</h4>
                             <p className="text-xs text-zinc-600">See bugs, network activity, and errors stream in live as BugSafari explores your app.</p>
                         </div>
-                        <div className="p-6 bg-[#f4f4f5] border border-zinc-200 rounded-xl space-y-2 shadow-xs">
-                            <CheckCircle2 className="w-6 h-6 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                        <div className="p-6 bg-white border border-zinc-200 rounded-xl space-y-2 shadow-xs">
+                            <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><CheckCircle2 className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                             <h4 className="font-bold text-lg">Verify</h4>
                             <p className="text-xs text-zinc-600">Save the run, read the report, and re-check any bug with one click after you fix it.</p>
                         </div>
@@ -419,12 +419,12 @@ export function CommunityContent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
                         <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><Rocket className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="text-xl font-bold uppercase">Try Before You Sign Up</h3>
                         <p className="text-zinc-600 text-[13px] leading-relaxed">Guest mode runs the exact same test and live dashboard as a full account. The only difference: guest runs aren't saved after your session ends.</p>
                     </div>
-                    <div className="p-8 border border-zinc-200 rounded-xl bg-[#f4f4f5] shadow-sm space-y-4">
+                    <div className="p-8 border border-zinc-200 rounded-xl bg-white shadow-sm space-y-4">
                         <div className="w-10 h-10 bg-[#121212] text-white rounded-lg flex items-center justify-center"><ShieldCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="text-xl font-bold uppercase">Your Results Stay Yours</h3>
                         <p className="text-zinc-600 text-[13px] leading-relaxed">Every saved run and report belongs only to your account. Search it, export it, and come back to re-check it whenever you need to.</p>
@@ -452,10 +452,10 @@ export function CommunityPage() {
 
 export function AboutContent() {
     return (
-            <div className="space-y-16">
+            <div className="space-y-12">
                 <div className="space-y-6 text-zinc-700 leading-relaxed text-base max-w-4xl">
-                    <p>BugSafari started with a simple frustration: modern web apps hide small, sneaky problems — broken forms, timing glitches, security gaps — that normal tests never think to try. And random "just click everything" tools make a mess without really telling you what went wrong.</p>
-                    <p>So we built something in between: a tester that explores your app like a curious user, learns where trouble is likely to hide, pushes your app the way real users eventually will, and turns whatever breaks into a clear, repeatable report — with nothing for you to script or set up.</p>
+                    <p>BugSafari started with a simple frustration: modern web apps hide small, sneaky problems like broken forms, timing glitches, and security gaps that normal tests never think to try. And random "just click everything" tools make a mess without telling you what went wrong.</p>
+                    <p>So we built something in between: a tester that explores your app like a curious user, learns where trouble is likely to hide, pushes your app the way real users eventually will, and turns whatever breaks into a clear, repeatable report, with nothing for you to script or set up.</p>
                 </div>
 
                 <SplitSection
@@ -471,32 +471,32 @@ export function AboutContent() {
                     imageAlt="The BugSafari dashboard during a live test"
                 />
 
-                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-[#f4f4f5] shadow-sm space-y-8">
+                <div className="border border-zinc-200 rounded-2xl p-6 lg:p-10 bg-white shadow-sm space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">What We Care About</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="flex gap-3">
-                            <BadgeCheck className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><BadgeCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg text-black uppercase">Honest Results</h4>
                                 <p className="text-[13px] text-zinc-600">It only reports real problems in your app, not noise from the browser or the network, so you never chase false alarms.</p>
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            <ListChecks className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><ListChecks className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg text-black uppercase">Clear Answers</h4>
-                                <p className="text-[13px] text-zinc-600">Every bug comes with a plain label, a severity, and simple advice on how to fix it — no decoding required.</p>
+                                <p className="text-[13px] text-zinc-600">Every bug comes with a plain label, a severity, and simple advice on how to fix it, with no decoding required.</p>
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            <ShieldCheck className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><ShieldCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg text-black uppercase">Nothing Breaks The Run</h4>
                                 <p className="text-[13px] text-zinc-600">One failing test never takes down the rest. The run keeps going and still hands you a complete report.</p>
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            <Lock className="w-5 h-5 mt-0.5 shrink-0 text-zinc-900" strokeWidth={1.75} aria-hidden="true" />
+                            <div className="w-8 h-8 rounded-full bg-[#121212] text-white flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                             <div className="space-y-1">
                                 <h4 className="font-bold text-lg text-black uppercase">Your Data Is Yours</h4>
                                 <p className="text-[13px] text-zinc-600">Saved runs and reports stay tied to your account and out of everyone else's reach.</p>
@@ -512,10 +512,10 @@ export function AboutContent() {
                     { value: '0', label: 'Scripts to write' },
                 ]} />
 
-                <div className="border border-zinc-200 rounded-2xl p-8 lg:p-12 bg-zinc-50/50 space-y-6">
+                <div className="border border-zinc-200 rounded-2xl p-6 lg:p-10 bg-zinc-50/50 space-y-6">
                     <h2 className="text-2xl font-extrabold uppercase tracking-tight">Who We Build For</h2>
                     <p className="text-[13px] text-zinc-600 leading-relaxed max-w-3xl">
-                        BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early and leaves you enough detail to understand exactly what happened — not just that something broke.
+                        BugSafari is made for students and independent developers who need quick, honest feedback before a demo, a submission, or a launch. It works like a tireless tester that finds the big problems early and leaves you enough detail to understand exactly what happened, not just that something broke.
                     </p>
                 </div>
 

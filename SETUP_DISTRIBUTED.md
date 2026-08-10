@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Add custom tooltip for CWE labels"
+git commit -m "Add custom tFix forensic report scrolling and element data consistence"
 git push origin HEAD:dev --force
 
 
