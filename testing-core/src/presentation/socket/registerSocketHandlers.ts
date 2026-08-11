@@ -308,6 +308,8 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
           }),
         ]);
         respond(result);
+        // Persist the verdict so it survives a report refresh (non-fatal on failure).
+        await regressionVerifier.persistVerification(request.sessionId, request.bugId, userId, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         obsLog.error('[Socket] verify-fix failed:', message);

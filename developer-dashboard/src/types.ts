@@ -38,6 +38,7 @@ export type {
   RegressionVerdict,
   VerifyFixRequest,
   VerifyFixResult,
+  PersistedVerification,
   VerifyFixReason,
   VerifyFixProgress,
   VerifyFixPhase,
@@ -234,6 +235,8 @@ export interface ForensicCaughtBug {
   attribution?: FindingAttribution;
   /** Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS. */
   bypass?: ConstraintBypassDetail;
+  /** Last Verify-Fix replay verdict, persisted from the report — seeds the card's initial status. */
+  verification?: PersistedVerification;
 }
 
 export interface ForensicReportResponse {

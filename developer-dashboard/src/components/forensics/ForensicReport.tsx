@@ -1101,7 +1101,7 @@ export default function ForensicReport() {
                       index={index}
                       occurrences={bug.occurrences ?? 1}
                       sessionId={sessionId}
-                      status={statuses[bug.bugId] ?? IDLE_VERIFY_STATUS}
+                      status={statuses[bug.bugId] ?? (bug.verification ? { state: 'done', result: bug.verification } : IDLE_VERIFY_STATUS)}
                       onVerify={verify}
                     />
                   ),

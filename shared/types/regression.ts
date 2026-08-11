@@ -108,6 +108,12 @@ export interface VerifyFixResult {
   error?: string;
 }
 
+/** A VerifyFixResult persisted onto a caught bug so the verdict survives a report refresh. */
+export interface PersistedVerification extends VerifyFixResult {
+  /** ISO time the replay verdict was recorded. */
+  verifiedAt: string;
+}
+
 /** Socket.IO event name for a Verify Fix request (uses an ack callback for the result). */
 export const VERIFY_FIX_EVENT = 'verify-fix' as const;
 

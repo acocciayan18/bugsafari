@@ -185,16 +185,38 @@ export class RegressionPlaybookVerifier {
     }
   }
 
+  // Resolve a public RUN- code (or a raw ObjectId) to an ownership-scoped selector —
+  // the client only ever holds the public code now.
+  private resolveSelector(sessionId: string): { runId: string } | { _id: Types.ObjectId } | null {
+    const code = normalizeRunCode(sessionId);
+    if (code) return { runId: code };
+    return isValidObjectId(sessionId) ? { _id: new Types.ObjectId(sessionId) } : null;
+  }
+
+  /**
+   * Persist a terminal replay verdict onto the finding so it survives a report
+   * refresh. Owner-scoped positional update; failure is non-fatal (never fails the
+   * verify ack), mirroring the on-demand aiAdvice/insights writes.
+   */
+  public async persistVerification(sessionId: string, bugId: string, userId: string, result: VerifyFixResult): Promise<void> {
+    if (!isValidObjectId(userId)) return;
+    const selector = this.resolveSelector(sessionId);
+    if (!selector) return;
+    try {
+      await SessionModel.updateOne(
+        { ...selector, userId: new Types.ObjectId(userId), 'forensicTrace.caughtBugs.bugId': bugId },
+        { $set: { 'forensicTrace.caughtBugs.$.verification': { ...result, verifiedAt: new Date().toISOString() } } },
+      );
+    } catch (error) {
+      obsLog.error('verify-fix persist failed:', error instanceof Error ? error.message : error);
+    }
+  }
+
   /** Load the target URL, recorded timeline, and the specific caught bug — scoped to the user. */
   private async loadFinding(sessionId: string, bugId: string, userId: string): Promise<LoadedFinding | null> {
     if (!isValidObjectId(userId)) return null;
 
-    // Resolve the public RUN- code (or a raw ObjectId) to an ownership-scoped
-    // selector — the client only ever holds the public code now.
-    const code = normalizeRunCode(sessionId);
-    const selector = code
-      ? { runId: code }
-      : isValidObjectId(sessionId) ? { _id: new Types.ObjectId(sessionId) } : null;
+    const selector = this.resolveSelector(sessionId);
     if (!selector) return null;
 
     const doc = await SessionModel.findOne({

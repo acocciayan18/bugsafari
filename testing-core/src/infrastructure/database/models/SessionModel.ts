@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import type { ActionOutcome, ConstraintBypassDetail, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome, StateFingerprint, TestingTypeId } from '../../../../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, InfiltrationProfileId, PersistedVerification, ReplayMacro, RunTerminationOutcome, StateFingerprint, TestingTypeId } from '../../../../../shared/types.js';
 import { SessionStatus } from './FindingType.js';
 import { generateRunCode } from '../runCodeGenerator.js';
 import { RUN_CODE_REGEX } from '../../../../../shared/runCode.js';
@@ -71,6 +71,8 @@ export interface ICaughtBug {
   };
   /** Structured constraint-bypass evidence — present only on CLIENT_SIDE_CONSTRAINT_BYPASS. */
   bypass?: ConstraintBypassDetail;
+  /** Last Verify-Fix replay verdict, persisted on demand so it survives a report refresh. */
+  verification?: PersistedVerification | null;
 }
 
 export interface IForensicTrace {
@@ -407,6 +409,41 @@ const sessionSchema = new Schema(
               endpoint: { type: String, default: '' },
               method: { type: String, default: '' },
               status: { type: Number, default: 0 },
+            },
+            required: false,
+            default: null,
+          },
+          // Last Verify-Fix replay verdict — persisted on demand so it survives a report refresh.
+          verification: {
+            type: {
+              ok: { type: Boolean, default: false },
+              verdict: { type: String, default: '' },
+              reason: { type: String, default: '' },
+              bugClass: { type: String, default: '' },
+              stepsReplayed: { type: Number, default: 0 },
+              stepStats: {
+                type: {
+                  total: { type: Number, default: 0 },
+                  executed: { type: Number, default: 0 },
+                  skipped: { type: Number, default: 0 },
+                  failed: { type: Number, default: 0 },
+                  finalStepExecuted: { type: Boolean, default: false },
+                },
+                default: null,
+              },
+              matchedSignals: {
+                type: [{ faultType: String, message: String, statusCode: Number, url: String }],
+                default: [],
+              },
+              otherSignals: {
+                type: [{ faultType: String, message: String, statusCode: Number, url: String }],
+                default: [],
+              },
+              timelineSource: { type: String, default: '' },
+              summary: { type: String, default: '' },
+              durationMs: { type: Number, default: 0 },
+              error: { type: String, default: '' },
+              verifiedAt: { type: String, default: '' },
             },
             required: false,
             default: null,
