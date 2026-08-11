@@ -1,0 +1,153 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+08 - DATABASE & DATA FLOW
+========================================================================
+Database: MongoDB Atlas, accessed via Mongoose 8.
+Models live in testing-core/src/infrastructure/database/models/*.
+Repositories wrap them in infrastructure/database/repositories/*.
+
+
+------------------------------------------------------------------------
+1. WHAT DATA IS STORED (COLLECTIONS)
+------------------------------------------------------------------------
+UserModel (users)
+- WHAT: Operator accounts - email, hashed password (bcrypt), verification and
+  reset state, settings.
+- WHY: Authentication and per-tenant ownership of all run data.
+
+RefreshTokenModel (refresh tokens)
+- WHAT: Server-side record of issued refresh tokens.
+- WHY: Lets refresh tokens be tracked/revoked even though the token itself
+  rides in an httpOnly cookie.
+
+SessionModel (safari sessions) - the CENTER of a run's data
+- WHAT: One document per saved run. Holds the target URL, run code (public
+  RUN- id), owner userId, status/termination outcome, config, metrics
+  (actionsExecuted, findingsFound, pagesVisited, runtimeMs, coverage), an
+  EMBEDDED array of caught bugs (ICaughtBug: type, message, selector, payload,
+  advice, stack, reproduction steps/actions, attribution, state fingerprint,
+  severity), and an EMBEDDED array of action steps (numbered playbook of the
+  whole run). Also stores auth/storage snapshots where relevant.
+- WHY: Embedding findings and steps means one read reconstructs the report;
+  arrays are capped (caught bugs ~1000, steps ~2000) to stay under MongoDB's
+  16MB per-document limit.
+
+BrainConfigModel (brain configs)
+- WHAT: A snapshot of the perceptron's learned weights + bias for a run, keyed
+  by userId + targetUrl + capturedAt.
+- WHY: WARM-START. A later run on the same site by the same tenant reloads the
+  latest brain so the model does not start cold every time.
+
+Forensic child collections (linked by sessionId + userId):
+- ForensicErrorModel (forensic_errors): faults only - the detailed error
+  records behind each finding.
+- ForensicTelemetryModel: durable telemetry/analysis payloads.
+- ForensicAnalysisModel: the assembled forensic analysis for a run.
+- ConsoleLogModel: the full per-run console stream (every level) mirroring the
+  Console tab.
+- NetworkLogModel: the full per-run network log (every request, including
+  successes), distinct from forensic_errors.
+- TelemetryEventModel: the full ordered telemetry event stream (by seq), the
+  durable backing for reconnect replay beyond the in-memory buffer.
+
+SupportTicketModel: operator support requests (support form).
+
+WHY SO MANY COLLECTIONS: the live report needs both a compact summary (embedded
+in the session) and full high-volume streams (console/network/telemetry). Big
+streams are kept in their own collections so the session document stays small
+and fast, while still being fully reconstructable.
+
+
+------------------------------------------------------------------------
+2. HOW SESSIONS, FINDINGS, TELEMETRY, AND EVIDENCE ARE PERSISTED
+------------------------------------------------------------------------
+WHAT: During a run, data is buffered in memory; at defined points it is written
+to MongoDB.
+
+WHY: Writing every event synchronously would slow the loop and hammer the DB;
+buffering + batched writes keeps the run fast and the DB calm.
+
+HOW:
+- The session document is created at run start (with the minted run code) and
+  updated as the run settles.
+- Findings are transferred VERBATIM from what the operator saw live at save
+  time (ClientFinding), so History matches the live Error tab exactly - no
+  silent re-dedup or re-filtering.
+- Forensic errors are buffered and flushed in batches (threshold ~50).
+- Console, network, and telemetry streams write to their own collections.
+- Guests: nothing is persisted. The userId must be a valid ObjectId for any
+  write; a guest has none, so the save is skipped by design.
+- Brain state is exported (RiskScorer.exportBrainState) and saved as a
+  BrainConfig for warm-start.
+
+
+------------------------------------------------------------------------
+3. MULTI-TENANCY, RETENTION, AND INTEGRITY
+------------------------------------------------------------------------
+WHAT: Every operator sees only their own data; abandoned data is reaped.
+
+WHY: Isolation is a security requirement; retention keeps the cluster bounded.
+
+HOW:
+- Multi-tenant isolation: userId is denormalized onto sessions, brain configs,
+  and forensic children, and every history/forensic query filters by it. One
+  tenant can never read another's runs.
+- Indexes: declared per model and enforced at boot (indexSync.ts) since
+  production runs autoIndex:false. A public run code (RUN-...) is sparse-unique.
+- Retention: TTL indexes expire abandoned sessions, and a retention reaper
+  (retentionReaper.ts) periodically deletes orphaned forensic children, since
+  MongoDB does not cascade deletes. Query limits (queryLimits.ts, pagination)
+  cap how much a single request can pull.
+
+
+------------------------------------------------------------------------
+4. FRONTEND -> BACKEND -> DATABASE FLOW
+------------------------------------------------------------------------
+WHAT: The end-to-end write path.
+
+HOW, in order:
+1. Dashboard POST /api/start-test  -> engine creates a SessionModel (status
+   running) and begins the run.
+2. During the run, telemetry streams over Socket.IO to the dashboard AND
+   accumulates in the in-memory forensic stores (nothing final yet).
+3. Run ends -> the engine settles the session outcome; forensic children are
+   written; brain config saved.
+4. Authenticated operator clicks Save -> POST /api/history/save-session sends
+   the exact findings from the live Error tab; the engine writes/updates the
+   session document with embedded findings + action steps.
+5. The dashboard History list refreshes from GET /api/history/sessions.
+
+Guests reach step 3 but not step 4 (a save prompt explains why).
+
+
+------------------------------------------------------------------------
+5. HOW SAVED FORENSIC HISTORY IS RECONSTRUCTED
+------------------------------------------------------------------------
+WHAT: Opening a saved safari rebuilds the full report exactly as it was live.
+
+WHY: History parity - what you review must match what you saw during the run.
+
+HOW:
+- GET /api/history / /api/history/sessions -> the list of the tenant's runs.
+- GET /api/forensic/report/:sessionId and GET /api/forensic/analysis -> the
+  session document (embedded findings + steps) plus the forensic children
+  (console, network, telemetry, errors), all filtered by userId.
+- The frontend historyStore + ForensicReport.tsx / ClinicalForensicsDashboard
+  assemble them into the report view: findings with CWE/severity/confidence,
+  reproduction checklists, and the console/network/telemetry timelines.
+- GET /api/history/export/:id lets the operator export a run.
+- Because findings were stored verbatim and the streams are ordered (telemetry
+  by seq), the reconstruction is faithful, not approximate.
+
+
+------------------------------------------------------------------------
+6. DISTRIBUTED-MODE STATE (Redis, transient)
+------------------------------------------------------------------------
+WHAT: In queue mode, Redis holds transient run state that is NOT the system of
+record: the BullMQ job, a RunRegistry snapshot (so a refreshed browser can
+resume a live run cross-process), the encrypted AuthVault handoff of target
+credentials (single-use, TTL'd), and the telemetry/control bridges.
+
+WHY: These are ephemeral coordination data, deliberately separate from the
+durable MongoDB record. Credentials never touch MongoDB; they live only in the
+encrypted vault and are discarded when the run ends.

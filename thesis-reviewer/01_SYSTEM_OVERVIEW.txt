@@ -1,0 +1,156 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+01 - SYSTEM OVERVIEW
+========================================================================
+Every answer below is grounded in the real code in this repository. Where
+something is only partly built or not built, it says so plainly.
+
+
+------------------------------------------------------------------------
+1. WHAT BUGSAFARI IS
+------------------------------------------------------------------------
+WHAT: BugSafari is an autonomous, script-free exploratory testing engine
+for Single-Page Applications (SPAs). You give it the address of a running
+web app, and it drives a real Chromium browser through that app by itself,
+clicking buttons, typing into forms, changing pages, and stressing the
+app, all while watching for crashes, server errors, security leaks, and
+broken navigation. A human never writes a test script; the engine decides
+what to do next on its own.
+
+WHY: Traditional automated testing is written by hand as fixed scripts.
+Those scripts only check the exact paths a person thought of, they break
+whenever the UI changes, and they never wander into the strange corner
+cases where real bugs hide. BugSafari removes that predictability gap by
+replacing the fixed script with an agent that learns which parts of the
+page are worth poking and explores places a scripted test would never go.
+
+HOW: The engine has three moving parts working together. A machine-learning
+model (a single-layer perceptron in testing-core/src/ml/perceptron.ts)
+scores every clickable element to guess how "interesting" it is. A
+structural DOM hasher (testing-core/src/ml/domHasher.ts) turns the current
+screen into a fingerprint so the engine knows when it has seen a state
+before and does not loop forever. A state-graph navigator
+(testing-core/src/domain/services/StateGraphNavigator.ts) treats the app
+as a graph of states and edges and decides, each step, whether to explore a
+new control, backtrack, or declare the app fully explored. On top of that
+sit "scenarios" (deliberate attacks like fuzzing and rapid clicking) and a
+forensic layer that records exactly what happened so a developer can
+reproduce any bug.
+
+
+------------------------------------------------------------------------
+2. PURPOSE AND OBJECTIVES
+------------------------------------------------------------------------
+WHAT: The purpose is to find real, reproducible defects in a SPA without
+any human-authored test, and to hand the developer a forensic report that
+proves the bug and shows how to reproduce and fix it.
+
+WHY: A bug report is only useful if a developer can trust it and act on it.
+So BugSafari does not just say "something broke". It classifies the fault
+(with a MITRE CWE identifier), scores how confident it is that the fault is
+real, attributes the fault to the control and scenario that caused it, and
+attaches a step-by-step reproduction playbook. This is the difference
+between noise and an actionable finding.
+
+HOW (concrete objectives visible in the code):
+- Explore autonomously and avoid loops (StateGraphNavigator + domHasher).
+- Learn what to click using an ML model that is rewarded/penalized live
+  (RiskScorer.applyCompoundReward, perceptron.applyReward).
+- Detect several bug classes: runtime crashes, server (5xx) failures, API
+  contract violations, NoSQL/SQL injection, XSS reflection, client-side
+  constraint bypass, race conditions, broken navigation, accessibility
+  gaps (see bugs/finders/* and bugs/knowledgeBase/bugCatalog.ts).
+- Prove findings with confidence scoring (verification/confidenceScore.ts)
+  and an in-run reproduction replay (verification/ReproductionProbe.ts).
+- Isolate authenticated operator data per tenant in MongoDB; let guests
+  test but not save.
+- Stream everything live to a dashboard and persist a forensic history.
+
+
+------------------------------------------------------------------------
+3. HOW THE COMPLETE SYSTEM WORKS (END TO END)
+------------------------------------------------------------------------
+WHAT: The system is a monorepo of three packages that cooperate: a React
+dashboard (the "Watchtower"), a Node/Express testing engine (the "Arsenal"
+and intelligence), and a shared TypeScript contracts package that keeps
+both sides speaking the same data language.
+
+WHY: Splitting the UI from the engine lets the engine run a dangerous
+workload (a real browser visiting an untrusted site) in an isolated
+process, while the dashboard stays a thin, safe operator console. The
+shared contracts package (shared/) stops the two sides from drifting apart
+as types change.
+
+HOW, the flow of one run:
+1. Operator opens the dashboard (developer-dashboard, port 5173), signs in
+   or continues as guest, types a target URL, and picks testing options.
+2. The dashboard calls POST /api/start-test on the engine (port 3000).
+   The engine validates the URL is a public, non-internal address (an SSRF
+   guard, serverUtils.assertPublicTarget) so it can never be tricked into
+   attacking internal infrastructure.
+3. In production the run is placed on a Redis/BullMQ queue and executed by
+   an isolated worker process (SafariWorker.ts). In local/simple mode it
+   runs in-process. Either way, StartExplorationUseCase.execute() drives it.
+4. The engine launches Chromium (Playwright), navigates to the target, and
+   begins the exploration loop: fingerprint the page, score the elements,
+   ask the navigator what to do, execute the action, watch telemetry.
+5. Live telemetry (screencast frames, action log, findings, console and
+   network logs, ML scores, path trace) streams over Socket.IO to the
+   dashboard so the operator watches in real time.
+6. Faults are caught by monitors, classified deterministically, confidence
+   scored, and (for reported findings) replayed once in a headless sidecar
+   browser to confirm they reproduce.
+7. When the run ends (all explored, timebox reached, user stop, or crash),
+   an authenticated operator's session, findings, action steps, and
+   telemetry are saved to MongoDB. Guests are prompted but nothing persists.
+8. Later, the operator opens History, and the saved forensic report is
+   reconstructed from the database exactly as it looked live.
+
+
+------------------------------------------------------------------------
+4. USER FLOW: FROM STARTING A TEST TO SAVED FORENSIC RESULTS
+------------------------------------------------------------------------
+WHAT: This is the operator's journey through the product.
+
+WHY: Understanding the flow matters because each screen maps to a real
+backend capability, and the defense panel will ask "what happens when the
+user clicks Start".
+
+HOW, step by step (files in parentheses):
+- Sign in / guest: AuthContext + authStore handle login; a guest path lets
+  the user test without an account (components/auth/GuestModeModal.tsx).
+  Access token lives in localStorage; the refresh token is an httpOnly
+  cookie (refreshCookie.ts) so JavaScript cannot read it.
+- Configure the run: the operator sets a target URL, an "infiltration
+  profile" / testing types, and options (TestingConfigModal.tsx,
+  InfiltrationProfileSelector.tsx). Optional target credentials can be
+  supplied for authenticated exploration (TargetAuthPanel.tsx).
+- Start: runStore/runCommands.ts calls the engine gateway
+  (SocketHttpEngineGateway.ts) which POSTs /api/start-test and joins the
+  live Socket.IO room for that run.
+- Watch live: the dashboard shows a live screencast (LiveFeed), an action
+  feed, ML target ratings, a path tracker, and three telemetry tabs
+  (Error / Console / Network). Pause, resume, and stop controls send
+  socket events the engine honors mid-run.
+- Findings appear live: each confirmed fault becomes a FindingCard with a
+  CWE badge, severity, culprit control, payload used, and a reproduction
+  checklist.
+- Run ends: a termination badge states WHY it ended (completed, timebox,
+  user-stopped, crashed, etc.).
+- Save: an authenticated operator saves the session
+  (POST /api/history/save-session). The findings are stored verbatim as
+  the operator saw them, plus action steps and telemetry.
+- Review later: History lists saved "safaris"; opening one rebuilds the
+  full forensic report (ForensicReport.tsx / ClinicalForensicsDashboard.tsx)
+  from the stored session and its forensic child collections.
+
+
+------------------------------------------------------------------------
+5. NOTE ON THE BLUEPRINT VS THE REAL CODE
+------------------------------------------------------------------------
+Some project documents describe a "20-step Circular Action Buffer". The
+real buffer (infrastructure/monitoring/actionBuffer.ts, backed by
+lib/circularBuffer.ts) now defaults to 60 records, with a code comment
+noting it "was 20" and was deepened to hold a realistic causal chain
+before minimization. Always trust the code over the older blueprints;
+this reviewer follows the code.

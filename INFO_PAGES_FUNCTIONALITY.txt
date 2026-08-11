@@ -1,0 +1,208 @@
+========================================================================
+BUGSAFARI INFO / MARKETING PAGES - FUNCTIONALITY REFERENCE
+========================================================================
+Page group: Public info / marketing pages (Explore, Features, Community, About)
+Purpose: Four public, unauthenticated marketing pages that explain what
+BugSafari is and push visitors toward login/signup. They are almost entirely
+static content. No backend calls, no forms, no live data.
+
+Primary source file:
+  developer-dashboard/src/pages/InfoPages.tsx
+Supporting files:
+  developer-dashboard/src/pages/sectionMeta.ts      (page title + subtitle text)
+  shared/types/testingType.ts                       (profile catalog data)
+  developer-dashboard/src/types.ts                  (re-exports the catalog)
+  developer-dashboard/src/App.tsx                   (routing + public gate)
+  developer-dashboard/src/designs/ThemeContext.tsx  (ThemeProvider wrapper)
+
+Routes covered: /explore  /features  /community  /about
+
+------------------------------------------------------------------------
+IMPORTANT UP-FRONT FACTS (so the rest is not misread)
+------------------------------------------------------------------------
+- These pages make ZERO backend / API / socket calls. Nothing is fetched.
+  All text and numbers are hardcoded in the source or read from a shared
+  static array (INFILTRATION_PROFILE_CATALOG).
+- All page-to-page movement uses react-router-dom's useNavigate() only.
+  No <a href> full reloads, no external links.
+- There is NO footer and NO legal/terms/privacy modal in these pages.
+  The task brief mentioned "legal footer/modals" but they do not exist in
+  InfoPages.tsx. Mark that as NOT IMPLEMENTED here.
+- These pages hardcode a LIGHT theme (bg-nova-light text-black). They do NOT
+  read ThemeContext / useTheme and do NOT support dark mode, even though
+  App.tsx wraps them in <ThemeProvider>. The provider is inherited but unused
+  by this file.
+- The only interactive JS behavior on these pages: the profile tab switcher
+  (ProfileTabs, useState) and the native HTML <details> FAQ accordions.
+
+========================================================================
+1. EXPLORE PAGE  (route /explore, nav label "How It Works")
+========================================================================
+Components: ExplorePage -> PageShell + ExploreContent
+Title/subtitle from SECTION_META.explore ("How BugSafari Works").
+
+WHAT:
+Static marketing page describing how the engine explores an app. It renders a
+SplitSection ("No Test Scripts. No Wiring. Just Go.") with a screenshot
+(/marketing/dashboard-shell.png), a StatRow of four numbers (16 bug types, 5
+ways to test, Live results, 0 scripts), a 2x2 grid of four feature cards
+(Focuses On What Matters / Explores Everywhere / Remembers Where It's Been /
+Never Gets Stuck) built with lucide-react icons (Target, Map, History, Ban),
+a ProfileTabs widget listing the five testing modes, a FaqAccordion of four
+Q&A items, and a DarkCta at the bottom.
+
+WHY:
+To sell the "no scripts, autonomous exploration" story to a first-time
+visitor and funnel them to sign in. It is a pitch page, not a functional tool.
+
+HOW:
+Pure presentational React. The only dynamic part is ProfileTabs, which reads
+the shared INFILTRATION_PROFILE_CATALOG array and lets the user click tabs
+(useState index) to swap descriptions. FAQ items use native <details>/<summary>
+so open/close needs no JS. No data is fetched. All navigation (logo, nav
+links, CTA button) routes through useNavigate.
+Status: IMPLEMENTED (static). ProfileTabs data is live from shared catalog.
+
+========================================================================
+2. FEATURES PAGE  (route /features, nav label "Features")
+========================================================================
+Components: FeaturesPage -> PageShell + FeaturesContent
+Title/subtitle from SECTION_META.features ("What BugSafari Does").
+
+WHAT:
+Static feature-list page. Renders a 3-column top grid (Tests Itself / Learns
+As It Goes / Proves What Broke, icons Radar/Brain/ClipboardCheck), a reversed
+SplitSection ("Five Ways To Stress Your App", image /marketing/profile-
+selector.png), another ProfileTabs block, a "More Ways It Helps You" 2x2 grid
+(Only Reports Real Bugs / Consistent Results / Verify Your Fix / Stay On Your
+Site, icons Filter/Scale/RefreshCcw/Lock), a BugTaxonomyGrid listing 16
+plain-English bug categories from the local BUG_TAXONOMY constant, and a
+DarkCta.
+
+WHY:
+To enumerate product capabilities and the bug classes it claims to catch, so
+a visitor understands the value before creating an account.
+
+HOW:
+Same pattern as Explore: presentational JSX plus the shared-catalog ProfileTabs
+and native accordions. BUG_TAXONOMY is a hardcoded array of [name, tag] pairs
+defined in this file (16 entries, matching the "16 bug types" stat). No backend
+calls. Navigation via useNavigate.
+Status: IMPLEMENTED (static). BUG_TAXONOMY and the "16" stat are hardcoded
+marketing copy, not read from the engine.
+
+========================================================================
+3. COMMUNITY PAGE  (route /community, nav label "Who It's For")
+========================================================================
+Components: CommunityPage -> PageShell + CommunityContent
+Title/subtitle from SECTION_META.community ("Who It's For").
+
+WHAT:
+Static audience/how-it-fits page aimed at students and solo developers. Renders
+a SplitSection ("Built For Builders On A Deadline"), a 4-step "How It Fits Your
+Workflow" strip (Set Up / Start / Watch / Verify, icons Settings/Play/Eye/
+CheckCircle2), a 2-card row (Try Before You Sign Up / Your Results Stay Yours,
+icons Rocket/ShieldCheck) that explains guest mode vs saved accounts, a
+FaqAccordion of three Q&A items about accounts and data isolation, and a
+DarkCta.
+
+WHY:
+To address "is this for me?" and explain the guest-vs-account distinction
+(guest runs are not saved; signup saves history, exports, and re-checks).
+This mirrors the real product's guest/auth behavior but only describes it.
+
+HOW:
+Presentational only. It DESCRIBES guest mode and per-user data isolation but
+performs no auth or persistence itself. No backend calls. Navigation via
+useNavigate; the CTA and Log In button route to /login.
+Status: IMPLEMENTED (static description of real features handled elsewhere).
+
+========================================================================
+4. ABOUT PAGE  (route /about, nav label "About")
+========================================================================
+Components: AboutPage -> PageShell + AboutContent
+Title/subtitle from SECTION_META.about ("About BugSafari").
+
+WHAT:
+Static "why we built this" narrative. Two intro paragraphs, a SplitSection
+("A Tester That Thinks"), a "What We Care About" 2x2 grid (Honest Results /
+Clear Answers / Nothing Breaks The Run / Your Data Is Yours, icons BadgeCheck/
+ListChecks/ShieldCheck/Lock), a StatRow (same 16 / 5 / Live / 0 numbers), a
+"Who We Build For" text block, and a DarkCta.
+
+WHY:
+Brand/mission storytelling to build trust and reinforce the positioning
+(smarter than "click everything" tools, honest results, reproducible bugs).
+
+HOW:
+Entirely hardcoded copy. No dynamic widgets except the shared StatRow/DarkCta.
+No backend calls. Navigation via useNavigate.
+Status: IMPLEMENTED (static).
+
+========================================================================
+5. SHARED: NAVIGATION / THEME / FOOTER
+========================================================================
+Key building blocks in InfoPages.tsx:
+  PageShell(title, subtitle, children) - the frame every page uses.
+  StatRow, SplitSection, FaqAccordion, DarkCta, ProfileTabs,
+  BugTaxonomyGrid, BUG_TAXONOMY.
+
+WHAT:
+PageShell renders a fixed top nav bar and the page heading block. The nav has
+a BUGSAFARI wordmark (routes to /), four in-page nav buttons (How It Works ->
+/explore, Features -> /features, Who It's For -> /community, About -> /about),
+and a "Log In" button (-> /login). The active nav item is highlighted by a
+string check on the page title (e.g. title.includes('Works')). DarkCta renders
+a "Start Testing Free" button that routes to /login. There is no footer.
+
+WHY:
+To give all four pages one consistent header, cross-links between the info
+pages, and a persistent path back into the app (login). The design is a
+minimal light-theme marketing shell.
+
+HOW:
+All navigation is client-side via useNavigate() from react-router-dom (no page
+reloads). Active-tab detection is a brittle substring match on the title text,
+not a router-location check, so it works only because each title contains a
+unique word. Theme is hardcoded light (bg-nova-light, text-black); these pages
+do NOT call useTheme, so ThemeContext palette switching does not affect them.
+ThemeProvider still wraps them in App.tsx but is effectively unused here.
+Icons come from lucide-react. Images are static files under /public/marketing/.
+Status: IMPLEMENTED. Footer + legal modals: NOT IMPLEMENTED (absent).
+Note: active-nav substring match is fragile (PLANNED-quality shortcut, works
+today by coincidence of unique title words).
+
+========================================================================
+6. BACKEND COMMUNICATION (if any)
+========================================================================
+WHAT: None. These four pages issue no HTTP requests, open no Socket.IO
+connection, submit no forms, and read no user data.
+
+WHY: They are public marketing pages that must load for unauthenticated
+visitors. App.tsx deliberately keeps them ABOVE the auth/session boundary so
+loading /explore etc. never fires a protected call or a startup 401.
+
+HOW: The only "data" is static: SECTION_META (title/subtitle text) and the
+shared INFILTRATION_PROFILE_CATALOG array (five profile labels/descriptions),
+both imported at build time. Everything else is inline JSX and hardcoded
+constants. Confirmed by reading the file: the sole imports are React,
+react-router-dom (useNavigate), lucide-react icons, sectionMeta, and types.
+Status: NO BACKEND. This is definitive, not an omission.
+
+========================================================================
+SYSTEM FLOW - HOW THESE PUBLIC PAGES FIT AROUND THE APP
+========================================================================
+In App.tsx, AuthAppContent gates routing. The '/' landing page and the four
+info routes (/explore /features /community /about) are matched and rendered
+BEFORE any session check (isInfoRoute short-circuit), each wrapped only in
+<ThemeProvider>. This keeps them fully public: a first-time visitor can browse
+them with no token, no socket, and no protected request. The authenticated
+workspace (dashboard, history, settings, forensic report) lives below the
+DashboardWorkspace boundary and is lazy-loaded, so info-page visitors never
+download or trigger it. Every path out of the info pages leads inward: the nav
+"Log In" button and every "Start Testing Free" / DarkCta button route to
+/login, and the BUGSAFARI wordmark routes to '/'. So these pages act as the
+public top-of-funnel: explain the product, then hand the visitor to the auth
+flow, which is where real backend work (login, guest mode, running a test)
+begins. The info pages themselves are, functionally, static brochures with one
+tab switcher and native accordions.

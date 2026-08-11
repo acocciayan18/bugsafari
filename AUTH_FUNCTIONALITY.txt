@@ -1,0 +1,351 @@
+==============================================================================
+BUGSAFARI - AUTHENTICATION FUNCTIONALITY REFERENCE
+==============================================================================
+PAGE GROUP: Authentication pages (/login, /signup, /forgot-password,
+/reset-password, /verify-email) plus Guest mode.
+ONE-LINE PURPOSE: Let an operator create an account, prove their email, sign
+in, recover a lost password, or skip signup entirely as a guest, and hand a
+valid session (or a guest flag) to the dashboard so testing can begin.
+
+This file is a study guide written in plain English for a thesis defense. It
+describes only what the code actually does. Every item is marked IMPLEMENTED
+or PLANNED/UNUSED. All API calls are POST unless stated otherwise.
+
+Where things live:
+- Frontend forms: developer-dashboard/src/components/auth/*
+- Auth state (single source of truth): developer-dashboard/src/stores/authStore.ts
+- Compat hook + types: developer-dashboard/src/context/AuthContext.tsx
+- Deprecated re-export: developer-dashboard/src/hooks/useAuth.ts
+- Navigation bridge: developer-dashboard/src/stores/authBridge.ts
+- Silent refresh + storage: developer-dashboard/src/utils/authRefresh.ts
+- Transport + copy translation: developer-dashboard/src/utils/authFeedback.ts
+- JWT helpers: developer-dashboard/src/utils/tokenUtils.ts
+- Header helper: developer-dashboard/src/utils/authHeaders.ts
+- Field limits: developer-dashboard/src/utils/authLimits.ts
+- Toasts: developer-dashboard/src/infrastructure/notifications/authToasts.tsx
+- Route wiring: developer-dashboard/src/App.tsx
+- Backend routes: testing-core/src/presentation/authentication/authController.ts
+- Backend handlers: authSignupController.ts, authLoginController.ts,
+  authRefreshController.ts, authPasswordResetController.ts,
+  authEmailVerificationController.ts
+- Backend validation: testing-core/src/presentation/authentication/authValidation.ts
+- Refresh cookie: testing-core/src/presentation/authentication/refreshCookie.ts
+
+------------------------------------------------------------------------------
+GROUP 1: LOGIN   (IMPLEMENTED)
+Route /login -> LoginForm.tsx
+------------------------------------------------------------------------------
+WHAT
+The sign-in screen. Two fields (email, password), a show/hide password eye
+toggle, a "Forgot password?" link, a "Sign Up" link, and a "Continue As Guest"
+button that opens GuestModeModal. It shows inline validation ("Email is
+required", "Password is required") and a shared AuthAlert for server failures.
+When the server reports the account is unverified it also shows a "Resend
+verification email" button. Local state: email, password, showPassword,
+touchedEmail, touchedPassword, submitted, isGuestModalOpen, resending, plus
+openDocId for the legal modals.
+
+WHY
+This is the front door for returning users. Client-side "required" checks and
+maxLength caps (EMAIL_MAX_LENGTH 254, PASSWORD_MAX_LENGTH 72 from authLimits.ts)
+stop empty or oversized submits before a network call. Wrong credentials are
+not attributable to one field, so both inputs are marked invalid and the exact
+wording lives once, inside AuthAlert, never duplicated per field.
+
+HOW
+On mount it calls setAuthNavigate(navigate) so the store can redirect without a
+hook, and clearAuthError() so a failure left over from /signup does not appear
+here (authError is one shared store field). handleSubmit sets submitted, clears
+the error, focuses the first empty field if any, then calls
+useAuth().login({ email, password }). login (in authStore.ts) POSTs
+/api/auth/login via postAuth. On success the store saves token+user, clears
+guest mode, and navigateTo('/dashboard'). On failure the store sets authError
+and the form reads authError.code: INVALID_CREDENTIALS marks both fields,
+EMAIL_UNVERIFIED reveals the resend button. The resend button calls postAuth
+/api/auth/resend-verification and toasts success or shows feedback. Typing in
+either field calls clearAuthError so the alert clears as the user corrects.
+
+------------------------------------------------------------------------------
+GROUP 2: SIGNUP + PASSWORD RULES   (IMPLEMENTED)
+Route /signup -> SignupForm.tsx, PasswordRequirements.tsx
+------------------------------------------------------------------------------
+WHAT
+The registration screen. Fields: email, password, confirm password (both with
+eye toggles), and a required consent checkbox for the Privacy Notice and Terms
+of Use. PasswordRequirements renders a live checklist (8+ chars, 1 uppercase,
+1 number, 1 special character) that updates as the user types and only appears
+once they start typing. On success the whole form is replaced by a terminal
+"Check your inbox" screen naming the address the link was sent to. Local state
+includes email, password, confirmPassword, show toggles, a touched object,
+submitted, acceptedPolicies, verificationSent, and sentToEmail.
+
+WHY
+Signup no longer creates a session. The account is created unverified and the
+user must click an emailed link first, so the success state is "check your
+inbox", not "you are signed in". The password checklist mirrors the server
+rules exactly (getPasswordChecks / isPasswordValid in PasswordRequirements.tsx
+mirror PASSWORD_COMPLEXITY_PATTERNS in authValidation.ts) so the user is never
+surprised by a server rejection. The consent checkbox enforces the legal and
+"only test systems you are authorized to test" agreement before an account
+can exist.
+
+HOW
+handleSubmit validates email format (regex), password strength (isPasswordValid),
+match, and consent, focusing the first bad control and stopping if any fail. It
+then calls useAuth().signup({ email, password }). signup (authStore.ts) POSTs
+/api/auth/register via postAuth and expects { ok: true, verificationRequired:
+true }. On that it toasts AUTH_SUCCESS.verificationSent and returns true; the
+form then sets verificationSent and shows the inbox screen. If the flag is
+missing the store treats it as UNEXPECTED_RESPONSE. Backend handleSignup
+validates, checks for an existing user (409 EMAIL_TAKEN), creates the user with
+emailVerified:false and a bcrypt-hashed verification token (24h TTL), and awaits
+the verification email; if the email fails to send it deletes the just-created
+account and returns 502 EMAIL_SEND_FAILED so no unverifiable orphan is left.
+
+------------------------------------------------------------------------------
+GROUP 3: FORGOT / RESET PASSWORD   (IMPLEMENTED)
+Routes /forgot-password -> ForgotPasswordForm.tsx,
+       /reset-password  -> ResetPasswordForm.tsx
+------------------------------------------------------------------------------
+WHAT
+Forgot: one email field. On submit it shows a neutral "If an account exists with
+that email, a password reset link has been sent" screen and notes the link
+expires in 1 hour. Reset: reached from the emailed link with ?token= and ?email=
+query params. If either param is missing it shows an "Invalid reset link" screen
+linking back to /forgot-password. Otherwise it shows new-password and confirm
+fields with the same PasswordRequirements checklist. On success it toasts and
+redirects to /login after 2 seconds.
+
+WHY
+Forgot-password answers the same way for known and unknown emails on purpose
+(anti-enumeration), so the frontend cannot and does not distinguish them. Reset
+validates the token/email presence before rendering the form so a mangled link
+fails fast. The button stays disabled through the redirect because the token is
+single-use: a second submit would fail against an already-consumed token.
+
+HOW
+ForgotPasswordForm.handleSubmit POSTs /api/auth/forgot-password via postAuth. A
+200 without an ok flag is treated as UNEXPECTED_RESPONSE (the route returns 200
+even for unknown emails, so a missing ok means a malformed payload). Success
+sets emailSent and toasts AUTH_SUCCESS.resetLinkSent. ResetPasswordForm reads
+token+email from useSearchParams, validates the new password locally, then POSTs
+/api/auth/reset-password with { email, token, newPassword }. Backend
+handleForgotPassword hashes a fresh token, stores it with a 1h expiry, and emails
+the link (using a bcrypt timing decoy on the unknown-email branch so response
+time does not leak account existence). handleResetPassword bcrypt-compares the
+token, checks expiry, rejects reuse of the current password (PASSWORD_REUSED),
+saves the new password, and calls revokeAllForUser so every old session dies.
+Both forms manage their own local isLoading and feedback state; they do NOT use
+the shared authStore error channel.
+
+------------------------------------------------------------------------------
+GROUP 4: EMAIL VERIFICATION   (IMPLEMENTED)
+Route /verify-email -> VerifyEmailForm.tsx
+------------------------------------------------------------------------------
+WHAT
+The landing page for the emailed verification link. It reads token+email from
+the query string and immediately tries to verify, showing a spinner ("Confirming
+your account..."). On success it auto-logs-in and goes to /dashboard. If the
+account was already verified it silently sends the user to /login. On failure it
+shows a "Link invalid or expired" screen with a "Resend verification email"
+button (only when an email is present) and a back-to-sign-in link. Status state
+is one of 'verifying' | 'error' | 'done'.
+
+WHY
+Clicking the link proves control of the inbox, so the backend returns a full
+session in the same shape as login and the frontend logs the user straight in.
+An attempted ref guard (useRef) prevents React StrictMode's dev double-mount from
+consuming the single-use token twice. Already-verified is treated as success, not
+an error, so a re-clicked link is friendly.
+
+HOW
+The effect POSTs /api/auth/verify-email with { email, token } via postAuth. If
+result.data.alreadyVerified it navigates to /login. Otherwise it reads token+user
+from the response and calls useAuthStore().establishSession(accessToken, user),
+which sets state, persists the session, clears guest mode, and (server-side) sets
+the httpOnly refresh cookie. It then toasts AUTH_SUCCESS.emailVerified and
+navigates to /dashboard. handleResend POSTs /api/auth/resend-verification.
+Backend handleVerifyEmail bcrypt-compares the token, checks expiry, flips
+emailVerified to true, clears the token fields, and issues a token pair via
+issueTokenPair + setRefreshCookie.
+
+------------------------------------------------------------------------------
+GROUP 5: GUEST MODE   (IMPLEMENTED)
+LoginForm "Continue As Guest" -> GuestModeModal.tsx; GuestSavePromptModal.tsx
+------------------------------------------------------------------------------
+WHAT
+A no-account path into the dashboard. From /login the "Continue As Guest" button
+opens GuestModeModal, which explains the trade-off ("runs the full testing
+engine, but nothing is saved") and lists what is given up (GUEST_LIMITATIONS from
+legal/content). Confirming enters the dashboard as a guest. GuestSavePromptModal
+is a separate modal shown later, inside the workspace, when a guest tries to save
+a run; it upsells account creation instead of firing a request the backend would
+reject.
+
+WHY
+Guest mode lets a survey participant try BugSafari with zero friction while making
+the "nothing is saved" cost explicit up front. A guest session must never inherit
+a previous authenticated identity, or the backend would treat the run as
+authenticated and persist it, so entering guest mode fully tears down any prior
+session.
+
+HOW
+confirmGuestAccess in LoginForm closes the modal, calls
+useAuth().continueAsGuest(), then navigate('/dashboard'). continueAsGuest
+(authStore.ts) first calls releaseBackendRun() (fire-and-forget POST
+/api/safari/stop to free any run the outgoing identity owned), then clearSession()
+and removes bugsafari_displayName, sets localStorage bugsafari_guest = 'true',
+sets store state { token:null, user:null, isGuestMode:true }, and
+navigateTo('/dashboard'). AuthGuard then allows access because isGuestMode is
+true even though there is no token. GuestSavePromptModal only offers "Not now" or
+"Create Account"; it never calls a save endpoint.
+
+------------------------------------------------------------------------------
+GROUP 6: TOKEN STORAGE + REFRESH + CSRF / DEV ACCESS GATE   (IMPLEMENTED)
+authStore.ts, authRefresh.ts, tokenUtils.ts, refreshCookie.ts, accessLock.ts
+------------------------------------------------------------------------------
+WHAT
+The access token (short-lived JWT) is stored in localStorage under
+bugsafari_token; the user object under bugsafari_user; a non-sensitive presence
+flag bugsafari_session ('1') marks that a refresh session exists. The long-lived
+refresh token is NOT in JS reach at all: the backend sets it in an httpOnly
+cookie named bugsafari_rt scoped to /api/auth. A proactive timer rotates the
+access token before it expires, and any 401 in the app can trigger one silent
+refresh.
+
+WHY
+Keeping the refresh token in an httpOnly cookie means XSS cannot read it. The
+access token can live in localStorage because it is short-lived and rotated. The
+presence flag lets boot logic decide whether a refresh is even worth attempting
+instead of firing a pointless 401 on every guest or logged-out load. CSRF on the
+refresh route is handled by the cookie's SameSite attribute (Lax in same-origin
+dev, None+Secure in cross-origin prod) rather than a token header.
+
+HOW
+persistSession/clearSession/hasStoredSession/parseStoredUser (authRefresh.ts)
+own all localStorage writes; parseStoredUser rejects a tampered non-string
+user so corrupt storage never crashes the first render. isTokenExpired
+(tokenUtils.ts) decodes the JWT exp claim with a default 120s buffer.
+refreshAuthToken POSTs /api/auth/refresh with credentials:'include' and an empty
+body (the cookie carries the token); it shares one in-flight promise so
+concurrent 401s do not each burn a rotation. Success dispatches a
+bugsafari:token-refreshed CustomEvent; a rejected/replayed token clears the
+session and dispatches bugsafari:session-revoked. initAuthStore() (called once
+from main.tsx) wires these events into the store, starts the 60s rotation
+interval (renews when within 5 min of expiry), and syncs auth across browser
+tabs via the storage event. buildAuthHeaders (authHeaders.ts) builds the
+"Content-Type + optional Bearer" header shape for authenticated calls.
+NOTE on x-bugsafari-access: this is a DEV-ONLY access gate, not a CSRF token.
+accessLock.ts patches window.fetch to attach the shared secret 'Bugsafari_2026'
+(header x-bugsafari-access) to same-origin API requests; AccessGate.tsx blocks
+the whole app until that password is entered. It sits above auth and is meant to
+be removed when dev-gating ends (PLANNED for removal).
+
+------------------------------------------------------------------------------
+GROUP 7: ROUTE PROTECTION (AuthGuard) + shell frame   (IMPLEMENTED)
+AuthGuard.tsx, AccessGate.tsx, AuthShell.tsx, AuthAlert.tsx, App.tsx
+------------------------------------------------------------------------------
+WHAT
+AuthGuard wraps protected routes and redirects to /login when the visitor is
+neither authenticated nor a guest. App.tsx decides at the top level which shell
+to render: landing, the public/auth routes, or the DashboardWorkspace. AuthShell
+is the shared visual frame (HUD eyebrow, title, subtitle, Home button, legal
+footer slot) used by every auth screen. AuthAlert is the single inline renderer
+for every auth failure. AccessGate is the outermost dev password wall.
+
+WHY
+Centralizing the gate keeps the redirect logic in one place and reactive: it
+reads store state through useAuth, so it never lags behind localStorage. App.tsx
+holds the workspace until auth settles: a stored token whose user has not been
+restored yet (isAuthLoading) is neither signed in nor a guest, and mounting the
+dashboard then would fire protected calls against a half-initialized session.
+AuthAlert exists so a single failure is shown once, inline, never also toasted.
+
+HOW
+AuthGuard reads { isAuthenticated, isGuestMode } from useAuth; if both are false
+it returns <Navigate to="/login" state={{from}} replace/>. App.tsx computes
+hasValidSession = (isAuthenticated || isGuestMode) && !isAuthLoading; if the path
+is an auth route or there is no valid session it renders the public Routes block
+(landing, /login, /signup, /forgot-password, /reset-password, /verify-email, plus
+info pages), otherwise it renders DashboardWorkspace with user/isAuthenticated/
+isGuestMode. selectIsAuthenticated (token AND user present) and selectIsAuthLoading
+(token present, user not yet restored, not loading) are derived selectors in
+authStore.ts, never stored, so they cannot drift.
+
+------------------------------------------------------------------------------
+GROUP 8: BACKEND COMMUNICATION   (IMPLEMENTED)
+authController.ts (routes), authValidation.ts, controllers, postAuth (frontend)
+------------------------------------------------------------------------------
+WHAT
+Every auth screen talks to the backend through one frontend function, postAuth
+(authFeedback.ts), which returns either { ok:true, data } or { ok:false,
+feedback }. It never throws and never shows a raw server string. The backend
+registers all auth routes in authController.ts, each behind its own rate limiter,
+and every handler runs inputs through the shared authValidation.ts gate first.
+
+WHY
+One transport translator means every surface renders identical, safe wording. The
+visible message is derived from a stable code (AuthErrorBody.code), so a 401 can
+never surface as an outage and a 500 can never surface as a credential problem;
+server error strings are logged, never displayed. Server-side validation mirrors
+the client (same email regex, same password rules, same 72-byte password / 254
+email ceilings) so the client is a convenience and the server is the real gate.
+Rate limiters and anti-enumeration timing decoys defend the unauthenticated
+surface.
+
+HOW
+Routes and methods (all POST, all under /api/auth):
+  /api/auth/register (alias /signup) -> handleSignup     [signupLimiter]
+  /api/auth/login                    -> handleLogin      [loginIpLimiter, loginLimiter]
+  /api/auth/refresh                  -> handleTokenRefresh[refreshLimiter]
+  /api/auth/logout                   -> handleLogout      [refreshLimiter]
+  /api/auth/forgot-password          -> handleForgotPassword [forgotPasswordLimiter]
+  /api/auth/reset-password           -> handleResetPassword  [resetPasswordLimiter]
+  /api/auth/verify-email             -> handleVerifyEmail     [verifyEmailLimiter]
+  /api/auth/resend-verification      -> handleResendVerification [resendVerificationLimiter]
+postAuth always sends credentials:'include' so the httpOnly refresh cookie rides
+with issue/refresh/clear calls. On a non-2xx it maps the body code (or the HTTP
+status, via codeForStatus) to operator copy through buildFeedback and the COPY
+table in authFeedback.ts. Shared error contract type AuthErrorBody (with code and
+field) comes from shared/types.js; the field routes an error to a specific control.
+Login returns { ok, user, token, expiresIn } and sets the refresh cookie; refresh
+rotates both the access token and the cookie in lockstep; logout revokes the token
+and clears the cookie but always answers 200 so a stale token cannot be probed.
+maskEmail keeps full addresses out of logs.
+
+------------------------------------------------------------------------------
+IMPLEMENTED vs PLANNED / UNUSED
+------------------------------------------------------------------------------
+IMPLEMENTED: all five routes and their forms, guest mode, both guest modals,
+password checklist, token storage, silent refresh, rotating refresh cookie,
+AuthGuard, AuthAlert/AuthShell, rate limiting, anti-enumeration timing decoys,
+email verification auto-login, resend verification, session revocation on
+password reset and logout, cross-tab sync.
+DEPRECATED / COMPAT: hooks/useAuth.ts is a thin re-export kept for backward
+compatibility (import useAuth from context/AuthContext instead). AuthContext's
+AuthProvider is a pass-through shim because state now lives in the Zustand store,
+not React context. refreshCookie.readRefreshToken still accepts a JSON-body
+refreshToken as a transitional fallback for pre-cookie clients.
+PLANNED / TO REMOVE: AccessGate + accessLock (the x-bugsafari-access dev wall,
+password 'Bugsafari_2026') are explicitly marked as a temporary dev gate to be
+removed. changePassword validation exists in authValidation.ts but is not part of
+these five pages (used by settings elsewhere).
+
+------------------------------------------------------------------------------
+SYSTEM FLOW (how auth unlocks the rest of BugSafari)
+------------------------------------------------------------------------------
+A visitor lands, optionally passes the dev AccessGate, then either signs in,
+verifies a new account (auto-login), or continues as guest. A successful login,
+verify, or refresh writes token+user+session flag to localStorage, sets the
+httpOnly bugsafari_rt cookie server-side, and flips the Zustand authStore so
+selectIsAuthenticated becomes true (or isGuestMode for guests). App.tsx sees a
+valid, settled session and mounts DashboardWorkspace; AuthGuard lets protected
+routes through. From there every authenticated call carries the Bearer access
+token (buildAuthHeaders) and is transparently kept alive by the 60s rotation
+timer and the shared silent-refresh path, so exploration runs, live telemetry,
+and saved session History all work under one identity. Signing out (or entering
+guest mode) releases any owned backend run, revokes the refresh token, and tears
+down local storage, returning the user to the public shell. A guest gets the full
+engine but cannot save; GuestSavePromptModal steers them to create an account,
+which is what turns transient runs into persisted, multi-tenant History.
+==============================================================================

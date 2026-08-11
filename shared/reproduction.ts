@@ -6,7 +6,7 @@
 import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro, StepTarget } from './types/bug.js';
 
 const MAX_LABEL_LENGTH = 60;
-const MAX_PAYLOAD_LENGTH = 80;
+const MAX_PAYLOAD_LENGTH = 2048;
 const MAX_NAMED_TARGETS = 5;
 const REDACTED = '«redacted»';
 
@@ -201,10 +201,14 @@ export function humanizeElement(element: ElementLabelSource): string {
   return label ? `${kind}: "${label}"${idPart}` : `${kind}${idPart}`;
 }
 
-// Redaction-aware payload rendering; truncation lives here only.
+// Redaction-aware payload rendering. Stress payloads render verbatim so the step
+// shows what was executed; only genuine sensitive fields mask, and only pathological
+// amplification blobs past the cap get a factual length note (never a bare stub).
 function renderPayload(payload?: string, redact?: boolean): string {
   if (!payload) return '';
-  return redact ? REDACTED : truncate(payload, MAX_PAYLOAD_LENGTH);
+  if (redact) return REDACTED;
+  if (payload.length <= MAX_PAYLOAD_LENGTH) return payload;
+  return `${payload.slice(0, MAX_PAYLOAD_LENGTH)}…(${payload.length} chars total, full value preserved for replay)`;
 }
 
 /** Display form of a payload value for a separate value chip — masked when redacted. */

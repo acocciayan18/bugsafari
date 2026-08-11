@@ -1,0 +1,166 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+05 - BACKEND & TESTING ENGINE
+========================================================================
+
+
+------------------------------------------------------------------------
+1. HOW A TESTING SESSION STARTS
+------------------------------------------------------------------------
+WHAT: A run begins at POST /api/start-test (registerRoutes.ts). Auth is
+optional (authenticated operator or guest). The engine validates the target,
+claims the single active-run slot, and either runs in-process or enqueues to
+the worker fleet.
+
+WHY: The start path is where safety and correctness are enforced BEFORE a
+browser ever touches an untrusted site: an SSRF/reachability check, a
+one-run-at-a-time admission gate, and (in production) mandatory worker
+isolation.
+
+HOW:
+- assertPublicTarget (serverUtils.ts) re-resolves the URL's DNS and rejects
+  private/internal/loopback addresses (SSRF guard, SEC-02).
+- StartExplorationUseCase.tryActivate() atomically claims the active slot so
+  two concurrent requests cannot both start (a TOCTOU fix).
+- If BUGSAFARI_USE_QUEUE=1 (required in production), the run is enqueued as a
+  SafariTaskPayload on TaskQueue; a SafariWorker picks it up. Otherwise
+  execute() runs synchronously in-process. In production, refusing to use the
+  queue is a fatal boot error, because Chromium visiting attacker-chosen sites
+  must never share the API process that holds JWT_SECRET and operator sockets.
+- Target credentials, if supplied, are sealed in the encrypted AuthVault and
+  handed to the worker exactly once.
+
+
+------------------------------------------------------------------------
+2. HOW A SESSION EXECUTES (THE EXPLORATION LOOP)
+------------------------------------------------------------------------
+WHAT: StartExplorationUseCase.execute() sets up the run (seeded PRNG scope,
+forensic store resets, session doc, ML warm-start) and hands control to the
+ExplorationEngine (domain/services/exploration/ExplorationEngine.ts), whose
+per-step loop lives in ExplorationLoop.ts.
+
+WHY: Splitting engine (setup, lifecycle, findings, telemetry wiring) from the
+loop (the per-iteration decision cycle) keeps two very large concerns
+separately testable.
+
+HOW, each iteration of ExplorationLoop does roughly:
+1. Ensure the DOM is ready (navigation settled, content painted).
+2. Parse the page into interactive elements (heuristics/domParser.ts,
+   RecursiveDomParser).
+3. Fingerprint the state (DomHasher.hashCompound -> structure + interactive
+   + route + combined hash).
+4. Score every element (RiskScorer: heuristic 0.6 + perceptron ML 0.4), then
+   apply coverage/layer/nav demotions and look-ahead suppression.
+5. Ask the navigator what to do (registerStateAndDecide): explore an edge,
+   backtrack, jump to the global frontier, or declare exhausted.
+6. Execute the chosen action (ActionExecutor): click, type, or run a scenario.
+7. Observe the result: re-fingerprint, watch console/network/exceptions,
+   attribute network signals to the acting element within a causal window.
+8. Reward or penalize the ML model based on what happened (structural change,
+   network activity, fault, revisit, no-op, saturated destination).
+9. Run cadenced bug finders and stress scenarios on a schedule.
+10. Emit telemetry (screencast frame, action record, path trace, findings).
+11. Check stop conditions (timebox, user stop, target crash, graph exhausted).
+
+
+------------------------------------------------------------------------
+3. EXPLORATION ENGINE, STATE GRAPH, NAVIGATION
+------------------------------------------------------------------------
+WHAT: The app under test is modeled as a directed graph. A NODE is a distinct
+page state (identified by its combined DOM fingerprint). An EDGE is a control
+you can interact with to move to another state. The StateGraphNavigator owns
+this graph and the depth-first traversal over it.
+
+WHY: A graph is the correct model for "explore an app without going in
+circles". It gives a principled way to detect loops, track coverage, backtrack
+when stuck, and know when everything reachable has been tried.
+
+HOW (StateGraphNavigator + pathfinder/*):
+- ensureNode/syncEdges add the current state and its controls to the graph.
+- A node has a lifecycle: discovered -> analyzing -> testing ->
+  completed/skipped. An edge has a status: unvisited -> traversing ->
+  visited, or blocked/cyclic/unstable.
+- Best-first selection (EdgeSelector) picks the highest-scored unvisited edge,
+  with a diversity penalty and an adaptive "boredom threshold".
+- Loop detection: three identical consecutive fingerprints (loopStrike), or a
+  post-click state that equals an ancestor on the breadcrumb path, marks the
+  edge cyclic and backtracks.
+- When a node is exhausted, the navigator resolves the dead end with a GLOBAL
+  SCORED FRONTIER jump: across the whole graph it picks the node whose best
+  unvisited edge maximizes score + novelty, then plans a BFS shortest path
+  (PathPlanner.shortestPath) to get there.
+- If it stalls repeatedly without new coverage, it enters ESCAPE MODE
+  (novelty-first selection + cooling recently tried regions) and, after full
+  exhaustion, attempts RECOVERY by re-queuing soft-blocked edges (never true
+  cycles), so it does not quit prematurely.
+See file 06 for the algorithm detail and trade-offs.
+
+
+------------------------------------------------------------------------
+4. HOW ACTIONS ARE GENERATED AND EXECUTED
+------------------------------------------------------------------------
+WHAT: The navigator returns a decision naming a target control (selector) or
+a backtrack/frontier target. ActionExecutor
+(exploration/ActionExecutor.ts) turns that into a real browser action.
+
+WHY: Deciding WHAT to do (navigator + scorer) is separated from HOW to do it
+(executor), so the same decision can be a plain click, a form fill with fuzz
+data, or a stress scenario.
+
+HOW:
+- Plain interaction: click a button/link, or fill an input. Form fields are
+  classified (fuzzing/elementClassifier.ts) and filled with either realistic
+  or hostile fuzz data (fuzzing/dataFuzzer.ts + strategies/*).
+- Scenarios: on a cadence, ActionExecutor.pickStressScenario runs a stress
+  scenario bound to the run's ChaosTransactionManager (rapid clicking,
+  concurrent bursts, async state races, storage tampering, network sabotage,
+  form-rule bypass, boundary fuzzing). See file 06/07.
+- Trusted input: framework-aware input and trusted clicks
+  (exploration/frameworkInput.ts, trustedClick.ts) so React/Vue controls
+  actually register the event.
+- Guards during execution: SessionPreservationGuard vetoes controls that would
+  log the run out; PageHealthGuard and StrictUrlLockGuard keep the run on the
+  target site and detect a wedged page; TabWindowManager handles popups.
+
+
+------------------------------------------------------------------------
+5. HOW THE ENGINE DECIDES WHAT TO EXPLORE NEXT
+------------------------------------------------------------------------
+WHAT: "What next" is a two-stage decision: SCORE all candidates, then let the
+NAVIGATOR arbitrate using graph memory.
+
+WHY: Scoring alone would keep re-picking the same attractive button; graph
+memory alone would explore blindly. Together they exploit high-value controls
+while still covering the whole app and avoiding loops.
+
+HOW, the priority stack (highest wins):
+1. RiskScorer combined score = 0.6 * heuristic (tag/type/keyword weights) +
+   0.4 * perceptron sigmoid score.
+2. Minus penalties: a control already triggered on this shell is demoted
+   (coverage bias); a nav edge into an already-saturated destination is
+   floored (look-ahead suppression); revisits/no-ops train the model down.
+3. Plus context boosts: interior controls of an open overlay are lifted so a
+   modal/menu is exhausted before the background; layer-opening controls get
+   a nudge so hidden UI is discovered; attack targets get a boost when a
+   security testing type is active.
+4. The navigator then applies best-first over UNVISITED edges with a boredom
+   threshold, backtracking, and the global-frontier logic above.
+
+The net effect: BugSafari clicks the login/pay/delete/submit controls first
+(high keyword weight), fills and fuzzes forms, opens hidden menus and modals,
+exhausts each screen before moving on, and keeps a graph so it never loops
+and knows when it is genuinely done.
+
+
+------------------------------------------------------------------------
+6. LIFECYCLE, TELEMETRY, AND STOP CONDITIONS
+------------------------------------------------------------------------
+WHAT: A run ends for one of several reasons and settles cleanly.
+
+HOW: RunTerminationOutcome values include completed, boundary-saturated,
+user-stopped, timebox, graceful-shutdown, target-crash, abandoned,
+engine-error, exception (shared/types + StartExplorationUseCase). SessionManager
+owns pause/resume/stop, the reconnect replay buffer, and a stop watchdog
+(BUGSAFARI_STOP_TIMEOUT_MS) that force-releases a hung stop so the admission
+slot is freed. Telemetry flows through the TelemetryGateway port the whole
+time, so the same emit code works in-process and in the isolated worker.

@@ -1,0 +1,285 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+06 - ALGORITHMS
+========================================================================
+Each algorithm below is explained with its purpose, strengths, weaknesses,
+and why BugSafari uses it, with the file where it lives.
+
+
+------------------------------------------------------------------------
+A. SINGLE-LAYER PERCEPTRON (DELTA RULE) - the "brain"
+   File: testing-core/src/ml/perceptron.ts
+------------------------------------------------------------------------
+WHAT: A tiny neural model with one layer of weights. Each interactive element
+is turned into a feature vector (buildFeatureVectorFromElement): booleans like
+isButton, isInput, hasId, keyword flags (kwLogin, kwPay, kwDelete, kwSubmit,
+kwCheckout), role/label flags, and normalized layout features (area, vertical
+position, text length). The model computes weightedSum = bias + sum(weight *
+feature), then a sigmoid squashes it to 0-1 as an "interest" score.
+
+PURPOSE: Learn, during the run, which kinds of controls lead to new states,
+network activity, and faults, so the engine spends clicks where bugs live.
+
+HOW IT LEARNS: The Delta Rule (applyDeltaRule): weight += learningRate *
+error * feature, where error = target - prediction. Instead of a single
+binary label, the engine feeds COMPOUND reward signals (applyReward): a
+detected fault pushes the target up strongly (+0.5), network activity +0.3,
+structural change +0.2; a revisit -0.4, a no-op -0.25, landing on a saturated
+(dead) state -0.5. Stability guards: momentum (0.9) so consistent rewards
+accelerate and one stray penalty cannot flip a weight; L2 weight decay and a
+weight clamp (+/-6) so no weight explodes; learning-rate decay so late updates
+refine instead of swing. Weights can be saved and reloaded (warm-start).
+
+STRENGTHS: Extremely fast and cheap (fits inside a live loop, no GPU, no
+training pipeline); explainable (you can read the weights and see WHY a
+control scored high); online (learns as it goes); seedable with sensible
+default priors so it works from click one (cold-start).
+
+WEAKNESSES: It is LINEAR - it cannot learn feature interactions ("a delete
+button INSIDE a modal") on its own; it captures only the features engineered
+by hand; it is not a deep model, so it will not discover subtle visual cues.
+
+WHY BUGSAFARI USES IT: The goal is fast, explainable, in-loop guidance, not
+state-of-the-art prediction. A perceptron gives adaptivity with near-zero cost
+and full transparency, which suits a thesis system that must justify its
+decisions. A heavier model would add cost and opacity for little gain here.
+
+
+------------------------------------------------------------------------
+B. HYBRID RISK SCORING (heuristic + ML blend)
+   File: testing-core/src/domain/services/RiskScorer.ts
+------------------------------------------------------------------------
+WHAT: The final score of a control = 0.6 * heuristic + 0.4 * ML. The
+heuristic sums tag/type/keyword weights (login 82, delete 86, pay 78, etc.),
+squashed asymptotically to a 0-100 cap so stacked keywords cannot saturate and
+tie. The ML part is the perceptron sigmoid * 100.
+
+PURPOSE: Combine hand-knowledge (we KNOW "delete" and "pay" are risky) with
+learned adaptation (the model discovers what works on THIS app).
+
+STRENGTHS: Stable from the first click (heuristic anchor) yet adaptive (ML
+drift); penalties decay over time so a one-off stagnation does not poison the
+frontier forever.
+
+WEAKNESSES: The 0.6/0.4 weighting and the keyword weights are hand-tuned
+constants, not learned; keyword lists are English-centric.
+
+WHY: A pure-ML score is unstable early; a pure-heuristic score never adapts.
+The blend is the pragmatic middle, and the weighting is defensible and simple.
+
+
+------------------------------------------------------------------------
+C. STRUCTURAL DOM HASHING (state fingerprint / loop prevention)
+   File: testing-core/src/ml/domHasher.ts
+------------------------------------------------------------------------
+WHAT: Turns the live page into three SHA-256 fingerprints: structure (the
+normalized layout skeleton), interactive (the controls plus their stable
+state), and combined (both, optionally folding in the route path). Dynamic
+noise is normalized away: generated/hashed CSS classes, digit runs, counters,
+timers, long free text, and whole ad/analytics/iframe subtrees are stripped.
+Repeated identical sibling subtrees collapse to a single "* " marker.
+
+PURPOSE: Decide whether two screens are "the same state". This is the backbone
+of loop prevention and coverage.
+
+STRENGTHS: Resilient to dynamic content (a live feed or ad rotation does not
+make the same page look new every reload); cheap and deterministic; the
+three-part split lets the engine reason about HOW two states differ (layout vs
+control state), not just whether.
+
+WEAKNESSES: Normalization is a heuristic - too aggressive and two genuinely
+different states could collide; too weak and volatile content fragments state.
+The element budget (5000) bounds cost but could miss controls on huge DOMs.
+It captures structure, not semantics, so two structurally identical but
+functionally different screens can hash the same unless url-aware is on.
+
+WHY: Hashing is O(n) over the DOM and gives a stable identity that a raw-HTML
+diff never could on a modern SPA. It is the standard technique for scriptless
+crawlers and it directly enables the graph model.
+
+
+------------------------------------------------------------------------
+D. BEST-FIRST + DEPTH-FIRST GRAPH TRAVERSAL
+   File: StateGraphNavigator.ts + pathfinder/EdgeSelector.ts, TraversalStack.ts
+------------------------------------------------------------------------
+WHAT: The engine keeps a DFS breadcrumb stack (the path it walked) and, at
+each node, selects the highest-scored UNVISITED edge (best-first). When a node
+has no useful unvisited edge, it backtracks up the stack.
+
+PURPOSE: Systematically cover the reachable state graph while prioritizing
+high-value controls first.
+
+STRENGTHS: DFS goes deep into flows (multi-step forms, checkouts) rather than
+staying shallow; best-first spends effort on the most promising controls; the
+breadcrumb stack makes backtracking and cycle detection natural.
+
+WEAKNESSES: Pure DFS can get stuck deep in one branch; best-first can be
+greedy. BugSafari mitigates both with the boredom threshold, escape mode, and
+the global frontier (below).
+
+WHY: DFS + best-first is the classic combination for goal-directed crawling;
+it matches how a human tester drills into a feature before moving on.
+
+
+------------------------------------------------------------------------
+E. ADAPTIVE BOREDOM THRESHOLD
+   File: pathfinder/EdgeSelector.ts (refreshAdaptiveBoredomThreshold)
+------------------------------------------------------------------------
+WHAT: A moving floor on edge score. If the best unvisited edge scores below
+it, the node is "boring". In coverage-first mode a boring-but-unvisited edge
+is still explored (boredom is only informational); in exploit-first mode
+boredom forces a backtrack.
+
+PURPOSE: Stop wasting clicks on low-value controls once a screen's interesting
+parts are done, without prematurely abandoning screens that still have
+untried controls.
+
+STRENGTHS: Adapts to node density so it is not a fixed magic number; prevents
+the classic "premature graph exhausted" bug on control-dense SPAs.
+
+WEAKNESSES: Another tunable heuristic; a mis-set threshold could over- or
+under-explore.
+
+WHY: Real apps vary wildly in control density; a static cut-off fails on both
+sparse and dense pages, so the threshold is made adaptive.
+
+
+------------------------------------------------------------------------
+F. LOOP DETECTION (three strikes + ancestor match)
+   File: StateGraphNavigator.ts, TraversalStack.ts
+------------------------------------------------------------------------
+WHAT: Two mechanisms. (1) Consecutive-repeat: three identical combined hashes
+in a row = a loop strike -> block the branch and backtrack. (2) Cyclic edge:
+if a click lands on a state that is an ANCESTOR on the current path, that edge
+is marked cyclic, its selection probability driven to zero, and it is blocked
+permanently.
+
+PURPOSE: Guarantee the engine never spins forever on the same states.
+
+STRENGTHS: Catches both tight loops (reload spam) and backward loops (a link
+that returns to a parent); cyclic edges are never resurrected, so recovery
+cannot loop.
+
+WEAKNESSES: Depends on the fingerprint being stable; a state that legitimately
+recurs with real new content could be misjudged if the hash is too coarse.
+
+WHY: Loop prevention is the number-one failure mode of autonomous crawlers;
+BugSafari makes it a first-class, multi-signal guarantee.
+
+
+------------------------------------------------------------------------
+G. GLOBAL SCORED FRONTIER + BFS SHORTEST PATH
+   Files: StateGraphNavigator.selectGlobalFrontier, pathfinder/PathPlanner.ts
+------------------------------------------------------------------------
+WHAT: When a dead end is reached, instead of only walking back up the DFS
+stack, the navigator scans the WHOLE graph for the node whose best unvisited
+edge maximizes priority = edgeScore + noveltyBonus (novelty decays with how
+often the node was visited). It then computes the BFS shortest action path
+from where it is to that target and replays it.
+
+PURPOSE: Resume exploration at the globally most promising unexplored spot,
+not just the nearest ancestor, and get there efficiently.
+
+STRENGTHS: Avoids re-walking exhausted branches; balances exploit (score) with
+explore (novelty); BFS gives the shortest known route so re-positioning is cheap.
+O(nodes) per dead end, bounded by maxNodes (default 500), and deterministic.
+
+WEAKNESSES: If no explored route exists to the target it falls back to a
+history/deep-link restore ladder, which can be less reliable; the scan is
+linear per dead end.
+
+WHY: Pure DFS backtracking strands high-value controls that happen to live on
+a far branch; the global frontier fixes coverage without abandoning direction.
+
+
+------------------------------------------------------------------------
+H. ESCAPE MODE + ADAPTIVE RECOVERY (anti-stagnation)
+   Files: StateGraphNavigator.enterEscapeMode, recoverFromExhaustion
+------------------------------------------------------------------------
+WHAT: If the engine keeps backtracking without gaining new coverage, escape
+mode flips the global frontier from score-first to NOVELTY-first (least-visited
+node wins) and cools down recently tried regions. After full graph exhaustion,
+recovery re-queues SOFT-blocked edges (unstable retries, branch penalties) back
+to unvisited with a score floor - but never true cycles - and reopens those
+nodes, giving the frontier a fresh pass before the run truly ends.
+
+PURPOSE: Squeeze out remaining coverage and escape attractor states instead of
+quitting early.
+
+STRENGTHS: Turns "stuck" into "explore differently"; bounded (recovery rounds
+are capped, cycles never resurrected) so it always terminates.
+
+WEAKNESSES: Adds complexity; extends runtime near the end of a run.
+
+WHY: Premature termination is a real risk on complex apps; these two mechanisms
+are the safety net that keeps coverage high without risking an infinite run.
+
+
+------------------------------------------------------------------------
+I. FUZZING STRATEGY SELECTION (Strategy pattern)
+   Files: scenarios/fuzzing/elementClassifier.ts, strategies/*, payloadEscalator.ts
+------------------------------------------------------------------------
+WHAT: Each input is classified (email, numeric, date, JSON, generic, etc.),
+and a matching payload strategy is chosen: numeric boundary values, XSS
+vectors, SQL/NoSQL injection tokens, malformed dates/emails/JSON, or chaos
+tokens. A payload escalator raises intensity over repeated attempts.
+
+PURPOSE: Send each field the class of hostile input most likely to break it.
+
+STRENGTHS: Modular (add a strategy without touching the engine); targeted (an
+email field gets email-breaking payloads, not random noise); reproducible
+because payload choice is driven by a per-run seeded PRNG.
+
+WEAKNESSES: Payload catalogs are finite and hand-authored; classification can
+mislabel an exotic field.
+
+WHY: Blind random fuzzing wastes effort; class-aware fuzzing finds real
+validation and injection bugs faster.
+
+
+------------------------------------------------------------------------
+J. DETERMINISTIC FAULT CLASSIFICATION
+   File: bugs/knowledgeBase/FaultClassifier.ts (see also file 07)
+------------------------------------------------------------------------
+WHAT: A pure function mapping a caught fault (+ active scenario) to a BugClass,
+severity, and CWE, using matched runtime SIGNAL patterns in priority order,
+with hard rules (a 5xx is a server failure; a security verdict requires a
+matched signal or an oracle confirmation, never scenario expectation alone).
+
+PURPOSE: Give every fault a consistent, reproducible label a developer trusts.
+
+STRENGTHS: Deterministic (same input -> same label), auditable, and biased
+against false security positives.
+
+WEAKNESSES: Rule-based, so a fault pattern nobody encoded falls back to a
+generic class; not learned.
+
+WHY: A thesis system must justify each classification; a deterministic rule set
+is defensible where a probabilistic labeler would invite "how do you know" with
+no clean answer.
+
+
+------------------------------------------------------------------------
+K. CONFIDENCE SCORING + IN-RUN REPRODUCTION
+   Files: verification/confidenceScore.ts, verification/ReproductionProbe.ts
+------------------------------------------------------------------------
+WHAT: Each candidate finding gets a 0-1 score from evidence strength
+(CONFIRMED 0.85 / SIGNAL 0.6 / INFERRED 0.3 base), origin (target-app +0.1,
+unknown -0.2, external artifact -0.5), corroboration (+0.15), evidence
+completeness, and a reproduction pass (+/-0.15). Bands: >=0.8 CONFIRMED,
+0.5-0.8 NEEDS_VERIFICATION, <0.5 INCONCLUSIVE. The ReproductionProbe replays
+the minimized fault timeline ONCE in a headless sidecar browser to set the
+reproduced flag.
+
+PURPOSE: Separate real, reproducible defects from one-off flakes and
+noise-from-someone-else's-code.
+
+STRENGTHS: Conservative by design (a lone weak fault will not read as
+CONFIRMED); only a target-app fault can ever be CONFIRMED; the sidecar replay
+never corrupts the live exploration.
+
+WEAKNESSES: The weights/thresholds are hand-chosen; a single replay cannot
+prove a flaky (timing) bug; the queue sheds load under a fault storm.
+
+WHY: Trust is the product. Confidence scoring plus a reproduction pass is what
+lets BugSafari claim a finding is real, which is the core novelty argument.

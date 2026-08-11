@@ -49,8 +49,8 @@ check('full-spectrum unlocked run reports Graph Exhausted', () => {
 const locked = makeLoop('exact', new ScenarioGate([...ALL_TESTING_TYPE_IDS]));
 const lockedResult = (locked as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('strict URL lock reports Boundary Saturation', () => {
-  assert.match(lockedResult.reason, /Boundary Saturation Reached/);
-  assert.match(lockedResult.reason, /strict URL lock/);
+  assert.match(lockedResult.reason, /Configured Scope Fully Explored/);
+  assert.match(lockedResult.reason, /limited to the launch URL/);
   assert.equal(lockedResult.outcome, 'boundary-saturated');
   assert.equal(actions.at(-1), 'boundary-saturation');
 });
@@ -59,7 +59,7 @@ check('strict URL lock reports Boundary Saturation', () => {
 const partial = makeLoop('site', new ScenarioGate(['dataFuzzing', 'formBypass']));
 const partialResult = (partial as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('partial infiltration profile reports Boundary Saturation', () => {
-  assert.match(partialResult.reason, /Boundary Saturation Reached/);
+  assert.match(partialResult.reason, /Configured Scope Fully Explored/);
   assert.match(partialResult.reason, /partial infiltration profile/);
   assert.equal(partialResult.outcome, 'boundary-saturated');
 });
@@ -73,7 +73,7 @@ const capped = makeLoop('site', new ScenarioGate([...ALL_TESTING_TYPE_IDS]), {
 });
 const cappedResult = (capped as unknown as { completionResult(): { reason: string; outcome: string } }).completionResult();
 check('a run that hit the node cap never claims Graph Exhausted', () => {
-  assert.match(cappedResult.reason, /Boundary Saturation Reached/);
+  assert.match(cappedResult.reason, /Configured Scope Fully Explored/);
   assert.match(cappedResult.reason, /node cap reached/);
   assert.match(cappedResult.reason, /37 evicted/);
   assert.equal(cappedResult.outcome, 'boundary-saturated');

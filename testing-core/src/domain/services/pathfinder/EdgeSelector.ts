@@ -2,7 +2,7 @@ import type { StateHash, GraphNode, GraphEdge, EdgeTypeSample, EdgeSelector as E
 import type { StateGraphNavigatorConfig } from './config.js';
 import type { EventLog } from './EventLog.js';
 import type { GraphStore } from './GraphStore.js';
-import { inferActionType, computeSelectorComplexity } from './utils.js';
+import { inferActionType, computeSelectorComplexity, maxOf } from './utils.js';
 
 // Mild coverage-first bias: on a page's FIRST visit, navigation controls
 // (anchors) are de-prioritized so in-place controls (inputs/toggles/buttons)
@@ -218,7 +218,7 @@ export class EdgeSelector {
       for (let i = 1; i < scores.length; i++) if (scores[i]! > scores[argmax]!) argmax = i;
       return argmax;
     }
-    const maxScore = Math.max(...scores); // subtract max for numerical stability
+    const maxScore = maxOf(scores, -Infinity); // subtract max for numerical stability
     const weights = scores.map((s) => Math.exp((s - maxScore) / temperature));
     const total = weights.reduce((sum, w) => sum + w, 0);
     let roll = this.nextRandom() * total;

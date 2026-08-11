@@ -104,6 +104,13 @@ function visitedRouteKey(url: string): string {
   return routeKey(url);
 }
 
+/** Max of a numeric array without argument spreading (avoids RangeError on huge control counts). */
+function maxOf(values: number[], fallback: number): number {
+  let max = fallback;
+  for (let i = 0; i < values.length; i++) if (values[i]! > max) max = values[i]!;
+  return max;
+}
+
 /** Bound an insertion-ordered Set by evicting its oldest entries. */
 function boundSet(set: Set<string>, cap: number): void {
   while (set.size > cap) {
@@ -948,7 +955,7 @@ export class ExplorationLoop {
         // A form at its session fuzz cap loses the boost so unexplored controls win.
         !this.deps.formFuzz.isExhausted(element.formKey ?? '', this.deps.formFuzzCap);
       const otherScores = ranked.filter((el) => !isFreshAttackVector(el)).map((el) => el.riskScore);
-      const maxOther = otherScores.length > 0 ? Math.max(...otherScores) : 0;
+      const maxOther = maxOf(otherScores, 0);
       ranked = ranked
         .map((element) =>
           isFreshAttackVector(element)
@@ -970,7 +977,7 @@ export class ExplorationLoop {
         !el.isDismiss &&
         !triggered(el.selector);
       const baseline = ranked.filter((el) => !isFreshLayerControl(el)).map((el) => el.riskScore);
-      const maxOther = baseline.length > 0 ? Math.max(...baseline) : 0;
+      const maxOther = maxOf(baseline, 0);
       ranked = ranked
         .map((el) => {
           if (layerActive) {

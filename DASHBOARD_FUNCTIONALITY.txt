@@ -1,0 +1,548 @@
+===============================================================================
+BUGSAFARI DASHBOARD - FUNCTIONALITY REFERENCE (thesis study guide)
+===============================================================================
+PAGE: /dashboard  (the "Watchtower" operator console)
+PURPOSE: One screen to configure a target, launch an autonomous exploratory
+test, watch it run live (screencast + telemetry), control it (pause/resume/stop),
+and review the bugs it finds, all streamed in real time from the backend engine.
+
+Everything below is based on the actual code. Each section is labelled
+IMPLEMENTED or PLANNED/UNUSED. Each section gives WHAT it does, WHY it exists,
+and HOW the logic and data flow work (controller -> stores -> gateway ->
+Socket.IO / HTTP -> backend engine, and back).
+
+Main view file:
+  developer-dashboard/src/components/forensics/ClinicalForensicsDashboard.tsx
+Wired into the route by:
+  developer-dashboard/src/App.tsx  (lazy-loaded at path="/dashboard", inside
+  SidebarLayout + RouteErrorBoundary; it receives state + action callbacks from
+  useDashboardController()).
+
+Big picture of the layers:
+  App.tsx
+    -> useDashboardController()  (application/useCases/useDashboardController.ts)
+         -> useRunStore  (stores/run/runStore.ts)          [all run state]
+         -> runCommands  (stores/run/runCommands.ts)        [start/pause/resume/stop/save]
+         -> runTimer / gatewayBinding / sessionBootstrap / engineLiveness / timebox
+    -> getEngineGateway()  (infrastructure/engine/engineGateway.ts, a lazy singleton)
+         -> SocketHttpEngineGateway  (facade)
+              -> EngineHttpClient          [REST: /api/start-test, /api/safari/stop, history, session/active]
+              -> SocketConnectionManager   [Socket.IO: telemetry, frames, controls, queue, snapshots]
+  Backend (testing-core/src): registerRoutes.ts (HTTP) + registerSocketHandlers.ts (sockets)
+
+
+===============================================================================
+1. TESTING CONFIGURATION + TEST-TYPE SELECTION            [IMPLEMENTED]
+===============================================================================
+Files:
+  components/common/TestingConfigModal.tsx      (host dialog, 3 tabs)
+  components/common/InfiltrationProfileSelector.tsx  (the "test type" picker)
+  ClinicalForensicsDashboard.tsx  (owns the config state + the trigger button)
+  types.ts  (INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE,
+             DEFAULT_BOUNDARY_LOCK_MODE, BoundaryLockMode, InfiltrationProfileId)
+
+WHAT: A single "Configuration" button in the top bar opens TestingConfigModal,
+a modal with three tabs: Infiltration (the test-type / attack profile), Navigation
+(boundary lock mode), and Target Auth. The dashboard holds the chosen values in
+local component state: selectedProfile, boundaryMode, authDraft. The trigger
+button shows a live digest (configSummary) of the current choices (profile name,
+"Exact lock"/"Sub-tree lock", "Auth on") and a red dot if auth is incomplete.
+
+  - Infiltration Matrix (test type): a single-choice radio group built from
+    INFILTRATION_PROFILE_CATALOG. Each profile is an id + label + description.
+    Selecting one calls onProfileChange -> setSelectedProfile.
+  - Navigation Boundary (BoundaryLockMode): 'exact' (only the exact URL),
+    'subtree' (target route + descendants), 'site' (host + subdomains + auth
+    origins, marked "recommended"). Default is DEFAULT_BOUNDARY_LOCK_MODE.
+
+WHY: The engine reads these settings ONCE at launch and cannot re-apply them mid
+run, so they must be collected before Start and then frozen. Collapsing every
+pre-launch knob behind one button keeps the command bar clean; the digest keeps
+the choices discoverable at a glance.
+
+HOW: All three values live only in ClinicalForensicsDashboard state (never
+persisted, gone on reload). TestingConfigModal is a controlled component: every
+edit writes straight back through onProfileChange / onBoundaryModeChange /
+onAuthDraftChange, so closing the dialog loses nothing. The modal is force-closed
+during a live run: showConfigModal = isConfigOpen && !isActiveSession, and the
+trigger button is disabled while isActiveSession. On launch, handleInitialize ->
+onStartInitialization(url, profile, boundaryMode, targetAuth); App.tsx converts
+boundaryMode to engine flags via boundaryModeToFlags(boundaryMode) merged into
+defaultOptimizationSettings, and passes { profile } as the ExplorationRunConfig
+("infiltration"). So test-type + boundary become the optimization settings +
+infiltration profile in the start request body.
+
+
+===============================================================================
+2. TARGET AUTHENTICATION (log into the app under test)     [IMPLEMENTED]
+===============================================================================
+Files:
+  components/common/TargetAuthPanel.tsx
+    (TargetAuthDraft, emptyTargetAuthDraft, isTargetAuthIncomplete,
+     toTargetAuthConfig, isStorageStateValid)
+  Hosted in TestingConfigModal "Target Auth" tab.
+
+WHAT: An optional panel that lets BugSafari log into the target so it can explore
+pages behind the login wall. A toggle (role="switch") enables it. Two methods:
+  - 'credentials' (Login form): username + password, with optional Advanced
+    selector overrides (loginUrl, usernameSelector, passwordSelector,
+    submitSelector, successIndicator). The engine opens the login page, fills the
+    fields, and submits.
+  - 'storageState' (Session state): paste a Playwright storageState JSON to seed
+    an already-authenticated session (for SSO/OAuth/MFA/captcha). NOTE: this
+    method button is currently disabled in METHOD_OPTIONS ("temporarily
+    unavailable"), so only the credentials path is usable right now.
+    [storageState method: PLANNED/DISABLED]
+
+WHY: Much of a real app's bug surface is behind auth. Credentials are sensitive,
+so the panel is deliberately ephemeral: values live in component state for one
+launch, autoComplete is off, the password can be toggled visible, and switching
+method drops the other method's secrets. The copy repeatedly states the
+credentials are used once and held in memory only, never saved to history,
+reports, logs, or the job queue.
+
+HOW: State is a TargetAuthDraft in the dashboard (authDraft). isTargetAuthIncomplete
+gates launch: if enabled but missing username/password (or invalid storageState),
+the Start button is disabled and a red dot shows on the Configuration trigger and
+the Auth tab. On launch, toTargetAuthConfig(authDraft) converts the draft into
+the wire contract TargetAuthConfig (or undefined when off/incomplete), which is
+passed all the way to gateway.startTest and sent in the POST /api/start-test body
+as targetAuth. The gateway logs only presence ("supplied"/"none"), never the
+object. If the backend has no credential-encryption key set, a queued
+authenticated run is refused with AUTH_UNSUPPORTED_ON_QUEUE and runCommands.startRun
+surfaces a friendly message.
+
+
+===============================================================================
+3. DOMAIN / TARGET CONFIGURATION (the URL bar + guards)    [IMPLEMENTED]
+===============================================================================
+Files:
+  ClinicalForensicsDashboard.tsx  (URL input + Start button + guards)
+  components/common/PublicTargetNotice.tsx  (the warning popover)
+  shared/url.js  (isPrivateTargetUrl, normalizeTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE,
+                  PUBLIC_TARGET_REQUIRED_MESSAGE)
+  utils/selfTarget.ts  (isSelfTargetUrl)
+
+WHAT: A URL text field where the operator types the target website, plus a "Start
+Testing" button. Two client-side guards run on every keystroke:
+  - isLocalTarget = isPrivateTargetUrl(urlInput): blocks localhost / 127.0.0.1 /
+    private IPs, because the engine dials the address verbatim and cannot reach
+    the operator's own machine.
+  - isSelfTarget = isSelfTargetUrl(urlInput): blocks BugSafari testing itself
+    (its own prod/preview/staging or serving origin).
+isBlockedTarget = either. When blocked pre-launch, the field border turns red and
+PublicTargetNotice floats under it explaining why (with a self-target variant).
+
+WHY: Fail fast and clearly on inputs the backend would refuse anyway, and prevent
+the SSRF-style self-test. The backend re-checks authoritatively; the client guard
+is just UX.
+
+HOW: While a session is active the field is read-only and mirrors the running
+target (value = isActiveSession ? targetUrl : urlInput). Enter key triggers
+handleInitialize when not active and auth is complete. handleInitialize refuses
+if onStartInitialization missing, authIncomplete, or isBlockedTarget. The Start
+button's disabled state and title mirror the same three reasons. Before the
+network call, runCommands.startRun normalizes the URL (normalizeTargetUrl) and
+re-runs the private/self checks, showing a toast and aborting if they fail.
+noticeDismissed re-arms once the operator edits away from a blocked address.
+
+
+===============================================================================
+4. TEST EXECUTION - START                                  [IMPLEMENTED]
+===============================================================================
+Files:
+  runCommands.ts (startRun)  ->  SocketHttpEngineGateway.startTest  ->
+  EngineHttpClient.startTest  (POST /api/start-test)
+  runStore.ts (resetForLaunch, applyQueueUpdate, hydrateFromSnapshot)
+  Backend: registerRoutes.ts POST /api/start-test (line ~488)
+
+WHAT: Start launches a run. startRun(targetUrl, optimizationSettings,
+infiltration, targetAuth) resolves the URL, runs the guards, then optimistically
+resets the store for a fresh run and POSTs to /api/start-test. The server answers
+with a runToken (opaque ownership/attach token), a runId (public RUN- code, used
+at save time), an optional jobId (present when the run is queued on the worker
+fleet), and flags queued / resumed.
+
+WHY: A run executes out-of-process (possibly on a separate worker), so the client
+never "runs" anything itself; it asks the backend to start and then reconciles
+with whatever the backend reports. The neutral STARTING state avoids the old
+ACTIVE -> QUEUED -> ACTIVE flicker.
+
+HOW:
+  - A synchronous latch runRefs.startInFlight closes the same-tick double-submit
+    window (double-click / Enter+click) before the awaited POST; backend admission
+    (tryActivate) is the backstop.
+  - resetForLaunch(timeboxMs, resolvedUrl) wipes prior buffers, sets status to
+    'STARTING', isLaunching/isTestRunning/isInitializing true, liveFrame null, and
+    seeds the timer as unseeded so boot time is not counted.
+  - The server-issued tokens are written to localStorage:
+    bugsafari:runId (runToken), bugsafari:runCode (RUN- code), bugsafari:jobId.
+    These survive a refresh so the socket can re-attach / a save can target the
+    right document (even for guests).
+  - If resumed === true, the server matched a session this client already owns;
+    startRun fetches the active snapshot and hydrates instead of starting fresh.
+  - No optimistic QUEUED. subscribeQueue (inside gateway.startTest) triggers the
+    first queue push: 'waiting' -> QUEUED (with a real position), or 'active' ->
+    ACTIVE on instant pickup. In-process (non-queued) runs get no queue push, so
+    the FIRST live frame promotes STARTING -> ACTIVE (setLiveFrame in runStore).
+  - On failure, markLaunchFailed clears the tokens and appends an EXCEPTION line;
+    AUTH_UNSUPPORTED_ON_QUEUE gets a specific message.
+
+
+===============================================================================
+5. PAUSE / RESUME / STOP (+ queued cancel)                 [IMPLEMENTED]
+===============================================================================
+Files:
+  runCommands.ts (pauseRun, resumeRun, stopRun)
+  SocketHttpEngineGateway (pauseTest, resumeTest, stopTest, forceStop, cancelQueuedRun)
+  SocketConnectionManager (emits 'pause-test'/'resume-test'/'stop-test')
+  EngineHttpClient.stopRun (POST /api/safari/stop)
+  runStore.ts (ingestTelemetry transitional handling, resetAfterCancel)
+  stores/run/types.ts (STATUS_TRANSITIONS, resolveStatus, ENGINE_*_ACTIONS)
+  ClinicalForensicsDashboard.tsx (buttons + transitionLabel), useDashboardController.ts
+  (useTransitionRedelivery), components/common/LongOperationProgressCard.tsx
+  Backend: registerSocketHandlers.ts (pause-test/resume-test/stop-test, ~line 251);
+           registerRoutes.ts POST /api/safari/stop (~line 387)
+
+WHAT: While ACTIVE, a Pause button appears; while PAUSED, a Resume button; while
+active/paused a red Stop button. A QUEUED run shows "Cancel Queued Run" instead
+(it holds no engine yet). Controls lock optimistically the instant they are
+clicked.
+
+  - pauseRun: only from ACTIVE. Emits socket 'pause-test' and optimistically sets
+    status via resolveStatus(status, 'PAUSING').
+  - resumeRun: only from PAUSED. Emits 'resume-test', sets 'ACTIVE'.
+  - stopRun: QUEUED -> cancelQueuedRun (HTTP POST /api/safari/stop, then
+    resetAfterCancel on backend confirm). ACTIVE/PAUSED/STARTING -> emit
+    'stop-test' and optimistically set 'STOPPING' (STARTING included because the
+    backend defers the stop until the booting engine attaches).
+
+WHY: Pause/Resume/Stop are LIVE control commands, so they ride the Socket.IO
+control channel (lowest latency), not HTTP. A QUEUED job has no live engine, so
+it can only be cancelled via the queue-aware HTTP stop endpoint. Optimistic
+transitions prevent double-clicks and give instant feedback while the engine's
+real telemetry catches up.
+
+HOW - important state machine details:
+  - stores/run/types.ts defines STATUS_TRANSITIONS and resolveStatus, which drops
+    any out-of-order / invalid transition (e.g. ACTIVE -> QUEUED is ignored).
+  - The backend confirms the transition through its OWN telemetry, which
+    runStore.ingestTelemetry maps: ENGINE_PAUSING_ACTIONS ('engine-pausing') ->
+    PAUSING, ENGINE_PAUSE_ACTIONS ('engine-paused') -> PAUSED, ENGINE_STOPPING_
+    ACTIONS -> STOPPING, ENGINE_RESUME_ACTIONS -> ACTIVE, and ENGINE_TERMINAL_
+    ACTIONS ('engine-stopped'/'engine-finished'/'engine-halted'/'timebox-exceeded')
+    -> FINISHED or STOPPED. The engine's finally block always emits an explicit
+    IDLE ('engine-status' message 'IDLE'), which fully resets buttons and marks
+    hasRunCompleted so Save stays available.
+  - useTransitionRedelivery (useDashboardController): if PAUSING/STOPPING stalls
+    (a control emit dropped on a flaky socket), it re-delivers the SAME command on
+    an interval (pause re-sends pause; stop re-sends forceStop, socket with HTTP
+    fallback). It never escalates or crosses commands, because the engine WILL
+    reach a terminal IDLE on its own.
+  - UI feedback: useTransitionLabel shows "Pausing.../Stopping..." only if the
+    transition holds past ~1s (fast settles show nothing). LongOperationProgressCard
+    shows a reassurance corner card only past ~10s. displayStatus holds the steady
+    state so the pill never flashes a sub-second PAUSING/STOPPING.
+  - forceStop(reason) picks socket vs HTTP based on connection state; the timebox
+    backstop passes reason='timebox'. Backend socket handlers verify the caller
+    owns the run before applying (applyControl -> ownsActiveRun / ownsQueuedRun).
+  - NOTE: there is NO /api/safari/pause or /api/safari/resume endpoint. Pause and
+    resume are socket-only; only STOP has an HTTP form (/api/safari/stop), used
+    for queued cancel and the forceStop fallback. Start is /api/start-test.
+
+
+===============================================================================
+6. LIVE FEED (screencast frames)                           [IMPLEMENTED]
+===============================================================================
+Files:
+  components/common/LiveFeedConnected.tsx  (isolated frame subscription)
+  components/common/LiveFeed.tsx           (canvas renderer + overlays)
+  stores/run/gatewayBinding.ts             (onLiveFrame -> rAF-paced commit)
+  runStore.ts (setLiveFrame), SocketConnectionManager (handleLiveFrame, 'live-frame')
+
+WHAT: A fake browser-chrome viewport that shows the engine's live screencast as it
+drives the target. The engine streams base64 JPEG frames (up to ~30 fps); the
+canvas paints the latest one, cropped object-fit: cover. It also shows the current
+resolved URL in a decorative address bar (lock icon for https), and one of four
+overlay states: IDLE ("ENTER A TARGET URL TO BEGIN"), QUEUED standby, INITIALIZING
+("ESTABLISHING TELEMETRY STREAM"), and COMPLETED (termination label + reason).
+
+WHY: The screencast is the operator's window into an otherwise headless,
+out-of-process run. Performance is critical: a naive approach would re-render the
+whole dashboard ~30 times a second.
+
+HOW - performance isolation is the key design:
+  - LiveFeedConnected subscribes to ONLY s.liveFrame and s.latestFrame, so a frame
+    commit re-renders just the viewport, never the dashboard. The dashboard's broad
+    slice carries only hasLiveFrame (a boolean that flips at most twice per run).
+  - Frames ride their OWN requestAnimationFrame-paced commit (gatewayBinding
+    scheduleFrame/commitFrame), decoupled from the 80ms telemetry batch, keeping
+    only the newest frame (intermediate ones are stale).
+  - setLiveFrame wraps bare base64 into a data: URL (tolerating an already-wrapped
+    one), clears isThinking/isInitializing, and promotes STARTING -> ACTIVE (the
+    first frame is the "engine is running" signal for in-process runs).
+  - LiveFeed decodes off the main thread via createImageBitmap when available
+    (falls back to Image.onload), uses a generation counter so a late decode never
+    paints over a newer frame, and repaints the last frame on resize so the canvas
+    is self-healing (never stays white).
+  - On a socket drop, gatewayBinding.resetPending discards staged frames/telemetry
+    so a short drop cannot append stale data after a snapshot restore.
+
+
+===============================================================================
+7. TELEMETRY (console / network / accessibility) + terminal tabs  [IMPLEMENTED]
+===============================================================================
+Files:
+  ClinicalForensicsDashboard.tsx  (the 4-tab terminal + verbose toggle)
+  components/telemetry/ConsoleTabPanel.tsx, NetworkTabPanel.tsx,
+    AccessibilityWarningBanner.tsx, ErrorTabPanel.tsx, AiDiagnosticCard.tsx,
+    TelemetryHelpModal.tsx
+  utils/telemetryPresentation.ts (presentTelemetry, telemetryToneStyle)
+  utils/errorDeduplication.ts, utils/findingRouting.ts
+  shared/types.js (createTelemetryDeduper, isVerboseTelemetry)
+  stores/run/gatewayBinding.ts (throttled ingestion), runStore.ts (ingestTelemetry)
+
+WHAT: A tabbed "terminal" panel beside the feed with four tabs, each showing a
+live badge count:
+  - Telemetry: the engine's per-step execution log. formattedTelemetry filters out
+    NETWORK events, runs the shared createTelemetryDeduper (same policy as backend)
+    to collapse repeat noise, hides verbose per-step trace unless the Verbose
+    toggle (Workflow icon) is on, then presents each line (presentTelemetry strips
+    the leading [TYPE] tag and assigns a severity tone/marker). Capped to last 100.
+    A live "Engine is thinking..." row shows currentEngineAction while ACTIVE.
+    aiDiagnostics on an event render an AiDiagnosticCard.
+  - Findings (labelled "errors" tab id): see section 8.
+  - Network: NetworkTabPanel shows only GENUINE observed target-app request
+    failures (meta.rawNetwork === true AND isActionableNetworkStatus, i.e. 4xx/5xx
+    or a transport error). BugSafari's own NETWORK-channel findings are excluded.
+    Rows are deduped by method+url+status with a repeat count (dedupeNetworkEvents),
+    shared with the tab badge so header count and list match.
+  - Console: ConsoleTabPanel lists captured browser console messages
+    (BrowserConsoleMessage) with a severity filter (all/error/warning/info/debug/log);
+    the panel here is fixed to filter="all".
+
+An AccessibilityWarningBanner appears at the top of the Telemetry tab once
+accessibilityCount crosses ACCESSIBILITY_BANNER_THRESHOLD (aggregate WCAG nudge,
+dismissable once per session via dismissAccessibilityBanner). TelemetryHelpModal
+gives per-tab help.
+
+WHY: These are three distinct signal channels. Separating them (and deduping each)
+keeps the operator from drowning in a hundreds-per-second event storm and keeps
+the badge counts honest. The Network tab intentionally reflects only real target
+traffic, not the engine's own diagnostics.
+
+HOW - data flow and throttling:
+  - The socket delivers telemetry, browser-console, accessibility, forensic-report,
+    and incident-report events. gatewayBinding batches the hot paths in an 80ms
+    window (FLUSH_WINDOW_MS) so React 18 coalesces many set() calls into ONE commit
+    (a render storm becomes ~12/s). Pending buffers are capped so a backgrounded
+    tab cannot grow them unbounded.
+  - runStore.ingestTelemetry routes NETWORK events to networkEvents; other events
+    append to telemetry (capped TELEMETRY_CAP=500) and also drive status/URL/network
+    -phase changes. NETWORK_ACTION markers set targetNetworkPhase
+    (DEGRADED / PAUSED_NETWORK / ONLINE) which the ConnectionStatusChip reads.
+  - Tab badge counts (tabCounts) are memoized; the terminal auto-scroll uses
+    useStickyScroll keyed on a content signal, with a JumpToBottomButton when the
+    user scrolls up. The tablist is fully keyboard-accessible (roving tabindex,
+    arrow/Home/End).
+
+
+===============================================================================
+8. FINDINGS (the bugs BugSafari caught)                    [IMPLEMENTED]
+===============================================================================
+Files:
+  components/telemetry/ErrorTabPanel.tsx  (the "Findings" tab)
+  utils/errorDeduplication.ts (dedupeReportsAgainstIncidents, groupBySignature,
+    liveFaultSignature, collapseFaultIntoBuffer)
+  utils/findingRouting.ts (reportableIncidents, reportableReports, isReportableFinding)
+  utils/findingView.ts, components/common/FindingCard.tsx, FindingsPanel.tsx
+  runStore.ts (addIncident(s), addReport(s), applyReproductionVerdict)
+  hooks/useRunNotifications.ts (desktop notify on first finding / completion)
+
+WHAT: The Findings tab (tab id 'errors', label "Findings") renders each confirmed
+fault as a FindingCard, the SAME card used by the saved Forensic Report, so the
+live view matches the saved report exactly. The tab badge (errorCount) reflects
+DISTINCT fault cards, not raw occurrences.
+
+Two streams feed it: incidents (IncidentReport) and reports (ForensicCrashReport).
+A single JS crash is emitted as BOTH an incident and a forensic report with the
+same reason/url/stackTrace, so the UI must collapse them.
+
+WHY: Accurate, de-duplicated bug counts are the whole point of the tool. The live
+count, the engine's confirmed-bug count, and the saved history count must all
+stay 1:1, and infrastructure noise (DNS failures, defensive 4xx, harness errors)
+must never masquerade as an application bug.
+
+HOW - three layers of correctness:
+  - Routing (findingRouting.isReportableFinding): applies the SAME shared routing
+    tree the engine uses. Faults attributed to Playwright / environment / BugSafari
+    / extensions, plus infra/network-only headlines, are dropped from Findings
+    (they belong on the Network tab).
+  - Report/incident dedup (dedupeReportsAgainstIncidents): a report already
+    represented by an incident with the same fault key (buildFaultSignature of
+    reason+url+stackTrace+status) is suppressed, so one fault = one card.
+  - Occurrence grouping (groupBySignature / collapseFaultIntoBuffer): identical
+    repeats collapse into one card with an occurrences (xN) count, losslessly.
+    collapseFaultIntoBuffer keeps a newest-first buffer capped at 100 per stream.
+  - applyReproductionVerdict patches a finding's card in place when a late
+    ReproductionVerdict (confidence + verification status) arrives, rather than
+    appending a duplicate.
+  - useRunNotifications fires a desktop notification on the first finding of a run
+    and on run completion (with a success/error sound when the tab is hidden),
+    gated by the user's notification setting.
+
+
+===============================================================================
+9. TIMER / SESSION STATE (status pill, timebox, queue)     [IMPLEMENTED]
+===============================================================================
+Files:
+  components/common/SessionTimerLive.tsx -> SessionTimer.tsx
+  components/common/QueueStandbyChip.tsx, TerminationBadge.tsx
+  stores/run/runTimer.ts (initRunTimer, tick, maybeNudgeTimeboxStop)
+  stores/run/types.ts (interpolateElapsedMs, TestSessionStatus, lifecycle mappers)
+  runStore.ts (applyTimeSync, tick, applyQueueUpdate, handleTimeLimitExceeded)
+  useDashboardController.ts (useEngineLivenessProbe)
+
+WHAT: The command bar shows session controls once a run is active or completed:
+a live countdown timer (SessionTimerLive), or a QueueStandbyChip while QUEUED, or
+a "Pausing.../Stopping..." transitional chip, plus the Pause/Resume/Stop/Save
+buttons. A status pill next to the feed shows the current TestSessionStatus (IDLE,
+STARTING, QUEUED, ACTIVE, PAUSING, PAUSED, STOPPING, STOPPED, FINISHED).
+
+WHY: The engine, not the client, owns the timebox. The frontend timer is a pure
+DISPLAY slaved to the engine's authoritative clock, so it never independently
+decides a run is over (a cold container / slow Playwright launch / queue wait can
+legitimately be very slow).
+
+HOW:
+  - The engine streams a TIME_SYNC event (~1 Hz); onTimeSync -> applyTimeSync sets
+    the authoritative baseline (serverElapsedMs at serverElapsedAt) and the timebox.
+  - runTimer.tick runs a smooth 250ms display cadence, computing elapsed via
+    interpolateElapsedMs (elapsed only advances while ACTIVE and seeded; frozen
+    during boot/queue/pause). The timer subscription re-renders ONLY SessionTimerLive
+    (which selects activeTimeboxMs + remainingTimeMs), not the whole tree. The
+    interval runs only while status is ACTIVE.
+  - Timebox backstop: if the display hits zero and stays there past TIMEBOX_GRACE_MS
+    (20s) with no terminal telemetry, maybeNudgeTimeboxStop first PROBES the backend
+    (fetchActiveSession); only if the backend no longer reports a live lifecycle
+    does it call handleTimeLimitExceeded + forceStop('timebox'). It never kills a
+    healthy engine.
+  - Queue state: applyQueueUpdate handles BullMQ forward-only states: 'waiting' ->
+    QUEUED with position/depth/fleet counts (shown by QueueStandbyChip: "Queued, N
+    of M waiting - X running"), 'active' -> ACTIVE (anchors the run start clock),
+    'cancelled'/'failed' -> IDLE. Guards (runRefs.queuePhase + resolveStatus)
+    prevent a stale push from regressing a running job.
+  - Engine liveness probe (useEngineLivenessProbe): while a run is up but has not
+    painted its first frame (or is QUEUED), after a 15s grace it polls
+    fetchActiveSession every 10s and reconciles: live -> keep waiting/hydrate,
+    terminal -> hydrate, absent for MISSES_BEFORE_RELEASE(2) -> releaseOrphanedRun.
+    The client never declares failure on its own clock (engineLiveness.ts is the
+    pure decision layer: classifyProbe / decideProbeAction / nextMissCount).
+  - TerminationBadge / LiveFeed COMPLETED overlay render terminationOutcome +
+    terminationReason from the terminal telemetry (or the snapshot) so every
+    surface agrees on WHY a run ended.
+  - Save Session button: appears only in a terminal state (hasRunCompleted &&
+    !isActiveSession), single-save (disabled once isSessionSaved). See section 10.
+
+
+===============================================================================
+10. BACKEND COMMUNICATION (HTTP + Socket.IO)               [IMPLEMENTED]
+===============================================================================
+Files:
+  infrastructure/engine/engineGateway.ts (getEngineGateway singleton)
+  infrastructure/engine/SocketHttpEngineGateway.ts (facade)
+  infrastructure/engine/gateway/EngineHttpClient.ts (REST)
+  infrastructure/engine/gateway/SocketConnectionManager.ts (Socket.IO)
+  infrastructure/engine/gateway/attachEligibility.ts (canAttach, storedAuthToken)
+  application/ports/EngineGateway.ts (the port interface)
+  stores/run/gatewayBinding.ts (binds gateway events -> store actions)
+  stores/run/sessionBootstrap.ts (shouldFetchHistory/shouldRestoreSession/identityKey)
+  runCommands.ts, useDashboardController.ts (useRunSession)
+  utils/engineControl.ts  [PLANNED/UNUSED - see note]
+  Backend: testing-core/src/presentation/api/registerRoutes.ts,
+           testing-core/src/presentation/socket/registerSocketHandlers.ts
+
+WHAT: All backend comms funnel through ONE lazy singleton gateway
+(getEngineGateway) implementing the EngineGateway port. SocketHttpEngineGateway is
+a facade composing two sub-modules:
+  - EngineHttpClient (REST): POST /api/start-test, POST /api/safari/stop,
+    POST /api/history/save-session, GET /api/history/sessions?limit,
+    GET /api/session/active?runToken. It owns the auth token, attaches auth headers,
+    and does a one-shot silent refresh-and-retry on 401 (fetchWithAuthRetry).
+  - SocketConnectionManager (Socket.IO): owns the socket, subscribes to server ->
+    client events, and sends client -> server control emits.
+
+Socket.IO events consumed (server -> client):
+  'connect'/'disconnect', 'telemetry', 'live-frame', 'forensic-report',
+  'incident-report', REPRODUCTION_VERDICT_EVENT, ACCESSIBILITY_EVENT,
+  'url-changed', 'browser-console', SESSION_SNAPSHOT_EVENT, QUEUE_UPDATE_EVENT,
+  TIME_SYNC_EVENT, plus manager 'reconnect_attempt'/'reconnect'/'reconnect_failed'.
+Socket.IO emits (client -> server):
+  SESSION_ATTACH_EVENT (reattach with runToken -> ack may carry a snapshot),
+  QUEUE_SUBSCRIBE_EVENT (join queue-position + run rooms),
+  'pause-test', 'resume-test', 'stop-test' (control channel).
+
+WHY: A run lives out-of-process (often on a separate worker), so the dashboard
+needs both a low-latency live stream (sockets) and authoritative request/response
+calls (HTTP). Keeping the gateway as a pure infrastructure port (it never imports
+a store) lets gatewayBinding be the single seam adapting socket callbacks onto
+store actions.
+
+HOW - lifecycle and reconnection:
+  - useDashboardController.useRunSession runs ONE ordered bootstrap effect (ref
+    counted for StrictMode): initRunTimer, bindGatewayToRunStore, then
+    connectAndRestore. connectAndRestore installs the auth token FIRST (fixing the
+    startup bare-401 race), seeds a stored runToken, opens the socket, then does
+    protected reads only when a session should exist (shouldFetchHistory /
+    shouldRestoreSession).
+  - On (re)connect, SocketConnectionManager.reattach presents the owned runToken so
+    the backend replays the buffered session into the socket via the ack snapshot;
+    it no-ops when there is nothing to attach to (canAttach), and retries with
+    backoff, falling back to an HTTP snapshot if attach is exhausted
+    (onAttachExhausted -> fetchActiveSession -> emitSessionSnapshot).
+  - Reconnection budget is env-tunable with jittered exponential backoff; exhausting
+    it latches reconnectGaveUp (terminal, reload required), surfaced by
+    ConnectionStatusChip (a fixed top-right chip) which also shows browser-offline
+    and target-network-degraded states.
+  - Snapshots: onSessionSnapshot -> hydrateFromSnapshot rebuilds telemetry, findings,
+    console, timer baseline, URL and controls in one authoritative write. For the
+    SAME run it reconciles non-destructively (keeps the richer local buffers, never
+    rewinds the timer, never blanks a present live frame); a different/empty run
+    hydrates wholesale.
+  - Identity switch (login/logout/account swap): an auth-store subscription detects
+    a real identityKey change and calls resetForIdentityChange + gateway.reconnect
+    (a fresh handshake, since the socket's auth callback is read once per handshake).
+  - Save: saveRun builds live findings (buildLiveFindings), dedupes the network log
+    and console log, and POSTs to save-session keyed on the RUN- code so a repeat
+    save rewrites the same document. Guests get a 403 (GUEST_FORBIDDEN) with a
+    "registration required" message; it is idempotent (no-op if already saving/saved).
+
+NOTE - PLANNED/UNUSED: utils/engineControl.ts (apiPostJson / TogglePauseResponse)
+is a generic HTTP-POST helper that is NOT imported by any dashboard code (only its
+own file and the docs archive). The real pause/resume/stop path is the socket
+control channel above, so engineControl.ts is currently dead code.
+
+
+===============================================================================
+SYSTEM FLOW (end to end)
+===============================================================================
+The operator configures the run in ClinicalForensicsDashboard (test-type /
+infiltration profile, navigation boundary, optional target auth) and types a
+target URL. Pressing Start calls the controller's startTest (runCommands.startRun),
+which resets the run store and asks the engine gateway to POST /api/start-test.
+The backend admits or queues the run and returns a runToken (+ optional jobId),
+which the client persists and uses to attach over Socket.IO. From there the
+backend engine drives Playwright against the target and streams everything back
+over the socket: live screencast frames, per-step telemetry, network events,
+browser console, accessibility findings, confirmed bug reports/incidents, queue
+updates, and a ~1 Hz time-sync. gatewayBinding batches those pushes into the
+Zustand run store (with isolated subscriptions so frames and the timer never
+re-render the whole page), the store maps them into status transitions and
+de-duplicated findings, and the dashboard renders the feed, the four telemetry
+tabs, the timer, and the status pill. Pause/Resume/Stop travel back down the same
+socket control channel (queued cancel and force-stop use POST /api/safari/stop),
+the engine confirms each transition through its own telemetry, and on completion
+the operator can Save the session to history via POST /api/history/save-session.
+Refresh, reconnect, identity change, and slow boots are all reconciled against the
+backend's authoritative snapshot (GET /api/session/active) so the dashboard's view
+always converges on the engine's real state.

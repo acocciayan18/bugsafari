@@ -2,6 +2,7 @@ Use multiple agents from yourself or from the /.claude/agents file if necessary 
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Avoid use of em dash (—) in frontend pacing sentences or character
 
 Read this document entirely before suggesting refactors or generating code. Prioritize these absolute project constraints over generalized best practices.
 

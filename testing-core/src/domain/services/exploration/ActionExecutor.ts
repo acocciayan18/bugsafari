@@ -650,8 +650,9 @@ export class ActionExecutor {
     // for this exact field (0 on first encounter), then synthesize that level's
     // deterministic, replayable payload.
     const category = classifyInputElement(target);
-    // Auth/financial/identifier fields: mask the value in narration, keep it verbatim for replay.
-    const redactValue = category === 'DATABASE_AUTH' || isSensitiveInputElement(target);
+    // Only genuinely sensitive fields (password/financial/identifier) mask the value in
+    // narration; stress payloads show verbatim. Replay always keeps the raw value.
+    const redactValue = isSensitiveInputElement(target);
     const level = this.deps.escalationTracker.getLevel(target.selector, category);
     // Encounter cursor sweeps the vector corpus across revisits; 'field' placement
     // keeps L2+ potent (a percent-encoded payload typed into an input is inert).

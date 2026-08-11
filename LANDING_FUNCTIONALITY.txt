@@ -1,0 +1,295 @@
+========================================================================
+BUGSAFARI LANDING PAGE - FUNCTIONALITY REFERENCE
+========================================================================
+PAGE NAME: Landing Page (the "/" home route)
+ONE-LINE PURPOSE: The public marketing front door of BugSafari. It explains
+what the product does, shows how it works, and sends visitors to log in,
+sign up, or try it as a guest. It is a study guide for a thesis defense.
+
+PRIMARY FILE:
+  developer-dashboard/src/designs/LandingPage.tsx
+
+SUPPORTING FILES IT ACTUALLY USES:
+  developer-dashboard/src/App.tsx                         (mounts "/" -> LandingPage)
+  developer-dashboard/src/pages/InfoPages.tsx             (ExploreContent, FeaturesContent, CommunityContent, AboutContent)
+  developer-dashboard/src/pages/sectionMeta.ts            (SECTION_META titles/subtitles)
+  developer-dashboard/src/hooks/useWelcomeNotice.ts       (first-visit notice state)
+  developer-dashboard/src/components/common/WelcomeModal.tsx
+  developer-dashboard/src/components/legal/LegalDocModal.tsx
+  developer-dashboard/src/legal/content.ts                (LEGAL_DOCS, LegalDocId)
+  developer-dashboard/src/components/ui/Modal.tsx         (shared modal shell)
+
+IMPORTANT UP FRONT - the landing page is a single self-contained React
+component. It makes NO network or API calls of its own. Everything it shows
+is hard-coded marketing text and images. The only browser storage it touches
+is one localStorage flag for the welcome notice. Keep this in mind while
+reading the sections below.
+
+
+========================================================================
+SECTION 1: HERO AND BRANDING
+========================================================================
+WHAT
+The top of the page shows the BugSafari name, a headline "Find Bugs Before
+Your Users Do.", a short paragraph describing the product, a black "Try It
+Free" button, and a browser-style frame containing a screenshot of the live
+dashboard. Below the hero is a strip of four trust numbers (16 types of bugs,
+5 ways to test, 0 scripts, "Free" to try).
+
+WHY
+This is the first thing a visitor sees, so it has to say in one glance what
+the product is and why it is worth trying. The trust numbers exist to build
+quick confidence for students and independent developers who are the target
+audience.
+
+HOW
+The hero lives inside the HomeSection component (LandingPage.tsx, the memo
+block starting near line 69). All the text is static JSX. The four trust
+numbers come from the trustStats array defined at the top of the file. The
+screenshot is a static image at /marketing/dashboard-shell.png loaded with a
+plain <img> tag. The "Try It Free" button calls the onLogin function that
+HomeSection receives as a prop, which routes the visitor to /login.
+
+
+========================================================================
+SECTION 2: MARKETING BODY (FEATURES, HOW IT WORKS, TESTIMONIALS, FAQ, FINAL CTA)
+========================================================================
+WHAT
+Under the hero, the home view stacks several marketing blocks: three feature
+cards ("Tests Itself", "Learns As It Goes", "Shows What Broke"), a four-step
+"How It Works" row, a "Watch Every Step, Live" split with another dashboard
+image, three testimonial quotes, a frequently-asked-questions accordion, and
+a final "Ready To Catch More Bugs?" call to action with a "Start Testing
+Free" button.
+
+WHY
+These blocks turn the one-line promise into a full pitch. They explain the
+value, walk through the flow, answer common doubts (for example "Can I try it
+without signing up?"), and end with a second push to start, so a visitor who
+scrolls the whole page always has a clear next step.
+
+HOW
+Every block is static JSX inside HomeSection. The content comes from local
+arrays at the top of LandingPage.tsx: featureCards, howItWorks, testimonials,
+and homeFaqs. Icons come from the lucide-react library (Radar, Brain,
+ClipboardCheck, and so on). The FAQ uses the native HTML <details>/<summary>
+element for open-and-close behavior, so there is no JavaScript state for it.
+The final "Start Testing Free" button, like the hero button, calls onLogin
+and goes to /login.
+
+
+========================================================================
+SECTION 3: NAVIGATION AND IN-PAGE SECTION SWITCHING
+========================================================================
+WHAT
+A fixed top navigation bar stays on screen while scrolling. On the left is the
+BUGSAFARI logo and four menu links: "How It Works", "Features", "Who It's
+For", and "About". On the right are a black "Log In" button and an outlined
+"Sign Up" button. Clicking a menu link does NOT load a new URL. Instead it
+swaps the middle of the page to show that topic, while the nav bar and footer
+stay put.
+
+WHY
+The nav lets a visitor explore all the product information without ever
+leaving the landing page or waiting for a page reload. It keeps the login and
+sign-up actions always one click away no matter how far the visitor has
+scrolled.
+
+HOW
+LandingPage holds a single piece of state, activeSection, which can be 'home',
+'explore', 'features', 'community', or 'about' (useState near line 283). The
+nav links come from the NAV_ITEMS array. Clicking a link calls goToSection(id),
+which just sets activeSection. The <main> area then renders either HomeSection
+(when activeSection is 'home') or InfoSection for the chosen topic. The active
+link is underlined by comparing activeSection to each item's id. Whenever
+activeSection changes, a useEffect calls mainRef.scrollIntoView with smooth
+behavior so the content scrolls back to the top. The logo button resets the
+section to 'home'. InfoSection reuses the exact content components from
+InfoPages.tsx (ExploreContent, FeaturesContent, CommunityContent,
+AboutContent) and their titles from SECTION_META, so the in-page tabs and the
+standalone routes /explore, /features, /community, /about always show the same
+words.
+
+
+========================================================================
+SECTION 4: CALLS TO ACTION AND ROUTING (LOG IN / SIGN UP / TRY FREE)
+========================================================================
+WHAT
+There are several buttons that leave the landing page: "Log In" and "Sign Up"
+in the nav bar, and "Try It Free" / "Start Testing Free" in the hero and final
+call-to-action. "Log In", "Try It Free", and "Start Testing Free" all go to
+the login screen. "Sign Up" goes to the sign-up screen.
+
+WHY
+The landing page's job ends once a visitor decides to act. These buttons are
+the doorways from marketing into the real application. Sending "Try It Free"
+to the login screen is deliberate, because the guest mode option lives there.
+
+HOW
+LandingPage uses the useNavigate hook from react-router-dom. goToLogin calls
+navigate('/login') and is passed to HomeSection as onLogin, so both the hero
+and final buttons use it. The nav "Log In" button also calls goToLogin. The
+nav "Sign Up" button calls navigate('/signup') directly. React Router then
+unmounts the landing page and mounts LoginForm or SignupForm. The landing page
+itself has no login form and no guest button.
+
+
+========================================================================
+SECTION 5: GUEST VS SIGNED-IN ROUTING
+========================================================================
+WHAT
+The landing page is fully public. It looks the same for a brand-new visitor,
+a guest, or a signed-in user. It does not read the user's login state and it
+does not change based on who is viewing. The decision about guest versus
+signed-in access happens elsewhere, not on this page.
+
+WHY
+Keeping the landing page free of auth logic means an unauthenticated visit
+never touches a protected part of the backend. It is a pure brochure, so it
+stays fast and safe to show to anyone.
+
+HOW
+The routing is decided in App.tsx inside AuthAppContent. When the URL path is
+"/", App.tsx immediately returns <LandingPage /> wrapped in a ThemeProvider
+(around line 246), before any dashboard code runs. This short-circuit happens
+regardless of whether the person is authenticated, a guest, or logged out, so
+the landing page never turns into the dashboard. The actual guest path starts
+only after a visitor clicks a landing CTA and lands on /login: there the
+LoginForm shows a "Continue As Guest" button that opens GuestModeModal, and
+confirming it calls continueAsGuest() from the auth context
+(LoginForm.tsx lines 52-55). In short, the landing page hands off to /login or
+/signup, and those screens, not the landing page, decide guest versus
+signed-in.
+
+
+========================================================================
+SECTION 6: THEME AND DARK MODE
+========================================================================
+WHAT
+The landing page is always light. It uses a fixed light background
+(bg-nova-light) and dark text everywhere. There is no dark-mode toggle on this
+page and its colors do not change with the app theme.
+
+WHY
+The marketing look is meant to stay consistent and bright for every visitor.
+The WelcomeModal comment even notes that the landing page "stays light even
+when the app theme is dark", so the brand presentation never shifts.
+
+HOW
+App.tsx wraps the landing page in ThemeProvider (from designs/ThemeContext.tsx),
+but LandingPage never calls the useTheme hook and never reads the palette.
+ThemeContext only manages a 'retro' or 'pastel' color palette and sets a
+data-palette attribute on the document for other parts of the app; the landing
+page ignores it and hard-codes its Tailwind color classes instead. So the
+ThemeProvider is present in the tree but has no visible effect on this page.
+
+NOTE ON UNUSED DESIGN FILES (PLANNED / UNUSED)
+The designs/ folder contains several fancy visual components:
+GradientBlinds.tsx, SlidingAuthForm.tsx, and designs/components/ (ChromaGrid,
+CircularGallery, FlowingMenu, MagicBento). The landing page imports NONE of
+these. A codebase-wide search shows only SlidingAuthForm imports GradientBlinds,
+and nothing in the running app imports SlidingAuthForm, ChromaGrid,
+CircularGallery, FlowingMenu, or MagicBento. Treat these as leftover or planned
+design experiments that are not part of the live landing page.
+
+
+========================================================================
+SECTION 7: WELCOME NOTICE MODAL (FIRST VISIT)
+========================================================================
+WHAT
+The first time someone opens the landing page in a browser, a "Welcome to
+BugSafari" pop-up appears. It warns that the product is a work in progress and
+asks for honest feedback for a thesis evaluation. The confirm button is locked
+for 5 seconds and counts down before it can be clicked.
+
+WHY
+This is an academic thesis project, so the notice sets expectations that some
+things may look unfinished and invites feedback. The 5-second lock nudges the
+visitor to actually read the message instead of dismissing it instantly.
+
+HOW
+LandingPage calls the useWelcomeNotice hook (hooks/useWelcomeNotice.ts). On
+first render the hook checks localStorage for the key bugsafari_welcome_seen.
+If it is not set, isOpen starts true and WelcomeModal shows. WelcomeModal
+(components/common/WelcomeModal.tsx) runs a one-second interval counting
+secondsLeft from 5 down to 0; the button stays disabled until the count hits
+0. Clicking the confirm button (or pressing Escape) calls dismiss, which sets
+isOpen false and writes bugsafari_welcome_seen = 'true' to localStorage, so the
+notice never shows again on that browser. If storage is blocked (private
+mode), the hook treats the notice as already seen so it does not nag on every
+render. The modal is built on the shared Modal component and cannot be closed
+by clicking the backdrop.
+
+
+========================================================================
+SECTION 8: LEGAL FOOTER AND LEGAL DOCUMENT MODALS
+========================================================================
+WHAT
+The footer at the bottom repeats the BugSafari name, a copyright line, and
+three link columns: Product (How It Works, Features, Who It's For), Legal
+(Privacy Notice, Terms of Use, Research Disclaimer), and Project (About,
+Licenses). A final line warns "ONLY TEST APPS YOU OWN OR HAVE PERMISSION TO
+TEST." Clicking a Product/Project link switches the on-page section; clicking a
+Legal or Licenses link opens a pop-up with that document's full text.
+
+WHY
+The footer gives a second way to reach the marketing sections and satisfies
+the legal and ethical duties of the project: a privacy notice (referencing the
+Philippine Data Privacy Act), terms of use, a research disclaimer, and open-
+source license credits. The warning line stresses responsible, permission-
+based testing.
+
+HOW
+The footer lives at the bottom of LandingPage.tsx. The Product and Project
+buttons call goToSection (for example goToSection('explore') or
+goToSection('about')), reusing the same in-page switching from Section 3. The
+Legal and Licenses buttons call setLegalDoc with a document id ('privacy',
+'terms', 'research', or 'licenses'), stored in the legalDoc state. That state
+is passed to LegalDocModal (components/legal/LegalDocModal.tsx), which looks up
+the matching document in LEGAL_DOCS from legal/content.ts and renders its
+title, summary, and sections inside the shared Modal. Closing the modal sets
+legalDoc back to null. The document text and POLICY_VERSION all live in
+legal/content.ts, so updating a policy only means editing that one file.
+
+
+========================================================================
+SECTION 9: BACKEND AND DATA COMMUNICATION
+========================================================================
+WHAT
+The landing page does not talk to the backend at all. It fetches no data,
+sends no requests, and opens no live connection. It only reads and writes one
+small flag in the browser's own localStorage.
+
+WHY
+A public brochure should not touch any authenticated or server endpoint. By
+staying purely client-side, the page loads instantly and a logged-out visitor
+never triggers a protected API call or a Socket.IO connection. App.tsx even
+notes that the public shell "mounts no gateway, so an unauthenticated visit
+never touches a protected endpoint."
+
+HOW
+Everything the page shows is hard-coded text plus two static images from the
+/marketing/ folder. The only storage interaction is the welcome notice reading
+and writing bugsafari_welcome_seen through the useWelcomeNotice hook. All real
+backend work (login, guest sessions, running tests, live telemetry over
+Socket.IO, saving history to MongoDB) begins only after the visitor leaves this
+page for /login, /signup, or the dashboard.
+
+
+========================================================================
+SYSTEM FLOW: HOW THE LANDING PAGE CONNECTS TO THE REST OF BUGSAFARI
+========================================================================
+The landing page is the public entry point of the whole BugSafari system.
+React Router in App.tsx maps the "/" URL straight to LandingPage for everyone,
+before any authenticated dashboard code loads. From here a visitor branches
+out in three ways: the nav and footer links flip through in-page marketing
+sections (which share their text with the standalone /explore, /features,
+/community, and /about routes through InfoPages.tsx and sectionMeta.ts); the
+"Log In" / "Try It Free" / "Start Testing Free" buttons route to /login, where
+the guest-mode choice actually lives; and "Sign Up" routes to /signup to make
+an account. Only after that hand-off does the real engine wake up: the auth
+context establishes a signed-in or guest session, the dashboard connects to
+the backend over Socket.IO, and the autonomous testing engine, live telemetry,
+and MongoDB history come into play. The landing page itself stays a light,
+static, self-contained brochure that never carries run state and never calls
+the server.

@@ -1,0 +1,137 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+10 - LIMITATIONS, WEAKNESSES & FUTURE WORK
+========================================================================
+This file is deliberately honest. A panel respects a student who knows the
+edges of their own system. Each item says WHAT the limit is, WHY it exists,
+and HOW it could be improved.
+
+
+------------------------------------------------------------------------
+1. IMPLEMENTED vs PARTIAL vs PLANNED (be precise in the defense)
+------------------------------------------------------------------------
+FULLY IMPLEMENTED (present and working in the code):
+- Autonomous exploration loop with ML scoring, structural DOM hashing, and
+  graph navigation (perceptron.ts, domHasher.ts, StateGraphNavigator.ts,
+  ExplorationEngine/Loop.ts).
+- Deterministic fault classification with CWE mapping (FaultClassifier.ts,
+  bugCatalog.ts) and confidence scoring (confidenceScore.ts).
+- In-run reproduction replay (ReproductionProbe.ts) and on-demand fix
+  verification (RegressionPlaybookVerifier.ts).
+- Stress scenarios and class-aware fuzzing (scenarios/*, fuzzing/strategies/*).
+- Live telemetry over Socket.IO with reconnect replay (SessionManager,
+  TelemetryEmitter) and a full React dashboard.
+- Distributed worker fleet on Redis/BullMQ with isolation, run registry,
+  encrypted AuthVault, telemetry/control bridges (SafariWorker.ts, queue/*).
+- Auth (JWT + httpOnly refresh cookie + CSRF), multi-tenant persistence,
+  retention reaper, observability (logger/metrics).
+- ML warm-start via persisted brain configs (BrainConfigModel).
+
+PARTIAL / CONSTRAINED:
+- In-process worker concurrency is pinned to 1 by design; scale is by replicas
+  (documented CONCURRENCY_BLOCKERS in SafariWorker.ts).
+- RouteTrasher scenario exists but route-mutation is intentionally disabled
+  engine-wide.
+- Coverage is best-effort; the system flags when the node cap forced evictions
+  but does not prove completeness.
+
+OPTIONAL / EXTERNAL DEPENDENCY:
+- Gemini LLM advisor is optional; without a key, deterministic remediation is
+  used. It is never in the exploration hot path.
+
+
+------------------------------------------------------------------------
+2. CORE LIMITATIONS
+------------------------------------------------------------------------
+LINEAR ML MODEL
+- WHAT: The learner is a single-layer perceptron; it cannot model feature
+  interactions or visual cues on its own.
+- WHY: Chosen for speed, low cost, and explainability inside a live loop.
+- IMPROVE: A small multi-layer model or gradient-boosted scorer, or learning
+  the heuristic weights instead of hand-setting them - if the added cost and
+  reduced explainability are justified by measured gains.
+
+HAND-TUNED CONSTANTS
+- WHAT: The 0.6/0.4 blend, keyword weights, boredom threshold, penalty caps,
+  and confidence thresholds are hand-chosen.
+- WHY: They are defensible defaults that made the system work reliably.
+- IMPROVE: Calibrate them from the benchmark corpus, or make them adaptive.
+
+ENGLISH-CENTRIC HEURISTICS
+- WHAT: Keyword weights (login, pay, delete...) are English.
+- WHY: The demo targets are English.
+- IMPROVE: Localize keyword sets or lean more on language-agnostic signals
+  (roles, layout, ML) for non-English apps.
+
+COVERAGE IS NOT PROVEN
+- WHAT: "Graph exhausted" is heuristic, bounded by the node cap and the
+  fingerprint's resolution.
+- WHY: Formal completeness for an arbitrary SPA is undecidable in practice.
+- IMPROVE: Coverage metrics (routes/components touched), larger/adaptive node
+  cap, and reporting explicit coverage estimates.
+
+FINGERPRINT SENSITIVITY
+- WHAT: Too-aggressive normalization could collide distinct states; too-weak
+  could fragment one state.
+- WHY: Normalization is a heuristic trade-off.
+- IMPROVE: Tune normalization per app, or add semantic signals to the hash.
+
+AUTH SCOPE
+- WHAT: Only form-based login is supported; CAPTCHAs, OAuth redirects, and MFA
+  are out of scope.
+- IMPROVE: Pluggable auth strategies and a CAPTCHA-bypass allowance for test
+  environments.
+
+SINGLE-SHOT REPRODUCTION FOR FLAKY BUGS
+- WHAT: The in-run probe replays once; a timing-dependent bug may not recur.
+- WHY: Deep replay queues are worthless once the app has moved on.
+- IMPROVE: Optional multi-attempt replay with a reproduction-rate (the scoring
+  already supports a rate parameter in applyReproductionOutcome).
+
+STATEFUL / DESTRUCTIVE ACTIONS
+- WHAT: The engine can trigger real state changes (it fuzzes forms, clicks
+  delete). Guards avoid logging out, but it is not a read-only crawler.
+- WHY: Finding real bugs requires real interaction.
+- IMPROVE: A dry-run/sandbox mode and stronger destructive-action gating.
+
+
+------------------------------------------------------------------------
+3. OPERATIONAL / SCALABILITY LIMITATIONS
+------------------------------------------------------------------------
+- One run per worker process; concurrency needs more per-run isolation before
+  it can rise (several forensic stores and module globals are still process-wide,
+  listed in SafariWorker.ts).
+- Redis is required for distributed mode; if it is down, queued runs cannot
+  execute (the synchronous path still works for local/simple use).
+- Large runs are capped (embedded arrays, confirmed-bug cap, visited-set caps)
+  to protect memory and the 16MB document limit, so a pathological run is
+  truncated rather than fully captured.
+
+
+------------------------------------------------------------------------
+4. FUTURE WORK (concrete, prioritized)
+------------------------------------------------------------------------
+1. Learn the scoring weights from the benchmark corpus instead of hand-tuning,
+   and A/B them against the current heuristics.
+2. Add explicit coverage metrics (routes, components, API endpoints touched)
+   and report a coverage estimate per run.
+3. Multi-attempt reproduction with a reproduction rate for flaky bugs (scoring
+   already accepts a rate).
+4. Internationalize the heuristic keyword sets.
+5. Raise worker concurrency by making the remaining process-global stores
+   per-run, or keep the replica model and add autoscaling.
+6. Broader auth support (OAuth/MFA test hooks) and a read-only/dry-run mode.
+7. Richer ML (small MLP or boosted scorer) if measured detection gains justify
+   the cost and the loss of full explainability.
+8. Expand the fuzzing and finder catalogs (more CWE classes, more payloads).
+9. Deeper LLM integration for triage/grouping of findings, still with the
+   deterministic classifier as the source of truth.
+
+
+------------------------------------------------------------------------
+5. ONE-LINE HONEST SUMMARY FOR THE PANEL
+------------------------------------------------------------------------
+BugSafari is a complete, working, self-verifying autonomous SPA testing engine.
+Its intelligence is intentionally lightweight and explainable, its safety model
+is strong, and its main open edges are learned tuning, proven coverage, and
+concurrency - all of which are understood, bounded, and on the roadmap.

@@ -1,0 +1,314 @@
+===============================================================================
+BUGSAFARI - HISTORY PAGE FUNCTIONALITY REFERENCE
+===============================================================================
+
+PAGE NAME: Saved Evaluation Safaris (the /history route)
+PURPOSE:   A per-user list of previously saved test runs ("safaris"), where each
+           row opens the full forensic report for that run. It is the operator's
+           archive of past explorations, with search, sort, severity filter,
+           pagination, and per-row open/export/delete actions.
+
+Route:     /history
+Guarded:   Yes. In App.tsx the route redirects to /dashboard when the user is not
+           authenticated. A logged-in user who has no token in the store still
+           sees an in-page "Please log in" state (see Guest / logged-out state).
+
+Key files:
+  Frontend page:  developer-dashboard/src/components/history/SavedEvaluationSafaris.tsx
+  View pipeline:  developer-dashboard/src/stores/history/useHistoryView.ts
+  Store:          developer-dashboard/src/stores/history/historyStore.ts
+  Types/helpers:  developer-dashboard/src/stores/history/types.ts
+  API client:     developer-dashboard/src/services/historyService.ts
+  Row menu:       developer-dashboard/src/components/common/RowActionMenu.tsx
+  Delete dialog:  developer-dashboard/src/components/common/DeleteConfirmDialog.tsx
+  Ending badge:   developer-dashboard/src/components/common/TerminationBadge.tsx
+  Router:         developer-dashboard/src/App.tsx (routes /history and
+                  /history/forensic-report/:sessionId)
+  Backend routes: testing-core/src/presentation/api/registerRoutes.ts
+
+
+-------------------------------------------------------------------------------
+1. LOADING SAVED SESSIONS
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+On arrival the page pulls the current user's saved runs from the backend and
+shows six skeleton placeholder rows while the request is in flight. When the
+data arrives the skeletons are replaced by real cards. A Refresh button in the
+header forces a fresh reload and spins while loading.
+
+WHY
+History is per-user data that lives in the database, so the list cannot be known
+until the server answers. The skeletons keep the row layout stable so nothing
+jumps when real data lands. A short-lived cache avoids a second network trip when
+the operator just bounced out to a report and came back.
+
+HOW
+SavedEvaluationSafaris.tsx runs a useEffect that waits until the auth token is
+present and auth is no longer loading, then calls fetchSessions() on the Zustand
+store. In historyStore.ts, fetchSessions(force) short-circuits to an empty list
+if there is no token, dedupes concurrent calls with an inflightList promise, and
+skips the network when the cache is still "fresh" (LIST_TTL_MS = 60 seconds) and
+non-empty. Otherwise it sets isLoading true and calls fetchSessionHistory() in
+historyService.ts, which issues GET /api/history/sessions?limit=50. The raw
+SessionHistoryEntry array is mapped to view models by
+transformSessionsToEvaluations() (types.ts) and stored in sessions, with
+lastFetchedAt stamped. The Refresh button calls fetchSessions(true) to bypass
+the cache. Errors set store.error to a friendly string.
+
+
+-------------------------------------------------------------------------------
+2. SESSION LIST / ROW CARDS
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+Each saved run renders as one clickable card row showing: target URL (title),
+run id (RUN- code), formatted date, step count, the infiltration profile label
+(when recorded), a TerminationBadge describing how the run ended, and a
+severity chip (for example "3 CRITICAL"). Rows fade in with a small staggered
+animation.
+
+WHY
+The operator needs to scan many past runs quickly and pick the right one. The
+row surfaces just enough identity and outcome data (which URL, when, how it
+ended, how bad) to decide whether to open the full report, without loading the
+heavy report payload for every row.
+
+HOW
+view.page.map(...) in SavedEvaluationSafaris.tsx renders each EvaluationSafari.
+The card is a role="button" div: click, Enter, or Space calls
+handleViewReport(evalItem.id). The severity chip color comes from evalItem.severity
+(CRITICAL/HIGH are red, else stable/green) and the count from severityCount.
+The profile label is resolved by profileLabel() against
+INFILTRATION_PROFILE_CATALOG, and is hidden for rows saved before profiles were
+tracked. TerminationBadge (TerminationBadge.tsx) takes outcome, status, and
+endedReason and renders a single normalized "why it ended" badge; when only a
+coarse status exists it maps it through outcomeFromStatus(). The severity value
+itself is derived in types.ts by determineSeverity(findingCount): 3 or more is
+CRITICAL, 1 to 2 is HIGH, 0 is CLEAR. A ref map (cardRefs) stores each row's DOM
+node so the page can scroll the last-opened card back into view on return.
+
+
+-------------------------------------------------------------------------------
+3. SEARCH / FILTER / SORT
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+A search box filters by URL or run id. A severity filter row (ALL, CRITICAL,
+HIGH, CLEAR) narrows by severity. A "Sort by" dropdown (Date, Severity, Status)
+plus an ascending/descending toggle orders the list. All three combine, and the
+footer reports how many matched versus the total.
+
+WHY
+An archive grows large, so the operator needs to slice it down. Filtering,
+searching, and sorting all happen on already-fetched data so they feel instant
+and avoid extra server round-trips. Every control resets to page 1 so the user
+never lands on an empty page of a freshly narrowed list.
+
+HOW
+The controls write to store state via setSearchQuery, setActiveFilter, and
+setSortConfig; each setter also resets currentPage to 1 (historyStore.ts). The
+actual work is in useHistoryView.ts, a memoized pipeline that filters, sorts,
+then paginates. Search matches a lowercased needle against targetUrl, runId, and
+id. Severity filter keeps items whose severity equals the active filter (or all
+for ALL). Sorting uses compare(): date sorts on the numeric startedAtMs (never
+the formatted label, so month names do not sort alphabetically), severity uses
+SEVERITY_ORDER, and status uses STATUS_ORDER (types.ts); direction multiplies
+the result by +1 or -1. Sort field labels come from SORT_FIELD_LABELS. The
+memo recomputes only when sessions or a control changes.
+
+
+-------------------------------------------------------------------------------
+4. PAGINATION
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+The footer shows "SHOWING x-y OF n SAFARIS" (and "(FILTERED FROM total)" when a
+filter is active) with previous/next arrow buttons. Ten rows show per page.
+
+WHY
+Long histories should not render hundreds of DOM rows at once, and the counts
+tell the operator where they are in the set. Client-side paging keeps navigation
+instant since the data is already loaded.
+
+HOW
+ITEMS_PER_PAGE = 10 (types.ts). useHistoryView.ts computes totalPages, a clamped
+safePage (so a stale high page index cannot outlive a shrunk list), the slice for
+the current page, and showingStart/showingEnd/matchedCount/totalCount/isFiltered.
+The prev/next buttons call setCurrentPage, which clamps to a minimum of 1;
+next is additionally clamped to view.totalPages. Buttons disable at the ends.
+
+
+-------------------------------------------------------------------------------
+5. ROW ACTIONS (OPEN, EXPORT, DELETE)
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED (open, export, delete). Rename: NOT PRESENT.
+
+WHAT
+Each row has a three-dot menu (RowActionMenu) offering Export Record and Delete
+Record. Opening the report is the row body click itself. Export downloads the run
+as a JSON file. Delete opens a confirmation dialog, then removes the row on
+confirm. There is no rename action.
+
+WHY
+These are the natural lifecycle actions on an archived run: read it, take a copy
+out of the system, or discard it. The menu clicks are isolated from the row so
+opening the menu does not also navigate to the report. Delete is guarded by a
+confirm dialog because it is irreversible.
+
+HOW
+The menu is wrapped in a div with onClick stopPropagation so its clicks do not
+bubble to the card's navigation handler. RowActionMenu.tsx is a keyboard- and
+click-outside-aware dropdown (useDismissableLayer) that flips up or aligns left
+near viewport edges. Its callbacks map to handlers in SavedEvaluationSafaris.tsx:
+  - onExportRecord -> handleExportRecord(id) -> exportRecord(id) in historyService.ts,
+    which calls GET /api/history/export/:id, reads the response as a Blob, and
+    triggers a browser download named safari-<id>.json. Toast on success/failure.
+  - onDeleteRecord -> opens deleteState with the record id and target URL.
+    handleDeleteConfirm() calls deleteRecord(id) (DELETE /api/history/:id), then
+    removeSession(id) optimistically drops the row from the store (and its cached
+    report, and clamps currentPage). Toast confirms; on error the dialog stays
+    open with isDeleting reset. deleteRecord validates the id is a RUN- code or a
+    24-char ObjectId before sending.
+  - onViewReport -> handleViewReport (see next section).
+
+
+-------------------------------------------------------------------------------
+6. OPENING THE FORENSIC REPORT
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+Clicking a row (or the menu's implicit view path) navigates to the full forensic
+report for that run at /history/forensic-report/:sessionId. On returning to the
+list, the previously opened card is scrolled back into view and focused.
+
+WHY
+The list is a lightweight index; the deep detail (action steps, caught bugs,
+stack traces, network and console logs) lives on the report page and is fetched
+separately. Restoring scroll position on return keeps the operator oriented after
+drilling in and coming back.
+
+HOW
+handleViewReport(recordId) sets lastViewedId in the store, then
+navigate(`/history/forensic-report/${recordId}`). The id passed is the public
+RUN- code (EvaluationSafari.id is session.runId, falling back to the Mongo _id
+only for legacy rows). A useEffect watches lastViewedId: once loading finishes it
+looks up the card via cardRefs, scrolls it to center, focuses it, then clears
+lastViewedId so later filter/sort changes do not yank the scroll. The report page
+itself (ForensicReport) loads its data through the store's loadReport(sessionId),
+which caches and dedupes and calls fetchForensicReport() -> GET
+/api/forensic/report/:sessionId. The store also tracks pinnedReportId so the
+sidebar can restore the open report when re-entering History.
+
+
+-------------------------------------------------------------------------------
+7. EMPTY / GUEST / ERROR STATES
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+The list body shows one of several states: loading skeletons, an error panel with
+a Try Again button, a logged-out panel ("Please log in to view history") with a
+Go to Login button, a true-empty panel ("No evaluation history yet") with a Go to
+Dashboard button, or a filtered-empty panel ("No safaris match the current
+filters") prompting the user to widen the search.
+
+WHY
+Each state answers a different question for the operator: is it still loading, did
+it fail, am I not allowed, is there genuinely nothing, or did my filters hide
+everything. Separating true-empty from filtered-empty avoids telling a user with
+saved runs that they have none. Guests cannot persist history, so the page tells
+them to log in rather than showing an empty archive.
+
+HOW
+The render branches in order: isLoading (skeletons), error (error panel calling
+fetchSessions(true) on retry), !token (login panel navigating to /login),
+view.page.length === 0 (empty state). Within empty, view.totalCount === 0
+distinguishes true-empty (offer Go to Dashboard) from filtered-empty (offer to
+adjust filters). The guest limitation is enforced server-side: both
+/api/history/save-session and /api/history/sessions reject a request without a
+real userId with HTTP 403 and code GUEST_FORBIDDEN, requiresRegistration true.
+
+
+-------------------------------------------------------------------------------
+8. BACKEND COMMUNICATION AND MULTI-TENANT ISOLATION
+-------------------------------------------------------------------------------
+STATUS: IMPLEMENTED
+
+WHAT
+All history endpoints live in testing-core/src/presentation/api/registerRoutes.ts,
+require authentication, and are scoped to the requesting user. The frontend calls
+them through historyService.ts, which attaches auth headers and does a one-shot
+silent token refresh on a 401.
+
+WHY
+History is private, per-user data under a multi-tenant database. The server, not
+the client, enforces that a user can only read, delete, or export their own runs,
+so a stolen id cannot reach another tenant's data. Guests are allowed to run tests
+but are blocked from persisting or listing history.
+
+HOW
+Endpoints (method + path, all requireAuth + rate limiter):
+  - POST   /api/history/save-session   Save a run to history. Rejects guests
+           (403 GUEST_FORBIDDEN). Sanitizes URLs, caps findings/network/console
+           arrays, keys the save to the public RUN- code for idempotency, and
+           returns 201 with { ok, message, runId, ownerType }. Called by
+           saveSessionToHistory() (invoked from the Dashboard, not this page).
+  - GET    /api/history/sessions?limit=50   List this user's saved sessions.
+           Rejects guests (403). Filters by request.userId via
+           findingRepo.listSessionHistory. Returns { sessions: [...], ...page }.
+           This is what the History page loads.
+  - GET    /api/history            Full saved documents for this user
+           (savedManually true), sorted by startedAt desc. Not used by this page
+           directly (fetchSafariDocuments exists but is not called here).
+  - DELETE /api/history/:id        Deletes one record. Ownership proven by the
+           filter { ...selector, userId }, so a foreign id yields 404. On success
+           it cascades to delete the run's forensic errors, telemetry, logs, and
+           brain configs. Accepts a RUN- code or ObjectId.
+  - GET    /api/history/export/:id Returns the owned record as a JSON attachment,
+           stripping _id, userId, and __v before download. 404 if not owned.
+  - GET    /api/forensic/report/:sessionId   Full report for the report page;
+           scoped by userId, 404 if not owned. Used by loadReport, not the list.
+
+Client plumbing: getFetchOptions() builds method + auth headers + credentials.
+fetchWithAuthRetry() retries once after refreshAuthToken() on a 401. The store
+resets and clears all cached sessions and reports whenever the auth token changes
+(initHistoryStore subscribes to the auth store), so one tenant's cached list can
+never render for the next user.
+
+
+-------------------------------------------------------------------------------
+IMPLEMENTED vs PLANNED / UNUSED SUMMARY
+-------------------------------------------------------------------------------
+IMPLEMENTED: load with cache + refresh, skeletons, row cards, search, severity
+  filter, sort (date/severity/status) with direction toggle, client pagination,
+  open report with scroll restore, export JSON, delete with confirm + cascade,
+  loading/error/guest/empty/filtered-empty states, per-user isolation, guest
+  block on save and list, token-change cache reset.
+NOT PRESENT: rename action (no rename in UI or service).
+UNUSED ON THIS PAGE: fetchSafariDocuments()/GET /api/history (defined in the
+  service but not called by SavedEvaluationSafaris). requestSuggestedFix and
+  requestAiInsights exist in historyService but belong to the report page.
+  EvaluationSafari.bugsByCategory and forensicTrace are set to empty by the list
+  transform; the full detail is loaded only on the report page.
+
+
+-------------------------------------------------------------------------------
+SYSTEM FLOW (HISTORY IN CONTEXT)
+-------------------------------------------------------------------------------
+A run starts on the Dashboard; when the operator clicks Save, the Dashboard calls
+saveSessionToHistory() -> POST /api/history/save-session, which persists the run
+under the logged-in user's id (guests are refused). The History page later loads
+that user's saved runs via GET /api/history/sessions, transforms them into row
+cards, and lets the operator search, filter, sort, and page through them. Opening
+a card navigates to /history/forensic-report/:sessionId, where the report page
+fetches the heavy detail via GET /api/forensic/report/:sessionId. Deleting a row
+removes it (and cascades its forensic children) via DELETE /api/history/:id, and
+exporting downloads it via GET /api/history/export/:id. Every step is auth-scoped
+to the owning user, so History is the private bridge between where runs are saved
+(Dashboard) and where they are inspected in depth (the forensic report page).

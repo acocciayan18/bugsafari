@@ -1,0 +1,145 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+02 - ARCHITECTURE & DESIGN
+========================================================================
+
+
+------------------------------------------------------------------------
+1. OVERALL SYSTEM ARCHITECTURE
+------------------------------------------------------------------------
+WHAT: BugSafari is a monorepo with three packages:
+- developer-dashboard/  React 19 + Vite frontend (the "Watchtower"), port 5173.
+- testing-core/         Node.js + Express engine and scenarios, port 3000.
+- shared/               Strict TypeScript data contracts imported by both,
+                        published internally as the package @bugsafari/shared.
+
+WHY: The UI and the engine have opposite risk profiles. The engine drives a
+real browser to an untrusted target, so it must be isolated and hardened.
+The dashboard only shows data, so it stays thin. The shared package exists
+so a change to a data shape (a finding, a telemetry event) breaks the build
+on BOTH sides at once instead of silently drifting.
+
+HOW: In production the engine itself splits into two roles: an API process
+(index.ts) that handles HTTP/auth/sockets and enqueues work, and a fleet of
+worker processes (worker-entry.ts -> SafariWorker.ts) that actually run
+Chromium. Redis (BullMQ) is the queue between them. MongoDB Atlas is the
+database. The whole engine ships in a container (Podman/Docker).
+
+
+------------------------------------------------------------------------
+2. CLEAN ARCHITECTURE INSIDE testing-core
+------------------------------------------------------------------------
+WHAT: The engine follows Clean Architecture with four layers you can see as
+folders under testing-core/src:
+- domain/          the pure business logic: exploration engine, navigator,
+                   scoring, scenarios, heuristics, forensics, verification.
+- application/     use cases and services that orchestrate the domain:
+                   StartExplorationUseCase, SessionManager, ports (interfaces).
+- infrastructure/  the outside world: Playwright, MongoDB, Redis/queue,
+                   Socket.IO, observability, AI advisor, workers.
+- presentation/    HTTP routes, authentication controllers, middleware,
+                   socket handlers.
+
+WHY: The dependency rule points inward. domain/ knows nothing about Express,
+Mongo, or Playwright; it talks to them only through interfaces called ports
+(application/ports/BrowserEngine.ts, application/ports/TelemetryGateway.ts).
+This keeps the exploration algorithm testable and swappable without touching
+the browser or the database, and it is the reason the same engine runs both
+in-process and inside an isolated worker with no logic change.
+
+HOW: For example the engine needs a browser. It depends on the BrowserEngine
+PORT (an interface). The concrete PlaywrightBrowserEngine (infrastructure)
+implements that port. index.ts and SafariWorker.ts both construct the real
+Playwright engine and inject it into StartExplorationUseCase. The domain code
+never imports Playwright directly for its decisions.
+
+
+------------------------------------------------------------------------
+3. FRONTEND, BACKEND, SHARED, DATABASE, WORKERS, COMMUNICATION
+------------------------------------------------------------------------
+FRONTEND (developer-dashboard): React 19 + Vite, Zustand for state, React
+Router 7 for pages, Socket.IO client + fetch for the engine. It is a pure
+console: it renders live telemetry and lets the operator start/pause/stop.
+It never runs a browser or touches the database directly. Communication with
+the engine goes through one gateway (SocketHttpEngineGateway.ts) split into
+an HTTP client (EngineHttpClient.ts) and a socket connection manager
+(SocketConnectionManager.ts).
+
+BACKEND (testing-core): Express 5 REST API (presentation/api/registerRoutes.ts)
+for start/stop/history/forensic endpoints, plus a Socket.IO server for live
+telemetry and control. The exploration engine lives in domain/services.
+
+SHARED (shared/): plain TypeScript types and small pure helpers, e.g.
+severity.ts, bugCategory.ts, faultSignature.ts, reproduction.ts, and the
+types/* folder (session, telemetry, bug, verification, queue, auth). Both
+packages import these so a "Finding" means the same thing everywhere.
+
+DATABASE (MongoDB Atlas via Mongoose): stores users, sessions, findings, and
+several forensic child collections (console logs, network logs, telemetry
+events, forensic errors, forensic analysis, brain configs). See file 08.
+
+WORKERS (infrastructure/workers/SafariWorker.ts): BullMQ workers, one run per
+worker process. Each worker owns its own Chromium, SessionManager, and
+forensic buffers, so runs cannot contaminate each other. You scale capacity
+by adding worker replicas, not by raising in-process concurrency (which is
+deliberately pinned to 1, with the reasons documented in the file).
+
+COMMUNICATION CHANNELS:
+- Dashboard <-> API: HTTPS REST + Socket.IO (live telemetry, controls).
+- API <-> Worker: Redis. Telemetry flows worker -> Redis -> API -> dashboard
+  (telemetryBridge.ts). Controls flow dashboard -> API -> Redis -> worker
+  (controlBridge.ts). Queue positions stream via QueueStatusBroadcaster.
+- Engine <-> Target app: Playwright driving a real Chromium.
+- Engine <-> Database: Mongoose.
+
+
+------------------------------------------------------------------------
+4. ARCHITECTURE / DESIGN PATTERNS USED (and where)
+------------------------------------------------------------------------
+- Clean Architecture / Ports & Adapters (Hexagonal): domain depends on
+  interfaces in application/ports; infrastructure implements them.
+- Repository pattern: infrastructure/database/repositories/* wrap Mongoose
+  behind domain-facing interfaces (e.g. FindingRepository).
+- Use Case / Application Service: StartExplorationUseCase orchestrates a run.
+- Strategy pattern: fuzzing strategies (scenarios/fuzzing/strategies/*), each
+  a self-contained payload generator selected by element category.
+- State machine / graph traversal: StateGraphNavigator with node lifecycle
+  (discovered -> analyzing -> testing -> completed/skipped) and edge status.
+- Producer/Consumer (queue): API produces jobs, worker fleet consumes them.
+- Observer / Pub-Sub: Socket.IO rooms plus the Redis telemetry/control bridge.
+- Circular buffer: fixed-capacity ring for the recent-action causal chain.
+- Single-Layer Perceptron (Delta Rule) as the online learner.
+- Deterministic classifier + knowledge base: FaultClassifier + bugCatalog.
+- Seeded PRNG scoped per run (scenarios/seededRandom.ts) for reproducibility.
+
+WHY these were chosen: each answers a concrete need. Ports/adapters give the
+isolation the security model requires. The repository pattern keeps Mongo out
+of the algorithm. Strategy keeps the growing fuzz-payload catalog modular. A
+graph navigator is the natural model for "explore a web app without looping".
+A perceptron is a tiny, fast, explainable online learner that fits inside a
+live loop with no training pipeline. A deterministic classifier makes findings
+reproducible and defensible, which a probabilistic labeler would not.
+
+
+------------------------------------------------------------------------
+5. DATA AND EVENT FLOW
+------------------------------------------------------------------------
+WHAT: Two flows dominate: the live telemetry flow (engine -> operator) and
+the persistence flow (engine -> database -> history).
+
+WHY: The live flow must be low-latency and replayable on reconnect; the
+persistence flow must be durable, tenant-isolated, and reconstructable.
+
+HOW, live flow: each exploration step emits TelemetryEvents through the
+TelemetryGateway port -> SocketTelemetryGateway. SessionManager scopes each
+run to a Socket.IO room (run:<token>) and keeps a bounded replay buffer so a
+refreshed browser can catch up. In distributed mode the worker has no browser-
+facing socket, so it publishes events to Redis and the API's TelemetryBridge
+re-emits them into the same room.
+
+HOW, persistence flow: during the run, forensic monitors buffer console logs,
+network logs, telemetry events, and forensic errors. On save,
+StartExplorationUseCase writes a SessionModel document (embedding the caught
+bugs and action steps, capped to stay under MongoDB's 16MB document limit) and
+the forensic child collections are linked by sessionId + userId. History reads
+them back and the frontend rebuilds the report. See files 07 and 08 for detail.

@@ -1,0 +1,170 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+07 - BUG DETECTION & FORENSICS
+========================================================================
+
+
+------------------------------------------------------------------------
+1. HOW BUGSAFARI DETECTS BUGS
+------------------------------------------------------------------------
+WHAT: Detection has two sources. (1) PASSIVE monitors that watch every step:
+uncaught page exceptions, console errors, failed/anomalous network responses,
+UI freezes, broken navigation, accessibility gaps. (2) ACTIVE finders and
+scenarios that deliberately provoke faults: injection, constraint bypass,
+race conditions, structural probing, boundary fuzzing.
+
+WHY: Some bugs surface on their own as you click around (crashes, 5xx);
+others only appear when you attack the app (injection, bypass). You need both.
+
+HOW:
+- Passive monitors (infrastructure/monitoring/*, telemetry/StabilityMonitor.ts):
+  browserConsoleListener, NetworkLogStore/NetworkQuarantine, anomalyListeners,
+  stabilityMonitor, serverReachability. Heuristic finders in domain/heuristics/*:
+  RuntimeStabilityFinder, BrokenNavigationFinder, ApiHangFinder,
+  DuplicateActionFinder, AccessibilityAuditor.
+- Active finders (bugs/finders/*): noSqlInjection, injectionDifferential,
+  reflectionOracle (confirms XSS by checking if a payload actually reflects/
+  executes), constraintBypass (removes browser-only rules and resubmits),
+  concurrentStress + spaRaceConditions (fire overlapping actions),
+  structuralProbe, fuzzGuard. These run on a cadence (default every ~10 steps)
+  with a per-bug-class finding budget so one chatty finder cannot drown out
+  the others.
+- Stress scenarios (domain/scenarios/*): dataFuzzer, buttonSpammer /
+  coordinateBombing / concurrentBurst (rapidClicker), asyncStateRacer,
+  storageTamper, networkSaboteur, formBypasser. RouteTrasher exists but
+  route-mutation is intentionally disabled engine-wide.
+
+
+------------------------------------------------------------------------
+2. EVIDENCE COLLECTION AND CONFIDENCE SCORING
+------------------------------------------------------------------------
+WHAT: When a fault fires, the engine gathers evidence: the error message and
+stack, the HTTP status and (captured) response body, the console output, the
+DOM state fingerprint, the culprit control, the payload used, and the recent
+action chain from the circular buffer.
+
+WHY: Evidence is what turns a fault into a defensible finding and what feeds
+both classification and confidence.
+
+HOW: findingEvidence.ts assembles the evidence bundle. confidenceScore.ts
+(see file 06-K) maps evidence strength + origin + corroboration + reproduction
+into a 0-1 score and a status (CONFIRMED / NEEDS_VERIFICATION / INCONCLUSIVE).
+Evidence completeness (fraction of expected fields present) nudges the score,
+so a fully-evidenced fault outranks a thin one.
+
+
+------------------------------------------------------------------------
+3. CWE CLASSIFICATION
+------------------------------------------------------------------------
+WHAT: Every bug class maps to a MITRE CWE identifier and a human title,
+severity, description, and remediation checklist, in one authoritative catalog
+(bugs/knowledgeBase/bugCatalog.ts).
+
+WHY: CWE is the industry-standard vocabulary for weakness types; using it
+makes findings comparable to professional tools and credible to a panel.
+
+HOW, the actual mapping in the code:
+- INPUT_SANITIZATION_FAILURE ......... CWE-20
+- CLIENT_SIDE_CONSTRAINT_BYPASS ...... CWE-602
+- NOSQL_INJECTION .................... CWE-943
+- SQL_INJECTION ...................... CWE-89   (CRITICAL)
+- SPA_STATE_RACE_CONDITION ........... CWE-362
+- STRUCTURAL_NAVIGATION_LOGIC ........ CWE-835
+- RUNTIME_STABILITY_EXCEPTION ........ CWE-248
+- API_CONTRACT_VIOLATION ............. CWE-754
+- SERVER_API_FAILURE (5xx) ........... CWE-755
+- BOUNDARY_STRESS_FAILURE ............ CWE-400
+- FUZZ_VULNERABILITY_LEAK (XSS) ...... CWE-79   (CRITICAL)
+- SECURITY_VULNERABILITY_LEAK ........ CWE-200
+- CASCADING_STATE_FAILURE ............ CWE-754
+- ROUTE_MUTATION_FAILURE ............. CWE-835
+- CLIENT_TRUST_BOUNDARY_VIOLATION .... CWE-602  (CRITICAL)
+- INFINITE_LOADING ................... CWE-400
+- CLIENT_RENDER_FREEZE ............... CWE-835
+- SESSION_SYNC_FAULT ................. CWE-613
+The classifier (FaultClassifier.ts) resolves the bug class deterministically
+from matched runtime signals (signalPatterns.ts) in priority order, then reads
+the CWE, severity, title, and remediation from this catalog.
+
+
+------------------------------------------------------------------------
+4. FINDING VERIFICATION
+------------------------------------------------------------------------
+WHAT: Two levels. In-run: the ReproductionProbe replays a finding's minimized
+timeline once in a sidecar browser to set reproduced true/false, adjusting
+confidence. On-demand later: the operator can request a fix-verification replay
+of a saved finding (the "Verify Fix" flow).
+
+WHY: A bug you cannot reproduce is a bug a developer will reject. Verification
+is what earns the CONFIRMED label.
+
+HOW: verification/ReproductionProbe.ts (in-run, fire-and-forget, bounded queue,
+sidecar context that inherits auth state). regression/RegressionPlaybookVerifier.ts
++ ReplaySession.ts (on-demand): it launches a fresh browser, replays the stored
+playbook against the current app, and reports whether the fault still occurs -
+the basis of the VERIFY_FIX_EVENT socket flow and the frontend
+useRegressionVerifier hook. verdict.ts decides resolved / still-failing.
+
+
+------------------------------------------------------------------------
+5. REPRODUCTION PLAYBOOKS
+------------------------------------------------------------------------
+WHAT: A finding carries a step-by-step reproduction: the ordered actions
+(clicks, inputs, navigations) that lead to the fault, minimized to the shortest
+sequence that still triggers it.
+
+WHY: The playbook is the single most useful artifact for a developer - it turns
+"there is a bug" into "run these 4 steps".
+
+HOW: The engine keeps a fixed-capacity circular buffer of recent ActionRecords
+(infrastructure/monitoring/actionBuffer.ts, default capacity 60, backed by
+lib/circularBuffer.ts). When a fault fires, stepMinimizer.ts trims the chain to
+the causal minimum, actionStepMapper.ts turns raw records into clean numbered
+steps, and narration.ts writes human-readable descriptions. The playbook is
+stored (reproductionPlaybookStore.ts) and shown in the ReproductionChecklist.
+
+
+------------------------------------------------------------------------
+6. NETWORK, CONSOLE, RUNTIME, STABILITY, AND OTHER TELEMETRY
+------------------------------------------------------------------------
+WHAT: The engine records several telemetry channels continuously:
+- NETWORK: every request/response (NetworkLogStore), with anomaly detection
+  for 5xx, soft-fails (a 200 whose body declares an error), hangs, and
+  cascades (NetworkFailureCascadeTracker). Successful requests are logged too,
+  distinct from forensic errors.
+- CONSOLE: every console message and level (ConsoleLogStore,
+  browserConsoleListener); source maps are resolved where possible
+  (sourceMapResolver) so stacks point at real files.
+- RUNTIME/STABILITY: uncaught exceptions and freezes (StabilityMonitor,
+  stabilityMonitor.ts), classified into RUNTIME_STABILITY_EXCEPTION or freeze
+  classes.
+- SCREENCAST: periodic frames of the page (TelemetryEmitter) with the tested
+  element highlighted (BoundingBoxHighlighter).
+- PATH TRACE: the navigator's workflow path for the dashboard path tracker.
+
+WHY: These channels ARE the evidence. They let the classifier decide what kind
+of fault occurred and let the operator see it live.
+
+HOW: Each channel writes to an in-memory store during the run (for live
+streaming and reconnect replay) and persists to its own MongoDB collection on
+save (see file 08). Credential scrubbing (telemetry/credentialScrub.ts,
+playwright/credentialMask.ts) removes secrets before anything is stored or shown.
+
+
+------------------------------------------------------------------------
+7. HOW FINDINGS BECOME FORENSIC REPORTS
+------------------------------------------------------------------------
+WHAT: A forensic report is the assembled, human-readable case file for a run:
+the findings with CWE/severity/confidence, each finding's reproduction
+playbook and evidence, plus the console, network, and telemetry timelines.
+
+WHY: This is the deliverable the whole system exists to produce.
+
+HOW: During the run, ForensicAnalysisService and the monitoring stores build
+the pieces. On save, the session document plus the forensic child collections
+are written. On review, GET /api/forensic/report/:sessionId and
+/api/forensic/analysis read them back, and the frontend ForensicReport.tsx /
+ClinicalForensicsDashboard.tsx reconstruct the exact report. The optional
+Gemini advisor (/api/findings/suggest-fix, /api/forensic/insights) can layer
+natural-language fix advice on top, always with the deterministic remediation
+from bugCatalog as the guaranteed fallback.

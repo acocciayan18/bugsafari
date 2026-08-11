@@ -1,0 +1,381 @@
+========================================================================
+BUGSAFARI - FORENSIC REPORT PAGE - FUNCTIONALITY REFERENCE
+========================================================================
+
+PAGE NAME: Forensic Report
+ROUTE: /history/forensic-report/:sessionId
+ONE-LINE PURPOSE: Replays one saved exploration run as a single document -
+an executive summary, AI insights, and one self-contained card per confirmed
+bug (finding), plus Network / Console tabs and a full action timeline - and
+lets the operator re-run ("Verify Fix") any finding to check if it is fixed.
+
+MAIN FILE:
+  developer-dashboard/src/components/forensics/ForensicReport.tsx
+  (default export ForensicReport() is the routed page component)
+
+NOTE ON NAMING: The CLAUDE.md summary says "20-step Circular Action Buffer",
+but the actual persisted trace capacity in code is 60 steps
+(ACTION_TRACE_CAPACITY = 60 in
+testing-core/src/infrastructure/monitoring/reproductionPlaybookStore.ts).
+The code value (60) is authoritative. This page renders whatever steps were
+saved, up to that cap.
+
+========================================================================
+1. LOADING A SAVED SESSION BY ID
+========================================================================
+
+WHAT
+The page reads the :sessionId route param (useParams) and loads one saved
+run's full forensic report. While loading it shows a skeleton
+(ForensicReportSkeleton) shaped like the real page so nothing reflows. On
+failure it shows a centered "Couldn't load this report" message. The id may
+be a Mongo ObjectId or a public RUN- code; the backend resolves either.
+
+WHY
+The history list endpoint does not carry the heavy data (action steps, caught
+bugs, stack traces, full logs). This page is the only client surface that
+fetches the complete per-session forensic document, so it must load it fresh
+by id on mount and on any id change.
+
+HOW
+- Component: ForensicReport() (ForensicReport.tsx, ~line 955).
+- On mount / id change, an effect calls
+  useHistoryStore.getState().loadReport(sessionId).
+- historyStore.loadReport (stores/history/historyStore.ts) returns a cached
+  ForensicReportResponse if present (reportCache), dedupes concurrent calls
+  via an inflightReports map, otherwise calls
+  fetchForensicReport(sessionId) and caches the result.
+- fetchForensicReport (services/historyService.ts) does
+  GET /api/forensic/report/:sessionId (with auth headers + credentials,
+  one silent token-refresh-and-retry on 401) and unwraps the { report }
+  envelope.
+- Local state: report, isLoading, error. A cancelled flag guards setState
+  after unmount.
+- Side effect: viewing a report calls setPinnedReportId(sessionId) so
+  re-entering History from Dashboard/Settings reopens this report. The Back
+  button (handleBack) clears the pin and navigates to /history.
+STATUS: IMPLEMENTED.
+
+========================================================================
+2. REPORT HEADER / EXECUTIVE SUMMARY
+========================================================================
+
+WHAT
+A top header bar with a Back button (ArrowLeft) and a "BUGSAFARI / FORENSIC
+REPORT" breadcrumb (desktop only). Below it an always-visible summary card
+(ExecutiveSummary) shows the target URL, the RUN- code, the run date, an
+optional end reason, a termination status badge, and a stat row: Profile,
+Duration, Findings count, Risk Score. A collapsible "Visited Routes (N)"
+list sits at the bottom of the card.
+
+WHY
+This is the at-a-glance context every reader needs first (what was tested,
+when, how it ended, how risky, how many bugs), so it is a flat stat grid with
+no accordion, not buried in a tab.
+
+HOW
+- Component: ExecutiveSummary (ForensicReport.tsx, ~line 110), rendered with
+  report + sessionId + findingsCount (the DISTINCT runtime bug count so the
+  header matches the cards below).
+- runCode = report.runId or the routed id. Date via formatReportDateTime
+  (utils/datetime). Duration via local formatDuration (ms -> "Xm Ys").
+- Status theming: statusTheme() resolves the DB status ('Crashed', etc.)
+  through outcomeFromStatus + isCleanTermination and picks stable / warning /
+  critical color tokens. Risk color via riskTheme() (>=70 critical, >=40
+  warning, else stable).
+- Badge: <TerminationBadge> (components/common/TerminationBadge) when an
+  outcome/status exists, else a plain colored status pill.
+- Profile label via reportProfileLabel() looking up
+  INFILTRATION_PROFILE_CATALOG; hidden on old reports with no profile field.
+- Visited routes: local showRoutes state toggles a scrollable <ul> of
+  report.visitedRoutes.
+STATUS: IMPLEMENTED.
+
+========================================================================
+3. AI INSIGHTS PANEL (session-level analysis)
+========================================================================
+
+WHAT
+A distinct always-visible panel (AiInsightsPanel) showing a session-level
+root cause paragraph and a bulleted recommendations list, plus a risk-level
+pill. If no AI-generated insights exist yet and the run has findings, it
+shows a "Get Insights" button that requests an on-demand LLM analysis;
+"Generating..." while running, "Retry" on failure.
+
+WHY
+This is run-wide analysis, not per-bug data, so it is its own panel rather
+than folded into the finding cards. Generation is on-demand and once-per-run:
+once a real AI result exists (fresh or persisted) the button hides so a good
+result is never regenerated. There is always a deterministic fallback so the
+panel is never blank.
+
+HOW
+- Component: AiInsightsPanel (ForensicReport.tsx, ~line 232), fed
+  report.aiAnalysis + sessionId + the runtime findings.
+- rootCause / recommendations come from report.aiAnalysis, overridable by a
+  local override state after a successful generate.
+- generate() calls requestAiInsights({ sessionId, riskLevel,
+  fallbackRootCause, fallbackRecommendations, findings[] }) ->
+  POST /api/forensic/insights.
+- Backend (registerRoutes.ts, ~line 1266) calls generateInsights(); on AI
+  success it persists the result onto the session (aiInsights field) so it
+  survives refresh, and echoes back source 'ai'; on failure it returns the
+  caller's deterministic fallback with source 'fallback' and a reason.
+- A mountedRef guards against setState after navigating away mid-request.
+STATUS: IMPLEMENTED.
+
+========================================================================
+4. TABBED PANELS: FINDINGS / NETWORK / CONSOLE
+========================================================================
+
+WHAT
+A tab strip (TabButton x3) with per-tab counts switches the body between
+Findings (confirmed bugs), Network (failed requests), and Console (browser
+log messages). This mirrors the live dashboard's right-panel tabs so a saved
+session rehydrates the same categorized view the operator saw live.
+
+WHY
+The saved report is meant to be a faithful replay of the live run's layout,
+so it reuses the same tab structure and, importantly, the same shared card
+components as the live tabs, so the saved view can never visually drift from
+the live one.
+
+HOW
+- Local state activeTab ('findings' | 'network' | 'console').
+- Tab counts: runtimeBugs.length, networkRows.length, consoleRows.length.
+- Data prep (useMemo in ForensicReport()):
+  * bugs = report.forensicTrace.caughtBugs.
+  * runtimeBugs = bugs minus type 'ACCESSIBILITY' (WCAG findings are
+    ephemeral / never persisted; filter only guards legacy data).
+  * networkRows: report.networkLog filtered to actionable (failing) statuses
+    via isActionableNetworkStatus; legacy fallback maps old error rows.
+  * consoleRows: report.consoleLog; legacy fallback maps old console-type
+    error rows.
+STATUS: IMPLEMENTED.
+
+------------------------------------------------------------------------
+4a. FINDINGS TAB (per-finding cards)
+------------------------------------------------------------------------
+WHAT
+One card per confirmed bug (ReportFindingCard wrapping the shared
+FindingCard). Each card shows: title, severity + category badges, an "xN"
+occurrences badge, CWE / verification status meta, the error message,
+element label, payload used, and an evidence body (reproduction checklist,
+resolved source frames, suggested fix, stack trace). If the run found
+nothing, a green CleanRunCard is shown.
+
+WHY
+The redesign groups everything about ONE bug in ONE card instead of four
+disconnected flat lists (findings / error logs / action steps / AI).
+forensicTrace.caughtBugs is the authoritative, fully classified finding set
+(attribution, steps, advice resolved server-side); errorLogs.errors is the
+same event stream pre-classification, so it is NOT rendered as a second list.
+
+HOW
+- Component: FindingsPanel (bare) receives one FindingEntry per runtimeBug;
+  each entry renders <ReportFindingCard> (ForensicReport.tsx, ~line 714).
+- caughtBugToFindingView(bug, occurrences) normalizes the bug into the shared
+  FindingView, so FindingCard renders identity/metadata/evidence identically
+  to the live Errors tab (FindingCard.tsx, FindingEvidence.tsx).
+- occurrences comes from bug.occurrences (identical faults are deduped
+  server-side at save, each carrying a count).
+- Empty state: CleanRunCard.
+STATUS: IMPLEMENTED.
+
+------------------------------------------------------------------------
+4b. NETWORK TAB
+------------------------------------------------------------------------
+WHAT
+A list of network failures (method, status code, URL, resource type, error
+text, repeat count) via the shared NetworkFailureList. Only failing requests
+render.
+WHY
+Reuses the same shared card as the live Network tab so saved and live match.
+HOW
+- networkRows.map(networkLogToRow) adapts each ForensicNetworkLog into a
+  NetworkFailureRow; empty message when none.
+STATUS: IMPLEMENTED.
+
+------------------------------------------------------------------------
+4c. CONSOLE TAB
+------------------------------------------------------------------------
+WHAT
+The full browser console stream (all levels) via ConsoleMessageList, with a
+ConsoleFilterBar to filter by level (all / error / warning / etc).
+WHY
+Mirrors the live Console tab; full stream is persisted, not just errors.
+HOW
+- Local consoleFilter state; visibleConsole = consoleRows filtered by level.
+- Renders ConsoleFilterBar + ConsoleMessageList; EmptyTab messages when the
+  stream or the filtered view is empty.
+STATUS: IMPLEMENTED.
+
+========================================================================
+5. VERIFY FIX (per-finding regression replay)
+========================================================================
+
+WHAT
+Each finding card carries a "Verify Fix" control. Pressing it re-runs that
+finding's recorded action timeline against the live target and reports a
+verdict: RESOLVED, STILL ACTIVE, INCONCLUSIVE, VERIFICATION FAILED, or "Not
+Replayable". While running it shows a live pill ("Replaying N/total..." then
+"Validating..."). When done the card re-themes to the verdict and auto-opens
+a result modal (VerificationResultModal) with the summary, run stats (bug
+class, steps run, timeline source, duration), and the exact console/network
+signals that reproduced the fault. A "Re-verify" button re-runs it.
+
+WHY
+This is the core forensic value: after a developer claims a fix, the operator
+replays the exact recorded reproduction and gets a deterministic yes/no
+instead of re-exploring manually. The verdict theming lets a reader see at a
+glance whether each defect is still live.
+
+HOW
+- Hook: useRegressionVerifier() (application/useCases/useRegressionVerifier.ts)
+  owns a DEDICATED Socket.IO connection (the Forensic route does not mount the
+  live-run gateway). It keeps a per-bugId status map (idle | running | done).
+- verify({ sessionId, bugId }) emits VERIFY_FIX_EVENT over the socket with a
+  180s ack timeout; live phases stream back over VERIFY_FIX_PROGRESS_EVENT and
+  merge into that bug's running status. A failed/timed-out emit becomes a
+  synthetic VERIFICATION_FAILED / REPLAY_ERROR result.
+- UI: VerifyFixControl renders idle button / running pill / done badge;
+  ReportFindingCard picks the verdict theme (VERDICT_META /
+  NOT_REPLAYABLE_META) and auto-opens VerificationResultModal on a fresh
+  terminal result. REASON_TEXT maps each VerifyFixReason to plain-English
+  explanation.
+- Backend: registerSocketHandlers.ts (~line 262) handles VERIFY_FIX_EVENT:
+  validates payload, scopes the finding lookup to the handshake JWT user
+  (least privilege), serializes replays per user (one in flight), races the
+  replay against a hard timeout, and streams progress. The replay itself is
+  RegressionPlaybookVerifier.verify (domain/services/regression/), which
+  drives a real browser through the saved timeline and classifies the result
+  in verdict.ts / ReplaySession.ts.
+STATUS: IMPLEMENTED.
+
+========================================================================
+6. FULL ACTION TIMELINE APPENDIX
+========================================================================
+
+WHAT
+A collapsed disclosure at the very bottom ("Full Action Timeline (N steps),
+for reference") that expands to the complete ordered action trace of the run,
+with a copy button. Each step shows a number, an action-type chip, an
+imperative instruction, an optional payload code chip, and duration.
+
+WHY
+This is supplementary low-level evidence not tied 1:1 to any single finding,
+so it stays a de-emphasized appendix rather than a peer section competing for
+attention. It is the same structured trace type Verify Fix replays.
+
+HOW
+- Component: ActionTimelineAppendix (ForensicReport.tsx, ~line 875), fed
+  report.actionSteps (ForensicActionStep[]).
+- Collapsed by default (local isOpen); expanded body renders a CopyButton
+  (text via actionStepsToMarkdown) and the shared ActionStepList
+  (FindingEvidence.tsx) which humanizes each step via humanizeActionStep.
+STATUS: IMPLEMENTED.
+
+========================================================================
+7. SCROLLING / NAVIGATION UX
+========================================================================
+
+WHAT
+The report body is a single vertically scrolling column (max-width 4xl,
+centered) with a fixed header. The tab strip scrolls horizontally on narrow
+screens (scroll-rail). Reproduction and route lists have their own bounded
+scroll areas. Back returns to /history.
+
+WHY
+Keep the whole document in one readable column; keep the header and tabs
+reachable; avoid nested full-page scroll traps.
+
+HOW
+- <main class="overflow-auto custom-scrollbar">, inner column max-w-4xl.
+- ActionStepList and Visited Routes use max-h + overflow-y-auto.
+- handleBack clears the pinned report id then navigate('/history').
+STATUS: IMPLEMENTED.
+
+========================================================================
+8. EXPORT / SHARE
+========================================================================
+
+WHAT
+There is NO export/share control ON this Forensic Report page itself. Per-
+finding and per-timeline CopyButtons copy formatted text to the clipboard. A
+full JSON export of a whole record exists in the service layer (exportRecord
+-> GET /api/history/export/:id) but is invoked from the History LIST, not
+from this page.
+WHY
+The page is a read/replay surface; whole-record export lives with the list.
+HOW
+- CopyButton (ForensicCardKit) on each finding and on the timeline appendix.
+- exportRecord() in historyService.ts is present but NOT wired into
+  ForensicReport.tsx.
+STATUS: Copy buttons IMPLEMENTED. Page-level export: NOT PRESENT (export
+exists but is UNUSED here).
+
+========================================================================
+9. BACKEND COMMUNICATION (summary of endpoints this page uses)
+========================================================================
+
+- GET  /api/forensic/report/:sessionId  (requireAuth, tenant-scoped)
+    Returns { report: ForensicReportResponse }. Loads the SessionModel doc by
+    ObjectId or RUN- code scoped to userId, then reads forensic children
+    (forensic errors, network log, console log, telemetry, analysis) keyed by
+    the session _id, derives risk score from caughtBugs, and assembles the
+    report. Supports optional pagination (logsLimit / logsOffset) for the
+    three heavy log arrays. (registerRoutes.ts ~line 1303.)
+- POST /api/forensic/insights   -> on-demand session AI insights (persisted).
+- POST /api/findings/suggest-fix -> on-demand per-finding AI remediation
+    (persisted onto the matching caughtBug.aiAdvice). Called from the finding
+    evidence "AI fix" block (aiFix prop), not from the page shell.
+- Socket.IO VERIFY_FIX_EVENT / VERIFY_FIX_PROGRESS_EVENT -> Verify Fix replay.
+
+SHARED TYPES USED:
+- Frontend view types: ForensicReportResponse, ForensicCaughtBug,
+  ForensicActionStep, ForensicNetworkLog, ForensicConsoleLog,
+  ForensicReportError (developer-dashboard/src/types.ts, ~line 120+).
+- Cross-package contracts (shared/types.js): VerifyFixRequest,
+  VerifyFixResult, VerifyFixProgress, VerifyFixReason, RegressionVerdict,
+  RegressionSignal, SuggestFixRequest/Response, SuggestInsightsRequest/
+  Response, ActionRecord, StateFingerprint, isActionableNetworkStatus.
+
+STORAGE (where the data lives):
+- SessionModel (testing-core/src/infrastructure/database/models/
+  SessionModel.ts) embeds forensicTrace.caughtBugs (the findings, capped),
+  actionSteps (the full run timeline, capped at ACTION_TRACE_CAPACITY = 60),
+  visitedRoutes (capped 500), and aiInsights.
+- Separate child collections keyed by the session _id: ForensicErrorModel
+  (forensic_errors, the live pre-classification event mirror),
+  NetworkLogModel, ConsoleLogModel, ForensicTelemetryModel,
+  ForensicAnalysisModel. Read back through their repositories in the report
+  endpoint.
+
+========================================================================
+SYSTEM FLOW: HOW A RUN'S FORENSIC DATA IS RECORDED, SAVED, THEN REPLAYED HERE
+========================================================================
+
+During an autonomous exploration, the engine traverses the SPA with
+Playwright and continuously records evidence: every executed action is pushed
+into a rolling circular action buffer (crash context) and into a persisted
+action trace; every failing request, console message, and JS exception is
+streamed as forensic telemetry; and each confirmed fault is classified
+against the knowledge base into a caughtBug with attribution, a numbered
+reproduction checklist, a minimized replayable action timeline, a payload,
+severity, and advice. When the run ends (or the operator saves), the client
+transfers the live findings and the full network/console streams to
+POST /api/history/save-session, and the backend deduplicates identical faults
+(each carrying an occurrences count), caps the arrays, and persists them onto
+the SessionModel document (forensicTrace.caughtBugs, actionSteps,
+visitedRoutes) plus the child forensic collections. Later, opening
+/history/forensic-report/:sessionId fetches that assembled document via
+GET /api/forensic/report/:sessionId, which re-derives the risk score from the
+saved findings and rehydrates the same tabbed layout the operator saw live.
+The page renders the summary, optional AI insights, one card per finding,
+the Network / Console tabs, and the full action timeline. Finally, the
+operator can press Verify Fix on any finding to emit VERIFY_FIX_EVENT over a
+dedicated socket; the backend replays that finding's recorded timeline against
+the live target with a real browser, streams replay progress back, and returns
+a deterministic verdict (RESOLVED / STILL ACTIVE / INCONCLUSIVE /
+VERIFICATION FAILED / Not Replayable) that re-themes the card and opens the
+result modal.

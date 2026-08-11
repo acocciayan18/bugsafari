@@ -167,6 +167,27 @@ check('constraint-bypass playbook masks a sensitive payload and omits the Open s
   assert.ok(!steps.join('\n').includes('hunter2'), 'sensitive payload must be masked');
 });
 
+check('input-injection step shows the full stress payload verbatim (no truncation, no mask)', () => {
+  const sqli = "' OR '1'='1' --";
+  assert.equal(describeInputInjection('Username', sqli, false, 'field'), `Type "${sqli}" into the "Username" field`);
+  const long = 'x'.repeat(500);
+  assert.equal(describeInputInjection('Comment', long, false, 'field'), `Type "${long}" into the "Comment" field`);
+});
+
+check('oversized amplification payload gets a length note, never a bare stub', () => {
+  const blob = 'A'.repeat(65536);
+  const step = describeInputInjection('Comment', blob, false, 'field');
+  assert.ok(step.includes('65536 chars total, full value preserved for replay'), step);
+  assert.ok(step.startsWith('Type "AAAA'), step);
+  assert.ok(!step.includes(blob), 'must not dump the full 64KB blob into the step');
+});
+
+check('genuine sensitive payload still masks in an input-injection step', () => {
+  const step = describeInputInjection('Password', 'hunter2', true, 'field');
+  assert.ok(step.includes('«redacted»'), step);
+  assert.ok(!step.includes('hunter2'), 'sensitive value must not leak');
+});
+
 check('burst intent reads without live metrics (recordable before the burst fires)', () => {
   assert.equal(
     describeConcurrentBurstIntent('Save', 'button', 15),

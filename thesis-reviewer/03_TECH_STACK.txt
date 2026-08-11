@@ -1,0 +1,140 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+03 - TECHNOLOGY STACK
+========================================================================
+Versions below are taken from the real package.json files.
+
+
+------------------------------------------------------------------------
+BACKEND (testing-core/package.json)
+------------------------------------------------------------------------
+NODE.JS + TypeScript 5.8 (ES modules)
+- WHAT: The runtime and language for the whole engine.
+- WHY: One language (TypeScript) across engine, shared contracts, and UI
+  means shared types and less context-switching; Node's async I/O fits an
+  engine that is mostly waiting on a browser and network.
+- HOW: Compiled with tsc to dist/, run as node dist/.../index.js (API) and
+  worker-entry.js (worker). tsx runs scripts/benchmarks without a build.
+
+EXPRESS 5.2
+- WHAT: The HTTP server and REST API framework.
+- WHY: Minimal, battle-tested, and enough for a JSON API; no heavier
+  framework was needed.
+- HOW: registerRoutes.ts mounts /api/start-test, /api/safari/stop, history,
+  forensic, and findings endpoints; auth controllers mount /api/auth/*.
+  Security headers, rate limiters, and an access lock are Express middleware.
+
+PLAYWRIGHT 1.59
+- WHAT: Browser automation. Drives a real Chromium.
+- WHY: It is the most reliable way to interact with a modern SPA exactly as a
+  user would (real DOM, real events, real network). It exposes the page,
+  console, and network hooks the engine needs.
+- HOW: PlaywrightBrowserEngine (infrastructure/playwright) launches Chromium,
+  and the domain code reads the DOM, fires clicks/inputs, and listens to
+  console/network through it. domHasher runs a page.evaluate to fingerprint
+  the DOM. ReproductionProbe replays in a headless sidecar context.
+
+SOCKET.IO 4.8
+- WHAT: Real-time, bidirectional messaging between engine and dashboard.
+- WHY: Live telemetry (screencast frames, action feed, findings) must stream
+  continuously, and controls (pause/resume/stop) must flow back instantly.
+  Plain REST polling could not do this cleanly.
+- HOW: A Socket.IO server in index.ts; SessionManager scopes each run to a
+  room and buffers events for reconnect replay. The client is socket.io-client.
+  (Note: Socket.IO gives WebSocket-or-polling with rooms and acks out of the
+  box, which is why it was chosen over raw WebSockets.)
+
+MONGODB (Atlas) + MONGOOSE 8.24
+- WHAT: The database and its object-document mapper.
+- WHY: Findings and forensic telemetry are semi-structured and nested (arrays
+  of steps, mixed shapes), which fits a document store better than rigid SQL
+  tables. Atlas is a managed cluster so there is no DB ops burden.
+- HOW: Models in infrastructure/database/models/*; repositories wrap them.
+  Multi-tenant isolation is by userId on every query. TTL indexes + a
+  retention reaper expire abandoned data.
+
+BULLMQ 5.78 + IOREDIS 5.10 (Redis)
+- WHAT: A durable job queue (BullMQ) on Redis, plus the Redis client.
+- WHY: Runs are heavy and must execute in isolated worker processes, not in
+  the API process that holds secrets and operator sockets. A queue decouples
+  "accept the run" from "execute the run" and lets a fleet scale horizontally.
+- HOW: TaskQueue enqueues a SafariTaskPayload; SafariWorker consumes it.
+  Redis also carries the telemetry bridge, control bridge, run registry
+  (resume after refresh), and the encrypted AuthVault handoff.
+
+JSONWEBTOKEN 9 + BCRYPTJS 2.4
+- WHAT: Stateless auth tokens and password hashing.
+- WHY: JWT lets the API authorize requests without server-side session
+  storage; bcrypt safely stores passwords.
+- HOW: Access tokens (short-lived) go to the client; refresh tokens live in
+  an httpOnly cookie and are also tracked in a RefreshToken collection.
+
+NODEMAILER 9
+- WHAT: Sends email.
+- WHY: Email verification and password reset need real mail delivery.
+- HOW: emailTransport.ts; verified once at boot so misconfig is caught early.
+
+GOOGLE GEMINI (REST, no SDK)
+- WHAT: An optional large-language-model advisor for fix suggestions/insights.
+- WHY: The deterministic knowledge base always gives remediation; Gemini adds
+  richer, on-demand natural-language advice when the operator asks.
+- HOW: GeminiRemediationAdvisor calls the Gemini REST endpoint directly with
+  strict input caps; every failure falls back to the knowledge base. Default
+  model gemini-flash-lite-latest. It is NOT in the exploration hot path.
+
+
+------------------------------------------------------------------------
+FRONTEND (developer-dashboard/package.json)
+------------------------------------------------------------------------
+REACT 19 + VITE 8 + TypeScript
+- WHAT: UI library and dev/build tool.
+- WHY: React is the standard for a component-heavy live dashboard; Vite gives
+  fast dev reload and a lean production build.
+
+ZUSTAND 5
+- WHAT: Lightweight state management.
+- WHY: The dashboard has real-time run state, history, and auth state. Zustand
+  is far simpler than Redux and fits per-slice stores.
+- HOW: stores/run/runStore.ts (live run), stores/history/historyStore.ts,
+  stores/authStore.ts, settings and theme stores.
+
+REACT ROUTER 7
+- WHAT: Client-side routing between dashboard, history, settings, info pages.
+
+SOCKET.IO-CLIENT 4.8
+- WHAT: The live channel to the engine (mirror of the server above).
+
+FRAMER-MOTION 12, GSAP 3, OGL 1
+- WHAT: Animation and a WebGL background (landing/auth visuals).
+- WHY: Presentation polish for the operator console and landing page.
+
+DOMPURIFY 3.4
+- WHAT: HTML sanitizer.
+- WHY: Findings and payloads come from an untrusted target app; any such text
+  rendered in the dashboard is sanitized so the console itself can't be XSSed.
+
+SONNER 2 (toasts), LUCIDE-REACT (icons), DRIVER.JS 1.8 (guided tour),
+TAILWIND CSS 4
+- WHAT: Notifications, icon set, an onboarding product tour, and styling.
+
+
+------------------------------------------------------------------------
+INFRASTRUCTURE / TOOLING
+------------------------------------------------------------------------
+- Podman / Docker: containerize the engine (Dockerfile, docker-compose.*).
+- Caddy reverse proxy (deploy/): owns TLS and CORS/origin validation in prod.
+- Vercel (vercel.json): hosts the dashboard CDN with its own security headers.
+- ESLint 10 + Prettier: linting and formatting.
+- The engine has a zero-dependency observability layer (logger, request id,
+  /metrics) under infrastructure/observability, so no external APM is needed.
+
+
+------------------------------------------------------------------------
+HOW THE TECHNOLOGIES WORK TOGETHER (one sentence each)
+------------------------------------------------------------------------
+The React dashboard talks HTTP + Socket.IO to the Express API; the API
+enqueues runs on Redis/BullMQ; a Playwright worker executes the run and
+streams telemetry back through Redis to the API to the dashboard; findings
+and forensics persist to MongoDB via Mongoose; Gemini is called only on
+demand for extra fix advice; and the shared TypeScript package guarantees
+every hop uses the same data shapes.

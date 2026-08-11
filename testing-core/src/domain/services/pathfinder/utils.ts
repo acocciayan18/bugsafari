@@ -5,6 +5,13 @@ export function shortHash(hash: StateHash): string {
   return hash.substring(0, 8);
 }
 
+/** Max of a numeric array without argument spreading (spread RangeErrors on huge arrays). */
+export function maxOf(values: number[], fallback: number): number {
+  let max = fallback;
+  for (let i = 0; i < values.length; i++) if (values[i]! > max) max = values[i]!;
+  return max;
+}
+
 /** Infer the dominant action type for an element from its tag name. */
 export function inferActionType(tag: string): 'click' | 'type' | 'select' {
   const t = tag.toUpperCase();

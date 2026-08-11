@@ -1,0 +1,149 @@
+================================================================================
+BUGSAFARI - SYSTEM OVERVIEW AND PAGE FLOW
+Study guide (plain English). Accurate to the current code. No app code changed.
+================================================================================
+
+WHAT THIS DOCUMENT IS
+This is the map that ties all the per-page reference files together. Read this
+first, then read the page you care about:
+  - LANDING_FUNCTIONALITY.txt         (the / home page)
+  - AUTH_FUNCTIONALITY.txt            (login, signup, forgot/reset, verify, guest)
+  - DASHBOARD_FUNCTIONALITY.txt       (the /dashboard testing console)
+  - HISTORY_FUNCTIONALITY.txt         (the /history saved-runs list)
+  - FORENSIC_HISTORY_FUNCTIONALITY.txt(the /history/forensic-report/:id detail)
+  - SETTINGS_FUNCTIONALITY.txt        (the /settings page)
+  - INFO_PAGES_FUNCTIONALITY.txt      (explore, features, community, about)
+
+
+--------------------------------------------------------------------------------
+1. WHAT BUGSAFARI IS
+--------------------------------------------------------------------------------
+WHAT. BugSafari is an autonomous exploratory testing engine for single-page web
+apps. Instead of a human writing test scripts, a robot agent opens the target
+website, looks at the page, clicks and types on its own, and hunts for crashes,
+loops, and backend weak spots. A live dashboard shows everything it is doing.
+
+WHY. Traditional test scripts only check what a person thought to check. They go
+stale and miss surprising bugs. BugSafari fills that gap by exploring on its own,
+learning which parts of the page are worth poking, and recording anything that
+breaks so a developer can reproduce it later.
+
+HOW. Three parts work together. The Watchtower is the React dashboard the person
+watches. The Intelligence and Arsenal is the backend engine that drives a real
+browser (Playwright), scores elements with a small machine-learning model, runs
+attack scenarios, and listens for errors. The Security and Storage layer handles
+login, keeps each user's saved runs separate, and lets guests test without
+saving.
+
+
+--------------------------------------------------------------------------------
+2. THE THREE PIECES OF THE CODEBASE (MONOREPO)
+--------------------------------------------------------------------------------
+WHAT. The project is one repository with three folders.
+  - developer-dashboard/  The frontend the user sees (React 19 + Vite, port 5173).
+  - testing-core/         The backend engine and the web API (Node + Express +
+                          Playwright + Socket.IO, port 3000).
+  - shared/               Shared TypeScript type definitions used by both sides.
+
+WHY. Splitting frontend from backend keeps the browser UI light and lets the
+heavy testing engine run on the server. The shared folder means both sides agree
+on the exact shape of the data that crosses between them, so a change on one side
+cannot silently break the other.
+
+HOW. The dashboard talks to the backend two ways at once. Slow, one-time actions
+use normal HTTP requests to /api/... endpoints. Fast, continuous updates (live
+video frames, element scores, errors) stream over a Socket.IO connection. The
+shared/ types describe every message on both channels.
+
+
+--------------------------------------------------------------------------------
+3. THE ROUTES (PAGES) THAT ACTUALLY EXIST
+--------------------------------------------------------------------------------
+Defined in developer-dashboard/src/App.tsx.
+
+Public (no login needed):
+  /                 Landing page
+  /login            Sign in
+  /signup           Create account
+  /forgot-password  Request a reset link
+  /reset-password   Set a new password from the link
+  /verify-email     Confirm an email address
+  /explore /features /community /about   Marketing / info pages
+
+Protected (need a signed-in or guest session):
+  /dashboard                              The testing console (guests allowed)
+  /history                                Saved runs list (signed-in only)
+  /settings                               Preferences
+  /history/forensic-report/:sessionId     Deep report for one saved run (signed-in)
+
+HOW THE GATE WORKS. App.tsx first checks the URL. The home, auth, and info routes
+render a "public shell" that never opens a socket or calls a protected endpoint.
+Only when a real session exists (signed in OR guest, and auth has finished
+loading) does it mount DashboardWorkspace, which is where all the live testing
+and protected data live. This split is deliberate: it stops an unauthenticated
+visit from firing protected calls and causing startup 401 errors.
+
+
+--------------------------------------------------------------------------------
+4. THE BACKEND API AT A GLANCE
+--------------------------------------------------------------------------------
+Routes live in testing-core/src/presentation/api/registerRoutes.ts; live control
+lives in testing-core/src/presentation/socket/registerSocketHandlers.ts.
+
+Accounts and settings:
+  /api/auth/*                register, login, refresh, logout, forgot/reset,
+                             verify-email (see AUTH_FUNCTIONALITY.txt)
+  GET/PUT /api/users/profile, PUT /api/users/password
+  GET/PUT /api/settings
+
+Running a test:
+  Start is an HTTP call: POST /api/start-test.
+  Pause and resume are Socket.IO-only events ('pause-test', 'resume-test').
+  Stop is the Socket.IO event 'stop-test', with POST /api/safari/stop as an HTTP
+  backup (used for queued-cancel and the force-stop fallback).
+  Session-attach and queue-subscribe are also Socket.IO events.
+
+Saving and reading results:
+  POST   /api/history/save-session      Save a finished run (signed-in only)
+  GET    /api/history/sessions          List the user's saved runs
+  GET    /api/history                   History data for the user
+  DELETE /api/history/:id               Delete one saved run
+  GET    /api/history/export/:id        Export one run
+  GET    /api/forensic/report/:sessionId   Full forensic detail for one run
+  GET    /api/forensic/analysis, POST /api/forensic/analyze, /insights
+
+MULTI-TENANT + GUEST RULE. Every history and forensic endpoint requires auth and
+only returns the calling user's own data. Guests can run tests on the dashboard
+but cannot save; the UI upsells an account instead of firing a doomed save.
+
+
+--------------------------------------------------------------------------------
+5. END-TO-END FLOW (HOW A TEST TRAVELS THROUGH THE SYSTEM)
+--------------------------------------------------------------------------------
+1) A visitor lands on / (Landing). They either sign in / sign up (Auth) or
+   continue as a guest.
+2) With a session, App.tsx mounts the workspace and the dashboard opens a
+   Socket.IO connection through the engine gateway
+   (developer-dashboard/src/infrastructure/engine/*).
+3) On /dashboard the user enters a target URL, picks a testing profile and
+   boundary settings, optionally supplies target-site login, and presses Start.
+   useDashboardController + the run store send this to the backend engine.
+4) The backend engine (testing-core) launches a real browser with Playwright,
+   explores the page, scores elements with its perceptron, avoids loops with DOM
+   hashing, fuzzes inputs, and runs attack scenarios.
+5) As it works, it streams live video frames, element scores, console/network
+   telemetry, and any crashes back over Socket.IO. The dashboard paints these in
+   the Live Feed, Telemetry tabs, and Findings.
+6) The user can Pause, Resume, or Stop at any time (socket control events).
+7) When the run ends, a signed-in user saves it (POST /api/history/save-session),
+   or Auto-Save does it for them. Guests are prompted to make an account instead.
+8) Later, /history lists saved runs. Opening one goes to
+   /history/forensic-report/:sessionId, which loads the full record
+   (GET /api/forensic/report/:sessionId) and replays the crash steps, telemetry,
+   and captured frames for debugging.
+9) /settings changes (theme, auto-save, notifications, testing defaults) feed
+   back into how the dashboard behaves on the next run.
+
+================================================================================
+END OF SYSTEM OVERVIEW
+================================================================================

@@ -1,0 +1,144 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE REVIEWER
+04 - FRONTEND (developer-dashboard)
+========================================================================
+
+
+------------------------------------------------------------------------
+1. MAJOR PAGES AND THEIR RESPONSIBILITIES
+------------------------------------------------------------------------
+WHAT: The dashboard is a single-page React app (App.tsx, main.tsx) with a
+sidebar layout (components/layout/SidebarLayout.tsx, Sidebar.tsx) and a small
+number of top-level views:
+- The live testing view: start a run and watch it (the operator console).
+- History: saved "safaris" list (components/history/SavedEvaluationSafaris.tsx).
+- Forensic report: the deep report for one saved run
+  (components/forensics/ForensicReport.tsx, ClinicalForensicsDashboard.tsx).
+- Settings (components/settings/Settings.tsx), Info/Legal pages, and the
+  landing/auth experience (designs/LandingPage.tsx, SlidingAuthForm.tsx).
+
+WHY: The operator needs exactly three things: configure and launch a run,
+watch it live, and study results afterward. Each view maps to one of those.
+
+HOW: React Router 7 switches views; AuthGuard/AccessGate wrap protected
+routes so an unauthenticated or unauthorized visitor is redirected.
+
+
+------------------------------------------------------------------------
+2. KEY COMPONENTS IN SIMPLE TERMS
+------------------------------------------------------------------------
+LiveFeed / LiveFeedConnected (components/common)
+- WHAT: The live "TV screen" of the target app. It shows the screencast
+  frames the engine captures as it drives the browser, with element
+  highlight boxes over the control being tested.
+- WHY: The operator must see what the agent sees, in real time.
+- HOW: It subscribes to telemetry screencast frames pushed over Socket.IO.
+
+Telemetry tabs (components/telemetry): ErrorTabPanel, ConsoleTabPanel,
+NetworkTabPanel
+- WHAT: Three tabs mirroring what a browser DevTools would show: detected
+  errors/findings, console messages, and network requests.
+- WHY: These are the raw evidence streams a developer trusts.
+- HOW: Each panel renders a live-updating list fed by the telemetry stream;
+  the Network panel shows request/response status, the Console panel shows
+  log levels, the Error panel shows findings.
+
+FindingCard / FindingsPanel / FindingEvidence / CweBadge (components/common)
+- WHAT: A single detected bug shown as a card: title, severity, the CWE
+  badge, the culprit control, the payload used, and evidence.
+- WHY: Turns a raw fault into something a developer can read and act on.
+- HOW: Driven by the shared Finding contract; CweBadge maps the CWE id to a
+  human label; text from the target app is sanitized with DOMPurify.
+
+ReproductionChecklist (components/telemetry)
+- WHAT: The step-by-step "do this to reproduce the bug" list.
+- WHY: A finding is only actionable if it can be reproduced.
+- HOW: Renders the reproduction playbook the engine attached to the finding.
+
+Session controls: SessionTimer/SessionTimerLive, TerminationBadge,
+ConnectionStatusChip, QueueStandbyChip
+- WHAT: The run clock, why the run ended, live connection status, and a
+  "waiting in queue" indicator.
+- WHY: The operator needs to know the run is alive, connected, and how it ended.
+
+AiDiagnosticCard (components/telemetry)
+- WHAT: Shows the optional Gemini fix suggestion / insights for a finding.
+- WHY: Extra natural-language help beyond the deterministic advice.
+- HOW: Calls /api/findings/suggest-fix or /api/forensic/insights on demand.
+
+Configuration: TestingConfigModal, InfiltrationProfileSelector,
+TargetAuthPanel, PublicTargetNotice
+- WHAT: The pre-run setup: pick testing types/profile, optionally supply
+  target-app login credentials, and a notice that only public targets are
+  allowed.
+- WHY: Lets the operator tune scope and test authenticated areas safely.
+
+
+------------------------------------------------------------------------
+3. HOW THE FRONTEND COMMUNICATES WITH THE BACKEND
+------------------------------------------------------------------------
+WHAT: All engine communication is funneled through one gateway
+(infrastructure/engine/SocketHttpEngineGateway.ts), which implements the
+EngineGateway port (application/ports/EngineGateway.ts).
+
+WHY: Centralizing the transport means the rest of the UI depends on a clean
+interface, not on fetch/socket details. It also makes reconnect logic and
+attach-eligibility rules live in one place.
+
+HOW: The gateway is split into:
+- EngineHttpClient.ts: REST calls (start-test, stop, history, forensic,
+  suggest-fix) with the auth header and the dev access key attached.
+- SocketConnectionManager.ts: the Socket.IO connection lifecycle, joining
+  the run room, and handling reconnect + replay.
+- attachEligibility.ts: decides whether this client may re-attach to an
+  already-running session (e.g. after a page refresh).
+The Vite dev proxy makes /api same-origin locally; in production Caddy owns
+CORS and the socket-origin allow-list is enforced server-side.
+
+
+------------------------------------------------------------------------
+4. STATE MANAGEMENT, ROUTING, LIVE FEED, SESSION CONTROLS
+------------------------------------------------------------------------
+STATE (Zustand):
+- stores/run/* is the live-run brain: runStore.ts holds the current run
+  state; runCommands.ts issues start/pause/resume/stop; gatewayBinding.ts
+  wires socket events into the store; engineLiveness.ts tracks connection
+  health; sessionBootstrap.ts restores a run after refresh; runTimer.ts is
+  the clock.
+- stores/history/* holds the saved-safari list and the selected report
+  (historyStore.ts, useHistoryView.ts) fed by services/historyService.ts.
+- stores/authStore.ts + context/AuthContext.tsx hold the logged-in user and
+  tokens; authBridge.ts connects auth to the gateway.
+- settingsStore.ts and themeStore.ts (plus DarkModeContext) hold preferences.
+
+WHY Zustand: the live run pushes many small updates per second; Zustand's
+per-slice subscriptions re-render only the components that care, which keeps
+a busy dashboard smooth without Redux boilerplate.
+
+ROUTING: React Router 7 with guarded routes (AuthGuard, AccessGate) and a
+RouteErrorBoundary so a render error in one view does not crash the app.
+
+LIVE FEED / TELEMETRY: telemetry events arrive over the socket, are routed
+into the run store, and fan out to LiveFeed (screencast), the three tabs, and
+the findings panel. A reconnect replays the buffered events so the operator
+does not lose the picture.
+
+SESSION CONTROLS: pause/resume/stop are emitted as socket events the engine
+honors mid-run; useRunNotifications.ts raises toasts (Sonner) on key events;
+a guided tour (tour/*) and driver.js onboard first-time users.
+
+
+------------------------------------------------------------------------
+5. UI BEHAVIOR NOTES WORTH DEFENDING
+------------------------------------------------------------------------
+- Guest vs authenticated: guests can run a test but are prompted that nothing
+  will be saved (GuestModeModal, GuestSavePromptModal). This mirrors the
+  backend rule that guests never persist.
+- Security in the UI: any target-derived string (payloads, error text) is
+  sanitized with DOMPurify before render, so a malicious target cannot XSS
+  the operator console itself.
+- Resilience: the app restores an in-progress run after a refresh via the
+  run registry snapshot on the backend, so closing the tab does not lose the
+  run.
+- Reconnect replay: because SessionManager buffers telemetry per run room, a
+  dropped socket reconnects and catches up rather than showing a blank feed.

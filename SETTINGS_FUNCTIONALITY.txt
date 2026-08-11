@@ -1,0 +1,288 @@
+========================================================================
+BUGSAFARI SETTINGS PAGE - FUNCTIONALITY REFERENCE
+========================================================================
+Route: /settings
+Purpose: One page where a user manages their account (profile, password,
+sign out) and their application preferences (theme, notifications,
+auto-save). Guests use it too, but their changes stay in the browser only.
+
+Root component: developer-dashboard/src/components/settings/Settings.tsx
+  - default export Settings() renders two cards in a grid:
+      1. "Account" card    -> AccountSection()
+      2. "Application" card -> ApplicationSettingsSection()
+  - A Help (?) button replays an on-demand product tour (useTour /
+    buildSettingsTourSteps). The tour is NOT auto-launched.
+
+Shared state comes from one Zustand store, reached through a compat hook:
+  - hooks/useUserSettings.ts  (thin shim, no logic of its own)
+  - stores/settingsStore.ts   (the real state + all API calls)
+  - stores/themeStore.ts      (theme mode + DOM 'dark' class)
+  - context/DarkModeContext.tsx (compat shim over themeStore)
+  - utils/settingsStorage.ts  (guest localStorage load/save)
+  - utils/desktopNotify.ts    (browser Notification permission + delivery)
+
+Backend for authenticated users:
+  - testing-core/src/presentation/authentication/userSettingsController.ts
+  - Routes registered in registerUserSettingsRoutes():
+      GET  /api/users/profile
+      PUT  /api/users/profile
+      PUT  /api/users/password
+      GET  /api/settings
+      PUT  /api/settings
+  - Settings persist inside the Mongo user document under a "settings"
+    sub-object (UserModel).
+
+========================================================================
+GROUP 1: APPEARANCE / DARK MODE (theme)
+========================================================================
+Component: ApplicationSettingsSection() -> ThemeModeControl
+State/logic: stores/themeStore.ts, context/DarkModeContext.tsx
+Status: IMPLEMENTED
+
+WHAT
+A three-way segmented control (Light / Dark / System) rendered as an
+accessible radiogroup. Picking one immediately repaints the whole app.
+"System" follows the operating system's prefers-color-scheme and keeps
+following it as the OS flips, until the user picks Light or Dark.
+
+WHY
+Theme has to feel instant and must survive a page reload with no flash of
+the wrong color. So the theme is treated as its own concern (themeStore)
+separate from the rest of settings, and it is cached in localStorage so an
+inline script in index.html can paint the correct theme before React even
+boots.
+
+HOW
+Clicking a mode calls handleThemeSelect(mode) in Settings.tsx. That does
+two things: setMode(mode) from useDarkMode() for instant paint, then
+updateSettings({ theme: mode }) to persist. setMode() (themeStore) resolves
+isDark via resolveIsDark(), toggles the 'dark' class on <html> through
+applyThemeClass(), and writes the mode string to localStorage key
+'bugsafari_theme' (THEME_CACHE_KEY). If mode is 'system' it attaches one
+matchMedia listener (syncFromSystem repaints on OS change); any other mode
+detaches it. A save in-flight lock (savingRef) blocks a second theme click
+until the first PUT settles. Persistence of the value itself is handled by
+Group 6 below (localStorage for guests, PUT /api/settings for authed users).
+
+========================================================================
+GROUP 2: NOTIFICATIONS (desktopNotify)
+========================================================================
+Component: ApplicationSettingsSection() -> ToggleSwitch "Notifications"
+Logic: utils/desktopNotify.ts, hooks/useRunNotifications.ts
+Status: IMPLEMENTED
+
+WHAT
+A toggle for desktop (OS) notifications that fire when an exploration run
+finds its first bug or finishes, but only while this browser tab is in the
+background. Turning it ON first asks the browser for notification
+permission; if the browser blocks or does not support notifications, the
+toggle refuses to claim it is on and shows a warning banner instead.
+
+WHY
+A toggle that says "on" while the browser is actually blocking delivery
+would lie to the user. So the browser permission grant gates the save, not
+the other way around. Foreground delivery is suppressed on purpose because
+the live telemetry feed and in-app toasts already cover the visible tab, so
+an OS banner would be duplicate noise.
+
+HOW
+Turning ON calls enableNotifications(): it awaits
+requestDesktopNotifyPermission() (desktopNotify.ts, which calls
+Notification.requestPermission). If granted, it calls
+updateSettings({ notifications: true }); if denied it shows a toast.error
+and leaves the stored value untouched. Turning OFF just calls
+updateSettings({ notifications: false }). The component tracks the live
+browser permission in notifyPermission state; when settings.notifications
+is true but permission is not 'granted', a warning banner renders (with a
+"Grant permission" link when permission is still 'default'). Actual
+delivery happens elsewhere: useRunNotifications.ts subscribes to the run
+store, checks useSettingsStore...settings.notifications, and calls
+notifyDesktop(title, body, tag) only when document.hidden is true. Same
+in-flight lock (savingRef) guards rapid toggling.
+
+========================================================================
+GROUP 3: AUTO-SAVE SESSIONS (autoSave)
+========================================================================
+Component: ApplicationSettingsSection() -> ToggleSwitch "Auto Save"
+Consumed in: App.tsx (DashboardWorkspace)
+Status: IMPLEMENTED
+
+WHAT
+A toggle that, when on, commits a finished exploration run to history
+automatically so the user does not have to press "Save Session". It does
+nothing for guests, since guests cannot persist to history at all.
+
+WHY
+Saving every run by hand is friction, but auto-saving must fire exactly
+once per run and must not turn a failing backend save into an endless retry
+loop. So the consumer latches each attempt.
+
+HOW
+The toggle calls updateSettings({ autoSave: checked }) directly. The value
+is read where runs complete: App.tsx does
+useSettingsStore((s) => s.settings.autoSave). An effect watches
+state.hasRunCompleted; when a run finishes and autoSave is on and the user
+is not a guest and it has not already tried (autoSaveAttemptedRef), it calls
+saveSessionToHistory(targetUrl) wrapped in toast.promise. The ref is reset
+when a new run starts, guaranteeing one attempt per run.
+
+========================================================================
+GROUP 4: ACCOUNT - IDENTITY, PROFILE, SIGN OUT
+========================================================================
+Component: AccountSection() in Settings.tsx
+Logic: hooks/useAuth, stores/settingsStore.ts (fetchProfile/updateProfile)
+Status: IMPLEMENTED (identity display + logout);
+        PLANNED/UNUSED (editing the display name from this page)
+
+WHAT
+Shows who is signed in. For an authenticated user it shows the display name
+(or email) plus an avatar, an embedded Security block (Group 5), and a
+Sign Out button with a confirm step. For a guest it shows a "Guest Session"
+card, a note that runs are not saved, and an "Exit Guest Mode" button.
+
+WHY
+Guests have no server profile, so only identity-free actions apply to them,
+and the component branches on isGuestMode to avoid fetching a profile that
+does not exist. The display name is mirrored to localStorage so the UI can
+show a friendly name immediately on the next visit before the profile
+fetch returns.
+
+HOW
+useUserSettings() exposes profile and isProfileLoading; the profile is
+loaded by the store via GET /api/users/profile (fetchProfile). An effect
+copies profile.name into local displayName state and into
+localStorage 'bugsafari_displayName'; if there is no profile name it falls
+back to the stored value. Sign Out: handleLogout() calls logout() from
+useAuth then a toast. NOTE: the store has updateProfile() which does
+PUT /api/users/profile to change the name, but the Settings page renders no
+name-edit input, so on this page that endpoint is not reachable
+(PLANNED/UNUSED here).
+
+========================================================================
+GROUP 5: ACCOUNT - SECURITY (change password)
+========================================================================
+Component: SecuritySettingsSection() (nested inside AccountSection)
+Logic: stores/settingsStore.ts changePassword()
+Status: IMPLEMENTED
+
+WHAT
+A collapsible "Change Password" form with three fields (current, new,
+confirm), each with a show/hide eye toggle. On success it tells the user
+they are being signed out and must sign in again.
+
+WHY
+Changing a password must invalidate every session opened with the old
+password, so a successful change deliberately forces a global logout rather
+than trying to keep the current session alive. Client-side validation
+(non-empty, min 8 chars, new==confirm) catches obvious mistakes before a
+network round-trip; the backend enforces the real complexity floor.
+
+HOW
+handleSubmit() runs validateForm() then changePassword(current, new). The
+store PUTs /api/users/password. The backend
+(handleChangePassword) verifies the current password with bcrypt (returns
+403 "Current password is incorrect" on mismatch, NOT 401, so the client
+does not read it as an expired session), enforces complexity, rejects
+reusing the same password, saves, then revokes all refresh tokens
+(revokeAllForUser). On success the store sets passwordSuccess, calls
+clearSession(), shows a toast, and dispatches the
+'bugsafari:session-expired' CustomEvent which App.tsx handles by logging
+the user out. Backend password errors surface via passwordError.
+
+========================================================================
+GROUP 6: PERSISTENCE (local vs backend)
+========================================================================
+Logic: stores/settingsStore.ts, utils/settingsStorage.ts, themeStore.ts
+Status: IMPLEMENTED
+
+WHAT
+There are three preference values (theme, notifications, autoSave) and two
+storage paths. Guests are stored purely in the browser; authenticated users
+are stored in MongoDB. Theme additionally has its own always-on browser
+cache so first paint is correct for everyone.
+
+WHY
+Guests have no account to write to, so their preferences live in
+localStorage. Authenticated preferences belong to the user record so they
+follow the user across devices. Theme is cached separately (and never
+cleared on logout) because the pre-React inline script needs it before any
+store exists, and loading guest settings must never stomp a theme the user
+already chose.
+
+HOW
+updateSettings(patch) in settingsStore branches on the auth token:
+  - No token (guest): applyServerSettings({...previous, ...patch}) updates
+    the store and repaints theme, then saveGuestSettings() writes
+    localStorage key 'bugsafari_guest_settings'. No network call.
+  - With token (authed): it optimistically applies the patch, PUTs
+    /api/settings, and on any failure (including 401) rolls back to the
+    previous settings via applyServerSettings(previous) so the DOM reverts
+    with the state. Success shows a "Settings saved" toast.
+Guest load: loadGuestSettings() reads 'bugsafari_guest_settings' for
+notifications/autoSave and pulls theme from readCachedThemeMode()
+('bugsafari_theme', with a legacy fallback to the guest blob).
+Theme write: themeStore.setMode() is the sole writer of 'bugsafari_theme'.
+
+========================================================================
+GROUP 7: BACKEND COMMUNICATION
+========================================================================
+Logic: stores/settingsStore.ts (authFetch), userSettingsController.ts
+Status: IMPLEMENTED
+
+WHAT
+Every authenticated settings/profile/password call goes through one
+helper, authFetch, which attaches the auth headers and transparently
+retries once after a silent token refresh on a 401.
+
+WHY
+Centralizing the fetch means one place handles the access-token header, one
+place tries a refresh before giving up, and every caller can then treat a
+still-401 as a real session expiry. This avoids each call reinventing auth
+and refresh handling.
+
+HOW
+authFetch(url, init) reads the token from useAuthStore, calls fetch with
+buildAuthHeaders(token). If the response is 401 it calls
+useAuthStore.refreshToken(); on success it retries once with the fresh
+token, otherwise it returns the 401. Callers that still see 401 call
+expireSession(), which sets sessionExpired and dispatches
+'bugsafari:session-expired'. Endpoints and methods used by this page:
+  GET  /api/users/profile   -> fetchProfile   (load name/email)
+  PUT  /api/users/profile   -> updateProfile  (store only; no UI on page)
+  PUT  /api/users/password  -> changePassword (Group 5)
+  GET  /api/settings        -> fetchSettings  (load theme/notif/autoSave)
+  PUT  /api/settings        -> updateSettings (save any preference patch)
+Rate limits: reads use readLimiter, writes use writeLimiter, password uses
+the tighter resetPasswordLimiter. Server responses are normalized() with
+defaults (theme 'light', notifications true, autoSave true).
+
+========================================================================
+NOT ON THIS PAGE: OPTIMIZATION / BOUNDARY FLAGS
+========================================================================
+Status: NOT PART OF /settings
+
+The engine's "optimization settings" (e.g. execution-timebox-ms and other
+OptimizationSettings seen in testing-core registerRoutes.ts and the job
+payload) are run-configuration passed when starting an exploration, NOT
+user preferences on the Settings page. The Settings page exposes only
+theme, notifications, and autoSave. There are no boundary/optimization
+toggles in Settings.tsx.
+
+========================================================================
+SYSTEM FLOW: HOW SETTINGS SHAPE A RUN AND SURVIVE SESSIONS
+========================================================================
+On app boot, main.tsx calls initThemeStore() so the 'dark' class is applied
+from the cached theme before render, and initSettingsStore() subscribes to
+the auth token. bootstrapForToken() runs on every token change: for a guest
+it makes localStorage authoritative (loadGuestSettings drives both settings
+and theme); for an authed user it fetches profile and settings in parallel
+and applyServerSettings() reconciles the theme from the server value. The
+first time a guest signs in, any non-default guest settings are migrated
+once to the backend via a PUT /api/settings before the normal fetch. During
+a run, the stored preferences change behavior live: settings.notifications
+gates background desktop alerts in useRunNotifications, and settings.autoSave
+makes App.tsx commit a finished run to history automatically (guests
+excluded). Because authed preferences live in the user document and theme is
+cached in localStorage, the same look and behavior are restored on the next
+visit and across devices, while guest preferences persist on that one
+browser only.
