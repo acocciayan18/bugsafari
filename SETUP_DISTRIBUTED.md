@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Fix BugSafari HTTP 200 soft-fail detection and classification"
+git commit -m "stop redacting stress payloads"
 git push origin HEAD:dev --force
 
 

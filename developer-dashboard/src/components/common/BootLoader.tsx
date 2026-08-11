@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import WalkingBug from './WalkingBug';
 
 // Branded full-surface loading screen. Visually mirrors the pre-mount #boot-screen
 // in index.html, so the HTML→React handoff during lazy-chunk loads never jumps.
@@ -29,10 +30,8 @@ export default function BootLoader({ label }: { label?: string }) {
         BUGSAFARI
       </h1>
 
-      {/* Indeterminate scan bar — subtle, matches the console aesthetic. */}
-      <div className="boot-scan h-0.5 w-40 overflow-hidden rounded-full bg-(--border-hairline)">
-        <span className="boot-scan__beam block h-full w-1/3 rounded-full bg-(--surface-invert)" />
-      </div>
+      {/* Walking bug marches the track while the workspace loads. */}
+      <WalkingBug />
 
       <p
         className="text-(--text-secondary)"

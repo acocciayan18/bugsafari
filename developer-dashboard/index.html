@@ -42,20 +42,30 @@
       html.dark #boot-screen { background: #09090b; color: #f4f4f5; }
       #boot-screen.boot-screen--hidden { opacity: 0; pointer-events: none; }
       #boot-screen .boot-wordmark { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
-      #boot-screen .boot-track {
-        position: relative; width: 160px; height: 2px; overflow: hidden; border-radius: 9999px; background: #e2e8f0;
-      }
-      html.dark #boot-screen .boot-track { background: #202024; }
-      #boot-screen .boot-beam {
-        position: absolute; top: 0; left: 0; height: 100%; width: 33%; border-radius: 9999px;
-        background: #18181b; animation: bootbeam 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-      }
-      html.dark #boot-screen .boot-beam { background: #f4f4f5; }
       #boot-screen .boot-status { margin: 0; font-size: 13px; font-weight: 500; color: #52525b; }
       html.dark #boot-screen .boot-status { color: #a1a1aa; }
-      @keyframes bootbeam { 0% { transform: translateX(-120%); } 100% { transform: translateX(360%); } }
+      #boot-screen .bugwalk-track { position: relative; width: 184px; height: 40px; overflow: hidden; }
+      #boot-screen .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 8px; height: 1px; border-radius: 9999px; background: #e2e8f0; }
+      html.dark #boot-screen .bugwalk-ground { background: #202024; }
+      #boot-screen .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 64px; height: 100%; animation: bugwalk-march 2.6s linear infinite; }
+      #boot-screen .bugwalk-svg { width: 64px; height: 40px; color: #18181b; fill: currentColor; overflow: visible; }
+      html.dark #boot-screen .bugwalk-svg { color: #f4f4f5; }
+      #boot-screen .bugwalk-bob { animation: bugwalk-bob 0.24s ease-in-out infinite; }
+      #boot-screen .bugwalk-legs { transform-box: view-box; transform-origin: 32px 22px; }
+      #boot-screen .bugwalk-legs--a { animation: bugwalk-swing-a 0.42s linear infinite; }
+      #boot-screen .bugwalk-legs--b { animation: bugwalk-swing-b 0.42s linear infinite; }
+      #boot-screen .bugwalk-leg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      #boot-screen .bugwalk-line { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: 0.35; }
+      #boot-screen .bugwalk-antenna { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+      #boot-screen .bugwalk-hole { fill: #f5f5f7; stroke: none; }
+      html.dark #boot-screen .bugwalk-hole { fill: #09090b; }
+      @keyframes bugwalk-march { 0% { transform: translateX(-20px); } 100% { transform: translateX(176px); } }
+      @keyframes bugwalk-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+      @keyframes bugwalk-swing-a { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+      @keyframes bugwalk-swing-b { 0%, 100% { transform: rotate(9deg); } 50% { transform: rotate(-9deg); } }
       @media (prefers-reduced-motion: reduce) {
-        #boot-screen .boot-beam { animation: none; width: 100%; opacity: 0.5; }
+        #boot-screen .bugwalk-march { animation: none; transform: translateX(60px); }
+        #boot-screen .bugwalk-bob, #boot-screen .bugwalk-legs--a, #boot-screen .bugwalk-legs--b { animation: none; }
       }
     </style>
 </head>
@@ -63,9 +73,42 @@
     <div id="root"></div>
     <div id="boot-screen" role="status" aria-live="polite" aria-label="Loading BugSafari">
       <h1 class="boot-wordmark">BUGSAFARI</h1>
-      <div class="boot-track"><span class="boot-beam"></span></div>
+      <div class="bugwalk-track" id="bugwalk-track"></div>
       <p class="boot-status" id="boot-status">Waking the engine…</p>
     </div>
+    <script>
+      // Render a random walking bug and hand its type to React so the HTML->React swap keeps the same bug.
+      (function () {
+        var HY = 22;
+        function legs(hips, spider) {
+          var a = '', b = '';
+          var mid = (hips.length - 1) / 2;
+          for (var i = 0; i < hips.length; i++) {
+            var hx = hips[i];
+            var dir = i <= mid ? -1 : 1;
+            var kx = hx + dir * (spider ? 5 : 1.5);
+            var ky = spider ? HY - 3 : HY + 5;
+            var fx = hx + dir * (spider ? 9 : 4);
+            var el = '<polyline class="bugwalk-leg" points="' + hx + ',' + HY + ' ' + kx + ',' + ky + ' ' + fx + ',32"/>';
+            if (i % 2) b += el; else a += el;
+          }
+          return '<g class="bugwalk-legs bugwalk-legs--a">' + a + '</g><g class="bugwalk-legs bugwalk-legs--b">' + b + '</g>';
+        }
+        var BODIES = {
+          ant: '<g class="bugwalk-bob"><ellipse cx="14" cy="16" rx="8" ry="6.5"/><ellipse cx="27" cy="16" rx="4.5" ry="4"/><circle cx="40" cy="15" r="5"/><polyline class="bugwalk-antenna" points="43,12 48,6 50,7"/><polyline class="bugwalk-antenna" points="43,13 49,9 51,10"/></g>',
+          beetle: '<g class="bugwalk-bob"><ellipse cx="24" cy="16" rx="16" ry="9"/><ellipse cx="44" cy="16" rx="5" ry="4.5"/><line class="bugwalk-line" x1="10" y1="16" x2="38" y2="16"/><line class="bugwalk-line" x1="32" y1="8" x2="32" y2="24"/><polyline class="bugwalk-antenna" points="47,13 52,9"/><polyline class="bugwalk-antenna" points="47,15 53,13"/></g>',
+          ladybug: '<g class="bugwalk-bob"><ellipse cx="23" cy="15" rx="15" ry="10"/><ellipse cx="41" cy="15" rx="5.5" ry="4.5"/><line class="bugwalk-line" x1="9" y1="15" x2="37" y2="15"/><circle class="bugwalk-hole" cx="17" cy="11" r="2"/><circle class="bugwalk-hole" cx="26" cy="18" r="2"/><circle class="bugwalk-hole" cx="30" cy="10" r="1.8"/><circle class="bugwalk-hole" cx="20" cy="19" r="1.6"/><polyline class="bugwalk-antenna" points="44,12 49,7"/><polyline class="bugwalk-antenna" points="44,14 50,10"/></g>',
+          spider: '<g class="bugwalk-bob"><ellipse cx="20" cy="16" rx="10" ry="8"/><ellipse cx="35" cy="16" rx="6" ry="5"/></g>'
+        };
+        var types = ['ant', 'beetle', 'ladybug', 'spider'];
+        var pick = types[Math.floor(Math.random() * types.length)];
+        window.__BOOT_BUG__ = pick;
+        var hips = pick === 'spider' ? [33, 36, 39, 42, 33, 36, 39, 42] : [15, 21, 27, 35, 41, 47];
+        var svg = '<svg class="bugwalk-svg" viewBox="0 0 64 40" aria-hidden="true">' + legs(hips, pick === 'spider') + BODIES[pick] + '</svg>';
+        var track = document.getElementById('bugwalk-track');
+        if (track) track.innerHTML = '<span class="bugwalk-ground"></span><div class="bugwalk-march">' + svg + '</div>';
+      })();
+    </script>
     <script>
       (function () {
         var stages = ['Waking the engine', 'Loading workspace', 'Almost ready'];

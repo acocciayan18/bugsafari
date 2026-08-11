@@ -248,22 +248,40 @@
     animation: backdrop-in 0.15s ease-out forwards;
   }
 
-  /* Indeterminate boot scan beam — sweeps across the track, matches the pre-mount loader */
-  @keyframes boot-scan {
-    0% { transform: translateX(-120%); }
-    100% { transform: translateX(360%); }
+  /* Walking-bug boot loader — legs swing in alternating groups while the bug marches the track */
+  @keyframes bugwalk-march {
+    0% { transform: translateX(-20px); }
+    100% { transform: translateX(176px); }
+  }
+  @keyframes bugwalk-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1px); }
+  }
+  @keyframes bugwalk-swing-a {
+    0%, 100% { transform: rotate(-9deg); }
+    50% { transform: rotate(9deg); }
+  }
+  @keyframes bugwalk-swing-b {
+    0%, 100% { transform: rotate(9deg); }
+    50% { transform: rotate(-9deg); }
   }
 
-  .boot-scan__beam {
-    animation: boot-scan 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  }
+  .bugwalk-track { position: relative; width: 184px; height: 40px; overflow: hidden; }
+  .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 8px; height: 1px; border-radius: 9999px; background: var(--border-hairline); }
+  .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 64px; height: 100%; animation: bugwalk-march 2.6s linear infinite; }
+  .bugwalk-svg { width: 64px; height: 40px; color: var(--surface-invert); fill: currentColor; overflow: visible; }
+  .bugwalk-bob { animation: bugwalk-bob 0.24s ease-in-out infinite; }
+  .bugwalk-legs { transform-box: view-box; transform-origin: 32px 22px; }
+  .bugwalk-legs--a { animation: bugwalk-swing-a 0.42s linear infinite; }
+  .bugwalk-legs--b { animation: bugwalk-swing-b 0.42s linear infinite; }
+  .bugwalk-leg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .bugwalk-line { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: 0.35; }
+  .bugwalk-antenna { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+  .bugwalk-hole { fill: var(--surface-app); stroke: none; }
 
   @media (prefers-reduced-motion: reduce) {
-    .boot-scan__beam {
-      animation: none;
-      width: 100%;
-      opacity: 0.5;
-    }
+    .bugwalk-march { animation: none; transform: translateX(60px); }
+    .bugwalk-bob, .bugwalk-legs--a, .bugwalk-legs--b { animation: none; }
   }
 
   /* Custom scrollbar — driven by theme tokens so dark mode isn't stuck on light rails */
