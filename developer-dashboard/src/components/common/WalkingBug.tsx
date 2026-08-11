@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type CSSProperties, type ReactElement } from 'react';
 
 // Detailed side-view bugs for the boot loader; one is chosen at random per mount.
 type BugType = 'ant' | 'beetle' | 'ladybug' | 'spider';
@@ -78,7 +78,10 @@ const BODIES: Record<BugType, ReactElement> = {
   ),
 };
 
-// Continuous horizontal march; legs swing in alternating groups so it walks, not slides.
+const COUNT = 3;
+const MARCH_MS = 2600;
+
+// A line of same-species bugs; a shared full-length march keyframe, time-staggered so each crosses the whole track.
 export default function WalkingBug() {
   const type = useMemo(() => pickType(), []);
 
@@ -88,17 +91,26 @@ export default function WalkingBug() {
   }, []);
 
   const legs = type === 'spider' ? LEGS8 : LEGS6;
+  const bug = (
+    <svg className="bugwalk-svg" viewBox="0 0 64 40" aria-hidden="true">
+      <g className="bugwalk-legs bugwalk-legs--a">{legs.a}</g>
+      <g className="bugwalk-legs bugwalk-legs--b">{legs.b}</g>
+      {BODIES[type]}
+    </svg>
+  );
 
   return (
-    <div className="bugwalk-track">
+    <div className="bugwalk-track" aria-hidden="true">
       <span className="bugwalk-ground" />
-      <div className="bugwalk-march">
-        <svg className="bugwalk-svg" viewBox="0 0 64 40" role="img" aria-label={`${type} walking`}>
-          <g className="bugwalk-legs bugwalk-legs--a">{legs.a}</g>
-          <g className="bugwalk-legs bugwalk-legs--b">{legs.b}</g>
-          {BODIES[type]}
-        </svg>
-      </div>
+      {Array.from({ length: COUNT }, (_, i) => (
+        <div
+          key={i}
+          className="bugwalk-march"
+          style={{ '--bug-delay': `-${(i * MARCH_MS) / COUNT / 1000}s`, '--bug-x': `${12 + i * 56}px` } as CSSProperties}
+        >
+          {bug}
+        </div>
+      ))}
     </div>
   );
 }

@@ -248,10 +248,10 @@
     animation: backdrop-in 0.15s ease-out forwards;
   }
 
-  /* Walking-bug boot loader — legs swing in alternating groups while the bug marches the track */
+  /* Walking-bug boot loader — a line of bugs marching the full track, legs swinging in alternating groups */
   @keyframes bugwalk-march {
-    0% { transform: translateX(-20px); }
-    100% { transform: translateX(176px); }
+    0% { transform: translateX(-44px); }
+    100% { transform: translateX(184px); }
   }
   @keyframes bugwalk-bob {
     0%, 100% { transform: translateY(0); }
@@ -266,10 +266,10 @@
     50% { transform: rotate(-9deg); }
   }
 
-  .bugwalk-track { position: relative; width: 184px; height: 40px; overflow: hidden; }
-  .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 8px; height: 1px; border-radius: 9999px; background: var(--border-hairline); }
-  .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 64px; height: 100%; animation: bugwalk-march 2.6s linear infinite; }
-  .bugwalk-svg { width: 64px; height: 40px; color: var(--surface-invert); fill: currentColor; overflow: visible; }
+  .bugwalk-track { position: relative; width: 184px; height: 28px; overflow: hidden; }
+  .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 5px; height: 1px; border-radius: 9999px; background: var(--border-hairline); }
+  .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 40px; height: 25px; animation: bugwalk-march 2.6s linear infinite; animation-delay: var(--bug-delay, 0s); }
+  .bugwalk-svg { width: 40px; height: 25px; color: var(--surface-invert); fill: currentColor; overflow: visible; }
   .bugwalk-bob { animation: bugwalk-bob 0.24s ease-in-out infinite; }
   .bugwalk-legs { transform-box: view-box; transform-origin: 32px 22px; }
   .bugwalk-legs--a { animation: bugwalk-swing-a 0.42s linear infinite; }
@@ -280,7 +280,7 @@
   .bugwalk-hole { fill: var(--surface-app); stroke: none; }
 
   @media (prefers-reduced-motion: reduce) {
-    .bugwalk-march { animation: none; transform: translateX(60px); }
+    .bugwalk-march { animation: none; transform: translateX(var(--bug-x, 60px)); }
     .bugwalk-bob, .bugwalk-legs--a, .bugwalk-legs--b { animation: none; }
   }
 

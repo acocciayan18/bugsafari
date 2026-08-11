@@ -44,11 +44,11 @@
       #boot-screen .boot-wordmark { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
       #boot-screen .boot-status { margin: 0; font-size: 13px; font-weight: 500; color: #52525b; }
       html.dark #boot-screen .boot-status { color: #a1a1aa; }
-      #boot-screen .bugwalk-track { position: relative; width: 184px; height: 40px; overflow: hidden; }
-      #boot-screen .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 8px; height: 1px; border-radius: 9999px; background: #e2e8f0; }
+      #boot-screen .bugwalk-track { position: relative; width: 184px; height: 28px; overflow: hidden; }
+      #boot-screen .bugwalk-ground { position: absolute; left: 0; right: 0; bottom: 5px; height: 1px; border-radius: 9999px; background: #e2e8f0; }
       html.dark #boot-screen .bugwalk-ground { background: #202024; }
-      #boot-screen .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 64px; height: 100%; animation: bugwalk-march 2.6s linear infinite; }
-      #boot-screen .bugwalk-svg { width: 64px; height: 40px; color: #18181b; fill: currentColor; overflow: visible; }
+      #boot-screen .bugwalk-march { position: absolute; left: 0; bottom: 0; width: 40px; height: 25px; animation: bugwalk-march 2.6s linear infinite; animation-delay: var(--bug-delay, 0s); }
+      #boot-screen .bugwalk-svg { width: 40px; height: 25px; color: #18181b; fill: currentColor; overflow: visible; }
       html.dark #boot-screen .bugwalk-svg { color: #f4f4f5; }
       #boot-screen .bugwalk-bob { animation: bugwalk-bob 0.24s ease-in-out infinite; }
       #boot-screen .bugwalk-legs { transform-box: view-box; transform-origin: 32px 22px; }
@@ -59,12 +59,12 @@
       #boot-screen .bugwalk-antenna { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
       #boot-screen .bugwalk-hole { fill: #f5f5f7; stroke: none; }
       html.dark #boot-screen .bugwalk-hole { fill: #09090b; }
-      @keyframes bugwalk-march { 0% { transform: translateX(-20px); } 100% { transform: translateX(176px); } }
+      @keyframes bugwalk-march { 0% { transform: translateX(-44px); } 100% { transform: translateX(184px); } }
       @keyframes bugwalk-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
       @keyframes bugwalk-swing-a { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
       @keyframes bugwalk-swing-b { 0%, 100% { transform: rotate(9deg); } 50% { transform: rotate(-9deg); } }
       @media (prefers-reduced-motion: reduce) {
-        #boot-screen .bugwalk-march { animation: none; transform: translateX(60px); }
+        #boot-screen .bugwalk-march { animation: none; transform: translateX(var(--bug-x, 60px)); }
         #boot-screen .bugwalk-bob, #boot-screen .bugwalk-legs--a, #boot-screen .bugwalk-legs--b { animation: none; }
       }
     </style>
@@ -105,8 +105,12 @@
         window.__BOOT_BUG__ = pick;
         var hips = pick === 'spider' ? [33, 36, 39, 42, 33, 36, 39, 42] : [15, 21, 27, 35, 41, 47];
         var svg = '<svg class="bugwalk-svg" viewBox="0 0 64 40" aria-hidden="true">' + legs(hips, pick === 'spider') + BODIES[pick] + '</svg>';
+        var count = 3, marchMs = 2600, html = '<span class="bugwalk-ground"></span>';
+        for (var n = 0; n < count; n++) {
+          html += '<div class="bugwalk-march" style="--bug-delay:-' + (n * marchMs / count / 1000) + 's;--bug-x:' + (12 + n * 56) + 'px">' + svg + '</div>';
+        }
         var track = document.getElementById('bugwalk-track');
-        if (track) track.innerHTML = '<span class="bugwalk-ground"></span><div class="bugwalk-march">' + svg + '</div>';
+        if (track) track.innerHTML = html;
       })();
     </script>
     <script>
