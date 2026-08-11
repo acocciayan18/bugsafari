@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "FixBugSafari HTTP 200 soft-fail detection and classification "
-git checkout -b 8-11-Ayan-1
-git push --set-upstream origin 8-11-Ayan-1
+git commit -m "Update History navigation memory in BugSafari"
+git checkout -b 8-11-Ayan-2
+git push --set-upstream origin 8-11-Ayan-2
 
 
 

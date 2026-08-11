@@ -32,6 +32,10 @@ export interface HistoryState {
     // Last card the user opened — the list scrolls it back into view on return, then clears it.
     lastViewedId: string | null;
 
+    // Forensic report the sidebar restores to: set while viewing a report, so re-entering
+    // History from Dashboard/Settings reopens it. Cleared by Back or a second History press.
+    pinnedReportId: string | null;
+
     reportCache: Record<string, ForensicReportResponse>;
 
     fetchSessions: (force?: boolean) => Promise<void>;
@@ -42,6 +46,7 @@ export interface HistoryState {
     setSortConfig: (update: (previous: SortConfig) => SortConfig) => void;
     setCurrentPage: (update: (previous: number) => number) => void;
     setLastViewedId: (id: string | null) => void;
+    setPinnedReportId: (id: string | null) => void;
     reset: () => void;
 }
 
@@ -55,6 +60,7 @@ const INITIAL = {
     sortConfig: { field: 'date', direction: 'desc' } as SortConfig,
     currentPage: 1,
     lastViewedId: null as string | null,
+    pinnedReportId: null as string | null,
     reportCache: {} as Record<string, ForensicReportResponse>,
 };
 
@@ -130,6 +136,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     setSortConfig: (update) => set((s) => ({ sortConfig: update(s.sortConfig), currentPage: 1 })),
     setCurrentPage: (update) => set((s) => ({ currentPage: Math.max(1, update(s.currentPage)) })),
     setLastViewedId: (lastViewedId) => set({ lastViewedId }),
+    setPinnedReportId: (pinnedReportId) => set({ pinnedReportId }),
 
     reset: () => {
         inflightReports.clear();

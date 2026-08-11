@@ -61,3 +61,17 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 )
+
+// Retire the pre-mount boot screen once React has actually painted. Double rAF waits
+// for the first committed frame, so it fades into real UI (or the branded RouteFallback)
+// with no white flash and no artificial delay.
+function dismissBootScreen(): void {
+  const el = document.getElementById('boot-screen')
+  if (!el) return
+  ;(window as unknown as { __stopBoot?: () => void }).__stopBoot?.()
+  el.classList.add('boot-screen--hidden')
+  const remove = () => el.remove()
+  el.addEventListener('transitionend', remove, { once: true })
+  setTimeout(remove, 600) // fallback if transitionend never fires
+}
+requestAnimationFrame(() => requestAnimationFrame(dismissBootScreen))

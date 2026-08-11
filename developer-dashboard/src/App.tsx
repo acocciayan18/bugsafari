@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LoaderCircle } from 'lucide-react';
 import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { useRunNotifications } from './hooks/useRunNotifications';
@@ -21,6 +20,7 @@ import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import VerifyEmailForm from './components/auth/VerifyEmailForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
+import BootLoader from './components/common/BootLoader';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
@@ -35,12 +35,9 @@ const ForensicReport = lazy(() => import('./components/forensics/ForensicReport'
 const SavedEvaluationSafaris = lazy(() => import('./components/history/SavedEvaluationSafaris'));
 const Settings = lazy(() => import('./components/settings/Settings'));
 
-// Lightweight fallback while a lazy workspace chunk loads — never a blank screen.
-const RouteFallback = () => (
-  <div className="flex flex-1 items-center justify-center p-8">
-    <LoaderCircle className="h-6 w-6 animate-spin text-(--text-tertiary)" strokeWidth={1.75} aria-label="Loading" />
-  </div>
-);
+// Branded fallback while a lazy workspace chunk loads — mirrors the pre-mount
+// #boot-screen so a slow chunk continues the same loader instead of a bare spinner.
+const RouteFallback = () => <BootLoader />;
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 

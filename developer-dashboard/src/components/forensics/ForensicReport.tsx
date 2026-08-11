@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
   ForensicActionStep,
@@ -954,9 +954,22 @@ function ForensicReportSkeleton() {
 
 export default function ForensicReport() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Viewing a report makes it the remembered session, so re-entering History from
+  // Dashboard/Settings reopens it. Survives deep links and refreshes onto this route.
+  useEffect(() => {
+    if (sessionId) useHistoryStore.getState().setPinnedReportId(sessionId);
+  }, [sessionId]);
+
+  // Back is an explicit "done with this session": drop the pin and return to the list.
+  const handleBack = () => {
+    useHistoryStore.getState().setPinnedReportId(null);
+    navigate('/history');
+  };
 
   useEffect(() => {
     if (!sessionId) {
@@ -1046,7 +1059,7 @@ export default function ForensicReport() {
       <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-3">
         {/* Back leads the header (left) for intuitive back-navigation flow. */}
         <button
-          onClick={() => window.history.back()}
+          onClick={handleBack}
           className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
          <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
