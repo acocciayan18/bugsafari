@@ -151,6 +151,18 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts',
     ),
   },
+  UNHANDLED_CLIENT_ERROR: {
+    title: 'A failed request was not handled',
+    description: 'A request came back with a client error (a 4xx such as 400, 401, 403, or 404) and the app did not handle it — no error state, retry, or redirect — so the interface was left broken or acted as if the call had succeeded. This is a client-side handling gap, not resource exhaustion or a server fault.',
+    defaultSeverity: 'MEDIUM',
+    cwe: 'CWE-754',
+    remediation: remediation(
+      'Suggested fix: handle failed responses on purpose',
+      '1. Check response.ok / the HTTP status on every call and branch on failure, not only on success',
+      '2. On 401/403 route to sign-in or an access-denied screen; on 400/404 show a clear error state instead of a broken view',
+      '3. Add a test that returns a 4xx and confirms the UI shows an error rather than breaking or reporting success',
+    ),
+  },
   FUZZ_VULNERABILITY_LEAK: {
     title: 'A test payload got through a defense',
     description: 'A fuzzing payload slipped past the app defenses. It was reflected back as script (XSS), returned a raw database error, or produced a server crash trace.',

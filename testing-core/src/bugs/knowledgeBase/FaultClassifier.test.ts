@@ -283,4 +283,58 @@ check('Determinism — same input yields identical classification', () => {
   assert.deepEqual(classifyFault(input), classifyFault(input));
 });
 
+// 4xx client statuses: an unhandled failed request, NOT resource exhaustion (CWE-400).
+check('HTTP 401 (no signal) → UNHANDLED_CLIENT_ERROR / CWE-754, never CWE-400', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 401 POST /api/auth/login', statusCode: 401, scenario: 'NetworkSaboteur' });
+  assert.equal(c.bugClass, 'UNHANDLED_CLIENT_ERROR');
+  assert.equal(c.cwe, 'CWE-754');
+  assert.notEqual(c.cwe, 'CWE-400');
+  assert.notEqual(c.cwe, 'CWE-835');
+});
+
+check('a 4xx whose text says "failed to load" is NOT hijacked to CWE-835 nav loop', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'Failed to load resource: the server responded with a status of 401', statusCode: 401 });
+  assert.equal(c.bugClass, 'UNHANDLED_CLIENT_ERROR');
+  assert.equal(c.cwe, 'CWE-754');
+  assert.notEqual(c.cwe, 'CWE-835');
+});
+
+check('HTTP 403 → UNHANDLED_CLIENT_ERROR / CWE-754', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 403 GET /api/admin', statusCode: 403 });
+  assert.equal(c.bugClass, 'UNHANDLED_CLIENT_ERROR');
+  assert.equal(c.cwe, 'CWE-754');
+});
+
+check('HTTP 400 with no leak signal → UNHANDLED_CLIENT_ERROR', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 400 POST /api/order', statusCode: 400 });
+  assert.equal(c.bugClass, 'UNHANDLED_CLIENT_ERROR');
+});
+
+check('HTTP 429 stays BOUNDARY_STRESS_FAILURE / CWE-400 (genuine rate pressure)', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 429 Too Many Requests', statusCode: 429 });
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+  assert.equal(c.cwe, 'CWE-400');
+});
+
+check('HTTP 408 Request Timeout stays BOUNDARY_STRESS_FAILURE (timeout pressure)', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 408', statusCode: 408 });
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+});
+
+check('transport abort with no status stays BOUNDARY_STRESS_FAILURE', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'net::ERR_FAILED GET /api/products' });
+  assert.equal(c.bugClass, 'BOUNDARY_STRESS_FAILURE');
+});
+
+check('a 4xx that DOES leak a datastore error still wins as the injection verdict', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 400 POST /api/login', statusCode: 400, content: 'MongoError: unknown operator $ne', scenario: 'DataFuzzer' });
+  assert.equal(c.bugClass, 'NOSQL_INJECTION'); // signal outranks the 4xx fallthrough
+});
+
+check('5xx still classifies as SERVER_API_FAILURE (unchanged)', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 500', statusCode: 500 });
+  assert.equal(c.bugClass, 'SERVER_API_FAILURE');
+  assert.equal(c.cwe, 'CWE-755');
+});
+
 console.log(`\nAll ${passed} assertions passed.`);

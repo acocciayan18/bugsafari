@@ -169,6 +169,19 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     expectSecurity: false,
   },
   {
+    // A 4xx client status is the app failing to handle a failed request (CWE-754), not
+    // resource exhaustion (CWE-400) and not a navigation loop (CWE-835).
+    name: 'unhandled 401 under NetworkSaboteur → UNHANDLED_CLIENT_ERROR',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 401 POST /api/auth/login',
+      statusCode: 401,
+      scenario: 'NetworkSaboteur',
+    },
+    expected: 'UNHANDLED_CLIENT_ERROR',
+    expectSecurity: false,
+  },
+  {
     // A 5xx error page whose body merely echoes a <script> tag is NOT a confirmed XSS:
     // raw tag-presence without the execution oracle is not proof of an executable
     // reflection. Pre-fix this classified as FUZZ_VULNERABILITY_LEAK (security FP);

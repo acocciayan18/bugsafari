@@ -261,6 +261,28 @@ function resolveBugClass(
     return { bugClass: 'API_CONTRACT_VIOLATION', confidence: 'CONFIRMED' };
   }
 
+  // 0c. A directly-observed 4xx client status is hard evidence the request failed with a
+  //     CLIENT error. Like the 5xx branch it is authoritative over the weaker nav/redirect
+  //     TEXT signals — a "failed to load"/"404" string in the body or control label must
+  //     not hijack it into STRUCTURAL_NAVIGATION_LOGIC (CWE-835) or resource exhaustion
+  //     (BOUNDARY_STRESS_FAILURE, CWE-400). It is the app failing to handle the response
+  //     (CWE-754). A direct body leak (SQL/NoSQL/leaked stack) is more specific security
+  //     evidence and still wins. 408 (Request Timeout) and 429 (Too Many Requests) are
+  //     genuine rate/timeout pressure and stay with the resource verdict (fall through).
+  if (
+    input.faultType === 'NETWORK' &&
+    input.statusCode !== undefined &&
+    input.statusCode >= 400 &&
+    input.statusCode < 500 &&
+    input.statusCode !== 408 &&
+    input.statusCode !== 429
+  ) {
+    for (const category of categories) {
+      if (DIRECT_LEAK_CATEGORIES.has(category)) return { bugClass: SIGNAL_TO_BUGCLASS[category][0], confidence: 'CONFIRMED' };
+    }
+    return { bugClass: 'UNHANDLED_CLIENT_ERROR', confidence: 'INFERRED' };
+  }
+
   // 1. A matched signal whose candidate the scenario expects — strongest evidence.
   for (const category of categories) {
     for (const candidate of SIGNAL_TO_BUGCLASS[category]) {
@@ -282,6 +304,8 @@ function resolveBugClass(
   //    fault-type default directly rather than inheriting a client/navigation class
   //    the scenario merely lists. Other fault kinds prefer the scenario's first
   //    non-security expected bug, else the raw fault-type default. Confidence INFERRED.
+  // A NETWORK fault with no matched signal: a 4xx status was already resolved above (0c),
+  // so only transport aborts (no status) and 408/429 resource pressure reach here.
   if (input.faultType === 'NETWORK') {
     return { bugClass: FAULT_TYPE_DEFAULT.NETWORK, confidence: 'INFERRED' };
   }
