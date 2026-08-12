@@ -23,8 +23,8 @@ import LongOperationProgressCard from '../common/LongOperationProgressCard';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
-import { dedupeNetworkEvents } from '../telemetry/NetworkTabPanel';
-import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
+import { buildLiveFindings } from '../../utils/findingsBuilder';
+import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
@@ -211,16 +211,13 @@ function ClinicalForensicsDashboard({
     return events.slice(-100);
   }, [telemetry, showVerbose]);
 
-  // Badge reflects DISTINCT fault cards the Errors tab renders (mirrored crash
-  // reports deduped, identical repeats collapsed), not the raw occurrence count.
-  // Memoized: a frame-only flush must not re-run the O(reports×incidents) dedup.
-  const errorCount = useMemo(() => {
-    const dedupedReports = dedupeReportsAgainstIncidents(errors.incidents, errors.reports);
-    return (
-      groupBySignature(errors.incidents, liveFaultSignature).length +
-      groupBySignature(dedupedReports, liveFaultSignature).length
-    );
-  }, [errors.incidents, errors.reports]);
+  // Badge counts the EXACT findings the save transfers (buildLiveFindings), so the live
+  // Findings count and the saved forensic report never disagree. Memoized: a frame-only
+  // flush must not re-run the O(reports×incidents) build.
+  const errorCount = useMemo(
+    () => buildLiveFindings(errors.incidents, errors.reports).length,
+    [errors.incidents, errors.reports],
+  );
   // Scroll growth uses raw occurrence totals (not distinct-card length) so a
   // repeat of an already-collapsed fault still nudges the view.
   const occurrenceTotal = (faults: { occurrences?: number }[]): number =>
@@ -287,11 +284,12 @@ function ClinicalForensicsDashboard({
   const showConfigModal = isConfigOpen && !isActiveSession;
 
   // Per-tab badge counts, keyed to the tab model so the tablist can render generically.
-  // Memoized so the whole-buffer dedupeNetworkEvents scan skips frame-only flushes.
+  // Network uses the SAME builder the save transfers, so the live badge and the saved
+  // network log always agree. Memoized so a frame-only flush skips the whole-buffer scan.
   const tabCounts: Record<TerminalTab, number> = useMemo(() => ({
     telemetry: 0,
     errors: errorCount,
-    network: dedupeNetworkEvents(networkEvents).length,
+    network: buildSavedNetworkRows(networkEvents).length,
     console: browserConsole.length,
   }), [errorCount, networkEvents, browserConsole.length]);
 

@@ -1,10 +1,11 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
-import { defaultOptimizationSettings, isActionableNetworkStatus } from '../../../../shared/types.js';
+import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
+import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
 import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
@@ -181,37 +182,9 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
         const liveFindings = buildLiveFindings(incidents, reports);
 
         // The run executes out-of-process, so these buffers are the only complete
-        // source at save time. Dedup by method+url+status so a polled endpoint
-        // collapses to one row with a repeatCount instead of flooding the tab.
-        const networkMap = new Map<string, { timestamp: string; method: string; url: string; statusCode?: number; durationMs?: number; ok: boolean; errorText?: string; repeatCount: number }>();
-        for (const e of networkEvents) {
-            // Same gate as the live Network tab (isActionableNetworkFailure): only a GENUINE
-            // observed request (rawNetwork) that actually failed. Excludes BugSafari's own
-            // NETWORK-channel findings/diagnostics — which carry no statusCode and no
-            // rawNetwork flag — so saved history matches the live tab exactly.
-            if (e.type !== 'NETWORK' || e.meta?.rawNetwork !== true) continue;
-            if (!isActionableNetworkStatus(e.meta?.statusCode)) continue;
-            const method = e.meta?.method ?? 'GET';
-            const url = e.meta?.url ?? '';
-            const statusCode = e.meta?.statusCode;
-            const key = `${method}|${url}|${statusCode ?? ''}`;
-            const existing = networkMap.get(key);
-            if (existing) {
-                existing.repeatCount += 1;
-                if (typeof e.meta?.durationMs === 'number') existing.durationMs = e.meta.durationMs;
-            } else {
-                networkMap.set(key, {
-                    timestamp: e.timestamp,
-                    method,
-                    url,
-                    statusCode,
-                    durationMs: e.meta?.durationMs,
-                    ok: e.meta?.ok === true,
-                    errorText: e.meta?.errorText,
-                    repeatCount: 1,
-                });
-            }
-        }
+        // source at save time. buildSavedNetworkRows is the SAME builder the live
+        // Network badge counts, so the saved log and the live tab can never diverge.
+        const networkLog = buildSavedNetworkRows(networkEvents);
 
         const consoleLog = browserConsole.map((c) => ({
             timestamp: c.timestamp,
@@ -238,7 +211,7 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
             runId: readStorage(RUN_CODE_STORAGE_KEY),
             elapsedTimeMs: effectiveElapsedMs,
             findings: liveFindings,
-            networkLog: [...networkMap.values()],
+            networkLog,
             consoleLog,
         });
 
