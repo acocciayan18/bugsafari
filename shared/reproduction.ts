@@ -134,6 +134,20 @@ export function resolveControlName(identity: ControlIdentity): string {
   return tag ? `<${tag}>` : GENERIC_FALLBACK;
 }
 
+/**
+ * A control name is DESCRIPTIVE when it identifies the control to a human: not a bare
+ * structural tag (`<input>`), not an input's raw value (`1`, `65535`), not empty.
+ * Attribution paths use this to drop a fabricated culprit rather than show a misleading
+ * Element — a render/console fault has no acted control to name.
+ */
+export function isDescriptiveControlName(label?: string): boolean {
+  const value = collapse(label);
+  if (!value) return false;
+  if (/^<[a-z][\w-]*>$/i.test(value)) return false;
+  if (/^[+-]?\d[\d.,]*$/.test(value)) return false;
+  return true;
+}
+
 // A structural DOM path inside free text: three-plus selector tokens joined by
 // `>`, or a single token carrying a positional pseudo. Case-sensitive, gap-free
 // and depth-gated by design, so ordinary prose ("Step 1 > Step 2", "a > b",

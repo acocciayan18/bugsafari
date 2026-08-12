@@ -11,7 +11,7 @@ import {
   ForensicErrorType,
   ForensicErrorSeverity,
 } from '../../infrastructure/database/models/ForensicErrorModel.js';
-import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
+import { determineRiskLevel, capRiskLevelByMaxSeverity } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 
 // Severity-weighted, saturating risk model (0-100). Replaces count-bucketing,
 // which capped after a handful of errors and read near-identical across URLs.
@@ -154,8 +154,10 @@ export class ForensicAnalysisService {
     // Calculate risk score (severity-weighted, saturating)
     const riskScore = this.calculateRiskScore(errors);
 
-    // Determine risk level
-    const riskLevel = determineRiskLevel(riskScore);
+    // Determine risk level, then clamp it so a volume of low-severity findings can never
+    // read as a higher band than the worst finding actually present.
+    const maxSeverity = this.maxSeverity(errors);
+    const riskLevel = capRiskLevelByMaxSeverity(determineRiskLevel(riskScore), maxSeverity);
 
     // Generate recommendations
     const recommendations = this.generateRecommendations(errors, apiFailures, jsExceptions);
@@ -249,6 +251,21 @@ export class ForensicAnalysisService {
     const severity = firstError.severity;
     
     return `${errorType} detected (${severity} severity): ${firstError.message.substring(0, 100)}...`;
+  }
+
+  // Highest finding severity present, by the same weight ordering the score uses.
+  // Undefined for an empty set (no cap applied then).
+  private maxSeverity(errors: Array<{ severity: ForensicErrorSeverity }>): ForensicErrorSeverity | undefined {
+    let top: ForensicErrorSeverity | undefined;
+    let topWeight = -1;
+    for (const e of errors) {
+      const w = SEVERITY_WEIGHT[e.severity] ?? SEVERITY_WEIGHT[ForensicErrorSeverity.MEDIUM];
+      if (w > topWeight) {
+        topWeight = w;
+        top = e.severity;
+      }
+    }
+    return top;
   }
 
   /**

@@ -20,7 +20,7 @@ import {
 } from '../../../bugs/knowledgeBase/index.js';
 import { ChaosInjectionRegistry } from '../../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { scrubCredentials } from './credentialScrub.js';
-import { resolveControlName } from '../../../../../shared/reproduction.js';
+import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
@@ -152,6 +152,31 @@ export function sanitizeException(error: Error | string): { message: string; sta
 
 // A stack frame line: V8 ("    at fn (file:line:col)") or SpiderMonkey ("fn@url:line:col").
 const STACK_FRAME_RE = /^\s*(?:at\s|[^\s@]*@[^\s]*:\d+)/;
+
+// Browser-emitted resource-load console errors ("Failed to load resource: the server
+// responded with a status of 401") are already captured with full status + class by the
+// response/requestfailed handlers; re-catching the console line double-reports them and
+// (matching /failed to load/) misclassifies a bare 4xx as a navigation loop (CWE-835).
+const RESOURCE_LOAD_CONSOLE_RE = /^Failed to load resource:/i;
+
+// React DEVELOPMENT-only warnings routed to console.error. They never appear in a
+// production build and here only fire because the fuzzer typed out-of-range values into
+// number inputs — not app defects. Matched on React's DISTINCTIVE full phrasings (not a
+// bare "should not be null", which a real app error could carry) so nothing genuine is
+// swallowed.
+const REACT_DEV_WARNING_RE = /received nan for the \S+ attribute|prop on \S+ should not be null\. consider using an empty string|should not be null\. consider using an empty string to clear the component|each child in a (?:list|array) should have a unique ["']?key/i;
+
+// Error-level console lines that must NOT become findings: network-stack errors (already
+// covered by response/requestfailed monitoring), browser resource-load errors (ditto, and
+// their "failed to load" text otherwise misclassifies a bare 4xx as a navigation loop), and
+// React development-only warnings (absent in production; here only provoked by fuzzed input).
+export function isIgnorableConsoleError(text: string): boolean {
+  if (!text) return false;
+  if (text.includes('net::ERR') || text.includes('ERR_')) return true;
+  if (RESOURCE_LOAD_CONSOLE_RE.test(text)) return true;
+  if (REACT_DEV_WARNING_RE.test(text)) return true;
+  return false;
+}
 
 /**
  * Split a raw runtime fault into its human diagnostic message and its stack trace so
@@ -629,14 +654,19 @@ export class StabilityMonitor {
       confidenceScore: outcome.score,
       corroborated: outcome.corroborated,
     };
+    // Drop under-evidenced findings (score < 0.5 ⇒ INCONCLUSIVE): they add noise at the
+    // same weight as proven bugs. The caller still emits them as informational telemetry.
+    const inconclusive = outcome.status === 'INCONCLUSIVE';
     return {
-      report: quarantined ? false : outcome.report,
+      report: quarantined || inconclusive ? false : outcome.report,
       advice: classification.advice,
       severity: SEVERITY_TO_FORENSIC[classification.severity],
       attribution,
       reason: quarantined
         ? 'Network degraded — target unreachable; fault suppressed to avoid a false report.'
-        : outcome.reason,
+        : inconclusive
+          ? 'Inconclusive evidence (confidence below reporting threshold); surfaced as telemetry only, not a finding.'
+          : outcome.reason,
     };
   }
 
@@ -795,8 +825,14 @@ export class StabilityMonitor {
       verificationStatus: complete.attribution.verificationStatus,
     });
 
-    const culpritSelector = this.culpritSelectorAt(faultAtMs);
-    const culpritLabel = this.culpritLabelAt(faultAtMs);
+    // A render/console fault often has no genuinely-acted control; culprit resolution
+    // then falls back to an incidental last-interaction label (a bare <tag> or an input's
+    // value). Drop a non-descriptive culprit so the Element cell stays empty rather than
+    // naming the wrong control.
+    const rawCulpritLabel = this.culpritLabelAt(faultAtMs);
+    const hasCulprit = isDescriptiveControlName(rawCulpritLabel);
+    const culpritLabel = hasCulprit ? rawCulpritLabel : undefined;
+    const culpritSelector = hasCulprit ? this.culpritSelectorAt(faultAtMs) : undefined;
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,
       timestamp,
@@ -878,7 +914,7 @@ export class StabilityMonitor {
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       const text = message.text();
-      if (text.includes('net::ERR') || text.includes('ERR_')) return;
+      if (isIgnorableConsoleError(text)) return;
       void this.reportRuntimeFault(page, 'CONSOLE', text);
     });
 
@@ -1033,8 +1069,11 @@ export class StabilityMonitor {
     // Human name of the double-fired control, resolved from the finder's own label so
     // live Telemetry and saved history name the same Element (not a bare <tag>). No
     // acted control ⇒ name the repeated endpoint itself so the Element is never blank.
-    const culpritLabel = defect.selector
+    const resolvedDupLabel = defect.selector
       ? resolveControlName({ label: defect.elementLabel, selector: defect.selector })
+      : undefined;
+    const culpritLabel = isDescriptiveControlName(resolvedDupLabel)
+      ? (resolvedDupLabel as string)
       : `${defect.method} ${url}`;
 
     t.emit('NETWORK', {

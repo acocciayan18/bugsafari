@@ -25,6 +25,8 @@ npm install
 | `npm run serve` | build if needed, then Express serves the SPA **and** `/api` on one origin (`:4310`) |
 | `npm run tunnel` | `serve` + a public `https://*.trycloudflare.com` URL to paste into BugSafari |
 
+npx cloudflared tunnel --url http://localhost:4310
+
 Open **http://localhost:4310** after `npm run serve`.
 
 `cloudflared` is an external binary (not an npm dependency), needed only for `npm run tunnel`:

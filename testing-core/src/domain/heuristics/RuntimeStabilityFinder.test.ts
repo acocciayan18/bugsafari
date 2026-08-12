@@ -77,6 +77,24 @@ check('different property names stay distinct', () => {
   assert.equal(f.totalFindings(), 2);
 });
 
+check('React double-log of one crash collapses (format-string + ErrorBoundary prefix)', () => {
+  const f = new RuntimeStabilityFinder();
+  const react = f.classify(obs({ source: 'CONSOLE', message: "%o %s %s TypeError: Cannot read properties of null (reading 'name')" }));
+  const boundary = f.classify(obs({ source: 'CONSOLE', message: "[reviews] render failed: Cannot read properties of null (reading 'name')" }));
+  assert.equal(react.isNew, true);
+  assert.equal(boundary.isNew, false);
+  assert.equal(boundary.finding.bugId, react.finding.bugId);
+  assert.equal(f.totalFindings(), 1);
+});
+
+check('prefix stripping still keeps different null-read fields distinct', () => {
+  const f = new RuntimeStabilityFinder();
+  f.classify(obs({ source: 'CONSOLE', message: "%o %s TypeError: Cannot read properties of null (reading 'name')" }));
+  const other = f.classify(obs({ source: 'CONSOLE', message: "[cart] render failed: Cannot read properties of null (reading 'price')" }));
+  assert.equal(other.isNew, true);
+  assert.equal(f.totalFindings(), 2);
+});
+
 check('bugId is stable across finder instances for the same signature', () => {
   const a = new RuntimeStabilityFinder().classify(obs({ message: 'foo is not defined' })).finding.bugId;
   const b = new RuntimeStabilityFinder().classify(obs({ message: 'foo is not defined' })).finding.bugId;

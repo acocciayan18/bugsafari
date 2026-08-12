@@ -16,7 +16,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
 import { generateRemediation, generateInsights } from '../../infrastructure/ai/GeminiRemediationAdvisor.js';
-import { determineRiskLevel } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
+import { determineRiskLevel, capRiskLevelByMaxSeverity } from '../../infrastructure/database/models/ForensicAnalysisModel.js';
 import { forensicErrorRepository } from '../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
@@ -1415,7 +1415,18 @@ obsLog.info('[API] Fetching complete forensic report for session:', selector, 'u
       }
       const findingsRiskScore = forensicAnalysisService.scoreFindings(caughtBugs);
       const effectiveRiskScore = caughtBugs.length > 0 ? findingsRiskScore : (analysis?.riskScore ?? 0);
-      const effectiveRiskLevel = determineRiskLevel(effectiveRiskScore);
+      // Cap the level by the worst finding present: a pile of MEDIUM findings saturates
+      // the score into the HIGH band, but the header must not claim a danger no single
+      // finding supports (forensic_errors fallback keeps the uncapped level — no severities here).
+      const severityRank: Record<string, number> = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+      const maxBugSeverity = caughtBugs.reduce<string | undefined>((top, b) => {
+        const s = (b.severity ?? '').toUpperCase();
+        if (!(s in severityRank)) return top;
+        return top === undefined || severityRank[s] > severityRank[top] ? s : top;
+      }, undefined);
+      const effectiveRiskLevel = caughtBugs.length > 0
+        ? capRiskLevelByMaxSeverity(determineRiskLevel(effectiveRiskScore), maxBugSeverity)
+        : determineRiskLevel(effectiveRiskScore);
 
       // Timestamp columns arrive as Date (Mongo) or string (client-transferred
       // logs). ?. only guards null, not a string, so coerce both forms to ISO.

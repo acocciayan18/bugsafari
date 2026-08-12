@@ -40,6 +40,14 @@ export interface RuntimeFinding {
 
 const MAX_TRACKED = 200;
 
+// Canonical JS-error clause — the part of a runtime message that survives framework
+// wrappers (React's "%o %s %s" console format, an ErrorBoundary's "[label] render
+// failed:") and instance noise. When present it ALONE keys the dedup signature, so one
+// logical error logged twice collapses to a single finding, while the field/name token
+// (e.g. reading 'name') still keeps genuinely different errors apart.
+const CORE_ERROR_RE =
+  /cannot read propert(?:y|ies) (?:of (?:null|undefined)(?: \(reading '[^']*'\))?|'[^']*' of (?:null|undefined))|[\w$.]+ is not a function|[\w$.]+ is not defined|maximum call stack size exceeded/i;
+
 // Ordered so the most specific message shape wins; source is only a fallback tiebreaker.
 const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['UNDEFINED_PROPERTY', /cannot read propert(?:y|ies)(?: '[^']*'| of)?.*undefined/i],
@@ -161,8 +169,17 @@ export class RuntimeStabilityFinder {
   // Collapse instance-specific noise (line/col, addresses, urls, digits) but keep
   // identifier tokens so two genuinely different errors never merge.
   private normalizeSignature(subtype: RuntimeSubtype, message: string): string {
-    const core = message
+    // Strip framework wrappers that differ between two logs of the SAME error: React's
+    // console format specifiers ("%o %s %c …") and a leading error-type token.
+    const stripped = message
       .toLowerCase()
+      .replace(/%[oOscdifj]/g, ' ')
+      .replace(/^\s*[a-z]+error:\s*/i, '')
+      .trim();
+    // Prefer the canonical error clause when present so a "[reviews] render failed:"
+    // prefix and a bare "%o %s TypeError:" prefix collapse to one signature.
+    const canonical = stripped.match(CORE_ERROR_RE)?.[0] ?? stripped;
+    const core = canonical
       .replace(/https?:\/\/[^\s)'"]+/g, '')
       .replace(/:\d+:\d+/g, '')
       .replace(/0x[0-9a-f]+/g, '#')

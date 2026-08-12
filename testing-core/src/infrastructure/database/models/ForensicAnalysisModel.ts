@@ -93,4 +93,35 @@ export function determineRiskLevel(score: number): ForensicAnalysisRiskLevel {
   return ForensicAnalysisRiskLevel.LOW;
 }
 
+// Ordinal for clamping. INFO/unknown map to LOW so a volume of low-severity noise can
+// never lift the level above what its worst finding actually is.
+const RISK_LEVEL_ORDER: Record<ForensicAnalysisRiskLevel, number> = {
+  [ForensicAnalysisRiskLevel.LOW]: 0,
+  [ForensicAnalysisRiskLevel.MEDIUM]: 1,
+  [ForensicAnalysisRiskLevel.HIGH]: 2,
+  [ForensicAnalysisRiskLevel.CRITICAL]: 3,
+};
+
+/**
+ * Clamp a score-derived risk level so it never exceeds the most-severe finding present.
+ * A pile of MEDIUM findings saturates the numeric score into the HIGH band, which then
+ * read as "HIGH risk" while every finding card was capped at MEDIUM. The level must not
+ * claim a danger no single finding supports. `maxSeverity` is a finding-severity string
+ * (CRITICAL/HIGH/MEDIUM/LOW/INFO); absent ⇒ no cap.
+ */
+export function capRiskLevelByMaxSeverity(
+  level: ForensicAnalysisRiskLevel,
+  maxSeverity?: string | null,
+): ForensicAnalysisRiskLevel {
+  const key = (maxSeverity ?? '').toUpperCase();
+  const ceiling =
+    key === 'CRITICAL' ? ForensicAnalysisRiskLevel.CRITICAL
+    : key === 'HIGH' ? ForensicAnalysisRiskLevel.HIGH
+    : key === 'MEDIUM' ? ForensicAnalysisRiskLevel.MEDIUM
+    : key === 'LOW' || key === 'INFO' ? ForensicAnalysisRiskLevel.LOW
+    : undefined;
+  if (!ceiling) return level;
+  return RISK_LEVEL_ORDER[level] > RISK_LEVEL_ORDER[ceiling] ? ceiling : level;
+}
+
 export const ForensicAnalysisModel = model<IForensicAnalysis>('ForensicAnalysis', forensicAnalysisSchema);
