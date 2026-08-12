@@ -315,6 +315,34 @@ function resolveBugClass(
 }
 
 /**
+ * Per-finding CWE refinement. A few bug classes cover several distinct fault shapes that
+ * each map to a different CWE, so the CWE is resolved from the matched signal rather than
+ * fixed per class. Returns the catalog default when no refinement applies.
+ */
+function refineCwe(bugClass: BugClass, categories: SignalCategory[], baseCwe: string): string {
+  const has = (category: SignalCategory): boolean => categories.includes(category);
+  switch (bugClass) {
+    // A redirect loop genuinely is CWE-835; a dead-end / broken route is not a loop, so it
+    // must not read as one — it is incorrect navigation control flow (CWE-670).
+    case 'STRUCTURAL_NAVIGATION_LOGIC':
+    case 'ROUTE_MUTATION_FAILURE':
+      if (has('REDIRECT_LOOP')) return 'CWE-835';
+      if (has('DEAD_END')) return 'CWE-670';
+      return baseCwe;
+    // The leak's CWE is the leak's ACTUAL type, not always XSS: a reflected script is CWE-79,
+    // a raw SQL/Mongo error is the injection CWE, a leaked stack/error is info exposure.
+    case 'FUZZ_VULNERABILITY_LEAK':
+      if (has('SQL_ERROR')) return 'CWE-89';
+      if (has('NOSQL_ERROR')) return 'CWE-943';
+      if (has('INFO_LEAK')) return 'CWE-209';
+      if (has('XSS_REFLECTION')) return 'CWE-79';
+      return baseCwe;
+    default:
+      return baseCwe;
+  }
+}
+
+/**
  * Classify a caught fault into a fully-attributed finding. Deterministic: the same
  * input always yields the same classification.
  */
@@ -342,7 +370,7 @@ export function classifyFault(input: FaultInput): FaultClassification {
   return {
     bugClass,
     severity,
-    cwe: definition.cwe,
+    cwe: refineCwe(bugClass, categories, definition.cwe),
     title: definition.title,
     advice: definition.remediation,
     scenario: attribution.scenario,

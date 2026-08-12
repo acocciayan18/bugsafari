@@ -250,9 +250,9 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
   },
   SESSION_SYNC_FAULT: {
     title: 'The login session was lost mid-run',
-    description: 'The signed-in session dropped during exploration. A control or redirect sent the app back to the login page even though no one signed out.',
+    description: 'The signed-in session dropped during exploration. A control or redirect sent the app back to the login page even though no one signed out — the app failed to maintain the authenticated session.',
     defaultSeverity: 'HIGH',
-    cwe: 'CWE-613',
+    cwe: 'CWE-287',
     remediation: remediation(
       'Suggested fix: keep the session alive',
       '1. Keep the session token valid across in-app navigation and avoid unwanted redirects to login',

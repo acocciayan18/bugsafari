@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { classifyFault } from './index.js';
+import { BUG_CATALOG } from './bugCatalog.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -335,6 +336,47 @@ check('5xx still classifies as SERVER_API_FAILURE (unchanged)', () => {
   const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 500', statusCode: 500 });
   assert.equal(c.bugClass, 'SERVER_API_FAILURE');
   assert.equal(c.cwe, 'CWE-755');
+});
+
+// Per-finding CWE refinement for multi-shape classes.
+check('redirect loop keeps CWE-835 (a genuine loop)', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'net::ERR_TOO_MANY_REDIRECTS', url: 'https://app.test/login' });
+  assert.equal(c.bugClass, 'STRUCTURAL_NAVIGATION_LOGIC');
+  assert.equal(c.cwe, 'CWE-835');
+});
+
+check('dead-end / broken route → CWE-670, never CWE-835', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'page not found', url: 'https://app.test/ghost' });
+  assert.equal(c.bugClass, 'STRUCTURAL_NAVIGATION_LOGIC');
+  assert.equal(c.cwe, 'CWE-670');
+  assert.notEqual(c.cwe, 'CWE-835');
+});
+
+check('a leaked SQL error reads CWE-89, never CWE-79', () => {
+  // Whether this resolves to SQL_INJECTION or the secondary FUZZ_VULNERABILITY_LEAK
+  // candidate, the CWE must reflect the actual SQL leak — never the XSS default.
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 200 GET /api/search', content: 'You have an error in your SQL syntax near', scenario: 'DataFuzzer' });
+  assert.equal(c.cwe, 'CWE-89');
+  assert.notEqual(c.cwe, 'CWE-79');
+});
+
+check('a leaked Mongo error reads CWE-943, never CWE-79', () => {
+  const c = classifyFault({ faultType: 'NETWORK', message: 'HTTP 200 GET /api/search', content: 'MongoError: unrecognized expression', scenario: 'DataFuzzer' });
+  assert.equal(c.cwe, 'CWE-943');
+  assert.notEqual(c.cwe, 'CWE-79');
+});
+
+check('confirmed reflected XSS leak stays CWE-79', () => {
+  const c = classifyFault({ faultType: 'CONSOLE', message: 'reflected', content: '<script>alert(1)</script>', scenario: 'DataFuzzer', confirmed: true });
+  assert.equal(c.bugClass, 'FUZZ_VULNERABILITY_LEAK');
+  assert.equal(c.cwe, 'CWE-79');
+});
+
+check('lost session → CWE-287 (Improper Authentication), never CWE-613', () => {
+  const c = classifyFault({ faultType: 'EXCEPTION', message: 'session dropped', scenario: 'SessionSynchronizer' });
+  // Regardless of how this run resolves the class, SESSION_SYNC_FAULT must read CWE-287.
+  assert.equal(BUG_CATALOG.SESSION_SYNC_FAULT.cwe, 'CWE-287');
+  void c;
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

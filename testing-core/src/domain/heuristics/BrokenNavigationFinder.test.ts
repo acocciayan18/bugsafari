@@ -42,6 +42,7 @@ check('two consecutive no-ops on a nav control report exactly one defect', () =>
   const defects = f.observeInteraction(deadClick());
   assert.equal(defects.length, 1);
   assert.equal(defects[0].kind, 'DEAD_INTERACTION');
+  assert.equal(defects[0].cwe, 'CWE-670'); // dead-end, not an infinite loop
   assert.equal(defects[0].bugId, 'nav-dead-structAA-#nav-a');
 });
 
@@ -134,6 +135,7 @@ check('interaction followed by a 404 error state reports with the triggering sel
   const defects = f.observeErrorState(err404);
   assert.equal(defects.length, 1);
   assert.equal(defects[0].kind, 'BROKEN_ROUTE');
+  assert.equal(defects[0].cwe, 'CWE-670'); // broken route is a dead-end, not a loop
   assert.equal(defects[0].selector, '#nav-a');
   assert.equal(defects[0].severity, 'MEDIUM');
 });
@@ -186,6 +188,7 @@ check('A,B,A,B,A 3xx chain within the window reports one defect with chain evide
   });
   assert.equal(defects.length, 1);
   assert.equal(defects[0].kind, 'REDIRECT_LOOP');
+  assert.equal(defects[0].cwe, 'CWE-835'); // a genuine loop keeps CWE-835
   assert.ok(defects[0].evidence[0].includes('/a (302)'));
 });
 

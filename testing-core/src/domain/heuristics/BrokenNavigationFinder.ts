@@ -203,7 +203,7 @@ export class BrokenNavigationFinder {
       bugId: `nav-dead-${o.fromStructure.slice(0, 8)}-${o.selector}`,
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: 'MEDIUM',
-      cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
+      cwe: 'CWE-670', // a dead control is a broken control-flow, not a loop (mirrors refineCwe)
       message: declaredElsewhere
         ? `Dead ${kind}: "${name}" points to ${o.probedRoute}, but nothing happens when you click it.`
         : `Dead ${kind}: "${name}" did nothing after ${strikes} clicks.`,
@@ -236,7 +236,7 @@ export class BrokenNavigationFinder {
       bugId: `nav-broken-route-${o.statusCode}-${o.route}`,
       bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
       severity: o.statusCode >= 500 ? 'HIGH' : 'MEDIUM',
-      cwe: BUG_CATALOG.STRUCTURAL_NAVIGATION_LOGIC.cwe,
+      cwe: 'CWE-670', // a link to a broken/error route is a dead-end, not a loop (mirrors refineCwe)
       message: `Broken route: the ${kind} "${name}" went from ${fromRoute} to ${o.route}, which returned an error (HTTP ${o.statusCode}).`,
       selector,
       elementLabel: name,
