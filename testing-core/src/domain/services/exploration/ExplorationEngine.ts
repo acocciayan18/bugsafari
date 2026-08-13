@@ -24,6 +24,7 @@ import {
   setConcurrentStressAccessor,
   resetConstraintBypassFinder,
   resetInjectionDifferentialFinder,
+  resetNoSqlInjectionFinder,
 } from '../../../bugs/finders/index.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
@@ -1452,6 +1453,7 @@ export class ExplorationEngine {
 
       resetConstraintBypassFinder(); // clear the per-run one-probe-per-field guard
       resetInjectionDifferentialFinder(); // clear the differential oracle's per-field guard
+      resetNoSqlInjectionFinder(); // clear the nosql oracle's per-field guard
       const bugFinderRunner = new BugFinderRunner({
         finders: BUG_FINDERS,
         gate: this.gate,

@@ -1842,6 +1842,11 @@ export class StabilityMonitor {
         } catch {
           // Ignore body parse errors
         }
+      } else if (status >= 400 && isBodyReadableResourceType(resourceType)) {
+        // Read the failing API body so a leaked SQL/Mongo/stack signature reaches the
+        // classifier, which promotes a raw datastore error to SQL/NoSQL injection instead
+        // of collapsing it to a generic server failure. Bounded; bundles/media excluded.
+        bodyContent = (await response.text().catch(() => '')).slice(0, MAX_SOFT_FAIL_BODY_BYTES);
       }
 
       // A clean success with no soft-fail body is not actionable — never emitted,

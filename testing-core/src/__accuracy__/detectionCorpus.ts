@@ -97,6 +97,21 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     expectSecurity: true,
   },
   {
+    // A 500 whose body leaks a raw Mongo driver error is direct evidence, so it must
+    // win over the generic SERVER_API_FAILURE verdict — the case F1 unblocks by reading
+    // the failing-response body the StabilityMonitor previously skipped for status>=400.
+    name: 'nosql: leaked Mongo driver error in a 500 body',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 500 POST /api/login-nosql',
+      content: 'MongoError: unknown operator: $where in query',
+      statusCode: 500,
+      scenario: 'DataFuzzer',
+    },
+    expected: 'NOSQL_INJECTION',
+    expectSecurity: true,
+  },
+  {
     name: 'redirect-loop (idle/exploratory)',
     input: { faultType: 'NETWORK', message: 'net::ERR_TOO_MANY_REDIRECTS', url: 'https://app.test/login' },
     // No active scenario ⇒ Exploratory baseline, which resolves a redirect loop to

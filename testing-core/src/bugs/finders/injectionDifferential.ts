@@ -2,6 +2,7 @@ import type { Page, Response } from 'playwright';
 import type { BugClass, BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { setFieldValue } from '../../domain/services/exploration/frameworkInput.js';
+import { QUERYABLE_CLUE_RE } from './queryableClue.js';
 import { describeTarget, elementNoun, resolveElementLabel } from '../../../../shared/reproduction.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -23,8 +24,6 @@ import { describeTarget, elementNoun, resolveElementLabel } from '../../../../sh
 // A safe backend treats `{"$ne":null}` / `' OR '1'='1` as an ordinary string, so the
 // two responses match and nothing is reported — no false positive on a defended app.
 
-// Fields whose value plausibly reaches a query/auth check.
-const QUERYABLE_CLUE_RE = /(search|query|filter|email|username|user|account|login|\bid\b|name|\bq\b)/i;
 // Window (ms) to let each submission's response settle before it is judged.
 const OBSERVE_WINDOW_MS = 1200;
 // Benign control value — a safe app answers this the same way it answers the operator.
@@ -171,6 +170,9 @@ function isDataAmplification(baseline: CorrelatedResponse, operator: CorrelatedR
 export const injectionDifferentialFinder: BugFinder = {
   bugClass: 'NOSQL_INJECTION',
   testingType: 'dataFuzzing',
+  // Runs the first step the field is the acted element, not only on the sweep cadence —
+  // attemptedSelectors keeps it one differential pair per field.
+  frequency: 'transactional',
 
   async isApplicable(ctx: Omit<BugContext, 'crashHalted'>): Promise<boolean> {
     const el = ctx.element;

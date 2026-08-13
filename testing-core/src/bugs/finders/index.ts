@@ -36,3 +36,4 @@ export { setChaosManagerAccessor as setStructuralProbeAccessor } from './structu
 export { setChaosManagerAccessor as setConcurrentStressAccessor } from './concurrentStress.js';
 export { resetConstraintBypassFinder } from './constraintBypass.js';
 export { resetInjectionDifferentialFinder } from './injectionDifferential.js';
+export { resetNoSqlInjectionFinder } from './noSqlInjection.js';
