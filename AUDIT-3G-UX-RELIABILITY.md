@@ -183,6 +183,18 @@ Retested the deployed app (backend F5 live; frontend still the pre-fix build) ag
 
 ---
 
+## Third slow-3G pass (frontend + backend deployed)
+
+Frontend deploy confirmed live (`pendingControl` key written on pause = N1 code running). Found one more remaining problem:
+
+- **N2 (new) — Fixed**: **a run that ends while the socket is down under 3G leaves the dashboard stuck in phantom ACTIVE** — dead "ESTABLISHING TELEMETRY STREAM" feed, frozen timer, no self-heal. Console: `Attach to run … gave up after 4 retries (no-active-session)`. Root: the target's chaos (ui-freeze/main-thread-freeze) crashed the Playwright page, the engine went unrecoverable and the backend ended the session; the client's `onAttachExhausted` handler re-fetched the snapshot but **did nothing when it resolved null** (run confirmed gone), so the UI hung. The liveness probe couldn't help — it only arms while frameless and its HTTP polls can stall under 3G. Fix: on attach-exhausted, a **resolved-null** snapshot (socket said no-active-session ×4 AND HTTP confirms absence — a completed request, not a network error) now fires `onRunAbsent` → `releaseOrphanedRun` → IDLE. Guarded on `isTestRunning`; a thrown fetch (network error, proves nothing) leaves the UI untouched. Touched: `EngineGateway` port, `SocketHttpEngineGateway`, `gatewayBinding`.
+- STOP from the stuck state still recovers cleanly (→ HALTED, "Unrecoverable invalid browser state") — the crash cascade is the engine's own recovery on a target that deliberately closes the page.
+- F1 clean-pause under 3G could not be isolated this pass — the run crashed (target chaos + socket drop) before a pause could settle. F4/network-filter deployed but not re-observed under the crashing conditions.
+
+**Verification (N2):** `tsc --noEmit` clean · dashboard tests 8/8 · `npm run build` ok. Frontend change — needs another frontend deploy.
+
+---
+
 ## Test coverage log
 
 Login (3G, ~clean) → Dashboard load → Start test (`example.com`, instant finish) → Findings/Network tabs → Start test (`todomvc`) → live feed + telemetry OK → **Pause on 3G → F1/F2** → Stop (crash-recovery HALT) → **Save session OK** → History (F5) → Forensic report (renders well; F8) → Settings OK → Refresh (auth persists; F4/F7) → Start test → **Refresh mid-run (run survives; F3)** → Pause/Resume on fast net (clean) → Stop (clean).

@@ -15,17 +15,28 @@ export class SocketHttpEngineGateway implements EngineGateway {
   private readonly connection: SocketConnectionManager;
   // Server-issued run token for the active run this client owns.
   private runId: string | null = null;
+  private runAbsentHandler: (() => void) | null = null;
 
   constructor(apiBaseUrl: string, socketUrl: string) {
     this.http = new EngineHttpClient(apiBaseUrl);
     this.connection = new SocketConnectionManager(apiBaseUrl, socketUrl);
     // Socket attach exhausted its retries — ask the server directly rather than
-    // leaving the dashboard on a stream it never joined.
+    // leaving the dashboard on a stream it never joined. A snapshot re-hydrates; a
+    // resolved-null (the HTTP call succeeded and the backend confirms no run) means
+    // the run is authoritatively gone, so release the phantom-live UI. A THROW proves
+    // nothing about the run (network error) — leave the UI as-is.
     this.connection.onAttachExhausted(() => {
       void this.fetchActiveSession()
-        .then((snapshot) => { if (snapshot) this.connection.emitSessionSnapshot(snapshot); })
+        .then((snapshot) => {
+          if (snapshot) this.connection.emitSessionSnapshot(snapshot);
+          else this.runAbsentHandler?.();
+        })
         .catch((error) => console.error('[Gateway] Snapshot fallback failed:', error));
     });
+  }
+
+  public onRunAbsent(handler: () => void): void {
+    this.runAbsentHandler = handler;
   }
 
   public setAuthToken(token: string | null): void {

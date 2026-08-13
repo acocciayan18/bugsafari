@@ -124,6 +124,15 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     });
     gateway.onReconnecting((attempt) => s().setReconnecting(attempt));
     gateway.onReconnectFailed(() => s().setReconnectFailed());
+    // Both channels confirmed the run is gone (socket attach exhausted + HTTP snapshot
+    // null). Release a phantom-live UI to IDLE instead of hanging on a dead stream —
+    // the case where a run ends while the socket is down on a slow link. Guarded so an
+    // idle dashboard is never disturbed.
+    gateway.onRunAbsent(() => {
+      if (s().isTestRunning) {
+        s().releaseOrphanedRun('The run ended and could not be recovered — nothing is left running.');
+      }
+    });
     gateway.onSessionSnapshot((snapshot) => s().hydrateFromSnapshot(snapshot));
     gateway.onQueueUpdate((update) => s().applyQueueUpdate(update));
     gateway.onTimeSync((p) => s().applyTimeSync(p.elapsedActiveMs, p.timeboxMs));

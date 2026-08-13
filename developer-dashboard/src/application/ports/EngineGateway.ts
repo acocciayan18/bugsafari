@@ -48,6 +48,13 @@ export interface EngineGateway {
   onReconnecting(handler: (attempt: number) => void): void;
   /** Socket.IO exhausted its reconnection budget — terminal, needs a manual reload. */
   onReconnectFailed(handler: () => void): void;
+  /**
+   * The socket exhausted its attach retries AND an HTTP snapshot confirmed there is
+   * no active run for this client — the run is authoritatively gone. Lets the store
+   * release a phantom-live UI instead of hanging on a stream that will never arrive
+   * (a run that ended while the socket was down under a slow link).
+   */
+  onRunAbsent(handler: () => void): void;
   onSessionSnapshot(handler: (snapshot: ActiveSessionSnapshot) => void): void;
   /** Live queue-position / lifecycle pushes for an enqueued (distributed) run. */
   onQueueUpdate(handler: (update: QueueUpdate) => void): void;
