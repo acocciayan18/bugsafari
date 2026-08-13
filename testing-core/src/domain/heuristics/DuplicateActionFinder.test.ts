@@ -200,6 +200,37 @@ check('an identical idempotency key still reports but scores lower than an ungua
   assert.ok(noKey!.confidenceScore > withKey!.confidenceScore);
 });
 
+check('a backend-guarded repeat (409) is marked protected — telemetry, not a finding', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1100);
+  const defect = h.settle(b, 1300, 409);
+  assert.ok(defect);
+  assert.equal(defect!.protected, true);
+  void a;
+});
+
+check('a shared idempotency key is marked protected even when both commit', () => {
+  const h = new Harness();
+  const a = h.send(1000, { headers: { 'idempotency-key': 'k1' } });
+  const b = h.send(1100, { headers: { 'idempotency-key': 'k1' } });
+  h.settle(b, 1300, 201);
+  const defect = h.settle(a, 1400, 201);
+  assert.ok(defect);
+  assert.equal(defect!.protected, true, 'the server can dedupe a shared key');
+});
+
+check('an unguarded both-2xx double-submit is NOT protected — a real finding', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1150);
+  h.settle(b, 1400, 201);
+  const defect = h.settle(a, 1500, 201);
+  assert.ok(defect);
+  assert.equal(defect!.verdict, 'CONFIRMED_DUPLICATE');
+  assert.equal(defect!.protected, false);
+});
+
 check('distinct numeric resource ids are NOT collapsed into one signature', () => {
   const h = new Harness();
   const a = h.send(1000, { url: 'http://app.test/api/order/1700000000001', body: undefined });

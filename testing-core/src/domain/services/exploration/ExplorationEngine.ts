@@ -738,13 +738,14 @@ export class ExplorationEngine {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
     }
-    // Under a stop, cancel the verification backlog rather than draining it — a
-    // stopped run must not keep spawning replay sessions. Pause (no stop requested)
-    // still drains so verdicts complete and the run stays resumable.
-    if (this.isStopRequested) this.reproductionProbe?.dispose();
-    // Reproduction replays first: their verdicts re-register findings, which the
-    // task settle below is responsible for flushing.
-    await this.reproductionProbe?.settle();
+    // Under a stop, cancel the verification backlog and unwind it — a stopped run
+    // must not keep spawning replay sessions. A pure PAUSE must NOT block the PAUSED
+    // transition on replay drain: the sidecar probes keep draining in the background
+    // and re-register verdicts asynchronously, so the run stays resumable regardless.
+    if (this.isStopRequested) {
+      this.reproductionProbe?.dispose();
+      await this.reproductionProbe?.settle();
+    }
     await this.asyncTasks.settle();
   }
 
@@ -1656,7 +1657,14 @@ export class ExplorationEngine {
   // through a throw — attribute it to the recorded stop trigger when one exists,
   // otherwise it is a genuine unhandled failure.
   private resolveTermination(result: RunResult | null): { outcome: RunTerminationOutcome; reason: string } {
-    if (result) return { outcome: result.outcome, reason: result.reason };
+    if (result) {
+      // A graceful-shutdown the loop returned WHILE a stop was recorded is that
+      // stop's teardown, not an independent bail-out — honor the recorded trigger.
+      if (result.outcome === 'graceful-shutdown' && this.stopReason) {
+        return { outcome: STOP_REASON_OUTCOME[this.stopReason], reason: STOP_REASON_DETAIL[this.stopReason] };
+      }
+      return { outcome: result.outcome, reason: result.reason };
+    }
     if (this.stopReason) {
       return {
         outcome: STOP_REASON_OUTCOME[this.stopReason],

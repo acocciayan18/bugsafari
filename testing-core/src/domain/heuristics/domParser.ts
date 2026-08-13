@@ -33,6 +33,8 @@ export interface ParsedElement {
   contextKind: string;
   /** Human name of that container (aria-label, heading, or title), or '' when unnamed. */
   contextLabel: string;
+  /** Concise accessible name of the element itself (aria/heading/title), or '' — the preferred label. */
+  accessibleName: string;
 }
 
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
@@ -98,6 +100,7 @@ export class RecursiveDomParser {
       role: element.role,
       placeholder: element.placeholder,
       ariaLabel: element.ariaLabel,
+      accessibleName: element.accessibleName,
       // Explicit spatial coordinates captured after layout stabilization
       boundingBox: element.boundingBox,
       opensLayer: element.opensLayer,
@@ -674,6 +677,7 @@ const isDisabled = (element) => {
           isDismiss,
           contextKind: container.kind,
           contextLabel: container.label,
+          accessibleName: accessibleName(element),
           isDisabled: isDisabled(element),
           crossBoundary: !!wrapped.crossBoundary,
           boundingBox: {
@@ -728,7 +732,8 @@ const isDisabled = (element) => {
           inActiveLayer: data.inActiveLayer,
           isDismiss: data.isDismiss,
           contextKind: data.contextKind,
-          contextLabel: data.contextLabel
+          contextLabel: data.contextLabel,
+          accessibleName: data.accessibleName
         };
       });
 

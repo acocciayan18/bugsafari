@@ -37,6 +37,10 @@ interface SnapshotOptions {
   faultUrl?: string;
   /** Epoch ms of the fault; later actions are dropped as non-causal. */
   faultAtMs?: number;
+  /** Culprit control selector — trims exploration steps unrelated to it from the playbook. */
+  culpritSelector?: string;
+  /** Burst correlation id — scopes the playbook to one stress burst's own actions. */
+  burstId?: string;
 }
 
 /**
@@ -193,6 +197,8 @@ export class ActiveScenarioTracker {
     const actions = minimizeActionRecords(buffer, {
       faultUrl: options.faultUrl,
       faultAtMs: options.faultAtMs,
+      culpritSelector: options.culpritSelector,
+      burstId: options.burstId,
     });
 
     const window = ActiveScenarioTracker.populatedWindow();

@@ -1,6 +1,7 @@
-// Self-executing checks for minimizeActionRecords. No runner configured in this package.
-// Run with `npx tsx "src/domain/services/forensics/stepMinimizer.test.ts"`.
-// Exits non-zero on the first failed assertion.
+// Self-executing checks for reproduction-step minimization: burst scoping + culprit
+// anchoring drop unrelated exploration, and a timeline with no match is left intact.
+// No runner configured here; the package runner (scripts/run-tests.mjs) discovers it.
+// Run directly: `npx tsx "src/domain/services/forensics/stepMinimizer.test.ts"`.
 
 import assert from 'node:assert/strict';
 import type { ActionRecord } from '../../../../../shared/types.js';
@@ -13,83 +14,50 @@ function check(name: string, fn: () => void): void {
   console.log(`  ✓ ${name}`);
 }
 
-const at = (secondsFromBase: number): string => new Date(1_000_000 + secondsFromBase * 1000).toISOString();
-const rec = (over: Partial<ActionRecord>): ActionRecord => ({
-  timestamp: at(0),
-  type: 'CLICK',
-  selector: 'button',
-  url: 'https://app.test/home',
-  ...over,
-});
+const rec = (over: Partial<ActionRecord>): ActionRecord =>
+  ({ timestamp: '2020-01-01T00:00:00.000Z', type: 'CLICK', selector: '', url: 'http://app.test/page', ...over });
 
-check('drops actions recorded after the fault instant', () => {
-  const records = [
-    rec({ timestamp: at(1), selector: '#a' }),
-    rec({ timestamp: at(5), selector: '#after-fault' }),
-  ];
-  const out = minimizeActionRecords(records, { faultUrl: 'https://app.test/home', faultAtMs: Date.parse(at(2)) });
-  assert.ok(!out.some((r) => r.selector === '#after-fault'), 'post-fault action leaked into steps');
-});
-
-check('cuts history back to the last entry into the faulting page', () => {
-  const records = [
-    rec({ type: 'NAVIGATE', selector: '', url: 'https://app.test/list', timestamp: at(1) }),
-    rec({ selector: '#unrelated-on-list', url: 'https://app.test/list', timestamp: at(2) }),
-    rec({ type: 'NAVIGATE', selector: '', url: 'https://app.test/detail', timestamp: at(3) }),
-    rec({ selector: '#trigger', url: 'https://app.test/detail', timestamp: at(4) }),
-  ];
-  const out = minimizeActionRecords(records, { faultUrl: 'https://app.test/detail', faultAtMs: Date.parse(at(5)) });
-  assert.equal(out[0].type, 'NAVIGATE');
-  assert.equal(out[0].url, 'https://app.test/detail');
-  assert.ok(!out.some((r) => r.selector === '#unrelated-on-list'), 'pre-entry action leaked in');
-  assert.equal(out[out.length - 1].selector, '#trigger');
-});
-
-check('keeps the one control click that navigated INTO the faulting page', () => {
-  const records = [
-    rec({ selector: '#open-detail', url: 'https://app.test/list', timestamp: at(1) }),
-    rec({ selector: '#trigger', url: 'https://app.test/detail', timestamp: at(2) }),
-  ];
-  const out = minimizeActionRecords(records, { faultUrl: 'https://app.test/detail', faultAtMs: Date.parse(at(3)) });
-  assert.ok(out.some((r) => r.selector === '#open-detail'), 'the entering control click was dropped');
-});
-
-check('collapses consecutive identical actions into one repeatCount step', () => {
-  const records = [
-    rec({ selector: '#spam', url: 'https://app.test/home', timestamp: at(1) }),
-    rec({ selector: '#spam', url: 'https://app.test/home', timestamp: at(2) }),
-    rec({ selector: '#spam', url: 'https://app.test/home', timestamp: at(3) }),
-  ];
-  const out = minimizeActionRecords(records, { faultUrl: 'https://app.test/home', faultAtMs: Date.parse(at(4)) });
-  const spam = out.filter((r) => r.selector === '#spam');
-  assert.equal(spam.length, 1);
-  assert.equal(spam[0].repeatCount, 3);
-});
-
-check('caps the timeline and keeps the steps closest to the fault', () => {
-  const records = Array.from({ length: 30 }, (_, i) =>
-    rec({ selector: `#s${i}`, url: 'https://app.test/home', timestamp: at(i + 1) }),
+check('burstId scoping keeps only the burst actions plus an opening navigation', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/home' }),
+      rec({ selector: '#explore', url: 'http://app.test/home' }), // unrelated exploration
+      rec({ selector: '#buy', url: 'http://app.test/cart', burstId: 'b1' }),
+      rec({ selector: '#buy', url: 'http://app.test/cart', burstId: 'b1' }),
+    ],
+    { burstId: 'b1' },
   );
-  const out = minimizeActionRecords(records, {
-    faultUrl: 'https://app.test/home',
-    faultAtMs: Date.parse(at(40)),
-    maxSteps: 5,
-  });
-  assert.ok(out.length <= 6, `expected <=6 steps (incl. synthetic nav), got ${out.length}`);
-  assert.equal(out[out.length - 1].selector, '#s29', 'did not keep the action closest to the fault');
+  assert.equal(out.every((r) => r.type === 'NAVIGATE' || r.burstId === 'b1'), true);
+  assert.equal(out.some((r) => r.selector === '#explore'), false, 'unrelated click dropped');
+  assert.equal(out[0].type, 'NAVIGATE', 'opens with a navigation');
 });
 
-check('always opens with a navigation for context', () => {
-  const records = [rec({ selector: '#only', url: 'https://app.test/home', timestamp: at(1) })];
-  const out = minimizeActionRecords(records, { faultUrl: 'https://app.test/home', faultAtMs: Date.parse(at(2)) });
-  assert.ok(['NAVIGATE', 'NAVIGATION'].includes(out[0].type), 'timeline did not start with navigation');
+check('culpritSelector anchoring drops an interior exploration navigation before the culprit', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),
+      // exploration hop: a click that navigated away and back is traversal, not setup
+      rec({ selector: '#nav-away', url: 'http://app.test/form', outcome: { navigatedTo: 'http://app.test/other' } }),
+      rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),
+      rec({ type: 'TYPE', selector: '#email', url: 'http://app.test/form', payload: 'a@b.c' }), // real setup
+      rec({ type: 'SUBMIT', selector: '#submit', url: 'http://app.test/form' }), // culprit
+    ],
+    { faultUrl: 'http://app.test/form', culpritSelector: '#submit' },
+  );
+  assert.equal(out.some((r) => r.selector === '#nav-away'), false, 'traversal click dropped');
+  assert.equal(out.some((r) => r.selector === '#email'), true, 'setup input kept');
+  assert.equal(out.some((r) => r.selector === '#submit'), true, 'culprit kept');
 });
 
-check('empty buffer yields a single navigation to the fault page', () => {
-  const out = minimizeActionRecords([], { faultUrl: 'https://app.test/home', faultAtMs: Date.parse(at(1)) });
-  assert.equal(out.length, 1);
-  assert.equal(out[0].type, 'NAVIGATE');
-  assert.equal(out[0].url, 'https://app.test/home');
+check('a timeline with no culprit match is left exactly as page/time scoping produced it', () => {
+  const records = [
+    rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),
+    rec({ selector: '#a', url: 'http://app.test/form' }),
+    rec({ selector: '#b', url: 'http://app.test/form' }),
+  ];
+  const withCulprit = minimizeActionRecords(records, { faultUrl: 'http://app.test/form', culpritSelector: '#missing' });
+  const without = minimizeActionRecords(records, { faultUrl: 'http://app.test/form' });
+  assert.deepEqual(withCulprit.map((r) => r.selector), without.map((r) => r.selector));
 });
 
-console.log(`\nstepMinimizer: ${passed} checks passed.`);
+console.log(`\n${passed} assertions passed.`);

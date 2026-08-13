@@ -8,6 +8,8 @@ import {
   isPromotableReason,
   routeFindingPayload,
   routeNetworkEvent,
+  siteRelationship,
+  NON_TARGET_NETWORK_REASONS,
 } from './types/telemetryRouting.js';
 
 let passed = 0;
@@ -72,6 +74,31 @@ check('cancelled request is never a defect', () => {
 
 check('a clean 2xx is not actionable', () => {
   assert.equal(routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 200, resourceType: 'xhr' }).promote, false);
+});
+
+check('a redirect loop is a shown Network row, not a raw transport failure', () => {
+  for (const text of ['net::ERR_TOO_MANY_REDIRECTS', 'Error: too many redirects', 'redirect loop detected']) {
+    const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/r2', resourceType: 'document', failureText: text });
+    assert.equal(v.reasonCode, 'REDIRECT_ERROR', text);
+    assert.equal(v.surface, 'NETWORK_ONLY', text);
+    assert.equal(NON_TARGET_NETWORK_REASONS.has(v.reasonCode), false, `${text} stays shown`);
+  }
+});
+
+check('cancelled/asset/harness are the non-target reasons hidden from the Network tab', () => {
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('CANCELLED'), true);
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('ASSET_NOISE'), true);
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('HARNESS_ARTIFACT'), true);
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('SERVER_ERROR'), false);
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('REDIRECT_ERROR'), false);
+  assert.equal(NON_TARGET_NETWORK_REASONS.has('DEFENSIVE_CLIENT_ERROR'), false);
+});
+
+check('site relationship matches on the registrable domain (api subdomain is first-party)', () => {
+  assert.equal(siteRelationship('https://api.app.io/orders', 'https://app.io'), 'FIRST_PARTY');
+  assert.equal(siteRelationship('https://cdn.other.com/x.js', 'https://app.io'), 'THIRD_PARTY');
+  assert.equal(siteRelationship('https://app.io/x', ''), 'UNKNOWN');
+  assert.equal(siteRelationship('not a url', 'https://app.io'), 'UNKNOWN');
 });
 
 // ── Promoted to Findings ──────────────────────────────────────

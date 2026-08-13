@@ -11,10 +11,21 @@ import {
 } from '../forensics/narration.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
+import { scoreFinding } from '../verification/confidenceScore.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
-import type { ActionRecord } from '../../../../../shared/types.js';
+import type { ActionRecord, FaultConfidence } from '../../../../../shared/types.js';
+
+// Bug classes whose finders fire only on a positively-observed oracle (payload reflected
+// / leaked) — strong enough to seed a CONFIRMED base confidence like a replayable finding.
+const SECURITY_LEAK_CLASSES: ReadonlySet<string> = new Set([
+  'NOSQL_INJECTION',
+  'SQL_INJECTION',
+  'FUZZ_VULNERABILITY_LEAK',
+  'SECURITY_VULNERABILITY_LEAK',
+  'CLIENT_TRUST_BOUNDARY_VIOLATION',
+]);
 
 export interface BugFinderRunnerDeps {
   finders: readonly BugFinder[];
@@ -220,6 +231,28 @@ export class BugFinderRunner {
       ];
     }
 
+    // Confidence/status the SAME way every graded finding gets them, so a finder finding
+    // is not the one surface that reaches the dashboard with no status. A finder fires on a
+    // concrete observed fault (origin is the target app); a replayable trace or a leak-class
+    // oracle is CONFIRMED-strength, everything else a SIGNAL. scoreFinding + its bands then
+    // decide the label: strong findings read CONFIRMED, weak single-shot ones NEEDS_VERIFICATION
+    // (capping severity at MEDIUM until a repeat/repro corroborates them).
+    const replayable = Boolean(finding.evidence?.reproductionActions ?? reproductionActions);
+    const findingConfidence: FaultConfidence =
+      replayable || SECURITY_LEAK_CLASSES.has(finding.bugClass) ? 'CONFIRMED' : 'SIGNAL';
+    const graded = scoreFinding({
+      confidence: findingConfidence,
+      origin: 'TARGET_APP',
+      evidenceCompleteness: replayable ? 1 : 0.5,
+      corroborated: false,
+    });
+    const verdict = {
+      origin: 'TARGET_APP' as const,
+      confidence: findingConfidence,
+      confidenceScore: graded.score,
+      verificationStatus: graded.status,
+    };
+
     // Precedence: finder-supplied reproduction (concurrent-burst finders pre-record their
     // own) → bypass/fuzz synthesis above → never-empty fallback so no finding card is blank.
     const ensured = ensureFindingEvidence({
@@ -229,6 +262,7 @@ export class BugFinderRunner {
         scenario: attribution.scenario,
         testingType: attribution.testingType,
         stepIndex: ctx.step,
+        ...verdict,
       },
       advice: definition.remediation,
       reproductionPlaybook: finding.evidence?.reproductionPlaybook ?? reproductionSteps ?? [],
@@ -257,6 +291,7 @@ export class BugFinderRunner {
         scenario: attribution.scenario,
         testingType: attribution.testingType,
         stepIndex: ctx.step,
+        ...verdict,
       },
     });
     this.registeredPerClass.set(budgetClass, (this.registeredPerClass.get(budgetClass) ?? 0) + 1);

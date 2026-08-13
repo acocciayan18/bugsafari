@@ -274,6 +274,10 @@ export class ExplorationLoop {
         // recreated page; `unrecoverable` ends the run cleanly.
         const health = await this.deps.ensurePageHealth(page);
         if (health.status === 'unrecoverable') {
+          // An operator/attributed stop closes the browser context out from under
+          // this gate; a closed page here is the CONSEQUENCE of that stop, not a
+          // fault. Attribute it to the requester and emit no scary milestone.
+          if (this.deps.isStopRequested()) return this.stopResult();
           telemetry.emitMilestone(' Unrecoverable invalid browser state.');
           return {
             completed: false,
@@ -1226,7 +1230,11 @@ export class ExplorationLoop {
       const defects = this.deps.navigationFinder.observeInteraction({
         selector: target.selector,
         elementLabel: resolveElementLabel(target),
-        elementKind: elementNoun(target.tagName, target.type),
+        elementKind: elementNoun(target.tagName, target.type, {
+          role: target.role,
+          href: target.href,
+          containerKind: target.contextKind,
+        }),
         fromStructure: compound.structure,
         fromRoute: compound.routePath,
         toRoute: normalizeRoutePath(url),

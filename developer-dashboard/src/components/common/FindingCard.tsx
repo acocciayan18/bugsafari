@@ -84,8 +84,12 @@ export default function FindingCard({
   sessionId?: string;
   children?: ReactNode;
 }) {
-  // Human-readable culprit name, never the raw selector. Absent ⇒ cell is dropped.
+  // Human-readable culprit name (primary) plus the raw CSS selector beneath it, so a
+  // developer gets both the friendly name and the exact locator. Selector hidden when
+  // missing, a placeholder, or identical to the label.
   const element = view.elementLabel;
+  const rawSelector = view.selector?.trim();
+  const selector = rawSelector && rawSelector !== 'N/A' && rawSelector !== element ? rawSelector : undefined;
 
   return (
     <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
@@ -97,6 +101,14 @@ export default function FindingCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
+            {view.badge && (
+              <span
+                title={view.badge}
+                className="inline-flex shrink-0 items-center rounded-full border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-semibold uppercase text-(--text-secondary)"
+              >
+                {view.badge}
+              </span>
+            )}
             {view.occurrences > 1 && (
               <span
                 title={`This fault occurred ${view.occurrences} times this session`}
@@ -127,6 +139,9 @@ export default function FindingCard({
             <div className="min-w-0">
               <div className="text-caption font-semibold uppercase text-(--text-secondary)">Element</div>
               <div className="mt-0.5 truncate text-[13px] text-(--text-primary)" title={element}>{element}</div>
+              {selector && (
+                <div className="mt-0.5 truncate font-mono text-xs text-(--text-tertiary)" title={selector}>{selector}</div>
+              )}
             </div>
           )}
           {view.payloadUsed && (

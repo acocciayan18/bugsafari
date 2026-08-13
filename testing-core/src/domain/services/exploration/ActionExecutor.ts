@@ -38,6 +38,11 @@ import { createLogger } from '../../../infrastructure/observability/logger.js';
 
 const obsLog = createLogger('[ActionExecutor]');
 
+// Reproduction noun for an element, refined for anchors (navigation/home link) from
+// the role/href/container the parser already captured.
+const nounForElement = (el: InteractiveElement): string =>
+  elementNoun(el.tagName, el.type, { role: el.role, href: el.href, containerKind: el.contextKind });
+
 // A form control the sibling pass decided to drive. Tagged in-page, actuated from
 // Node so every write goes through the framework-safe primitives.
 interface FormSibling {
@@ -223,7 +228,7 @@ export class ActionExecutor {
    */
   private async navigateTarget(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
-    const kind = elementNoun(target.tagName, target.type);
+    const kind = nounForElement(target);
     this.deps.telemetry.emitMilestone(describeNavigation(label, kind));
     // Record AFTER the click so the step carries its observed outcome: the URL it
     // was clicked on plus where it navigated (if anywhere). An empty outcome clause
@@ -294,7 +299,7 @@ export class ActionExecutor {
       {
         actionType: 'CLICK',
         humanIdentifier: label,
-        elementKind: elementNoun(target.tagName, target.type),
+        elementKind: nounForElement(target),
         containerLabel: target.contextLabel,
         containerKind: target.contextKind,
       },
@@ -442,7 +447,7 @@ export class ActionExecutor {
       {
         actionType: 'CLICK',
         humanIdentifier: resolveElementLabel(target),
-        elementKind: elementNoun(target.tagName, target.type),
+        elementKind: nounForElement(target),
         containerLabel: target.contextLabel,
         containerKind: target.contextKind,
       },

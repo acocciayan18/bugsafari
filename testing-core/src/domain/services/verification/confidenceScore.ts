@@ -97,6 +97,15 @@ export function applyReproductionOutcome(
   return gradeScore(score + delta, origin);
 }
 
+/**
+ * Public wrapper over {@link gradeScore} — the single place a bare 0–1 score is turned
+ * into a terminal status, so any surface that already holds a score (the duplicate-action
+ * finder, finder registration) labels it with the SAME bands and origin caps everyone else uses.
+ */
+export function statusForScore(score: number, origin: FaultOrigin): ScoreResult {
+  return gradeScore(score, origin);
+}
+
 /** Clamp, threshold, and apply the origin caps. Single source of the verdict bands. */
 function gradeScore(raw: number, origin: FaultOrigin): ScoreResult {
   const score = clamp01(raw);

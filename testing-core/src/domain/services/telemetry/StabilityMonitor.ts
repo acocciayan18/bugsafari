@@ -35,7 +35,7 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS, siteRelationship, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION } from '../../../../../shared/types.js';
 import { NetworkQuarantine } from '../../../infrastructure/monitoring/NetworkQuarantine.js';
 import { initialDegradeState, onTargetFailure, onTargetSuccess, type DegradeState } from './networkDegradeDecision.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
@@ -44,6 +44,7 @@ import {
   VerificationPipeline,
   detectSoftFailBody,
   isBodyReadableResourceType,
+  statusForScore,
   type VerificationCandidate,
 } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
@@ -534,13 +535,30 @@ export class StabilityMonitor {
       if (!LOGGED_RESOURCE_TYPES.has(request.resourceType())) return;
       if (!isActionableNetworkStatus(statusCode)) return;
 
+      const url = request.url();
+      // Third-party hosts (CDNs, analytics, external APIs) are never the target app's
+      // bug — drop them so the Network tab is a view of the application under test.
+      // UNKNOWN (origin unresolved) is kept rather than over-dropping a genuine row.
+      if (siteRelationship(url, this.safeTargetOrigin()) === 'THIRD_PARTY') return;
+
+      // Route once, at capture, with the SAME tree the live tab and saved report use.
+      // Dropping engine/browser noise here (cancelled/asset/harness) keeps NetworkLogStore,
+      // the streamed row, and the persisted log a single consistent set — no per-surface drift.
+      const routed = routeNetworkEvent({
+        kind: statusCode === undefined ? 'TRANSPORT_FAILURE' : 'HTTP_RESPONSE',
+        statusCode,
+        url,
+        resourceType: request.resourceType(),
+        failureText: opts?.errorText,
+      });
+      if (NON_TARGET_NETWORK_REASONS.has(routed.reasonCode)) return;
+
       const requestHeaders = pickHeaders(this.safeHeaders(request));
       const responseHeaders = pickHeaders(this.safeResponseHeaders(opts?.response));
       const traceId = extractTraceId(responseHeaders) ?? extractTraceId(requestHeaders);
       const errorText = opts?.errorText ? scrubCredentials(opts.errorText) : undefined;
       const durationMs = this.computeRequestDuration(request);
       const method = request.method();
-      const url = request.url();
 
       NetworkLogStore.push({
         timestamp: new Date().toISOString(),
@@ -736,7 +754,11 @@ export class StabilityMonitor {
     // Freeze the rolling buffer and minimize it to the steps causally required to reach
     // this fault before anything else can advance it (see the network handlers). faultAtMs
     // is the true in-page instant for rejections (async event → node hook adds latency).
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
+    const reproduction = ActiveScenarioTracker.flushSnapshot({
+      faultUrl: url,
+      faultAtMs,
+      culpritSelector: this.culpritSelectorAt(faultAtMs),
+    });
     const reproductionPlaybook = reproduction.narrative;
     // Snapshot client state so cross-page-state faults reproduce during replay.
     const stateFingerprint = await captureStateFingerprint(page);
@@ -1021,29 +1043,49 @@ export class StabilityMonitor {
     const breadcrumbs = this.deps.getBreadcrumbs();
     const stackTrace = defect.evidence.join('\n');
 
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs: Date.now() });
-    // The finder's causal pair is the authoritative reproduction; the scenario narrative
-    // is appended as the surrounding context that led up to it.
-    const reproductionPlaybook = [...defect.reproductionHint, ...reproduction.narrative];
-    // A race snapshot is often empty (the double-submit fires on an API endpoint the
-    // minimizer can't anchor to a page). Fall back to a defect-built trace so the finding
-    // still carries a human-reproduction timeline: open the page, double-fire the control.
-    const reproductionActions = reproduction.actions.length > 0
-      ? reproduction.actions
-      : defect.selector
-        ? [
-            { timestamp, type: 'NAVIGATE' as const, selector: defect.pageUrl ?? page.url(), url: defect.pageUrl ?? page.url() },
-            { timestamp, type: 'CLICK' as const, selector: defect.selector, url: defect.pageUrl ?? page.url(), elementLabel: defect.elementLabel, repeatCount: 2 },
-          ]
-        : reproduction.actions;
+    // The backend correctly protected the duplicate (rejected 409/425/429, or deduped a
+    // shared idempotency key). The app behaved as designed, so surface it as a Network
+    // observation only and never register a SPA_STATE_RACE_CONDITION finding.
+    if (defect.protected) {
+      t.emit('NETWORK', {
+        url,
+        method: defect.method,
+        message: ` ${defect.message}`,
+        severity: 'INFO',
+      });
+      return;
+    }
+
+    const reproduction = ActiveScenarioTracker.flushSnapshot({
+      faultUrl: url,
+      faultAtMs: Date.now(),
+      culpritSelector: defect.selector || undefined,
+    });
+    // The finder's causal pair IS the reproduction — deterministic, two-request steps.
+    // The scenario narrative is a multi-control spam burst ("Click 5 controls at once")
+    // that a human can't replay, so it is deliberately NOT woven into a duplicate finding.
+    const reproductionPlaybook = defect.reproductionHint;
+    // Prefer the defect-built deterministic pair (open page, double-fire ONE control)
+    // whenever the culprit is known, so the replay is the exact double-submit — never the
+    // burst-polluted rolling-buffer snapshot. Snapshot is the fallback only when no
+    // culprit selector exists to anchor the deterministic trace.
+    const reproductionActions = defect.selector
+      ? [
+          { timestamp, type: 'NAVIGATE' as const, selector: defect.pageUrl ?? page.url(), url: defect.pageUrl ?? page.url() },
+          { timestamp, type: 'CLICK' as const, selector: defect.selector, url: defect.pageUrl ?? page.url(), elementLabel: defect.elementLabel, repeatCount: 2 },
+        ]
+      : reproduction.actions;
     const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
+    // Status from the finder's own score via the single grading source, so the shown
+    // label can never disagree with the shown confidence percentage.
+    const verificationStatus = statusForScore(defect.confidenceScore, 'TARGET_APP').status;
     const severity = resolveSeverity({
       severity: defect.severity,
       bugClass: defect.bugClass,
       confidence: defect.faultConfidence,
-      verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+      verificationStatus,
       statusCode: defect.secondStatus,
     });
     // Same contract as every promotion path: steps + CWE + remediation, filled from
@@ -1058,7 +1100,7 @@ export class StabilityMonitor {
         origin: 'TARGET_APP',
         confidence: defect.faultConfidence,
         confidenceScore: defect.confidenceScore,
-        verificationStatus: defect.verdict === 'CONFIRMED_DUPLICATE' ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+        verificationStatus,
         corroborated: defect.corroborated,
       },
       advice: defect.advice,
@@ -1080,7 +1122,8 @@ export class StabilityMonitor {
       url,
       method: defect.method,
       message: ` ${defect.message}`,
-      severity: defect.verdict === 'GUARDED' ? 'INFO' : 'WARNING',
+      // GUARDED duplicates are suppressed above; anything reaching here is an unguarded repeat.
+      severity: 'WARNING',
       attribution,
     });
 
@@ -1348,7 +1391,11 @@ export class StabilityMonitor {
     const breadcrumbs = this.deps.getBreadcrumbs();
     const stackTrace = defect.evidence.join('\n');
 
-    const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
+    const reproduction = ActiveScenarioTracker.flushSnapshot({
+      faultUrl: url,
+      faultAtMs,
+      culpritSelector: this.culpritSelectorAt(faultAtMs),
+    });
     const stateFingerprint = await captureStateFingerprint(page);
     const reproductionPlaybook = reproduction.narrative;
 
@@ -1864,6 +1911,7 @@ export class StabilityMonitor {
           reproduction: ActiveScenarioTracker.flushSnapshot({
             faultUrl: this.deps.getLastKnownUrl() || page.url(),
             faultAtMs: settledAtMs,
+            culpritSelector: this.culpritForRequest(response.request()),
           }),
           stateFingerprint: await captureStateFingerprint(page),
           chaosMode,
@@ -1965,6 +2013,7 @@ export class StabilityMonitor {
         reproduction: ActiveScenarioTracker.flushSnapshot({
           faultUrl: this.deps.getLastKnownUrl() || page.url(),
           faultAtMs: failedAtMs,
+          culpritSelector: this.culpritForRequest(request),
         }),
         stateFingerprint: await captureStateFingerprint(page),
         chaosMode,

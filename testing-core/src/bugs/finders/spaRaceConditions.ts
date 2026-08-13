@@ -13,6 +13,11 @@ import { safeRoutePath } from '../../domain/services/exploration/bugIdentity.js'
 // Grace period for the burst's async work to resolve before judging the UI stuck.
 const SETTLE_MS = 1500;
 
+// State-changing verbs whose duplicate a backend guard can reject (reads repeat safely).
+const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// Backend rejected the duplicate correctly (same set as DuplicateActionFinder.GUARD_STATUSES).
+const GUARD_STATUSES = new Set([409, 425, 429]);
+
 /**
  * Result of a concurrent stress test for SPA race conditions.
  */
@@ -62,7 +67,11 @@ export async function burstConcurrentStress(
     ActionRecorder.recordStep({
       actionType: 'CLICK',
       humanIdentifier: resolveElementLabel(element),
-      elementKind: elementNoun(element.tagName, element.type),
+      elementKind: elementNoun(element.tagName, element.type, {
+        role: element.role,
+        href: element.href,
+        containerKind: element.contextKind,
+      }),
       selector: element.selector,
       url,
       burstId,
@@ -128,6 +137,10 @@ function isFillableInput(element: InteractiveElement): boolean {
 interface BurstDamage {
   crashes: string[];
   stuckLoading: boolean;
+  // Backend correctly rejected a duplicate state-changing request (409/425/429).
+  guarded: number;
+  // Backend failed a state-changing request (5xx) — a genuine fault, never suppressed.
+  serverError: number;
 }
 
 async function isStuckLoading(page: Page): Promise<boolean> {
@@ -155,7 +168,7 @@ export const spaRaceConditionsFinder: BugFinder = {
    * Clicks merely succeeding is the healthy case, not a race.
    */
   async run(ctx: BugContext): Promise<BugFinding[]> {
-    const damage: BurstDamage = { crashes: [], stuckLoading: false };
+    const damage: BurstDamage = { crashes: [], stuckLoading: false, guarded: 0, serverError: 0 };
 
     const onPageError = (err: Error): void => {
       if (damage.crashes.length < 3) damage.crashes.push(err.message.slice(0, 200));
@@ -167,6 +180,14 @@ export const spaRaceConditionsFinder: BugFinder = {
         damage.crashes.push(text.slice(0, 200));
       }
     };
+    // Watch how the backend answered the overlapping state-changing requests: a
+    // 409/425/429 means it rejected the duplicate correctly, a 5xx means it broke.
+    const onResponse = (res: { status(): number; request(): { method(): string } }): void => {
+      if (!STATE_CHANGING.has(res.request().method().toUpperCase())) return;
+      const status = res.status();
+      if (GUARD_STATUSES.has(status)) damage.guarded += 1;
+      else if (status >= 500) damage.serverError += 1;
+    };
 
     const wasStuckBefore = await isStuckLoading(ctx.page);
     // The burst can navigate the page away mid-step. Left uncorrected, the loop's
@@ -175,6 +196,7 @@ export const spaRaceConditionsFinder: BugFinder = {
     const urlBefore = ctx.page.url();
     ctx.page.on('pageerror', onPageError);
     ctx.page.on('console', onConsole);
+    ctx.page.on('response', onResponse);
 
     let result: ConcurrentStressResult;
     try {
@@ -186,6 +208,7 @@ export const spaRaceConditionsFinder: BugFinder = {
     } finally {
       ctx.page.off('pageerror', onPageError);
       ctx.page.off('console', onConsole);
+      ctx.page.off('response', onResponse);
       if (ctx.page.url() !== urlBefore) {
         await ctx.page
           .goto(urlBefore, { waitUntil: 'domcontentloaded', timeout: 5000 })
@@ -194,6 +217,10 @@ export const spaRaceConditionsFinder: BugFinder = {
     }
 
     if (damage.crashes.length === 0 && !damage.stuckLoading) return [];
+
+    // Backend correctly rejected the duplicate (409/425/429) and nothing crashed or
+    // 5xx'd — a transient spinner during a properly-guarded burst is not a race defect.
+    if (damage.crashes.length === 0 && damage.guarded > 0 && damage.serverError === 0) return [];
 
     const detail = damage.crashes.length > 0
       ? `The page crashed during the burst of events: ${damage.crashes.join(' | ')}`

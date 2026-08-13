@@ -10,8 +10,8 @@ import { useState, type ReactNode } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
-import { chipClass, chipLabel, humanizeActionStep, splitObservations } from '../../utils/reproductionFormat';
-import ReproductionChecklist, { ObservationsBlock } from '../telemetry/ReproductionChecklist';
+import { chipClass, chipLabel, humanizeActionStep } from '../../utils/reproductionFormat';
+import ReproductionChecklist from '../telemetry/ReproductionChecklist';
 import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 
 // Ordered structured trace — one chip row per step (action-type chip + imperative
@@ -42,9 +42,6 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
                 <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
                   {payloadDisplay}
                 </code>
-              )}
-              {typeof step.durationMs === 'number' && (
-                <div className="mt-0.5 text-xs text-(--text-tertiary)">{step.durationMs}ms</div>
               )}
             </div>
           </li>
@@ -95,21 +92,12 @@ function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> 
   );
 }
 
-// Reproduction: prefer the structured, replayable trace (same timeline Verify Fix
-// replays), fall back to the prose checklist, then an empty-state message. Observed
-// results live in the narrative steps, so they surface beneath the structured trace.
+// Reproduction: the narrative playbook, rendered identically on the live Errors tab and
+// the saved report. It is byte-identical across both surfaces (reproductionPlaybook ≡
+// reproductionSteps) and already weaves route/section/action/observed result, so both
+// read one voice with matching step counts and no timing noise. The structured trace
+// still lives in the DB and the report's "Full Action Timeline" appendix.
 function Reproduction({ view }: { view: FindingView }) {
-  if (view.actionSteps && view.actionSteps.length > 0) {
-    return (
-      <div>
-        <div className="mb-2 text-caption font-bold uppercase text-(--text-secondary)">
-          Reproduction Trace ({view.actionSteps.length} steps)
-        </div>
-        <ActionStepList steps={view.actionSteps} />
-        <ObservationsBlock observations={splitObservations(view.reproductionSteps).observations} />
-      </div>
-    );
-  }
   if (view.reproductionSteps.length > 0) {
     return <ReproductionChecklist steps={view.reproductionSteps} />;
   }

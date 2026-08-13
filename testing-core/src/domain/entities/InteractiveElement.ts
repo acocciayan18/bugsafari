@@ -17,6 +17,9 @@ export interface InteractiveElement {
   role?: string;
   placeholder?: string;
   ariaLabel?: string;
+  // Concise accessible name (aria-label -> aria-labelledby -> heading -> title), used as
+  // the preferred reproduction label so a card link reads its title, not title+description.
+  accessibleName?: string;
   // Explicit spatial coordinates captured after layout stabilization
   boundingBox?: BoundingBox;
   // Opens a transient UI layer (modal, dropdown, sidebar, accordion, popup)

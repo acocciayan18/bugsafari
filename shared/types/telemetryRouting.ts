@@ -37,8 +37,19 @@ export type RoutingReasonCode =
   | 'SERVER_ERROR'
   | 'SOFT_FAIL_BODY'
   | 'DEFENSIVE_CLIENT_ERROR'
+  | 'REDIRECT_ERROR'
   | 'TRANSPORT_FAILURE'
   | 'SUCCESS';
+
+// Reason codes that are never the target app's own behaviour: the engine cancelled
+// the request, it's static-asset chatter, or it's a harness/browser artifact. The
+// single source both the engine (recordNetworkLog) and the dashboard Network tab use
+// to keep a genuine-failures view — so live and saved rows can never diverge.
+export const NON_TARGET_NETWORK_REASONS: ReadonlySet<string> = new Set<RoutingReasonCode>([
+  'CANCELLED',
+  'ASSET_NOISE',
+  'HARNESS_ARTIFACT',
+]);
 
 /** The reason codes that make an observation a finding rather than a Network row. */
 export const PROMOTABLE_REASON_CODES: ReadonlySet<string> = new Set<RoutingReasonCode>([
@@ -186,6 +197,17 @@ export const HOST_DEPENDENT_TRANSPORT_MARKERS: readonly string[] = [
   'err_http2_protocol_error',
 ];
 
+/**
+ * Redirect loop — the target bounced a request between locations without resolving.
+ * A target-side navigation defect (CWE-835), so its Network row is SHOWN (unlike a
+ * cancellation), while the corresponding finding is raised by the navigation subsystem.
+ */
+export const REDIRECT_ERROR_MARKERS: readonly string[] = [
+  'err_too_many_redirects',
+  'too many redirects',
+  'redirect loop',
+];
+
 /** Browser-enforced cross-origin blocks — a deployment/config concern, not a defect. */
 export const CORS_MARKERS: readonly string[] = [
   'err_blocked_by_response',
@@ -237,6 +259,11 @@ export function isStaticAssetRequest(url?: string, resourceType?: string): boole
 /** True when the text carries a browser cross-origin block. */
 export function isCorsBlocked(text: string): boolean {
   return includesAny(text, CORS_MARKERS);
+}
+
+/** True when the text is a target-side redirect loop (ERR_TOO_MANY_REDIRECTS). */
+export function isRedirectError(text: string): boolean {
+  return includesAny(text, REDIRECT_ERROR_MARKERS);
 }
 
 /** True when the text is an infrastructure/environment transport failure. */
@@ -328,6 +355,12 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
     );
   }
 
+  // A redirect loop resolves to no status — classify it explicitly so the Network row
+  // reads "redirect loop" instead of a raw net:: string, consistently on every surface.
+  if (isRedirectError(text)) {
+    return verdict('NETWORK_ONLY', 'MEDIUM', 'REDIRECT_ERROR', 'Redirect loop — the server bounced the request between locations without resolving.');
+  }
+
   if (status !== undefined && status >= 500) {
     return verdict('FINDING', 'MEDIUM', 'SERVER_ERROR', `HTTP ${status} server error — the backend failed to handle the request.`);
   }
@@ -365,6 +398,30 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
 /** True for a provenance origin that is a harness/browser artifact. */
 export function isHarnessOrigin(origin: string): boolean {
   return origin === 'PLAYWRIGHT' || origin === 'BUGSAFARI' || origin === 'BROWSER_EXTENSION';
+}
+
+// ── Site relationship (provenance + Network-tab origin filtering) ──
+// Registrable-ish host key (last two labels) so api.example.com === example.com.
+// ponytail: two-label heuristic; misgroups multi-part public suffixes (foo.co.uk),
+// fine for the single-origin target apps under test — swap for a PSL if that changes.
+export function registrableHost(raw: string | undefined): string {
+  if (!raw) return '';
+  try {
+    return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase().split('.').slice(-2).join('.');
+  } catch {
+    return '';
+  }
+}
+
+/** Relationship between a URL and the app under test; UNKNOWN when either is unparseable. */
+export function siteRelationship(
+  url: string | undefined,
+  targetOrigin: string | undefined,
+): 'FIRST_PARTY' | 'THIRD_PARTY' | 'UNKNOWN' {
+  const a = registrableHost(url);
+  const b = registrableHost(targetOrigin);
+  if (!a || !b) return 'UNKNOWN';
+  return a === b ? 'FIRST_PARTY' : 'THIRD_PARTY';
 }
 
 /**

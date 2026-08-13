@@ -172,11 +172,16 @@ export const asyncStateRacer = {
       metadata.resultingState = page.isClosed() ? 'error' : stillPresent ? 'settled' : 'detached';
 
       // Record the race as ONE reproduction step so the 20-slot playbook is not flooded.
-      const raceTarget = describeTarget(label, elementNoun(target?.tagName, target?.type));
+      const raceNoun = elementNoun(target?.tagName, target?.type, {
+        role: target?.role,
+        href: target?.href,
+        containerKind: target?.contextKind,
+      });
+      const raceTarget = describeTarget(label, raceNoun);
       ActionRecorder.recordStep({
         actionType: 'CLICK',
         humanIdentifier: label,
-        elementKind: elementNoun(target?.tagName, target?.type),
+        elementKind: raceNoun,
         selector,
         url: page.url(),
         repeatCount: RACE_CYCLES,

@@ -4,27 +4,33 @@ import type { NetworkLogEntry } from '../../../../shared/types.js';
 // Flushed to Mongo only when the operator saves the run — mirrors the
 // errors-only-persists philosophy of forensic_errors.
 export class NetworkLogStore {
-  private static entries: NetworkLogEntry[] = [];
+  // First-seen order preserved; keyed by method+url+status so a request polled amid
+  // other traffic collapses to one row — the SAME global dedup the live Network tab
+  // and buildSavedNetworkRows apply, so store, stream, and saved report never diverge.
+  private static entries = new Map<string, NetworkLogEntry>();
   private static readonly capacity = 2000;
 
   public static reset(): void {
-    NetworkLogStore.entries = [];
+    NetworkLogStore.entries = new Map();
   }
 
-  // Collapse identical consecutive rows (polling loops) into a repeatCount.
   public static push(entry: NetworkLogEntry): void {
-    const last = NetworkLogStore.entries[NetworkLogStore.entries.length - 1];
-    if (last && last.method === entry.method && last.url === entry.url && last.statusCode === entry.statusCode) {
-      last.repeatCount = (last.repeatCount ?? 1) + 1;
+    const key = `${entry.method}|${entry.url}|${entry.statusCode ?? ''}`;
+    const existing = NetworkLogStore.entries.get(key);
+    if (existing) {
+      existing.repeatCount = (existing.repeatCount ?? 1) + 1;
+      if (typeof entry.durationMs === 'number') existing.durationMs = entry.durationMs;
       return;
     }
-    NetworkLogStore.entries.push(entry);
-    while (NetworkLogStore.entries.length > NetworkLogStore.capacity) {
-      NetworkLogStore.entries.shift();
+    NetworkLogStore.entries.set(key, entry);
+    while (NetworkLogStore.entries.size > NetworkLogStore.capacity) {
+      const oldest = NetworkLogStore.entries.keys().next().value;
+      if (oldest === undefined) break;
+      NetworkLogStore.entries.delete(oldest);
     }
   }
 
   public static snapshot(): NetworkLogEntry[] {
-    return [...NetworkLogStore.entries];
+    return [...NetworkLogStore.entries.values()];
   }
 }

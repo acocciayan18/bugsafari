@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Audit BugSafari on 3G with slow network testing"
+git commit -m "improve-bugsafari-accuracy"
 git push origin HEAD:dev --force
 
 

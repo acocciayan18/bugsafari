@@ -13,6 +13,7 @@ const REDACTED = '«redacted»';
 export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | 'step';
 
 export interface ElementLabelSource {
+  accessibleName?: string;
   innerText?: string;
   ariaLabel?: string;
   placeholder?: string;
@@ -45,10 +46,13 @@ export function genericElementLabel(tagName?: string, type?: string): string {
 }
 
 /**
- * Most human-actionable label for an element: inner text → aria label → placeholder
- * → name → id → generic tag type. Never returns a raw CSS selector.
+ * Most human-actionable label for an element: accessible name (aria/heading/title,
+ * the concise visible title) → inner text → aria label → placeholder → name → id →
+ * generic tag type. Never returns a raw CSS selector.
  */
 export function resolveElementLabel(element: ElementLabelSource): string {
+  const accessibleName = collapse(element.accessibleName);
+  if (accessibleName) return truncate(accessibleName, MAX_LABEL_LENGTH);
   const innerText = collapse(element.innerText);
   if (innerText) return truncate(innerText, MAX_LABEL_LENGTH);
   const ariaLabel = collapse(element.ariaLabel);
@@ -62,15 +66,40 @@ export function resolveElementLabel(element: ElementLabelSource): string {
   return genericElementLabel(element.tagName, element.type);
 }
 
+/** Extra context that refines an anchor's noun (navigation link, home link). */
+export interface ElementNounContext {
+  role?: string;
+  href?: string;
+  containerKind?: string;
+}
+
+// True when an anchor points at the site root ("/" or bare origin) — a home link.
+function isHomeHref(href?: string): boolean {
+  const raw = collapse(href);
+  if (!raw) return false;
+  try {
+    return new URL(raw).pathname === '/';
+  } catch {
+    return raw === '/';
+  }
+}
+
 /**
  * Plain-English noun a developer would use for a control ("button", "link",
  * "email field"). Finer-grained than {@link genericElementLabel}, which stays the
  * structural fallback LABEL; this is the noun the reproduction steps read with.
+ * For anchors, the optional context refines "link" to "navigation link" (inside a
+ * nav) or "home link" (points at the site root) so students see the target's purpose.
  */
-export function elementNoun(tagName?: string, type?: string): string {
+export function elementNoun(tagName?: string, type?: string, ctx?: ElementNounContext): string {
   const tag = (tagName ?? '').toLowerCase();
   const elementType = (type ?? '').toLowerCase();
-  if (tag === 'a') return 'link';
+  const role = (ctx?.role ?? '').toLowerCase();
+  if (tag === 'a' || role === 'link') {
+    if (isHomeHref(ctx?.href)) return 'home link';
+    if ((ctx?.containerKind ?? '').toLowerCase() === 'navigation') return 'navigation link';
+    return 'link';
+  }
   if (tag === 'select') return 'dropdown';
   if (tag === 'textarea') return 'text box';
   if (tag === 'button' || elementType === 'button' || elementType === 'submit' || elementType === 'reset') {
@@ -196,9 +225,10 @@ function elementKind(tagName?: string, type?: string): string {
   return 'Element';
 }
 
-// Label for humanizeElement: text/aria/placeholder/name only (id shown separately).
+// Label for humanizeElement: accessible name/text/aria/placeholder/name (id shown separately).
 function resolveDescriptiveLabel(element: ElementLabelSource): string {
   const source =
+    collapse(element.accessibleName) ||
     collapse(element.innerText) ||
     collapse(element.ariaLabel) ||
     collapse(element.placeholder) ||
@@ -420,37 +450,37 @@ export function describeRouteTrashNavigation(
   direction: 'back' | 'forward',
   url: string,
 ): string {
-  return `Round ${iteration}: press browser ${direction === 'back' ? 'Back' : 'Forward'}, landing on ${url}`;
+  return `Round ${iteration}: press browser ${direction === 'back' ? 'Back' : 'Forward'}, landing on ${routePath(url)}`;
 }
 
 /** RouteTrasher inconsistency: the URL changed but the DOM did not update to match. */
 export function describeRouteInconsistency(fromUrl: string, toUrl: string): string {
-  return `The address changed from ${fromUrl} to ${toUrl}, but the page content never updated.`;
+  return `The address changed from ${routePath(fromUrl)} to ${routePath(toUrl)}, but the page content never updated.`;
 }
 
 /** RouteTrasher drift-restore step. */
 export function describeRouteTrashDrift(landed: string, originPath: string): string {
-  return `Back/Forward presses ended on ${landed}; returning to ${originPath}.`;
+  return `Back/Forward presses ended on ${routePath(landed)}; returning to ${originPath}.`;
 }
 
 /** RouteTrasher: a mutation provoked one or more backend 5xx failures (MEDIUM). */
 export function describeRouteTrashServerError(navType: string, count: number, url: string): string {
-  return `[MEDIUM] ${navigationLabel(navType)} caused ${count} server error(s) (HTTP 5xx) at ${url}. The route or its values are likely not being checked.`;
+  return `[MEDIUM] ${navigationLabel(navType)} caused ${count} server error(s) (HTTP 5xx) at ${routePath(url)}. The route or its values are likely not being checked.`;
 }
 
 /** RouteTrasher: expected defensive 4xx responses, handled gracefully (INFORMATIONAL). */
 export function describeRouteTrashDefensive(navType: string, count: number, url: string): string {
-  return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${url}. This was handled correctly, so it is not a bug.`;
+  return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${routePath(url)}. This was handled correctly, so it is not a bug.`;
 }
 
 /** RouteTrasher: an unhandled client-side exception fired during a mutation (CRITICAL). */
 export function describeRouteTrashClientCrash(navType: string, count: number, url: string): string {
-  return `[CRITICAL] ${navigationLabel(navType)} caused ${count} unhandled JavaScript error(s) at ${url}.`;
+  return `[CRITICAL] ${navigationLabel(navType)} caused ${count} unhandled JavaScript error(s) at ${routePath(url)}.`;
 }
 
 /** RouteTrasher: a mutation left the app on a white/blank screen (CRITICAL). */
 export function describeRouteTrashWhiteScreen(navType: string, url: string): string {
-  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${url}. The view failed to render.`;
+  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${routePath(url)}. The view failed to render.`;
 }
 
 /** NetworkSaboteur step. */
@@ -486,6 +516,13 @@ export function describeRedirectLoopObservation(chain: string, mechanism: 'http'
 // ─────────────────────────────────────────────────────────────
 // UI-context framing (route + container) — the WHERE of a step
 // ─────────────────────────────────────────────────────────────
+
+/** `METHOD /path` — a clean endpoint label with the tunnel/proxy/localhost host stripped. */
+export function endpointLabel(method: string, url?: string): string {
+  const verb = collapse(method).toUpperCase();
+  const path = routePath(url);
+  return path ? `${verb} ${path}` : verb;
+}
 
 /** Domain-stripped route (pathname + query + hash) for human-readable playbooks. */
 export function routePath(url?: string): string {
@@ -575,7 +612,7 @@ export function describeStepLocation(input: { url?: string; containerLabel?: str
 export function describeOutcome(outcome?: ActionOutcome): string {
   if (!outcome) return '';
   const parts: string[] = [];
-  if (outcome.navigatedTo) parts.push(`the app moved to ${outcome.navigatedTo}`);
+  if (outcome.navigatedTo) parts.push(`the app moved to ${routePath(outcome.navigatedTo)}`);
   if (typeof outcome.httpStatus === 'number') parts.push(`the server responded HTTP ${outcome.httpStatus}`);
   if (parts.length === 0 && outcome.domChanged === false) parts.push('nothing on the page changed');
   return parts.length ? `. Result: ${parts.join(', ')}` : '';

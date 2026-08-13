@@ -3,14 +3,8 @@
 // two can never diverge. Keeps only a GENUINE observed request (rawNetwork) that
 // actually failed (actionable status), deduped by method+url+status into one row
 // with a repeatCount — the exact rule the live Network tab and the forensic report use.
-import { isActionableNetworkStatus, routeNetworkEvent } from '../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS } from '../../../shared/types.js';
 import type { TelemetryEvent } from '../types';
-
-// Reason codes that are never the target app's behaviour: the engine cancelled the
-// request (navigation/stop/superseded), it's ordinary asset chatter, or it's a
-// test-harness artifact. Hidden from the Network tab so it stays a failures view.
-// Genuine failures (5xx, 4xx, DNS/TLS/refused, real transport failures) still show.
-export const NON_TARGET_REASONS = new Set(['CANCELLED', 'ASSET_NOISE', 'HARNESS_ARTIFACT']);
 
 // The one place both row-builders decide "is this a genuine target-app request worth
 // showing" — a raw observed request that failed, minus the engine/browser noise above.
@@ -24,7 +18,7 @@ export function isShownNetworkFailure(meta: TelemetryEvent['meta']): boolean {
     resourceType: meta?.resourceType ?? 'xhr',
     failureText: meta?.errorText,
   });
-  return !NON_TARGET_REASONS.has(routed.reasonCode);
+  return !NON_TARGET_NETWORK_REASONS.has(routed.reasonCode);
 }
 
 export interface SavedNetworkRow {

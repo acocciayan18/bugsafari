@@ -4,7 +4,7 @@
 // Import verification primitives from here rather than reaching into modules.
 
 export { classifyFaultOrigin, type OriginInput, type OriginVerdict } from './faultOrigin.js';
-export { scoreFinding, type ScoreInput, type ScoreResult } from './confidenceScore.js';
+export { scoreFinding, statusForScore, type ScoreInput, type ScoreResult } from './confidenceScore.js';
 export { detectSoftFailBody, isBodyReadableResourceType, type SoftFailVerdict } from './softFailBody.js';
 export {
   VerificationPipeline,

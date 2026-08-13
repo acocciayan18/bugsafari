@@ -18,6 +18,7 @@ import {
   HOST_DEPENDENT_TRANSPORT_MARKERS,
   PLAYWRIGHT_MARKERS,
   THIRD_PARTY_SDK_MARKERS,
+  siteRelationship,
 } from '../../../../../shared/types.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 
@@ -49,23 +50,9 @@ function matchesAny(haystack: string, patterns: readonly RegExp[]): boolean {
   return patterns.some((p) => p.test(haystack));
 }
 
-// Registrable-ish host key (last two labels) so api.example.com === example.com.
-function hostKey(raw: string | undefined): string {
-  if (!raw) return '';
-  try {
-    return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.toLowerCase().split('.').slice(-2).join('.');
-  } catch {
-    return '';
-  }
-}
-
-// Relationship between the failing URL and the app under test.
-function relationship(url: string | undefined, targetOrigin: string | undefined): 'FIRST_PARTY' | 'THIRD_PARTY' | 'UNKNOWN' {
-  const a = hostKey(url);
-  const b = hostKey(targetOrigin);
-  if (!a || !b) return 'UNKNOWN';
-  return a === b ? 'FIRST_PARTY' : 'THIRD_PARTY';
-}
+// Site relationship (registrable-domain match) lives in shared/telemetryRouting so
+// provenance and the Network-tab origin filter agree on first- vs third-party.
+const relationship = siteRelationship;
 
 /**
  * Attribute a caught fault to its root-cause origin. A fault is only reportable as

@@ -28,6 +28,10 @@ export interface MinimizeOptions {
   faultAtMs?: number;
   /** Run origin, used when the buffer is empty and no fault URL is known. */
   originUrl?: string;
+  /** Culprit control selector — anchors the timeline so unrelated exploration is dropped. */
+  culpritSelector?: string;
+  /** Burst correlation id — when set, keep only this burst's own actions. */
+  burstId?: string;
   maxSteps?: number;
 }
 
@@ -91,18 +95,26 @@ function syntheticNavigation(url: string, timestamp: string): ActionRecord {
  * fault. Pure: the input array is never mutated.
  */
 export function minimizeActionRecords(records: ActionRecord[], options: MinimizeOptions = {}): ActionRecord[] {
-  const { faultUrl, faultAtMs, originUrl, maxSteps = DEFAULT_MAX_STEPS } = options;
+  const { faultUrl, faultAtMs, originUrl, culpritSelector, burstId, maxSteps = DEFAULT_MAX_STEPS } = options;
   const startUrl = faultUrl ?? originUrl;
+  const faultKey = pageKey(faultUrl);
 
   const causal = collapseRepeats(
     faultAtMs === undefined ? records : records.filter((record) => toMs(record.timestamp) <= faultAtMs),
   );
 
+  // Burst-scoped fault: the burst's own pre-recorded actions ARE the reproduction —
+  // keep only those, so unrelated exploration around them never enters the playbook.
+  if (burstId) {
+    const burst = causal.filter((record) => record.burstId === burstId);
+    if (burst.length > 0) return openWithNavigation(burst, startUrl).slice(-maxSteps);
+  }
+
   if (causal.length === 0) {
     return startUrl ? [syntheticNavigation(startUrl, new Date(faultAtMs ?? Date.now()).toISOString())] : [];
   }
 
-  const entry = findFaultPageEntry(causal, pageKey(faultUrl));
+  const entry = findFaultPageEntry(causal, faultKey);
   // Entering the fault page by navigation is a clean start; entering it by clicking a
   // control on the previous page means that one control click is required context.
   const startIndex =
@@ -112,11 +124,42 @@ export function minimizeActionRecords(records: ActionRecord[], options: Minimize
         ? entry
         : Math.max(0, entry - 1);
 
-  const kept = causal.slice(startIndex).slice(-maxSteps);
-  const first = kept[0];
-  if (NAVIGATION_TYPES.has(first.type)) {
-    return kept;
+  let kept = causal.slice(startIndex).slice(-maxSteps);
+
+  // Culprit-anchored trim: when the faulting control is known, drop interior
+  // exploration hops (traversal navigations / off-page clicks) that precede it and are
+  // not setup for it. Only runs when the culprit is actually present, so a timeline with
+  // no match is left exactly as the page/time scoping produced it.
+  if (culpritSelector) {
+    let lastCulprit = -1;
+    for (let i = kept.length - 1; i >= 0; i -= 1) {
+      if (kept[i].selector === culpritSelector) { lastCulprit = i; break; }
+    }
+    if (lastCulprit > 0) {
+      kept = kept.filter(
+        (record, i) =>
+          i >= lastCulprit || // the culprit and everything after it
+          (i === 0 && NAVIGATION_TYPES.has(record.type)) || // the opening navigation
+          !isTraversal(record, faultKey), // genuine setup (inputs/submits), never traversal
+      );
+    }
   }
 
+  return openWithNavigation(kept, startUrl);
+}
+
+// A step that merely moved BugSafari to another place rather than acting on the fault:
+// an explicit navigation, or a click whose observed outcome left the faulting page.
+function isTraversal(record: ActionRecord, faultKey: string): boolean {
+  if (NAVIGATION_TYPES.has(record.type)) return true;
+  const navTo = record.outcome?.navigatedTo;
+  return record.type === 'CLICK' && Boolean(navTo) && pageKey(navTo) !== faultKey;
+}
+
+// Guarantee the timeline opens from a state a developer can reach: keep a leading
+// navigation as-is, else synthesize one to the first kept action's page.
+function openWithNavigation(kept: ActionRecord[], startUrl?: string): ActionRecord[] {
+  const first = kept[0];
+  if (!first || NAVIGATION_TYPES.has(first.type)) return kept;
   return [syntheticNavigation(first.url || startUrl || '', first.timestamp), ...kept];
 }

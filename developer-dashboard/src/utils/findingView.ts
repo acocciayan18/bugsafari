@@ -16,7 +16,7 @@ import type { BugCategory, ConstraintBypassDetail, FindingAttribution } from '..
 import { resolveCategory, resolveSeverity } from '../../../shared/types.js';
 import { isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
-import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
+import { splitObservations, toMarkdownChecklist } from './reproductionFormat';
 import { formatReportDateTime } from './datetime';
 
 export interface FindingView {
@@ -24,8 +24,10 @@ export interface FindingView {
   key: string;
   /** Headline — the knowledge-base bug class, falling back to a generic label. */
   title: string;
-  /** Primary human-readable fault text (reason ≡ message). */
+  /** Primary human-readable fault text (reason ≡ message), with any leading [tag] removed. */
   message: string;
+  /** Diagnostic tag lifted out of the message's leading [..] (e.g. "Double submit"). */
+  badge?: string;
   severity?: string;
   /** Broad, student-friendly bug family — drives grouping/filtering + the category label. */
   category: BugCategory;
@@ -73,6 +75,20 @@ export function humanizeFindingTitle(raw: string | undefined | null): string {
     .filter(Boolean)
     .map((word) => TITLE_ACRONYMS[word.toUpperCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+// A single leading "[tag]" a finder prefixed onto its message ("[Double submit] …").
+// Long tags keep only their first clause ("[Duplicate request, no browser guard]" →
+// "Duplicate request") so the badge stays short; anything past the first bracket is
+// left in the sentence. Non-tagged messages pass through untouched.
+const LEADING_TAG_RE = /^\s*\[([^\]]{1,60})\]\s*/;
+
+export function extractLeadingTag(message: string | undefined): { badge?: string; message: string } {
+  const raw = (message ?? '').trim();
+  const match = LEADING_TAG_RE.exec(raw);
+  if (!match) return { message: raw };
+  const badge = match[1].split(/[,–-]/)[0].trim();
+  return { badge: badge || undefined, message: raw.slice(match[0].length) };
 }
 
 const isRealSelector = (s: string | undefined): s is string => Boolean(s && s.trim() && s !== 'N/A');
@@ -130,9 +146,7 @@ export function resolveCulpritLabel(
 // out byte-identically.
 export function buildFindingSummary(view: FindingView, index: number): string {
   const { steps: narrativeSteps, observations } = splitObservations(view.reproductionSteps);
-  const repro = view.actionSteps?.length
-    ? actionStepsToMarkdown(view.actionSteps)
-    : toMarkdownChecklist(narrativeSteps, []);
+  const repro = toMarkdownChecklist(narrativeSteps, []);
   return [
     `Finding #${index + 1}: ${humanizeFindingTitle(view.title)}`,
     view.message ? `Message: ${view.message}` : '',
@@ -146,10 +160,12 @@ export function buildFindingSummary(view: FindingView, index: number): string {
 }
 
 export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occurrences ?? 1): FindingView {
+  const { badge, message } = extractLeadingTag(inc.reason);
   return {
     key: liveFaultSignature(inc),
     title: inc.attribution?.bugClass || 'Runtime Incident',
-    message: inc.reason,
+    message,
+    badge,
     severity: resolveSeverity({
       severity: inc.severity,
       bugClass: inc.attribution?.bugClass,
@@ -173,10 +189,12 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
 }
 
 export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.occurrences ?? 1): FindingView {
+  const { badge, message } = extractLeadingTag(rep.reason);
   return {
     key: liveFaultSignature(rep),
     title: rep.attribution?.bugClass || 'Console Error',
-    message: rep.reason,
+    message,
+    badge,
     severity: resolveSeverity({
       severity: rep.severity,
       bugClass: rep.attribution?.bugClass,
@@ -199,10 +217,12 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
 }
 
 export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug.occurrences ?? 1): FindingView {
+  const { badge, message } = extractLeadingTag(bug.message);
   return {
     key: bug.bugId,
     title: bug.attribution?.bugClass || bug.type || 'UNKNOWN',
-    message: bug.message,
+    message,
+    badge,
     severity: resolveSeverity({
       severity: bug.severity,
       bugClass: bug.attribution?.bugClass,

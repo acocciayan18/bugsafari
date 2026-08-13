@@ -23,6 +23,7 @@ import {
   narrateActionRecords,
   isApiEndpoint,
   describeStepLocation,
+  endpointLabel,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
 
@@ -322,6 +323,14 @@ check('describeStepLocation skips API endpoints and unnamed in-flow containers',
   assert.equal(describeStepLocation({ url: '', containerKind: 'section' }), '');
   assert.equal(describeStepLocation({}), '');
   assert.equal(describeStepLocation({ containerKind: 'modal' }), 'in the modal');
+});
+
+check('endpointLabel strips the tunnel/proxy/localhost host to METHOD /path', () => {
+  assert.equal(endpointLabel('post', 'https://abc123.ngrok.io/api/checkout'), 'POST /api/checkout');
+  assert.equal(endpointLabel('GET', 'http://localhost:3000/api/orders?tab=1'), 'GET /api/orders?tab=1');
+  // Already-relative endpoints and bare verbs pass through cleanly.
+  assert.equal(endpointLabel('DELETE', '/api/items/42'), 'DELETE /api/items/42');
+  assert.equal(endpointLabel('POST', undefined), 'POST');
 });
 
 console.log(`\n${passed} checks passed`);

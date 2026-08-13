@@ -77,6 +77,9 @@ export interface DuplicateActionDefect {
   firstStatus?: number;
   secondStatus?: number;
   idempotencyKey?: string;
+  // Backend correctly handled the duplicate (rejected 409/425/429, or deduped a shared
+  // idempotency key) — real telemetry, but never promoted to a finding.
+  protected: boolean;
 }
 
 interface TrackedRequest {
@@ -238,8 +241,15 @@ export class DuplicateActionFinder {
     const confidenceScore = this.scoreOf({ verdict, overlapped, corroborated, interaction, idempotent: !!second.idempotencyKey });
     const severity = verdict === 'CONFIRMED_DUPLICATE' ? 'HIGH' : verdict === 'SUSPECTED' ? 'MEDIUM' : 'LOW';
     const faultConfidence = confidenceScore >= 0.75 ? 'CONFIRMED' : confidenceScore >= 0.5 ? 'SIGNAL' : 'INFERRED';
-    const endpoint = second.url;
+    // Host-stripped path so the message reads `POST /api/checkout`, never a tunnel/proxy URL.
+    const endpoint = this.pathOf(second.url);
     const label = interaction?.label || 'the control';
+    // The backend guarded the repeat (rejected it) or both requests shared an
+    // idempotency key the server can dedupe — the app behaved correctly, so this is
+    // telemetry, not a defect.
+    const protectedDuplicate =
+      verdict === 'GUARDED' ||
+      Boolean(first.idempotencyKey && second.idempotencyKey && first.idempotencyKey === second.idempotencyKey);
 
     return {
       bugId,
@@ -267,6 +277,7 @@ export class DuplicateActionFinder {
       firstStatus: first.status,
       secondStatus: second.status,
       idempotencyKey: second.idempotencyKey,
+      protected: protectedDuplicate,
     };
   }
 
@@ -310,8 +321,8 @@ export class DuplicateActionFinder {
     interaction?: InteractionContext,
   ): string[] {
     const evidence = [
-      `Request 1: ${first.method} ${first.url} at t+0ms, result: ${this.describeOutcome(first)}`,
-      `Request 2: ${second.method} ${second.url} at t+${intervalMs}ms, result: ${this.describeOutcome(second)}`,
+      `Request 1: ${first.method} ${this.pathOf(first.url)} at t+0ms, result: ${this.describeOutcome(first)}`,
+      `Request 2: ${second.method} ${this.pathOf(second.url)} at t+${intervalMs}ms, result: ${this.describeOutcome(second)}`,
       `Same method, address, and value (${second.signature.split('::')[1] ?? 'none'})`,
       overlapped
         ? 'The repeat was sent while the first request was still running, so no disable-on-submit or in-flight guard stopped it'
