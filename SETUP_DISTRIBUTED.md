@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Create animated bugs loading spinner"
+git commit -m "added a txt review files"
 git push origin HEAD:dev --force
 
 
