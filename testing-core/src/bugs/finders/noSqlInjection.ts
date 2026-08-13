@@ -2,7 +2,7 @@ import type { Page, Response } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { fuzzTextWithAttackSurface } from '../scenarioAdapters.js';
 import { matchesCategory } from '../knowledgeBase/signalPatterns.js';
-import { QUERYABLE_CLUE_RE } from './queryableClue.js';
+import { isInjectableTarget } from './injectionSuitability.js';
 import { setFieldValue } from '../../domain/services/exploration/frameworkInput.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { describeTarget, elementNoun, resolveElementLabel } from '../../../../shared/reproduction.js';
@@ -78,8 +78,7 @@ export const noSqlInjectionFinder: BugFinder = {
     if (el.tagName !== 'input' && el.tagName !== 'select' && el.tagName !== 'textarea') return false;
     if (attemptedSelectors.has(el.selector)) return false;
 
-    const clues = `${el.type} ${el.innerText} ${el.id} ${el.className}`.toLowerCase();
-    return QUERYABLE_CLUE_RE.test(clues);
+    return isInjectableTarget(el);
   },
 
   /**
