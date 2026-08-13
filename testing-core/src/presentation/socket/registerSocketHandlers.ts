@@ -203,12 +203,32 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       const respond = typeof ack === 'function' ? ack : (): void => undefined;
       if (!withinEventBudget(socket)) return;
       const request = (payload ?? {}) as SessionAttachRequest;
-      if (typeof request.runToken === 'string' && request.runToken) {
-        socket.data.runToken = request.runToken;
-      }
+      const attachToken = typeof request.runToken === 'string' && request.runToken ? request.runToken : null;
+      if (attachToken) socket.data.runToken = attachToken;
       const result = sessionManager.attach(socket, request.runToken, socketUserId(socket));
       if (result.attached) {
         obsLog.info(`[Socket] ${socket.id} re-attached to active run.`);
+        respond(result);
+        return;
+      }
+      // Distributed mode: the run executes in a worker, so THIS process's
+      // SessionManager holds no local run and reports 'no-active-session' — but the
+      // run is alive in the registry. Mirror the queue-subscribe room-join so a
+      // reconnecting socket rejoins its telemetry room instead of going deaf; without
+      // this the live feed never recovers after a drop (e.g. a slow pause that stalls
+      // Socket.IO pings under 3G). Frames/telemetry replay resumes on room re-entry;
+      // the client hydrates its snapshot over HTTP as it already does.
+      if (queueSupport && result.reason === 'no-active-session' && attachToken) {
+        void (async () => {
+          if (await ownsQueuedRun(attachToken)) {
+            joinLimited(socket, `run:${attachToken}`);
+            obsLog.info(`[Socket] ${socket.id} re-joined worker run room ${attachToken}.`);
+            respond({ attached: true });
+          } else {
+            respond(result);
+          }
+        })();
+        return;
       }
       respond(result);
     });

@@ -195,6 +195,24 @@ Frontend deploy confirmed live (`pendingControl` key written on pause = N1 code 
 
 ---
 
+## Fourth pass — ROOT CAUSE of reconnect feed-death (N3)
+
+Retesting the deployed build, the pause-under-3G feed-death reproduced even on a calm target (todomvc) — so it is not target chaos. Traced it to the real root:
+
+**N3 — `SESSION_ATTACH` is not distributed-aware.** The deployed backend runs distributed (BullMQ + Redis `runRegistry`; the engine executes in a **worker**). Two run-lookup paths diverge:
+- HTTP `/api/session/active` → local first, then **falls back to the Redis registry** (finds the worker's run).
+- Socket `SESSION_ATTACH` → `SessionManager.attach` checks **only the local in-memory `this.run`** — which is null in the API process — so it returns `no-active-session` with **no registry fallback**.
+
+The client clears its queue-subscription once a run goes live, so after a run is ACTIVE the **only** room-rejoin path is `SESSION_ATTACH`. A slow pause stalls Socket.IO pings under 3G → the socket drops → on reconnect `SESSION_ATTACH` returns `no-active-session` → the socket never rejoins `run:${runToken}` → **the live feed never recovers** ("ESTABLISHING TELEMETRY STREAM" forever). HTTP still finds the run in the registry, so the UI hydrates ACTIVE while the feed stays dead — the exact split observed.
+
+**Fix (backend):** in the `SESSION_ATTACH` handler, when local attach returns `no-active-session` in distributed mode, mirror the existing `QUEUE_SUBSCRIBE` room-join — verify ownership via `ownsQueuedRun` (registry) and `joinLimited(socket, 'run:'+runToken)`, then ack `attached`. Strictly additive (only fires on an already-failed local attach, guarded on `queueSupport` + proven ownership); the non-distributed and successful-attach paths are untouched. File: `testing-core/src/presentation/socket/registerSocketHandlers.ts`.
+
+**Verification:** `tsc --noEmit` clean · SessionManager.sync / resumeRace / SocketTelemetryGateway tests pass. Distributed socket-relay behavior can't be exercised without a Redis+worker setup locally — needs a real deploy to confirm the feed recovers on reconnect.
+
+Also this pass: F7 (clean boot loader, no overlap) confirmed live. N2 correctly did **not** release here (the run wasn't gone — HTTP found it; only the socket room was lost, which N3 fixes).
+
+---
+
 ## Test coverage log
 
 Login (3G, ~clean) → Dashboard load → Start test (`example.com`, instant finish) → Findings/Network tabs → Start test (`todomvc`) → live feed + telemetry OK → **Pause on 3G → F1/F2** → Stop (crash-recovery HALT) → **Save session OK** → History (F5) → Forensic report (renders well; F8) → Settings OK → Refresh (auth persists; F4/F7) → Start test → **Refresh mid-run (run survives; F3)** → Pause/Resume on fast net (clean) → Stop (clean).
