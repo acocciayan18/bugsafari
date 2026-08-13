@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Audit BugSafari on 3G with slow network testing"
-git checkout -b 8-13-Ayan-1
-git push --set-upstream origin 8-13-Ayan-1
+git commit -m "improve-bugsafari-accuracy"
+git checkout -b 8-14-Ayan
+git push --set-upstream origin 8-14-Ayan
 
 
 
