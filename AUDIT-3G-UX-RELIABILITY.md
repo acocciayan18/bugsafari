@@ -213,6 +213,19 @@ Also this pass: F7 (clean boot loader, no overlap) confirmed live. N2 correctly 
 
 ---
 
+## Fifth pass — N3 verified partial; deeper root remains (N4)
+
+Retested with N3 deployed (calm todomvc, Slow 3G).
+
+- **N3 confirmed working**: the `Attach … gave up after 4 retries (no-active-session)` log is **gone** and telemetry **resumes** after the pause-induced socket drop — the socket now rejoins the worker-run room. The distributed reattach is fixed.
+- **N4 (deeper, still open)**: pausing under 3G ends with the **Playwright browser context closed** — even on calm todomvc (no target chaos). Sequence: engine pauses ("Safari session paused by user") → socket drops during the long settle → on STOP the engine reports `Invalid browser context ((closed)) — recovery rung 0 → Recreating browser page → Unrecoverable invalid browser state → HALTED`. Because the browser page is gone, there are no screencast frames (feed stuck "ESTABLISHING"), the run can't resume, and the client shows a phantom ACTIVE with a reset 10:00 timer. `pendingControl` stays set (N1 re-issue only runs on a full page refresh, not a mid-session socket reconnect, so it doesn't fire here).
+
+**N4 is a backend engine/pause-path issue** — something closes the Playwright context during the pause + socket-disconnect window. Diagnosing which teardown closes it needs worker-side logs (not visible from the browser) or targeted instrumentation of the worker's pause / disconnect / browser-teardown path. Not fixing blind — the next step is to add that logging and reproduce, rather than guess.
+
+Net: N3 shipped and works; N1/N2/F1/F4/F7/filter shipped; N4 (browser closes on pause under 3G) is the remaining blocker and needs worker-log instrumentation to root-cause.
+
+---
+
 ## Test coverage log
 
 Login (3G, ~clean) → Dashboard load → Start test (`example.com`, instant finish) → Findings/Network tabs → Start test (`todomvc`) → live feed + telemetry OK → **Pause on 3G → F1/F2** → Stop (crash-recovery HALT) → **Save session OK** → History (F5) → Forensic report (renders well; F8) → Settings OK → Refresh (auth persists; F4/F7) → Start test → **Refresh mid-run (run survives; F3)** → Pause/Resume on fast net (clean) → Stop (clean).
