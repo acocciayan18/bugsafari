@@ -28,6 +28,23 @@ export function resolveStatus(current: TestSessionStatus, next: TestSessionStatu
     return STATUS_TRANSITIONS[current].includes(next) ? next : current;
 }
 
+// Reconcile the status a snapshot hydrate wants to apply. A same-run hydrate
+// (reconnect, liveness probe, mid-run refetch) must not let a lagging snapshot regress
+// a held control-intent (PAUSING/PAUSED/STOPPING) back to ACTIVE: on a socket drop the
+// backend reports the session as merely live (INTERRUPTED→ACTIVE), and a blind replace
+// would wipe a just-issued pause — the pause desync seen on slow links. Keep the local
+// intent; honor any control/terminal snapshot (it is fresher, i.e. confirms the pause,
+// or authoritative, i.e. the run really ended). A fresh restore (different/empty run)
+// always takes the snapshot wholesale.
+export function reconcileHydratedStatus(
+    prev: TestSessionStatus,
+    snapshot: TestSessionStatus,
+    sameRun: boolean,
+): TestSessionStatus {
+    const heldControlIntent = prev === 'PAUSING' || prev === 'PAUSED' || prev === 'STOPPING';
+    return sameRun && heldControlIntent && snapshot === 'ACTIVE' ? prev : snapshot;
+}
+
 // Authoritative-clock display: elapsed = last engine-reported elapsed + wall-clock
 // since, but ONLY while ACTIVE and seeded. Before the first sync (boot/queue) or
 // while paused it stays frozen, so boot/queue/pause time is never counted. Pure so

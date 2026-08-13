@@ -5,6 +5,7 @@ import type {
   FindingRepository,
   SaveBrainConfigInput,
   SessionHistoryRecord,
+  SessionTerminalStats,
 } from "../../../domain/repositories/FindingRepository.js";
 import type { PaginationParams, RunTerminationOutcome } from "../../../../../shared/types.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
@@ -89,10 +90,24 @@ public async createSession(input: CreateSessionInput): Promise<string> {
     finishedAt: string,
     outcome: RunTerminationOutcome,
     reason: string,
+    stats?: SessionTerminalStats,
   ): Promise<void> {
     const objectId = toObjectId(sessionId);
     const ownerId = toObjectId(userId);
     if (!objectId || !ownerId) return;
+    // Persist the engine's real run metrics here — this fires once for EVERY run
+    // (saved or not), so history step count and forensic duration populate even when
+    // the operator never presses Save. dot-paths patch the nested stats sub-doc without
+    // replacing its other fields.
+    const metricFields = stats
+      ? {
+          actionTraceCount: stats.actionsExecuted,
+          timeElapsed: stats.runtimeMs,
+          'stats.actionsExecuted': stats.actionsExecuted,
+          'stats.runtimeMs': stats.runtimeMs,
+          'stats.pagesVisited': stats.pageCount,
+        }
+      : {};
     await SessionModel.updateOne(
       { _id: objectId, userId: ownerId },
       {
@@ -101,6 +116,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
           outcome,
           finishedAt: new Date(finishedAt),
           endedReason: reason.slice(0, 1500),
+          ...metricFields,
         },
       },
     );

@@ -560,7 +560,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold uppercase text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center text-sm gap-1.5 cursor-pointer rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold  text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix

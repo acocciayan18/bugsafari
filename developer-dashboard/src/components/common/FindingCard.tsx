@@ -13,7 +13,7 @@ import type { ReactNode } from 'react';
 import { Bug } from 'lucide-react';
 import type { FindingAttribution } from '../../types';
 import { buildFindingSummary, humanizeFindingTitle, type FindingView } from '../../utils/findingView';
-import { CategoryBadge, CopyButton, SeverityBadge } from './ForensicCardKit';
+import { CategoryInfo, CopyButton, SeverityBadge } from './ForensicCardKit';
 import CweBadge from './CweBadge';
 import FindingEvidence from './FindingEvidence';
 
@@ -97,7 +97,6 @@ export default function FindingCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
-            <CategoryBadge category={view.category} />
             {view.occurrences > 1 && (
               <span
                 title={`This fault occurred ${view.occurrences} times this session`}
@@ -108,9 +107,11 @@ export default function FindingCard({
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           {actions}
+          
           <CopyButton text={buildFindingSummary(view, index)} label="Finding" />
+          <CategoryInfo category={view.category} />
         </div>
       </div>
 

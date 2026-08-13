@@ -31,6 +31,18 @@ export interface BrainState {
   weights: Record<string, number>;
 }
 
+// Authoritative run metrics the engine holds at terminal. Persisted so the history
+// step count and forensic duration reflect the real run, not the capped/empty
+// reproduction buffer the manual-save path samples.
+export interface SessionTerminalStats {
+  /** Real interactions executed this run (uncapped) — the history "N steps". */
+  actionsExecuted: number;
+  /** Paused-aware active runtime in ms — the forensic "Duration". */
+  runtimeMs: number;
+  /** Distinct pages visited. */
+  pageCount: number;
+}
+
 export interface SessionHistoryRecord {
   id: string;
   /** Public RUN- code. Absent on legacy docs until the backfill assigns one. */
@@ -72,6 +84,10 @@ export interface FindingRepository {
     finishedAt: string,
     outcome: RunTerminationOutcome,
     reason: string,
+    // Authoritative run metrics captured by the engine at terminal. Written here so
+    // step count and duration populate for EVERY run — the manual-save path only sees a
+    // capped/empty reproduction buffer (and never runs at all for an unsaved run).
+    stats?: SessionTerminalStats,
   ): Promise<void>;
   saveBrainConfig(input: SaveBrainConfigInput): Promise<string>;
   /**

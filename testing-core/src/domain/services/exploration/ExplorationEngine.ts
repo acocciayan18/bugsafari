@@ -756,6 +756,11 @@ export class ExplorationEngine {
     return this.elapsedActiveTimeMs;
   }
 
+  /** Real interactions executed this run (uncapped) — the authoritative step count. */
+  public getInteractionCount(): number {
+    return this.runtimeMetrics.interactionCount;
+  }
+
   // Push the authoritative timebox clock to the dashboard. The frontend timer is a
   // display slaved to this — it never runs an independent countdown.
   private emitTimeSync(): void {
@@ -1630,8 +1635,18 @@ export class ExplorationEngine {
     }
 
     const { outcome, reason } = this.resolveTermination(result);
+    // Authoritative run metrics: interactionCount is the uncapped real step total, and
+    // getElapsedActiveTimeMs is paused-aware. Falls back to wall-clock from the metrics
+    // start when the active clock was never seeded (a run that ended before its first tick).
+    const runtimeMs = this.getElapsedActiveTimeMs()
+      || (this.runtimeMetrics.startTime ? Date.now() - this.runtimeMetrics.startTime : 0);
+    const stats = {
+      actionsExecuted: this.runtimeMetrics.interactionCount,
+      runtimeMs,
+      pageCount: this.runtimeMetrics.pageCount,
+    };
     try {
-      await this.findingRepo.markSessionTerminated(this.sessionId, this.userId, new Date().toISOString(), outcome, reason);
+      await this.findingRepo.markSessionTerminated(this.sessionId, this.userId, new Date().toISOString(), outcome, reason, stats);
     } catch (error) {
       obsLog.error('[ExplorationEngine] Failed to complete Safari session:', error);
     }

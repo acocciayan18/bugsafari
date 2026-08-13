@@ -274,10 +274,10 @@ export class ExplorationLoop {
         // recreated page; `unrecoverable` ends the run cleanly.
         const health = await this.deps.ensurePageHealth(page);
         if (health.status === 'unrecoverable') {
-          telemetry.emitMilestone(' Unrecoverable invalid browser state — ending exploration.');
+          telemetry.emitMilestone(' Unrecoverable invalid browser state.');
           return {
             completed: false,
-            reason: 'Unrecoverable invalid browser state (about:blank / closed page).',
+            reason: 'Unrecoverable invalid browser state.',
             outcome: 'graceful-shutdown',
           };
         }

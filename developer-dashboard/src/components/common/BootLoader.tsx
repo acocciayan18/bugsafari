@@ -8,6 +8,18 @@ const STAGES = ['Waking the engine', 'Loading workspace', 'Almost ready'];
 export default function BootLoader({ label }: { label?: string }) {
   const [stage, setStage] = useState(0);
 
+  // The pre-mount #boot-screen (index.html) and this React loader are both full-screen
+  // and branded identically. While the boot-screen fades out they overlap, and their
+  // independent stage timers stack two different lines (the garbled loading text). This
+  // loader already covers the surface, so retire the pre-mount screen at once instead of
+  // leaving it to fade underneath. Idempotent with main.tsx's own dismiss (guards on el).
+  useEffect(() => {
+    const el = document.getElementById('boot-screen');
+    if (!el) return;
+    (window as unknown as { __stopBoot?: () => void }).__stopBoot?.();
+    el.remove();
+  }, []);
+
   // Rotate reassurance copy on slow connections; a fixed label opts out.
   useEffect(() => {
     if (label) return;

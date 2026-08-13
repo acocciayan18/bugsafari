@@ -424,7 +424,6 @@ export class StartExplorationUseCase {
             : new Date(Date.now() - runtimeMs);
 
         const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
-        const coveragePercentage = Math.min(100, Math.round((actionRecords.length / maxActions) * 100));
 
         // Session-global execution context for history hydration. Distinct visited
         // routes come from the engine; WCAG findings are ephemeral (never persisted),
@@ -449,13 +448,22 @@ export class StartExplorationUseCase {
         // targetUrl is included so the save preserves the authoritative URL the
         // worker recorded at run start (createSessionDoc) rather than overwriting
         // it with a possibly-stale client value from a remounted dashboard.
-        const terminalFields = 'status outcome endedReason finishedAt targetUrl';
+        const terminalFields = 'status outcome endedReason finishedAt targetUrl stats';
         const existing = (requestedCode
             ? await SessionModel.findOne({ runId: requestedCode, ...ownedBy }).select(terminalFields).lean()
             : null)
             ?? (originalSessionId
                 ? await SessionModel.findOne({ _id: originalSessionId, ...ownedBy }).select(terminalFields).lean()
                 : null);
+
+        // The reproduction buffer (actionRecords) is a capped ≤60 rolling window and is
+        // empty for a cross-process (queue) save, so it under-counts steps. Prefer the
+        // engine's uncapped interaction total, and never regress the authoritative value
+        // markSessionTerminated already wrote at run end.
+        const engineInteractions = this.browserEngine.getInteractionCount?.() ?? 0;
+        const persistedActions = Math.max(engineInteractions, actionRecords.length, existing?.stats?.actionsExecuted ?? 0);
+        const persistedRuntime = Math.max(runtimeMs, existing?.stats?.runtimeMs ?? 0);
+        const persistedCoverage = Math.min(100, Math.round((persistedActions / maxActions) * 100));
 
         const lifecycleFields = existing?.outcome
             ? {
@@ -479,21 +487,21 @@ export class StartExplorationUseCase {
             startedAt,
             savedManually: true,
             findingCount: findingsTotal,
-            actionTraceCount: actionRecords.length,
+            actionTraceCount: persistedActions,
             config: {
                 maxActions,
             },
             stats: {
-                runtimeMs,
-                actionsExecuted: actionRecords.length,
+                runtimeMs: persistedRuntime,
+                actionsExecuted: persistedActions,
                 findingsFound: findingsTotal,
                 pagesVisited: visitedRoutes.length,
                 errorsEncountered,
-                coveragePercentage,
+                coveragePercentage: persistedCoverage,
                 maxActions,
             },
             metrics: {
-                totalActions: actionRecords.length,
+                totalActions: persistedActions,
                 totalBugsFound: findingsTotal,
                 bugsByCategory: breakdownCategories,
             },
@@ -504,7 +512,7 @@ export class StartExplorationUseCase {
             actionSteps,
             visitedRoutes,
             executionDate: startedAt,
-            timeElapsed: runtimeMs,
+            timeElapsed: persistedRuntime,
         };
 
         try {

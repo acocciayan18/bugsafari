@@ -57,8 +57,8 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[13px] font-medium transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={`Copy ${label || 'content'} to clipboard`}
     >
-      <Copy className="h-3.5 w-3.5" />
-      <span className="text-[13px] cursor-pointer">{copied ? 'Copied!' : 'Copy'}</span>
+      <Copy className="h-3 w-3" />
+      <span className="text-xs cursor-pointer">{copied ? 'Copied!' : 'Copy'}</span>
     </button>
   );
 };
@@ -128,19 +128,21 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   );
 };
 
-// Broad bug-family label with an info affordance — the title carries a plain-English
-// blurb explaining the family in student-friendly terms. Shared by the live Errors
-// tab and the saved report so both label a finding's category identically.
-export const CategoryBadge = ({ category }: { category?: BugCategory }) => {
+// Broad bug-family affordance — an icon-only control that sits in the card's
+// top-right action cluster (beside Copy). The tooltip carries the family label plus
+// a plain-English blurb, so the category stays discoverable without a title-row badge.
+// Shared by the live Errors tab and the saved report so both label findings identically.
+export const CategoryInfo = ({ category }: { category?: BugCategory }) => {
   const meta = category ? BUG_CATEGORY_META[category] : undefined;
   if (!meta) return null;
   return (
     <span
-      title={meta.blurb}
-      className="inline-flex shrink-0 cursor-help items-center gap-1 rounded-full border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-semibold text-(--text-secondary)"
+      title={`${meta.label}: ${meta.blurb}`}
+      role="img"
+      aria-label={`Bug category: ${meta.label}. ${meta.blurb}`}
+      className="inline-flex h-7 w-7 shrink-0 cursor-help items-center justify-center rounded text-(--text-tertiary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary)"
     >
-      {meta.label}
-      <Info className="h-3 w-3 text-(--text-tertiary)" aria-hidden="true" />
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
     </span>
   );
 };

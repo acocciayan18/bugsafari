@@ -34,6 +34,7 @@ import {
     lifecycleToStatus,
     lifecycleIsLive,
     resolveStatus,
+    reconcileHydratedStatus,
     type TestSessionStatus,
     type QueueUpdate,
 } from './types';
@@ -502,6 +503,12 @@ export const useRunStore = create<RunState>((set, get) => ({
         // hydrate must keep the frame already on screen instead of blanking the feed.
         const frame = snapshotFrame ?? (sameRun && live ? prev.liveFrame : null);
 
+        // Status is the one field a same-run hydrate must NOT blindly replace — a lagging
+        // reconnect snapshot (session marked INTERRUPTED → ACTIVE on a socket drop) would
+        // otherwise knock a just-issued PAUSING/PAUSED/STOPPING back to ACTIVE, the pause
+        // desync seen on slow links. See reconcileHydratedStatus for the full rationale.
+        const reconciledStatus = reconcileHydratedStatus(prev.status, lifecycleToStatus(snapshot.status), sameRun);
+
         set({
             telemetry,
             networkEvents,
@@ -513,7 +520,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             activeTimeboxMs: snapshot.timeboxMs,
             elapsedTimeMs,
             remainingTimeMs,
-            status: lifecycleToStatus(snapshot.status),
+            status: reconciledStatus,
             isTestRunning: live,
             hasRunCompleted: !live,
             // The snapshot field is authoritative — the telemetry buffer is capped and

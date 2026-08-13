@@ -19,6 +19,8 @@ export interface BrowserEngine {
   settlePendingTasks?(): Promise<void>;
   /** Get the accumulated active execution time in milliseconds. Only counts time when NOT paused. */
   getElapsedActiveTimeMs?(): number;
+  /** Real interactions executed this run (uncapped) — the authoritative history step count. */
+  getInteractionCount?(): number;
   /** Check if timebox has been exceeded. Returns true only when elapsed time >= timeboxMs AND NOT paused. */
   isTimeboxExceeded?(timeboxMs?: number): boolean;
   getConfirmedBugsFromMemory?(): Array<{
