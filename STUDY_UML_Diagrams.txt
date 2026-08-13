@@ -1,0 +1,204 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE STUDY GUIDE
+TOPIC: UML DIAGRAMS
+========================================================================
+
+--------------------------------------------------------------------
+1. WHAT THEY REPRESENT
+--------------------------------------------------------------------
+Two UML diagrams describe BugSafari.
+
+  * A CLASS DIAGRAM of the main backend classes that carry out a test run,
+    with the methods that connect them. It is kept at DESIGN level: it
+    shows the classes that matter to behaviour and the few methods that
+    pass work between them, not every field and helper in the code.
+
+  * A USE CASE DIAGRAM showing what each kind of user is allowed to do.
+
+
+--------------------------------------------------------------------
+2. PURPOSE AND IMPORTANCE IN BUGSAFARI
+--------------------------------------------------------------------
+The class diagram shows the STRUCTURE of the engine and, crucially, how it
+stays independent of the tools around it (Playwright, Socket.IO, MongoDB)
+through interfaces. The use case diagram shows the BEHAVIOUR from the
+user's side: who can do what, and where an account is required. Together
+they cover "how the code is arranged" and "what the system offers".
+
+
+--------------------------------------------------------------------
+3. THE CLASS DIAGRAM - MAIN CLASSES AND RESPONSIBILITIES
+--------------------------------------------------------------------
+Three interfaces (left side) keep the engine independent of its tools:
+  BrowserEngine     - run(config): RunResult
+  TelemetryGateway  - emitTelemetry, emitLiveFrame, emitIncidentReport
+  FindingRepository - createSession, saveBrainConfig, loadLatestBrainConfig,
+                      listSessionHistory
+
+The classes and what each is responsible for:
+  StartExplorationUseCase - Entry point for a run. Checks the request, sets
+                            up the engine, settles the run when it ends.
+  SessionManager          - Tracks which runs are active and who owns each.
+  PlaywrightBrowserEngine - Opens a real Chromium browser and hands the
+                            page to the engine.
+  ExplorationEngine       - Owns run state: pages already seen, the last
+                            twenty actions, and the learned weights.
+  ExplorationLoop         - Runs one step at a time: read the page, score,
+                            act, check the result, hash the new state.
+  RecursiveDomParser      - Walks the page, returns the elements a user
+                            could interact with.
+  RiskScorer              - Ranks those elements. Mixes fixed rules with
+                            the learned model, weighted 60 to 40.
+  SingleLayerPerceptron   - The learning part. Scores a feature vector and
+                            updates its weights with the delta rule.
+  ActionExecutor          - Performs the chosen action, or runs an attack
+                            scenario such as form bypass or data fuzzing.
+  DomHasher               - Turns the page structure into a short hash so
+                            repeats can be spotted.
+  StateGraphNavigator     - Decides where to go next and when to backtrack.
+  TelemetryEmitter        - Formats what just happened and pushes it to the
+                            dashboard.
+  MongoFindingRepository  - The only class that writes runs and learned
+                            weights to the database.
+  InteractiveElement      - A value object: selector, tag, label, bounding
+                            box for one on-page element.
+
+
+--------------------------------------------------------------------
+4. HOW THE CLASSES CONNECT (RELATIONSHIPS)
+--------------------------------------------------------------------
+Interface realisations (a concrete class implements an interface):
+  BrowserEngine     <|.. PlaywrightBrowserEngine
+  TelemetryGateway  <|.. SocketTelemetryGateway
+  FindingRepository <|.. MongoFindingRepository
+
+Associations and dependencies (who uses whom):
+  StartExplorationUseCase --> BrowserEngine, FindingRepository,
+                              SessionManager
+  PlaywrightBrowserEngine --> ExplorationEngine
+  ExplorationEngine       --> ExplorationLoop, StateGraphNavigator,
+                              TelemetryEmitter
+  ExplorationEngine       ..> FindingRepository
+  ExplorationLoop         --> RecursiveDomParser, RiskScorer,
+                              ActionExecutor, DomHasher, BugFinder
+  RecursiveDomParser      ..> InteractiveElement
+  RiskScorer              --> SingleLayerPerceptron
+  RiskScorer              ..> InteractiveElement
+  TelemetryEmitter        --> TelemetryGateway
+
+The three interfaces on the left keep the engine independent of the tools
+around it. The engine talks to BrowserEngine, TelemetryGateway and
+FindingRepository, NOT to Playwright, Socket.IO or MongoDB directly. This
+is the dependency inversion that makes each tool swappable and testable.
+
+
+--------------------------------------------------------------------
+5. THE USE CASE DIAGRAM - ACTORS AND USE CASES
+--------------------------------------------------------------------
+Two actors: Guest Tester and Tester.
+
+Use cases:
+  UC1 Register and Sign In
+  UC2 Start a Test Run
+  UC3 Watch the Live Feed
+  UC4 Pause or Stop a Run
+  UC5 Save a Run
+  UC6 View Forensic Report
+  UC7 Get a Fix Suggestion
+  UC8 Verify a Fix
+  UC9 Change Settings
+
+Actor permissions:
+  Register and Sign In   Tester: Yes   Guest: No
+  Start a Test Run       Tester: Yes   Guest: Yes
+  Watch the Live Feed    Tester: Yes   Guest: Yes
+  Pause or Stop a Run    Tester: Yes   Guest: Yes
+  Save a Run             Tester: Yes   Guest: No
+  View Forensic Report   Tester: Yes   Guest: No
+  Get a Fix Suggestion   Tester: Yes   Guest: No
+  Verify a Fix           Tester: Yes   Guest: No
+  Change Settings        Tester: Yes   Guest: Local only, not stored
+
+
+--------------------------------------------------------------------
+6. THE UML RELATIONSHIPS IN THE USE CASE DIAGRAM
+--------------------------------------------------------------------
+Generalization:
+  The Tester GENERALIZES the Guest Tester. It inherits every guest use
+  case (run, watch, pause/stop, settings) and adds the ones that require
+  an account. Drawing the generalization once removes the duplicate
+  associations the two actors would otherwise share.
+
+Include (mandatory dependency):
+  Save a Run        --«include»--> Register and Sign In
+  View Forensic Report --«include»--> Register and Sign In
+  Because both saving and viewing a report presuppose a signed-in session,
+  each carries an «include» on Register and Sign In.
+
+Extend (optional dependency):
+  Get a Fix Suggestion --«extend»--> View Forensic Report
+  Verify a Fix         --«extend»--> View Forensic Report
+  These are «extend», not «include»: neither runs on its own and neither
+  is mandatory. Each is started optionally from inside an already-open
+  forensic report, acting on one selected finding.
+
+Enforcement: a guest can do the testing but not the keeping. The system
+enforces this in two places: the save route rejects a request without a
+signed-in user, and the dashboard sends a guest back to the main screen if
+they try to open the history pages.
+
+
+--------------------------------------------------------------------
+7. WHY THIS DESIGN WAS CHOSEN
+--------------------------------------------------------------------
+  * Interfaces (BrowserEngine, TelemetryGateway, FindingRepository) invert
+    the dependencies so the engine never names a concrete tool. This is
+    what allows Playwright, Socket.IO or MongoDB to be replaced or mocked.
+  * The class diagram is kept at design level so it communicates the
+    architecture without drowning in every field and helper.
+  * Generalization in the use case diagram removes duplication between the
+    two actors and states the account boundary once.
+  * «include» vs «extend» precisely captures "required" vs "optional":
+    saving and reports require an account; fix suggestion and verify are
+    optional add-ons to an open report.
+
+
+--------------------------------------------------------------------
+8. POSSIBLE DEFENSE QUESTIONS AND SUGGESTED ANSWERS
+--------------------------------------------------------------------
+Q: Why are there three interfaces on the left of the class diagram?
+A: BrowserEngine, TelemetryGateway and FindingRepository let the engine
+   depend on abstractions instead of Playwright, Socket.IO and MongoDB.
+   This dependency inversion makes each tool swappable and lets the engine
+   be tested in isolation.
+
+Q: Which single class writes to the database, and why does that matter?
+A: MongoFindingRepository. Concentrating all persistence in one class
+   keeps storage concerns out of the engine and means the database can be
+   changed by replacing just that class.
+
+Q: What does the ExplorationLoop do versus the ExplorationEngine?
+A: The engine owns run state (pages seen, last twenty actions, learned
+   weights). The loop runs one step at a time: read the page, score, act,
+   check the result, hash the new state.
+
+Q: In the use case diagram, why is Tester a generalization of Guest?
+A: The Tester can do everything a guest can plus account-only actions.
+   Modelling it as generalization inherits the shared use cases once
+   instead of duplicating associations for both actors.
+
+Q: What is the difference between «include» and «extend» here?
+A: «include» is a mandatory dependency: Save a Run and View Forensic
+   Report always require Register and Sign In. «extend» is optional: Get a
+   Fix Suggestion and Verify a Fix are optional extensions started from
+   inside an already-open report.
+
+Q: How is the guest restriction actually enforced, not just drawn?
+A: In two places: the save route rejects any request without a signed-in
+   user, and the dashboard redirects a guest away from the history pages.
+
+Q: Why keep the class diagram at design level instead of showing every
+   field?
+A: To communicate the architecture and the collaborations clearly. Showing
+   every field and helper would obscure the few methods that actually pass
+   work between classes.

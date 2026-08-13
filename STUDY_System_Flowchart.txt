@@ -1,0 +1,177 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE STUDY GUIDE
+TOPIC: SYSTEM FLOWCHART
+========================================================================
+
+--------------------------------------------------------------------
+1. WHAT IT REPRESENTS
+--------------------------------------------------------------------
+There are two flowcharts.
+
+  * The MAIN RUN flowchart follows one complete test run from the moment
+    the tester submits a URL to the moment the report is either saved or
+    dropped.
+  * The LEARNING LOOP flowchart isolates how the engine's scoring model
+    improves itself, which is easier to follow on its own.
+
+The decision points in the middle of the main flowchart are the important
+part, because they are what separates BugSafari from a recorded test
+script: the system decides at every step which element to touch, whether
+it has already seen the page it landed on, and whether something went
+wrong.
+
+
+--------------------------------------------------------------------
+2. PURPOSE AND IMPORTANCE IN BUGSAFARI
+--------------------------------------------------------------------
+A recorded script does the same thing every time. BugSafari does not. The
+flowchart's job is to show the DECISIONS the engine makes on its own,
+which is the heart of "autonomous exploratory testing". It also shows the
+three separate ways a run can end and the single point where a guest run
+differs from a signed-in run.
+
+
+--------------------------------------------------------------------
+3. THE MAIN RUN FLOW (STEP BY STEP)
+--------------------------------------------------------------------
+  Start
+   -> Tester submits target URL and picks attack types
+   -> DECISION: URL valid and reachable?
+        No  -> Show error message -> End
+        Yes -> Create run record and open Chromium browser
+   -> Load learned weights for this site if any exist (warm start)
+   -> Open the target page
+
+  The exploration loop:
+   -> Read the page and list the interactive elements
+   -> DECISION: Any usable elements?
+        No  -> Go back to the previous page -> (check limits)
+        Yes -> Score every element with the rules plus the learned model
+   -> Pick the highest-scoring element not yet tried here
+   -> Perform the action, or run an attack scenario on it
+   -> Record what happened: new page, console errors, failed requests
+   -> Hash the new page structure
+   -> DECISION: Page already seen?
+        Yes -> Lower that element's score and mark the path as stale
+        No  -> Record the new page as visited
+   -> DECISION: Did the bug finders confirm a problem?
+        Yes -> Save the finding with its severity and the steps that
+               caused it
+        No  -> (continue)
+   -> Send the step, screenshot and any errors to the dashboard
+   -> Update the model weights from the result of this action
+   -> DECISION: Step limit reached, timeout, or stop pressed?
+        No  -> DECISION: Still something new to try on this page?
+                 Yes -> back to "Read the page"
+                 No  -> Move to a different page or backtrack ->
+                        "Read the page"
+        Yes -> Close the browser and build the summary
+   -> DECISION: Is the user signed in?
+        Yes -> Save the run, findings and logs to the database ->
+               Report available in history -> End
+        No  -> Discard the run, keep it on screen only -> End
+
+
+--------------------------------------------------------------------
+4. THE LEARNING LOOP FLOW
+--------------------------------------------------------------------
+  Turn the element into features: tag, input type, keywords in the label,
+    size, position on the page
+   -> Model produces a score between 0 and 1
+   -> Mix it with the rule-based score (60 percent rules, 40 percent
+      model)
+   -> Act on the best element
+   -> DECISION: Was the action useful?
+        New page or a finding      -> Reward: push the weights TOWARDS
+                                       this kind of element
+        Nothing changed or a repeat-> Penalty: push the weights AWAY from
+                                       it
+   -> Apply the delta rule and adjust the weights
+   -> Every ten steps, save the weights for this user and site
+   -> back to features
+
+
+--------------------------------------------------------------------
+5. THE DECISION POINTS EXPLAINED (WHY EACH EXISTS)
+--------------------------------------------------------------------
+  URL valid and reachable      - Blocks bad addresses and internal or
+                                 private addresses before a browser opens.
+  Any usable elements          - A page with nothing to click is a dead
+                                 end, so the engine backs out instead of
+                                 stalling.
+  Page already seen            - The structural hash catches loops.
+                                 Without it the engine would keep clicking
+                                 between the same two screens.
+  Did the bug finders confirm  - Raw console noise is not a bug. A finding
+                                 is only recorded when a finder can name
+                                 the cause.
+  Step limit, timeout, or stop - Three separate ways for a run to end, so
+                                 it always terminates.
+  Is the user signed in        - Guests reach the same summary but nothing
+                                 is written to the database.
+
+
+--------------------------------------------------------------------
+6. NOTES ON THE LEARNING STEP
+--------------------------------------------------------------------
+The score used to pick an element is not purely learned. Sixty percent
+comes from fixed rules about tags, input types and keywords in labels, and
+forty percent from the model. This keeps early behaviour sensible before
+the model has seen anything, and lets the model improve the ranking over
+time.
+
+The weights are saved against BOTH the user and the site address. A run
+against the same site later starts with the weights from last time instead
+of starting over, and one user's learned weights are never used for
+another user's run.
+
+
+--------------------------------------------------------------------
+7. WHY THE DESIGN WAS CHOSEN
+--------------------------------------------------------------------
+  * Decisions at every step (which element, seen-before, went-wrong) are
+    what make the tool exploratory rather than scripted.
+  * A structural hash for loop detection is cheaper and more reliable than
+    trying to remember exact URLs, and it catches pages that look the same.
+  * Three independent stop conditions guarantee termination, so a run
+    never hangs forever.
+  * A 60/40 rules-to-model blend gives sensible behaviour on step one and
+    still improves with learning, avoiding a cold-start problem.
+
+
+--------------------------------------------------------------------
+8. POSSIBLE DEFENSE QUESTIONS AND SUGGESTED ANSWERS
+--------------------------------------------------------------------
+Q: What makes this different from a recorded test script?
+A: The decision points. At every step the engine chooses which element to
+   touch, checks whether the page is one it already saw, and judges
+   whether something went wrong. A script would replay fixed steps.
+
+Q: How does the engine avoid getting stuck in a loop?
+A: It hashes the structure of each new page. If the hash was seen before,
+   it lowers the score of the element that led there and marks the path as
+   stale, so it stops cycling between the same screens.
+
+Q: How is a real bug distinguished from console noise?
+A: A finding is only recorded when a bug finder can name the cause. Raw
+   console output alone is not treated as a bug.
+
+Q: How does a run terminate?
+A: Three separate conditions: the step limit is reached, a timeout, or the
+   operator presses stop. Any one ends the run, so it always terminates.
+
+Q: Why blend rules and the learned model 60/40 instead of using the model
+   alone?
+A: On the first run the model has learned nothing, so pure model scores
+   would be poor. Fixed rules give sensible behaviour immediately, and the
+   model's 40 percent improves the ranking as it learns.
+
+Q: What is a warm start?
+A: Before a run, the engine loads weights learned from a previous run
+   against the same site (for the same user), so it does not start from
+   scratch each time.
+
+Q: What is different for a guest at the end of a run?
+A: A guest reaches the same summary, but nothing is written to the
+   database. The run is kept on screen only and discarded when the tab
+   closes.

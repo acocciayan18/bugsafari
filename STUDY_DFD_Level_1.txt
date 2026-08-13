@@ -1,0 +1,197 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE STUDY GUIDE
+TOPIC: DATA FLOW DIAGRAM - LEVEL 1
+========================================================================
+
+--------------------------------------------------------------------
+1. WHAT IT REPRESENTS
+--------------------------------------------------------------------
+The Level 1 DFD opens up the single "BugSafari" process from the context
+diagram and splits it into the SEVEN main processes the system actually
+performs. It also shows the TEN data stores (places where data is kept).
+
+The external entities are the same five from Level 0 (Tester, Guest,
+Target Web App, AI Advisor, Email Service), so the two diagrams line up.
+Read this one as the answer to: "what happens inside BugSafari, and what
+does each part read or write".
+
+
+--------------------------------------------------------------------
+2. PURPOSE AND IMPORTANCE IN BUGSAFARI
+--------------------------------------------------------------------
+Level 0 says WHAT crosses the boundary. Level 1 says HOW the system is
+organized inside: which processes exist, what each one does, and which
+data stores each reads or writes. It is the bridge between the outside
+view and the actual code modules, and each process maps to a real folder
+in the source tree.
+
+
+--------------------------------------------------------------------
+3. THE SEVEN PROCESSES (WHAT EACH DOES + WHERE IT LIVES)
+--------------------------------------------------------------------
+  1.0 Manage Account
+      Registration, sign in, token renewal, password reset, profile and
+      settings.
+      Source: testing-core/src/presentation/authentication/
+
+  2.0 Start Test Run
+      Checks the target URL, reads the chosen attack types, creates the
+      run and hands it to the engine.
+      Source: presentation/api/registerRoutes.ts, POST /api/start-test
+
+  3.0 Explore Web App
+      The main loop: read the page, score elements, act, hash the new
+      state, avoid repeats.
+      Source: domain/services/exploration/ExplorationLoop.ts
+
+  4.0 Detect Bugs
+      Turns raw browser signals into confirmed findings with a cause and
+      a severity.
+      Source: bugs/finders/
+
+  5.0 Stream Live Results
+      Pushes each step, screenshot, console line and finding to the
+      dashboard as it happens.
+      Source: infrastructure/socket/SocketTelemetryGateway.ts
+
+  6.0 Save and View History
+      Writes a finished run to storage and reads it back for the report
+      screen.
+      Source: infrastructure/database/repositories/
+
+  7.0 Suggest Fixes
+      Sends one finding to the AI Advisor and stores the answer with that
+      finding.
+      Source: infrastructure/ai/GeminiRemediationAdvisor.ts
+
+
+--------------------------------------------------------------------
+4. THE TEN DATA STORES (WHAT EACH HOLDS)
+--------------------------------------------------------------------
+  D1 Users            - Accounts, hashed passwords, personal settings
+  D2 Sessions         - One record per test run, with its findings and
+                        step trail inside it
+  D3 Forensic Errors  - Individual errors caught during a run, with type
+                        and severity
+  D4 Console Logs     - Every console message printed by the tested page
+  D5 Network Logs     - Requests that failed during the run
+  D6 Run Telemetry    - Browser version, screen size, timings and counts
+  D7 Forensic Analysis- The risk score and root cause summary for a run
+  D8 Brain Configs    - Scoring weights the engine learned, per user and
+                        per site
+  D9 Refresh Tokens   - Long-lived sign-in tokens, so a session survives a
+                        page reload
+  D10 Support Tickets - Contact and feature-request messages
+
+
+--------------------------------------------------------------------
+5. THE FLOW OF DATA (HOW PROCESSES AND STORES INTERACT)
+--------------------------------------------------------------------
+Account (1.0):
+  Tester -> 1.0 : email and password
+  1.0 -> Tester : sign-in token
+  1.0 <-> D1 Users : write account record, read stored password to check
+  1.0 <-> D9 Refresh Tokens : write issued token, read token on renewal
+  1.0 -> Email Service : reset link request
+
+Start a run (2.0):
+  Tester or Guest -> 2.0 : target URL and settings
+  2.0 -> D2 Sessions : new run record
+  2.0 -> 3.0 : run instructions
+
+Explore (3.0) - the learning loop:
+  D8 Brain Configs -> 3.0 : learned weights from past runs
+  3.0 -> D8 Brain Configs : updated weights
+  3.0 -> Target Web App : clicks and typed input
+  Target Web App -> 3.0 : page content
+  3.0 -> 4.0 : what happened after each action
+  3.0 -> 5.0 : step updates and screenshots
+
+Detect bugs (4.0):
+  Target Web App -> 4.0 : console errors and failed requests
+  4.0 -> D3 Forensic Errors : recorded errors
+  4.0 -> D4 Console Logs : console messages
+  4.0 -> D5 Network Logs : failed requests
+  4.0 -> D6 Run Telemetry : browser and run measurements
+  4.0 -> D2 Sessions : findings and step trail
+  4.0 -> 5.0 : confirmed findings
+
+Stream results (5.0):
+  5.0 -> Tester and Guest : live progress and findings
+
+Save and view history (6.0):
+  Tester -> 6.0 : save run, open report
+  6.0 -> Tester : saved run and report
+  D2..D6 -> 6.0 : stored runs, errors, console, failed requests,
+                  measurements
+  6.0 <-> D7 Forensic Analysis : write and read risk summary
+  Tester -> 6.0 : support message ; 6.0 -> D10 : ticket
+
+Suggest fixes (7.0):
+  Tester -> 7.0 : ask for a fix
+  D2 Sessions -> 7.0 : bug details
+  7.0 -> AI Advisor : bug details and page context
+  AI Advisor -> 7.0 : suggested fix
+  7.0 -> D2 Sessions : saved suggestion
+  7.0 -> Tester : suggested fix
+
+
+--------------------------------------------------------------------
+6. IMPORTANT BEHAVIOURS THE DIAGRAM CAPTURES
+--------------------------------------------------------------------
+  * Process 3.0 both READS and WRITES D8 Brain Configs. It loads the
+    weights learned on a previous run against the same site before it
+    starts, and writes the updated weights back as the run goes on. This
+    is what makes a second run on the same site smarter than the first.
+
+  * Nothing is written to storage for a Guest Tester. Processes 3.0, 4.0
+    and 5.0 still run in full, but 6.0 refuses to save, so a guest only
+    ever sees the live stream.
+
+  * Sending a finding to the AI Advisor in 7.0 is a MANUAL action. It
+    never happens on its own during a run.
+
+
+--------------------------------------------------------------------
+7. WHY THE DESIGN WAS CHOSEN
+--------------------------------------------------------------------
+  * Seven processes each map to one real source folder, so the diagram
+    doubles as a map of the codebase.
+  * Splitting "Explore" (3.0), "Detect Bugs" (4.0) and "Stream" (5.0)
+    keeps the busy run loop readable and lets each be replaced on its own.
+  * Keeping save/history (6.0) separate from the run loop is what allows a
+    guest to run without saving: the guard lives in one place.
+
+
+--------------------------------------------------------------------
+8. POSSIBLE DEFENSE QUESTIONS AND SUGGESTED ANSWERS
+--------------------------------------------------------------------
+Q: How does Level 1 relate to Level 0?
+A: It expands the single BugSafari process into its seven internal
+   processes and ten data stores. The five external entities are the same,
+   so the two diagrams stay consistent.
+
+Q: Which process makes the system "learn"?
+A: Process 3.0 Explore Web App. It reads learned weights from D8 Brain
+   Configs before a run and writes updated weights back during the run, so
+   a repeat run on the same site starts smarter.
+
+Q: Where is guest behaviour enforced in the flow?
+A: Processes 3.0, 4.0, 5.0 run in full for a guest, but process 6.0 Save
+   and View History refuses to save. The single save guard is what keeps
+   guest runs out of storage.
+
+Q: Why separate Detect Bugs (4.0) from Explore (3.0)?
+A: Exploration decides what to touch; bug detection turns raw browser
+   signals into confirmed findings with a cause and severity. Separating
+   them keeps each concern independent and testable.
+
+Q: Is a fix suggestion automatic?
+A: No. Process 7.0 runs only when the tester manually asks for a fix on a
+   selected finding; it never fires on its own during a run.
+
+Q: Why does one process write to several data stores (4.0 to D2..D6)?
+A: A single action can produce different kinds of evidence at once: typed
+   errors, console lines, failed requests, run measurements, plus the
+   confirmed finding stored on the session. Each goes to the store built
+   for it.

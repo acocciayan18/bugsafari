@@ -1,0 +1,210 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE STUDY GUIDE
+TOPIC: DATABASE DIAGRAM (NoSQL)
+========================================================================
+
+--------------------------------------------------------------------
+1. WHAT IT REPRESENTS
+--------------------------------------------------------------------
+The database diagram shows how BugSafari stores all of its information
+inside MongoDB, which is a NoSQL (document) database. Instead of rows in
+fixed tables, MongoDB keeps records as flexible documents grouped into
+collections. BugSafari uses eleven collections.
+
+The diagram is drawn as an Entity Relationship Diagram (ERD). Each box is
+a collection, the lines between boxes show which collection points at
+which, and inside each box are the fields that matter for understanding
+the design. Some fields (counters, cached results, run settings) are left
+out on purpose so the picture stays readable.
+
+
+--------------------------------------------------------------------
+2. PURPOSE AND IMPORTANCE IN BUGSAFARI
+--------------------------------------------------------------------
+Everything BugSafari learns during a test run has to be kept somewhere so
+the operator can come back later and read a report. The database is that
+memory. Its importance is threefold:
+
+  a) It groups every piece of a run under one run identity, so a full
+     report can be rebuilt later.
+  b) It keeps one operator's data completely separate from another's
+     (multi-tenant isolation).
+  c) It automatically throws away runs nobody chose to keep, so storage
+     does not grow forever.
+
+
+--------------------------------------------------------------------
+3. HOW IT WORKS (THE DESIGN)
+--------------------------------------------------------------------
+The whole design is built around TWO central records:
+
+  * USER    - a registered operator of the system.
+  * SESSION - a single automated test run.
+
+Every other record hangs off one of these two, directly or indirectly.
+
+Each record gets its own automatic unique identifier called "_id".
+Records refer to each other by storing a copy of a parent's "_id":
+
+  * A SESSION stores the owner's id in a field named "userId".
+    This is how the system always knows which operator a run belongs to.
+
+  * The run's supporting records (errors, console logs, network logs,
+    run telemetry, analysis, live events) each store the session's id in
+    a field named "forensicRunId".
+
+  * The learned scoring configurations (brain_configs) store the session
+    id in a field named "sessionId", plus the userId.
+
+Because every supporting record carries the id of its parent session, the
+system can collect everything belonging to one run by selecting the
+records whose stored id matches that run.
+
+
+--------------------------------------------------------------------
+4. THE ELEVEN COLLECTIONS (WHAT EACH MEANS)
+--------------------------------------------------------------------
+  users            - Operator accounts and personal settings. Email is
+                     unique; password is stored as a bcrypt hash.
+  sessions         - One document per test run. ALSO holds the findings
+                     and the action trail inside itself. runId is the
+                     short public code (e.g. RUN-1A2B3C); userId is owner.
+  forensic_errors  - Each fault caught during a run, with a type and a
+                     severity grade. Points at session via forensicRunId.
+  console_logs     - Every console message the tested page printed.
+  network_logs     - Every network request made during the run, both
+                     successful and failed.
+  telemetry_events - The ordered live-event stream, kept so a viewer who
+                     reconnects can replay the run in order (seq = order).
+  forensic_telemetry - Browser, screen size, duration, interaction counts.
+                     One document per run.
+  forensic_analysis  - The risk score and root cause worked out from the
+                     recorded errors.
+  brain_configs    - Snapshots of the scoring weights the engine learned,
+                     looked up by userId together with targetUrl.
+  refreshtokens    - Long-lived sign-in tokens stored as hashes; familyId
+                     groups a chain of token renewals.
+  support_tickets  - Contact messages and feature requests; userId may be
+                     empty for a guest.
+
+
+--------------------------------------------------------------------
+5. HOW THE COMPONENTS INTERACT (RELATIONSHIPS)
+--------------------------------------------------------------------
+A user connects to many records; a session connects to many records.
+
+  USER  --owns-->        many SESSIONS
+  USER  --holds-->       many REFRESH_TOKENS
+  USER  --learns-->      many BRAIN_CONFIGS
+  USER  --submits-->     zero or more SUPPORT_TICKETS
+
+  SESSION --produces-->  many FORENSIC_ERRORS
+  SESSION --produces-->  many CONSOLE_LOGS
+  SESSION --produces-->  many NETWORK_LOGS
+  SESSION --streams-->   many TELEMETRY_EVENTS
+  SESSION --snapshots--> many BRAIN_CONFIGS
+  SESSION --summarised by--> FORENSIC_ANALYSIS
+  SESSION --measured by-->   exactly one FORENSIC_TELEMETRY
+
+To display a report the system first reads the SESSION (which already
+contains the findings and the action trail), then reads the supporting
+collections by matching the session id.
+
+
+--------------------------------------------------------------------
+6. A KEY DESIGN CHOICE: FINDINGS LIVE INSIDE THE SESSION
+--------------------------------------------------------------------
+Findings do NOT have their own collection. Each session document has a
+"forensicTrace" field, and inside it a "caughtBugs" array. Each entry is
+one finding, carrying its own message, severity, reproduction steps, and
+its own copy of the action steps that led to it.
+
+This is deliberate. A finding is never read without its run, so keeping
+the two together lets the report screen load from a SINGLE document
+instead of joining several collections. This is the classic NoSQL idea:
+embed data that is always read together.
+
+The same applies to "actionSteps" (the run-wide list of what the engine
+did, capped at sixty steps) and "visitedRoutes" (capped at five hundred),
+so one long run cannot grow a document without limit.
+
+
+--------------------------------------------------------------------
+7. RETENTION (AUTOMATIC CLEANUP)
+--------------------------------------------------------------------
+Unsaved runs are deleted automatically 24 hours after they start. This is
+done with an expiry (TTL) index on "startedAt" that applies only to
+documents where "savedManually" is false. When an operator saves a run,
+that flag becomes true and the document drops out of the expiry rule, so
+saved history is kept indefinitely.
+
+MongoDB does not delete child documents when a parent expires, so a
+background job runs every hour, looks for supporting records whose session
+no longer exists, and removes them. Deleting a run from the history screen
+removes its supporting records immediately.
+
+
+--------------------------------------------------------------------
+8. SEPARATION BETWEEN OPERATORS (SECURITY)
+--------------------------------------------------------------------
+The session document REQUIRES a userId, and every query that reads or
+writes a session includes that operator's id in the filter. The supporting
+collections carry no operator id of their own, so a report request first
+looks up the session by its id and owner, then reads supporting records
+for that session. One operator can never read another operator's runs.
+
+Guest runs are never written to the database. Because a session cannot be
+created without a user id, a guest run lives only in memory and on screen
+for as long as the browser tab is open.
+
+
+--------------------------------------------------------------------
+9. WHY THIS DESIGN WAS CHOSEN
+--------------------------------------------------------------------
+  * NoSQL documents fit test data that is nested and read as a whole
+    (a run with its findings and steps), which a rigid relational schema
+    would force into many joins.
+  * Embedding findings and action steps makes the report screen fast
+    (one read, not a multi-collection join).
+  * Storing the owner id on every session gives cheap, reliable tenant
+    isolation without a heavier permission system.
+  * A TTL index makes cleanup automatic, so guests and abandoned runs do
+    not fill the database.
+
+
+--------------------------------------------------------------------
+10. POSSIBLE DEFENSE QUESTIONS AND SUGGESTED ANSWERS
+--------------------------------------------------------------------
+Q: Why NoSQL (MongoDB) instead of a relational database like MySQL?
+A: BugSafari data is document-shaped: a run with nested findings and
+   action steps that are always read together. MongoDB stores this as one
+   document and avoids the many joins a relational schema would need. The
+   flexible schema also suits telemetry that varies from run to run.
+
+Q: Why are findings embedded in the session instead of their own table?
+A: A finding is never read without its run. Embedding lets the report
+   load from a single document instead of joining collections, which is
+   faster and simpler. It is a deliberate NoSQL denormalization.
+
+Q: How do you stop the session document from growing without bound?
+A: actionSteps is capped at 60 steps and visitedRoutes at 500, so a long
+   run cannot inflate the document indefinitely.
+
+Q: How do you guarantee one operator cannot see another's runs?
+A: Every session stores a required userId, and every query filters by the
+   caller's id. Supporting records are only reached through their session,
+   which is already scoped to its owner.
+
+Q: What happens to a guest's data?
+A: Nothing is written. A session needs a userId to exist, so a guest run
+   lives only in memory and on screen until the tab closes.
+
+Q: How are old runs cleaned up?
+A: A TTL index on startedAt deletes unsaved runs 24 hours after they
+   start. Saving flips savedManually to true, removing it from that rule.
+   An hourly job removes orphaned child records whose session is gone.
+
+Q: Why store passwords and tokens as hashes?
+A: So a database leak does not expose real passwords or usable tokens.
+   Passwords use bcrypt; refresh tokens are stored as hashes and grouped
+   by familyId for renewal chains.

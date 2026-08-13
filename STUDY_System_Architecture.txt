@@ -1,0 +1,210 @@
+========================================================================
+BUGSAFARI THESIS DEFENSE STUDY GUIDE
+TOPIC: SYSTEM ARCHITECTURE
+========================================================================
+
+--------------------------------------------------------------------
+1. WHAT IT REPRESENTS
+--------------------------------------------------------------------
+The system architecture shows how BugSafari is built as ONE repository
+(a monorepo) containing THREE packages, and how the running parts are
+grouped into layers. It also shows the TWO separate channels between the
+dashboard and the backend. It is the "big picture" of the software:
+which piece runs where, and how the pieces talk.
+
+
+--------------------------------------------------------------------
+2. THE THREE PACKAGES (WHAT EACH OWNS)
+--------------------------------------------------------------------
+  developer-dashboard
+    Runs in the tester's browser (port 5173 in development). React / Vite.
+    Owns the whole operator experience: sign in, starting a run, the live
+    feed, history, reports and settings.
+
+  testing-core
+    Runs on the server (Node, port 3000). Owns everything else: the API,
+    the exploration engine, the attack scenarios, the bug finders,
+    telemetry and storage.
+
+  shared
+    Runs on BOTH sides. Owns the TypeScript types that describe telemetry
+    events, findings, run settings and results, so neither side can drift
+    from the other. It has NO dependencies, only type definitions.
+
+The dashboard never touches the database and never runs a browser. The
+testing core never renders anything.
+
+
+--------------------------------------------------------------------
+3. THE SIX LAYERS (HOW IT IS GROUPED)
+--------------------------------------------------------------------
+  1. Presentation Layer (Watchtower)
+       Watchtower Dashboard (React / Vite).
+  2. Interface Layer (Gateway)
+       REST API Gateway (Express), Live Telemetry Stream (Socket.IO),
+       Auth & Rate Limiter.
+  3. Application Layer
+       Start Exploration Use Case, Session Manager.
+  4. Domain Layer (Testing Core)
+       Exploration Engine, Risk Scorer & Perceptron, State Navigator &
+       Loop Guard, Attack Scenarios, Bug Finders, Telemetry Monitors.
+  5. Infrastructure Layer
+       Browser Driver (Playwright / Chromium), Repositories
+       (Mongoose / MongoDB), AI Advisor Client, Mail Client.
+  6. External Boundary
+       Target Application, MongoDB Atlas, Google Gemini API, SMTP Server.
+
+The split into layers is not decoration. The exploration engine talks
+ONLY to interfaces, so the browser tool, the streaming transport and the
+database can each be replaced without touching the engine.
+
+
+--------------------------------------------------------------------
+4. THE FLOW OF DATA (HOW THE LAYERS CONNECT)
+--------------------------------------------------------------------
+  Dashboard --HTTPS control commands--> REST API Gateway
+  Live Telemetry Stream --WebSocket live events--> Dashboard
+  REST -> Auth & Rate Limiter -> Start Exploration Use Case
+  Use Case -> Session Manager
+  Use Case -> Exploration Engine
+
+  Inside the domain:
+    Exploration Engine -> Risk Scorer & Perceptron
+    Exploration Engine -> State Navigator & Loop Guard
+    Exploration Engine -> Attack Scenarios
+    Exploration Engine -> Bug Finders
+    Exploration Engine -> Telemetry Monitors
+
+  Into infrastructure:
+    Exploration Engine -> Browser Driver
+    Exploration Engine -> Repositories
+    Telemetry Monitors -> Live Telemetry Stream (Socket.IO)
+    REST -> AI Advisor Client
+    Use Case -> Mail Client
+
+  Out to the external boundary:
+    Browser Driver --actions: clicks, fuzzing, mutate DOM--> Target App
+    Target App --sensory signals: errors, XHR, DOM hashes--> Browser Driver
+    Repositories -> MongoDB Atlas
+    AI Advisor Client -> Google Gemini API
+    Mail Client -> SMTP Server
+
+
+--------------------------------------------------------------------
+5. TWO CHANNELS, ON PURPOSE
+--------------------------------------------------------------------
+Control travels one way and results travel the other, over two different
+transports.
+
+  REST (Express): carries the COMMANDS - start a run, stop, save, list
+     history, open a report, ask for a fix. Each is a single request with
+     a single answer, so a normal HTTP call is the right fit.
+
+  Socket.IO: carries the RESULTS - steps, screenshots, console messages,
+     findings. These arrive continuously while the run goes, and the
+     tester needs to see them as they happen, so the server pushes them
+     instead of waiting to be asked.
+
+Keeping the two apart means a dropped socket connection does not stop the
+run. The dashboard reconnects, sends a request to reattach to the run it
+was watching, and picks the stream back up.
+
+Events the dashboard listens for:
+  telemetry        - one step of the run: what was clicked, what happened
+  live-frame       - a JPEG screenshot, about fifteen per second
+  browser-console  - a console message from the tested page
+  incident-report  - one confirmed finding
+  forensic-report  - the full summary when a run finishes
+  url-changed      - the tested page navigated somewhere new
+  session-snapshot - current state of a run, sent when the dashboard
+                     reattaches
+  time-sync        - server clock reference so the on-screen timer stays
+                     correct
+
+The dashboard sends back on the same connection: session-attach,
+pause-test, resume-test, stop-test.
+
+
+--------------------------------------------------------------------
+6. MAIN API ROUTES (THE CONTROL SURFACE)
+--------------------------------------------------------------------
+  POST   /api/start-test                 Start a run on a target URL
+  POST   /api/safari/stop                Stop the caller's current run
+  GET    /api/session/active             State of the caller's live run
+                                         (used after a page reload)
+  POST   /api/history/save-session       Save the finished run to history
+  GET    /api/history/sessions           List the caller's saved runs,
+                                         paged
+  GET    /api/forensic/report/:sessionId Read one full report
+  POST   /api/findings/suggest-fix       Ask the AI Advisor about a finding
+  DELETE /api/history/:id                Delete a saved run and everything
+                                         attached to it
+  GET    /api/health                     Liveness check for deployment
+
+Account routes sit alongside: register, login, refresh, logout, forgot
+password, reset password, plus profile and settings.
+
+
+--------------------------------------------------------------------
+7. RUNNING SEVERAL TESTS AT ONCE
+--------------------------------------------------------------------
+One test run means one Chromium browser, which is heavy. To let more than
+one tester run a test at the same time, the deployed system puts incoming
+run requests on a Redis job queue and runs them in separate worker
+processes, one run per worker.
+
+The engine code is EXACTLY the same in both cases. The worker builds the
+same objects the API process would have built and calls the same use case.
+The queue only decides WHERE the run happens, so the architecture diagram
+holds either way.
+
+
+--------------------------------------------------------------------
+8. WHY THIS DESIGN WAS CHOSEN
+--------------------------------------------------------------------
+  * Clean layering with interfaces (Clean Architecture): the engine
+    depends on BrowserEngine, TelemetryGateway and FindingRepository
+    interfaces, not on Playwright, Socket.IO or MongoDB, so each tool is
+    swappable and testable in isolation.
+  * A monorepo with a shared types package stops the front and back ends
+    from drifting apart on the data contract.
+  * Two channels match two traffic shapes: request/response commands over
+    REST, continuous push results over Socket.IO. It also makes the run
+    survive a dropped stream.
+  * A job queue adds concurrency without changing the engine, keeping the
+    same code path for single and multi-run deployments.
+
+
+--------------------------------------------------------------------
+9. POSSIBLE DEFENSE QUESTIONS AND SUGGESTED ANSWERS
+--------------------------------------------------------------------
+Q: Why a monorepo with three packages?
+A: The dashboard and testing core are separate runtimes, but they must
+   agree on the data shapes. A shared, dependency-free types package
+   enforces that contract, so neither side can drift.
+
+Q: Why two transports instead of one?
+A: Commands are request/response and fit REST. Results are a continuous
+   stream the tester must see live, which fits Socket.IO push. Separating
+   them also means a dropped socket does not stop the run.
+
+Q: What happens when the live stream drops mid-run?
+A: The run keeps going on the server. The dashboard reconnects, sends
+   session-attach, receives a session-snapshot, and resumes the stream.
+
+Q: Why does the engine talk to interfaces instead of Playwright and
+   MongoDB directly?
+A: So the browser driver, transport and database can each be replaced or
+   mocked without touching the engine. It follows Clean Architecture and
+   keeps the domain independent of tools.
+
+Q: How does the system support many testers at once given one browser per
+   run is heavy?
+A: Deployed, run requests go on a Redis job queue and run in separate
+   worker processes, one run per worker. The workers call the same use
+   case, so the engine code is unchanged.
+
+Q: Where does authentication sit in the architecture?
+A: In the Interface Layer, as an Auth & Rate Limiter in front of the use
+   cases, so every control command is authenticated and throttled before
+   reaching the engine.
