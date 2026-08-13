@@ -36,15 +36,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
         <div className="min-w-0 text-xs font-bold uppercase text-(--text-secondary)">
            Reproduction Playbook
         </div>
-        {steps.length > 0 && (
-          <button
-            onClick={handleCopy}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium text-(--text-secondary) transition-all hover:bg-(--surface-hover) active:scale-95 sm:py-1"
-            title="Copy reproduction steps as Markdown"
-          >
-            {copied ? 'Copied!' : 'Copy'}
-          </button>
-        )}
+        
       </div>
       {actions.length > 0 ? (
         <ol className="space-y-1.5">

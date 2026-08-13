@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { registerNetwork } from './routes/network.mjs';
 import { registerHang } from './routes/hang.mjs';
 import { registerDuplicate } from './routes/duplicate.mjs';
+import { registerState } from './routes/state.mjs';
 import { registerInjection } from './routes/injection.mjs';
 import { registerAuth } from './routes/auth.mjs';
 import { registerNav } from './routes/nav.mjs';
@@ -18,6 +19,7 @@ export function createApp({ serveStatic = false } = {}) {
   registerNetwork(app);
   registerHang(app);
   registerDuplicate(app);
+  registerState(app);
   registerInjection(app);
   registerAuth(app);
   registerNav(app);

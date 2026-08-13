@@ -97,13 +97,13 @@ export default function FindingCard({
           <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-(--text-oninvert)`}>
             <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
             {view.badge && (
               <span
                 title={view.badge}
-                className="inline-flex shrink-0 items-center rounded-full border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-semibold uppercase text-(--text-secondary)"
+                className="inline-flex shrink-0 items-center rounded-full border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-semibold uppercase leading-none text-(--text-secondary)"
               >
                 {view.badge}
               </span>
@@ -111,7 +111,7 @@ export default function FindingCard({
             {view.occurrences > 1 && (
               <span
                 title={`This fault occurred ${view.occurrences} times this session`}
-                className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-1.5 py-0.5 font-mono text-xs font-bold leading-none text-(--text-oninvert)"
+                className="inline-flex shrink-0 items-center rounded-full bg-(--surface-invert) px-2 py-0.5 font-mono text-xs font-bold leading-none text-(--text-oninvert)"
               >
                 ×{view.occurrences}
               </span>

@@ -128,19 +128,27 @@ export function minimizeActionRecords(records: ActionRecord[], options: Minimize
 
   // Culprit-anchored trim: when the faulting control is known, drop interior
   // exploration hops (traversal navigations / off-page clicks) that precede it and are
-  // not setup for it. Only runs when the culprit is actually present, so a timeline with
-  // no match is left exactly as the page/time scoping produced it.
+  // not setup for it, AND the simultaneous burst siblings fired at the same instant on
+  // OTHER controls — a single-element fault must reproduce with only its own action.
+  // Only runs when the culprit is actually present, so a timeline with no match is left
+  // exactly as the page/time scoping produced it.
   if (culpritSelector) {
     let lastCulprit = -1;
     for (let i = kept.length - 1; i >= 0; i -= 1) {
       if (kept[i].selector === culpritSelector) { lastCulprit = i; break; }
     }
-    if (lastCulprit > 0) {
+    if (lastCulprit >= 0) {
+      // A sibling of the same concurrent burst: shares the culprit's burstId but acted on
+      // a different control. These are the unrelated simultaneous clicks to strip.
+      const culpritBurst = kept[lastCulprit].burstId;
+      const isBurstSibling = (record: ActionRecord): boolean =>
+        Boolean(culpritBurst) && record.burstId === culpritBurst && record.selector !== culpritSelector;
       kept = kept.filter(
         (record, i) =>
-          i >= lastCulprit || // the culprit and everything after it
-          (i === 0 && NAVIGATION_TYPES.has(record.type)) || // the opening navigation
-          !isTraversal(record, faultKey), // genuine setup (inputs/submits), never traversal
+          !isBurstSibling(record) &&
+          (i >= lastCulprit || // the culprit and everything after it
+            (i === 0 && NAVIGATION_TYPES.has(record.type)) || // the opening navigation
+            !isTraversal(record, faultKey)), // genuine setup (inputs/submits), never traversal
       );
     }
   }

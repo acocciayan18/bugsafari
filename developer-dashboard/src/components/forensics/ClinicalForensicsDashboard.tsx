@@ -356,7 +356,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause

@@ -49,6 +49,36 @@ check('culpritSelector anchoring drops an interior exploration navigation before
   assert.equal(out.some((r) => r.selector === '#submit'), true, 'culprit kept');
 });
 
+check('culpritSelector drops simultaneous burst siblings on other controls', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/race' }),
+      rec({ selector: '#start', url: 'http://app.test/race', burstId: 'b9' }), // culprit
+      rec({ selector: '#reset', url: 'http://app.test/race', burstId: 'b9' }), // simultaneous sibling
+      rec({ selector: '#other', url: 'http://app.test/race', burstId: 'b9' }), // simultaneous sibling
+    ],
+    { faultUrl: 'http://app.test/race', culpritSelector: '#start' },
+  );
+  assert.equal(out.some((r) => r.selector === '#reset'), false, 'sibling #reset dropped');
+  assert.equal(out.some((r) => r.selector === '#other'), false, 'sibling #other dropped');
+  assert.equal(out.some((r) => r.selector === '#start'), true, 'culprit kept');
+});
+
+check('culpritSelector keeps genuine non-burst setup while dropping burst siblings', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/race' }),
+      rec({ type: 'TYPE', selector: '#name', url: 'http://app.test/race', payload: 'x' }), // real setup, no burst
+      rec({ selector: '#start', url: 'http://app.test/race', burstId: 'b9' }), // culprit
+      rec({ selector: '#reset', url: 'http://app.test/race', burstId: 'b9' }), // simultaneous sibling
+    ],
+    { faultUrl: 'http://app.test/race', culpritSelector: '#start' },
+  );
+  assert.equal(out.some((r) => r.selector === '#name'), true, 'non-burst setup kept');
+  assert.equal(out.some((r) => r.selector === '#reset'), false, 'burst sibling dropped');
+  assert.equal(out.some((r) => r.selector === '#start'), true, 'culprit kept');
+});
+
 check('a timeline with no culprit match is left exactly as page/time scoping produced it', () => {
   const records = [
     rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),

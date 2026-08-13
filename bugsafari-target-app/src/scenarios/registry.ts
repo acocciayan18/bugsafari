@@ -96,9 +96,9 @@ export const SCENARIOS: Scenario[] = [
     bugClass: 'SPA_STATE_RACE_CONDITION',
     cwe: 'CWE-362',
     expectedSeverity: 'MEDIUM',
-    detector: 'AsyncStateRacer / ButtonSpammer',
-    summary: 'Async op interrupted mid-flight desyncs state or throws on a torn-down component.',
-    reproduction: 'Start the async load then immediately reset; the stale resolve writes into a gone view.',
+    detector: 'DuplicateActionFinder',
+    summary: 'Unguarded read-modify-write: overlapping increments read the same base and write the same value, losing an update.',
+    reproduction: 'Rapidly click "Increment (unguarded)"; overlapping POST /api/counter writes collide and one increment is lost.',
     detected: true,
     component: StateRaces
   },

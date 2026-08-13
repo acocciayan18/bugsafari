@@ -1,4 +1,3 @@
-import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 
 // Fine-grained JS runtime-error taxonomy under the RUNTIME_STABILITY_EXCEPTION bug class.
 export type RuntimeSubtype =
@@ -220,10 +219,15 @@ export class RuntimeStabilityFinder {
   }
 
   private buildStudentAdvice(subtype: RuntimeSubtype): string {
-    // Append the catalog remediation for the bug class this subtype maps to, so the advice
-    // matches the classifier's CWE/title (API-contract faults get their own checklist).
-    const catalogClass = subtype === 'API_CONTRACT_VIOLATION' ? 'API_CONTRACT_VIOLATION' : 'RUNTIME_STABILITY_EXCEPTION';
-    return `${STUDENT_GUIDANCE[subtype]}\n${BUG_CATALOG[catalogClass].remediation}`;
+    // One consolidated Suggested Fix. The subtype line already names the specific guard, so
+    // the steps reference "that guard" rather than repeating a generic null-check/try-catch
+    // — the old catalog-checklist append duplicated the guidance the subtype line gave.
+    return (
+      `${STUDENT_GUIDANCE[subtype]}\n\nSuggested fix:\n` +
+      `1. Reproduce the fault using the replay checklist above\n` +
+      `2. Apply that guard at the failing line\n` +
+      `3. Add a test that confirms it stays stable`
+    );
   }
 
   // djb2 — stable, cheap, no crypto dependency.

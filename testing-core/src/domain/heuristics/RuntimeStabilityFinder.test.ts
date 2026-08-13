@@ -104,18 +104,23 @@ check('bugId is stable across finder instances for the same signature', () => {
 
 console.log('\nRuntimeStabilityFinder — output shape & robustness');
 
-check('student advice is non-empty and carries the catalog remediation', () => {
+check('student advice is one consolidated Suggested Fix with no duplicated guidance', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: "Cannot read properties of undefined (reading 'z')" }));
   assert.ok(finding.studentAdvice.length > 0);
-  assert.ok(finding.studentAdvice.includes('Suggested fix: catch and guard the failing code'));
+  const fixBlocks = finding.studentAdvice.split('Suggested fix:').length - 1;
+  assert.equal(fixBlocks, 1, 'exactly one Suggested fix block');
+  assert.ok(finding.studentAdvice.includes('Apply that guard at the failing line'));
+  assert.ok(!finding.studentAdvice.includes('add a null check'), 'no repeated generic null-check advice');
   assert.ok(finding.message.startsWith('[Read a field on a value that was undefined]'));
 });
 
-check('API contract violation advice carries the API-contract remediation, not the runtime one', () => {
+check('API contract violation advice is also one consolidated Suggested Fix', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` }));
-  assert.ok(finding.studentAdvice.includes('Suggested fix: verify the reply before trusting it'));
+  const fixBlocks = finding.studentAdvice.split('Suggested fix:').length - 1;
+  assert.equal(fixBlocks, 1, 'exactly one Suggested fix block');
+  assert.ok(finding.studentAdvice.includes('Apply that guard at the failing line'));
   assert.ok(finding.message.startsWith('[Server reply was not the JSON the app expected]'));
 });
 
