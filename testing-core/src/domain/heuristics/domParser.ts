@@ -263,14 +263,63 @@ export async function scanInteractiveElements(page: Page): Promise<RawScanResult
         return 'body > ' + parts.join(' > ');
       };
 
-      const buildSelector = (element) => {
+      const isUnique = (selector) => {
+        try { return document.querySelectorAll(selector).length === 1; } catch (e) { return false; }
+      };
+
+      // A readable, stable class token — rejects build-hash / utility noise (css-modules,
+      // styled-components, emotion, hex-hash suffixes) that changes every deploy.
+      const isReadableClass = (cls) =>
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(cls) &&
+        cls.length >= 3 && cls.length <= 30 &&
+        cls.indexOf('bugsafari') === -1 &&
+        !/^(css|sc|jss|emotion|makeStyles)-/.test(cls) &&
+        !/[a-z]-[a-f0-9]{5,}$/i.test(cls) &&
+        !/^[a-f0-9]{6,}$/i.test(cls);
+
+      // Fewest readable classes that uniquely match — 'button.primary', never a hashed blob.
+      const classSelector = (element) => {
+        const tag = element.tagName.toLowerCase();
+        const source = typeof element.className === 'string' ? element.className : '';
+        const classes = source.split(/\\s+/).filter(isReadableClass);
+        for (let n = 1; n <= classes.length && n <= 3; n++) {
+          const sel = tag + classes.slice(0, n).map((c) => '.' + CSS.escape(c)).join('');
+          if (isUnique(sel)) return sel;
+        }
+        return '';
+      };
+
+      // Accessible attribute selector (aria-label / role / name), only when it is unique.
+      const accessibleSelector = (element) => {
+        const tag = element.tagName.toLowerCase();
+        const tryAttr = (attr) => {
+          const value = element.getAttribute(attr);
+          if (!value) return '';
+          const sel = tag + '[' + attr + '="' + escapeAttribute(value) + '"]';
+          return isUnique(sel) ? sel : '';
+        };
+        return tryAttr('aria-label') || tryAttr('role') || tryAttr('name');
+      };
+
+      // Stable, human-readable selector in priority order: unique id -> test hook -> readable
+      // class -> accessible attribute. Returns '' when nothing stable exists.
+      const stableSelector = (element) => {
         const id = element.getAttribute('id');
+        if (id && isUnique('#' + CSS.escape(id))) return '#' + CSS.escape(id);
         const testId = element.getAttribute('data-testid');
-        const name = element.getAttribute('name');
-        if (id) return '#' + CSS.escape(id);
-        if (testId) return '[data-testid="' + escapeAttribute(testId) + '"]';
-        if (name) return element.tagName.toLowerCase() + '[name="' + escapeAttribute(name) + '"]';
-        return nthOfTypeSelector(element);
+        if (testId && isUnique('[data-testid="' + escapeAttribute(testId) + '"]')) return '[data-testid="' + escapeAttribute(testId) + '"]';
+        const cy = element.getAttribute('data-cy');
+        if (cy && isUnique('[data-cy="' + escapeAttribute(cy) + '"]')) return '[data-cy="' + escapeAttribute(cy) + '"]';
+        const cls = classSelector(element);
+        if (cls) return cls;
+        return accessibleSelector(element);
+      };
+
+      // A stable selector when one exists, else the structural path — used ONLY to actuate
+      // (click/fill) the control. The path is filtered out of the finding's DISPLAYED
+      // selector downstream, so an operator never sees a fragile body > … > nth chain.
+      const buildSelector = (element) => {
+        return stableSelector(element) || nthOfTypeSelector(element);
       };
 
       const extractText = (element) => {

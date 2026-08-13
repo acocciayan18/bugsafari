@@ -10,8 +10,13 @@ import { nextBurstId } from '../../infrastructure/monitoring/burstCorrelation.js
 import { resolveElementLabel, elementNoun, narrateActionRecords } from '../../domain/services/forensics/narration.js';
 import { safeRoutePath } from '../../domain/services/exploration/bugIdentity.js';
 
-// Grace period for the burst's async work to resolve before judging the UI stuck.
-const SETTLE_MS = 1500;
+// Adaptive settle for the burst's async work. Floor before any judgement, then extend
+// up to the cap only while fetch/XHR are still in flight — a real-world async race can
+// resolve (and crash) a full round-trip late, past a fixed 1500ms window. A quiet network
+// past the floor ends the wait immediately, so a fast app is never slowed.
+const SETTLE_MIN_MS = 1500;
+const SETTLE_MAX_MS = 4000;
+const SETTLE_TICK_MS = 250;
 
 // State-changing verbs whose duplicate a backend guard can reject (reads repeat safely).
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -188,6 +193,20 @@ export const spaRaceConditionsFinder: BugFinder = {
       if (GUARD_STATUSES.has(status)) damage.guarded += 1;
       else if (status >= 500) damage.serverError += 1;
     };
+    // In-flight fetch/XHR count for the burst. Distinguishes an app still legitimately
+    // working (requests pending — never a race, common on 3G) from a genuinely orphaned
+    // loader (loader up, nothing in flight). Also gates how long the settle waits.
+    let inFlight = 0;
+    const isTracked = (req: { resourceType(): string }): boolean => {
+      const rt = req.resourceType();
+      return rt === 'xhr' || rt === 'fetch';
+    };
+    const onRequest = (req: { resourceType(): string }): void => {
+      if (isTracked(req)) inFlight += 1;
+    };
+    const onRequestDone = (req: { resourceType(): string }): void => {
+      if (isTracked(req)) inFlight = Math.max(0, inFlight - 1);
+    };
 
     const wasStuckBefore = await isStuckLoading(ctx.page);
     // The burst can navigate the page away mid-step. Left uncorrected, the loop's
@@ -197,18 +216,36 @@ export const spaRaceConditionsFinder: BugFinder = {
     ctx.page.on('pageerror', onPageError);
     ctx.page.on('console', onConsole);
     ctx.page.on('response', onResponse);
+    ctx.page.on('request', onRequest);
+    ctx.page.on('requestfinished', onRequestDone);
+    ctx.page.on('requestfailed', onRequestDone);
 
     let result: ConcurrentStressResult;
     try {
       result = await burstConcurrentStress(ctx.page, ctx.step, ctx.rankedTargets);
-      await ctx.page.waitForTimeout(SETTLE_MS);
+      // Adaptive settle: wait the floor, then extend while requests are still in flight
+      // (up to the cap) so a late stale-resolve crash is still inside the window. A crash
+      // or a quiet network past the floor ends the wait early.
+      const settleStart = Date.now();
+      for (;;) {
+        await ctx.page.waitForTimeout(SETTLE_TICK_MS);
+        const elapsed = Date.now() - settleStart;
+        if (damage.crashes.length > 0) break;
+        if (elapsed >= SETTLE_MAX_MS) break;
+        if (elapsed >= SETTLE_MIN_MS && inFlight <= 0) break;
+      }
       // Only a loader that appeared during the burst is evidence — a spinner that was
-      // already there belongs to whatever was in flight before we touched anything.
-      damage.stuckLoading = !wasStuckBefore && (await isStuckLoading(ctx.page));
+      // already there belongs to whatever was in flight before we touched anything. And a
+      // loader still up WITH requests in flight is just slow (3G), not stuck — only an
+      // orphaned loader (nothing in flight) is a genuine post-burst stuck state.
+      damage.stuckLoading = !wasStuckBefore && inFlight <= 0 && (await isStuckLoading(ctx.page));
     } finally {
       ctx.page.off('pageerror', onPageError);
       ctx.page.off('console', onConsole);
       ctx.page.off('response', onResponse);
+      ctx.page.off('request', onRequest);
+      ctx.page.off('requestfinished', onRequestDone);
+      ctx.page.off('requestfailed', onRequestDone);
       if (ctx.page.url() !== urlBefore) {
         await ctx.page
           .goto(urlBefore, { waitUntil: 'domcontentloaded', timeout: 5000 })

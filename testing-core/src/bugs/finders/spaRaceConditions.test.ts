@@ -41,6 +41,32 @@ function crashingPage(handlers: Record<string, (arg: unknown) => void>) {
   };
 }
 
+// A page that shows a loader after the burst. Each click kicks off a fetch; with
+// keepInFlight=false the fetch settles at once (idle network), true leaves it pending
+// (slow/3G). evaluate returns false pre-burst, true after — the loader "appeared".
+function loaderBurstPage(opts: { keepInFlight: boolean }) {
+  const handlers: Record<string, (arg: unknown) => void> = {};
+  let evalCalls = 0;
+  const fetchReq = { resourceType: () => 'fetch' };
+  const clickable = {
+    click: async () => {
+      handlers['request']?.(fetchReq);
+      if (!opts.keepInFlight) handlers['requestfinished']?.(fetchReq);
+    },
+    fill: async () => undefined,
+  };
+  return {
+    url: () => 'https://target.test/dashboard',
+    isClosed: () => false,
+    on: (evt: string, fn: (arg: unknown) => void) => { handlers[evt] = fn; },
+    off: () => undefined,
+    waitForTimeout: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+    evaluate: async () => ++evalCalls > 1,
+    goto: async () => undefined,
+    locator: () => ({ first: () => clickable }),
+  };
+}
+
 async function main(): Promise<void> {
   console.log('spaRaceConditions — burst pre-recording & finding reproduction');
 
@@ -76,6 +102,39 @@ async function main(): Promise<void> {
     assert.ok(evidence.reproductionPlaybook && evidence.reproductionPlaybook.length > 0, 'playbook is never empty');
     assert.ok(evidence.reproductionActions && evidence.reproductionActions.length === 3, 'replayable timeline carried');
     assert.equal(new Set(evidence.reproductionActions!.map((a) => a.burstId)).size, 1, 'timeline is one correlated burst');
+  });
+
+  await check('an orphaned loader (no requests in flight) after the burst is a stuck-state finding', async () => {
+    ReproductionPlaybookStore.reset();
+    resetBurstCounter();
+    const ctx = {
+      page: loaderBurstPage({ keepInFlight: false }) as unknown as BugContext['page'],
+      targetUrl: 'https://target.test',
+      step: 3,
+      stateHash: 'state-y',
+      crashHalted: false,
+      rankedTargets: targets,
+    } as BugContext;
+
+    const findings = await spaRaceConditionsFinder.run(ctx);
+    assert.equal(findings.length, 1, 'a loader left up with nothing loading surfaces a race finding');
+    assert.equal(findings[0].severity, 'MEDIUM', 'a stuck-state (non-crash) race is MEDIUM');
+  });
+
+  await check('a loader still backed by in-flight requests (slow/3G) is NOT flagged', async () => {
+    ReproductionPlaybookStore.reset();
+    resetBurstCounter();
+    const ctx = {
+      page: loaderBurstPage({ keepInFlight: true }) as unknown as BugContext['page'],
+      targetUrl: 'https://target.test',
+      step: 4,
+      stateHash: 'state-z',
+      crashHalted: false,
+      rankedTargets: targets,
+    } as BugContext;
+
+    const findings = await spaRaceConditionsFinder.run(ctx);
+    assert.equal(findings.length, 0, 'a legitimately-still-loading spinner is not a race (no 3G false positive)');
   });
 
   console.log(`\nspaRaceConditions: ${passed} checks passed.`);

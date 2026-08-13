@@ -268,7 +268,7 @@ export class DuplicateActionFinder {
       // never `endpoint` (an API path). Drives the fallback reproduction trace.
       pageUrl: second.pageUrl ?? first.pageUrl,
       evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, interaction),
-      reproductionHint: this.reproductionFor(first, second, verdict, intervalMs, label),
+      reproductionHint: this.reproductionFor(first, second, verdict, label),
       advice: this.adviceFor(verdict),
       occurrence,
       corroborated,
@@ -349,12 +349,13 @@ export class DuplicateActionFinder {
     return evidence;
   }
 
-  // Deterministic steps to reproduce, derived from the correlated causal pair.
+  // Deterministic steps to reproduce, derived from the correlated causal pair. Timing is
+  // kept qualitative ("before the first finishes") — the exact millisecond gap is the
+  // engine's measurement, not an action a human repeats.
   private reproductionFor(
     first: TrackedRequest,
     second: TrackedRequest,
     verdict: DuplicateVerdict,
-    intervalMs: number,
     label: string,
   ): string[] {
     // The control lives on the PAGE the requests fired from — never the API endpoint
@@ -367,7 +368,7 @@ export class DuplicateActionFinder {
     const steps = [
       openStep,
       `Use ${label} once. The app sends ${first.method} ${this.pathOf(first.url)}`,
-      `Use ${label} again ${intervalMs}ms later, before the first request finishes`,
+      `Use ${label} again before the first request finishes`,
       `Watch a second ${second.method} ${this.pathOf(second.url)} go out with the same value`,
     ];
     steps.push(

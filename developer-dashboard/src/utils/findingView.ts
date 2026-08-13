@@ -93,6 +93,20 @@ export function extractLeadingTag(message: string | undefined): { badge?: string
 
 const isRealSelector = (s: string | undefined): s is string => Boolean(s && s.trim() && s !== 'N/A');
 
+// A fragile structural path (body > … > tag:nth-of-type(n)) — the engine keeps it to
+// actuate a control, but it must never be shown as a finding's selector.
+const isFragileSelector = (s: string): boolean => /:nth-|(^|\s)>\s|^body\b/i.test(s);
+
+// The selector worth showing beneath the element name: a STABLE, readable one
+// (#id, [data-testid], readable class, accessible attribute) that is present, real,
+// and not just a restatement of the friendly label. Returns undefined otherwise —
+// better no selector than a brittle DOM path.
+export function displayableSelector(selector: string | undefined, label: string | undefined): string | undefined {
+  const raw = selector?.trim();
+  if (!isRealSelector(raw) || raw === label || isFragileSelector(raw)) return undefined;
+  return raw;
+}
+
 // The element the fault attaches to. Prefer the backend-resolved culprit (the
 // interaction active at fault time) — authoritative over the last timeline step,
 // which lags an async fault and points at a later/burst action. Falls back to the

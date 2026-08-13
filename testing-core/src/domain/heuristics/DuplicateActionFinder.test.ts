@@ -316,7 +316,7 @@ check('the triggering interaction propagates onto the defect', () => {
   assert.ok(defect!.evidence.some((e) => e.includes('Control that triggered it: Place Order')));
 });
 
-check('steps to reproduce are deterministic and name the action, timing, and outcome', () => {
+check('steps to reproduce are deterministic, action-only, and free of millisecond timing', () => {
   const build = () => {
     const h = new Harness();
     const a = h.send(1000, { interaction });
@@ -328,7 +328,9 @@ check('steps to reproduce are deterministic and name the action, timing, and out
   assert.deepEqual(steps, build(), 'the same causal pair must always render the same steps');
   assert.ok(steps.length >= 5);
   assert.ok(steps.some((s) => s.includes('Place Order')));
-  assert.ok(steps.some((s) => s.includes('180ms')));
+  // Qualitative timing stays (it IS the race); the exact millisecond gap is removed.
+  assert.ok(steps.some((s) => s.includes('before the first request finishes')));
+  assert.ok(!steps.some((s) => /\d+ms/.test(s)), 'no action step carries a raw millisecond value');
   assert.ok(steps.some((s) => s.includes('/api/order')));
   assert.ok(steps.some((s) => s.includes('saved twice')));
 });

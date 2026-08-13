@@ -2,7 +2,7 @@
 // dashboard runner (scripts/run-tests.mjs). Run: `npx tsx src/utils/findingView.test.ts`.
 
 import assert from 'node:assert/strict';
-import { extractLeadingTag } from './findingView';
+import { extractLeadingTag, displayableSelector } from './findingView';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -38,6 +38,21 @@ check('an interior bracket is not mistaken for a tag', () => {
 check('empty / undefined input yields an empty message and no badge', () => {
   assert.deepEqual(extractLeadingTag(undefined), { message: '' });
   assert.deepEqual(extractLeadingTag('   '), { message: '' });
+});
+
+check('displayableSelector keeps stable, readable selectors', () => {
+  assert.equal(displayableSelector('#place-order', 'Place Order'), '#place-order');
+  assert.equal(displayableSelector('[data-testid="submit"]', 'Submit'), '[data-testid="submit"]');
+  assert.equal(displayableSelector('button.primary-btn', 'Save'), 'button.primary-btn');
+  assert.equal(displayableSelector('[aria-label="Close"]', 'Close'), '[aria-label="Close"]');
+});
+
+check('displayableSelector drops fragile paths, placeholders, and label restatements', () => {
+  assert.equal(displayableSelector('body > div > div > button:nth-of-type(1)', 'Buy'), undefined);
+  assert.equal(displayableSelector('#form > button:nth-of-type(2)', 'Buy'), undefined);
+  assert.equal(displayableSelector('N/A', 'Buy'), undefined);
+  assert.equal(displayableSelector(undefined, 'Buy'), undefined);
+  assert.equal(displayableSelector('Buy', 'Buy'), undefined);
 });
 
 console.log(`\n${passed} assertions passed.`);

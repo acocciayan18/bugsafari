@@ -12,7 +12,7 @@
 import type { ReactNode } from 'react';
 import { Bug } from 'lucide-react';
 import type { FindingAttribution } from '../../types';
-import { buildFindingSummary, humanizeFindingTitle, type FindingView } from '../../utils/findingView';
+import { buildFindingSummary, displayableSelector, humanizeFindingTitle, type FindingView } from '../../utils/findingView';
 import { CategoryInfo, CopyButton, SeverityBadge } from './ForensicCardKit';
 import CweBadge from './CweBadge';
 import FindingEvidence from './FindingEvidence';
@@ -84,12 +84,11 @@ export default function FindingCard({
   sessionId?: string;
   children?: ReactNode;
 }) {
-  // Human-readable culprit name (primary) plus the raw CSS selector beneath it, so a
-  // developer gets both the friendly name and the exact locator. Selector hidden when
-  // missing, a placeholder, or identical to the label.
+  // Human-readable culprit name (primary) plus a STABLE CSS selector beneath it (id,
+  // data-testid/cy, readable class, or accessible attribute). A fragile structural path
+  // (body > … > nth-of-type) is deliberately omitted — better no selector than a brittle one.
   const element = view.elementLabel;
-  const rawSelector = view.selector?.trim();
-  const selector = rawSelector && rawSelector !== 'N/A' && rawSelector !== element ? rawSelector : undefined;
+  const selector = displayableSelector(view.selector, element);
 
   return (
     <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
