@@ -194,7 +194,7 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "added a txt review files"
+git commit -m "Create fixed version of bugsafari-target-app"
 git checkout -b 8-13-Ayan
 git push --set-upstream origin 8-13-Ayan
 
