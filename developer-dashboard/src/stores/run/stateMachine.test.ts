@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed node:assert.
 
 import assert from 'node:assert/strict';
-import { resolveStatus, reconcileHydratedStatus } from './types.js';
+import { resolveStatus, reconcileHydratedStatus, resolvePendingReissue } from './types.js';
 import { STOP_REASON_OUTCOME } from '../../../../shared/types.js';
 
 // The flicker root cause: an optimistic-ACTIVE run must never regress to QUEUED.
@@ -43,6 +43,18 @@ assert.equal(reconcileHydratedStatus('PAUSED', 'STOPPED', true), 'STOPPED', 'a t
 // A fresh restore (different/empty run) hydrates wholesale — no intent to preserve.
 assert.equal(reconcileHydratedStatus('PAUSED', 'ACTIVE', false), 'ACTIVE', 'cross-run restore takes the snapshot');
 assert.equal(reconcileHydratedStatus('ACTIVE', 'ACTIVE', true), 'ACTIVE', 'a live run stays live');
+
+// Pending-control re-issue after a refresh mid-transition (the "stop discarded on
+// refresh" bug): re-issue only while the restored run can still accept the command.
+assert.equal(resolvePendingReissue('stop', 'ACTIVE'), 'stop', 'a lost stop is re-issued against the resumed run');
+assert.equal(resolvePendingReissue('pause', 'ACTIVE'), 'pause', 'a lost pause is re-issued');
+assert.equal(resolvePendingReissue('resume', 'PAUSED'), 'resume', 'a lost resume is re-issued');
+assert.equal(resolvePendingReissue('stop', 'PAUSED'), 'stop', 'stop still applies to a paused run');
+// Idempotent: a snapshot that already reflects the command re-issues nothing.
+assert.equal(resolvePendingReissue('pause', 'PAUSED'), null, 'already paused — no re-issue');
+assert.equal(resolvePendingReissue('resume', 'ACTIVE'), null, 'already active — no resume re-issue');
+assert.equal(resolvePendingReissue('stop', 'STOPPED'), null, 'already terminal — no re-issue');
+assert.equal(resolvePendingReissue('stop', 'FINISHED'), null, 'already finished — no re-issue');
 
 // A client-issued timebox stop must resolve to the timebox outcome, not user-stopped.
 assert.equal(STOP_REASON_OUTCOME.timebox, 'timebox', 'timebox stop must map to the timebox outcome');

@@ -168,6 +168,21 @@ After reading the actual code, several audit items turned out to be intentional 
 
 ---
 
+## Second slow-3G pass (deployed backend + tunnel target)
+
+Retested the deployed app (backend F5 live; frontend still the pre-fix build) against a cloudflare-tunnel target under Slow 3G (socket/api ~2137ms).
+
+- **F5 verified live**: a saved run showed **51 steps** and Duration **8m 15s** (both were 0 / N/A before). Deployed backend works.
+- **N1 (new) — Fixed**: **refresh during STOPPING/PAUSING/RESUMING silently discarded the command** — the run resumed ACTIVE (repro: STOP → refresh → timer 5:20→2:20, findings 14→18, still running). Control commands are client-only optimistic + a fire-and-forget socket emit that dies with the page; restore rehydrates the RUNNING snapshot with no memory of the intent. Fix persists the intent (`bugsafari:pendingControl`, keyed by run code) and re-issues it once on restore against the same still-live run — pure `resolvePendingReissue` (in `types.ts`) gates it, reuses the existing gateway + redelivery + HTTP-fallback, 8 assertions in `stateMachine.test.ts`. Touched: `types.ts`, `runCommands.ts`, `gatewayBinding.ts`.
+- **Slow-banner detection limit (noted, not over-built)**: DevTools Slow-3G leaves `navigator.connection` nominal (`4g`/rtt 100) on this host, so the `effectiveType`-based banner won't fire under DevTools sim — it fires on real mobile links. Behavioral latency detection would close the gap; deferred unless wanted.
+- Reproduced-but-already-fixed (frontend not yet deployed): pause desync (F1), blank feed after reconnect (F3), target-URL revert (F4).
+
+**Deploy note:** F1/F3/F4/F7 + slow banner + **N1** are all **frontend** (`developer-dashboard`) — a backend-only deploy excludes them; the next upload must include the frontend build.
+
+**Verification (N1):** `tsc --noEmit` clean · dashboard tests 7/7 (incl. N1 assertions) · `npm run build` ok.
+
+---
+
 ## Test coverage log
 
 Login (3G, ~clean) → Dashboard load → Start test (`example.com`, instant finish) → Findings/Network tabs → Start test (`todomvc`) → live feed + telemetry OK → **Pause on 3G → F1/F2** → Stop (crash-recovery HALT) → **Save session OK** → History (F5) → Forensic report (renders well; F8) → Settings OK → Refresh (auth persists; F4/F7) → Start test → **Refresh mid-run (run survives; F3)** → Pause/Resume on fast net (clean) → Stop (clean).

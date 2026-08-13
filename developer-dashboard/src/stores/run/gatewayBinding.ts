@@ -2,6 +2,7 @@ import type { EngineGateway, BrowserConsoleMessage } from '../../application/por
 import type { ForensicCrashReport, IncidentReport } from '../../types';
 import type { TelemetryEvent } from '../../types';
 import { useRunStore } from './runStore';
+import { reissuePendingControl } from './runCommands';
 import { RUN_ID_STORAGE_KEY, TELEMETRY_CAP, CONSOLE_BUFFER_CAP } from './types';
 import { shouldFetchHistory, shouldRestoreSession, type SessionBootstrap } from './sessionBootstrap';
 import { logger } from '../../utils/logger';
@@ -208,7 +209,11 @@ export function connectAndRestore(gateway: EngineGateway, bootstrap: SessionBoot
     store.setRestoring(true);
     void gateway.fetchActiveSession()
         .then((snapshot) => {
-            if (snapshot) useRunStore.getState().hydrateFromSnapshot(snapshot);
+            if (!snapshot) return;
+            useRunStore.getState().hydrateFromSnapshot(snapshot);
+            // Re-issue a pause/stop/resume the operator hit just before this refresh —
+            // its socket emit died with the old page, so the run would otherwise resume.
+            reissuePendingControl(snapshot);
         })
         .catch(() => undefined)
         .finally(() => useRunStore.getState().setRestoring(false));

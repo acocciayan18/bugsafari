@@ -41,6 +41,31 @@ export default function ConnectionStatusChip() {
     };
   }, []);
 
+  // Proactive slow-link detection via the Network Information API (Chromium/Android).
+  // Passive — one change listener, zero cost on fast links. Where the API is absent
+  // (Safari/Firefox) slowLink stays false and only the reactive states below apply.
+  const [slowLink, setSlowLink] = useState(false);
+  useEffect(() => {
+    const conn = (navigator as unknown as { connection?: { effectiveType?: string; saveData?: boolean; addEventListener?: (t: string, f: () => void) => void; removeEventListener?: (t: string, f: () => void) => void } }).connection;
+    if (!conn?.addEventListener) return;
+    const read = () => setSlowLink(conn.saveData === true || conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g');
+    read();
+    conn.addEventListener('change', read);
+    return () => conn.removeEventListener?.('change', read);
+  }, []);
+
+  // One-time notice on slow-link onset — the copy the operator needs before blaming
+  // the tool for lagging frames. Re-arms once the link recovers.
+  const slowToasted = useRef(false);
+  useEffect(() => {
+    if (slowLink && !slowToasted.current) {
+      slowToasted.current = true;
+      toast.network('Slow internet connection may affect test execution and live updates.', { duration: 6000 });
+    } else if (!slowLink) {
+      slowToasted.current = false;
+    }
+  }, [slowLink]);
+
   // Socket loss only counts once we've actually connected — the initial connecting
   // phase must not flash a loss. True internet loss (navigator) counts always.
   const hasConnectedOnce = useRef(false);
@@ -61,7 +86,9 @@ export default function ConnectionStatusChip() {
             ? { label: 'Target unreachable — paused, retrying', severity: 'warning' }
             : targetNetworkPhase === 'DEGRADED'
               ? { label: 'Target connection unstable', severity: 'warning' }
-              : null;
+              : slowLink
+                ? { label: 'Slow connection — live updates may lag', severity: 'warning' }
+                : null;
 
   const down = problem !== null;
 

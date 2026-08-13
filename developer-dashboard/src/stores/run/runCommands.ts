@@ -1,5 +1,5 @@
 import { toast } from '../../infrastructure/notifications/ToastProvider';
-import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent } from '../../types';
+import type { OptimizationSettings, TargetAuthConfig, ExplorationRunConfig, TelemetryEvent, ActiveSessionSnapshot } from '../../types';
 import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
@@ -8,7 +8,13 @@ import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus } from './types';
+import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, RUN_CONTROL_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus, resolvePendingReissue } from './types';
+
+// Remember a pause/stop/resume the operator just issued, keyed to this run's code, so a
+// refresh landing mid-transition can re-issue it instead of silently resuming the run.
+function writePendingControl(kind: 'pause' | 'stop' | 'resume'): void {
+    writeStorage(RUN_CONTROL_STORAGE_KEY, `${kind}:${readStorage(RUN_CODE_STORAGE_KEY) ?? ''}`);
+}
 
 function writeStorage(key: string, value: string | null): void {
     try {
@@ -71,6 +77,8 @@ export async function startRun(
 
     const gateway = getEngineGateway();
     const store = useRunStore.getState();
+    // A fresh launch retires any pending control intent from a prior run.
+    writeStorage(RUN_CONTROL_STORAGE_KEY, null);
     store.resetForLaunch(timeboxMs, resolvedUrl);
 
     try {
@@ -89,7 +97,10 @@ export async function startRun(
             toast('Reconnected to your existing session. Resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
             useRunStore.setState({ isInitializing: false });
             const snapshot = await gateway.fetchActiveSession();
-            if (snapshot) useRunStore.getState().hydrateFromSnapshot(snapshot);
+            if (snapshot) {
+                useRunStore.getState().hydrateFromSnapshot(snapshot);
+                reissuePendingControl(snapshot);
+            }
             return;
         }
 
@@ -118,6 +129,7 @@ export function pauseRun(): void {
     const status = useRunStore.getState().status;
     if (status !== 'ACTIVE') return;
     getEngineGateway().pauseTest();
+    writePendingControl('pause');
     // Optimistic transition (via the state machine) so the control locks immediately
     // instead of staying clickable until the engine's telemetry round-trip lands.
     useRunStore.setState({ status: resolveStatus(status, 'PAUSING') });
@@ -127,7 +139,28 @@ export function resumeRun(): void {
     const status = useRunStore.getState().status;
     if (status !== 'PAUSED') return;
     getEngineGateway().resumeTest();
+    writePendingControl('resume');
     useRunStore.setState({ status: resolveStatus(status, 'ACTIVE') });
+}
+
+// Restore-time recovery for a control command issued just before a refresh. The socket
+// emit dies with the old page, so hydrate lands the run back on ACTIVE/PAUSED; re-issue
+// the persisted intent once against the same still-live run. Idempotent — a snapshot that
+// already reflects the command yields no re-issue, and the backend guards duplicates.
+export function reissuePendingControl(snapshot: ActiveSessionSnapshot): void {
+    const pending = readStorage(RUN_CONTROL_STORAGE_KEY);
+    if (!pending) return;
+    const sep = pending.indexOf(':');
+    const kind = sep >= 0 ? pending.slice(0, sep) : pending;
+    const runCode = sep >= 0 ? pending.slice(sep + 1) : '';
+    writeStorage(RUN_CONTROL_STORAGE_KEY, null); // one-shot, whatever the outcome
+    if (runCode && snapshot.runId && runCode !== snapshot.runId) return; // stale — different run
+    const action = resolvePendingReissue(kind, useRunStore.getState().status);
+    if (!action) return;
+    const gateway = getEngineGateway();
+    if (action === 'stop') { gateway.stopTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'STOPPING') }); }
+    else if (action === 'pause') { gateway.pauseTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'PAUSING') }); }
+    else { gateway.resumeTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'ACTIVE') }); }
 }
 
 export async function stopRun(): Promise<void> {
@@ -159,6 +192,7 @@ export async function stopRun(): Promise<void> {
     // (pendingStop) and applies it the instant the engine attaches.
     if (status === 'ACTIVE' || status === 'PAUSED' || status === 'STARTING') {
         gateway.stopTest();
+        writePendingControl('stop');
         // Optimistic transition so Stop/Pause/Resume lock immediately (spam window).
         useRunStore.setState({ status: resolveStatus(status, 'STOPPING') });
     }

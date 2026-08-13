@@ -83,6 +83,11 @@ export const RUN_ID_STORAGE_KEY = 'bugsafari:runId';
 export const RUN_CODE_STORAGE_KEY = 'bugsafari:runCode';
 // jobId of an enqueued distributed run — needed to rejoin the queue-position stream
 export const JOB_ID_STORAGE_KEY = 'bugsafari:jobId';
+// Pending pause/stop/resume intent (`kind:runCode`). A control command is client-only
+// optimistic + a fire-and-forget socket emit; a refresh mid-transition would otherwise
+// drop it and rehydrate the run as ACTIVE — the "stop discarded on refresh" bug. Persisted
+// so restore can re-issue it once against the same still-live run.
+export const RUN_CONTROL_STORAGE_KEY = 'bugsafari:pendingControl';
 
 // Every key tied to ONE operator's run. Enumerated so a teardown can drop the set
 // without a caller having to remember which keys exist.
@@ -90,7 +95,21 @@ export const RUN_SCOPED_STORAGE_KEYS = [
     RUN_ID_STORAGE_KEY,
     RUN_CODE_STORAGE_KEY,
     JOB_ID_STORAGE_KEY,
+    RUN_CONTROL_STORAGE_KEY,
 ] as const;
+
+// Which control command a restore should re-issue, given a persisted intent and the
+// status the snapshot just hydrated to. Only re-issue while the run can still accept it —
+// a snapshot that already reflects the command (paused/terminal) yields null (idempotent).
+export function resolvePendingReissue(
+    kind: string,
+    status: TestSessionStatus,
+): 'stop' | 'pause' | 'resume' | null {
+    if (kind === 'stop' && (status === 'ACTIVE' || status === 'PAUSED' || status === 'STARTING' || status === 'STOPPING')) return 'stop';
+    if (kind === 'pause' && status === 'ACTIVE') return 'pause';
+    if (kind === 'resume' && status === 'PAUSED') return 'resume';
+    return null;
+}
 
 // Now the same app-wide slot — kept as an alias so callers don't need to change.
 export const STATUS_TOAST_ID = TOAST_ID;

@@ -1,5 +1,5 @@
 import type { TelemetryEvent } from '../../types';
-import { isActionableNetworkStatus } from '../../../../shared/types.js';
+import { isShownNetworkFailure } from '../../utils/networkLogBuilder';
 import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
 
 // ─────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ interface NetworkTabPanelProps {
 // descriptions ride the same NETWORK channel but are NOT rawNetwork, so they never
 // appear here — this tab reflects only real network activity from the application.
 export function isActionableNetworkFailure(event: TelemetryEvent): boolean {
-  return event.meta?.rawNetwork === true && isActionableNetworkStatus(event.meta?.statusCode);
+  return isShownNetworkFailure(event.meta);
 }
 
 // Collapse rows by method+url+status (preserving first-seen order) so a polled endpoint
