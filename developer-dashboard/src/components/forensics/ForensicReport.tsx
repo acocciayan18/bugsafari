@@ -727,6 +727,10 @@ function ReportFindingCard({
   onVerify: (request: VerifyFixRequest) => void;
 }) {
   const [showResult, setShowResult] = useState(false);
+  // True only after a user-initiated verify/re-verify this session, so the result
+  // modal auto-opens for a fresh run but never for a persisted verdict rehydrated
+  // on mount, refresh, or navigation back into the report.
+  const awaitingResult = useRef(false);
   // Normalized view — the shared <FindingCard> renders identity, metadata and
   // evidence exactly as the live Errors tab does.
   const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
@@ -739,18 +743,24 @@ function ReportFindingCard({
       ? "This finding can't be replayed."
       : undefined;
 
-  // Settled verdict drives both the card theme and the header status chip.
+  // Settled verdict drives the card theme and the Verify/status button.
   const settled = status.state === 'done' ? status.result : null;
   const verdictMeta = settled ? metaForResult(settled) : null;
 
   const triggerVerify = (): void => {
-    if (canVerify && sessionId) onVerify({ sessionId, bugId: bug.bugId });
+    // Guard duplicates: never fire while a replay for this finding is in flight.
+    if (!canVerify || !sessionId || status.state === 'running') return;
+    awaitingResult.current = true;
+    onVerify({ sessionId, bugId: bug.bugId });
   };
 
-  // Surface the outcome immediately: pop the result modal whenever a fresh
-  // terminal result arrives (initial verify or any re-verify → a new object).
+  // Auto-open the result modal only when a user-initiated verify settles this
+  // session — a persisted verdict loaded on navigation stays behind the button.
   useEffect(() => {
-    if (settled) setShowResult(true);
+    if (settled && awaitingResult.current) {
+      awaitingResult.current = false;
+      setShowResult(true);
+    }
   }, [settled]);
 
   return (
@@ -761,12 +771,6 @@ function ReportFindingCard({
         aiFix
         sessionId={sessionId}
         theme={verdictMeta ?? BASE_FINDING_THEME}
-        statusChip={verdictMeta && (
-          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold uppercase ${verdictMeta.chip}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${verdictMeta.dot}`} />
-            {verdictMeta.label}
-          </span>
-        )}
         actions={
           <VerifyFixControl
             status={status}

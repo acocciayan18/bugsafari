@@ -69,7 +69,6 @@ export default function FindingCard({
   view,
   index,
   theme = BASE_FINDING_THEME,
-  statusChip,
   actions,
   showBypass = true,
   aiFix = false,
@@ -79,7 +78,6 @@ export default function FindingCard({
   view: FindingView;
   index: number;
   theme?: FindingCardTheme;
-  statusChip?: ReactNode;
   actions?: ReactNode;
   showBypass?: boolean;
   aiFix?: boolean;
@@ -108,7 +106,6 @@ export default function FindingCard({
                 ×{view.occurrences}
               </span>
             )}
-            {statusChip}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
