@@ -108,7 +108,7 @@ const STUDENT_GUIDANCE: Record<RuntimeSubtype, string> = {
   RENDERER_CRASH:
     "The browser tab itself crashed, usually out of memory from a leak or a runaway loop, or one huge allocation. Check memory use and limit the work done per frame.",
   GENERIC_EXCEPTION:
-    "An unhandled error left the page unstable. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.",
+    "An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.",
 };
 
 // Passive runtime-error classifier. Pure and event-fed: StabilityMonitor pushes raw

@@ -78,19 +78,22 @@ export function setupFuzzGuardAccessor(): void {
 
 /**
  * Generates a fuzzed text input for an input element — deterministic in the
- * (element, seed) pair so callers get reproducible payloads. Uses the base
- * (level-0) escalator vector for the element's classified category.
+ * (element, seed, cursor) triple so callers get reproducible payloads. Uses the
+ * base (level-0) escalator vector for the element's classified category; `cursor`
+ * advances the base pick across the corpus so repeat/multi-field invocations sweep
+ * vectors instead of re-firing one seed-pinned vector (audit P3-16).
  */
 export async function fuzzTextInput(
   page: Page,
   element: InteractiveElement,
   seed: number,
+  cursor = 0,
 ): Promise<string> {
   const category = classifyInputElement(element);
   // Fold the caller's seed into the stable per-field seed so distinct call
   // sites/steps get distinct-but-replayable payloads.
   const fieldSeed = (deriveFuzzSeed(element.selector ?? '', category) ^ (seed >>> 0)) >>> 0;
-  return synthesizeEscalatedPayload(category, 0, fieldSeed).value;
+  return synthesizeEscalatedPayload(category, 0, fieldSeed, cursor).value;
 }
 
 /**

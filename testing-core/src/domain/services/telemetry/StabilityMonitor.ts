@@ -831,10 +831,10 @@ export class StabilityMonitor {
     });
 
     // A tab crash or a stack overflow leaves the page unusable → CRITICAL. Any other
-    // uncaught fault (we floored its confidence to CONFIRMED above) takes the HIGH
-    // RUNTIME_STABILITY_EXCEPTION bug-class default — the classifier's own severity was
-    // capped to MEDIUM under its INFERRED verdict, which no longer applies. CONSOLE
-    // output keeps that conservative classifier severity.
+    // uncaught fault (we floored its confidence to CONFIRMED above) takes the MEDIUM
+    // RUNTIME_STABILITY_EXCEPTION bug-class default — one uncaught error often leaves the
+    // page usable, so it stays MEDIUM unless a 5xx escalates it. CONSOLE output keeps the
+    // conservative classifier severity.
     const severityBase = CRITICAL_RUNTIME_SUBTYPES.has(finding.subtype)
       ? 'CRITICAL'
       : source === 'CONSOLE'

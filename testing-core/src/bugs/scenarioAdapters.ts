@@ -22,7 +22,8 @@ const DEFAULT_PROFILE: FuzzAttackProfile = 'xss_sql_unicode';
  *
  * @param page - Playwright Page object
  * @param element - Target interactive element
- * @param step - Step identifier for payload generation
+ * @param step - Step identifier for payload generation; doubles as the corpus
+ *   cursor so consecutive steps sweep vectors instead of re-firing one.
  * @param options - Attack profile options
  * @returns The injected payload string
  */
@@ -33,15 +34,15 @@ export async function fuzzTextWithAttackSurface(
   options: { profile: FuzzAttackProfile } = { profile: DEFAULT_PROFILE },
 ): Promise<string> {
   const { profile } = options;
-  
+
   // Strip constraints before fuzzing - ignore errors (element may not exist)
   try {
     await stripConstraints(page, element.selector);
   } catch (err) {
     obsLog.warn(`[scenarioAdapters] Failed to strip constraints for ${element.selector}:`, err);
   }
-  
+
   obsLog.info(`[scenarioAdapters] Fuzzing with profile "${profile}" on step ${step}`);
-  return fuzzTextInput(page, element, step);
+  return fuzzTextInput(page, element, step, step);
 }
 

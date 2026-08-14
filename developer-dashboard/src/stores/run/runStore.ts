@@ -110,6 +110,9 @@ export interface RunState {
     accessibilityBannerDismissed: boolean;
     reports: ForensicCrashReport[];
     incidents: IncidentReport[];
+    // The original address the operator launched — fixed for the run's lifetime.
+    targetUrl: string;
+    // The live address the browser is on now — advances as the engine navigates.
     currentUrl: string;
     sessionHistory: SessionHistoryEntry[];
     isSavingSession: boolean;
@@ -190,6 +193,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     accessibilityBannerDismissed: false,
     reports: [],
     incidents: [],
+    targetUrl: '',
     currentUrl: '',
     sessionHistory: [],
     isSavingSession: false,
@@ -516,6 +520,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             reports,
             incidents,
             browserConsole,
+            // Original launch target, held stable for the field; currentUrl tracks navigation.
+            targetUrl: normalizeTargetUrl(snapshot.targetUrl) ?? snapshot.targetUrl,
             currentUrl: normalizeTargetUrl(snapshot.currentUrl || snapshot.targetUrl) ?? snapshot.targetUrl,
             activeTimeboxMs: snapshot.timeboxMs,
             elapsedTimeMs,
@@ -583,6 +589,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             incidents: [],
             // Console buffer is per-run; a new session must never inherit prior logs
             browserConsole: [],
+            targetUrl: resolvedUrl,
             currentUrl: resolvedUrl,
             remainingTimeMs: timeboxMs,
             elapsedTimeMs: 0,
@@ -674,6 +681,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             reports: [],
             incidents: [],
             browserConsole: [],
+            targetUrl: '',
+            currentUrl: '',
             accessibilityCount: 0,
             accessibilityBannerDismissed: false,
             // History is per-tenant and refetched for the new identity.

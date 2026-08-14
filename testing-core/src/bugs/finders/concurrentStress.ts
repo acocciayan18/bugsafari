@@ -239,9 +239,9 @@ export const concurrentStressGuard: BugFinder = {
       findings.push({
         bugClass: 'RUNTIME_STABILITY_EXCEPTION',
         title: 'Page froze and stopped responding during fast clicking',
-        severity: 'CRITICAL',
+        severity: 'HIGH',
         evidence: {
-          message: `Clicking every ${metadata.velocity}ms locked up the page so it stopped responding to input. The app cannot keep up with fast repeated clicks.`,
+          message: `Clicking every ${metadata.velocity}ms locked up the page so it stopped responding to input during this burst.`,
           selector: metadata.elementChain[0] ?? '',
           actionExecuted: `stress-click-hang-vel${metadata.velocity}`,
         },

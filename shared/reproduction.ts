@@ -481,14 +481,14 @@ export function describeRouteTrashDefensive(navType: string, count: number, url:
   return `[INFO] ${navigationLabel(navType)} was rejected ${count} time(s) with a 4xx response at ${routePath(url)}. This was handled correctly, so it is not a bug.`;
 }
 
-/** RouteTrasher: an unhandled client-side exception fired during a mutation (CRITICAL). */
+/** RouteTrasher: an unhandled client-side exception fired during a mutation (HIGH). */
 export function describeRouteTrashClientCrash(navType: string, count: number, url: string): string {
-  return `[CRITICAL] ${navigationLabel(navType)} caused ${count} unhandled JavaScript error(s) at ${routePath(url)}.`;
+  return `[HIGH] ${navigationLabel(navType)} caused ${count} unhandled JavaScript error(s) at ${routePath(url)}.`;
 }
 
-/** RouteTrasher: a mutation left the app on a white/blank screen (CRITICAL). */
+/** RouteTrasher: a mutation left the app on a white/blank screen (HIGH). */
 export function describeRouteTrashWhiteScreen(navType: string, url: string): string {
-  return `[CRITICAL] ${navigationLabel(navType)} left the page blank at ${routePath(url)}. The view failed to render.`;
+  return `[HIGH] ${navigationLabel(navType)} left the page blank at ${routePath(url)}. The view failed to render.`;
 }
 
 /** NetworkSaboteur step. */

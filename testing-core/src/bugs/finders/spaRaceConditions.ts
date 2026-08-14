@@ -93,12 +93,15 @@ export async function burstConcurrentStress(
 
   // Seeded, replayable values — Math.random() broke the seeded-run guarantee the
   // rest of the engine maintains (EdgeSelector.nextRandom / deriveFuzzSeed).
-  for (const element of fillable) {
+  // Per-field index doubles as the corpus cursor so multiple fillable fields (and
+  // revisits at later steps) sweep vectors instead of re-firing one seed-pinned pick.
+  for (const [cursor, element] of fillable.entries()) {
     const category = classifyInputElement(element);
     const value = synthesizeEscalatedPayload(
       category,
       0,
       deriveFuzzSeed(`race:${element.selector}:${step}`, category),
+      cursor,
     ).value;
     ActionRecorder.recordStep({
       actionType: 'TYPE',
@@ -260,7 +263,7 @@ export const spaRaceConditionsFinder: BugFinder = {
     if (damage.crashes.length === 0 && damage.guarded > 0 && damage.serverError === 0) return [];
 
     const detail = damage.crashes.length > 0
-      ? `The page crashed during the burst of events: ${damage.crashes.join(' | ')}`
+      ? `The page threw unhandled JavaScript error(s) during the burst: ${damage.crashes.join(' | ')}`
       : 'The page stayed stuck in a loading or blocked state after the burst finished';
 
     // Reproduction from the burst's own pre-recorded intents (filtered by its id, so it

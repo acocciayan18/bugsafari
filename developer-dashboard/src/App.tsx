@@ -102,14 +102,15 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   ]);
 
   // Keep the target field in sync with a restored or live run so a refresh shows the
-  // real target instead of the hardcoded default. currentUrl only advances while a run
-  // is live or being restored, and the field is disabled then — so this never clobbers
-  // what the operator is typing on an idle dashboard.
+  // real target instead of the hardcoded default. Bind to the run's fixed targetUrl, not
+  // currentUrl — the field must show the launched target, never the browser's live address
+  // as the engine navigates. targetUrl is only set on launch/restore, and the field is
+  // disabled then, so this never clobbers what the operator is typing on an idle dashboard.
   useEffect(() => {
-    if (state.currentUrl && (state.isTestRunning || state.isRestoring)) {
-      setTargetUrl(state.currentUrl);
+    if (state.targetUrl && (state.isTestRunning || state.isRestoring)) {
+      setTargetUrl(state.targetUrl);
     }
-  }, [state.currentUrl, state.isTestRunning, state.isRestoring]);
+  }, [state.targetUrl, state.isTestRunning, state.isRestoring]);
 
   const handleSaveSessionToHistory = () => {
     // Guests never persist — upsell an account instead of firing a doomed save.

@@ -208,7 +208,7 @@ export const structuralProbeFinder: BugFinder = {
     if (querySignatures.length > 0) {
       findings.push({
         bugClass: 'ROUTE_MUTATION_FAILURE',
-        title: 'Broken query values left in the URL',
+        title: 'Malformed query values left in the URL',
         severity: 'MEDIUM',
         evidence: {
           message: `The URL was left with malformed query values that the app did not clean up. Started from: ${metadata?.originPath}.`,

@@ -237,6 +237,7 @@ export function useDashboardController() {
             accessibilityBannerDismissed: s.accessibilityBannerDismissed,
             reports: s.reports,
             incidents: s.incidents,
+            targetUrl: s.targetUrl,
             currentUrl: s.currentUrl,
             sessionHistory: s.sessionHistory,
             isSavingSession: s.isSavingSession,

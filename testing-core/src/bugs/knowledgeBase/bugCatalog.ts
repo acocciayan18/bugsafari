@@ -103,8 +103,8 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
   },
   RUNTIME_STABILITY_EXCEPTION: {
     title: 'The page hit an unhandled error',
-    description: 'A JavaScript error or console error was thrown and never caught, which left the page unstable.',
-    defaultSeverity: 'HIGH',
+    description: 'A JavaScript error or console error was thrown and never caught, so the failing operation did not complete. Other parts of the page may still work.',
+    defaultSeverity: 'MEDIUM',
     cwe: 'CWE-248',
     remediation: remediation(
       'Suggested fix: catch and guard the failing code',
@@ -140,7 +140,7 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
     ),
   },
   BOUNDARY_STRESS_FAILURE: {
-    title: 'The app broke under resource pressure',
+    title: 'The app failed under resource pressure',
     description: 'The app failed under resource pressure — a request that was delayed, timed out, or cancelled, a hang, or too many requests at once. Reserved for resource exhaustion, not plain server errors.',
     defaultSeverity: 'HIGH',
     cwe: 'CWE-400',
@@ -165,7 +165,7 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
   },
   FUZZ_VULNERABILITY_LEAK: {
     title: 'A test payload got through a defense',
-    description: 'A fuzzing payload slipped past the app defenses. It was reflected back as script (XSS), returned a raw database error, or produced a server crash trace.',
+    description: 'A fuzzing payload slipped past the app defenses. It was reflected back as script (XSS), returned a raw database error, or produced a server error or stack trace.',
     defaultSeverity: 'CRITICAL',
     cwe: 'CWE-79',
     remediation: remediation(
@@ -200,7 +200,7 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
     ),
   },
   ROUTE_MUTATION_FAILURE: {
-    title: 'Changing the URL broke the route',
+    title: 'Changing the URL caused the route to fail',
     description: 'Editing the history or query values produced a redirect loop, a screen that failed to load, or a broken route.',
     defaultSeverity: 'HIGH',
     cwe: 'CWE-835',

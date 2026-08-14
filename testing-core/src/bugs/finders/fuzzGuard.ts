@@ -265,10 +265,10 @@ export const fuzzGuard: BugFinder = {
     if (crashSignatures.length > 0) {
       findings.push({
         bugClass: 'FUZZ_VULNERABILITY_LEAK',
-        title: `Server became unstable after a test value was sent`,
+        title: `Server returned an internal error after a test value was sent`,
         severity: 'HIGH',
         evidence: {
-          message: `Sending a test value to this field made the server crash or return a crash trace, so it does not handle unexpected input safely.`,
+          message: `Sending a test value to this field made the server return an internal error or stack trace, so it does not handle unexpected input safely.`,
           selector: ctx.element?.selector,
           payload: metadata.payload,
           actionExecuted: 'fuzz-crash-detection',

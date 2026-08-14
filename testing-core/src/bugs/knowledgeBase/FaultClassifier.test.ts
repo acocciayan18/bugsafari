@@ -188,8 +188,8 @@ check('Oracle-confirmed injection under DataFuzzer → CONFIRMED security verdic
 });
 
 check('INFERRED runtime fault is severity-capped at MEDIUM', () => {
-  // A no-signal exception classifies to RUNTIME_STABILITY_EXCEPTION (catalog HIGH) with
-  // INFERRED confidence; the confidence cap lowers it to MEDIUM.
+  // A no-signal exception classifies to RUNTIME_STABILITY_EXCEPTION (catalog MEDIUM) with
+  // INFERRED confidence; both the catalog default and the confidence cap land it at MEDIUM.
   const c = classifyFault({ faultType: 'EXCEPTION', message: 'Something unusual happened' });
   assert.equal(c.confidence, 'INFERRED');
   assert.equal(c.severity, 'MEDIUM');
