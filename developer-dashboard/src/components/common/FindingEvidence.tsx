@@ -39,7 +39,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
               <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
               {where && <div className="mt-0.5 text-xs text-(--text-secondary) break-words">{where}</div>}
               {payloadDisplay && (
-                <code className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
+                <code title={payloadDisplay} className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
                   {payloadDisplay}
                 </code>
               )}

@@ -21,6 +21,12 @@ export interface RunRegistryEntry {
   targetUrl: string;
   timeboxMs: number;
   createdAt: string;
+  // ISO timestamp set the moment the operator asks to stop this run. A stop of an
+  // active run is dispatched to the worker and returns before the run tears down, so
+  // the job lingers in BullMQ's 'active'/'completed' set for a beat. Without this
+  // flag a launch during that window matches the duplicate-submission guard and
+  // RESUMES the run the operator just stopped instead of starting a fresh one.
+  stopRequestedAt?: string;
 }
 
 /**
@@ -59,6 +65,19 @@ export class RunRegistry {
       multi.set(this.ownerKey(entry.userId), entry.runToken, 'EX', ENTRY_TTL_SECONDS);
     }
     await multi.exec();
+  }
+
+  /**
+   * Flag a run as stop-requested so the duplicate-submission guard never resumes it.
+   * Preserves the key's remaining TTL (KEEPTTL) and leaves the owner pointer + replay
+   * snapshot intact, so a post-completion refresh still restores the stopped run — only
+   * a NEW launch is prevented from adopting it. No-op if the entry already vanished.
+   */
+  public async markStopRequested(runToken: string): Promise<void> {
+    const entry = await this.findByRunToken(runToken);
+    if (!entry || entry.stopRequestedAt) return;
+    entry.stopRequestedAt = new Date().toISOString();
+    await this.redis.set(this.runKey(runToken), JSON.stringify(entry), 'KEEPTTL');
   }
 
   public async findByRunToken(runToken: string): Promise<RunRegistryEntry | null> {

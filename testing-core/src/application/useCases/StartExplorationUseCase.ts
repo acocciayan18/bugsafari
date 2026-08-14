@@ -58,6 +58,8 @@ const EXECUTION_STATUS_BY_OUTCOME: Record<RunTerminationOutcome, ExecutionStatus
     'target-crash': 'CRASHED',
     abandoned: 'ABANDONED',
     'engine-error': 'CRASHED',
+    // Inert: a queued run cancelled before pickup never enters execute().
+    'queue-cancelled': 'STOPPED',
     exception: 'CRASHED',
 };
 

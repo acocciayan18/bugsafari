@@ -201,6 +201,17 @@ export class SessionManager implements TelemetryRecorder {
   // (→ useCase.releaseActivation); left null in the worker, whose slot is the BullMQ
   // job itself and settles when the processor returns.
   private onRelease: (() => void) | null = null;
+  // Stops that arrived for a run token before its engine began executing. The worker
+  // reaches beginRun() only after async boot (SSRF re-check, vault open, Chromium
+  // launch); a stop bridged in during that window has no run to act on and was
+  // dropped, so the run explored to its full timebox and pinned the worker slot —
+  // stranding the next launch behind it in a false queue. Remembered here, keyed by
+  // runToken, and applied the instant beginRun() attaches the real engine.
+  private pendingStops = new Map<string, StopReason>();
+  // Bound so a stop for a run that never begins (e.g. a boot that throws before
+  // beginRun) cannot accumulate entries. Concurrency is 1 per process, so one live
+  // token is the norm; the cap is a pure leak backstop.
+  private static readonly PENDING_STOP_CAP = 16;
 
   /** Wire the manager to the shared telemetry gateway (room-scoped emitter). */
   public initialize(gateway: SocketTelemetryGateway): void {
@@ -297,12 +308,13 @@ export class SessionManager implements TelemetryRecorder {
       reserved.status = 'RUNNING';
       if (HEALTH_MONITOR_ENABLED) reserved.health.start();
       obsLog.info(`[SessionManager] Run ${params.runToken} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
-      // Honour a stop the operator issued while the engine was still booting.
-      if (reserved.pendingStop) {
-        reserved.pendingStop = false;
-        obsLog.info(`[SessionManager] Run ${params.runToken} had a stop pending from boot — applying now.`);
-        void this.stopByOperator(reserved.pendingStopReason);
-      }
+      // Honour a stop the operator issued while the engine was still booting — from
+      // the reservation's own placeholder (in-process path) or bridged in before the
+      // engine attached (worker path).
+      const bridged = this.consumePendingStop(params.runToken);
+      const deferredReason = bridged ?? (reserved.pendingStop ? reserved.pendingStopReason : undefined);
+      reserved.pendingStop = false;
+      if (deferredReason) this.scheduleDeferredStop(params.runToken, deferredReason);
       return;
     }
 
@@ -318,6 +330,41 @@ export class SessionManager implements TelemetryRecorder {
     this.gateway?.setRecorder(this);
     if (HEALTH_MONITOR_ENABLED) this.run.health.start();
     obsLog.info(`[SessionManager] Run ${params.runToken} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
+    // Apply a stop bridged in before the engine attached (worker boot window).
+    const bridged = this.consumePendingStop(params.runToken);
+    if (bridged) this.scheduleDeferredStop(params.runToken, bridged);
+  }
+
+  // Apply a boot-time stop AFTER the engine's run loop is live, not inline here.
+  // engine.run() clears the cancellation tags at its very start, so a stop dispatched
+  // synchronously from beginRun (before run() executes) is wiped and lost. Deferring
+  // to the next event-loop turn lands it exactly where a normal in-run stop lands —
+  // once the browser launch is in flight — so the engine's rapid-cancellation path
+  // tears the run down and attributes it to the real reason.
+  private scheduleDeferredStop(runToken: string, reason: StopReason): void {
+    obsLog.info(`[SessionManager] Run ${runToken} had a stop pending from boot — applying once its run loop is live.`);
+    setImmediate(() => {
+      if (this.run?.runToken !== runToken) return; // run already ended/replaced
+      void this.stopByOperator(reason);
+    });
+  }
+
+  // Remember a stop for a run whose engine has not attached yet, and hand it back
+  // once at beginRun. Keyed by runToken so a stale stop for a run that never begins
+  // never lands on a later run (tokens are unique per run).
+  private rememberPendingStop(runToken: string, reason: StopReason): void {
+    if (this.pendingStops.size >= SessionManager.PENDING_STOP_CAP) {
+      const oldest = this.pendingStops.keys().next().value;
+      if (oldest !== undefined) this.pendingStops.delete(oldest);
+    }
+    this.pendingStops.set(runToken, reason);
+    obsLog.info(`[SessionManager] Stop for run ${runToken} arrived before it began — deferring to beginRun.`);
+  }
+
+  private consumePendingStop(runToken: string): StopReason | undefined {
+    const reason = this.pendingStops.get(runToken);
+    if (reason !== undefined) this.pendingStops.delete(runToken);
+    return reason;
   }
 
   private createRun(params: BeginRunParams, status: RunLifecycleStatus): ActiveRun {
@@ -863,7 +910,15 @@ export class SessionManager implements TelemetryRecorder {
   // Ignored if this process holds no matching run (another worker owns it).
   public applyOperatorControl(command: OperatorCommand, runId: string | null, reason?: StopReason): void {
     const run = this.run;
-    if (!run || (runId !== null && runId !== run.runToken)) return;
+    // Worker boot window: the run is enqueued/claimed but its engine has not called
+    // beginRun yet, so there is nothing to control. A pause/resume is moot then (the
+    // engine will start unpaused), but a stop MUST survive — drop it and the run
+    // explores its whole timebox, pinning the worker slot. Remember it for beginRun.
+    if (!run) {
+      if (command === 'stop' && runId) this.rememberPendingStop(runId, reason ?? 'operator');
+      return;
+    }
+    if (runId !== null && runId !== run.runToken) return;
     if (command === 'pause') void this.pauseByOperator();
     else if (command === 'resume') this.resumeByOperator();
     else void this.stopByOperator(reason ?? 'operator');

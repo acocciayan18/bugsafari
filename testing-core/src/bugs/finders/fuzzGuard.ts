@@ -85,7 +85,8 @@ async function detectXssSignatures(page: BugContext['page'], payload: string | u
   try {
     const verdict = await confirmPayloadReflection(page, payload);
     if (verdict === 'CONFIRMED') {
-      return [`injected payload reflected unescaped/executed (verdict=${verdict})`];
+      // Non-empty marker triggers the finding; internal verdict text is NOT surfaced.
+      return ['reflected'];
     }
     // SANITIZED / ABSENT ⇒ the app handled the payload correctly; no finding.
   } catch {
@@ -235,7 +236,7 @@ export const fuzzGuard: BugFinder = {
         title: `Injected script ran on the page (reflected XSS)`,
         severity: 'CRITICAL',
         evidence: {
-          message: `After typing ${metadata.payload?.substring(0, 50)}... into the ${metadata.category} field, the injected script appeared unescaped in the page. This means a user-supplied value can run as code in the browser. Matches: ${xssSignatures.join(', ')}`,
+          message: `A value entered into this field was reflected back into the page without being escaped, so a user-supplied value can run as code in the browser (reflected XSS).`,
           selector: ctx.element?.selector,
           payload: metadata.payload,
           actionExecuted: 'fuzz-xss-detection',
@@ -251,7 +252,7 @@ export const fuzzGuard: BugFinder = {
         title: `Database error leaked after an injected value (possible NoSQL injection)`,
         severity: 'HIGH',
         evidence: {
-          message: `After sending a crafted value, the page returned a raw database (NoSQL/MongoDB) error. This suggests the value reached the database unchecked, which can allow injection. Errors: ${noSqlErrors.join('; ').substring(0, 200)}`,
+          message: `A crafted value sent to this field made the server return a raw database error, which suggests the value reached the database without being checked and can allow injection.`,
           selector: ctx.element?.selector,
           payload: metadata.payload,
           actionExecuted: 'fuzz-nosql-detection',
@@ -267,7 +268,7 @@ export const fuzzGuard: BugFinder = {
         title: `Server became unstable after a test value was sent`,
         severity: 'HIGH',
         evidence: {
-          message: `Sending test values made the server crash or return crash traces, so it does not handle unexpected input safely. Matches: ${crashSignatures.join('; ')}`,
+          message: `Sending a test value to this field made the server crash or return a crash trace, so it does not handle unexpected input safely.`,
           selector: ctx.element?.selector,
           payload: metadata.payload,
           actionExecuted: 'fuzz-crash-detection',

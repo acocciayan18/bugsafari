@@ -14,11 +14,12 @@ export type RunTerminationOutcome =
   | 'target-crash'        // target server confirmed dead by health probes
   | 'abandoned'           // operator disconnected and never returned within the grace window
   | 'engine-error'        // BugSafari engine / Playwright / environment failure — NOT a target defect
+  | 'queue-cancelled'     // queued run cancelled before a worker ever executed it
   | 'exception';          // unhandled failure attributed to the target application
 
 /** Who asked the engine to stop. Carried through teardown so a resulting
  *  browser-closed error is attributed to its real cause, not to the operator. */
-export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'pause-timeout' | 'internal-shutdown';
+export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'pause-timeout' | 'internal-shutdown' | 'queue-cancelled';
 
 /** Terminal outcome implied by each stop trigger. */
 export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
@@ -28,11 +29,15 @@ export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
   'disconnect-grace': 'abandoned',
   'pause-timeout': 'abandoned',
   'internal-shutdown': 'graceful-shutdown',
+  'queue-cancelled': 'queue-cancelled',
 };
 
 /** Stop reasons a dashboard client is allowed to assert over the wire. Every other
- *  reason (crash, disconnect, shutdown) is server-authoritative and can never be
- *  spoofed by a client — an unknown/forbidden value coerces to `operator`. */
+ *  reason (crash, disconnect, shutdown, queue-cancelled) is server-authoritative and
+ *  can never be spoofed by a client — an unknown/forbidden value coerces to `operator`.
+ *  `queue-cancelled` is deliberately excluded: a client must not be able to attribute
+ *  an executing engine stop as a queue cancellation; the API stamps it itself when it
+ *  removes a still-waiting job. */
 export const CLIENT_STOP_REASONS: readonly StopReason[] = ['operator', 'timebox'];
 
 export function coerceClientStopReason(value: unknown): StopReason {
@@ -49,6 +54,7 @@ export const STOP_REASON_DETAIL: Record<StopReason, string> = {
   'disconnect-grace': 'Session terminated — the operator disconnected and did not return within the grace window.',
   'pause-timeout': 'Session terminated — it stayed paused past the maximum pause window.',
   'internal-shutdown': 'Session terminated by an internal engine shutdown.',
+  'queue-cancelled': 'Queued session cancelled before a worker started it.',
 };
 
 /** Operator-facing copy per outcome. `label` is the badge, `detail` the sentence. */
@@ -61,6 +67,7 @@ export const TERMINATION_COPY: Record<RunTerminationOutcome, { label: string; de
   'target-crash': { label: 'Target Crashed', icon: '', detail: 'Session terminated — the target application stopped responding.' },
   abandoned: { label: 'Abandoned', icon: '', detail: 'Session terminated — the operator disconnected and did not return.' },
   'engine-error': { label: 'Engine Error', icon: '', detail: 'Session ended by a BugSafari engine or environment failure — not a defect in the target application.' },
+  'queue-cancelled': { label: 'Queue Cancelled', icon: '', detail: 'Queued session cancelled before a worker started it. No exploration ran.' },
   exception: { label: 'Crashed', icon: '', detail: 'Session terminated by an unhandled failure in the target application.' },
 };
 
@@ -72,5 +79,5 @@ export function describeTermination(outcome: RunTerminationOutcome, reason?: str
 
 /** True when the outcome represents a healthy end rather than a fault. */
 export function isCleanTermination(outcome: RunTerminationOutcome): boolean {
-  return outcome === 'completed' || outcome === 'boundary-saturated' || outcome === 'user-stopped' || outcome === 'timebox';
+  return outcome === 'completed' || outcome === 'boundary-saturated' || outcome === 'user-stopped' || outcome === 'timebox' || outcome === 'queue-cancelled';
 }

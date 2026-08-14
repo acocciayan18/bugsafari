@@ -35,6 +35,8 @@ const OUTCOME_STATUS: Record<RunTerminationOutcome, SessionStatus> = {
   'target-crash': SessionStatus.CRASHED,
   abandoned: SessionStatus.ABANDONED,
   'engine-error': SessionStatus.ENGINE_ERROR,
+  // Inert: a queue cancellation never reaches the engine or persists a session.
+  'queue-cancelled': SessionStatus.STOPPED,
   exception: SessionStatus.CRASHED,
 };
 

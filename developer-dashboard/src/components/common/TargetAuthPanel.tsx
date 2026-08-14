@@ -201,29 +201,29 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           id={helpId}
           role="region"
           aria-label="Target authentication help"
-          className="border-t border-(--border-hairline) bg-(--surface-inset) px-4 py-3 space-y-2.5 text-xs leading-relaxed text-(--text-secondary) font-sans"
+          className="border-t text-[13px] border-(--border-hairline) bg-(--surface-inset) px-4 py-3 space-y-2.5 text-xs leading-relaxed text-(--text-tertiary) font-sans"
         >
           <p>
             Give BugSafari a way in so it can explore the pages behind your login, not just the sign-in
             screen. Pick whichever method matches how your target authenticates.
           </p>
           <div>
-            <p className="font-medium text-(--text-primary)">Login form (email &amp; password)</p>
-            <p className="text-(--text-tertiary)">
+            <p className="font-normal text-(--text-primary) text-[13px]">Login form (email &amp; password)</p>
+            <p className="text-(--text-tertiary) text-[13px]">
               The engine opens the login page, fills the fields, and submits. Best for ordinary
               username/password forms. Add custom selectors under Advanced only if auto-detection
               misses the fields.
             </p>
           </div>
           <div>
-            <p className="font-medium text-(--text-primary)">Session state (storageState JSON)</p>
-            <p className="text-(--text-tertiary)">
+            <p className="font-normal text-(--text-primary) text-[13px]">Session state (storageState JSON)</p>
+            <p className="text-(--text-tertiary) text-[13px]">
               Seed a session you already established out of band. Use this when a form fill can't drive
               the login: SSO/OAuth redirects, MFA, or captcha. Export it with
               {' '}<code>await context.storageState()</code> from a logged-in Playwright session.
             </p>
           </div>
-          <p className="text-(--text-tertiary)">
+          <p className="text-(--text-tertiary) text-[13px]">
             Either way the credentials are used once for this run and held in memory only. Use a
             dedicated test account.
           </p>
@@ -334,7 +334,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           </div>
         )}
 
-        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-(--text-tertiary) font-sans">
+        <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-(--text-tertiary) font-sans">
           <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
           <span>
             Used once for this run and held in memory only, never saved to your history, reports,

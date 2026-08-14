@@ -16,6 +16,7 @@ import {
   describeConstraintBypass,
   describeInputInjection,
   describeNavigation,
+  narrateActionRecords,
 } from '../forensics/narration.js';
 import { triggerFormSubmission } from './formSubmitter.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
@@ -31,7 +32,10 @@ import type { ActionExecutorDeps } from './types.js';
 import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
+import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
+import type { ActionRecord } from '../../../../../shared/types.js';
+import { OBSERVATION_PREFIX } from '../../../../../shared/types.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
@@ -1130,7 +1134,11 @@ export class ActionExecutor {
    */
   private async registerFuzzFinding(finding: BugFinding, payload: string, target: InteractiveElement, page: Page): Promise<void> {
     const selector = target.selector;
+    // elementLabel is value-free (resolveElementLabel skips a field's live value), so the
+    // just-injected payload never becomes the element name.
     const elementLabel = resolveElementLabel(target);
+    const kind = elementNoun(target.tagName, target.type);
+    const redactValue = isSensitiveInputElement(target);
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.title,
@@ -1138,6 +1146,33 @@ export class ActionExecutor {
       scenario: 'DataFuzzer',
       confirmed: true,
     });
+
+    // Replayable trace + narrative: navigate to the fault page, type the payload into the
+    // exact field, then the observed leak. ensureFindingEvidence guarantees non-empty steps.
+    const now = new Date().toISOString();
+    const pageUrl = page.url();
+    const reproductionActions: ActionRecord[] = [
+      { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
+      { timestamp: now, type: 'INPUT', selector, url: pageUrl, payload, elementLabel, elementKind: kind, redactValue },
+    ];
+    const reproductionSteps = [
+      ...narrateActionRecords(reproductionActions),
+      `${OBSERVATION_PREFIX}${finding.title}`,
+    ];
+    const attribution = {
+      bugClass: classification.bugClass,
+      cwe: classification.cwe,
+      scenario: classification.scenario,
+      testingType: classification.testingType,
+      stepIndex: classification.stepIndex,
+    };
+    const ensured = ensureFindingEvidence({
+      attribution,
+      advice: classification.advice,
+      reproductionPlaybook: reproductionSteps,
+      context: `${finding.title} (${safeRoutePath(page)})`,
+    });
+
     const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
       bugId: deriveStableBugId(`fuzz-${classification.bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
@@ -1146,16 +1181,13 @@ export class ActionExecutor {
       selector,
       elementLabel,
       payloadUsed: payload,
-      advice: classification.advice,
+      advice: ensured.advice,
+      reproductionSteps: ensured.reproductionPlaybook,
+      reproductionActions,
+      severity: finding.severity,
       timestamp: new Date(),
       stateFingerprint,
-      attribution: {
-        bugClass: classification.bugClass,
-        cwe: classification.cwe,
-        scenario: classification.scenario,
-        testingType: classification.testingType,
-        stepIndex: classification.stepIndex,
-      },
+      attribution: ensured.attribution,
     });
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',

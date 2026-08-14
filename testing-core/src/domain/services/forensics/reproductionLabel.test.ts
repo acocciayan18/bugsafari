@@ -58,4 +58,19 @@ check('plain link/button keep their visible text when there is no accessible nam
   assert.equal(resolveElementLabel({ innerText: 'Login' }), 'Login');
 });
 
+check('input/textarea never use their live value (innerText) as the label', () => {
+  // domParser sets an input's innerText to its value; a just-injected payload must not
+  // become the element name — placeholder/name are the real identity.
+  assert.equal(
+    resolveElementLabel({ tagName: 'input', innerText: '<img src=x onerror=1>', placeholder: 'Search' }),
+    'Search',
+  );
+  assert.equal(
+    resolveElementLabel({ tagName: 'textarea', innerText: "'; DROP TABLE users; --", name: 'comment' }),
+    'comment',
+  );
+  // With no stable identity it falls back to the generic noun, never the value.
+  assert.equal(resolveElementLabel({ tagName: 'input', innerText: '<script>alert(1)</script>' }), 'input field');
+});
+
 console.log(`\n${passed} assertions passed.`);

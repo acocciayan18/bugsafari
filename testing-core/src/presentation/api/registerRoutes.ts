@@ -417,6 +417,7 @@ export function registerRoutes(
               // Raced a worker between the state read and the removal — fall through
               // to the running path rather than reporting a cancel that didn't happen.
               controlPublisher?.publish('stop', entry.runToken, stopReason);
+              await runRegistry.markStopRequested(entry.runToken).catch(() => undefined);
               response.json({ ok: true, stopping: true, message: 'Run started before cancellation; stop dispatched to the worker.' });
               return;
             }
@@ -440,6 +441,10 @@ export function registerRoutes(
               return;
             }
             controlPublisher.publish('stop', entry.runToken, stopReason);
+            // Flag the run stop-requested BEFORE responding: the worker takes a beat to
+            // tear down, and a launch during that window must start fresh rather than
+            // resume the run we just told to stop (the false-queue / false-resume bug).
+            await runRegistry.markStopRequested(entry.runToken).catch(() => undefined);
             obsLog.info(`[API]  Stop bridged to worker for run ${entry.runToken} (reason=${stopReason})`);
             response.json({ ok: true, stopping: true, message: 'Stop dispatched to the executing worker.' });
             return;
@@ -567,7 +572,11 @@ export function registerRoutes(
             : (knownRunId ? await runRegistry.findByRunToken(knownRunId) : null);
           if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
             const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
-            if (state === 'active' || WAITING_STATES.has(state)) {
+            // A run the operator already asked to stop is NOT resumable — its job may
+            // still read 'active'/'waiting' for a beat while the worker tears down.
+            // Resuming it here is exactly what re-attached a launch to the just-stopped
+            // run and stranded the next one in a false queue. Clear it and enqueue fresh.
+            if (!existing.stopRequestedAt && (state === 'active' || WAITING_STATES.has(state))) {
               obsLog.info(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
               // runToken re-joins run:${runToken}; runId is the public code for display.
               response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runToken: existing.runToken, runId: existing.runCode, queued: state !== 'active' });

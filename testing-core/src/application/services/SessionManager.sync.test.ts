@@ -241,5 +241,33 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   );
 }
 
+// ── S11: a stop during the worker boot window is applied once the run begins ────
+// In queue mode the worker reaches beginRun only after async boot (SSRF re-check,
+// vault open, Chromium launch). A stop bridged in during that window has no run to
+// act on; dropping it let the run explore its whole timebox and pin the worker slot,
+// stranding the next launch in a false queue. It must be remembered and applied.
+{
+  const { sm } = newManager();
+  const engine = fakeEngine();
+  sm.applyOperatorControl('stop', 'r11', 'operator'); // boot-window stop, no run yet
+  assert.strictEqual(engine.calls.stop.length, 0, 'S11: nothing to stop before the run begins');
+  sm.beginRun({ runToken: 'r11', runCode: 'RUN-0000B1', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine });
+  await delay(20); // the deferred stop fires on the next event-loop turn
+  assert.ok(engine.calls.stop.includes('operator'), 'S11: the boot-window stop reached the engine after beginRun');
+  assert.strictEqual(sm.getSnapshotFor(null, 'r11')?.status, 'STOPPING', 'S11: run entered STOPPING from the deferred stop');
+}
+
+// ── S12: a boot-window stop for a run that never begins does not leak onto a later
+// run — tokens are unique per run, so the pending entry is simply never consumed.
+{
+  const { sm } = newManager();
+  const engine = fakeEngine();
+  sm.applyOperatorControl('stop', 'ghost-token', 'operator'); // a run that never begins
+  sm.beginRun({ runToken: 'r12', runCode: 'RUN-0000C2', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine });
+  await delay(20);
+  assert.strictEqual(engine.calls.stop.length, 0, 'S12: an unrelated pending stop never touches a different run');
+  assert.strictEqual(sm.getSnapshotFor(null, 'r12')?.status, 'RUNNING', 'S12: the new run stays RUNNING');
+}
+
 console.log('SessionManager.sync.test.ts passed');
 process.exit(0);

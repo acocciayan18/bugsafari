@@ -35,6 +35,12 @@ const collapse = (value?: string): string => (value ?? '').replace(/\s+/g, ' ').
 const truncate = (value: string, max: number): string =>
   value.length > max ? `${value.slice(0, max)}…` : value;
 
+/** A text input/textarea whose extracted innerText is its live value, not a label. */
+function isValueBearing(tagName?: string): boolean {
+  const tag = (tagName ?? '').toLowerCase();
+  return tag === 'input' || tag === 'textarea';
+}
+
 /** Generic structural fallback name for an element — a tag type, never a selector. */
 export function genericElementLabel(tagName?: string, type?: string): string {
   const tag = (tagName ?? '').toLowerCase();
@@ -53,7 +59,9 @@ export function genericElementLabel(tagName?: string, type?: string): string {
 export function resolveElementLabel(element: ElementLabelSource): string {
   const accessibleName = collapse(element.accessibleName);
   if (accessibleName) return truncate(accessibleName, MAX_LABEL_LENGTH);
-  const innerText = collapse(element.innerText);
+  // A text input/textarea's extracted "innerText" is its live VALUE (domParser.extractText),
+  // never an accessible label — skip it so a just-typed fuzz payload can't become the label.
+  const innerText = isValueBearing(element.tagName) ? '' : collapse(element.innerText);
   if (innerText) return truncate(innerText, MAX_LABEL_LENGTH);
   const ariaLabel = collapse(element.ariaLabel);
   if (ariaLabel) return truncate(ariaLabel, MAX_LABEL_LENGTH);
@@ -229,7 +237,7 @@ function elementKind(tagName?: string, type?: string): string {
 function resolveDescriptiveLabel(element: ElementLabelSource): string {
   const source =
     collapse(element.accessibleName) ||
-    collapse(element.innerText) ||
+    (isValueBearing(element.tagName) ? '' : collapse(element.innerText)) ||
     collapse(element.ariaLabel) ||
     collapse(element.placeholder) ||
     collapse(element.name);

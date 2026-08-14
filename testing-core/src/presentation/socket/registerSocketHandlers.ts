@@ -258,6 +258,9 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
           return;
         }
         controlPublisher.publish(command, runToken, reason);
+        // Same guard as POST /api/safari/stop: mark the run stop-requested so a launch
+        // during the worker's teardown starts fresh instead of resuming the stopped run.
+        if (command === 'stop' && runToken) void queueSupport?.runRegistry.markStopRequested(runToken).catch(() => undefined);
         return;
       }
       if (!ownsActiveRun()) {
