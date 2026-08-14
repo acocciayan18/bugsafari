@@ -110,6 +110,40 @@ test('vulnerable SQL login → differential oracle reports SQL_INJECTION', async
   expect(findings.map((f) => f.bugClass)).toContain('SQL_INJECTION');
 });
 
+test('SQL_INJECTION finding carries a clean playbook, selector, payload and observed result', async ({ page }) => {
+  await serve(page, loginPage('/api/login', false), '/api/login', 'vulnerable');
+  const finding = (await injectionDifferentialFinder.run(context(page))).find((f) => f.bugClass === 'SQL_INJECTION');
+  expect(finding).toBeDefined();
+  const evidence = finding!.evidence!;
+
+  // The exact SQL payload is named, not the action label.
+  expect(evidence.payload).toBe("' OR '1'='1");
+
+  // Reproduction steps are real, executable, and never the empty-buffer fallback.
+  const steps = evidence.reproductionPlaybook ?? [];
+  expect(steps.length).toBeGreaterThan(0);
+  expect(steps.join('\n')).not.toContain('No earlier steps were recorded');
+  expect(steps.some((s) => s.includes(`Type "' OR '1'='1" into the "username" field`))).toBe(true);
+  expect(steps.some((s) => /Submit the form/.test(s))).toBe(true);
+
+  // Server-response differential lives in exactly one separate Observed Result line.
+  const observed = steps.filter((s) => s.startsWith('⟦OBSERVED⟧'));
+  expect(observed).toHaveLength(1);
+  expect(observed[0]).toMatch(/HTTP 401.*HTTP 200/);
+
+  // Precise, tag-qualified selector — not a generic <input>.
+  expect(evidence.selector).toBe('input#username');
+
+  // Message names the field, never the payload.
+  expect(evidence.message).toContain('"username"');
+  expect(evidence.message).not.toContain(`"' OR '1'='1" field`);
+
+  // Concrete remediation facts.
+  expect(evidence.specifics?.field).toBe('username');
+  expect(evidence.specifics?.payload).toBe("' OR '1'='1");
+  expect(evidence.specifics?.endpoint).toBe('/api/login');
+});
+
 test('vulnerable NoSQL login → differential oracle reports NOSQL_INJECTION', async ({ page }) => {
   await serve(page, loginPage('/api/login-nosql', true), '/api/login-nosql', 'vulnerable');
   const findings = await injectionDifferentialFinder.run(context(page));

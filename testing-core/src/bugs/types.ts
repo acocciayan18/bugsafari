@@ -44,6 +44,17 @@ export interface BugFinding {
     // intended actions). When present, the runner attaches these instead of synthesizing.
     reproductionPlaybook?: string[];
     reproductionActions?: ActionRecord[];
+    // Concrete facts (endpoint/field/payload) a finder knows about the defect, folded
+    // into the catalog remediation by ensureFindingEvidence so the fix names THIS finding.
+    // Inline shape (not imported from findingEvidence) to avoid a types↔findingEvidence cycle.
+    specifics?: {
+      endpoint?: string;
+      method?: string;
+      statusCode?: number;
+      field?: string;
+      payload?: string;
+      location?: string;
+    };
     previousContext?: {
       type: string;
       timestamp: number;

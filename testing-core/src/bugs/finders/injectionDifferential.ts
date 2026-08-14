@@ -1,9 +1,20 @@
 import type { Page, Response } from 'playwright';
 import type { BugClass, BugFinder, BugContext, BugFinding } from '../types.js';
+import type { ActionRecord } from '../../../../shared/types.js';
+import { OBSERVATION_PREFIX } from '../../../../shared/types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { setFieldValue } from '../../domain/services/exploration/frameworkInput.js';
 import { isInjectableTarget } from './injectionSuitability.js';
-import { describeTarget, elementNoun, resolveElementLabel } from '../../../../shared/reproduction.js';
+import {
+  describeTarget,
+  elementNoun,
+  endpointLabel,
+  narrateActionRecords,
+  resolveControlName,
+  resolveElementLabel,
+} from '../../../../shared/reproduction.js';
+import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
+import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 
 // ═══════════════════════════════════════════════════════════════
 // bugs/finders/injectionDifferential.ts — DIFFERENTIAL INJECTION ORACLE
@@ -52,6 +63,7 @@ interface CorrelatedResponse {
   status: number;
   bodyLen: number;
   url: string;
+  method: string;
 }
 
 function safeOrigin(url: string): string {
@@ -117,14 +129,15 @@ async function submitAndCapture(
   const onResponse = (response: Response): void => {
     if (captured.hit) return;
     if (!correlates(response, value, target, origin)) return;
+    const method = response.request().method();
     pending.push(
       response
         .text()
         .then((text) => {
-          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: Math.min(text.length, MAX_BODY_BYTES), url: response.url() };
+          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: Math.min(text.length, MAX_BODY_BYTES), url: response.url(), method };
         })
         .catch(() => {
-          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: 0, url: response.url() };
+          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: 0, url: response.url(), method };
         }),
     );
   };
@@ -225,11 +238,46 @@ export const injectionDifferentialFinder: BugFinder = {
 
       await restore();
       const kind = bugClass === 'SQL_INJECTION' ? 'SQL' : 'NoSQL';
-      const label = resolveElementLabel(element);
-      const where = describeTarget(label, elementNoun(element.tagName, element.type));
-      const detail = authBypass
-        ? `A normal value was rejected (HTTP ${baseline.status}) but the ${kind} operator value was accepted (HTTP ${operator.status}) at ${safePathname(operator.url)}. The server ran the operator instead of treating it as plain text, which can bypass authorization or injection checks.`
-        : `Both requests succeeded (2xx), but the ${kind} operator value made the response grow from ${baseline.bodyLen} to ${operator.bodyLen} bytes at ${safePathname(operator.url)}. The operator widened the query and returned more data than it should.`;
+      const noun = elementNoun(element.tagName, element.type);
+      // Selector-safe field identity — never the field's live value (the payload).
+      const label = resolveControlName({ label: resolveElementLabel(element), selector: element.selector, tagName: element.tagName, type: element.type });
+      const paramName = element.name || element.id || '';
+      // A precise, tag-qualified selector so the card reads `input#username`, not `<input>`.
+      const displaySelector = element.id
+        ? `${element.tagName}#${element.id}`
+        : element.name
+          ? `${element.tagName}[name="${element.name}"]`
+          : element.selector;
+      const path = safePathname(operator.url);
+      const faultUrl = ctx.page.url();
+
+      // Reproduction: the real preceding action history + the injection step, so the
+      // playbook carries the full sequence instead of "No earlier steps were recorded".
+      const history = minimizeActionRecords(ReproductionPlaybookStore.snapshot());
+      const injectionInput: ActionRecord = {
+        timestamp: new Date().toISOString(),
+        type: 'INPUT',
+        selector: element.selector,
+        url: faultUrl,
+        payload,
+        elementLabel: label,
+        elementKind: noun,
+        redactValue: false, // an attack string, not user data — show it verbatim
+      };
+      const trace: ActionRecord[] = history.length > 0
+        ? [...history, injectionInput]
+        : [{ timestamp: injectionInput.timestamp, type: 'NAVIGATE', selector: faultUrl, url: faultUrl }, injectionInput];
+      const narrated = narrateActionRecords(trace);
+      const submitStep = `Step ${narrated.length + 1}. Submit the form to send the value to ${endpointLabel(operator.method, operator.url)}`;
+      // Server-response differential — a separate Observed Result (split out by the dashboard).
+      const observation = authBypass
+        ? `${OBSERVATION_PREFIX}A normal value "${BENIGN_VALUE}" was rejected (HTTP ${baseline.status}) but the ${kind} operator value was accepted (HTTP ${operator.status}) at ${path}. The server executed the operator instead of treating it as text.`
+        : `${OBSERVATION_PREFIX}Both values were accepted (HTTP ${operator.status}) at ${path}, but the ${kind} operator value grew the response from ${baseline.bodyLen} to ${operator.bodyLen} bytes. It widened the query and returned more data than it should.`;
+      const reproductionPlaybook = [...narrated, submitStep, observation];
+
+      const message = authBypass
+        ? `${describeTarget(label, noun)} accepted a ${kind} operator value the server executed instead of treating as text, which can bypass the login or authorization check. Injected value: ${payload}`
+        : `${describeTarget(label, noun)} accepted a ${kind} operator value that widened the query and returned more data than a normal value. Injected value: ${payload}`;
 
       return [
         {
@@ -239,11 +287,15 @@ export const injectionDifferentialFinder: BugFinder = {
             ? `${kind} operator value slipped past the server checks`
             : `${kind} operator value returned more data than expected`,
           evidence: {
-            message: `${detail} This value went into ${where}. Value sent: ${payload}`,
-            selector: element.selector,
+            message,
+            selector: displaySelector,
             actionExecuted: 'injection-differential',
             stateHash: ctx.stateHash,
             statusCode: operator.status,
+            payload,
+            reproductionPlaybook,
+            reproductionActions: trace,
+            specifics: { field: paramName || label, payload, endpoint: path, method: operator.method, statusCode: operator.status },
           },
         },
       ];

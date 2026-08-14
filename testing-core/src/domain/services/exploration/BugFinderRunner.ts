@@ -267,6 +267,7 @@ export class BugFinderRunner {
       advice: definition.remediation,
       reproductionPlaybook: finding.evidence?.reproductionPlaybook ?? reproductionSteps ?? [],
       context: `${finding.title} (${safeRoutePath(ctx.page)})`,
+      specifics: finding.evidence?.specifics,
     });
     const finalReproductionActions = finding.evidence?.reproductionActions ?? reproductionActions;
 
@@ -279,7 +280,7 @@ export class BugFinderRunner {
       reproductionSteps: ensured.reproductionPlaybook,
       reproductionActions: finalReproductionActions,
       // Prefer the actual submitted payload (may be ''); fall back to the action label.
-      payloadUsed: bypass ? bypass.payload : finding.evidence?.actionExecuted ?? '',
+      payloadUsed: bypass ? bypass.payload : finding.evidence?.payload ?? finding.evidence?.actionExecuted ?? '',
       advice: ensured.advice,
       timestamp: new Date(),
       severity: finding.severity,
