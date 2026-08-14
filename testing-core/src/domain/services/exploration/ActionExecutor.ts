@@ -1147,6 +1147,17 @@ export class ActionExecutor {
       confirmed: true,
     });
 
+    // The reflection oracle IS the XSS confirmation — its evidence is the executed /
+    // reflected payload, not a re-scannable text signal. classifyFault infers the class
+    // from message+payload, so a reflected XSS whose payload carries no markup (the exec
+    // witness fired) matches no XSS_REFLECTION signal and collapses to the scenario's
+    // first expected bug (SQL_INJECTION/CWE-89). Pin the reflected-XSS shape to its true
+    // class so a confirmed XSS is never mislabelled as SQL injection (mirrors the
+    // StorageTamper class-pin below). Datastore/crash shapes keep the classifier verdict.
+    const isReflectedXss = finding.evidence?.actionExecuted === 'fuzz-xss-detection';
+    const bugClass = isReflectedXss ? 'FUZZ_VULNERABILITY_LEAK' : classification.bugClass;
+    const cwe = isReflectedXss ? BUG_CATALOG.FUZZ_VULNERABILITY_LEAK.cwe : classification.cwe;
+
     // Replayable trace + narrative: navigate to the fault page, type the payload into the
     // exact field, then the observed leak. ensureFindingEvidence guarantees non-empty steps.
     const now = new Date().toISOString();
@@ -1160,22 +1171,22 @@ export class ActionExecutor {
       `${OBSERVATION_PREFIX}${finding.title}`,
     ];
     const attribution = {
-      bugClass: classification.bugClass,
-      cwe: classification.cwe,
+      bugClass,
+      cwe,
       scenario: classification.scenario,
       testingType: classification.testingType,
       stepIndex: classification.stepIndex,
     };
     const ensured = ensureFindingEvidence({
       attribution,
-      advice: classification.advice,
+      advice: isReflectedXss ? BUG_CATALOG.FUZZ_VULNERABILITY_LEAK.remediation : classification.advice,
       reproductionPlaybook: reproductionSteps,
       context: `${finding.title} (${safeRoutePath(page)})`,
     });
 
     const stateFingerprint = await captureStateFingerprint(page);
     this.deps.registerConfirmedBug({
-      bugId: deriveStableBugId(`fuzz-${classification.bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
+      bugId: deriveStableBugId(`fuzz-${bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
       type: 'FUZZ',
       message: finding.evidence?.message ?? finding.title,
       selector,
@@ -1192,7 +1203,7 @@ export class ActionExecutor {
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',
       selector,
-      message: ` Confirmed fuzz leak (${classification.bugClass}) on ${describeTarget(elementLabel, elementNoun(target.tagName, target.type))}`,
+      message: ` Confirmed fuzz leak (${bugClass}) on ${describeTarget(elementLabel, elementNoun(target.tagName, target.type))}`,
     });
   }
 

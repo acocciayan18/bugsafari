@@ -202,12 +202,21 @@ export class ActiveScenarioTracker {
     });
 
     const window = ActiveScenarioTracker.populatedWindow();
-    const narrative = window
-      ? [
-          ...ActiveScenarioTracker.numberScenarioSteps(window.steps),
-          ...ActiveScenarioTracker.markObservations(window.observations),
-        ]
-      : narrateActionRecords(actions);
+    // An off-target burst (coordinate bombing / sibling concurrent clicks) drives
+    // controls OTHER than the one that caused the fault. When the culprit control is
+    // known, its burst steps would misdescribe the reproduction — telling a developer
+    // to click unrelated siblings — and contradict the culprit-anchored `actions`.
+    // Narrate those causal actions instead so the playbook names the real trigger and
+    // matches the replay. With no culprit, the burst window still drives the narrative.
+    const offTargetCollateral =
+      window !== null && OFF_TARGET_SCENARIOS.has(window.scenario) && Boolean(options.culpritSelector);
+    const narrative =
+      window !== null && !offTargetCollateral
+        ? [
+            ...ActiveScenarioTracker.numberScenarioSteps(window.steps),
+            ...ActiveScenarioTracker.markObservations(window.observations),
+          ]
+        : narrateActionRecords(actions);
 
     return {
       actions,
