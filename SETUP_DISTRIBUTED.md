@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix SQL injection findings so they carry real reproduction steps"
+git commit -m "fix NoSQL injection findings so they carry real reproduction steps"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m "fix SQL injection findings so they carry real reproduction steps"
+git commit -m "fix NoSQL injection findings so they carry real reproduction steps"
 git checkout -b 8-14-Ayan-4
 git push --set-upstream origin 8-14-Ayan-4
 

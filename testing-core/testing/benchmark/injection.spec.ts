@@ -23,7 +23,7 @@ const SQL_ERROR = "ER_PARSE_ERROR: You have an error in your SQL syntax; check t
 const MONGO_ERROR = 'MongoError: unknown operator: $where in query';
 const USERS = ['alice', 'bob', 'admin'];
 
-type Mode = 'vulnerable' | 'fixed' | 'leaky';
+type Mode = 'vulnerable' | 'fixed' | 'leaky' | 'reflect';
 
 // A login form + fetch that mirrors the target pages: the SQL page posts the raw string,
 // the NoSQL page JSON.parses the field and posts the resulting value (object or string).
@@ -41,6 +41,9 @@ function loginPage(endpoint: string, parseJson: boolean): string {
 }
 
 function sqlResponse(mode: Mode, username: string): { status: number; body: unknown } {
+  // Reflect the raw value verbatim in a safe 401 — the ONLY injection-looking token in
+  // the body comes from the echoed payload, so the finder must NOT report it as an error.
+  if (mode === 'reflect') return { status: 401, body: { error: 'invalid credentials', received: username } };
   if (mode === 'fixed') return { status: 401, body: { error: 'invalid credentials' } };
   if (/or\s+'?1'?\s*=\s*'?1/i.test(username)) return { status: 200, body: { authenticated: true, users: USERS } };
   if (username.includes("'")) return { status: 500, body: { error: SQL_ERROR } };
@@ -154,6 +157,44 @@ test('leaky NoSQL backend → signal oracle reports NOSQL_INJECTION on the drive
   await serve(page, loginPage('/api/login-nosql', true), '/api/login-nosql', 'leaky');
   const findings = await noSqlInjectionFinder.run(context(page));
   expect(findings.map((f) => f.bugClass)).toContain('NOSQL_INJECTION');
+});
+
+test('signal-oracle NoSQL finding carries a clean playbook, selector, payload, specifics and one observed result', async ({ page }) => {
+  await serve(page, loginPage('/api/login-nosql', true), '/api/login-nosql', 'leaky');
+  const finding = (await noSqlInjectionFinder.run(context(page))).find((f) => f.bugClass === 'NOSQL_INJECTION');
+  expect(finding).toBeDefined();
+  const evidence = finding!.evidence!;
+
+  // The exact tested payload is carried top-level and mirrored into specifics.
+  expect(evidence.payload).toBeTruthy();
+  expect(evidence.specifics?.payload).toBe(evidence.payload);
+  expect(evidence.specifics?.field).toBe('username');
+
+  // Reproduction steps are real and never the empty-buffer fallback.
+  const steps = evidence.reproductionPlaybook ?? [];
+  expect(steps.length).toBeGreaterThan(0);
+  expect(steps.join('\n')).not.toContain('No earlier steps were recorded');
+  expect(steps.some((s) => /Submit the form/.test(s))).toBe(true);
+
+  // The server error lives in exactly one separate Observed Result line, not the message.
+  const observed = steps.filter((s) => s.startsWith('⟦OBSERVED⟧'));
+  expect(observed).toHaveLength(1);
+  expect(observed[0]).toContain('MongoError');
+
+  // Precise, tag-qualified selector — not a generic <input>.
+  expect(evidence.selector).toBe('input#username');
+
+  // Message names the field, and keeps raw driver text out of it.
+  expect(evidence.message).toContain('"username"');
+  expect(evidence.message).not.toContain('MongoError');
+});
+
+test('reflected payload only → signal oracle reports nothing (no raw-text false positive)', async ({ page }) => {
+  // The backend echoes the raw value in a safe 401; the only operator-looking token in
+  // the response is the reflected payload, which must be stripped before error matching.
+  await serve(page, loginPage('/api/login', false), '/api/login', 'reflect');
+  const findings = await noSqlInjectionFinder.run(context(page));
+  expect(findings).toHaveLength(0);
 });
 
 test('hardened SQL twin → no injection finding (zero false positive)', async ({ page }) => {
