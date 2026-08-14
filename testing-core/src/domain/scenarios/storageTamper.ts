@@ -107,6 +107,22 @@ export function matchesAuthKey(key: string): boolean {
   return AUTH_KEY_TERMS.some((term) => new RegExp(`(^|[^a-z0-9])${term}([^a-z0-9]|$)`).test(norm));
 }
 
+/**
+ * A DOM attribute that marks a privileged surface the CSS selector list can't express:
+ * an attribute NAME carrying an admin/privilege token (data-admin-panel, data-admin,
+ * admin-console, data-privileged), or a role/data-role whose VALUE names a privileged
+ * role. Node-side testable mirror of the scan inlined in {@link countPrivilegedSurface};
+ * keep the two regexes in sync.
+ */
+export function isPrivilegedAttribute(name: string, value: string): boolean {
+  const n = name.toLowerCase();
+  // Leading boundary only — matches suffixed forms (privileged, admins, superuser) while
+  // the (^|[-_]) prefix guard blocks mid-word hits (e.g. "badminton", "data-user").
+  if (/(^|[-_])(admin|privileg|superuser)/.test(n)) return true;
+  if ((n === 'role' || n === 'data-role') && /admin|privileg|superuser/i.test(value)) return true;
+  return false;
+}
+
 export type StorageVerdict = 'GAINED' | 'NONE' | 'ABSENT';
 
 /**
@@ -163,6 +179,26 @@ async function countPrivilegedSurface(page: Page): Promise<number> {
           if (isVisible(n)) seen.add(n);
         });
       }
+      // Attribute-shaped privilege markers the CSS selectors can't express (an attribute
+      // NAME containing an admin/privilege token, e.g. data-admin-panel, or a role/data-role
+      // valued admin). Mirror of isPrivilegedAttribute. Attribute match is checked BEFORE the
+      // costlier visibility test so getComputedStyle runs only on candidates.
+      const privAttr = (name: string, value: string): boolean => {
+        const nm = name.toLowerCase();
+        if (/(^|[-_])(admin|privileg|superuser)/.test(nm)) return true;
+        if ((nm === 'role' || nm === 'data-role') && /admin|privileg|superuser/i.test(value)) return true;
+        return false;
+      };
+      document.querySelectorAll('*').forEach((el) => {
+        if (seen.has(el)) return;
+        const attrs = el.attributes;
+        for (let i = 0; i < attrs.length; i++) {
+          if (privAttr(attrs[i].name, attrs[i].value)) {
+            if (isVisible(el)) seen.add(el);
+            break;
+          }
+        }
+      });
       return seen.size;
     }, [...PRIVILEGED_SELECTORS])
     .catch(() => 0);
@@ -345,6 +381,28 @@ async function safeReload(page: Page): Promise<void> {
   await page.reload({ waitUntil: 'domcontentloaded', timeout: RELOAD_TIMEOUT_MS }).catch(() => undefined);
 }
 
+/**
+ * Reload the page while watching for a privileged same-origin 2xx, and report whether
+ * one landed. Used to observe the SERVER's behavior both at baseline (before the forge)
+ * and under the forged state — a privileged response that appears ONLY after the forge
+ * is server proof the backend honored client-trusted auth-state.
+ */
+async function reloadWatchingPrivileged(page: Page, pageOrigin: string): Promise<boolean> {
+  let hit = false;
+  const onResponse = (response: Response): void => {
+    if (!hit && isPrivilegedServerResponse(response, pageOrigin)) hit = true;
+  };
+  page.on('response', onResponse);
+  try {
+    await safeReload(page);
+    // Brief settle so a privileged data fetch issued on mount can land before we judge.
+    if (!page.isClosed()) await page.waitForTimeout(600).catch(() => undefined);
+  } finally {
+    page.off('response', onResponse);
+  }
+  return hit;
+}
+
 export const storageTamper = {
   name: 'StorageTamper',
 
@@ -372,7 +430,18 @@ export const storageTamper = {
 
     let restore: TamperResult['restore'] = { local: {}, session: {} };
     try {
-      // 1) Baseline privileged surface.
+      // Origin the privileged-response check is scoped to (same-origin reads only).
+      const pageOrigin = (() => {
+        try {
+          return new URL(page.url()).origin;
+        } catch {
+          return '';
+        }
+      })();
+
+      // 1) Baseline: reload the untampered state and record both the privileged-surface
+      //    count and whether any privileged same-origin 2xx fires WITHOUT the forge.
+      const baselineServerHit = await reloadWatchingPrivileged(page, pageOrigin);
       const before = await countPrivilegedSurface(page);
       metadata.privilegedMarkersBefore = before;
 
@@ -383,43 +452,32 @@ export const storageTamper = {
       metadata.jwtForged = result.jwtForged;
 
       // 3) Re-render from tampered state (same URL — confinement-safe), watching for a
-      // privileged same-origin 2xx: server-side corroboration that the forged state was
-      // actually honored, not merely painted client-side.
-      const pageOrigin = (() => {
-        try {
-          return new URL(page.url()).origin;
-        } catch {
-          return '';
-        }
-      })();
-      let serverConfirmed = false;
-      const onResponse = (response: Response): void => {
-        if (!serverConfirmed && isPrivilegedServerResponse(response, pageOrigin)) serverConfirmed = true;
-      };
-      page.on('response', onResponse);
-      try {
-        await safeReload(page);
-        // Brief settle so a privileged data fetch issued on mount can land before we judge.
-        if (!page.isClosed()) await page.waitForTimeout(600).catch(() => undefined);
-      } finally {
-        page.off('response', onResponse);
-      }
+      //    privileged same-origin 2xx honored under the forged state.
+      const afterServerHit = await reloadWatchingPrivileged(page, pageOrigin);
 
-      // 4) Oracle: did privileged UI appear that was absent before?
+      // 4) Oracle: privileged UI that was ABSENT before appeared (client delta), OR a
+      //    privileged server response succeeded ONLY under the forged state (server proof
+      //    the backend trusts client auth-state). The baseline guard keeps a benign
+      //    always-loading privileged endpoint from tripping the server path.
       const after = await countPrivilegedSurface(page);
       metadata.privilegedMarkersAfter = after;
       const verdict = decideStorageVerdict({ before, after });
       metadata.privilegedSurfaceGained = verdict === 'GAINED';
+      const serverEscalation = afterServerHit && !baselineServerHit;
+      const serverConfirmed = afterServerHit; // server actually honored the forged state
 
-      if (verdict === 'GAINED') {
+      if (verdict === 'GAINED' || serverEscalation) {
         const keys = result.tamperedKeys.join(', ') || '(seeded canonical flags)';
         const forgeDetail = `(keys: ${keys}${result.jwtForged ? '; JWT re-minted with alg=none and role=admin' : ''})`;
+        const surfaceClause =
+          verdict === 'GAINED'
+            ? `Signs of privileged access went from ${before} to ${after} after faking the signed-in state in the browser ${forgeDetail}. `
+            : `After faking the signed-in state in the browser ${forgeDetail}, `;
         const evidence = serverConfirmed
-          ? `Signs of privileged access went from ${before} to ${after} after faking the signed-in state in the browser ${forgeDetail}, ` +
-            `and a privileged request to the same site then succeeded (2xx) under that fake state. ` +
+          ? `${surfaceClause}a privileged request to the same site then succeeded (2xx) under that fake state` +
+            `${serverEscalation && verdict !== 'GAINED' ? ' where it did not succeed before the tamper' : ''}. ` +
             `The server trusted the faked browser data, which is broken access control (the server check was bypassed).`
-          : `Signs of privileged access went from ${before} to ${after} after faking the signed-in state in the browser ${forgeDetail}. ` +
-            `The app showed privileged screens from this untrusted browser data, but no privileged server request was seen to succeed, ` +
+          : `${surfaceClause}The app showed privileged screens from this untrusted browser data, but no privileged server request was seen to succeed, ` +
             `so it is not yet confirmed that the server enforces access. Check whether protected data or actions are actually reachable ` +
             `under the fake state before treating this as a confirmed access-control bypass.`;
         ActiveScenarioTracker.record(evidence);

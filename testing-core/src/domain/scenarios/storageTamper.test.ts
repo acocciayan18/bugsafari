@@ -13,6 +13,7 @@ import {
   storageTamper,
   decideStorageVerdict,
   matchesAuthKey,
+  isPrivilegedAttribute,
 } from './storageTamper.js';
 import { stressScenarioMap } from './index.js';
 import { ScenarioGate } from '../services/scenarioGate.js';
@@ -60,6 +61,21 @@ check('auth-key matcher accepts identity/privilege keys and rejects benign ones'
   for (const key of ['theme', 'cartItems', 'locale', 'lastRoute', 'fontSize']) {
     assert.equal(matchesAuthKey(key), false, `expected benign key: ${key}`);
   }
+});
+
+check('privileged-attribute matcher catches admin-shaped attribute names, not benign ones', () => {
+  // Attribute NAME carries an admin/privilege token — the case the CSS list missed.
+  for (const name of ['data-admin-panel', 'data-admin', 'admin-console', 'data-privileged', 'data-superuser']) {
+    assert.equal(isPrivilegedAttribute(name, ''), true, `expected privileged attr: ${name}`);
+  }
+  // role / data-role VALUE names a privileged role.
+  assert.equal(isPrivilegedAttribute('role', 'admin'), true);
+  assert.equal(isPrivilegedAttribute('data-role', 'privileged'), true);
+  // Benign attributes stay false — no false-positive surface inflation.
+  for (const name of ['data-testid', 'class', 'data-user', 'aria-hidden', 'data-loading']) {
+    assert.equal(isPrivilegedAttribute(name, 'x'), false, `expected benign attr: ${name}`);
+  }
+  assert.equal(isPrivilegedAttribute('role', 'button'), false); // ARIA role, not privileged
 });
 
 // ── Pipeline wiring ───────────────────────────────────────────────────────────
