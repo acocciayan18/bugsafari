@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "improve-bugsafari-accuracy"
+git commit -m "fix the reflected-xss fuzz findings to they now carry reproduction steps"
 git push origin HEAD:dev --force
 
 
