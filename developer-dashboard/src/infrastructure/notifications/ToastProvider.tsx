@@ -244,7 +244,10 @@ export const toast = Object.assign(
     loading: (message: string, data?: ExternalToast) => emit(message, 'telemetry', data),
     custom: (jsx: Parameters<typeof sonnerToast.custom>[0], data?: ExternalToast) =>
       sonnerToast.custom(jsx, { ...data, id: data?.id ?? TOAST_ID }),
-    promise: sonnerToast.promise,
+    // Default promise toasts into the shared slot like `custom`, so repeated saves
+    // replace one node in place instead of stacking a fresh toast per call.
+    promise: ((promise: Parameters<typeof sonnerToast.promise>[0], data?: Parameters<typeof sonnerToast.promise>[1]) =>
+      sonnerToast.promise(promise, { id: TOAST_ID, ...data })) as typeof sonnerToast.promise,
     dismiss: sonnerToast.dismiss,
   },
 );
