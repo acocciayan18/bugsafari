@@ -44,6 +44,7 @@ import {
   VerificationPipeline,
   detectSoftFailBody,
   isBodyReadableResourceType,
+  isExpectedRejectionEnvelope,
   statusForScore,
   type VerificationCandidate,
 } from '../verification/index.js';
@@ -1842,8 +1843,12 @@ export class StabilityMonitor {
           // error", SQL/exception text) leaking into a 2xx body — folded in from
           // the former background monitor so that coverage isn't lost by dedup.
           const serverSignature = bodyContent.length <= MAX_SOFT_FAIL_BODY_BYTES && matchesCategory('SERVER_ERROR', bodyContent);
-          softFailBody = verdict.softFail || serverSignature;
-          softFailEvidence = verdict.matched ?? (serverSignature ? 'server-error signature in body' : '');
+          // A login denied or a form rejected is the server refusing correctly, not a
+          // masked fault — suppress it unless a declared error flag or server-error
+          // signature also present. Keeps a defended injection out of the findings.
+          const expectedRejection = verdict.softFail && !serverSignature && isExpectedRejectionEnvelope(url, bodyContent);
+          softFailBody = (verdict.softFail || serverSignature) && !expectedRejection;
+          softFailEvidence = softFailBody ? (verdict.matched ?? (serverSignature ? 'server-error signature in body' : '')) : '';
         } catch {
           // Ignore body parse errors
         }

@@ -43,3 +43,27 @@ export function detectSoftFailBody(body: string): SoftFailVerdict {
 export function isBodyReadableResourceType(resourceType: string): boolean {
   return resourceType === 'xhr' || resourceType === 'fetch';
 }
+
+// A declared server error (error:true) is never an "expected" outcome — its presence
+// vetoes rejection-suppression so a genuine masked fault always promotes.
+const HARD_FAULT_FLAG = /"(?:is|has)?error"\s*:\s*true/i;
+// URL of an auth/session endpoint, where a rejection body is the routine answer.
+const AUTH_ENDPOINT = /(log-?in|sign-?in|sign-?up|register|auth|session|token|password|oauth|logout|credential)/i;
+// An outcome flag flipped false — the operation logically failed, by design.
+const OUTCOME_FALSE = /"(?:success|ok|authenticated|authori[sz]ed|valid|logged-?in)"\s*:\s*false/i;
+// A credential/authorization refusal — expected on any endpoint, obfuscated URLs included.
+const AUTH_REJECTION = /(invalid|incorrect|wrong)\s+(credential|password|username|email|login|token|user)|invalid\s+credentials|unauthori[sz]ed|forbidden|access\s+denied|not\s+authori[sz]ed|authentication\s+failed|login\s+failed/i;
+// A form-validation refusal — only suppresses when paired with a false outcome flag.
+const VALIDATION_REJECTION = /(required|must\s+be|too\s+(long|short)|not\s+a\s+valid|already\s+(exists|taken)|does\s+not\s+match|invalid\s+(format|input|value|email))/i;
+
+// An expected negative business outcome — a login denied or a form rejected — is the
+// server refusing correctly, not a fault it hid behind a 200. Suppress those so they
+// never promote as masked failures; a declared error flag or server-error signature
+// (checked by the caller) still promotes, so a real masked 500 is never lost.
+export function isExpectedRejectionEnvelope(url: string, body: string): boolean {
+  if (!body) return false;
+  if (HARD_FAULT_FLAG.test(body)) return false;
+  if (AUTH_REJECTION.test(body)) return true;
+  if (AUTH_ENDPOINT.test(url) && OUTCOME_FALSE.test(body)) return true;
+  return OUTCOME_FALSE.test(body) && VALIDATION_REJECTION.test(body);
+}

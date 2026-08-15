@@ -13,6 +13,7 @@ import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import {
   detectSoftFailBody,
   isBodyReadableResourceType,
+  isExpectedRejectionEnvelope,
   MAX_SOFT_FAIL_BODY_BYTES,
 } from '../verification/softFailBody.js';
 import { detectApiContractViolation } from '../verification/apiContractBody.js';
@@ -209,6 +210,9 @@ export class ReplayProbes {
           if (body.length > MAX_SOFT_FAIL_BODY_BYTES) return;
           const verdict = detectSoftFailBody(body);
           if (!verdict.softFail) return;
+          // An expected auth/validation rejection is not a masked fault — keep replay
+          // in step with live detection so it never re-confirms a defended login.
+          if (isExpectedRejectionEnvelope(response.url(), body)) return;
           this.collector.addExternal({
             faultType: 'NETWORK',
             statusCode: status,

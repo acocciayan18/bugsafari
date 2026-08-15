@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "improve-bugsafari-attribution"
+git commit -m "Fix API contract violation in login endpoint"
 git push origin HEAD:dev --force
 
 

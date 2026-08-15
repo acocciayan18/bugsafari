@@ -594,7 +594,6 @@ function ClinicalForensicsDashboard({
               aria-labelledby={`terminal-tab-${activeTab}`}
               tabIndex={0}
               className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
-              style={{ scrollBehavior: 'smooth' }}
             >
               {activeTab === 'telemetry' && (
                 <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Engine telemetry log">

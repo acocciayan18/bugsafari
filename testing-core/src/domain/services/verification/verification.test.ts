@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { classifyFaultOrigin } from './faultOrigin.js';
 import { scoreFinding, applyReproductionOutcome } from './confidenceScore.js';
 import { VerificationPipeline } from './VerificationPipeline.js';
-import { detectSoftFailBody, isBodyReadableResourceType, MAX_SOFT_FAIL_BODY_BYTES } from './softFailBody.js';
+import { detectSoftFailBody, isBodyReadableResourceType, isExpectedRejectionEnvelope, MAX_SOFT_FAIL_BODY_BYTES } from './softFailBody.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -126,6 +126,28 @@ check('soft-fail body: adjacency required, co-occurrence rejected', () => {
   assert.equal(detectSoftFailBody('{"status":"fail"}').softFail, true);
   assert.equal(detectSoftFailBody('{"errors":[{"field":"email"}]}').softFail, true);
   assert.equal(detectSoftFailBody('{"errors":[]}').softFail, false);
+});
+
+check('expected-rejection: defended login denial is not a masked fault', () => {
+  const login = '{"success":false,"error":"Invalid credentials"}';
+  assert.equal(detectSoftFailBody(login).softFail, true);
+  assert.equal(isExpectedRejectionEnvelope('/backend/C4F3_login.php', login), true);
+  assert.equal(isExpectedRejectionEnvelope('/api/orders', login), true);
+});
+
+check('expected-rejection: auth endpoint + success:false suppressed', () => {
+  assert.equal(isExpectedRejectionEnvelope('/api/session', '{"success":false}'), true);
+  assert.equal(isExpectedRejectionEnvelope('/api/orders', '{"success":false}'), false);
+});
+
+check('expected-rejection: form validation refusal suppressed', () => {
+  assert.equal(isExpectedRejectionEnvelope('/api/users', '{"success":false,"error":"email is required"}'), true);
+  assert.equal(isExpectedRejectionEnvelope('/api/users', '{"success":false,"error":"failed to save order"}'), false);
+});
+
+check('expected-rejection: genuine masked fault still promotes', () => {
+  assert.equal(isExpectedRejectionEnvelope('/login', '{"success":false,"error":true}'), false);
+  assert.equal(isExpectedRejectionEnvelope('/login', '{"error":"Internal Server Error at db.query"}'), false);
 });
 
 check('soft-fail body: oversized payloads are not scanned', () => {
