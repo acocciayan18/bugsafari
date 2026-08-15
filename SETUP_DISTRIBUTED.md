@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Fix API contract violation in login endpoint"
+git commit -m "Remove lock screen feature from BugSafari"
 git push origin HEAD:dev --force
 
 

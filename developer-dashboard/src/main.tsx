@@ -12,12 +12,6 @@ import { initThemeStore } from './stores/themeStore'
 import { initAuthStore } from './stores/authStore'
 import { initSettingsStore } from './stores/settingsStore'
 import { initHistoryStore } from './stores/history/historyStore'
-import { installAccessFetchGuard } from './utils/accessLock'
-import AccessGate from './components/auth/AccessGate'
-
-// Install before any store init fires a request, so the dev access header rides
-// every API call the boot sequence makes.
-installAccessFetchGuard()
 
 // Above createRoot so they run once per module eval, immune to StrictMode double-mount
 initThemeStore()
@@ -52,9 +46,7 @@ createRoot(document.getElementById('root')!).render(
           {/* Top-level boundary: any render throw an inner route boundary misses lands
               here as a recovery card instead of a blank-screen unmount. */}
           <RouteErrorBoundary label="App">
-            <AccessGate>
-              <App />
-            </AccessGate>
+            <App />
           </RouteErrorBoundary>
         </ToastProvider>
       </MotionConfig>

@@ -3,8 +3,7 @@
 // Themed via CSS-variable design tokens (auto light/dark, no dark: variants needed).
 
 import { useNavigate } from 'react-router-dom';
-import { PanelLeft, LayoutDashboard, Settings, History, Menu, X, Lock } from 'lucide-react';
-import { lock } from '../../utils/accessLock';
+import { PanelLeft, LayoutDashboard, Settings, History, Menu, X } from 'lucide-react';
 import { useHistoryStore } from '../../stores/history/historyStore';
 
 interface User {
@@ -88,12 +87,6 @@ export default function Sidebar({
     onDismiss?.();
   };
 
-  // Dev system lock — clear the access secret and reload back to the gate.
-  const handleLock = () => {
-    lock();
-    window.location.reload();
-  };
-
   return (
     <section
       data-tour="sidebar-nav"
@@ -156,16 +149,6 @@ export default function Sidebar({
     isRail ? 'p-2 mb-2' : 'p-3 mb-2'
   }`}
 >
-  <button
-    onClick={handleLock}
-    title={isRail ? 'Lock access' : undefined}
-    aria-label="Lock access"
-    className={`mb-2 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
-  >
-    <Lock className="h-5 w-5 shrink-0 text-current" />
-    <span className={`overflow-hidden whitespace-nowrap transition-all duration-200 ${isRail ? 'w-0' : 'w-auto'}`}>Lock access</span>
-  </button>
-
   <div
     className={`flex items-center transition-all duration-200 ${
       isRail ? 'justify-center' : 'gap-3'

@@ -158,10 +158,15 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         {/* Vertical Hairline Divider */}
         <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
 
-        <span className="inline-flex items-center gap-1.5 text-(--text-tertiary)">
-          <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate max-w-[250px]">{report.endedReason}</span>
-        </span>
+       <span className="inline-flex items-center gap-1.5 text-(--text-tertiary)">
+  <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+  <span
+    className="truncate max-w-[250px]"
+    title={report.endedReason}
+  >
+    {report.endedReason}
+  </span>
+</span>
       </>
     )}
   </div>

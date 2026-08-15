@@ -19,7 +19,6 @@ import { reapExpiredSessionChildren } from './infrastructure/database/retentionR
 import { syncAllIndexes } from './infrastructure/database/indexSync.js';
 import { backfillRunIds } from './infrastructure/database/runIdBackfill.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
-import { requireAccessKey } from './presentation/middleware/accessLock.js';
 import { MongoFindingRepository } from './infrastructure/database/repositories/MongoFindingRepository.js';
 import { TaskQueue } from './infrastructure/queue/TaskQueue.js';
 import { QueueStatusBroadcaster } from './infrastructure/queue/QueueStatusBroadcaster.js';
@@ -73,10 +72,6 @@ app.use((_req, res, next) => {
 
 // Bind a per-request log context (reqId) and emit one access log per response.
 app.use(requestLogger);
-
-// Development system lock — rejects any /api request lacking the shared access
-// secret, ahead of auth so JWT/guest sessions cannot bypass it. Remove post-dev.
-app.use(requireAccessKey);
 
 // No CORS middleware here by design: the Caddy reverse proxy owns origin
 // validation and every Access-Control-* header (see deploy/Caddyfile). A second
