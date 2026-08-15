@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "harden-bugsafari-infinite-scroll"
+git commit -m "harden bugsafari-infinite scroll"
 git push origin HEAD:dev --force
 
 
