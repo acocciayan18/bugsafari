@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Stress test BugSafari and fix discovered issues"
+git commit -m "improve-bugsafari-attribution"
 git push origin HEAD:dev --force
 
 

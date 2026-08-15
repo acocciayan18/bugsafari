@@ -241,6 +241,7 @@ export const fuzzGuard: BugFinder = {
           payload: metadata.payload,
           actionExecuted: 'fuzz-xss-detection',
           stateHash: ctx.stateHash,
+          signals: ['XSS_REFLECTION'],
         },
       });
     }
@@ -257,6 +258,7 @@ export const fuzzGuard: BugFinder = {
           payload: metadata.payload,
           actionExecuted: 'fuzz-nosql-detection',
           stateHash: ctx.stateHash,
+          signals: ['NOSQL_ERROR'],
         },
       });
     }
@@ -273,6 +275,7 @@ export const fuzzGuard: BugFinder = {
           payload: metadata.payload,
           actionExecuted: 'fuzz-crash-detection',
           stateHash: ctx.stateHash,
+          signals: ['INFO_LEAK'],
         },
       });
     }

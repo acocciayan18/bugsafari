@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../domain/entities/InteractiveElement.js';
 import type { ActionRecord, ConstraintBypassDetail, TestingTypeId } from '../../../shared/types.js';
+import type { SignalCategory } from './knowledgeBase/signalPatterns.js';
 
 export type BugClass =
   | 'INPUT_SANITIZATION_FAILURE'
@@ -55,6 +56,9 @@ export interface BugFinding {
       payload?: string;
       location?: string;
     };
+    // Matched signal shapes this finder observed, so ensureFindingEvidence refines the CWE
+    // to the actual defect instead of the class default.
+    signals?: SignalCategory[];
     previousContext?: {
       type: string;
       timestamp: number;

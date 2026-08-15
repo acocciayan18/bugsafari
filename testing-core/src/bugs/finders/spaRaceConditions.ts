@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 import { FREEZE_SELECTORS } from '../knowledgeBase/signalPatterns.js';
-import { classifyInputElement, isSensitiveInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
+import { classifyInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../domain/scenarios/fuzzing/payloadEscalator.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
@@ -110,7 +110,7 @@ export async function burstConcurrentStress(
       selector: element.selector,
       url,
       value,
-      redactValue: isSensitiveInputElement(element),
+      redactValue: false,
       burstId,
     });
     promises.push(

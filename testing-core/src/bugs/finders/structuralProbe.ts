@@ -183,6 +183,7 @@ export const structuralProbeFinder: BugFinder = {
           selector: metadata?.injectedPath,
           actionExecuted: 'route-trasher-redirect-loop',
           stateHash: ctx.stateHash,
+          signals: ['REDIRECT_LOOP'],
         },
       });
     }
@@ -199,6 +200,7 @@ export const structuralProbeFinder: BugFinder = {
           selector: metadata?.injectedPath,
           actionExecuted: 'route-trasher-component-fail',
           stateHash: ctx.stateHash,
+          signals: ['DEAD_END'],
         },
       });
     }

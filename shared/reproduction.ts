@@ -569,6 +569,16 @@ export function isApiEndpoint(url?: string): boolean {
   return API_ENDPOINT_RE.test(path);
 }
 
+// A culprit label overloaded with "METHOD /api/..." — an endpoint, never a UI control.
+const HTTP_VERB_PREFIX_RE = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+/i;
+
+/** True when a label is an endpoint reference ("GET /api/orders"), not a UI element name. */
+export function isApiEndpointLabel(label?: string): boolean {
+  const raw = collapse(label);
+  if (!raw) return false;
+  return isApiEndpoint(raw.replace(HTTP_VERB_PREFIX_RE, ''));
+}
+
 /** Route step — "Navigate to /settings/users". Opens/transitions the playbook's page. */
 export function describeRouteStep(url?: string): string {
   const path = routePath(url);

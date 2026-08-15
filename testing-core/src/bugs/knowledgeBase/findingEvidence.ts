@@ -9,6 +9,8 @@
 
 import type { FindingAttribution } from '../../../../shared/types.js';
 import { BUG_CATALOG } from './bugCatalog.js';
+import { refineCwe } from './FaultClassifier.js';
+import type { SignalCategory } from './signalPatterns.js';
 import type { BugClass } from '../types.js';
 
 /** Fallback class when a detector reports a promotion with no class at all. */
@@ -62,6 +64,8 @@ export interface FindingEvidenceInput {
   context?: string;
   /** Concrete facts to fold into the remediation so it references THIS finding. */
   specifics?: FindingSpecifics;
+  // Matched signal shapes a self-gating finder knows, so the CWE is refined not defaulted.
+  signals?: SignalCategory[];
 }
 
 export interface FindingEvidenceResult {
@@ -83,7 +87,9 @@ export function ensureFindingEvidence(input: FindingEvidenceInput): FindingEvide
 
   const definition = BUG_CATALOG[bugClass] ?? BUG_CATALOG[FALLBACK_BUG_CLASS];
 
-  const cwe = input.attribution.cwe || definition.cwe;
+  // Refine from the matched signal so multi-shape classes get the right CWE; a no-op for
+  // single-shape classes and for already-refined classifier/network inputs.
+  const cwe = refineCwe(bugClass, input.signals ?? [], input.attribution.cwe || definition.cwe);
   if (!input.attribution.cwe) filled.push('cwe');
 
   const baseAdvice = (input.advice ?? '').trim() || definition.remediation;

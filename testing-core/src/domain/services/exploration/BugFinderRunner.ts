@@ -2,7 +2,6 @@ import type { BugClass, BugContext, BugFinder, BugFinding } from '../../../bugs/
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
-import { isSensitiveInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
 import {
   resolveElementLabel,
   elementNoun,
@@ -178,7 +177,7 @@ export class BugFinderRunner {
           containerKind: el.contextKind,
           strippedAttribute: bypass.strippedAttribute,
           payload: bypass.payload,
-          redact: isSensitiveInputElement(el),
+          redact: false,
           method: bypass.method,
           endpoint: bypass.endpoint,
           status: bypass.status,
@@ -212,7 +211,7 @@ export class BugFinderRunner {
           elementLabel: bypassLabel,
           elementKind: elementNoun(el.tagName, el.type),
           strippedAttributes: bypass.strippedAttribute ? [bypass.strippedAttribute] : undefined,
-          redactValue: isSensitiveInputElement(el),
+          redactValue: false,
         },
       ];
     } else if (fuzzPayload && el) {
@@ -226,7 +225,7 @@ export class BugFinderRunner {
           payload: fuzzPayload,
           elementLabel: resolveElementLabel(el),
           elementKind: elementNoun(el.tagName, el.type),
-          redactValue: isSensitiveInputElement(el),
+          redactValue: false,
         },
       ];
     }
@@ -268,6 +267,7 @@ export class BugFinderRunner {
       reproductionPlaybook: finding.evidence?.reproductionPlaybook ?? reproductionSteps ?? [],
       context: `${finding.title} (${safeRoutePath(ctx.page)})`,
       specifics: finding.evidence?.specifics,
+      signals: finding.evidence?.signals,
     });
     const finalReproductionActions = finding.evidence?.reproductionActions ?? reproductionActions;
 
@@ -286,14 +286,8 @@ export class BugFinderRunner {
       severity: finding.severity,
       stateFingerprint,
       bypass,
-      attribution: {
-        bugClass: finding.bugClass,
-        cwe: definition.cwe,
-        scenario: attribution.scenario,
-        testingType: attribution.testingType,
-        stepIndex: ctx.step,
-        ...verdict,
-      },
+      // Reuse the funnel's attribution so the refined CWE (not the class default) is stored.
+      attribution: ensured.attribution,
     });
     this.registeredPerClass.set(budgetClass, (this.registeredPerClass.get(budgetClass) ?? 0) + 1);
   }

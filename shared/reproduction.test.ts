@@ -22,6 +22,7 @@ import {
   describeRedirectLoopObservation,
   narrateActionRecords,
   isApiEndpoint,
+  isApiEndpointLabel,
   describeStepLocation,
   endpointLabel,
 } from './reproduction.js';
@@ -250,6 +251,15 @@ check('isApiEndpoint distinguishes data endpoints from user-facing pages', () =>
   }
   for (const page of ['http://app.test/settings/users', '/checkout', '/reports?tab=1', '/apiary/list', '', undefined]) {
     assert.equal(isApiEndpoint(page), false, String(page));
+  }
+});
+
+check('isApiEndpointLabel flags endpoint labels, not UI control names', () => {
+  for (const label of ['GET /api/orders', 'post /graphql', 'DELETE /api/users/42', '/api/pay']) {
+    assert.equal(isApiEndpointLabel(label), true, label);
+  }
+  for (const label of ['Save', 'the "Register" button', 'Submit order', '', undefined]) {
+    assert.equal(isApiEndpointLabel(label), false, String(label));
   }
 });
 

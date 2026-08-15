@@ -86,11 +86,12 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     if (state.isSessionSaved || state.isSavingSession) return;
 
     autoSaveAttemptedRef.current = true;
-    toast.promise(saveSessionToHistory(targetUrl), {
-      loading: 'Auto-saving session...',
-      success: 'Session auto-saved to history',
-      error: "Couldn't auto-save. Use Save Session to try again.",
-    });
+    // Route through the shared slot (toast/success/error) so the loading→result
+    // transition replaces one node in place instead of stacking a fresh promise toast.
+    toast('Auto-saving session...', { duration: Infinity });
+    void saveSessionToHistory(targetUrl)
+      .then(() => toast.success('Session auto-saved to history'))
+      .catch(() => toast.error("Couldn't auto-save. Use Save Session to try again."));
   }, [
     autoSave,
     isGuestMode,
@@ -122,14 +123,10 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
       toast('Session has already been saved.');
       return;
     }
-    toast.promise(
-      saveSessionToHistory(targetUrl),
-      {
-        loading: 'Saving session...',
-        success: 'Session saved to history!',
-        error: 'Failed to save session',
-      }
-    );
+    toast('Saving session...', { duration: Infinity });
+    void saveSessionToHistory(targetUrl)
+      .then(() => toast.success('Session saved to history!'))
+      .catch(() => toast.error('Failed to save session'));
   };
 
   // Identity props shared by every protected route's nav shell.

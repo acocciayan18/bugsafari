@@ -19,9 +19,9 @@ One real defect found and fixed. Three anomalies investigated and cleared as non
 
 **Repro:** Dashboard → START TESTING → let a run finish (auto-save fires) → repeat 3x. Inspect `[data-sonner-toast]` nodes.
 
-**Root cause:** The whole toast layer is deliberately built around ONE shared slot (`TOAST_ID`) so a new message replaces the old in place (see `ToastProvider.tsx` comments). Every path honors this — except `toast.promise`, which was a raw `sonnerToast.promise` passthrough. Each `toast.promise` call (auto-save `App.tsx:89`, manual save `App.tsx:125`) minted a fresh auto-id toast, so repeated saves accumulated separate nodes.
+**Root cause:** The whole toast layer is deliberately built around ONE shared slot (`TOAST_ID`) so a new message replaces the old in place (see `ToastProvider.tsx` comments). Every path renders custom JSX through `renderToast` and honors this — except `toast.promise`, a raw `sonnerToast.promise` passthrough. Each `toast.promise` call (auto-save `App.tsx:89`, manual save `App.tsx:125`) minted a fresh auto-id toast rendered via sonner's title path, so repeated saves accumulated separate nodes.
 
-**Fix:** `developer-dashboard/src/infrastructure/notifications/ToastProvider.tsx` — the `promise` wrapper now defaults into `TOAST_ID` (mirroring the existing `custom` wrapper), so repeated saves replace one node in place. A caller may still pass an explicit `id` to override. Typecheck clean.
+**Fix (revised after code review):** The two save call sites in `developer-dashboard/src/App.tsx` now drive the shared slot through the app's own helpers — `toast('...ing session...', { duration: Infinity })` then `toast.success(...)` / `toast.error(...)` on settle. All three land in `TOAST_ID` via `renderToast` (custom render + `activeSlotMessage` dedup bookkeeping), so the loading→result transition replaces one node in place. The `toast.promise` wrapper is left as the original raw passthrough — an earlier attempt to default it into `TOAST_ID` was reverted because it mixed sonner's title-render into the custom-jsx slot (the exact "custom + title paths" failure the design warns against) and bypassed the dedup bookkeeping. Typecheck clean; no new lint errors on changed lines.
 
 ---
 

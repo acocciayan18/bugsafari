@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { FuzzMetadata } from '../../chaos/index.js';
 import type { StressScenario } from '../types.js';
-import { classifyInputElement, FieldCategory, isSensitiveInputElement } from './elementClassifier.js';
+import { classifyInputElement, FieldCategory } from './elementClassifier.js';
 import { ChaosTransactionManager } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel, elementNoun } from '../../services/forensics/narration.js';
@@ -310,9 +310,9 @@ export const dataFuzzer: StressScenario = {
     const constraints = await readInputConstraints(page, selector);
     const boundary = deriveBoundaryPayload(category, constraints);
 
-    // Only genuinely sensitive fields (password/financial/identifier) mask the narrated
-    // value; stress payloads show verbatim. Replay always keeps the raw value.
-    const redactValue = isSensitiveInputElement(target);
+    // Every value here is an engine-synthesized stress payload, not real user data, so
+    // show it verbatim — a developer needs the exact string to reproduce. Replay keeps raw.
+    const redactValue = false;
     // The constraint bypass is narrated once, from the FIRST real strip result
     // (below) so the step names the exact attributes removed; the strip itself
     // re-runs before every injection to defeat SPA re-renders that re-add them.

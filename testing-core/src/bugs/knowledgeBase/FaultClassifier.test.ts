@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { classifyFault } from './index.js';
 import { BUG_CATALOG } from './bugCatalog.js';
+import { ensureFindingEvidence } from './findingEvidence.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -377,6 +378,30 @@ check('lost session → CWE-287 (Improper Authentication), never CWE-613', () =>
   // Regardless of how this run resolves the class, SESSION_SYNC_FAULT must read CWE-287.
   assert.equal(BUG_CATALOG.SESSION_SYNC_FAULT.cwe, 'CWE-287');
   void c;
+});
+
+check('ensureFindingEvidence refines a self-gating finder CWE from its signal', () => {
+  const nosql = ensureFindingEvidence({
+    attribution: { bugClass: 'FUZZ_VULNERABILITY_LEAK', cwe: BUG_CATALOG.FUZZ_VULNERABILITY_LEAK.cwe },
+    reproductionPlaybook: ['Step 1. do it'],
+    signals: ['NOSQL_ERROR'],
+  });
+  assert.equal(nosql.attribution.cwe, 'CWE-943');
+
+  const deadEnd = ensureFindingEvidence({
+    attribution: { bugClass: 'ROUTE_MUTATION_FAILURE', cwe: BUG_CATALOG.ROUTE_MUTATION_FAILURE.cwe },
+    reproductionPlaybook: ['Step 1. do it'],
+    signals: ['DEAD_END'],
+  });
+  assert.equal(deadEnd.attribution.cwe, 'CWE-670');
+});
+
+check('ensureFindingEvidence leaves single-shape / no-signal CWE untouched', () => {
+  const loading = ensureFindingEvidence({
+    attribution: { bugClass: 'INFINITE_LOADING', cwe: BUG_CATALOG.INFINITE_LOADING.cwe },
+    reproductionPlaybook: ['Step 1. do it'],
+  });
+  assert.equal(loading.attribution.cwe, BUG_CATALOG.INFINITE_LOADING.cwe);
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

@@ -4,7 +4,7 @@ import type { StressScenario } from '../../scenarios/types.js';
 import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper } from '../../scenarios/index.js';
 import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
-import { classifyInputElement, benignValueFor, isSensitiveInputElement } from '../../scenarios/fuzzing/elementClassifier.js';
+import { classifyInputElement, benignValueFor } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
@@ -753,9 +753,9 @@ export class ActionExecutor {
     // for this exact field (0 on first encounter), then synthesize that level's
     // deterministic, replayable payload.
     const category = classifyInputElement(target);
-    // Only genuinely sensitive fields (password/financial/identifier) mask the value in
-    // narration; stress payloads show verbatim. Replay always keeps the raw value.
-    const redactValue = isSensitiveInputElement(target);
+    // Engine-synthesized stress payload, never real user data — show verbatim so the exact
+    // string is reproducible. Replay always keeps the raw value.
+    const redactValue = false;
     const level = this.deps.escalationTracker.getLevel(target.selector, category);
     // Encounter cursor sweeps the vector corpus across revisits; 'field' placement
     // keeps L2+ potent (a percent-encoded payload typed into an input is inert).
@@ -942,9 +942,9 @@ export class ActionExecutor {
     const label = resolveElementLabel(target);
     const kind = elementNoun(target.tagName, target.type);
     const value = benignValueFor(classifyInputElement(target));
-    // Mask even synthetic values on sensitive fields so the playbook never prints
-    // anything that reads as a real credential/identifier.
-    const redactValue = isSensitiveInputElement(target);
+    // Engine-generated benign value, not a real credential — show verbatim so the step
+    // is reproducible. The engine never types genuine user secrets here.
+    const redactValue = false;
 
     ActiveScenarioTracker.begin('Exploratory', page.url() ?? this.deps.getTargetOrigin());
     try {
@@ -1232,7 +1232,8 @@ export class ActionExecutor {
     // just-injected payload never becomes the element name.
     const elementLabel = resolveElementLabel(target);
     const kind = elementNoun(target.tagName, target.type);
-    const redactValue = isSensitiveInputElement(target);
+    // The injected attack payload IS the evidence — show verbatim, never masked.
+    const redactValue = false;
     const classification = classifyFault({
       faultType: 'CONSOLE',
       message: finding.title,

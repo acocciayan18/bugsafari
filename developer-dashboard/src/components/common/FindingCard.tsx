@@ -143,6 +143,12 @@ export default function FindingCard({
               )}
             </div>
           )}
+          {!element && view.endpointLabel && (
+            <div className="min-w-0">
+              <div className="text-caption font-semibold uppercase text-(--text-secondary)">API Endpoint</div>
+              <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-primary)" title={view.endpointLabel}>{view.endpointLabel}</div>
+            </div>
+          )}
           {view.payloadUsed && (
             <div className="min-w-0">
               <div className="text-caption font-semibold uppercase text-(--text-secondary)">Payload Used</div>

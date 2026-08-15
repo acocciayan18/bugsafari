@@ -2,7 +2,15 @@
 // dashboard runner (scripts/run-tests.mjs). Run: `npx tsx src/utils/findingView.test.ts`.
 
 import assert from 'node:assert/strict';
-import { extractLeadingTag, displayableSelector } from './findingView';
+import {
+  extractLeadingTag,
+  displayableSelector,
+  resolveEndpointLabel,
+  resolveCulpritLabel,
+  incidentToFindingView,
+  buildFindingSummary,
+} from './findingView';
+import type { IncidentReport } from '../types';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -53,6 +61,29 @@ check('displayableSelector drops fragile paths, placeholders, and label restatem
   assert.equal(displayableSelector('N/A', 'Buy'), undefined);
   assert.equal(displayableSelector(undefined, 'Buy'), undefined);
   assert.equal(displayableSelector('Buy', 'Buy'), undefined);
+});
+
+check('an endpoint label is surfaced as endpoint, never as the UI element', () => {
+  assert.equal(resolveEndpointLabel('GET /api/orders'), 'GET /api/orders');
+  assert.equal(resolveEndpointLabel('Place Order'), undefined);
+  assert.equal(resolveCulpritLabel('GET /api/orders', undefined, undefined), undefined);
+  assert.equal(resolveCulpritLabel('Place Order', undefined, undefined), 'Place Order');
+});
+
+check('a network fault maps its endpoint to endpointLabel, not elementLabel', () => {
+  const inc = {
+    timestamp: '2026-08-15T00:00:00.000Z',
+    reason: 'Server returned 500',
+    url: 'http://app.test/checkout',
+    culpritLabel: 'GET /api/orders',
+    steps: [],
+  } as unknown as IncidentReport;
+  const view = incidentToFindingView(inc);
+  assert.equal(view.elementLabel, undefined);
+  assert.equal(view.endpointLabel, 'GET /api/orders');
+  const summary = buildFindingSummary(view, 0);
+  assert.ok(summary.includes('Endpoint: GET /api/orders'));
+  assert.ok(!summary.includes('Element:'));
 });
 
 console.log(`\n${passed} assertions passed.`);

@@ -319,7 +319,7 @@ function resolveBugClass(
  * each map to a different CWE, so the CWE is resolved from the matched signal rather than
  * fixed per class. Returns the catalog default when no refinement applies.
  */
-function refineCwe(bugClass: BugClass, categories: SignalCategory[], baseCwe: string): string {
+export function refineCwe(bugClass: BugClass, categories: SignalCategory[], baseCwe: string): string {
   const has = (category: SignalCategory): boolean => categories.includes(category);
   switch (bugClass) {
     // A redirect loop genuinely is CWE-835; a dead-end / broken route is not a loop, so it
