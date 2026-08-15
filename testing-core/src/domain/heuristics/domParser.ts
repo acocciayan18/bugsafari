@@ -725,8 +725,9 @@ const isDisabled = (element) => {
         const max = element.getAttribute('max') || '';
         const step = element.getAttribute('step') || '';
         // Only <select> pays the option scan; cap to bound the snapshot payload.
+        // In-page string: plain JS only (no TS casts) or the browser SyntaxErrors.
         const options = tagName === 'select'
-          ? Array.from((element as HTMLSelectElement).options)
+          ? Array.from(element.options)
               .filter((o) => !o.disabled && o.value)
               .slice(0, 20)
               .map((o) => o.value)

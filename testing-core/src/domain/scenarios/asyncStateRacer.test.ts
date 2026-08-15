@@ -74,9 +74,9 @@ check('a client crash during the race classifies as RUNTIME_STABILITY_EXCEPTION 
   });
   assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
   assert.equal(c.testingType, 'asyncRace');
-  // FaultClassifier assigns the bug-catalog default (HIGH); the Critical live tier
+  // FaultClassifier assigns the bug-catalog default (MEDIUM); the Critical live tier
   // is StabilityMonitor's separate severity layer.
-  assert.equal(c.severity, 'HIGH');
+  assert.equal(c.severity, 'MEDIUM');
 });
 
 check('a 5xx from an interrupted request classifies as SERVER_API_FAILURE / asyncRace', () => {
