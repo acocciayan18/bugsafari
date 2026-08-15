@@ -186,41 +186,74 @@ function isInputField(tagName: string): boolean {
 interface InputConstraints {
   min: number | null;
   max: number | null;
+  step: number | null;
   maxLength: number | null;
+  // Raw min/max strings so DATE fields (which don't parse as numbers) get boundaries.
+  minRaw: string | null;
+  maxRaw: string | null;
 }
 
 /**
- * Reads min/max/maxlength from the element BEFORE dataFuzzer strips them.
+ * Reads min/max/step/maxlength from the element BEFORE dataFuzzer strips them.
  */
 async function readInputConstraints(page: Page, selector: string): Promise<InputConstraints> {
   try {
     return await page.evaluate((sel) => {
       const el = document.querySelector(sel);
+      const raw = (name: string): string | null => {
+        const v = el ? el.getAttribute(name) : null;
+        return v !== null && v.trim() !== '' ? v : null;
+      };
       const num = (v: string | null): number | null =>
-        v !== null && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : null;
+        v !== null && !Number.isNaN(Number(v)) ? Number(v) : null;
       return {
-        min: el ? num(el.getAttribute('min')) : null,
-        max: el ? num(el.getAttribute('max')) : null,
-        maxLength: el ? num(el.getAttribute('maxlength')) : null,
+        min: num(raw('min')),
+        max: num(raw('max')),
+        step: num(raw('step')),
+        maxLength: num(raw('maxlength')),
+        minRaw: raw('min'),
+        maxRaw: raw('max'),
       };
     }, selector);
   } catch {
-    return { min: null, max: null, maxLength: null };
+    return { min: null, max: null, step: null, maxLength: null, minRaw: null, maxRaw: null };
   }
 }
 
+// Shift an ISO date (YYYY-MM-DD) by whole days. Null on unparseable input so the
+// caller falls back to the static date vectors instead of emitting garbage.
+function shiftIsoDay(iso: string, deltaDays: number): string | null {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms + deltaDays * 86400000).toISOString().slice(0, 10);
+}
+
 /**
- * Derives a boundary payload just outside a numeric field's declared range.
+ * Derives a boundary payload just outside a field's declared range. NUMERIC uses
+ * min/max/step/maxlength; DATE uses the raw min/max shifted a day out of range.
  * Returns null when no meaningful constraint exists (leaving the specialized
- * XSS/SQL/chaos vectors untouched for non-numeric fields).
+ * XSS/SQL/chaos vectors untouched for unconstrained fields).
  */
-function deriveBoundaryPayload(
+export function deriveBoundaryPayload(
   category: FieldCategory,
   c: InputConstraints,
 ): { value: string; description: string } | null {
+  if (category === 'DATE') {
+    if (c.maxRaw) {
+      const shifted = shiftIsoDay(c.maxRaw, 1);
+      if (shifted) return { value: shifted, description: `after max(${c.maxRaw})` };
+    }
+    if (c.minRaw) {
+      const shifted = shiftIsoDay(c.minRaw, -1);
+      if (shifted) return { value: shifted, description: `before min(${c.minRaw})` };
+    }
+    return null;
+  }
   if (category !== 'NUMERIC') return null;
-  if (c.max !== null) return { value: String(c.max + 1), description: `max(${c.max})+1` };
-  if (c.min !== null) return { value: String(c.min - 1), description: `min(${c.min})-1` };
+  // Prefer an out-of-range value (step overflows the declared range) so overflow
+  // validation is probed; fall back to the plain min/max boundary otherwise.
+  if (c.max !== null) return { value: String(c.max + (c.step ?? 1)), description: `max(${c.max})+${c.step ?? 1}` };
+  if (c.min !== null) return { value: String(c.min - (c.step ?? 1)), description: `min(${c.min})-${c.step ?? 1}` };
   if (c.maxLength !== null && c.maxLength > 0 && c.maxLength < 100000) {
     return { value: '9'.repeat(c.maxLength + 1), description: `maxlength(${c.maxLength})+1` };
   }

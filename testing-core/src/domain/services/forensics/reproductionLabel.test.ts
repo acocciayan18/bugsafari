@@ -43,6 +43,11 @@ check('non-anchor nouns are unchanged', () => {
   assert.equal(elementNoun('select', ''), 'dropdown');
 });
 
+check('range and color inputs get value-control nouns', () => {
+  assert.equal(elementNoun('input', 'range'), 'slider');
+  assert.equal(elementNoun('input', 'color'), 'color picker');
+});
+
 check('accessibleName wins over a long combined innerText', () => {
   assert.equal(
     resolveElementLabel({

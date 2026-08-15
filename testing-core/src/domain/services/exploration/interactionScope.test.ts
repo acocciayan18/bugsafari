@@ -26,9 +26,12 @@ check('textarea and text-like inputs are attack vectors', () => {
   }
 });
 
+check('range and color are value-controls, not text fuzz targets', () => {
+  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'range' }), 'value-control');
+  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'color' }), 'value-control');
+});
+
 check('unknown input type defaults to attack vector (safe to fuzz)', () => {
-  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'color' }), 'attack-vector');
-  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'range' }), 'attack-vector');
   assert.equal(classifyInteractionScope({ tagName: 'input', type: 'custom-widget' }), 'attack-vector');
 });
 
@@ -77,6 +80,8 @@ check('attack-target boost applies only to fuzzable inputs', () => {
     { tagName: 'input', type: 'submit' },
     { tagName: 'input', type: 'checkbox' },
     { tagName: 'input', type: 'radio' },
+    { tagName: 'input', type: 'range' },
+    { tagName: 'input', type: 'color' },
     { tagName: 'select', type: '' },
     { tagName: 'a', type: '' },
   ]) {

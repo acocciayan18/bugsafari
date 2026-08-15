@@ -821,7 +821,11 @@ export class StabilityMonitor {
     const reason = finding.message;
     // Best-effort source-map resolution of the raw stack's top frames (undefined
     // when the target ships no reachable maps).
-    const resolvedStackTrace = await this.getResolver(page).resolve(stackTrace || stack);
+    const resolver = this.getResolver(page);
+    const resolvedStackTrace = await resolver.resolve(stackTrace || stack);
+    // The failing handler/component from the top application stack frame — used to
+    // attribute the fault when no descriptive DOM control was the trigger.
+    const stackCulprit = await resolver.resolveTopAppFrame(stackTrace || stack);
 
     t.emit('EXCEPTION', {
       message: ` ${finding.message}`,
@@ -849,11 +853,12 @@ export class StabilityMonitor {
 
     // A render/console fault often has no genuinely-acted control; culprit resolution
     // then falls back to an incidental last-interaction label (a bare <tag> or an input's
-    // value). Drop a non-descriptive culprit so the Element cell stays empty rather than
-    // naming the wrong control.
+    // value). Prefer a descriptive acted control; otherwise attribute to the failing
+    // handler from the stack, never a wrong last-clicked control. Selector stays empty
+    // for a stack attribution — a frame is not a DOM selector.
     const rawCulpritLabel = this.culpritLabelAt(faultAtMs);
     const hasCulprit = isDescriptiveControlName(rawCulpritLabel);
-    const culpritLabel = hasCulprit ? rawCulpritLabel : undefined;
+    const culpritLabel = hasCulprit ? rawCulpritLabel : stackCulprit;
     const culpritSelector = hasCulprit ? this.culpritSelectorAt(faultAtMs) : undefined;
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,

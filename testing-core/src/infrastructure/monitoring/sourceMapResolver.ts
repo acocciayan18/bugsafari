@@ -121,6 +121,12 @@ function findSegment(segments: Segment[], col: number): Segment | null {
   return best;
 }
 
+// A source-map source that belongs to a dependency, not the app's own code — these
+// frames name a library internal, never the failing handler, so attribution skips them.
+function isDependencySource(source: string): boolean {
+  return /(?:^|[\\/])node_modules[\\/]|[\\/]vendor[\\/]|(?:^|[\\/])webpack[\\/]/i.test(source);
+}
+
 // Pull the bundle URL + 1-based line/col out of each stack frame (Chrome and
 // Firefox forms both end in `url:line:col`).
 function parseFrames(stack: string): Frame[] {
@@ -186,6 +192,31 @@ export class SourceMapResolver {
 
       if (resolved.length === 0) return undefined;
       return resolved.map((line, i) => `${i + 1}. ${line}`).join('\n');
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Attribution helper: the first resolved frame in an APPLICATION source (dependency
+  // frames under node_modules/vendor are skipped), as a compact `name (file:line)` label
+  // for the finding's Element cell. Undefined when nothing app-level resolves. Never throws.
+  public async resolveTopAppFrame(rawStack: string | undefined): Promise<string | undefined> {
+    if (!rawStack) return undefined;
+    try {
+      for (const frame of parseFrames(rawStack)) {
+        const map = await this.mapFor(frame.url);
+        if (!map) continue;
+        const segments = map.lines[frame.line - 1];
+        if (!segments || segments.length === 0) continue;
+        const seg = findSegment(segments, frame.col - 1);
+        if (!seg || seg.srcIdx < 0) continue;
+        const source = this.joinSource(map, seg.srcIdx);
+        if (isDependencySource(source)) continue;
+        const file = source.split(/[\\/]/).pop() || source;
+        const name = seg.nameIdx >= 0 ? map.names[seg.nameIdx] : undefined;
+        return name ? `${name} (${file}:${seg.origLine + 1})` : `${file}:${seg.origLine + 1}`;
+      }
+      return undefined;
     } catch {
       return undefined;
     }

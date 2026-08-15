@@ -44,6 +44,14 @@ async function setNativeValue(page: Page, selector: string, value: string): Prom
     .catch(() => false);
 }
 
+// Set a native clamped value-control (range/color). fill() is rejected by these
+// widgets, so this drives the native prototype value setter + input/change dispatch
+// directly. Returns whether the requested value survived (a range value the browser
+// clamps to its min/max reports false for the out-of-range request).
+export async function setControlValue(page: Page, selector: string, value: string): Promise<boolean> {
+  return setNativeValue(page, selector, value);
+}
+
 // Type `value` into a text field. `fill()` produces trusted, framework-agnostic
 // events; the native-setter rung covers fields Playwright refuses (non-editable
 // after a stripped constraint, type-mismatched payloads, detached-then-remounted).
@@ -117,14 +125,29 @@ export async function setSelectValue(page: Page, selector: string, value: string
 // differs from the current selection, so the engine exercises a real value
 // instead of the usual placeholder-first entry. Null when there is nothing to pick.
 export async function resolveMeaningfulOption(page: Page, selector: string): Promise<string | null> {
+  return resolveSampledOption(page, selector, 0);
+}
+
+// Boundary-sampled option so repeated encounters of a <select> exercise different
+// values instead of always the same one. Deterministic by `index`: 0 = last enabled
+// distinct from current (unchanged legacy behavior), 1 = first real (non-placeholder)
+// enabled, 2 = middle enabled. Null when there is nothing to pick.
+export async function resolveSampledOption(page: Page, selector: string, index: number): Promise<string | null> {
   return page
-    .$eval(selector, (node) => {
-      const select = node as HTMLSelectElement;
-      const options = Array.from(select.options).filter((option) => !option.disabled);
-      if (options.length === 0) return null;
-      const last = options[options.length - 1];
-      const pick = last.value === select.value && options.length > 1 ? options[options.length - 2] : last;
-      return pick.value;
-    })
+    .$eval(
+      selector,
+      (node, idx: number) => {
+        const select = node as HTMLSelectElement;
+        const options = Array.from(select.options).filter((option) => !option.disabled);
+        if (options.length === 0) return null;
+        const last = options[options.length - 1];
+        const lastDistinct = last.value === select.value && options.length > 1 ? options[options.length - 2] : last;
+        const firstReal = options.find((option) => option.value !== '') ?? options[0];
+        const middle = options[Math.floor((options.length - 1) / 2)];
+        const picks = [lastDistinct, firstReal, middle];
+        return picks[((idx % picks.length) + picks.length) % picks.length].value;
+      },
+      index,
+    )
     .catch(() => null);
 }

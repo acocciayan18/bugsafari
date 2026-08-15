@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
-import { FREEZE_SELECTORS, matchesCategory } from '../knowledgeBase/signalPatterns.js';
+import { FREEZE_SELECTORS } from '../knowledgeBase/signalPatterns.js';
 import { classifyInputElement, isSensitiveInputElement } from '../../domain/scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../domain/scenarios/fuzzing/payloadEscalator.js';
 import { ActionRecorder } from '../../infrastructure/monitoring/actionBuffer.js';
@@ -141,9 +141,8 @@ function isFillableInput(element: InteractiveElement): boolean {
   return !['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(type);
 }
 
-/** Post-burst damage signals: a crash, a leaked error surface, or a stuck loader. */
+/** Post-burst damage signals: a stuck loader, plus backend-guard accounting. */
 interface BurstDamage {
-  crashes: string[];
   stuckLoading: boolean;
   // Backend correctly rejected a duplicate state-changing request (409/425/429).
   guarded: number;
@@ -171,23 +170,13 @@ export const spaRaceConditionsFinder: BugFinder = {
   },
 
   /**
-   * Fires a concurrent event burst and reports ONLY when the app fails to absorb it:
-   * a new client crash, or a loading state still stuck once the burst settles.
-   * Clicks merely succeeding is the healthy case, not a race.
+   * Fires a concurrent event burst and reports ONLY a genuine race: a loading state still
+   * orphaned once the burst settles. Uncaught JS errors during the burst are owned by the
+   * runtime path (RUNTIME_STABILITY_EXCEPTION). Clicks merely succeeding is healthy.
    */
   async run(ctx: BugContext): Promise<BugFinding[]> {
-    const damage: BurstDamage = { crashes: [], stuckLoading: false, guarded: 0, serverError: 0 };
+    const damage: BurstDamage = { stuckLoading: false, guarded: 0, serverError: 0 };
 
-    const onPageError = (err: Error): void => {
-      if (damage.crashes.length < 3) damage.crashes.push(err.message.slice(0, 200));
-    };
-    const onConsole = (message: { type(): string; text(): string }): void => {
-      if (message.type() !== 'error') return;
-      const text = message.text();
-      if (damage.crashes.length < 3 && matchesCategory('CLIENT_CRASH', text)) {
-        damage.crashes.push(text.slice(0, 200));
-      }
-    };
     // Watch how the backend answered the overlapping state-changing requests: a
     // 409/425/429 means it rejected the duplicate correctly, a 5xx means it broke.
     const onResponse = (res: { status(): number; request(): { method(): string } }): void => {
@@ -216,8 +205,6 @@ export const spaRaceConditionsFinder: BugFinder = {
     // confirmed child hash and the next parse describe different places — graph
     // corruption attributable to this finder (audit P3-10).
     const urlBefore = ctx.page.url();
-    ctx.page.on('pageerror', onPageError);
-    ctx.page.on('console', onConsole);
     ctx.page.on('response', onResponse);
     ctx.page.on('request', onRequest);
     ctx.page.on('requestfinished', onRequestDone);
@@ -227,13 +214,12 @@ export const spaRaceConditionsFinder: BugFinder = {
     try {
       result = await burstConcurrentStress(ctx.page, ctx.step, ctx.rankedTargets);
       // Adaptive settle: wait the floor, then extend while requests are still in flight
-      // (up to the cap) so a late stale-resolve crash is still inside the window. A crash
-      // or a quiet network past the floor ends the wait early.
+      // (up to the cap) so a late stale-resolve is still inside the window. A quiet network
+      // past the floor ends the wait early.
       const settleStart = Date.now();
       for (;;) {
         await ctx.page.waitForTimeout(SETTLE_TICK_MS);
         const elapsed = Date.now() - settleStart;
-        if (damage.crashes.length > 0) break;
         if (elapsed >= SETTLE_MAX_MS) break;
         if (elapsed >= SETTLE_MIN_MS && inFlight <= 0) break;
       }
@@ -243,8 +229,6 @@ export const spaRaceConditionsFinder: BugFinder = {
       // orphaned loader (nothing in flight) is a genuine post-burst stuck state.
       damage.stuckLoading = !wasStuckBefore && inFlight <= 0 && (await isStuckLoading(ctx.page));
     } finally {
-      ctx.page.off('pageerror', onPageError);
-      ctx.page.off('console', onConsole);
       ctx.page.off('response', onResponse);
       ctx.page.off('request', onRequest);
       ctx.page.off('requestfinished', onRequestDone);
@@ -256,15 +240,16 @@ export const spaRaceConditionsFinder: BugFinder = {
       }
     }
 
-    if (damage.crashes.length === 0 && !damage.stuckLoading) return [];
+    // Uncaught JS errors during the burst are owned by the runtime path (StabilityMonitor)
+    // and classified RUNTIME_STABILITY_EXCEPTION; this finder reports only a genuine race:
+    // a loader still orphaned once the burst settles.
+    if (!damage.stuckLoading) return [];
 
-    // Backend correctly rejected the duplicate (409/425/429) and nothing crashed or
-    // 5xx'd — a transient spinner during a properly-guarded burst is not a race defect.
-    if (damage.crashes.length === 0 && damage.guarded > 0 && damage.serverError === 0) return [];
+    // Backend correctly rejected the duplicate (409/425/429) with no 5xx — a transient
+    // spinner during a properly-guarded burst is not a race defect.
+    if (damage.guarded > 0 && damage.serverError === 0) return [];
 
-    const detail = damage.crashes.length > 0
-      ? `The page threw unhandled JavaScript error(s) during the burst: ${damage.crashes.join(' | ')}`
-      : 'The page stayed stuck in a loading or blocked state after the burst finished';
+    const detail = 'The page stayed stuck in a loading or blocked state after the burst finished';
 
     // Reproduction from the burst's own pre-recorded intents (filtered by its id, so it
     // can never inherit an unrelated scenario's steps). The narrative and the replayable
@@ -280,7 +265,7 @@ export const spaRaceConditionsFinder: BugFinder = {
       {
         bugClass: 'SPA_STATE_RACE_CONDITION',
         title: 'Overlapping events left the page in a bad state',
-        severity: damage.crashes.length > 0 ? 'HIGH' : 'MEDIUM',
+        severity: 'MEDIUM',
         evidence: {
           message: `${detail}. ${result.completed} of ${result.attempted} overlapping events fired at once.`,
           actionExecuted: 'spa-race-concurrent-events',

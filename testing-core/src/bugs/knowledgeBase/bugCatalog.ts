@@ -109,8 +109,8 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
     remediation: remediation(
       'Suggested fix: catch and guard the failing code',
       '1. Reproduce the fault using the replay checklist above',
-      '2. Wrap the failing operation in try/catch and add a null check before it runs',
-      '3. Add a test that confirms the element or handler stays stable',
+      '2. Add a null check or optional chaining (obj?.field) before the failing operation, and initialize state ([] or {}) so it is never read before it loads',
+      '3. Wrap the operation in try/catch and add a test that confirms the element or handler stays stable',
     ),
   },
   API_CONTRACT_VIOLATION: {

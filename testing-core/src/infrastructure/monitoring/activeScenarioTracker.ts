@@ -1,4 +1,4 @@
-import { OBSERVATION_PREFIX, type ReproductionSnapshot } from '../../../../shared/types.js';
+import { OBSERVATION_PREFIX, type ReproductionSnapshot, type ActionRecord } from '../../../../shared/types.js';
 
 import { ReproductionPlaybookStore } from './reproductionPlaybookStore.js';
 import { minimizeActionRecords } from '../../domain/services/forensics/stepMinimizer.js';
@@ -194,11 +194,17 @@ export class ActiveScenarioTracker {
    */
   public static flushSnapshot(options: SnapshotOptions = {}): ReproductionSnapshot {
     const buffer = ReproductionPlaybookStore.snapshot();
+    // An async fault during an off-target burst has no culprit selector, so the culprit trim
+    // is skipped and the whole page window leaks in. Infer the burst in progress at fault time
+    // and scope the replay to it, so the steps are only the burst that triggered the fault.
+    const burstId =
+      options.burstId ??
+      (options.culpritSelector ? undefined : ActiveScenarioTracker.inferBurstId(buffer, options.faultAtMs));
     const actions = minimizeActionRecords(buffer, {
       faultUrl: options.faultUrl,
       faultAtMs: options.faultAtMs,
       culpritSelector: options.culpritSelector,
-      burstId: options.burstId,
+      burstId,
     });
 
     const window = ActiveScenarioTracker.populatedWindow();
@@ -235,6 +241,16 @@ export class ActiveScenarioTracker {
   /** True when a window carries anything worth reporting (steps or observations). */
   private static isPopulated(window: ScenarioWindow | null): boolean {
     return Boolean(window && (window.steps.length || window.observations.length));
+  }
+
+  /** Burst in progress at fault time: the last pre-fault record carrying a burstId. */
+  private static inferBurstId(buffer: readonly ActionRecord[], faultAtMs?: number): string | undefined {
+    for (let i = buffer.length - 1; i >= 0; i -= 1) {
+      const record = buffer[i];
+      if (faultAtMs !== undefined && Date.parse(record.timestamp) > faultAtMs) continue;
+      if (record.burstId) return record.burstId;
+    }
+    return undefined;
   }
 
   /** The window whose deliberate steps should drive a fault's narrative, if any. */

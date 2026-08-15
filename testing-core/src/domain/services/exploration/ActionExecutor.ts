@@ -22,7 +22,15 @@ import { triggerFormSubmission } from './formSubmitter.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
 import { trustedClick, type ClickOutcome } from './trustedClick.js';
-import { setFieldValue, setSelectValue, setToggleChecked, resolveMeaningfulOption, type InputOutcome } from './frameworkInput.js';
+import {
+  setFieldValue,
+  setSelectValue,
+  setToggleChecked,
+  setControlValue,
+  resolveSampledOption,
+  type InputOutcome,
+} from './frameworkInput.js';
+import { sampleValueControl } from './valueControlSampler.js';
 import type { HighlightAction } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import { decideEscalation, resolveResistance } from './escalationDecision.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
@@ -70,6 +78,7 @@ const COMMIT_CONTROL =
 // Interaction scope → active-indicator color group.
 const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {
   'attack-vector': 'input',
+  'value-control': 'input',
   file: 'input',
   toggle: 'hover',
   dropdown: 'hover',
@@ -93,6 +102,11 @@ export class ActionExecutor {
   // of re-running the first one forever, so every attack that suits the element
   // eventually fires. Counter-based (no RNG) so seeded runs stay reproducible.
   private readonly scenarioRotation = new Map<string, number>();
+
+  // Per-selector cursor for boundary-sampled value-controls and dropdowns, so a
+  // control re-encountered across the run walks its ordered sample set (valid +
+  // boundaries) instead of repeating one value. Counter-based (no RNG) for replay.
+  private readonly valueControlCursor = new Map<string, number>();
 
   // Routes whose client auth-state has already been forged this run. StorageTamper
   // is a PAGE-level probe — its oracle compares privileged-surface markers across a
@@ -165,6 +179,13 @@ export class ActionExecutor {
     }
     if (scope === 'dropdown') {
       return { interacted: await this.actuateDropdown(page, target) };
+    }
+
+    // VALUE-CONTROLS (range/color) — set a boundary-sampled native value and commit
+    // via the owning form so validation/API/state fire. Cap-gated like fuzzing since
+    // it drives submission; deterministic sampling bounds test time.
+    if (scope === 'value-control') {
+      return { interacted: await this.actuateValueControl(page, target) };
     }
 
     // FILE inputs — exercise upload validation/API by setting a synthetic in-memory
@@ -320,11 +341,11 @@ export class ActionExecutor {
   }
 
   /**
-   * Actuate a <select> dropdown as a form-progression control. Deterministically
-   * picks the last enabled option distinct from the current selection, exercising
-   * a real value instead of the usual placeholder-first option. Prefers
-   * Playwright's `selectOption()` (fires input/change) and falls back to a direct
-   * value set + event dispatch.
+   * Actuate a <select> dropdown as a form-progression control. Boundary-samples a
+   * real option value across repeat encounters (last-distinct, first-real, middle)
+   * via a per-selector cursor, exercising varied values instead of always the same
+   * one. Prefers Playwright's `selectOption()` (fires input/change) and falls back
+   * to a direct value set + event dispatch.
    */
   private async actuateDropdown(page: Page, target: InteractiveElement): Promise<boolean> {
     const label = resolveElementLabel(target);
@@ -339,8 +360,10 @@ export class ActionExecutor {
       }, target.selector)
       .catch(() => undefined);
 
-    // Resolve a deterministic, meaningful option value inside the page context.
-    const value = await resolveMeaningfulOption(page, target.selector);
+    // Boundary-sampled option value, cursor-advanced so revisits pick a fresh one.
+    const idx = this.valueControlCursor.get(target.selector) ?? 0;
+    this.valueControlCursor.set(target.selector, idx + 1);
+    const value = await resolveSampledOption(page, target.selector, idx);
     const selected = value !== null && (await setSelectValue(page, target.selector, value));
 
     this.deps.recordActionTrace(
@@ -369,6 +392,77 @@ export class ActionExecutor {
         : `Dropdown "${label}" had no selectable option.`,
     });
     return selected;
+  }
+
+  /**
+   * Actuate a range slider / color picker. A native value-control silently rejects
+   * a string fill(), so the text-fuzz path never exercises it. Sets a boundary-
+   * sampled native value (browser-clamped, so it stays in-range and low false-
+   * positive), then commits via the owning form so validation/API/state fire.
+   * Cap-gated like fuzzing since it submits; deterministic sampling bounds runtime.
+   */
+  private async actuateValueControl(page: Page, target: InteractiveElement): Promise<boolean> {
+    const label = resolveElementLabel(target);
+    const kind = nounForElement(target);
+
+    if (this.deps.formFuzz.isExhausted(target.formKey ?? '', this.deps.formFuzzCap)) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'form-fuzz-cap-reached',
+        selector: target.selector,
+        message: ` Form fuzz cap (${this.deps.formFuzzCap}) reached for ${humanizeElement(target)} — excluding form from further value-control actuation.`,
+      });
+      return false;
+    }
+
+    // Strip disabled/readonly so the control can be driven.
+    await page
+      .evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLInputElement | null;
+        if (!el) return;
+        el.removeAttribute('disabled');
+        el.disabled = false;
+        el.removeAttribute('readonly');
+        el.readOnly = false;
+      }, target.selector)
+      .catch(() => undefined);
+
+    // Boundary-sampled value, cursor-advanced so revisits pick a fresh sample.
+    const controlKind = (target.type ?? '').toLowerCase() === 'color' ? 'color' : 'range';
+    const idx = this.valueControlCursor.get(target.selector) ?? 0;
+    this.valueControlCursor.set(target.selector, idx + 1);
+    const value = sampleValueControl(controlKind, { min: target.min, max: target.max, step: target.step }, idx);
+    const delivered = await setControlValue(page, target.selector, value);
+
+    await this.fillEmptyFormSiblings(page, target.selector);
+    await triggerFormSubmission(page, target.selector);
+    this.deps.formFuzz.recordAttempt(target.formKey ?? '');
+
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'value-control',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        // INPUT so the step reads "Set the "Volume" slider to "50"".
+        actionType: 'INPUT',
+        humanIdentifier: label,
+        elementKind: kind,
+        value: delivered ? value : undefined,
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
+      },
+    );
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'form-control-actuated',
+      selector: target.selector,
+      message: delivered
+        ? ` Set ${kind} "${label}" to "${value}" and submitted to exercise validation/state.`
+        : `Value-control "${label}" could not be actuated (obscured or detached).`,
+    });
+    return delivered;
   }
 
   /**

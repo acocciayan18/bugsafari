@@ -43,4 +43,11 @@ export interface InteractiveElement {
   // panel/section/form), used to frame and disambiguate reproduction steps.
   contextLabel?: string;
   contextKind?: string;
+  // Constraint metadata (parser-populated) driving boundary-aware value-control
+  // actuation and field-aware fuzz boundaries. Raw attribute strings; parsed at use.
+  min?: string;
+  max?: string;
+  step?: string;
+  // Enabled <option> values for a <select> (capped), for boundary-sampled selection.
+  options?: string[];
 }

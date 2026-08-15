@@ -35,6 +35,12 @@ export interface ParsedElement {
   contextLabel: string;
   /** Concise accessible name of the element itself (aria/heading/title), or '' — the preferred label. */
   accessibleName: string;
+  /** Raw min/max/step attributes ('' when absent) for value-control / boundary sampling. */
+  min: string;
+  max: string;
+  step: string;
+  /** Enabled <option> values of a <select> (capped), for boundary-sampled selection. */
+  options: string[];
 }
 
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
@@ -111,6 +117,11 @@ export class RecursiveDomParser {
       href: element.href,
       contextLabel: element.contextLabel,
       contextKind: element.contextKind,
+      // Emit only when present so unrelated elements aren't bloated.
+      min: element.min || undefined,
+      max: element.max || undefined,
+      step: element.step || undefined,
+      options: element.options.length ? element.options : undefined,
     }));
   }
 
@@ -709,6 +720,18 @@ const isDisabled = (element) => {
           DISMISS_RE.test([className, id, ariaLabel, name].join(' ')) ||
           /^\\s*(×|✕||╳|x|close|cancel|dismiss)\\s*$/i.test(fullText);
 
+        // Constraint metadata: cheap attribute reads for value-control/boundary sampling.
+        const min = element.getAttribute('min') || '';
+        const max = element.getAttribute('max') || '';
+        const step = element.getAttribute('step') || '';
+        // Only <select> pays the option scan; cap to bound the snapshot payload.
+        const options = tagName === 'select'
+          ? Array.from((element as HTMLSelectElement).options)
+              .filter((o) => !o.disabled && o.value)
+              .slice(0, 20)
+              .map((o) => o.value)
+          : [];
+
         return [{
           element,
           tagName,
@@ -729,6 +752,10 @@ const isDisabled = (element) => {
           accessibleName: accessibleName(element),
           isDisabled: isDisabled(element),
           crossBoundary: !!wrapped.crossBoundary,
+          min,
+          max,
+          step,
+          options,
           boundingBox: {
             x: rect.x,
             y: rect.y,
@@ -782,7 +809,11 @@ const isDisabled = (element) => {
           isDismiss: data.isDismiss,
           contextKind: data.contextKind,
           contextLabel: data.contextLabel,
-          accessibleName: data.accessibleName
+          accessibleName: data.accessibleName,
+          min: data.min,
+          max: data.max,
+          step: data.step,
+          options: data.options
         };
       });
 

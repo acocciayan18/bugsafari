@@ -9,6 +9,7 @@
  *    workflow so a payload can fully execute:
  *      · `toggle`    — checkbox / radio (must be checked, not typed into)
  *      · `dropdown`  — <select> (must pick a real option, not receive a payload)
+ *      · `value-control` — range/color (set a native clamped value, not typed into)
  *      · `clickable` — buttons, submit/reset/image inputs, anchors, role=button…
  *      · `file`      — file inputs, driven via setInputFiles with a synthetic file
  *      · `inert`     — hidden inputs that cannot be safely driven and are skipped
@@ -17,10 +18,18 @@
  * reused identically wherever an element must be dispatched to its handler.
  */
 
-export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'file' | 'clickable' | 'inert';
+export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'value-control' | 'file' | 'clickable' | 'inert';
 
 /** input[type=…] values that are clicked, never typed into. */
 const CLICKABLE_INPUT_TYPES = new Set(['submit', 'button', 'reset', 'image']);
+
+/**
+ * input[type=…] constrained value controls: a native range/color widget silently
+ * rejects a string fill(), so these are set via a native numeric/hex value rather
+ * than fuzzed as text. Kept OUT of attack-vector so number/date keep the text-fuzz
+ * boundary path while sliders/color pickers are exercised with valid clamped values.
+ */
+const VALUE_CONTROL_INPUT_TYPES = new Set(['range', 'color']);
 
 /** input[type=…] values that are toggled (checked), never typed into. */
 const TOGGLE_INPUT_TYPES = new Set(['checkbox', 'radio']);
@@ -35,10 +44,11 @@ export interface ScopeClassifiable {
 }
 
 /**
- * Resolve which coordinated interaction scope an element belongs to. Any input
- * whose type is not explicitly clickable/toggle/inert (text, email, password,
- * search, number, url, tel, date, color, range, or an unknown/absent type) is a
- * fuzzable attack vector; every non-input, non-select control is clickable.
+ * Resolve which coordinated interaction scope an element belongs to. range/color
+ * are constrained value-controls; any other input not explicitly clickable/toggle/
+ * value-control/inert (text, email, password, search, number, url, tel, date, or an
+ * unknown/absent type) is a fuzzable attack vector; every non-input, non-select
+ * control is clickable.
  */
 export function classifyInteractionScope(element: ScopeClassifiable): InteractionScope {
   const tag = element.tagName.toLowerCase();
@@ -50,6 +60,7 @@ export function classifyInteractionScope(element: ScopeClassifiable): Interactio
   if (tag === 'input') {
     if (TOGGLE_INPUT_TYPES.has(type)) return 'toggle';
     if (CLICKABLE_INPUT_TYPES.has(type)) return 'clickable';
+    if (VALUE_CONTROL_INPUT_TYPES.has(type)) return 'value-control';
     if (type === 'file') return 'file';
     if (INERT_INPUT_TYPES.has(type)) return 'inert';
     return 'attack-vector';

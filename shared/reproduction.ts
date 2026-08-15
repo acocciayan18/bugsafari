@@ -117,6 +117,8 @@ export function elementNoun(tagName?: string, type?: string, ctx?: ElementNounCo
     if (elementType === 'checkbox') return 'checkbox';
     if (elementType === 'radio') return 'radio button';
     if (elementType === 'file') return 'file picker';
+    if (elementType === 'range') return 'slider';
+    if (elementType === 'color') return 'color picker';
     return 'field';
   }
   return tag ? 'control' : 'element';
@@ -351,6 +353,10 @@ export function describeInputInjection(label: string, payload?: string, redact?:
   const value = renderPayload(payload, redact);
   if (collapse(kind) === 'dropdown') {
     return value ? `Select "${value}" from ${target}` : `Choose an option from ${target}`;
+  }
+  // Value-controls (slider/color) are set to a value, not typed into.
+  if (kind === 'slider' || kind === 'color picker') {
+    return value ? `Set ${target} to "${value}"` : `Adjust ${target}`;
   }
   return value ? `Type "${value}" into ${target}` : `Enter a value into ${target}`;
 }

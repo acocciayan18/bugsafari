@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     assert.deepEqual(recorded.map((a) => a.type), ['CLICK', 'CLICK', 'TYPE']);
   });
 
-  await check('a crash mid-burst yields a finding with a non-empty reproduction', async () => {
+  await check('an uncaught error mid-burst is deferred to the runtime path, not a race finding', async () => {
     ReproductionPlaybookStore.reset();
     resetBurstCounter();
     const handlers: Record<string, (arg: unknown) => void> = {};
@@ -97,11 +97,7 @@ async function main(): Promise<void> {
     } as BugContext;
 
     const findings = await spaRaceConditionsFinder.run(ctx);
-    assert.equal(findings.length, 1, 'the crash surfaces a race finding');
-    const evidence = findings[0].evidence!;
-    assert.ok(evidence.reproductionPlaybook && evidence.reproductionPlaybook.length > 0, 'playbook is never empty');
-    assert.ok(evidence.reproductionActions && evidence.reproductionActions.length === 3, 'replayable timeline carried');
-    assert.equal(new Set(evidence.reproductionActions!.map((a) => a.burstId)).size, 1, 'timeline is one correlated burst');
+    assert.equal(findings.length, 0, 'a bare pageerror (no stuck loader) is RUNTIME_STABILITY_EXCEPTION, not a race');
   });
 
   await check('an orphaned loader (no requests in flight) after the burst is a stuck-state finding', async () => {
