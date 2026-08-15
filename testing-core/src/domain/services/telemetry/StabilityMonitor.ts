@@ -769,13 +769,16 @@ export class StabilityMonitor {
     // An uncaught page exception / rejection / renderer crash is first-party proof the
     // app itself threw — the strongest possible runtime signal. Floor its confidence at
     // CONFIRMED so a genuine, provenance-cleared fault reads as a confirmed finding, not
-    // an under-evidenced one. CONSOLE output is not necessarily an uncaught error, so it
-    // keeps the message-text classifier's own confidence.
+    // an under-evidenced one. CONSOLE output is not proof the app threw, but an error-level
+    // line IS a real runtime signal — floor it at SIGNAL so a genuine, provenance-cleared,
+    // single-shot console error clears the reporting threshold instead of dropping as
+    // INCONCLUSIVE. The floor only ever raises: a matched-signal or oracle-CONFIRMED console
+    // fault keeps its stronger confidence.
     const verdict = this.verifyFault(faultType, message, {
       url,
       content: stackTrace,
       evidence: { hasMessage: true, hasStackTrace: Boolean(stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
-      confidenceFloor: source === 'CONSOLE' ? undefined : 'CONFIRMED',
+      confidenceFloor: source === 'CONSOLE' ? 'SIGNAL' : 'CONFIRMED',
     });
     const { severity, attribution } = verdict;
     if (!verdict.report) {

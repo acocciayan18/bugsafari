@@ -546,7 +546,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase transition-colors ${meta.badge}`}
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}
@@ -690,7 +690,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
           
           <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -699,7 +699,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md bg-(--surface-invert) px-3 py-1.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
+          className="rounded-md cursor-pointer bg-(--surface-invert) px-3 py-1.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           Close
         </button>
