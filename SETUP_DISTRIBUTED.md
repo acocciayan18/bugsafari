@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix NoSQL injection findings so they carry real reproduction steps"
+git commit -m "enhance-input-control-coverage"
 git push origin HEAD:dev --force
 
 
