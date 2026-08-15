@@ -1,6 +1,6 @@
 import type { Page, Route, Request } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
-import { canonicalHost, isWithinTargetSite, isPrivateTargetUrl } from '../../../../../shared/url.js';
+import { canonicalHost, isWithinTargetSite, isPrivateTargetUrl, isProtectedTargetUrl } from '../../../../../shared/url.js';
 import type { OptimizationSettings } from '../../../../../shared/types.js';
 
 // Only real application navigations are subject to confinement. Every other
@@ -224,10 +224,12 @@ export class StrictUrlLockGuard {
 
       // Unarmed (initial navigation): let the main-frame redirect chain through so it
       // can settle on the canonical URL before the boundary is pinned to it — but never
-      // to a private/internal host, which the armed guard would block and which would be
-      // an SSRF via a public alias's redirect.
+      // to a private/internal host (SSRF via a public alias's redirect) nor to a
+      // BugSafari host (recursive self-test via a shortened/aliased link whose typed
+      // host passed admission but whose destination is BugSafari itself). Blocking here
+      // is the runtime backstop for a redirect target that changed after admission.
       if (!this.armed) {
-        if (isPrivateTargetUrl(request.url())) {
+        if (isPrivateTargetUrl(request.url()) || isProtectedTargetUrl(request.url())) {
           await this.abort(route);
           return;
         }

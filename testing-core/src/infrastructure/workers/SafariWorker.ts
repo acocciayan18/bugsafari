@@ -11,7 +11,7 @@ import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
 import { RunRegistry } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
-import { assertPublicTarget } from '../../serverUtils.js';
+import { admitTargetChain } from '../../serverUtils.js';
 import { validateJobPayload } from '../../validation/jobPayload.js';
 
 import { createLogger } from '../observability/logger.js';
@@ -167,9 +167,10 @@ async (job) => {
         : `[SafariWorker] No requestedBy in job payload - guest job (no persistence)`);
 
       // Second reachability + SSRF gate (the API already ran one): a job may have
-      // been enqueued by an older client, and DNS may have changed since. Re-resolve
-      // and re-validate the address (SEC-02). The URL is dialed exactly as enqueued.
-      const routing = await assertPublicTarget(payload.targetUrl);
+      // been enqueued by an older client, and DNS or a short-link's destination may
+      // have changed since. Re-resolve, re-validate the address, and re-follow the
+      // redirect chain (SEC-02 + self-test). The URL is dialed exactly as enqueued.
+      const routing = await admitTargetChain(payload.targetUrl);
       if (!routing.ok) {
         obsLog.error(`[SafariWorker] target rejected id=${job.id ?? 'unknown'}: ${routing.message}`);
         throw new Error(routing.message);

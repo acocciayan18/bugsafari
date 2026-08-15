@@ -103,6 +103,58 @@ export async function assertPublicTarget(rawUrl: string): Promise<EngineTargetRe
   return { ok: true, url: rawUrl };
 }
 
+// Cap on redirect hops followed at admission — matches the browser's practical
+// short-link depth (sho.rt → alias → app) without chasing a redirect loop.
+const MAX_TARGET_REDIRECTS = 5;
+
+// Redirect-chain admission (SEC-17 + self-test). A shortened/aliased/redirecting
+// URL whose typed host is innocuous but whose destination is a BugSafari instance
+// bypasses assertPublicTarget (which only sees the typed host) and makes the engine
+// test itself. This follows the chain BEFORE launch and re-runs the full self-target
+// + SSRF gate on every hop, so a redirect that lands on a protected host is refused
+// with TARGET_SELF_FORBIDDEN and a private/metadata hop with TARGET_NOT_PUBLIC.
+// Fail-closed on security (each hop is validated before it is followed); fail-open on
+// reachability (a hop that won't answer is left to the live health monitor). The
+// engine still dials the operator's original URL byte-for-byte — nothing is rewritten.
+export async function admitTargetChain(
+  rawUrl: string,
+  timeoutMs = 5000,
+  admit: (url: string) => Promise<EngineTargetResolution> = assertPublicTarget,
+): Promise<EngineTargetResolution> {
+  const initial = await admit(rawUrl);
+  if (!initial.ok) return initial;
+
+  let current = rawUrl;
+  for (let hop = 0; hop < MAX_TARGET_REDIRECTS; hop++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let location: string | null;
+    try {
+      const response = await fetch(current, { method: 'GET', redirect: 'manual', signal: controller.signal });
+      if (response.status < 300 || response.status >= 400) return { ok: true, url: rawUrl }; // settled
+      location = response.headers?.get?.('location') ?? null;
+    } catch {
+      return { ok: true, url: rawUrl }; // hop unreachable — reachability isn't this gate's job
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!location) return { ok: true, url: rawUrl }; // 3xx with no Location — nothing to follow
+
+    let next: string;
+    try {
+      next = new URL(location, current).toString();
+    } catch {
+      return { ok: true, url: rawUrl }; // malformed Location — the browser can't follow it either
+    }
+
+    // Re-run the full self-target + SSRF gate on the destination before following it.
+    const admitted = await admit(next);
+    if (!admitted.ok) return admitted; // carries TARGET_SELF_FORBIDDEN or TARGET_NOT_PUBLIC
+    current = next;
+  }
+  return { ok: false, code: 'TARGET_NOT_PUBLIC', message: `Target "${new URL(rawUrl).hostname}" exceeds the redirect limit. ${PUBLIC_TARGET_REQUIRED_MESSAGE}` };
+}
+
 /**
  * Validates and sanitizes the target URL provided by the user.
  * * This function acts as the primary gatekeeper for the engine's launch sequence. 

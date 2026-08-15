@@ -81,6 +81,10 @@ const LAYER_TRIGGER_SCORE_BOOST = 15;
 // off-screen/lazy controls before the page is declared fully explored.
 const MAX_FRONTIER_SCROLLS = 6;
 
+// Revisit-time lazy-content reveal cap (hoisted from a local const so both scroll
+// bounds sit together). Bounds a first-visit/revisit scroll on an infinite feed.
+const MAX_REVEAL_SCROLLS = 8;
+
 // Route-transition demotion: an untriggered anchor that navigates off the current
 // view is sunk below every untriggered in-page control so forms/buttons/dropdowns
 // are exhausted before a route change. Demotion, not removal — still selectable
@@ -118,6 +122,18 @@ function boundSet(set: Set<string>, cap: number): void {
     if (oldest === undefined) return;
     set.delete(oldest);
   }
+}
+
+// Structural control-CLASS identity (tag|type|role|normalized-label): the same
+// shape the hasher's interactive signature uses, so every instance of a repeated
+// feed-card control collapses to one key regardless of its per-item selector/text.
+// Scroll novelty is judged on this, not the selector string — an infinite feed
+// mints a fresh selector per card, which made scroll always look "productive" and
+// trapped exploration on the feed instead of backtracking.
+function controlClassKey(el: InteractiveElement): string {
+  const raw = el.accessibleName || el.ariaLabel || el.name || el.innerText || '';
+  const label = raw.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 32).replace(/\d+/g, '#');
+  return `${el.tagName}|${el.type}|${el.role || ''}|${label}`;
 }
 
 /** Per-run tunables (fixed at loop start) plus the counters they evolve across iterations. */
@@ -570,7 +586,6 @@ export class ExplorationLoop {
    * caught by the per-iteration health gate on the next step.
    */
   private async revealLazyContent(page: Page): Promise<void> {
-    const MAX_REVEAL_SCROLLS = 8;
     try {
       // Step one viewport at a time (not straight to the bottom) so virtualized /
       // windowed lists — whose scrollHeight is a fixed spacer and whose rows swap
@@ -612,10 +627,14 @@ export class ExplorationLoop {
 
   /**
    * Adaptive content discovery for a spent frontier: scroll the page one viewport
-   * at a time, reparsing after each step, until a control not triggered anywhere
-   * this run appears (returns the enlarged parse) or the bottom is reached with
-   * nothing new (returns null). Bounded by MAX_FRONTIER_SCROLLS so an
-   * infinite-scroll feed can't run forever. Non-fatal — a detached/closed page is
+   * at a time, reparsing after each step, until a control of a NEW structural class
+   * (see {@link controlClassKey}) that is untriggered this run appears (returns the
+   * enlarged parse) or the bottom is reached with nothing new (returns null).
+   * Novelty is judged on control CLASS, not selector string — an infinite feed
+   * mints a fresh selector per card, so a selector-based test always "succeeded"
+   * and trapped exploration on the feed; a repeated card class no longer counts, so
+   * the loop unwinds and the caller backtracks. Bounded by MAX_FRONTIER_SCROLLS so
+   * an infinite-scroll feed can't run forever. Non-fatal — a detached/closed page is
    * caught by the per-iteration health gate on the next step.
    */
   private async scrollToRevealNewControls(
@@ -623,7 +642,7 @@ export class ExplorationLoop {
     seen: InteractiveElement[],
     shell: string,
   ): Promise<InteractiveElement[] | null> {
-    const seenSelectors = new Set(seen.map((el) => el.selector));
+    const seenClasses = new Set(seen.map(controlClassKey));
     const triggered = (selector: string): boolean =>
       this.deps.clusterRegistry.isSelectorTriggered(shell, selector);
     try {
@@ -641,11 +660,14 @@ export class ExplorationLoop {
         );
         await settle(page);
         const reparsed = await this.deps.parser.parse(page);
-        const hasNewUntriggered = reparsed.some(
-          (el) => !seenSelectors.has(el.selector) && !triggered(el.selector),
+        // Productive only if a reparsed control is a class never seen on this shell
+        // AND untriggered — more instances of an already-seen feed-card class don't
+        // count, so a repeating feed can't masquerade as endless new content.
+        const hasNewClass = reparsed.some(
+          (el) => !seenClasses.has(controlClassKey(el)) && !triggered(el.selector),
         );
-        if (hasNewUntriggered) return reparsed;
-        for (const el of reparsed) seenSelectors.add(el.selector);
+        if (hasNewClass) return reparsed;
+        for (const el of reparsed) seenClasses.add(controlClassKey(el));
         if (atBottom) break;
       }
     } catch {

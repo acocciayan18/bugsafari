@@ -59,6 +59,27 @@ export function routeKey(url: string): string {
   }
 }
 
+// Collapse a child-signature list into a count-agnostic, first-seen-ordered token
+// string: every distinct signature emits once (suffixed '*' if it recurred), so
+// an infinite feed whose identical cards stream in and interleave with an occasional
+// promoted/ad card ([A,A,B,A,A], [A,A,A,B], [B,A,A,A,A]) all normalize to the SAME
+// 'A*B' — killing the structure-hash churn that minted a fresh state per scroll.
+// Pure and self-contained (ES5, no closures/helpers) so its runtime source is
+// injected verbatim into the browser evaluate pass via `.toString()`, keeping one
+// source of truth shared by production and unit tests.
+export function collapseChildSignatures(sigs: string[]): string {
+  var counts: Record<string, number> = Object.create(null);
+  var order: string[] = [];
+  for (var i = 0; i < sigs.length; i++) {
+    var s = sigs[i]!;
+    if (counts[s] === undefined) { counts[s] = 1; order.push(s); }
+    else { counts[s]++; }
+  }
+  var out = '';
+  for (var j = 0; j < order.length; j++) out += counts[order[j]!]! > 1 ? order[j] + '*' : order[j];
+  return out;
+}
+
 /**
  * Compound state fingerprint. Three orthogonal signatures let callers reason
  * about *how* a state differs, not just *whether* it differs:
@@ -141,6 +162,8 @@ export class DomHasher {
       // leak into the browser context. `cap` is injected as a literal.
       signatures = await page.evaluate<{ structure: string; interactive: string }>(`
         (function () {
+          // Feed-sibling normalizer — injected verbatim so browser + Node tests share it.
+          ${collapseChildSignatures.toString()}
           var STRUCTURAL = new Set([
             'div','section','main','header','footer','nav','aside','article',
             'ul','ol','li','table','thead','tbody','tr','td','th',
@@ -194,18 +217,15 @@ export class DomHasher {
             budget--;
             var tag = el.tagName.toLowerCase();
             var emit = STRUCTURAL.has(tag);
+            // Collect child signatures, then collapse ALL identical ones (not just
+            // adjacent runs) so interleaved/reordered/streaming feed cards hash stably.
             var childSigs = [];
-            var prev = '';
-            var run = 0;
-            function flush() { if (run > 0) childSigs.push(run > 1 ? prev + '*' : prev); }
             var children = Array.prototype.slice.call(el.children);
             for (var i = 0; i < children.length; i++) {
               var sig = serialize(children[i]);
-              if (!sig) continue;
-              if (sig === prev) { run++; } else { flush(); prev = sig; run = 1; }
+              if (sig) childSigs.push(sig);
             }
-            flush();
-            var childrenStr = childSigs.join('');
+            var childrenStr = collapseChildSignatures(childSigs);
             if (!emit) return childrenStr; // skip cosmetic wrapper, keep its children
             var type = (el.getAttribute('type') || '').toLowerCase();
             var cls = normalizeClass((el.className && el.className.toString()) || '');

@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { parseTargetUrl, assertPublicTarget } from '../../serverUtils.js';
+import { parseTargetUrl, admitTargetChain } from '../../serverUtils.js';
 import { StartExplorationUseCase, type SaveFailureCode } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
@@ -511,10 +511,11 @@ export function registerRoutes(
 
     // Reachability + SSRF gate BEFORE the queue branch, so a distributed run is
     // refused on the same terms as a synchronous one. The URL is never rewritten:
-    // a loopback/private target is rejected outright. assertPublicTarget resolves
-    // DNS and validates the RESOLVED address (SEC-02), closing the hostname-string
-    // bypasses (metadata via public A-record, decimal/octal/hex/short literals).
-    const routing = await assertPublicTarget(targetUrl);
+    // a loopback/private target is rejected outright. admitTargetChain resolves DNS
+    // and validates the RESOLVED address (SEC-02), AND follows the redirect chain so
+    // a shortened/aliased link that lands on a BugSafari host (recursive self-test)
+    // or a private/metadata hop is refused before the engine ever launches.
+    const routing = await admitTargetChain(targetUrl);
     if (!routing.ok) {
       obsLog.warn(`[API]  Target rejected (${routing.code}): ${routing.message}`);
       response.status(422).json({ error: routing.code, message: routing.message });

@@ -61,10 +61,6 @@ function emitUndoToast(message: string, onUndo: () => void): void {
   );
 }
 
-// Exactly what a permanent deletion destroys — spelled out so the operator confirms
-// with full knowledge, per the safe-deletion contract.
-const PURGED_DATA = ['Session record', 'Findings', 'Forensic telemetry', 'Network logs', 'Console logs', 'Forensic analysis & brain snapshots'];
-
 export default function SavedEvaluationSafaris() {
   const navigate = useNavigate();
   const { token, isAuthLoading } = useAuth();
@@ -243,11 +239,7 @@ export default function SavedEvaluationSafaris() {
         <div className="border-b border-[var(--border-hairline)] px-4 py-4  sm:px-6">
           {/* Title + controls stack into rows until there's width for a single line. */}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <h2 className="text-h2 font-bold text-[var(--text-primary)]">
-                SAVED EVALUATION SAFARIS
-              </h2>
-            </div>
+            
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 xl:gap-6">
               <div data-tour="history-search" className="relative min-w-0 sm:w-56 xl:w-72">
                 <div
@@ -532,19 +524,7 @@ export default function SavedEvaluationSafaris() {
         confirmLabel="Delete forever"
         isLoading={purgeState.isDeleting}
         confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.severityCount) ? purgeState.record.id : undefined}
-      >
-        <div className="rounded-md border border-(--border-hairline) bg-(--surface-app) p-3">
-          <p className="text-[13px] font-medium text-(--text-secondary)">The following data will be deleted:</p>
-          <ul className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-            {PURGED_DATA.map((label) => (
-              <li key={label} className="flex items-center gap-2 text-[13px] text-(--text-primary)">
-                <span className="h-1 w-1 shrink-0 rounded-full bg-(--text-tertiary)" aria-hidden="true" />
-                {label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </DeleteConfirmDialog>
+      />
     </motion.div>
   );
 }

@@ -16,16 +16,18 @@ const MS_PER_DAY = 86_400_000;
 // Trash retention: soft-deleted sessions survive this many days before the reaper
 // permanently purges them (with their forensic cascade). Env-tunable, floored at 1
 // so a misconfiguration can never purge same-day and defeat the recovery window.
-const DEFAULT_TRASH_RETENTION_DAYS = 30;
-const MIN_TRASH_RETENTION_DAYS = 1;
+export const DEFAULT_TRASH_RETENTION_DAYS = 30;
+export const MIN_TRASH_RETENTION_DAYS = 1;
 
-function readTrashRetentionDays(): number {
-  const parsed = Number.parseInt(process.env.BUGSAFARI_TRASH_RETENTION_DAYS ?? '', 10);
+// Pure parse of the raw env value → a safe day count. Exported so the safety floor
+// and default fallback are unit-testable without touching process.env.
+export function parseTrashRetentionDays(raw: string | undefined): number {
+  const parsed = Number.parseInt(raw ?? '', 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TRASH_RETENTION_DAYS;
   return Math.max(MIN_TRASH_RETENTION_DAYS, parsed);
 }
 
-export const TRASH_RETENTION_DAYS = readTrashRetentionDays();
+export const TRASH_RETENTION_DAYS = parseTrashRetentionDays(process.env.BUGSAFARI_TRASH_RETENTION_DAYS);
 
 // One child collection and the field pointing back at its session. This table is
 // the single cascade mechanism — both the on-demand delete and the orphan sweep
