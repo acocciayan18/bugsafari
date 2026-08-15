@@ -15,7 +15,7 @@ import { verifyEmailTransport } from './presentation/authentication/emailTranspo
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
-import { reapExpiredSessionChildren } from './infrastructure/database/retentionReaper.js';
+import { reapExpiredSessionChildren, purgeExpiredTrash, TRASH_RETENTION_DAYS } from './infrastructure/database/retentionReaper.js';
 import { syncAllIndexes } from './infrastructure/database/indexSync.js';
 import { backfillRunIds } from './infrastructure/database/runIdBackfill.js';
 import { errorHandler, notFoundHandler } from './presentation/middleware/errorHandler.js';
@@ -231,10 +231,20 @@ let reaperTimer: NodeJS.Timeout | undefined;
 
 if (dbReady && process.env.BUGSAFARI_DISABLE_RETENTION_REAPER !== 'true') {
   const runReaper = (): void => {
-    reapExpiredSessionChildren()
-      .then((totals) => {
-        const removed = Object.values(totals).reduce((sum, count) => sum + count, 0);
-        if (removed > 0) log.info('[BugSafari] Retention reaper removed orphans:', totals);
+    // Purge expired Trash (cascades) and sweep orphaned children in one tick.
+    Promise.allSettled([purgeExpiredTrash(), reapExpiredSessionChildren()])
+      .then(([purge, orphans]) => {
+        if (purge.status === 'fulfilled' && purge.value.sessions > 0) {
+          log.info('[BugSafari] Retention reaper purged expired trash:', purge.value);
+        } else if (purge.status === 'rejected') {
+          countBgFailure('trash-purge'); log.error('[BugSafari] Trash purge failed:', purge.reason);
+        }
+        if (orphans.status === 'fulfilled') {
+          const removed = Object.values(orphans.value).reduce((sum, count) => sum + count, 0);
+          if (removed > 0) log.info('[BugSafari] Retention reaper removed orphans:', orphans.value);
+        } else {
+          countBgFailure('retention-reaper'); log.error('[BugSafari] Retention reaper failed:', orphans.reason);
+        }
       })
       .catch((error: unknown) => { countBgFailure('retention-reaper'); log.error('[BugSafari] Retention reaper failed:', error); });
   };
@@ -242,7 +252,7 @@ if (dbReady && process.env.BUGSAFARI_DISABLE_RETENTION_REAPER !== 'true') {
   reaperTimer = setInterval(runReaper, REAP_INTERVAL_MS);
   reaperTimer.unref();
   runReaper();
-  log.info(`[BugSafari] Retention reaper enabled (every ${REAP_INTERVAL_MS / 60000} min)`);
+  log.info(`[BugSafari] Retention reaper enabled (every ${REAP_INTERVAL_MS / 60000} min; trash retention ${TRASH_RETENTION_DAYS}d)`);
 }
 
 httpServer.on('error', (error: NodeJS.ErrnoException) => {

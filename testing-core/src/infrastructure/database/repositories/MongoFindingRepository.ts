@@ -7,10 +7,11 @@ import type {
   SessionHistoryRecord,
   SessionTerminalStats,
 } from "../../../domain/repositories/FindingRepository.js";
-import type { PaginationParams, RunTerminationOutcome } from "../../../../../shared/types.js";
+import type { PaginationParams, RunTerminationOutcome, SessionHistoryState } from "../../../../../shared/types.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
+import { sessionStateFilter, sessionHistoryState } from "../sessionState.js";
 import { createWithRunCodeRetry } from "../runCodeGenerator.js";
 
 import { createLogger } from '../../observability/logger.js';
@@ -242,6 +243,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
 public async listSessionHistory(
     params: PaginationParams,
     userId?: string,
+    state: SessionHistoryState = 'active',
   ): Promise<{ items: SessionHistoryRecord[]; total: number }> {
     const empty = { items: [] as SessionHistoryRecord[], total: 0 };
 
@@ -252,10 +254,15 @@ public async listSessionHistory(
     if (!userId || !isValidObjectId(userId)) return empty;
 
     try {
-      const filter = { userId: new Types.ObjectId(userId), savedManually: true };
+      const filter = {
+        userId: new Types.ObjectId(userId),
+        savedManually: true,
+        ...sessionStateFilter(state),
+      };
 
       // Projection matters as much as the limit here: without it every row drags
-      // its full forensicTrace.caughtBugs array (stack traces) into memory.
+      // its full forensicTrace.caughtBugs array (stack traces) into memory. The
+      // tombstone fields ride along so each row can report its own bucket.
       const [total, sessions] = await Promise.all([
         SessionModel.countDocuments(filter),
         SessionModel.find(filter)
@@ -263,7 +270,7 @@ public async listSessionHistory(
           .skip(params.skip)
           .limit(params.pageSize)
           .select(
-            '_id runId targetUrl status outcome startedAt finishedAt endedReason savedManually findingCount actionTraceCount stats',
+            '_id runId targetUrl status outcome startedAt finishedAt endedReason savedManually archivedAt deletedAt findingCount actionTraceCount stats',
           )
           .lean(),
       ]);
@@ -299,6 +306,7 @@ public async listSessionHistory(
           finishedAt: session.finishedAt ? session.finishedAt.toISOString() : undefined,
           endedReason: session.endedReason ?? undefined,
           savedManually: Boolean(session.savedManually),
+          state: sessionHistoryState(session),
           findingCount: session.findingCount ?? 0,
           actionTraceCount: session.actionTraceCount ?? 0,
           brainSnapshots: brainSnapshotCounts.get(id) ?? 0,

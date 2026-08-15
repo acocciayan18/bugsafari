@@ -27,6 +27,22 @@ export type RunLifecycleStatus =
 /** Whether the active run belongs to an authenticated operator or a guest. */
 export type SessionOwnerType = 'authenticated' | 'guest';
 
+/** History lifecycle bucket the operator filters by — orthogonal to the live
+ *  RunLifecycleStatus. `active` is the default working set; `archived` is kept
+ *  out of the way but fully recoverable; `trashed` is soft-deleted, restorable
+ *  until the retention reaper purges it. */
+export type SessionHistoryState = 'active' | 'archived' | 'trashed';
+
+/** Saved sessions with at least this many findings are "important": permanent
+ *  deletion then demands typed confirmation. Matches the CRITICAL list badge,
+ *  which the dashboard already derives from findingCount. */
+export const IMPORTANT_FINDING_THRESHOLD = 3;
+
+/** True when a session is important enough to gate its permanent deletion. */
+export function isImportantSession(findingCount: number): boolean {
+  return findingCount >= IMPORTANT_FINDING_THRESHOLD;
+}
+
 
 // ── Socket event names (shared so client/server can never drift) ──────────────
 export const SESSION_ATTACH_EVENT = 'session-attach' as const;

@@ -2,6 +2,7 @@ import type {
   InfiltrationProfileId,
   PaginationParams,
   RunTerminationOutcome,
+  SessionHistoryState,
   TestingTypeId,
 } from '../../../../shared/types.js';
 
@@ -57,6 +58,8 @@ export interface SessionHistoryRecord {
   /** Infiltration profile the run executed. Absent on sessions predating the field. */
   infiltrationProfile?: InfiltrationProfileId;
   savedManually: boolean;
+  /** History bucket this row belongs to — drives the operator's Active/Archived/Trash view. */
+  state: SessionHistoryState;
   findingCount: number;
   actionTraceCount: number;
   brainSnapshots: number;
@@ -102,9 +105,11 @@ export interface FindingRepository {
    * One page of saved session history, scoped to a tenant.
    * @param params - page/pageSize/skip; callers clamp via parsePagination
    * @param userId - owner filter; anything else (guest, malformed) yields an empty page
+   * @param state - history bucket to return (defaults to 'active')
    */
   listSessionHistory(
     params: PaginationParams,
     userId?: string,
+    state?: SessionHistoryState,
   ): Promise<{ items: SessionHistoryRecord[]; total: number }>;
 }

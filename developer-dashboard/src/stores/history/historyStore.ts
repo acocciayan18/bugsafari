@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ForensicReportResponse } from '../../types';
+import type { ForensicReportResponse, SessionHistoryState } from '../../types';
 import { fetchSessionHistory, fetchForensicReport } from '../../services/historyService';
 import { useAuthStore } from '../authStore';
 import {
@@ -26,6 +26,8 @@ export interface HistoryState {
 
     searchQuery: string;
     activeFilter: SeverityFilter;
+    // Which lifecycle bucket the list is showing (Active/Archived/Trash).
+    stateFilter: SessionHistoryState;
     sortConfig: SortConfig;
     currentPage: number;
 
@@ -43,6 +45,7 @@ export interface HistoryState {
     loadReport: (sessionId: string) => Promise<ForensicReportResponse>;
     setSearchQuery: (searchQuery: string) => void;
     setActiveFilter: (activeFilter: SeverityFilter) => void;
+    setStateFilter: (stateFilter: SessionHistoryState) => void;
     setSortConfig: (update: (previous: SortConfig) => SortConfig) => void;
     setCurrentPage: (update: (previous: number) => number) => void;
     setLastViewedId: (id: string | null) => void;
@@ -57,6 +60,7 @@ const INITIAL = {
     lastFetchedAt: 0,
     searchQuery: '',
     activeFilter: 'ALL' as SeverityFilter,
+    stateFilter: 'active' as SessionHistoryState,
     sortConfig: { field: 'date', direction: 'desc' } as SortConfig,
     currentPage: 1,
     lastViewedId: null as string | null,
@@ -85,7 +89,7 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
         inflightList = (async () => {
             try {
-                const fetched = await fetchSessionHistory();
+                const fetched = await fetchSessionHistory(get().stateFilter);
                 set({ sessions: transformSessionsToEvaluations(fetched), lastFetchedAt: Date.now() });
             } catch (err) {
                 set({ error: "We couldn't load your history. Try again." });
@@ -133,6 +137,14 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     // of a newly-filtered list renders an empty table with no explanation.
     setSearchQuery: (searchQuery) => set({ searchQuery, currentPage: 1 }),
     setActiveFilter: (activeFilter) => set({ activeFilter, currentPage: 1 }),
+
+    // Switching bucket empties the list and forces a fresh scoped fetch — the
+    // cached page belongs to the previous bucket and must not bleed across.
+    setStateFilter: (stateFilter) => {
+        if (get().stateFilter === stateFilter) return;
+        set({ stateFilter, sessions: [], currentPage: 1, lastFetchedAt: 0 });
+        void get().fetchSessions(true);
+    },
     setSortConfig: (update) => set((s) => ({ sortConfig: update(s.sortConfig), currentPage: 1 })),
     setCurrentPage: (update) => set((s) => ({ currentPage: Math.max(1, update(s.currentPage)) })),
     setLastViewedId: (lastViewedId) => set({ lastViewedId }),

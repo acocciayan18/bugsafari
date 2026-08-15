@@ -53,6 +53,8 @@ export type {
   SessionAttachAck,
   RunLifecycleStatus,
   SessionOwnerType,
+  // Saved-history lifecycle bucket (Active/Archived/Trash)
+  SessionHistoryState,
   // How and why a run ended
   RunTerminationOutcome,
   StopReason,
@@ -85,10 +87,13 @@ export {
   TERMINATION_COPY,
   describeTermination,
   isCleanTermination,
+  // Saved-history importance gate (drives typed confirmation on permanent delete)
+  isImportantSession,
+  IMPORTANT_FINDING_THRESHOLD,
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
-import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome } from '../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome, SessionHistoryState } from '../../shared/types.js';
 
 // Browser console contract lives once in shared/types/console.ts — re-exported here
 // so frontend consumers keep importing it from the local barrel without shadowing it.
@@ -112,6 +117,8 @@ export interface SessionHistoryEntry {
   /** Infiltration profile the run executed. Absent on sessions saved before it was tracked. */
   infiltrationProfile?: InfiltrationProfileId;
   savedManually: boolean;
+  /** History bucket this row belongs to (Active/Archived/Trash). Absent on old servers → active. */
+  state?: SessionHistoryState;
   findingCount: number;
   actionTraceCount: number;
   brainSnapshots: number;

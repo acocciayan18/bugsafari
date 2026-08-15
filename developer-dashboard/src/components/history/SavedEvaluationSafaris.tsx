@@ -11,39 +11,81 @@ import { Skeleton } from '../ui/Skeleton';
 import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
-import { deleteRecord as deleteSafariRecord, exportRecord } from '../../services/historyService';
+import {
+  deleteRecord as trashSafariRecord,
+  archiveRecord,
+  restoreRecord,
+  permanentlyDeleteRecord,
+  exportRecord,
+} from '../../services/historyService';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import { useHistoryView } from '../../stores/history/useHistoryView';
 import { useTour } from '../../tour/useTour';
 import { buildHistoryTourSteps } from '../../tour/tourSteps';
-import { SORT_FIELD_LABELS, type SortField, type SeverityFilter } from '../../stores/history/types';
-import { INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert } from 'lucide-react';
+import { SORT_FIELD_LABELS, type SortField, type SeverityFilter, type EvaluationSafari } from '../../stores/history/types';
+import { INFILTRATION_PROFILE_CATALOG, isImportantSession, type InfiltrationProfileId, type SessionHistoryState } from '../../types';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert, Undo2 } from 'lucide-react';
 
 // Operator-facing profile label, or '' when the row predates profile recording.
 const profileLabel = (id?: InfiltrationProfileId): string =>
   INFILTRATION_PROFILE_CATALOG.find((option) => option.id === id)?.label ?? '';
+
+// History buckets shown as filter chips, in operator order.
+const STATE_TABS: { id: SessionHistoryState; label: string }[] = [
+  { id: 'active', label: 'ACTIVE' },
+  { id: 'archived', label: 'ARCHIVED' },
+  { id: 'trashed', label: 'TRASH' },
+];
+
+const UNDO_TOAST_ID = 'bugsafari-history-undo';
+
+// Toast with an inline Undo affordance — used after reversible archive/trash so the
+// operator can revert without hunting for the row in another bucket.
+function emitUndoToast(message: string, onUndo: () => void): void {
+  toast.custom(
+    (id) => (
+      <div className="flex items-center justify-between w-full gap-3">
+        <span className="toast-message break-words flex-1 min-w-0">{message}</span>
+        <button
+          type="button"
+          onClick={() => { toast.dismiss(id); onUndo(); }}
+          className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
+        >
+          <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+          Undo
+        </button>
+      </div>
+    ),
+    { id: UNDO_TOAST_ID, duration: 6000 },
+  );
+}
+
+// Exactly what a permanent deletion destroys — spelled out so the operator confirms
+// with full knowledge, per the safe-deletion contract.
+const PURGED_DATA = ['Session record', 'Findings', 'Forensic telemetry', 'Network logs', 'Console logs', 'Forensic analysis & brain snapshots'];
 
 export default function SavedEvaluationSafaris() {
   const navigate = useNavigate();
   const { token, isAuthLoading } = useAuth();
 
   const {
-    isLoading, error, searchQuery, activeFilter, sortConfig, lastViewedId,
-    fetchSessions, removeSession, setSearchQuery, setActiveFilter, setSortConfig, setCurrentPage, setLastViewedId,
+    isLoading, error, searchQuery, activeFilter, stateFilter, sortConfig, lastViewedId,
+    fetchSessions, removeSession, setSearchQuery, setActiveFilter, setStateFilter, setSortConfig, setCurrentPage, setLastViewedId,
   } = useHistoryStore(
     useShallow((s) => ({
       isLoading: s.isLoading,
       error: s.error,
       searchQuery: s.searchQuery,
       activeFilter: s.activeFilter,
+      stateFilter: s.stateFilter,
       sortConfig: s.sortConfig,
       lastViewedId: s.lastViewedId,
       fetchSessions: s.fetchSessions,
       removeSession: s.removeSession,
       setSearchQuery: s.setSearchQuery,
       setActiveFilter: s.setActiveFilter,
+      setStateFilter: s.setStateFilter,
       setSortConfig: s.setSortConfig,
       setCurrentPage: s.setCurrentPage,
       setLastViewedId: s.setLastViewedId,
@@ -70,9 +112,10 @@ export default function SavedEvaluationSafaris() {
     setLastViewedId(null);
   }, [isLoading, lastViewedId, view.page, setLastViewedId]);
 
-  // The delete dialog is component-scoped and ephemeral — no consumer outside this view.
-  const [deleteState, setDeleteState] = useState<{ isOpen: boolean; recordId: string | null; targetUrl: string; isDeleting: boolean }>({
-    isOpen: false, recordId: null, targetUrl: '', isDeleting: false,
+  // Permanent-delete dialog state — component-scoped and ephemeral. Holds the whole
+  // row so the dialog can itemize, gauge importance, and echo the typed-confirm code.
+  const [purgeState, setPurgeState] = useState<{ isOpen: boolean; record: EvaluationSafari | null; isDeleting: boolean }>({
+    isOpen: false, record: null, isDeleting: false,
   });
 
   // Intercept transitional mounting frames so no request fires on an uninitialized token
@@ -86,23 +129,6 @@ export default function SavedEvaluationSafaris() {
     navigate(`/history/forensic-report/${recordId}`);
   };
 
-  const handleDeleteConfirm = async () => {
-    const { recordId } = deleteState;
-    if (!recordId) return;
-
-    setDeleteState((prev) => ({ ...prev, isDeleting: true }));
-    try {
-      await deleteSafariRecord(recordId);
-      removeSession(recordId);
-      toast.success('Record deleted successfully');
-      setDeleteState({ isOpen: false, recordId: null, targetUrl: '', isDeleting: false });
-    } catch (err) {
-      console.error('[SavedEvaluations] Delete error:', err);
-      toast.error("We couldn't delete that record. Try again.");
-      setDeleteState((prev) => ({ ...prev, isDeleting: false }));
-    }
-  };
-
   const handleExportRecord = async (recordId: string) => {
     try {
       await exportRecord(recordId);
@@ -110,6 +136,68 @@ export default function SavedEvaluationSafaris() {
     } catch (err) {
       console.error('[SavedEvaluations] Export error:', err);
       toast.error("We couldn't export that record. Try again.");
+    }
+  };
+
+  // Reversible transitions share one shape: drop the row from the current bucket
+  // optimistically, call the server, then reconcile. A failure refetches so the row
+  // returns rather than vanishing on a lie.
+  const handleMoveToTrash = async (recordId: string) => {
+    removeSession(recordId);
+    try {
+      const { retentionDays } = await trashSafariRecord(recordId);
+      const window = retentionDays ? ` Auto-deletes in ${retentionDays} days.` : '';
+      emitUndoToast(`Moved to Trash.${window}`, () => void handleRestore(recordId, true));
+    } catch (err) {
+      console.error('[SavedEvaluations] Trash error:', err);
+      toast.error("We couldn't move that record to Trash. Try again.");
+      void fetchSessions(true);
+    }
+  };
+
+  const handleArchive = async (recordId: string) => {
+    removeSession(recordId);
+    try {
+      await archiveRecord(recordId);
+      emitUndoToast('Record archived.', () => void handleRestore(recordId, true));
+    } catch (err) {
+      console.error('[SavedEvaluations] Archive error:', err);
+      toast.error("We couldn't archive that record. Try again.");
+      void fetchSessions(true);
+    }
+  };
+
+  // Restore from Archive/Trash. `silent` suppresses the success toast when invoked
+  // as an Undo (the Undo toast already communicated the reversal).
+  const handleRestore = async (recordId: string, silent = false) => {
+    if (!silent) removeSession(recordId);
+    try {
+      await restoreRecord(recordId);
+      if (silent) void fetchSessions(true);
+      else toast.success('Record restored.');
+    } catch (err) {
+      console.error('[SavedEvaluations] Restore error:', err);
+      toast.error("We couldn't restore that record. Try again.");
+      void fetchSessions(true);
+    }
+  };
+
+  const handlePermanentConfirm = async () => {
+    const record = purgeState.record;
+    if (!record) return;
+
+    const important = isImportantSession(record.severityCount);
+    setPurgeState((prev) => ({ ...prev, isDeleting: true }));
+    try {
+      // Important records echo their RUN- code as the server-side confirmation token.
+      await permanentlyDeleteRecord(record.id, important ? record.id : undefined);
+      removeSession(record.id);
+      toast.success('Record permanently deleted.');
+      setPurgeState({ isOpen: false, record: null, isDeleting: false });
+    } catch (err) {
+      console.error('[SavedEvaluations] Permanent delete error:', err);
+      toast.error("We couldn't delete that record. Try again.");
+      setPurgeState((prev) => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -217,6 +305,22 @@ export default function SavedEvaluationSafaris() {
                     : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               </div>
+              {/* Lifecycle bucket tabs — Active / Archived / Trash. */}
+              <div data-tour="history-buckets" className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
+                {STATE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setStateFilter(tab.id)}
+                    aria-pressed={stateFilter === tab.id}
+                    className={`shrink-0 cursor-pointer rounded px-3 py-1.5 text-[13px] font-medium transition-colors ${stateFilter === tab.id
+                      ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
+                      : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                      }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
               <div data-tour="history-filters" className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
                 {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as SeverityFilter[]).map((filter) => (
                   <button
@@ -282,14 +386,20 @@ export default function SavedEvaluationSafaris() {
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <ClipboardCheck className="h-12 w-12 text-[var(--text-secondary)]" />
               <span className="text-[13px] text-[var(--text-secondary)] font-medium">
-                {view.totalCount === 0 ? 'No evaluation history yet' : 'No safaris match the current filters'}
+                {view.totalCount > 0
+                  ? 'No safaris match the current filters'
+                  : stateFilter === 'archived' ? 'No archived safaris'
+                  : stateFilter === 'trashed' ? 'Trash is empty'
+                  : 'No evaluation history yet'}
               </span>
               <span className="text-[13px] text-[var(--text-secondary)]">
-                {view.totalCount === 0
-                  ? 'Run your first test on the Dashboard and save it to see results here'
-                  : 'Adjust the search or severity filter to widen the results'}
+                {view.totalCount > 0
+                  ? 'Adjust the search or severity filter to widen the results'
+                  : stateFilter === 'archived' ? 'Archive a safari to park it here without deleting it'
+                  : stateFilter === 'trashed' ? 'Deleted safaris wait here until you restore or purge them'
+                  : 'Run your first test on the Dashboard and save it to see results here'}
               </span>
-              {view.totalCount === 0 && (
+              {view.totalCount === 0 && stateFilter === 'active' && (
                 <button
                   onClick={() => navigate('/dashboard')}
                   className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
@@ -365,9 +475,13 @@ export default function SavedEvaluationSafaris() {
                         <RowActionMenu
                           recordId={evalItem.id}
                           targetUrl={evalItem.targetUrl}
+                          state={evalItem.state}
                           onViewReport={() => handleViewReport(evalItem.id)}
                           onExportRecord={() => handleExportRecord(evalItem.id)}
-                          onDeleteRecord={() => setDeleteState({ isOpen: true, recordId: evalItem.id, targetUrl: evalItem.targetUrl, isDeleting: false })}
+                          onArchive={() => void handleArchive(evalItem.id)}
+                          onRestore={() => void handleRestore(evalItem.id)}
+                          onMoveToTrash={() => void handleMoveToTrash(evalItem.id)}
+                          onDeleteForever={() => setPurgeState({ isOpen: true, record: evalItem, isDeleting: false })}
                         />
                       </div>
                       <div className="hidden h-6 w-6 items-center justify-center sm:flex">
@@ -407,16 +521,30 @@ export default function SavedEvaluationSafaris() {
         </div>
       </main>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Permanent-delete confirmation — itemizes exactly what is destroyed and, for
+          important (CRITICAL) records, gates the action behind the typed RUN- code. */}
       <DeleteConfirmDialog
-        isOpen={deleteState.isOpen}
-        onConfirm={handleDeleteConfirm}
-        onClose={() => setDeleteState({ isOpen: false, recordId: null, targetUrl: '', isDeleting: false })}
-        title="Delete Evaluation Record?"
-        message={`Are you sure you want to delete this evaluation record for ${deleteState.targetUrl}? This action cannot be undone.`}
-        confirmLabel="Delete"
-        isLoading={deleteState.isDeleting}
-      />
+        isOpen={purgeState.isOpen}
+        onConfirm={() => void handlePermanentConfirm()}
+        onClose={() => setPurgeState({ isOpen: false, record: null, isDeleting: false })}
+        title="Delete permanently?"
+        message={`This permanently removes the evaluation for ${purgeState.record?.targetUrl ?? 'this run'} and everything captured with it. This cannot be undone.`}
+        confirmLabel="Delete forever"
+        isLoading={purgeState.isDeleting}
+        confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.severityCount) ? purgeState.record.id : undefined}
+      >
+        <div className="rounded-md border border-(--border-hairline) bg-(--surface-app) p-3">
+          <p className="text-[13px] font-medium text-(--text-secondary)">The following data will be deleted:</p>
+          <ul className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {PURGED_DATA.map((label) => (
+              <li key={label} className="flex items-center gap-2 text-[13px] text-(--text-primary)">
+                <span className="h-1 w-1 shrink-0 rounded-full bg-(--text-tertiary)" aria-hidden="true" />
+                {label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </DeleteConfirmDialog>
     </motion.div>
   );
 }

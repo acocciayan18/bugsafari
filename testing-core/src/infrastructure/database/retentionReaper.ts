@@ -11,6 +11,21 @@ import { selectOrphans } from './reapPolicy.js';
 export type CascadeCounts = Record<string, number>;
 
 const REAP_BATCH_SIZE = 500;
+const MS_PER_DAY = 86_400_000;
+
+// Trash retention: soft-deleted sessions survive this many days before the reaper
+// permanently purges them (with their forensic cascade). Env-tunable, floored at 1
+// so a misconfiguration can never purge same-day and defeat the recovery window.
+const DEFAULT_TRASH_RETENTION_DAYS = 30;
+const MIN_TRASH_RETENTION_DAYS = 1;
+
+function readTrashRetentionDays(): number {
+  const parsed = Number.parseInt(process.env.BUGSAFARI_TRASH_RETENTION_DAYS ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_TRASH_RETENTION_DAYS;
+  return Math.max(MIN_TRASH_RETENTION_DAYS, parsed);
+}
+
+export const TRASH_RETENTION_DAYS = readTrashRetentionDays();
 
 // One child collection and the field pointing back at its session. This table is
 // the single cascade mechanism — both the on-demand delete and the orphan sweep
@@ -78,6 +93,34 @@ export async function deleteSessionCascade(sessionId: Types.ObjectId): Promise<C
     CHILD_COLLECTIONS.map(async (child) => [child.name, await deleteForSessions(child, [sessionId])] as const),
   );
   return Object.fromEntries(results);
+}
+
+/**
+ * Permanently purge Trash whose retention window has elapsed. Cascades each
+ * session's forensic children first, then drops the sessions themselves — the
+ * same order and child table the on-demand permanent delete uses, so no child
+ * ever outlives its parent. Bounded per run; the hourly cadence drains backlog.
+ *
+ * Returns per-child removal counts plus a `sessions` total. Unlike a TTL index,
+ * this cascades — which is exactly why Trash is reaper-driven, not TTL-driven.
+ */
+export async function purgeExpiredTrash(): Promise<CascadeCounts & { sessions: number }> {
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * MS_PER_DAY);
+  const totals: CascadeCounts = {};
+
+  const expired = await SessionModel.find({ deletedAt: { $type: 'date', $lte: cutoff } })
+    .select('_id')
+    .limit(REAP_BATCH_SIZE)
+    .lean();
+
+  if (expired.length === 0) return { ...totals, sessions: 0 };
+
+  const ids = expired.map((session) => session._id);
+  for (const child of CHILD_COLLECTIONS) {
+    totals[child.name] = await deleteForSessions(child, ids);
+  }
+  const result = await SessionModel.deleteMany({ _id: { $in: ids } });
+  return { ...totals, sessions: result.deletedCount ?? 0 };
 }
 
 /**

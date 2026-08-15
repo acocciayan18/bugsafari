@@ -13,18 +13,24 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { SessionHistoryState } from '../../types';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
-import { Download, EllipsisVertical, LoaderCircle, Scroll, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Download, EllipsisVertical, Flame, LoaderCircle, Trash2 } from 'lucide-react';
 
 const MENU_WIDTH = 192;
-const MENU_HEIGHT_ESTIMATE = 132;
+const MENU_HEIGHT_ESTIMATE = 200;
 
 interface RowActionMenuProps {
   recordId?: string;
   targetUrl?: string;
+  /** Row's lifecycle bucket — decides which actions are offered. */
+  state: SessionHistoryState;
   onViewReport: () => void;
   onExportRecord: () => void;
-  onDeleteRecord: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onMoveToTrash: () => void;
+  onDeleteForever: () => void;
   isLoading?: boolean;
   disabled?: boolean;
 }
@@ -40,9 +46,12 @@ interface RowActionMenuProps {
  */
 export function RowActionMenu({
   recordId,
-  onViewReport,
+  state,
   onExportRecord,
-  onDeleteRecord,
+  onArchive,
+  onRestore,
+  onMoveToTrash,
+  onDeleteForever,
   isLoading = false,
   disabled = false,
 }: RowActionMenuProps) {
@@ -128,25 +137,61 @@ export function RowActionMenu({
           } ${alignLeft ? 'left-0' : 'right-0'}`}
           role="menu"
         >
-          
-          <button
-            onClick={() => handleItemClick(onExportRecord)}
-            disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
-            role="menuitem"
-          >
-            <Download className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
-            Export Record
-          </button>
-          <button
-            onClick={() => handleItemClick(onDeleteRecord)}
-            disabled={disabled || isLoading}
-            className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
-            role="menuitem"
-          >
-            <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg) " aria-hidden="true" />
-            Delete Record
-          </button>
+          {state !== 'trashed' && (
+            <button
+              onClick={() => handleItemClick(onExportRecord)}
+              disabled={disabled || isLoading}
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              role="menuitem"
+            >
+              <Download className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              Export Record
+            </button>
+          )}
+          {state === 'active' && (
+            <button
+              onClick={() => handleItemClick(onArchive)}
+              disabled={disabled || isLoading}
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              role="menuitem"
+            >
+              <Archive className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              Archive
+            </button>
+          )}
+          {state !== 'active' && (
+            <button
+              onClick={() => handleItemClick(onRestore)}
+              disabled={disabled || isLoading}
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              role="menuitem"
+            >
+              <ArchiveRestore className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              Restore
+            </button>
+          )}
+          {state !== 'trashed' && (
+            <button
+              onClick={() => handleItemClick(onMoveToTrash)}
+              disabled={disabled || isLoading}
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
+              role="menuitem"
+            >
+              <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
+              Move to Trash
+            </button>
+          )}
+          {state === 'trashed' && (
+            <button
+              onClick={() => handleItemClick(onDeleteForever)}
+              disabled={disabled || isLoading}
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
+              role="menuitem"
+            >
+              <Flame className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
+              Delete forever
+            </button>
+          )}
         </motion.div>
       )}
       </AnimatePresence>

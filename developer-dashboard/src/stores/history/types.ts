@@ -1,4 +1,4 @@
-import type { InfiltrationProfileId, RunTerminationOutcome, SessionHistoryEntry } from '../../types';
+import type { InfiltrationProfileId, RunTerminationOutcome, SessionHistoryEntry, SessionHistoryState } from '../../types';
 
 export interface CaughtBug {
     bugId: string;
@@ -26,6 +26,8 @@ export interface EvaluationSafari {
     /** Epoch ms of the run's start — the sortable truth behind the display `date`. */
     startedAtMs: number;
     steps: number;
+    /** Active/Archived/Trash bucket, so the row menu can offer the right actions. */
+    state: SessionHistoryState;
     severity: 'CRITICAL' | 'HIGH' | 'CLEAR';
     severityCount: number;
     status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED' | 'ENGINE_ERROR';
@@ -104,6 +106,7 @@ export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]):
         date: formatDate(session.startedAt),
         startedAtMs: toEpochMs(session.startedAt),
         steps: session.actionTraceCount,
+        state: session.state ?? 'active',
         severity: determineSeverity(session.findingCount),
         severityCount: session.findingCount,
         status: SESSION_STATUS_MAP[session.status] ?? 'HALTED',

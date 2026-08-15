@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Remove lock screen feature from BugSafari"
+git commit -m "Improve BugSafari session deletion with safer practices"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m "enhance-input-control-coverage"
+git commit -m "Improve BugSafari session deletion with safer practices"
 git checkout -b 8-15-Ayan
 git push --set-upstream origin 8-15-Ayan
 

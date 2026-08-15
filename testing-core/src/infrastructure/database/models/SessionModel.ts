@@ -226,6 +226,19 @@ const sessionSchema = new Schema(
       required: true,
       default: false,
     },
+    // Soft-delete lifecycle. Null on legacy docs (treated as active). archivedAt
+    // parks a saved run out of the working list but keeps it fully recoverable;
+    // deletedAt is the Trash tombstone the retention reaper eventually purges.
+    archivedAt: {
+      type: Date,
+      required: false,
+      default: null,
+    },
+    deletedAt: {
+      type: Date,
+      required: false,
+      default: null,
+    },
     endedReason: {
       type: String,
       required: false,
@@ -492,6 +505,12 @@ const sessionSchema = new Schema(
 // lookups by prefix, so no standalone userId/savedManually/executionDate index.
 sessionSchema.index({ userId: 1, savedManually: 1, startedAt: -1 });
 sessionSchema.index({ userId: 1, startedAt: -1 });
+// Trash purge scan: only tombstoned docs are indexed, so the reaper's cutoff
+// query never walks the live/archived working set.
+sessionSchema.index(
+  { deletedAt: 1 },
+  { name: 'trashed_sessions', partialFilterExpression: { deletedAt: { $type: 'date' } } },
+);
 sessionSchema.index({ status: 1, startedAt: -1 });
 sessionSchema.index({ targetUrl: 1 });
 
@@ -527,6 +546,10 @@ export interface ISession extends Document {
   startedAt: Date;
   finishedAt?: Date;
   savedManually: boolean;
+  /** Set while parked in the Archive; null when active. */
+  archivedAt?: Date | null;
+  /** Trash tombstone; null when not soft-deleted. Purged by the retention reaper. */
+  deletedAt?: Date | null;
   endedReason?: string;
   outcome?: RunTerminationOutcome;
   /** Infiltration profile this run executed; absent on sessions predating the field. */

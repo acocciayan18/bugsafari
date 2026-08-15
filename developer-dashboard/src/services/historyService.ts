@@ -3,7 +3,7 @@
  * Extracted from useDashboardController for better modularity and debugging
  */
 
-import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution } from '../types';
+import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution, SessionHistoryState } from '../types';
 import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
@@ -173,15 +173,16 @@ if (!response.ok) {
 
 /**
  * Fetch session history from the backend
+ * @param state - Which lifecycle bucket to load (active/archived/trashed)
  * @param limit - Maximum number of sessions to fetch
  * @returns Promise<SessionHistoryEntry[]> - Array of session history entries
  */
-export async function fetchSessionHistory(limit = 50): Promise<SessionHistoryEntry[]> {
-  console.log('[historyService] fetchSessionHistory called with limit:', limit);
+export async function fetchSessionHistory(state: SessionHistoryState = 'active', limit = 50): Promise<SessionHistoryEntry[]> {
+  console.log('[historyService] fetchSessionHistory called:', { state, limit });
 
   try {
 const response = await fetchWithAuthRetry(
-      `/api/history/sessions?limit=${encodeURIComponent(String(limit))}`,
+      `/api/history/sessions?limit=${encodeURIComponent(String(limit))}&state=${encodeURIComponent(state)}`,
       getFetchOptions('GET')
     );
 
@@ -265,67 +266,74 @@ export async function requestAiInsights(payload: SuggestInsightsRequest): Promis
   return (await response.json()) as SuggestInsightsResponse;
 }
 
-/**
- * Delete a safari record
- * @param recordId - The ID of the record to delete
- * @returns Promise<void> - Resolves on success, rejects on failure
- */
-export async function deleteRecord(recordId: string): Promise<void> {
-  console.log('[historyService] deleteRecord called with recordId:', recordId);
-
+// Accepts the public RUN- code or a legacy 24-char ObjectId; the backend resolves either.
+function assertValidRecordId(recordId: string): void {
   if (!recordId || typeof recordId !== 'string') {
-    const error = 'Invalid recordId: must be a non-empty string';
-    console.error('[historyService]  Validation error:', error);
-    throw new Error(error);
+    throw new Error('Invalid recordId: must be a non-empty string');
   }
-
-  // Accept the public RUN- code or a legacy 24-char ObjectId; the backend resolves either.
-  const isValidId = isRunCode(recordId) || /^[a-fA-F0-9]{24}$/.test(recordId);
-  if (!isValidId) {
-    const error = 'Invalid recordId format: expected a RUN- code.';
-    console.error('[historyService]  Validation error:', error);
-    throw new Error(error);
+  if (!isRunCode(recordId) && !/^[a-fA-F0-9]{24}$/.test(recordId)) {
+    throw new Error('Invalid recordId format: expected a RUN- code.');
   }
+}
 
-  try {
-    console.log('[historyService]  Sending DELETE request to /api/history/:id...');
+/**
+ * Shared transport for the record lifecycle endpoints (trash/archive/restore/
+ * permanent). Validates the id, issues the request, and surfaces the server's
+ * error body verbatim so typed-confirmation prompts (CONFIRMATION_REQUIRED) reach
+ * the caller intact. RUN- codes and ObjectIds are URL-safe — no encoding needed.
+ */
+async function lifecycleRequest(
+  recordId: string, path: string, method: string, body?: object,
+): Promise<Record<string, unknown>> {
+  assertValidRecordId(recordId);
+  const response = await fetchWithAuthRetry(`/api/history/${recordId}${path}`, getFetchOptions(method, body));
 
-// RUN- codes and ObjectIds are URL-safe (hex + dash) — no encoding needed.
-    const response = await fetchWithAuthRetry(`/api/history/${recordId}`, getFetchOptions('DELETE'));
+  let data: Record<string, unknown> | null = null;
+  try { data = await response.json(); } catch { data = null; }
 
-    console.log('[historyService] Response status:', response.status);
-    console.log('[historyService] Response ok:', response.ok);
-
-    // Parse response
-    let responseData;
-    try {
-      responseData = await response.json();
-      console.log('[historyService] Response data:', responseData);
-    } catch {
-      console.log('[historyService] Could not parse response as JSON');
-      responseData = null;
-    }
-
-    // Handle errors
-    if (!response.ok) {
-      const errorMessage = responseData?.error || `Server returned ${response.status}`;
-      console.error('[historyService]  Delete failed:', errorMessage);
-      throw new Error(errorMessage);
-    }
-
-    console.log('[historyService] Record deleted successfully!');
-    return;
-
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService]  Network error - could not reach API:', error.message);
-    } else if (error instanceof Error) {
-      console.error('[historyService]  Error:', error.message);
-    } else {
-      console.error('[historyService]  Unknown error:', error);
-    }
-    throw error;
+  if (!response.ok) {
+    const err = new Error((data?.error as string) || `Server returned ${response.status}`) as Error & {
+      status: number; code?: string; expected?: string;
+    };
+    err.status = response.status;
+    err.code = data?.code as string | undefined;
+    err.expected = data?.expected as string | undefined;
+    throw err;
   }
+  return data ?? {};
+}
+
+/**
+ * Move a record to Trash (reversible soft delete). Nothing is cascaded until it is
+ * permanently deleted or the server's retention window elapses.
+ * @returns retention window (days) the server reports, for the Undo copy.
+ */
+export async function deleteRecord(recordId: string): Promise<{ retentionDays?: number }> {
+  console.log('[historyService] deleteRecord (soft) called with recordId:', recordId);
+  const data = await lifecycleRequest(recordId, '', 'DELETE');
+  return { retentionDays: typeof data.retentionDays === 'number' ? data.retentionDays : undefined };
+}
+
+/** Archive a record — parked out of the working list but fully recoverable. */
+export async function archiveRecord(recordId: string): Promise<void> {
+  console.log('[historyService] archiveRecord called with recordId:', recordId);
+  await lifecycleRequest(recordId, '/archive', 'POST');
+}
+
+/** Restore a record from Archive or Trash back to the active list. */
+export async function restoreRecord(recordId: string): Promise<void> {
+  console.log('[historyService] restoreRecord called with recordId:', recordId);
+  await lifecycleRequest(recordId, '/restore', 'POST');
+}
+
+/**
+ * Permanently delete a record and its forensic children. Irreversible. Important
+ * records require `confirmCode` (their RUN- code); the server rejects a mismatch
+ * with 400 CONFIRMATION_REQUIRED, which the caller catches to prompt the operator.
+ */
+export async function permanentlyDeleteRecord(recordId: string, confirmCode?: string): Promise<void> {
+  console.log('[historyService] permanentlyDeleteRecord called with recordId:', recordId);
+  await lifecycleRequest(recordId, '/permanent', 'DELETE', confirmCode ? { confirm: confirmCode } : undefined);
 }
 
 /**

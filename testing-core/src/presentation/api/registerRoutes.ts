@@ -29,7 +29,8 @@ import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { Types } from 'mongoose';
 import { extractStringParam, extractIntParam } from './queryParams.js';
 import { parsePagination, buildPage, isPaginatedRequest } from './pagination.js';
-import { deleteSessionCascade } from '../../infrastructure/database/retentionReaper.js';
+import { deleteSessionCascade, TRASH_RETENTION_DAYS } from '../../infrastructure/database/retentionReaper.js';
+import { sessionStateFilter, sessionHistoryState } from '../../infrastructure/database/sessionState.js';
 import {
   INFILTRATION_PROFILE_CATALOG,
   DEFAULT_INFILTRATION_PROFILE,
@@ -43,6 +44,8 @@ import {
   type StateFingerprint,
   type ActionRecord,
   type RunTerminationOutcome,
+  type SessionHistoryState,
+  isImportantSession,
   coerceClientStopReason,
   parseStorageState,
   resolveSeverity,
@@ -107,6 +110,11 @@ function resolveSessionSelector(idOrCode: string): { _id: Types.ObjectId } | { r
   if (code) return { runId: code };
   if (Types.ObjectId.isValid(idOrCode)) return { _id: new Types.ObjectId(idOrCode) };
   return null;
+}
+
+// Coerce the ?state= query to a valid history bucket; anything unknown → 'active'.
+function parseHistoryState(value: unknown): SessionHistoryState {
+  return value === 'archived' || value === 'trashed' ? value : 'active';
 }
 
 // Ingest bounds for /api/history/save-session (client-supplied body, 2 MB cap). The
@@ -928,9 +936,11 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
 
       // Legacy ?limit= maps onto pageSize so pre-pagination clients keep working.
       const params = parsePagination(request.query, extractIntParam(request.query.limit));
+      // Which bucket the operator is viewing; defaults to Active (excludes archived/trash).
+      const state = parseHistoryState(extractStringParam(request.query.state));
 
       // CRITICAL: Pass userId to filter only this user's sessions
-      const { items, total } = await findingRepo.listSessionHistory(params, request.userId);
+      const { items, total } = await findingRepo.listSessionHistory(params, request.userId, state);
       const page = buildPage(items, total, params);
 
       // Dual envelope: `sessions` keeps existing clients working, the paginated
@@ -962,7 +972,8 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // saved sessions count as "history" — auto-tracked runs stay invisible
       // until the operator explicitly clicks Save.
       const params = parsePagination(request.query);
-      const filter = { userId: new Types.ObjectId(userId), savedManually: true };
+      // Active bucket only — archived/trashed rows never leak into the raw export list.
+      const filter = { userId: new Types.ObjectId(userId), savedManually: true, ...sessionStateFilter('active') };
 
       // forensicTrace.caughtBugs carries full stack traces and dominates the
       // payload, so it ships only when explicitly requested.
@@ -987,55 +998,137 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
   });
 
-// Delete a session by ID (using sessions collection)
-  app.delete('/api/history/:id', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    obsLog.info('[API] DELETE /api/history/:id called');
-    obsLog.info('[API] Record ID:', request.params.id);
-    obsLog.info('[API] Authenticated user:', request.userId ?? 'none');
+  // Ownership-scoped lifecycle transition (archive / restore / trash). Resolves the
+  // id/RUN- code, proves ownership via the userId filter, applies the tombstone
+  // patch, and returns the updated doc — or null when nothing matched.
+  const applySessionLifecycle = async (
+    idParam: string, userId: string, patch: { archivedAt: Date | null; deletedAt: Date | null },
+  ) => {
+    const selector = resolveSessionSelector(idParam);
+    if (!selector) return { error: 'invalid' as const };
+    const updated = await SessionModel.findOneAndUpdate(
+      { ...selector, userId: new Types.ObjectId(userId) },
+      { $set: patch },
+      { new: true },
+    ).select('_id runId archivedAt deletedAt').lean();
+    return updated ? { doc: updated } : { error: 'notfound' as const };
+  };
 
+  // Move a session to Trash (reversible soft delete). The forensic cascade fires
+  // only on permanent deletion, so nothing is lost until the operator confirms or
+  // the retention reaper purges it.
+  app.delete('/api/history/:id', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    obsLog.info('[API] DELETE /api/history/:id (soft-delete) called for:', request.params.id);
     try {
       const userId = request.userId;
-      // Accept either an ObjectId or a public RUN- code.
-      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
 
-      if (!userId) {
-        response.status(401).json({ error: 'Authentication required.' });
-        return;
-      }
-
-      if (!selector) {
-        response.status(400).json({ error: 'Invalid record ID format.' });
-        return;
-      }
-
-      obsLog.info('[API] Deleting session record:', selector, 'for user:', userId);
-
-      // findOneAndDelete resolves the doc's _id (needed for the cascade) while its
-      // filter proves ownership — a RUN- code alone never yields a foreign _id.
-      const deleted = await SessionModel.findOneAndDelete({
-        ...selector,
-        userId: new Types.ObjectId(userId),
-      }).lean();
-
-      if (!deleted) {
-        obsLog.warn('[API] Delete failed: Record not found or not owned by user');
+      const result = await applySessionLifecycle(
+        extractStringParam(request.params.id) ?? '', userId, { archivedAt: null, deletedAt: new Date() },
+      );
+      if ('error' in result) {
+        if (result.error === 'invalid') { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
         response.status(404).json({ error: 'Record not found or access denied.' });
         return;
       }
 
-      // Ownership was proven by the filter above, so the cascade is safe. Without
-      // it the run's forensic errors, telemetry, logs and brain configs would
-      // linger forever with no parent session.
+      obsLog.info('[API] Record moved to trash:', String(result.doc._id));
+      response.json({ ok: true, state: sessionHistoryState(result.doc), retentionDays: TRASH_RETENTION_DAYS, message: 'Moved to Trash.' });
+    } catch (error) {
+      obsLog.error('[API] Error in DELETE /api/history/:id:', error);
+      response.status(500).json({ error: 'Failed to move the record to Trash.' });
+    }
+  });
+
+  // Archive a session — parked out of the working list but fully recoverable.
+  app.post('/api/history/:id/archive', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    obsLog.info('[API] POST /api/history/:id/archive called for:', request.params.id);
+    try {
+      const userId = request.userId;
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const result = await applySessionLifecycle(
+        extractStringParam(request.params.id) ?? '', userId, { archivedAt: new Date(), deletedAt: null },
+      );
+      if ('error' in result) {
+        if (result.error === 'invalid') { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
+        response.status(404).json({ error: 'Record not found or access denied.' });
+        return;
+      }
+
+      obsLog.info('[API] Record archived:', String(result.doc._id));
+      response.json({ ok: true, state: sessionHistoryState(result.doc), message: 'Record archived.' });
+    } catch (error) {
+      obsLog.error('[API] Error in POST /api/history/:id/archive:', error);
+      response.status(500).json({ error: 'Failed to archive the record.' });
+    }
+  });
+
+  // Restore a session from Archive or Trash back to the active working list.
+  app.post('/api/history/:id/restore', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    obsLog.info('[API] POST /api/history/:id/restore called for:', request.params.id);
+    try {
+      const userId = request.userId;
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const result = await applySessionLifecycle(
+        extractStringParam(request.params.id) ?? '', userId, { archivedAt: null, deletedAt: null },
+      );
+      if ('error' in result) {
+        if (result.error === 'invalid') { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
+        response.status(404).json({ error: 'Record not found or access denied.' });
+        return;
+      }
+
+      obsLog.info('[API] Record restored:', String(result.doc._id));
+      response.json({ ok: true, state: sessionHistoryState(result.doc), message: 'Record restored.' });
+    } catch (error) {
+      obsLog.error('[API] Error in POST /api/history/:id/restore:', error);
+      response.status(500).json({ error: 'Failed to restore the record.' });
+    }
+  });
+
+  // Permanently delete a session and cascade its forensic children. Irreversible.
+  // Important sessions (CRITICAL-level findings) additionally require the caller to
+  // echo the record's public code in `confirm` — a server-side guard mirroring the
+  // typed confirmation the dashboard enforces, so neither layer can be bypassed alone.
+  app.delete('/api/history/:id/permanent', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    obsLog.info('[API] DELETE /api/history/:id/permanent called for:', request.params.id);
+    try {
+      const userId = request.userId;
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
+      if (!selector) { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
+
+      const ownerFilter = { ...selector, userId: new Types.ObjectId(userId) };
+      const target = await SessionModel.findOne(ownerFilter).select('_id runId findingCount').lean();
+      if (!target) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
+
+      // Gate important records behind the typed confirmation token.
+      if (isImportantSession(target.findingCount ?? 0)) {
+        const expected = target.runId ?? String(target._id);
+        const provided = normalizeRunCode(extractStringParam(request.body?.confirm)) ?? extractStringParam(request.body?.confirm);
+        if (provided !== expected) {
+          response.status(400).json({ error: 'Confirmation required.', code: 'CONFIRMATION_REQUIRED', expected });
+          return;
+        }
+      }
+
+      // Delete the parent first, re-proving ownership, then cascade the children.
+      const deleted = await SessionModel.findOneAndDelete(ownerFilter).lean();
+      if (!deleted) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
+
       const cascaded = await deleteSessionCascade(deleted._id).catch((error: unknown) => {
         obsLog.error('[API] Cascade delete failed for session', String(deleted._id), error);
         return null;
       });
 
-      obsLog.info('[API] Record deleted successfully:', String(deleted._id), 'cascade:', cascaded ?? 'failed');
-      response.json({ ok: true, message: 'Record deleted successfully.' });
+      obsLog.info('[API] Record permanently deleted:', String(deleted._id), 'cascade:', cascaded ?? 'failed');
+      response.json({ ok: true, message: 'Record permanently deleted.', cascade: cascaded ?? undefined });
     } catch (error) {
-      obsLog.error('[API] Error in DELETE /api/history/:id:', error);
-      response.status(500).json({ error: 'Failed to delete the record.' });
+      obsLog.error('[API] Error in DELETE /api/history/:id/permanent:', error);
+      response.status(500).json({ error: 'Failed to permanently delete the record.' });
     }
   });
 
