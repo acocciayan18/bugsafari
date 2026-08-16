@@ -266,7 +266,7 @@ export default function SavedEvaluationSafaris() {
           </span>
           <span className="mx-3 text-[var(--text-tertiary)]">/</span>
           <span className="truncate text-sm font-semibold text-[var(--text-secondary)]">
-            AUTONOMOUS TESTING ENGINE
+            HISTORY SESSION
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-4 lg:ml-auto">

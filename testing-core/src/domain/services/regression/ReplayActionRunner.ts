@@ -40,6 +40,10 @@ export class ReplayActionRunner {
         case 'click':
           await this.performClick(step.selector);
           return { ...base, status: 'ok' };
+        case 'submit':
+          // The recorded selector is the input's; submit its enclosing form to re-send.
+          await this.submitEnclosingForm(step.selector);
+          return { ...base, status: 'ok' };
         case 'navigation':
           // A navigation step records the DESTINATION URL as its selector (or in url),
           // not a clickable element — replaying it as a click resolves 0 elements and

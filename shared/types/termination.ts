@@ -19,7 +19,7 @@ export type RunTerminationOutcome =
 
 /** Who asked the engine to stop. Carried through teardown so a resulting
  *  browser-closed error is attributed to its real cause, not to the operator. */
-export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'pause-timeout' | 'internal-shutdown' | 'queue-cancelled';
+export type StopReason = 'operator' | 'timebox' | 'target-crash' | 'disconnect-grace' | 'pause-timeout' | 'internal-shutdown' | 'queue-cancelled' | 'harness-resource' | 'harness-environment';
 
 /** Terminal outcome implied by each stop trigger. */
 export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
@@ -30,6 +30,8 @@ export const STOP_REASON_OUTCOME: Record<StopReason, RunTerminationOutcome> = {
   'pause-timeout': 'abandoned',
   'internal-shutdown': 'graceful-shutdown',
   'queue-cancelled': 'queue-cancelled',
+  'harness-resource': 'engine-error',
+  'harness-environment': 'engine-error',
 };
 
 /** Stop reasons a dashboard client is allowed to assert over the wire. Every other
@@ -55,6 +57,8 @@ export const STOP_REASON_DETAIL: Record<StopReason, string> = {
   'pause-timeout': 'Session terminated — it stayed paused past the maximum pause window.',
   'internal-shutdown': 'Session terminated by an internal engine shutdown.',
   'queue-cancelled': 'Queued session cancelled before a worker started it.',
+  'harness-resource': 'Session stopped — BugSafari ran out of memory. Raise the container memory limit, lower run concurrency, or free host memory, then re-run.',
+  'harness-environment': 'Session stopped — the browser environment crashed (e.g. GPU or driver fault). This is a BugSafari/environment issue, not a target defect.',
 };
 
 /** Operator-facing copy per outcome. `label` is the badge, `detail` the sentence. */

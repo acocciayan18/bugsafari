@@ -53,7 +53,7 @@ export interface FindingAttribution {
   routingReason?: string;
 }
 
-export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'NETWORK' | 'MACRO';
+export type ActionType = 'CLICK' | 'INPUT' | 'HOVER' | 'NAVIGATION' | 'NAVIGATE' | 'TYPE' | 'SUBMIT' | 'FORM_SUBMIT' | 'NETWORK' | 'MACRO';
 
 /** Backend-classified severity of a fault — mirrors the persisted ForensicErrorSeverity scale. */
 export type FaultSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';

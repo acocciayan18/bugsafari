@@ -10,7 +10,7 @@ const MAX_PAYLOAD_LENGTH = 2048;
 const MAX_NAMED_TARGETS = 5;
 const REDACTED = '«redacted»';
 
-export type StepKind = 'navigation' | 'click' | 'input' | 'bypass' | 'macro' | 'step';
+export type StepKind = 'navigation' | 'click' | 'input' | 'submit' | 'bypass' | 'macro' | 'step';
 
 export interface ElementLabelSource {
   accessibleName?: string;
@@ -362,6 +362,23 @@ export function describeInputInjection(label: string, payload?: string, redact?:
 }
 
 /**
+ * Form-commit step — the action that SENDS the typed value, recorded after an input so
+ * the playbook never stops at "Enter a value" without the request that triggered the fault.
+ * `method` is the SubmissionMethod the form-submitter committed with (enter/submit-button/
+ * form-dispatch); a resolved submit-button label reads the exact control ("Login").
+ */
+export function describeFormSubmission(method?: string, controlLabel?: string, controlKind?: string): string {
+  if (method === 'enter') return 'Press Enter to submit the form';
+  if (method === 'submit-button') {
+    const name = collapse(controlLabel);
+    return name && !isSelectorLike(name)
+      ? `Click ${describeTarget(name, collapse(controlKind) || 'button')} to submit the form`
+      : 'Click the submit button to submit the form';
+  }
+  return 'Submit the form';
+}
+
+/**
  * Single-element burst INTENT — the deliberate action, recorded BEFORE the burst
  * fires so an immediate crash still yields a reproduction step. Carries no live
  * metrics (none exist yet); the outcome is appended later as an observation.
@@ -667,6 +684,8 @@ export function kindForRecord(type: ActionType): StepKind {
     case 'TYPE':
     case 'INPUT':
       return 'input';
+    case 'FORM_SUBMIT':
+      return 'submit';
     case 'SUBMIT':
       return 'bypass';
     case 'MACRO':
@@ -683,6 +702,7 @@ export function classifyNarrativeLine(text: string): StepKind {
   const s = text.trim();
   if (/^(Open|Go to|Navigate to|Switch to) /i.test(s)) return 'navigation';
   if (/^(Type |Enter a value|Select )/i.test(s)) return 'input';
+  if (/^(Press Enter to submit|Submit the form)/i.test(s) || /\bto submit the form$/i.test(s)) return 'submit';
   if (/^Remove /i.test(s)) return 'bypass';
   if (/^(Click|Hover|Press|Starting from)/i.test(s)) return 'click';
   return 'step';
@@ -717,6 +737,9 @@ function describeSingleAction(record: ActionRecord): string {
     case 'TYPE':
     case 'INPUT':
       return describeInputInjection(rawLabel, record.payload, record.redactValue, kind);
+
+    case 'FORM_SUBMIT':
+      return describeFormSubmission(record.payload, rawLabel, kind);
 
     case 'SUBMIT':
       return describeConstraintBypass(rawLabel, record.strippedAttributes, record.affectedCount, kind);
@@ -798,7 +821,7 @@ export function narrateActionRecords(records: ActionRecord[]): string[] {
 // reproduction is byte-identical before and after it is persisted.
 // ─────────────────────────────────────────────────────────────
 
-export type ReproductionStepActionType = 'click' | 'input' | 'navigation' | 'bypass' | 'macro';
+export type ReproductionStepActionType = 'click' | 'input' | 'navigation' | 'submit' | 'bypass' | 'macro';
 
 // Structural step shape — the common subset of the DB `ActionStepTrace` and the
 // dashboard `ForensicActionStep`; each side casts the result to its own mirror.
@@ -830,6 +853,7 @@ export function mapReproductionActionType(type: ActionType): ReproductionStepAct
     case 'TYPE':       return 'input';
     case 'NAVIGATION': return 'navigation';
     case 'NAVIGATE':   return 'navigation';
+    case 'FORM_SUBMIT': return 'submit';
     case 'SUBMIT':     return 'bypass';
     case 'NETWORK':    return 'bypass';
     case 'HOVER':      return 'click';

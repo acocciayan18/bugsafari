@@ -1043,6 +1043,7 @@ export class ExplorationEngine {
       getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
       isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,
+      abortForHarnessFault: (kind) => this.stop(kind === 'memory' ? 'harness-resource' : 'harness-environment'),
     });
 
     const stateRestorer = new StateRestorer({

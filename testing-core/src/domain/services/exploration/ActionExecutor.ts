@@ -15,10 +15,11 @@ import {
   describeTarget,
   describeConstraintBypass,
   describeInputInjection,
+  describeFormSubmission,
   describeNavigation,
   narrateActionRecords,
 } from '../forensics/narration.js';
-import { triggerFormSubmission } from './formSubmitter.js';
+import { triggerFormSubmission, type SubmissionResult } from './formSubmitter.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
 import { trustedClick, type ClickOutcome } from './trustedClick.js';
@@ -835,7 +836,11 @@ export class ActionExecutor {
           }
 
           await this.fillEmptyFormSiblings(page, target.selector);
-          const submissionMethod = await triggerFormSubmission(page, target.selector);
+          const submission = await triggerFormSubmission(page, target.selector);
+          const submissionMethod = submission.method;
+          // Record the commit that SENDS the payload so the playbook shows the submit,
+          // not just the type — the request that triggers the fault is now reproducible.
+          this.recordSubmitStep(page.url(), target.selector, submission);
           // Count this commit against the form's session fuzz budget so a multi-field
           // form is excluded after formFuzzCap submissions (input over-fuzzing guard).
           this.deps.formFuzz.recordAttempt(target.formKey ?? '');
@@ -968,12 +973,13 @@ export class ActionExecutor {
           containerKind: target.contextKind,
         },
       );
-      const submissionMethod = await triggerFormSubmission(page, target.selector);
+      const submission = await triggerFormSubmission(page, target.selector);
+      this.recordSubmitStep(page.url(), target.selector, submission);
       this.deps.formFuzz.recordAttempt(target.formKey ?? '');
       t.emit('ACTION', {
         actionExecuted: 'exploratory-input',
         selector: target.selector,
-        message: ` Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submissionMethod}".`,
+        message: ` Exploratory: filled ${humanizeElement(target)} with a valid value and submitted via "${submission.method}".`,
       });
       return injection.delivered;
     } catch (error) {
@@ -982,6 +988,28 @@ export class ActionExecutor {
     } finally {
       ActiveScenarioTracker.end();
     }
+  }
+
+  /**
+   * Record the form-commit that follows a typed value as its own reproduction step —
+   * the request that actually sends the payload. `selector` is the input's so replay
+   * submits its enclosing form; `method` (+ resolved button label) names the action.
+   */
+  private recordSubmitStep(url: string, inputSelector: string, submission: SubmissionResult): void {
+    if (submission.method === 'none') return;
+    ActiveScenarioTracker.record(
+      describeFormSubmission(submission.method, submission.controlLabel, submission.controlKind),
+    );
+    this.deps.recordActionTrace(
+      { timestamp: new Date().toISOString(), selector: inputSelector, action: 'form-submission', payload: submission.method },
+      {
+        actionType: 'FORM_SUBMIT',
+        humanIdentifier: submission.controlLabel ?? '',
+        elementKind: submission.controlKind ?? 'button',
+        value: submission.method,
+        url,
+      },
+    );
   }
 
   /**

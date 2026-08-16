@@ -8,6 +8,7 @@ import {
   classifyNarrativeLine as sharedClassify,
   describeConstraintBypass,
   describeInputInjection,
+  describeFormSubmission,
   describeOutcome,
   describeReplayMacro,
   describeRouteStep,
@@ -30,6 +31,7 @@ const CHIP_CLASS: Record<StepKind, string> = {
   navigation: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
   click: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
   input: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  submit: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
   bypass: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
   macro: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
   step: 'bg-(--surface-inset) text-(--text-tertiary)',
@@ -41,6 +43,7 @@ const CHIP_LABEL: Record<StepKind, string> = {
   navigation: 'open',
   click: 'click',
   input: 'type',
+  submit: 'submit',
   bypass: 'bypass',
   macro: 'rapid',
   step: 'step',
@@ -53,6 +56,7 @@ const DEFAULT_NOUN: Record<StepKind, string> = {
   navigation: 'page',
   click: 'control',
   input: 'field',
+  submit: 'button',
   bypass: 'field',
   macro: 'control',
   step: 'element',
@@ -70,6 +74,7 @@ function kindFor(actionType: string): StepKind {
   switch (actionType) {
     case 'navigation': return 'navigation';
     case 'input': case 'TYPE': case 'INPUT': return 'input';
+    case 'submit': case 'FORM_SUBMIT': return 'submit';
     case 'bypass': case 'SUBMIT': return 'bypass';
     case 'click': case 'CLICK': case 'HOVER': return 'click';
     case 'macro': case 'MACRO': return 'macro';
@@ -106,7 +111,7 @@ export function humanizeActionStep(
   const where: StepWhere = {
     route: kind === 'navigation' || isApiEndpoint(step.url) ? '' : routePath(step.url),
     container: stepContainerField(step.containerLabel, step.containerKind),
-    element: kind === 'navigation' || kind === 'macro' ? '' : stripLeadingThe(describeTarget(label, noun)),
+    element: kind === 'navigation' || kind === 'macro' || kind === 'submit' ? '' : stripLeadingThe(describeTarget(label, noun)),
   };
   if (kind === 'macro') {
     const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
@@ -114,12 +119,17 @@ export function humanizeActionStep(
   }
   const action =
     kind === 'navigation' ? (step.url ? describeRouteStep(step.url) : `Open ${describeTarget(label, noun)}`)
-    : kind === 'input' ? describeInputInjection(label, undefined, step.redactValue, noun)
+    // Weave the typed value into the sentence (was a detached red chip) so a single
+    // JSON payload reads as one value in one field, matching the backend narrative.
+    : kind === 'input' ? describeInputInjection(label, step.payloadText, step.redactValue, noun)
+    : kind === 'submit' ? describeFormSubmission(step.payloadText, label, noun)
     : kind === 'bypass' ? describeConstraintBypass(label, step.strippedAttributes, step.affectedCount, noun)
     : `Click ${describeTarget(label, noun)}`;
   const repeats = step.repeatCount ?? 1;
   const repeated = repeats > 1 ? `${action}, repeated ${repeats} times in quick succession` : action;
-  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue), where };
+  // Value now lives inline in the input/submit sentence, so no separate value chip there.
+  const payloadDisplay = kind === 'input' || kind === 'submit' ? '' : maskPayload(step.payloadText, step.redactValue);
+  return { kind, instruction: `${repeated}${observed}`, payloadDisplay, where };
 }
 
 // Guess a chip kind for a pre-rendered narrative line (string fallback path).

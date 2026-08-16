@@ -184,6 +184,10 @@ export interface StabilityMonitorDeps {
   /** True when the engine is intentionally stopping, cancelling, or paused — a browser
    *  teardown or idle window that must never be reported as a target-app UI freeze. */
   isEngineStopping(): boolean;
+  /** Abort the whole run on a renderer crash traced to the harness/environment (memory
+   *  exhaustion or a browser/GPU/driver fault) — a BugSafari-side fault that stops testing
+   *  and is never registered as a target finding. */
+  abortForHarnessFault(kind: 'memory' | 'environment', detail: string): void;
 }
 
 export interface StateRestorerDeps {

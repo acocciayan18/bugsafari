@@ -12,6 +12,17 @@ import type { ElementHandle, Page, Request } from 'playwright';
 export type SubmissionMethod = 'enter' | 'submit-button' | 'form-dispatch' | 'none';
 
 /**
+ * How the form committed + the submit control that committed it (when a button did).
+ * The label lets the reproduction playbook name the exact control ("Click the "Login"
+ * button to submit"), instead of a generic "Submit the form".
+ */
+export interface SubmissionResult {
+  method: SubmissionMethod;
+  controlLabel?: string;
+  controlKind?: string;
+}
+
+/**
  * Unambiguous submit phrases: matched on a word boundary, so 'login' cannot fire
  * on 'blogger'. Safe as a substring-with-boundary because no common non-submit
  * control is labelled with them.
@@ -150,7 +161,7 @@ async function findSubmitControl(
  *
  * @returns the method that committed the form, or 'none'.
  */
-export async function triggerFormSubmission(page: Page, elementSelector: string): Promise<SubmissionMethod> {
+export async function triggerFormSubmission(page: Page, elementSelector: string): Promise<SubmissionResult> {
   // Step 0 — Tab to blur the field, firing blur/focusout events that SPA
   // frameworks (React, Vue, Angular) use for per-field validation triggers.
   // Non-fatal: Tab may fail on detached or non-focusable nodes. Watched from
@@ -171,7 +182,7 @@ export async function triggerFormSubmission(page: Page, elementSelector: string)
     try {
       await page.press(elementSelector, 'Enter', { timeout: 1000 });
       await page.waitForTimeout(250);
-      if (await committed()) return 'enter';
+      if (await committed()) return { method: 'enter' };
     } catch {
       // Element may be detached/non-focusable — fall through to button discovery.
     }
@@ -179,10 +190,16 @@ export async function triggerFormSubmission(page: Page, elementSelector: string)
     // Step 2 — click the submit control within the field's own grouping.
     const control = await findSubmitControl(page, elementSelector);
     if (control) {
+      // Read the control's label BEFORE the click so the playbook can name it verbatim.
+      const controlLabel = await control
+        .evaluate((el) => (el.textContent ?? (el as HTMLInputElement).value ?? '').replace(/\s+/g, ' ').trim())
+        .catch(() => '');
       try {
         await control.evaluate((el) => el.click());
         await page.waitForTimeout(250);
-        if (await committed()) return 'submit-button';
+        if (await committed()) {
+          return { method: 'submit-button', controlLabel: controlLabel || undefined, controlKind: 'button' };
+        }
       } catch {
         // Control detached between resolution and click — fall through.
       } finally {
@@ -202,7 +219,7 @@ export async function triggerFormSubmission(page: Page, elementSelector: string)
       .catch(() => undefined);
     await page.waitForTimeout(250);
 
-    return (await committed()) ? 'form-dispatch' : 'none';
+    return { method: (await committed()) ? 'form-dispatch' : 'none' };
   } finally {
     probe.dispose();
   }

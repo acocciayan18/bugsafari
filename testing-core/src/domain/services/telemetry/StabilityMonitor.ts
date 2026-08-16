@@ -50,6 +50,12 @@ import {
 } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
 import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
+import { sampleMemoryPressure } from '../../../infrastructure/monitoring/resourceProbe.js';
+
+// ACTION marker for a harness-side (BugSafari OOM) abort — the dashboard shows it as a system alert, not a bug.
+const HARNESS_RESOURCE_ABORT = 'harness-resource-abort';
+// ACTION marker for a demoted browser/GPU/driver crash — an environment fault, never a target finding.
+const HARNESS_CRASH_DEMOTED = 'harness-crash-demoted';
 
 // Infinite-loading watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
 // hang candidate; CONFIRM_MS is the persistence gap between the two DOM probes; the rest bound cost.
@@ -995,8 +1001,28 @@ export class StabilityMonitor {
   /** Capture renderer/tab crashes (OOM / GPU fault) directly instead of only inferring them via the freeze heartbeat. */
   public attachCrashMonitoring(page: Page): void {
     page.on('crash', () => {
-      void this.reportRuntimeFault(page, 'CRASH', 'Renderer process crashed (out-of-memory or GPU fault)');
+      this.handleRendererCrash(page);
     });
+  }
+
+  // A renderer crash is never a target finding: under memory pressure it is a harness OOM,
+  // otherwise a browser/GPU/driver environment fault. Both abort the run with the right
+  // remediation instead of blaming the target application.
+  private handleRendererCrash(_page: Page): void {
+    const pressure = sampleMemoryPressure();
+    if (pressure.underPressure) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: HARNESS_RESOURCE_ABORT,
+        message: `BugSafari ran out of memory and stopped this run to stay safe (${pressure.detail}). This is a harness limit, not a target defect. Actions: raise the container memory limit, lower run concurrency, or free host memory, then re-run.`,
+      });
+      this.deps.abortForHarnessFault('memory', pressure.detail);
+      return;
+    }
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: HARNESS_CRASH_DEMOTED,
+      message: `Renderer crashed with no memory pressure (${pressure.detail}) — treated as a browser/GPU/driver environment fault, not a target defect. Demoted, not reported as a finding.`,
+    });
+    this.deps.abortForHarnessFault('environment', pressure.detail);
   }
 
   // Stable per-request id, allocated lazily so only requests we actually observe cost one.

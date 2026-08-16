@@ -6,7 +6,7 @@ import { classifyInputElement, FieldCategory } from './elementClassifier.js';
 import { ChaosTransactionManager } from '../../chaos/index.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { resolveElementLabel, elementNoun } from '../../services/forensics/narration.js';
-import { describeConstraintBypass, describeInputInjection } from '../../services/forensics/narration.js';
+import { describeConstraintBypass, describeInputInjection, describeFormSubmission } from '../../services/forensics/narration.js';
 import { triggerFormSubmission, concurrentDoubleSubmit } from '../../services/exploration/formSubmitter.js';
 import { stripConstraintsSilently } from '../formBypasser.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
@@ -384,8 +384,23 @@ export const dataFuzzer: StressScenario = {
             url: page.url(),
             redactValue,
           });
-          const submissionMethod = await triggerFormSubmission(page, selector);
-          obsLog.info(`[StressScenario:DataFuzzer] Submit via "${submissionMethod}" (L${level})`);
+          const submission = await triggerFormSubmission(page, selector);
+          obsLog.info(`[StressScenario:DataFuzzer] Submit via "${submission.method}" (L${level})`);
+          // Record the commit that actually SENDS the payload — without it the playbook
+          // stops at "type" and the fault-triggering request has no reproduction step.
+          if (submission.method !== 'none') {
+            ActiveScenarioTracker.record(
+              describeFormSubmission(submission.method, submission.controlLabel, submission.controlKind),
+            );
+            ActionRecorder.recordStep({
+              actionType: 'FORM_SUBMIT',
+              humanIdentifier: submission.controlLabel ?? '',
+              elementKind: submission.controlKind ?? 'button',
+              value: submission.method,
+              selector,
+              url: page.url(),
+            });
+          }
           // Race probe on auth fields: a zero-wait double-submit exposes
           // double-login/double-register and in-flight-lock gaps. L0 only.
           if (category === 'DATABASE_AUTH' && level === 0) {

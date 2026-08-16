@@ -67,4 +67,26 @@ await check('element-selector navigation (link click that caused nav) → clicks
   assert.equal(calls.gotos.length, 0);
 });
 
+await check('submit step → commits the enclosing form, not skipped', async () => {
+  const evals: string[] = [];
+  const stub: Record<string, unknown> = {};
+  stub.first = () => stub;
+  stub.locator = () => stub;
+  stub.count = async () => 0; // no explicit submit button → falls to form.requestSubmit()
+  stub.click = async () => undefined;
+  const page = {
+    url: () => 'https://app.test/login',
+    waitForLoadState: async () => undefined,
+    locator: () => stub,
+    evaluate: async (_fn: unknown, sel: string) => { evals.push(sel); return true; },
+    goto: async () => null,
+  } as unknown as Page;
+  const runner = new ReplayActionRunner(page, 'https://app.test/');
+  const out = await runner.replay({
+    stepNumber: 6, timestamp: '', actionType: 'submit', selector: '#password', resultingStateHash: '',
+  } as ActionStepTrace);
+  assert.equal(out.status, 'ok');
+  assert.deepEqual(evals, ['#password'], 'submit must commit the form holding the input selector');
+});
+
 console.log(`\n${passed} passed`);

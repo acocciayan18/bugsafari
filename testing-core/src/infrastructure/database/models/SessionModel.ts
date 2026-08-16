@@ -80,7 +80,7 @@ export interface IForensicTrace {
   caughtBugs: ICaughtBug[];
 }
 
-export type ActionStepActionType = 'click' | 'input' | 'navigation' | 'bypass' | 'macro';
+export type ActionStepActionType = 'click' | 'input' | 'navigation' | 'submit' | 'bypass' | 'macro';
 
 export interface ActionStepTrace {
   stepNumber: number;
@@ -141,7 +141,7 @@ const MacroSchemaField = {
 const ActionStepSchemaFields = {
   stepNumber:         { type: Number, required: true, min: 1 },
   timestamp:          { type: String, required: true },
-  actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'bypass', 'macro'] },
+  actionType:         { type: String, required: true, enum: ['click', 'input', 'navigation', 'submit', 'bypass', 'macro'] },
   selector:           { type: String, required: true, default: '' },
   label:              { type: String, required: false, default: null },
   elementKind:        { type: String, required: false, default: null },
