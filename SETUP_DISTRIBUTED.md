@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m " Fix Live Telemetry auto-scroll behavior"
+git commit -m "fix-missing-submit-action"
 git push origin HEAD:dev --force
 
 
