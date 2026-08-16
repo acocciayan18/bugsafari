@@ -79,6 +79,19 @@ function SegmentedControl<T extends string>({ options, value, onChange, ariaLabe
   );
 }
 
+// Windowed page list with ellipsis gaps — keeps the control at a fixed width on large sets.
+function pageItems(current: number, total: number): (number | 'gap')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  const items: (number | 'gap')[] = [1];
+  if (start > 2) items.push('gap');
+  for (let p = start; p <= end; p++) items.push(p);
+  if (end < total - 1) items.push('gap');
+  items.push(total);
+  return items;
+}
+
 const UNDO_TOAST_ID = 'bugsafari-history-undo';
 
 // Toast with an inline Undo affordance — used after reversible archive/trash so the
@@ -514,29 +527,53 @@ export default function SavedEvaluationSafaris() {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
-          <div className="flex items-center">
-            <span className="font-mono text-[13px] text-[var(--text-secondary)]">
-              SHOWING {view.showingStart}-{view.showingEnd} OF {view.matchedCount} SAFARIS
-              {view.isFiltered && ` (FILTERED FROM ${view.totalCount})`}
-            </span>
-          </div>
-          <div className="flex h-8 gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
+          <span className="font-mono text-[13px] text-[var(--text-secondary)]">
+            SHOWING {view.showingStart}-{view.showingEnd} OF {view.matchedCount} SAFARIS
+            {view.isFiltered && ` (FILTERED FROM ${view.totalCount})`}
+          </span>
+          <nav aria-label="History pagination" className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => p - 1)}
               disabled={view.safePage === 1}
-              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-[13px] text-(--text-secondary) hover:bg-[var(--surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Previous page"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-[var(--surface-hover)] disabled:pointer-events-none disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
+            {/* Compact page indicator on narrow widths; numbered buttons take over from sm up. */}
+            <span className="px-2 font-mono text-[13px] text-[var(--text-secondary)] sm:hidden">
+              {view.safePage} / {view.totalPages}
+            </span>
+            <div className="hidden items-center gap-1 sm:flex">
+              {pageItems(view.safePage, view.totalPages).map((item, index) =>
+                item === 'gap' ? (
+                  <span key={`gap-${index}`} aria-hidden="true" className="flex h-8 w-8 items-center justify-center text-[13px] text-[var(--text-tertiary)]">…</span>
+                ) : (
+                  <button
+                    key={item}
+                    onClick={() => setCurrentPage(() => item)}
+                    aria-label={`Page ${item}`}
+                    aria-current={item === view.safePage ? 'page' : undefined}
+                    className={`flex h-8 min-w-8 items-center justify-center rounded border px-2 text-[13px] font-medium transition-colors ${item === view.safePage
+                      ? 'border-[var(--surface-invert)] bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
+                      : 'border-(--border-strong) bg-(--surface-app) text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                      }`}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            </div>
             <button
               onClick={() => setCurrentPage((p) => Math.min(view.totalPages, p + 1))}
               disabled={view.safePage >= view.totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-[13px] text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Next page"
+              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:pointer-events-none disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-          </div>
+          </nav>
         </div>
       </main>
 
