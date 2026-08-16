@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ForensicReportResponse, SessionHistoryState } from '../../types';
+import type { ForensicReportResponse, SessionHistoryState, PersistedVerification } from '../../types';
 import { fetchSessionHistory, fetchForensicReport } from '../../services/historyService';
 import { useAuthStore } from '../authStore';
 import {
@@ -43,6 +43,10 @@ export interface HistoryState {
     fetchSessions: (force?: boolean) => Promise<void>;
     removeSession: (id: string) => void;
     loadReport: (sessionId: string) => Promise<ForensicReportResponse>;
+    // Write-through a settled Verify-Fix verdict into the cached report so reopening it
+    // via in-app navigation restores the card state (backend already persisted it; this
+    // keeps the in-memory mirror from serving the stale pre-verify copy).
+    applyReportVerification: (sessionId: string, bugId: string, verification: PersistedVerification) => void;
     setSearchQuery: (searchQuery: string) => void;
     setActiveFilter: (activeFilter: SeverityFilter) => void;
     setStateFilter: (stateFilter: SessionHistoryState) => void;
@@ -131,6 +135,15 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
         inflightReports.set(sessionId, request);
         return request;
+    },
+
+    applyReportVerification: (sessionId, bugId, verification) => {
+        const report = get().reportCache[sessionId];
+        const bugs = report?.forensicTrace?.caughtBugs;
+        if (!bugs?.some((bug) => bug.bugId === bugId)) return;
+        const caughtBugs = bugs.map((bug) => (bug.bugId === bugId ? { ...bug, verification } : bug));
+        const patched = { ...report!, forensicTrace: { ...report!.forensicTrace, caughtBugs } };
+        set((s) => ({ reportCache: { ...s.reportCache, [sessionId]: patched } }));
     },
 
     // Any change to the result set invalidates the page index — staying on page 3

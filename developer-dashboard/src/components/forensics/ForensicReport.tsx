@@ -15,7 +15,7 @@
 // stream pre-classification, so it is not rendered as a second,
 // duplicate list here.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -30,6 +30,7 @@ import type {
   VerifyFixRequest,
   VerifyFixResult,
   VerifyFixReason,
+  PersistedVerification,
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
@@ -1048,6 +1049,23 @@ export default function ForensicReport() {
   );
   const { statuses, verify } = useRegressionVerifier();
 
+  // Mirror a settled verdict into the cached report so reopening it via in-app
+  // navigation restores the card (the backend persists it too; this keeps the
+  // store's in-memory copy from serving the stale pre-verify report). A client-side
+  // transport/timeout failure (durationMs 0) is never persisted, so it is skipped.
+  const handleVerify = useCallback(
+    async (request: VerifyFixRequest): Promise<void> => {
+      const result = await verify(request);
+      if (result.durationMs <= 0) return;
+      const verification: PersistedVerification = { ...result, verifiedAt: new Date().toISOString() };
+      const store = useHistoryStore.getState();
+      store.applyReportVerification(request.sessionId, request.bugId, verification);
+      const patched = store.reportCache[request.sessionId];
+      if (patched) setReport(patched);
+    },
+    [verify],
+  );
+
   if (isLoading) return <ForensicReportSkeleton />;
 
 
@@ -1111,7 +1129,7 @@ export default function ForensicReport() {
                       occurrences={bug.occurrences ?? 1}
                       sessionId={sessionId}
                       status={statuses[bug.bugId] ?? (bug.verification ? { state: 'done', result: bug.verification } : IDLE_VERIFY_STATUS)}
-                      onVerify={verify}
+                      onVerify={handleVerify}
                     />
                   ),
                 }))}

@@ -195,8 +195,8 @@ git push origin HEAD:dev --force
 git init
 git add .
 git commit -m "harden-bugsafari-infinite-scroll"
-git checkout -b 8-16-Ayan
-git push --set-upstream origin 8-16-Ayan
+git checkout -b 8-16-Ayan-1
+git push --set-upstream origin 8-16-Ayan-1
 
 
 
