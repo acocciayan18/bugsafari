@@ -823,7 +823,7 @@ export class ExplorationEngine {
    * ~1s (and an immediate baseline); the frontend timer is a pure display slaved
    * to it and never runs an independent countdown.
    */
-  private startTimingInterval(_telemetry: TelemetryGateway): void {
+  private startTimingInterval(telemetry: TelemetryGateway): void {
     this.elapsedActiveTimeMs = 0;
     this.lastTickTimestamp = Date.now();
     let sinceSyncMs = 0;
@@ -841,6 +841,14 @@ export class ExplorationEngine {
         if (sinceSyncMs >= 1000) {
           sinceSyncMs = 0;
           this.emitTimeSync();
+        }
+        // Timebox is enforced HERE, not only at the loop boundary: a step wedged in a
+        // long Playwright await never returns to the loop's gate, so this clock-driven
+        // check flips the stop the instant active time crosses the limit. stop('timebox')
+        // sets isStopRequested + set-once stopReason, so the loop unwinds via stopResult()
+        // with the same 'timebox' outcome and the background monitors read teardown.
+        if (this.checkTimeboxAndTerminateIfExceeded(telemetry)) {
+          this.stop('timebox');
         }
       } else {
         // When paused or stopped, just update tick reference without accumulating
@@ -1034,7 +1042,7 @@ export class ExplorationEngine {
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
       getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
-      isEngineStopping: () => this.isStopRequested || this.isPaused,
+      isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,
     });
 
     const stateRestorer = new StateRestorer({

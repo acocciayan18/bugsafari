@@ -1,50 +1,17 @@
 // Single mapping from the in-memory action trace to the replayable step timeline.
 // Shared by save-time persistence and the in-run reproduction probe so a finding
-// replays against exactly the steps that will later be stored against it.
+// replays against exactly the steps that will later be stored against it. The mapping
+// itself lives in shared/reproduction.ts so the live Errors tab produces byte-identical
+// steps for the same trace — this module only pins it to the DB `ActionStepTrace` type.
 
 import type { ActionRecord } from '../../../../../shared/types.js';
+import { actionRecordsToSteps, mapReproductionActionType } from '../../../../../shared/reproduction.js';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
 
 export function mapActionType(type: ActionRecord['type']): ActionStepTrace['actionType'] {
-  switch (type) {
-    case 'CLICK':      return 'click';
-    case 'INPUT':      return 'input';
-    case 'TYPE':       return 'input';
-    case 'NAVIGATION': return 'navigation';
-    case 'NAVIGATE':   return 'navigation';
-    case 'SUBMIT':     return 'bypass';
-    case 'NETWORK':    return 'bypass';
-    case 'HOVER':      return 'click';
-    case 'MACRO':      return 'macro';
-    default: {
-      const _exhaustive: never = type;
-      void _exhaustive;
-      return 'click';
-    }
-  }
+  return mapReproductionActionType(type);
 }
 
 export function buildActionSteps(records: ActionRecord[]): ActionStepTrace[] {
-  return records.map((record, index) => ({
-    stepNumber:         index + 1,
-    timestamp:          record.timestamp,
-    actionType:         mapActionType(record.type),
-    selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
-    // Human descriptors travel WITH the step so the saved report reads the same
-    // named controls the live playbook did, never a bare CSS selector.
-    label:              record.elementLabel || record.fallbackLabel,
-    elementKind:        record.elementKind,
-    payloadText:        record.payload,
-    resultingStateHash: '',
-    durationMs:         record.durationMs,
-    repeatCount:        record.repeatCount,
-    strippedAttributes: record.strippedAttributes,
-    affectedCount:      record.affectedCount,
-    redactValue:        record.redactValue,
-    url:                record.url,
-    containerLabel:     record.containerLabel,
-    containerKind:      record.containerKind,
-    outcome:            record.outcome,
-    macro:              record.macro,
-  }));
+  return actionRecordsToSteps(records);
 }

@@ -8,9 +8,12 @@ import {
   resolveEndpointLabel,
   resolveCulpritLabel,
   incidentToFindingView,
+  caughtBugToFindingView,
   buildFindingSummary,
 } from './findingView';
-import type { IncidentReport } from '../types';
+import { actionRecordsToSteps } from '../../../shared/reproduction.js';
+import type { ActionRecord } from '../../../shared/types.js';
+import type { ForensicCaughtBug, IncidentReport } from '../types';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -84,6 +87,108 @@ check('a network fault maps its endpoint to endpointLabel, not elementLabel', ()
   const summary = buildFindingSummary(view, 0);
   assert.ok(summary.includes('Endpoint: GET /api/orders'));
   assert.ok(!summary.includes('Element:'));
+});
+
+// ── Live Telemetry ≡ saved Forensic reproduction parity ──────────────────────
+// The same minimized action trace that the save path persists as `actionSteps`
+// must drive the live Errors-tab card too, so a finding's structured reproduction
+// (route / container / target element / observed result) is byte-identical before
+// and after the session is saved. Guards the divergence where the live card fell
+// back to the narrative checklist while the saved card showed the WHERE-rich playbook.
+
+const REPRO_ACTIONS: ActionRecord[] = [
+  {
+    timestamp: '2026-08-16T00:00:00.000Z',
+    type: 'NAVIGATION',
+    selector: 'N/A',
+    url: 'http://app.test/checkout',
+  },
+  {
+    timestamp: '2026-08-16T00:00:01.000Z',
+    type: 'INPUT',
+    selector: '#coupon',
+    url: 'http://app.test/checkout',
+    elementLabel: 'Coupon Code',
+    elementKind: 'field',
+    payload: 'FREE100',
+    containerLabel: 'Payment',
+    containerKind: 'form',
+  },
+  {
+    timestamp: '2026-08-16T00:00:02.000Z',
+    type: 'SUBMIT',
+    selector: '#apply',
+    url: 'http://app.test/checkout',
+    elementLabel: 'Apply',
+    elementKind: 'button',
+    strippedAttributes: ['required'],
+    outcome: { httpStatus: 500, domChanged: true },
+  },
+];
+
+check('live incident and its saved bug produce IDENTICAL structured reproduction steps', () => {
+  const inc = {
+    timestamp: '2026-08-16T00:00:02.000Z',
+    reason: 'Server returned 500 after coupon apply',
+    url: 'http://app.test/checkout',
+    steps: [],
+    reproductionPlaybook: ['Step 1. Open Checkout', 'Step 2. Apply coupon'],
+    reproductionActions: REPRO_ACTIONS,
+  } as unknown as IncidentReport;
+
+  // Saved counterpart: the backend persists actionSteps via the SAME shared mapper.
+  const bug = {
+    bugId: 'bug-1',
+    type: 'EXCEPTION',
+    message: 'Server returned 500 after coupon apply',
+    selector: '#apply',
+    payloadUsed: '',
+    advice: '',
+    timestamp: '2026-08-16T00:00:02.000Z',
+    reproductionSteps: ['Step 1. Open Checkout', 'Step 2. Apply coupon'],
+    actionSteps: actionRecordsToSteps(REPRO_ACTIONS),
+  } as unknown as ForensicCaughtBug;
+
+  const live = incidentToFindingView(inc);
+  const saved = caughtBugToFindingView(bug);
+
+  assert.ok(live.actionSteps && live.actionSteps.length === 3, 'live view carries the structured trace');
+  assert.deepEqual(live.actionSteps, saved.actionSteps, 'live and saved actionSteps are byte-identical');
+});
+
+check('the structured reproduction preserves route, container, target element and observed result', () => {
+  const view = incidentToFindingView({
+    timestamp: '2026-08-16T00:00:02.000Z',
+    reason: 'Server returned 500 after coupon apply',
+    url: 'http://app.test/checkout',
+    steps: [],
+    reproductionActions: REPRO_ACTIONS,
+  } as unknown as IncidentReport);
+
+  const input = view.actionSteps?.[1];
+  assert.ok(input, 'the coupon input step is present');
+  assert.equal(input!.url, 'http://app.test/checkout', 'route/page URL preserved');
+  assert.equal(input!.containerLabel, 'Payment', 'container label preserved');
+  assert.equal(input!.containerKind, 'form', 'container kind preserved');
+  assert.equal(input!.label, 'Coupon Code', 'target element label preserved');
+
+  const submit = view.actionSteps?.[2];
+  assert.ok(submit, 'the submit step is present');
+  assert.equal(submit!.label, 'Apply', 'submit element label preserved');
+  assert.equal(submit!.outcome?.httpStatus, 500, 'observed result preserved');
+});
+
+check('a finding with no recorded trace yields empty actionSteps and keeps the narrative', () => {
+  const view = incidentToFindingView({
+    timestamp: '2026-08-16T00:00:02.000Z',
+    reason: 'Legacy fault',
+    url: 'http://app.test/x',
+    steps: [],
+    reproductionPlaybook: ['Step 1. Do the thing'],
+  } as unknown as IncidentReport);
+
+  assert.deepEqual(view.actionSteps, [], 'no trace ⇒ empty structured steps');
+  assert.deepEqual(view.reproductionSteps, ['Step 1. Do the thing'], 'narrative fallback intact');
 });
 
 console.log(`\n${passed} assertions passed.`);

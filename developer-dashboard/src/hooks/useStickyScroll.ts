@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const BOTTOM_THRESHOLD_PX = 32;
 
-export function useStickyScroll<T extends HTMLElement = HTMLDivElement>(contentSignal: number) {
+export function useStickyScroll<T extends HTMLElement = HTMLDivElement>(contentSignal: number | string) {
   const containerRef = useRef<T>(null);
   const atBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);

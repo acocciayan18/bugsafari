@@ -222,8 +222,19 @@ function ClinicalForensicsDashboard({
   // repeat of an already-collapsed fault still nudges the view.
   const occurrenceTotal = (faults: { occurrences?: number }[]): number =>
     faults.reduce((sum, f) => sum + (f.occurrences ?? 1), 0);
-  const terminalContentSignal =
-    formattedTelemetry.length + occurrenceTotal(errors.incidents) + occurrenceTotal(errors.reports) + accessibilityCount + networkEvents.length + browserConsole.length;
+  // Buffers are capped, so raw lengths freeze once full. Fingerprint each feed's
+  // newest row so a sliding-window append still moves the signal and re-pins scroll.
+  const terminalContentSignal = [
+    formattedTelemetry.length,
+    formattedTelemetry.at(-1)?.key ?? '',
+    occurrenceTotal(errors.incidents),
+    occurrenceTotal(errors.reports),
+    accessibilityCount,
+    networkEvents.length,
+    networkEvents.at(-1)?.timestamp ?? '',
+    browserConsole.length,
+    browserConsole.at(-1)?.timestamp ?? '',
+  ].join('|');
 
   // One aggregate WCAG banner per session — appears at the threshold, hidden once dismissed.
   const showAccessibilityBanner = accessibilityCount >= ACCESSIBILITY_BANNER_THRESHOLD && !accessibilityBannerDismissed;

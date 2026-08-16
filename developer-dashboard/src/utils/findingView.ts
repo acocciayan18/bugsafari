@@ -14,7 +14,7 @@ import type {
 } from '../types';
 import type { BugCategory, ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
 import { resolveCategory, resolveSeverity } from '../../../shared/types.js';
-import { isApiEndpointLabel, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
+import { actionRecordsToSteps, isApiEndpointLabel, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 import { splitObservations, toMarkdownChecklist } from './reproductionFormat';
 import { formatReportDateTime } from './datetime';
@@ -208,6 +208,9 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
     reproductionSteps: inc.reproductionPlaybook ?? [],
+    // Structured, WHERE-rich playbook from the SAME minimized trace the save path
+    // persists — so the live card renders the exact steps the saved report will.
+    actionSteps: actionRecordsToSteps(inc.reproductionActions ?? []),
     advice: inc.advice,
     attribution: inc.attribution,
     bypass: inc.bypass,
@@ -238,6 +241,8 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
     reproductionSteps: rep.reproductionPlaybook ?? [],
+    // Same structured trace the save path persists (see incidentToFindingView).
+    actionSteps: actionRecordsToSteps(rep.reproductionActions ?? []),
     advice: rep.advice,
     attribution: rep.attribution,
   };

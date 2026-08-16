@@ -98,6 +98,10 @@ const MAX_PAUSE_MS = readPositiveInt(process.env.BUGSAFARI_MAX_PAUSE_MS, 600_000
 // the slot frees. Trade-off: a genuinely-stuck run is abandoned (its browser may leak)
 // so a new test can start — chosen deliberately over a permanent lock.
 const STOP_TIMEOUT_MS = readPositiveInt(process.env.BUGSAFARI_STOP_TIMEOUT_MS, 20_000);
+// Cadence of the server-side timebox backstop. The engine self-stops at the exact
+// active-time limit; this poll only catches a run whose loop never unwound (a wedged
+// Playwright await) and turns it into a real stop so the slot always frees.
+const TIMEBOX_WATCHDOG_INTERVAL_MS = readPositiveInt(process.env.BUGSAFARI_TIMEBOX_WATCHDOG_INTERVAL_MS, 1_000);
 const TELEMETRY_BUFFER_CAP = 500;
 const REPORT_BUFFER_CAP = 100;
 const CONSOLE_BUFFER_CAP = 200;
@@ -153,6 +157,10 @@ interface ActiveRun {
   pauseDeadlineTimer: ReturnType<typeof setTimeout> | null;
   // Armed while STARTING; disarmed by beginRun. Expiry declares the run stillborn.
   reservationTimer: ReturnType<typeof setTimeout> | null;
+  // Polls active elapsed while RUNNING; dispatches a timebox stop if the engine's own
+  // clock-driven stop never lands (a genuinely-wedged step), so the slot always frees.
+  // Cleared in teardownRun.
+  timeboxWatchdogTimer: ReturnType<typeof setInterval> | null;
   // A stop issued while STARTING has no engine to reach — remembered so beginRun
   // honours it the moment the real engine attaches (no zombie run).
   pendingStop: boolean;
@@ -307,6 +315,7 @@ export class SessionManager implements TelemetryRecorder {
       reserved.ownerType = params.userId ? 'authenticated' : 'guest';
       reserved.status = 'RUNNING';
       if (HEALTH_MONITOR_ENABLED) reserved.health.start();
+      this.armTimeboxWatchdog(reserved);
       obsLog.info(`[SessionManager] Run ${params.runToken} started from reservation (${reserved.ownerType}, target=${params.targetUrl}).`);
       // Honour a stop the operator issued while the engine was still booting — from
       // the reservation's own placeholder (in-process path) or bridged in before the
@@ -329,6 +338,7 @@ export class SessionManager implements TelemetryRecorder {
     this.gateway?.setRoom(this.run.room);
     this.gateway?.setRecorder(this);
     if (HEALTH_MONITOR_ENABLED) this.run.health.start();
+    this.armTimeboxWatchdog(this.run);
     obsLog.info(`[SessionManager] Run ${params.runToken} started (${this.run.ownerType}, target=${params.targetUrl}, grace=${GRACE_MS}ms, healthMonitor=${HEALTH_MONITOR_ENABLED ? 'on' : 'off'})`);
     // Apply a stop bridged in before the engine attached (worker boot window).
     const bridged = this.consumePendingStop(params.runToken);
@@ -403,6 +413,7 @@ export class SessionManager implements TelemetryRecorder {
       graceTimer: null,
       stopWatchdogTimer: null,
       reservationTimer: null,
+      timeboxWatchdogTimer: null,
       pendingStop: false,
       pendingStopReason: 'operator',
       sessionId: null,
@@ -490,6 +501,10 @@ export class SessionManager implements TelemetryRecorder {
       clearTimeout(this.run.reservationTimer);
       this.run.reservationTimer = null;
     }
+    if (this.run.timeboxWatchdogTimer) {
+      clearInterval(this.run.timeboxWatchdogTimer);
+      this.run.timeboxWatchdogTimer = null;
+    }
     this.clearPauseDeadline(this.run);
     this.gateway?.setRoom(null);
     this.gateway?.setRecorder(null);
@@ -514,6 +529,27 @@ export class SessionManager implements TelemetryRecorder {
       void this.stopByOperator('pause-timeout');
     }, MAX_PAUSE_MS);
     run.pauseDeadlineTimer.unref();
+  }
+
+  // Server-side timebox backstop. The engine self-stops at the exact active-time limit,
+  // but a step wedged in a hung Playwright await can leave run() non-unwinding — the
+  // engine flag flips yet the loop never returns, so IDLE is never emitted and the slot
+  // never frees. This poll reads the engine's active clock; once it reaches the limit it
+  // dispatches a real timebox stop, which arms the existing force-release path. Reads
+  // active elapsed (not wall time), so it is inherently pause-aware. Cleared in teardown.
+  private armTimeboxWatchdog(run: ActiveRun): void {
+    if (run.timeboxWatchdogTimer) clearInterval(run.timeboxWatchdogTimer);
+    run.timeboxWatchdogTimer = setInterval(() => {
+      if (this.run !== run || run.status !== 'RUNNING') return;
+      const elapsed = run.engine.getElapsedActiveTimeMs?.() ?? 0;
+      if (elapsed < run.timeboxMs) return;
+      if (run.timeboxWatchdogTimer) {
+        clearInterval(run.timeboxWatchdogTimer);
+        run.timeboxWatchdogTimer = null;
+      }
+      void this.stopByOperator('timebox');
+    }, TIMEBOX_WATCHDOG_INTERVAL_MS);
+    run.timeboxWatchdogTimer.unref();
   }
 
   // ── TelemetryRecorder: buffer every outbound payload for reconnect replay ──

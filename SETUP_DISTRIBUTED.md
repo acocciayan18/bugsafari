@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m " enhance-playbook-location-context"
+git commit -m " Fix Live Telemetry auto-scroll behavior"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m "harden-bugsafari-infinite-scroll"
+git commit -m "Fix Live Telemetry auto-scroll behavior"
 git checkout -b 8-16-Ayan-1
 git push --set-upstream origin 8-16-Ayan-1
 

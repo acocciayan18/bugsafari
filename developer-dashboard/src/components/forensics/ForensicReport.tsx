@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Info, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -153,23 +153,8 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       <span>{formatReportDateTime(report.date)}</span>
     </span>
 
-    {/* Optional Termination Reason */}
-    {report.endedReason && (
-      <>
-        {/* Vertical Hairline Divider */}
-        <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
-
-       <span className="inline-flex items-center gap-1.5 text-(--text-tertiary)">
-  <Info className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-  <span
-    className="truncate max-w-[250px]"
-    title={report.endedReason}
-  >
-    {report.endedReason}
-  </span>
-</span>
-      </>
-    )}
+    
+    
   </div>
         </div>
         <div className="shrink-0">

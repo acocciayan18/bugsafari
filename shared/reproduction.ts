@@ -790,3 +790,79 @@ export function narrateActionRecords(records: ActionRecord[]): string[] {
 
   return lines.map((line, index) => `Step ${index + 1}. ${line}`);
 }
+
+// ─────────────────────────────────────────────────────────────
+// ActionRecord → structured replay step — the SINGLE mapping both the
+// save path (testing-core buildActionSteps) and the live Errors tab
+// (developer-dashboard findingView) run, so a finding's structured
+// reproduction is byte-identical before and after it is persisted.
+// ─────────────────────────────────────────────────────────────
+
+export type ReproductionStepActionType = 'click' | 'input' | 'navigation' | 'bypass' | 'macro';
+
+// Structural step shape — the common subset of the DB `ActionStepTrace` and the
+// dashboard `ForensicActionStep`; each side casts the result to its own mirror.
+export interface ReproductionActionStep {
+  stepNumber: number;
+  timestamp: string;
+  actionType: ReproductionStepActionType;
+  selector: string;
+  label?: string;
+  elementKind?: string;
+  payloadText?: string;
+  resultingStateHash: string;
+  durationMs?: number;
+  repeatCount?: number;
+  strippedAttributes?: string[];
+  affectedCount?: number;
+  redactValue?: boolean;
+  url?: string;
+  containerLabel?: string;
+  containerKind?: string;
+  outcome?: ActionOutcome;
+  macro?: ReplayMacro;
+}
+
+export function mapReproductionActionType(type: ActionType): ReproductionStepActionType {
+  switch (type) {
+    case 'CLICK':      return 'click';
+    case 'INPUT':      return 'input';
+    case 'TYPE':       return 'input';
+    case 'NAVIGATION': return 'navigation';
+    case 'NAVIGATE':   return 'navigation';
+    case 'SUBMIT':     return 'bypass';
+    case 'NETWORK':    return 'bypass';
+    case 'HOVER':      return 'click';
+    case 'MACRO':      return 'macro';
+    default: {
+      const _exhaustive: never = type;
+      void _exhaustive;
+      return 'click';
+    }
+  }
+}
+
+// Map a minimized action trace to structured replay steps. Human descriptors travel
+// WITH the step so every surface reads the same named controls, never a bare selector.
+export function actionRecordsToSteps(records: readonly ActionRecord[]): ReproductionActionStep[] {
+  return records.map((record, index) => ({
+    stepNumber:         index + 1,
+    timestamp:          record.timestamp,
+    actionType:         mapReproductionActionType(record.type),
+    selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
+    label:              record.elementLabel || record.fallbackLabel,
+    elementKind:        record.elementKind,
+    payloadText:        record.payload,
+    resultingStateHash: '',
+    durationMs:         record.durationMs,
+    repeatCount:        record.repeatCount,
+    strippedAttributes: record.strippedAttributes,
+    affectedCount:      record.affectedCount,
+    redactValue:        record.redactValue,
+    url:                record.url,
+    containerLabel:     record.containerLabel,
+    containerKind:      record.containerKind,
+    outcome:            record.outcome,
+    macro:              record.macro,
+  }));
+}
