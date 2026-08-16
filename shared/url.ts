@@ -9,7 +9,7 @@ export const PUBLIC_TARGET_REQUIRED_MESSAGE =
 
 // Operator-facing reason for a rejected self-target, reused by the dashboard and API.
 export const SELF_TARGET_FORBIDDEN_MESSAGE =
-  'This website cannot be tested. The URL you entered points to a BugSafari instance. To avoid recursive testing, BugSafari only accepts publicly accessible websites that are not running BugSafari.';
+  'This website cannot be tested because it is a BugSafari instance. To prevent recursive testing, BugSafari only accepts publicly accessible websites that are not running BugSafari.';
 
 // Hosts BugSafari must never test: itself. Centralized default (bare hostnames, no
 // scheme/port); the backend extends this from BUGSAFARI_PROTECTED_ORIGINS and the

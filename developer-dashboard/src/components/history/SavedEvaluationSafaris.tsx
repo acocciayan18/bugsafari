@@ -32,11 +32,52 @@ const profileLabel = (id?: InfiltrationProfileId): string =>
   INFILTRATION_PROFILE_CATALOG.find((option) => option.id === id)?.label ?? '';
 
 // History buckets shown as filter chips, in operator order.
-const STATE_TABS: { id: SessionHistoryState; label: string }[] = [
-  { id: 'active', label: 'ACTIVE' },
-  { id: 'archived', label: 'ARCHIVED' },
-  { id: 'trashed', label: 'TRASH' },
+const STATE_TABS: { value: SessionHistoryState; label: string }[] = [
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'trashed', label: 'Trash' },
 ];
+
+// Severity buckets, in descending urgency.
+const SEVERITY_TABS: { value: SeverityFilter; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'CRITICAL', label: 'Critical' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'CLEAR', label: 'Clear' },
+];
+
+// Compact segmented control — one-click filter switch aligned to the 32px toolbar row.
+function SegmentedControl<T extends string>({ options, value, onChange, ariaLabel, dataTour }: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  ariaLabel: string;
+  dataTour?: string;
+}) {
+  return (
+    <div
+      data-tour={dataTour}
+      role="group"
+      aria-label={ariaLabel}
+      className="scroll-rail inline-flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] p-0.5"
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          className={`shrink-0 cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors ${value === opt.value
+            ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
+            : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+            }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const UNDO_TOAST_ID = 'bugsafari-history-undo';
 
@@ -240,7 +281,7 @@ export default function SavedEvaluationSafaris() {
           {/* Title + controls stack into rows until there's width for a single line. */}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 xl:gap-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
               <div data-tour="history-search" className="relative min-w-0 sm:w-56 xl:w-72">
                 <div
                   className="
@@ -297,36 +338,22 @@ export default function SavedEvaluationSafaris() {
                     : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               </div>
-              {/* Lifecycle bucket tabs — Active / Archived / Trash. */}
-              <div data-tour="history-buckets" className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
-                {STATE_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setStateFilter(tab.id)}
-                    aria-pressed={stateFilter === tab.id}
-                    className={`shrink-0 cursor-pointer rounded px-3 py-1.5 text-[13px] font-medium transition-colors ${stateFilter === tab.id
-                      ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-                      : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
-                      }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div data-tour="history-filters" className="scroll-rail flex items-center gap-1 rounded-md bg-[var(--surface-app)] p-1">
-                {(['ALL', 'CRITICAL', 'HIGH', 'CLEAR'] as SeverityFilter[]).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setActiveFilter(filter)}
-                    aria-pressed={activeFilter === filter}
-                    className={`shrink-0 cursor-pointer rounded px-3 py-1.5 text-[13px] font-medium transition-colors ${activeFilter === filter
-                      ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-                      : 'bg-[var(--surface-raised)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
-                      }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
+              {/* Lifecycle + severity filters — compact segmented controls, grouped so they stay paired on wrap. */}
+              <div className="flex items-center gap-2">
+                <SegmentedControl
+                  dataTour="history-buckets"
+                  ariaLabel="Filter by lifecycle state"
+                  options={STATE_TABS}
+                  value={stateFilter}
+                  onChange={setStateFilter}
+                />
+                <SegmentedControl
+                  dataTour="history-filters"
+                  ariaLabel="Filter by severity"
+                  options={SEVERITY_TABS}
+                  value={activeFilter}
+                  onChange={setActiveFilter}
+                />
               </div>
             </div>
           </div>
