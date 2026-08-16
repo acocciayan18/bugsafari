@@ -1,4 +1,4 @@
-import { Accessibility, X, XCircle } from "lucide-react";
+import { Accessibility, XCircle } from "lucide-react";
 
 interface AccessibilityWarningBannerProps {
   count: number;

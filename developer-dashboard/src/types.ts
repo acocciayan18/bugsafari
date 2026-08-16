@@ -93,7 +93,7 @@ export {
 } from '../../shared/types.js';
 
 // Local binding (the re-export above does not bring the name into local scope).
-import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, InfiltrationProfileId, ReplayMacro, RunTerminationOutcome, SessionHistoryState } from '../../shared/types.js';
+import type { ActionOutcome, ConstraintBypassDetail, FindingAttribution, InfiltrationProfileId, PersistedVerification, ReplayMacro, RunTerminationOutcome, SessionHistoryState } from '../../shared/types.js';
 
 // Browser console contract lives once in shared/types/console.ts — re-exported here
 // so frontend consumers keep importing it from the local barrel without shadowing it.

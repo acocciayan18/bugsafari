@@ -11,9 +11,11 @@ import {
   describeOutcome,
   describeReplayMacro,
   describeRouteStep,
-  describeStepLocation,
   describeTarget,
+  isApiEndpoint,
   maskPayload,
+  routePath,
+  stepContainerField,
   type StepKind,
 } from '../../../shared/reproduction.js';
 import type { ForensicActionStep } from '../types';
@@ -75,25 +77,41 @@ function kindFor(actionType: string): StepKind {
   }
 }
 
+// The WHERE of a step, broken into labeled parts for the playbook's context line:
+// page route, container/form, and target element. Navigation steps read the route in
+// their own instruction, so route + element are left blank to avoid restating them.
+export interface StepWhere {
+  route: string;
+  container: string;
+  element: string;
+}
+
+// describeTarget prefixes "the "; the labeled Element field reads better without it.
+const stripLeadingThe = (phrase: string): string => phrase.replace(/^the\s+/i, '');
+
 // Imperative instruction from a structured step, phrased by the shared narrator so
 // it matches the backend's live/history playbook voice: what was acted on, what was
 // done, and what followed. The payload value is shown in a separate chip (see
-// payloadDisplay), so the input instruction omits it.
+// payloadDisplay), so the input instruction omits it. `where` carries the step's
+// location as labeled parts (route / container-form / element) for the context line.
 export function humanizeActionStep(
   step: ForensicActionStep,
-): { kind: StepKind; instruction: string; payloadDisplay: string; location: string } {
+): { kind: StepKind; instruction: string; payloadDisplay: string; where: StepWhere } {
   const kind = kindFor(step.actionType);
   const observed = describeOutcome(step.outcome);
-  // Navigation steps already read the route; the location subline would be redundant.
-  const location = kind === 'navigation'
-    ? ''
-    : describeStepLocation({ url: step.url, containerLabel: step.containerLabel, containerKind: step.containerKind });
-  if (kind === 'macro') {
-    const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
-    return { kind, instruction: `${action}${observed}`, payloadDisplay: '', location };
-  }
   const label = stepLabel(step);
   const noun = stepNoun(step, kind);
+  // Navigation steps read the route in their own instruction, so route + element are
+  // left blank to avoid restating them in the context line.
+  const where: StepWhere = {
+    route: kind === 'navigation' || isApiEndpoint(step.url) ? '' : routePath(step.url),
+    container: stepContainerField(step.containerLabel, step.containerKind),
+    element: kind === 'navigation' || kind === 'macro' ? '' : stripLeadingThe(describeTarget(label, noun)),
+  };
+  if (kind === 'macro') {
+    const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
+    return { kind, instruction: `${action}${observed}`, payloadDisplay: '', where };
+  }
   const action =
     kind === 'navigation' ? (step.url ? describeRouteStep(step.url) : `Open ${describeTarget(label, noun)}`)
     : kind === 'input' ? describeInputInjection(label, undefined, step.redactValue, noun)
@@ -101,7 +119,7 @@ export function humanizeActionStep(
     : `Click ${describeTarget(label, noun)}`;
   const repeats = step.repeatCount ?? 1;
   const repeated = repeats > 1 ? `${action}, repeated ${repeats} times in quick succession` : action;
-  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue), location };
+  return { kind, instruction: `${repeated}${observed}`, payloadDisplay: maskPayload(step.payloadText, step.redactValue), where };
 }
 
 // Guess a chip kind for a pre-rendered narrative line (string fallback path).
@@ -139,17 +157,28 @@ export function toMarkdownChecklist(steps: string[], observations: string[]): st
   return lines.join('\n');
 }
 
-// Markdown checklist directly from a structured action-step trace. The WHERE subline
-// is emitted only when it changes, so same-page steps don't repeat the location.
+// Labeled WHERE segments for a step's context line — `Route /x`, `Form "Y"` (the
+// container self-labels its kind), `Element "Z" button`. Empty parts are dropped.
+export function whereSegments(where: StepWhere): string[] {
+  const segments: string[] = [];
+  if (where.route) segments.push(`Route ${where.route}`);
+  if (where.container) segments.push(where.container);
+  if (where.element) segments.push(`Element ${where.element}`);
+  return segments;
+}
+
+// Markdown checklist directly from a structured action-step trace. The labeled WHERE
+// line is emitted only when it changes, so same-page steps don't repeat the location.
 export function actionStepsToMarkdown(steps: ForensicActionStep[]): string {
-  let lastLocation = '';
+  let lastWhere = '';
   return steps
     .map((step) => {
-      const { instruction, payloadDisplay, location } = humanizeActionStep(step);
+      const { instruction, payloadDisplay, where } = humanizeActionStep(step);
       const payload = payloadDisplay ? ` \`${payloadDisplay}\`` : '';
-      const where = location && location !== lastLocation ? `\n  ↳ ${location}` : '';
-      if (location) lastLocation = location;
-      return `- [ ] ${instruction}${payload}${where}`;
+      const line = whereSegments(where).join(' · ');
+      const suffix = line && line !== lastWhere ? `\n  ↳ ${line}` : '';
+      if (line) lastWhere = line;
+      return `- [ ] ${instruction}${payload}${suffix}`;
     })
     .join('\n');
 }

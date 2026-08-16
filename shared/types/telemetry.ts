@@ -98,6 +98,8 @@ export interface TelemetryMeta {
   rawNetwork?: boolean;
   /** True for a 2xx/3xx response; false for a 4xx/5xx or a transport failure. */
   ok?: boolean;
+  /** Playwright request resourceType (xhr/fetch/document/image…) — backstops asset detection in routing. */
+  resourceType?: string;
   /** Browser/network error text for a transport failure (e.g. net::ERR_TIMED_OUT). */
   errorText?: string;
   /** Correlation/trace id parsed from request or response headers, when the app sends one. */

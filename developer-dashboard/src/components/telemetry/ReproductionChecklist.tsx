@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import {
   chipClass,
   chipLabel,
   classifyNarrativeLine,
   splitObservations,
-  toMarkdownChecklist,
 } from '../../utils/reproductionFormat';
 
 /**
@@ -17,26 +15,12 @@ import {
  * OBSERVATION_PREFIX and are split into their own block.
  */
 export default function ReproductionChecklist({ steps }: { steps: string[] }) {
-  const [copied, setCopied] = useState(false);
   const { steps: actions, observations } = splitObservations(steps);
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(toMarkdownChecklist(actions, observations));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('[ReproductionChecklist] Failed to copy steps:', err);
-    }
-  };
 
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <div className="min-w-0 text-xs font-bold uppercase text-(--text-secondary)">
-           Reproduction Playbook
-        </div>
-        
+      <div className="mb-2 text-xs font-bold uppercase text-(--text-secondary)">
+        Reproduction Playbook
       </div>
       {actions.length > 0 ? (
         <ol className="space-y-1.5">

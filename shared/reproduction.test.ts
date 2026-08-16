@@ -24,6 +24,7 @@ import {
   isApiEndpoint,
   isApiEndpointLabel,
   describeStepLocation,
+  stepContainerField,
   endpointLabel,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
@@ -333,6 +334,17 @@ check('describeStepLocation skips API endpoints and unnamed in-flow containers',
   assert.equal(describeStepLocation({ url: '', containerKind: 'section' }), '');
   assert.equal(describeStepLocation({}), '');
   assert.equal(describeStepLocation({ containerKind: 'modal' }), 'in the modal');
+});
+
+check('stepContainerField labels the container by kind, dropping vague ones', () => {
+  assert.equal(stepContainerField('Create account', 'form'), 'Form "Create account"');
+  assert.equal(stepContainerField('Create User', 'modal'), 'Modal "Create User"');
+  // Unnamed overlay keeps its kind; unnamed in-flow container is dropped as noise.
+  assert.equal(stepContainerField('', 'modal'), 'Modal');
+  assert.equal(stepContainerField('', 'section'), '');
+  // A selector-like label is never surfaced as a name.
+  assert.equal(stepContainerField('div.card:nth-of-type(2)', 'panel'), '');
+  assert.equal(stepContainerField(undefined, undefined), '');
 });
 
 check('endpointLabel strips the tunnel/proxy/localhost host to METHOD /path', () => {

@@ -619,6 +619,22 @@ function locativeContainer(label?: string, kind?: string): string {
 }
 
 /**
+ * Container as a labeled context field — `Form "Create account"`, `Modal "Create User"`,
+ * or a bare `Modal` for an unnamed overlay. Returns '' for an unnamed in-flow container
+ * (a bare section/nav with no accessible name is noise, not location — same rule as
+ * locativeContainer). Feeds the playbook's per-step "Container/Form" field.
+ */
+export function stepContainerField(label?: string, kind?: string): string {
+  const k = collapse(kind);
+  if (!k) return '';
+  const name = collapse(label);
+  const named = Boolean(name) && !isSelectorLike(name);
+  if (!named && !OVERLAY_CONTAINER_RE.test(k)) return '';
+  const title = k.charAt(0).toUpperCase() + k.slice(1);
+  return named ? `${title} "${truncate(name, MAX_LABEL_LENGTH)}"` : title;
+}
+
+/**
  * Compact WHERE phrase for a single step — the page route and the UI container the
  * action ran in ("on /settings/users · in the "Create User" modal"). Uses only
  * captured state (document url + nearest container); returns '' when neither is known.

@@ -10,22 +10,47 @@ import { useState, type ReactNode } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
-import { chipClass, chipLabel, humanizeActionStep } from '../../utils/reproductionFormat';
+import { chipClass, chipLabel, humanizeActionStep, whereSegments } from '../../utils/reproductionFormat';
 import ReproductionChecklist from '../telemetry/ReproductionChecklist';
 import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 
+// Per-step WHERE context — labeled segments (Route / container kind / Element) so a
+// developer knows exactly where to act. The first token of each segment is its label
+// (Route, Form, Modal, Element…); the remainder is the value.
+function StepContext({ segments }: { segments: string[] }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words">
+      {segments.map((seg, i) => {
+        const sp = seg.indexOf(' ');
+        const label = sp === -1 ? seg : seg.slice(0, sp);
+        const value = sp === -1 ? '' : seg.slice(sp + 1);
+        return (
+          <span key={`${i}-${seg}`} className="inline-flex items-baseline gap-x-1">
+            {i > 0 && <span className="text-(--text-tertiary)">·</span>}
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</span>
+            {value && <span className="text-xs text-(--text-secondary)">{value}</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 // Ordered structured trace — one chip row per step (action-type chip + imperative
-// instruction + payload code chip). The single source for structured reproduction,
-// used by both the per-finding evidence and the saved report's appendix.
-export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
-  let lastLocation = '';
+// instruction + labeled WHERE context + payload code chip). The single source for
+// structured reproduction, used by both the per-finding playbook and the saved
+// report's appendix. `perStepContext` shows the WHERE on every step (the playbook);
+// left off, it shows only on change so a long run-timeline stays compact.
+export function ActionStepList({ steps, perStepContext = false }: { steps: ForensicActionStep[]; perStepContext?: boolean }) {
+  let lastWhere = '';
   return (
     <ol className="custom-scrollbar max-h-80 sm:max-h-96 space-y-1.5 overflow-y-auto overscroll-auto scroll-smooth">
       {steps.map((step) => {
-        const { kind, instruction, payloadDisplay, location } = humanizeActionStep(step);
-        // Show the WHERE subline only when it changes, so same-page steps don't repeat it.
-        const where = location && location !== lastLocation ? location : '';
-        if (location) lastLocation = location;
+        const { kind, instruction, payloadDisplay, where } = humanizeActionStep(step);
+        const segments = whereSegments(where);
+        const line = segments.join(' · ');
+        const showWhere = line !== '' && (perStepContext || line !== lastWhere);
+        if (line) lastWhere = line;
         return (
           <li
             key={step.stepNumber}
@@ -37,7 +62,7 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
             </span>
             <div className="w-full min-w-0 sm:w-auto sm:flex-1">
               <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
-              {where && <div className="mt-0.5 text-xs text-(--text-secondary) break-words">{where}</div>}
+              {showWhere && <StepContext segments={segments} />}
               {payloadDisplay && (
                 <code title={payloadDisplay} className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
                   {payloadDisplay}
@@ -48,6 +73,19 @@ export function ActionStepList({ steps }: { steps: ForensicActionStep[] }) {
         );
       })}
     </ol>
+  );
+}
+
+// Structured reproduction playbook — the per-finding surface. Renders the WHERE-rich
+// action trace (route + container/form + target element per step) inside the same
+// chrome as the string-narrative ReproductionChecklist, so a saved finding tells the
+// developer exactly where to perform each step.
+function StructuredReproductionPlaybook({ steps }: { steps: ForensicActionStep[] }) {
+  return (
+    <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
+      <div className="mb-2 text-xs font-bold uppercase text-(--text-secondary)">Reproduction Playbook</div>
+      <ActionStepList steps={steps} perStepContext />
+    </div>
   );
 }
 
@@ -92,12 +130,15 @@ function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> 
   );
 }
 
-// Reproduction: the narrative playbook, rendered identically on the live Errors tab and
-// the saved report. It is byte-identical across both surfaces (reproductionPlaybook ≡
-// reproductionSteps) and already weaves route/section/action/observed result, so both
-// read one voice with matching step counts and no timing noise. The structured trace
-// still lives in the DB and the report's "Full Action Timeline" appendix.
+// Reproduction: the per-finding playbook. Saved findings carry the structured trace
+// (view.actionSteps), so they render the WHERE-rich playbook — route + container/form +
+// target element inline per step. Live faults have only the narrative strings, which
+// already weave route/section into prose, so they fall back to the checklist. Both read
+// the same shared step voice; the report's appendix still shows the full run timeline.
 function Reproduction({ view }: { view: FindingView }) {
+  if (view.actionSteps && view.actionSteps.length > 0) {
+    return <StructuredReproductionPlaybook steps={view.actionSteps} />;
+  }
   if (view.reproductionSteps.length > 0) {
     return <ReproductionChecklist steps={view.reproductionSteps} />;
   }

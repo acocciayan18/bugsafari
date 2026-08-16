@@ -53,7 +53,7 @@ export default function LongOperationProgressCard() {
   const [visibleOp, setVisibleOp] = useState<LongOp | null>(null);
   const [reason, setReason] = useState('');
   const [dismissed, setDismissed] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (!op) {
