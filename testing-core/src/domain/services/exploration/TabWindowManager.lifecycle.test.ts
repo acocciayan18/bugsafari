@@ -195,6 +195,31 @@ function makeHarness(options: {
   });
 }
 
+// Concurrency cap: primary + 2 monitored tabs is the ceiling; a 3rd approved popup is closed.
+{
+  const h = makeHarness();
+  const primary = new FakePage('https://app.example.com/');
+  await h.manager.adoptPrimary(asPage(primary));
+  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  const first = new FakePage('https://app.example.com/a');
+  const second = new FakePage('https://app.example.com/b');
+  const third = new FakePage('https://app.example.com/c');
+  h.context.emit('page', first); await settle();
+  h.context.emit('page', second); await settle();
+  h.actions.length = 0;
+  h.context.emit('page', third); await settle();
+
+  check('two same-origin tabs are monitored alongside the primary', () => {
+    assert.equal(first.closed, false);
+    assert.equal(second.closed, false);
+  });
+  check('a third concurrent tab is closed at the cap', () => {
+    assert.equal(third.closed, true);
+    assert.deepEqual(h.actions, ['concurrent-tab-limit']);
+  });
+}
+
 // C2: the engine's terminate-on-timebox helper is a one-shot latch. A sub-session must
 // use the side-effect-free predicate, or the outer loop would never time out.
 {

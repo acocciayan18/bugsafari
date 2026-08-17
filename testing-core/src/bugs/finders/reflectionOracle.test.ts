@@ -2,7 +2,7 @@
 // Run: `npx tsx src/bugs/finders/reflectionOracle.test.ts` — exits non-zero on failure.
 
 import assert from 'node:assert/strict';
-import { classifyReflection, buildXssProbe, makeNonce } from './reflectionOracle.js';
+import { classifyReflection, classifyReflectionDetailed, buildXssProbe, makeNonce } from './reflectionOracle.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -61,6 +61,32 @@ check('normalized escaped output still ⇒ SANITIZED (no false positive)', () =>
   const payload = '<img src=x onerror=alert(1)>';
   const rawHtml = '<div>echo: &lt;img src=x onerror=alert(1)&gt;</div>';
   assert.equal(classifyReflection({ rawHtml, payload, executed: false }), 'SANITIZED');
+});
+
+check('detailed: executed payload ⇒ executed:true (payload actually ran)', () => {
+  const r = classifyReflectionDetailed({ rawHtml: '', payload: '<img src=x onerror=alert(1)>', executed: true });
+  assert.equal(r.verdict, 'CONFIRMED');
+  assert.equal(r.executed, true);
+});
+
+check('detailed: raw unescaped reflection ⇒ CONFIRMED but executed:false (can run, did not run)', () => {
+  // The exact overclaim guard: <embed src=javascript:> reflects unescaped but the
+  // browser never auto-runs it, so the finding must say "can run", not "ran".
+  const payload = '<embed src="javascript:alert(1)">';
+  const rawHtml = `<div>${payload}</div>`;
+  const r = classifyReflectionDetailed({ rawHtml, payload, executed: false });
+  assert.equal(r.verdict, 'CONFIRMED');
+  assert.equal(r.executed, false);
+});
+
+check('detailed: SANITIZED / ABSENT ⇒ executed:false', () => {
+  assert.equal(classifyReflectionDetailed({ rawHtml: '<div>&lt;script&gt;</div>', payload: '<script>x</script>', executed: false }).executed, false);
+  assert.equal(classifyReflectionDetailed({ rawHtml: '<div>clean</div>', payload: '<script>x</script>', executed: false }).executed, false);
+});
+
+check('classifyReflection verdict-only wrapper matches detailed.verdict', () => {
+  const params = { rawHtml: '<div><script>x</script></div>', payload: '<script>x</script>', executed: false };
+  assert.equal(classifyReflection(params), classifyReflectionDetailed(params).verdict);
 });
 
 check('probe embeds the nonce and makeNonce is unique-ish', () => {

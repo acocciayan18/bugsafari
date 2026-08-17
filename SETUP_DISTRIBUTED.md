@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Remove Session from Target Auth settings and redesign"
+git commit -m "Implement multi-tab handling in BugSafari"
 git push origin HEAD:dev --force
 
 

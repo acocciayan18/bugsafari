@@ -17,6 +17,9 @@ const SECONDARY_STEP_BUDGET = 8;
 const SECONDARY_WALL_MS = 45_000;
 // Total sub-sessions per run, so a popup-spamming target cannot consume the whole budget.
 const SECONDARY_SESSIONS_PER_RUN = 5;
+// Primary plus at most two live secondary tabs. Caps concurrently-open tabs so a target
+// that spams same-origin popups cannot accumulate monitored pages without bound.
+const MAX_CONCURRENT_TABS = 3;
 // How long to wait for an app-opened tab after clicking the control that should open it.
 const POPUP_WAIT_MS = 5_000;
 // window.open popups start at about:blank; wait this long for the real destination before classifying.
@@ -211,6 +214,15 @@ export class TabWindowManager {
     this.primaryPage = null;
   }
 
+  /** Live non-primary tabs currently wired; the primary never counts toward the cap. */
+  private secondaryTabCount(): number {
+    let n = 0;
+    for (const page of this.disposers.keys()) {
+      if (page !== this.primaryPage && !page.isClosed()) n += 1;
+    }
+    return n;
+  }
+
   // ── New-tab intake ──────────────────────────────────────────────────────────
 
   private async handleNewTab(tab: Page): Promise<void> {
@@ -229,6 +241,19 @@ export class TabWindowManager {
         actionExecuted: 'external-tab-blocked',
         url,
         message: `Blocked an external tab opened by the target (${url || 'about:blank'}) — closed before load.`,
+      });
+      await this.closeTab(tab);
+      waiter?.(null);
+      return;
+    }
+
+    // Cap concurrent tabs (primary + secondaries). Fail closed: an extra approved tab is
+    // closed rather than monitored, covering both provoked and unsolicited popups.
+    if (this.secondaryTabCount() >= MAX_CONCURRENT_TABS - 1) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'concurrent-tab-limit',
+        url,
+        message: `At the ${MAX_CONCURRENT_TABS}-tab concurrency cap; closed an extra app-opened tab (${url || 'about:blank'}).`,
       });
       await this.closeTab(tab);
       waiter?.(null);

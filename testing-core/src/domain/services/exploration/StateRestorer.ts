@@ -246,9 +246,11 @@ export class StateRestorer {
     // Sanitize the deep-link target: page.goto('about:blank') SUCCEEDS silently,
     // so a missing / non-http(s) / off-origin target would "restore" straight to
     // a blank page. Fall back to the app origin for any such target.
+    // Fall back to the auth-aware re-entry URL (authenticated landing, not the bare
+    // origin login page) so a non-restorable target never boots the session.
     const safeTargetUrl = this.isRestorableUrl(targetUrl)
       ? targetUrl
-      : this.deps.getTargetOrigin();
+      : this.deps.getReentryUrl();
 
     // Strategy A — history navigation (preserves in-memory client state).
     // Uses waitUntil:'commit' (the most permissive load state) and verifies by
@@ -307,7 +309,7 @@ export class StateRestorer {
 
     // Strategy C — hard root reload (last resort).
     try {
-      const rootUrl = this.deps.getTargetOrigin() ?? targetUrl;
+      const rootUrl = this.deps.getReentryUrl() || this.deps.getTargetOrigin() || targetUrl;
       await page.goto(rootUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await this.reseedClientStorage(page, clientState);
       obsLog.info('[StateRestorer] restore strategy C (root reload) succeeded');

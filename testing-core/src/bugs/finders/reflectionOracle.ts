@@ -16,6 +16,15 @@ export type ReflectionVerdict =
   | 'SANITIZED' // present only HTML-encoded → app defended correctly, no finding
   | 'ABSENT'; //   not reflected at all → no finding
 
+// CONFIRMED conflates two facts the finding wording must distinguish: the payload
+// actually EXECUTED (exec witness) vs it was reflected unescaped and only CAN run.
+// `executed` carries that split so a non-executing raw reflection (e.g. an <embed
+// src=javascript:> the browser never runs) is not mislabelled as "script ran".
+export interface ReflectionResult {
+  verdict: ReflectionVerdict;
+  executed: boolean;
+}
+
 /** Page-global bag of nonces whose injected payload actually executed. */
 const ORACLE_FLAG = '__bgsf_xss_fired';
 /** Page-global boolean: an injected XSS vector fired a script sink (alert/confirm/prompt). */
@@ -106,26 +115,37 @@ function htmlEncode(value: string): string {
  * Pure decision core (unit-testable without a browser). Given the serialized page
  * HTML, the injected payload, and whether execution was observed, decide the verdict.
  */
+export function classifyReflectionDetailed(params: {
+  rawHtml: string;
+  payload: string;
+  executed: boolean;
+}): ReflectionResult {
+  const { rawHtml, payload, executed } = params;
+  if (executed) return { verdict: 'CONFIRMED', executed: true }; // strongest proof: the payload ran
+  if (!payload) return { verdict: 'ABSENT', executed: false };
+  // Reflected raw/unescaped AND actually dangerous → the markup is live in the DOM.
+  // The markup guard prevents a harmless plain-text reflection reading as a leak.
+  // Exact match first; then a normalization-tolerant match so a payload the browser
+  // round-tripped (quotes added, whitespace/void-tags normalized) is still caught.
+  // CONFIRMED but executed:false — it CAN run, it did not necessarily run.
+  if (hasDangerousMarkup(payload)) {
+    if (rawHtml.includes(payload)) return { verdict: 'CONFIRMED', executed: false };
+    if (normalizeMarkup(rawHtml).includes(normalizeMarkup(payload))) return { verdict: 'CONFIRMED', executed: false };
+  }
+  // Present only as HTML entities → the sink escaped it correctly.
+  const encoded = htmlEncode(payload);
+  if (encoded !== payload && rawHtml.includes(encoded)) return { verdict: 'SANITIZED', executed: false };
+  return { verdict: 'ABSENT', executed: false };
+}
+
+// Verdict-only wrapper — preserves the original signature for callers that only
+// branch on CONFIRMED/SANITIZED/ABSENT.
 export function classifyReflection(params: {
   rawHtml: string;
   payload: string;
   executed: boolean;
 }): ReflectionVerdict {
-  const { rawHtml, payload, executed } = params;
-  if (executed) return 'CONFIRMED'; // strongest proof: the payload ran
-  if (!payload) return 'ABSENT';
-  // Reflected raw/unescaped AND actually dangerous → the markup is live in the DOM.
-  // The markup guard prevents a harmless plain-text reflection reading as a leak.
-  // Exact match first; then a normalization-tolerant match so a payload the browser
-  // round-tripped (quotes added, whitespace/void-tags normalized) is still caught.
-  if (hasDangerousMarkup(payload)) {
-    if (rawHtml.includes(payload)) return 'CONFIRMED';
-    if (normalizeMarkup(rawHtml).includes(normalizeMarkup(payload))) return 'CONFIRMED';
-  }
-  // Present only as HTML entities → the sink escaped it correctly.
-  const encoded = htmlEncode(payload);
-  if (encoded !== payload && rawHtml.includes(encoded)) return 'SANITIZED';
-  return 'ABSENT';
+  return classifyReflectionDetailed(params).verdict;
 }
 
 /**
@@ -133,11 +153,11 @@ export function classifyReflection(params: {
  * (when a nonce probe was used) with a raw-reflection check of the serialized DOM.
  * Never throws — a mid-navigation failure degrades to ABSENT (conservative).
  */
-export async function confirmPayloadReflection(
+export async function confirmPayloadReflectionDetailed(
   page: Page,
   payload: string,
   nonce?: string,
-): Promise<ReflectionVerdict> {
+): Promise<ReflectionResult> {
   let rawHtml = '';
   try {
     rawHtml = await page.content();
@@ -160,5 +180,14 @@ export async function confirmPayloadReflection(
     /* evaluate can fail on a closing page */
   }
 
-  return classifyReflection({ rawHtml, payload, executed });
+  return classifyReflectionDetailed({ rawHtml, payload, executed });
+}
+
+// Verdict-only wrapper — preserves the original async signature.
+export async function confirmPayloadReflection(
+  page: Page,
+  payload: string,
+  nonce?: string,
+): Promise<ReflectionVerdict> {
+  return (await confirmPayloadReflectionDetailed(page, payload, nonce)).verdict;
 }

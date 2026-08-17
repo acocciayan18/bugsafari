@@ -72,6 +72,14 @@ function collapseRepeats(records: ActionRecord[]): ActionRecord[] {
   return collapsed;
 }
 
+/** Page of the last record acted on the culprit control, or '' when it never appears. */
+function culpritPageKey(records: ActionRecord[], culpritSelector: string): string {
+  for (let i = records.length - 1; i >= 0; i -= 1) {
+    if (records[i].selector === culpritSelector) return pageKey(records[i].url);
+  }
+  return '';
+}
+
 /** Index of the first record of the final contiguous run on the faulting page, or -1. */
 function findFaultPageEntry(records: ActionRecord[], faultKey: string): number {
   if (!faultKey) return -1;
@@ -97,11 +105,17 @@ function syntheticNavigation(url: string, timestamp: string): ActionRecord {
 export function minimizeActionRecords(records: ActionRecord[], options: MinimizeOptions = {}): ActionRecord[] {
   const { faultUrl, faultAtMs, originUrl, culpritSelector, burstId, maxSteps = DEFAULT_MAX_STEPS } = options;
   const startUrl = faultUrl ?? originUrl;
-  const faultKey = pageKey(faultUrl);
 
   const causal = collapseRepeats(
     faultAtMs === undefined ? records : records.filter((record) => toMs(record.timestamp) <= faultAtMs),
   );
+
+  // The control that caused the fault is, by definition, on the faulting page. When its
+  // page disagrees with the supplied faultUrl — an event-fed document URL can still name
+  // the PREVIOUS page when an async fault settles right after a navigation — the culprit's
+  // own page is the authoritative anchor, so pre-navigation exploration is still cut.
+  const culpritKey = culpritSelector ? culpritPageKey(causal, culpritSelector) : '';
+  const faultKey = culpritKey || pageKey(faultUrl);
 
   // Burst-scoped fault: the burst's own pre-recorded actions ARE the reproduction —
   // keep only those, so unrelated exploration around them never enters the playbook.
@@ -138,14 +152,16 @@ export function minimizeActionRecords(records: ActionRecord[], options: Minimize
       if (kept[i].selector === culpritSelector) { lastCulprit = i; break; }
     }
     if (lastCulprit >= 0) {
-      // A sibling of the same concurrent burst: shares the culprit's burstId but acted on
-      // a different control. These are the unrelated simultaneous clicks to strip.
+      // A concurrent-burst record the culprit was NOT part of is stress noise, never setup:
+      // a sibling of the culprit's own burst (same id, other control), OR an entirely
+      // separate burst (different id — a rapid-click on an earlier page that survived a
+      // coarse page anchor). A single-element fault reproduces with only its own action.
       const culpritBurst = kept[lastCulprit].burstId;
-      const isBurstSibling = (record: ActionRecord): boolean =>
-        Boolean(culpritBurst) && record.burstId === culpritBurst && record.selector !== culpritSelector;
+      const isUnrelatedBurst = (record: ActionRecord): boolean =>
+        Boolean(record.burstId) && (record.burstId !== culpritBurst || record.selector !== culpritSelector);
       kept = kept.filter(
         (record, i) =>
-          !isBurstSibling(record) &&
+          !isUnrelatedBurst(record) &&
           (i >= lastCulprit || // the culprit and everything after it
             (i === 0 && NAVIGATION_TYPES.has(record.type)) || // the opening navigation
             !isTraversal(record, faultKey)), // genuine setup (inputs/submits), never traversal

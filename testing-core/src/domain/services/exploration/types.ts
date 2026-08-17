@@ -199,6 +199,9 @@ export interface StateRestorerDeps {
   telemetry: TelemetryEmitter;
   recordActionTrace: RecordActionTrace;
   getTargetOrigin(): string;
+  // Safe last-resort re-entry URL: authenticated landing for auth runs (never the
+  // bare origin login page), else the app origin. Preserves the session on reload.
+  getReentryUrl(): string;
 }
 
 export interface ActionExecutorDeps {

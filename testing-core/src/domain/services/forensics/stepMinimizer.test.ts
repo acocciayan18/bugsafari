@@ -79,6 +79,48 @@ check('culpritSelector keeps genuine non-burst setup while dropping burst siblin
   assert.equal(out.some((r) => r.selector === '#start'), true, 'culprit kept');
 });
 
+check('a stale faultUrl re-anchors to the culprit page, cutting an earlier-page burst', () => {
+  const PROFILE = 'http://app.test/pages/13.profile.html';
+  const LOGIN = 'http://app.test/pages/1.login.html';
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: PROFILE }),
+      rec({ selector: '#themeToggle', url: PROFILE, burstId: 'b1' }), // off-target rapid burst
+      rec({ selector: '#newPassword', url: PROFILE, burstId: 'b1' }),
+      rec({ selector: '#logout', url: PROFILE, burstId: 'b1', outcome: { navigatedTo: LOGIN } }),
+      rec({ type: 'NAVIGATE', url: LOGIN }),
+      rec({ type: 'TYPE', selector: '#email', url: LOGIN, payload: "' UNION SELECT version()--" }),
+      rec({ type: 'SUBMIT', selector: '#login-submit', url: LOGIN }), // culprit
+    ],
+    // faultUrl lags on the PREVIOUS page; the culprit's page is the true anchor.
+    { faultUrl: PROFILE, culpritSelector: '#login-submit' },
+  );
+  assert.equal(out.some((r) => r.url === PROFILE), false, 'no earlier-page step survives');
+  for (const noise of ['#themeToggle', '#newPassword', '#logout']) {
+    assert.equal(out.some((r) => r.selector === noise), false, `burst control ${noise} dropped`);
+  }
+  assert.equal(out[0].type, 'NAVIGATE', 'opens with a navigation');
+  assert.equal(out[0].url, LOGIN, 're-anchored opening navigation is the login page');
+  assert.equal(out.some((r) => r.selector === '#login-submit'), true, 'culprit kept');
+});
+
+check('a same-page burst the culprit was not part of is dropped as stress noise', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/x' }),
+      rec({ selector: '#spamA', url: 'http://app.test/x', burstId: 'b7' }), // unrelated burst, same page
+      rec({ selector: '#spamB', url: 'http://app.test/x', burstId: 'b7' }),
+      rec({ type: 'TYPE', selector: '#field', url: 'http://app.test/x', payload: 'x' }), // real setup
+      rec({ type: 'SUBMIT', selector: '#go', url: 'http://app.test/x' }), // culprit, no burst
+    ],
+    { faultUrl: 'http://app.test/x', culpritSelector: '#go' },
+  );
+  assert.equal(out.some((r) => r.selector === '#spamA'), false, 'foreign burst #spamA dropped');
+  assert.equal(out.some((r) => r.selector === '#spamB'), false, 'foreign burst #spamB dropped');
+  assert.equal(out.some((r) => r.selector === '#field'), true, 'non-burst setup kept');
+  assert.equal(out.some((r) => r.selector === '#go'), true, 'culprit kept');
+});
+
 check('a timeline with no culprit match is left exactly as page/time scoping produced it', () => {
   const records = [
     rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),

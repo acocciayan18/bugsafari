@@ -1054,6 +1054,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       recordActionTrace: (trace, clean) => this.recordActionTrace(trace, clean),
       getTargetOrigin: () => this.canonicalOrigin,
+      getReentryUrl: () => (this.authenticatedRun ? this.canonicalUrl : this.canonicalOrigin),
     });
 
     const actionExecutor = new ActionExecutor({
@@ -1335,6 +1336,7 @@ export class ExplorationEngine {
       telemetry: emitter,
       getTargetUrl: () => this.canonicalUrl,
       getTargetOrigin: () => this.canonicalOrigin,
+      getReentryUrl: () => (this.authenticatedRun ? this.canonicalUrl : this.canonicalOrigin),
       boundaryScope: this.boundaryScope,
       authOrigins,
       recreatePage: () => tabs.recreateFocused(),

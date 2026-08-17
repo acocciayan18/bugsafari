@@ -15,6 +15,9 @@ export interface PageHealthGuardDeps {
   telemetry: TelemetryEmitter;
   getTargetUrl(): string;
   getTargetOrigin(): string;
+  // Safe last-resort re-entry URL: authenticated landing for auth runs (never the
+  // bare origin login page), else the app origin. Preserves the session on reload.
+  getReentryUrl(): string;
   // Active navigation-boundary scope. 'exact'/'subtree' trigger drift restore back
   // into the boundary; 'site' leaves ordinary in-site navigation untouched.
   boundaryScope: UrlLockScope;
@@ -124,10 +127,11 @@ export class PageHealthGuard {
     });
 
     // Under strict lock every recovery targets the locked URL; in normal mode we
-    // fall back to the application origin (never an arbitrary drifted route).
+    // fall back to the re-entry URL (auth landing for auth runs, else app origin —
+    // never the bare origin login page that would drop the session).
     const targetUrl = this.deps.getTargetUrl();
-    const origin = this.deps.getTargetOrigin() || targetUrl;
-    const primaryUrl = this.deps.boundaryScope !== 'site' ? targetUrl : origin;
+    const reentry = this.deps.getReentryUrl() || targetUrl;
+    const primaryUrl = this.deps.boundaryScope !== 'site' ? targetUrl : reentry;
 
     let recovered: Page | null = page;
     try {
@@ -138,7 +142,7 @@ export class PageHealthGuard {
       } else if (rung === 1) {
         await this.navigate(page, primaryUrl, 'goto-target');
       } else {
-        await this.navigate(page, origin, 'goto-origin');
+        await this.navigate(page, reentry, 'goto-origin');
       }
     } catch (err) {
       this.deps.telemetry.emit('ACTION', {

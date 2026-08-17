@@ -13,7 +13,7 @@
 import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import type { ChaosContextType, FuzzMetadata } from '../../domain/chaos/index.js';
 import { SIGNAL_PATTERNS } from '../knowledgeBase/index.js';
-import { confirmPayloadReflection } from './reflectionOracle.js';
+import { confirmPayloadReflectionDetailed } from './reflectionOracle.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
 
@@ -80,19 +80,34 @@ function getActiveFuzzMetadata(): FuzzMetadata | undefined {
  * @param payload The exact fuzz payload injected this transaction (from FuzzMetadata)
  * @returns Array with one confirmation string, or empty when not corroborated
  */
-async function detectXssSignatures(page: BugContext['page'], payload: string | undefined): Promise<string[]> {
-  if (!payload) return [];
+async function detectXssSignatures(
+  page: BugContext['page'],
+  payload: string | undefined,
+): Promise<{ confirmed: boolean; executed: boolean }> {
+  if (!payload) return { confirmed: false, executed: false };
   try {
-    const verdict = await confirmPayloadReflection(page, payload);
-    if (verdict === 'CONFIRMED') {
-      // Non-empty marker triggers the finding; internal verdict text is NOT surfaced.
-      return ['reflected'];
-    }
-    // SANITIZED / ABSENT ⇒ the app handled the payload correctly; no finding.
+    const { verdict, executed } = await confirmPayloadReflectionDetailed(page, payload);
+    // CONFIRMED ⇒ finding. `executed` distinguishes "ran" from "reflected unescaped,
+    // can run" so the title never overclaims. SANITIZED / ABSENT ⇒ no finding.
+    if (verdict === 'CONFIRMED') return { confirmed: true, executed };
   } catch {
     obsLog.info('[FuzzGuard] Could not correlate injected payload for XSS confirmation');
   }
-  return [];
+  return { confirmed: false, executed: false };
+}
+
+// Accurate finding wording: an executed payload "ran"; a raw unescaped reflection
+// only "can run". Pure + exported so the exec-vs-reflection split stays under test.
+export function describeXssFinding(executed: boolean): { title: string; message: string } {
+  return executed
+    ? {
+        title: 'Injected script ran on the page (reflected XSS)',
+        message: 'A value entered into this field executed as code in the browser (reflected XSS).',
+      }
+    : {
+        title: 'Injected value reflected unescaped (reflected XSS)',
+        message: 'A value entered into this field was reflected back into the page without being escaped, so a user-supplied value can run as code in the browser (reflected XSS).',
+      };
 }
 
 /**
@@ -225,18 +240,19 @@ export const fuzzGuard: BugFinder = {
     
     // Detect vulnerabilities in multiple channels. XSS is correlated to the exact
     // injected payload (not tag presence) so a sanitized/echoed page is not flagged.
-    const xssSignatures = await detectXssSignatures(page, metadata.payload);
+    const xss = await detectXssSignatures(page, metadata.payload);
     const noSqlErrors = await detectNoSqlErrors(page);
     const crashSignatures = await detectCrashSignatures(page);
-    
+
     // Check for XSS vulnerabilities
-    if (xssSignatures.length > 0) {
+    if (xss.confirmed) {
+      const { title, message } = describeXssFinding(xss.executed);
       findings.push({
         bugClass: 'FUZZ_VULNERABILITY_LEAK',
-        title: `Injected script ran on the page (reflected XSS)`,
+        title,
         severity: 'CRITICAL',
         evidence: {
-          message: `A value entered into this field was reflected back into the page without being escaped, so a user-supplied value can run as code in the browser (reflected XSS).`,
+          message,
           selector: ctx.element?.selector,
           payload: metadata.payload,
           actionExecuted: 'fuzz-xss-detection',
