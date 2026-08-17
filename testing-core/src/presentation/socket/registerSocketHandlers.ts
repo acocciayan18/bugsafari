@@ -17,6 +17,7 @@ import {
 } from '../../../../shared/types.js';
 import { verifyTokenSync } from '../authentication/authConfig.js';
 import { RegressionPlaybookVerifier } from '../../domain/services/regression/RegressionPlaybookVerifier.js';
+import { withReplaySlot, isReplayBusyError } from '../../domain/services/regression/replayAdmission.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { queueRoom, type QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
@@ -295,6 +296,9 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         respond(verificationFailedAck(request, 'sessionId and bugId are required.'));
         return;
       }
+      // Narrowed locals — the guard proves both are strings, but that narrowing is
+      // not preserved inside the withReplaySlot() closure below (a nested function).
+      const { sessionId, bugId } = request;
 
       // Least privilege: resolve the user from the handshake JWT and scope the
       // finding lookup to them. The client never supplies its own userId.
@@ -313,31 +317,50 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
 
       verificationsInFlight.add(userId);
       obsLog.info(`[Socket] verify-fix requested by user ${userId} for session ${request.sessionId} bug ${request.bugId}`);
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        // Race the replay against a hard timeout so a hung browser can never keep
-        // this operator's slot (or, previously, the whole process) locked.
-        const result = await Promise.race([
+        // Global cross-operator cap: hold one replay slot for the REAL replay lifetime.
+        // withReplaySlot releases the slot when verify() settles (browser closed), so a
+        // slot is never freed while its Chromium is still open, and requests beyond the
+        // cap wait FIFO instead of stacking browsers until the host OOMs.
+        const verifyPromise = withReplaySlot(() =>
           regressionVerifier.verify(
-            { sessionId: request.sessionId, bugId: request.bugId },
+            { sessionId, bugId },
             userId,
             (progress: VerifyFixProgress) => socket.emit(VERIFY_FIX_PROGRESS_EVENT, progress),
           ),
-          new Promise<never>((_, reject) => {
-            const timer = setTimeout(
-              () => reject(new Error(`Verification timed out after ${Math.round(VERIFY_FIX_TIMEOUT_MS / 1000)}s.`)),
-              VERIFY_FIX_TIMEOUT_MS,
-            );
-            timer.unref();
-          }),
-        ]);
+        );
+        // Defensive: if the ack timeout below wins the race, the still-pending replay
+        // must not later surface as an unhandled rejection — the ack already responded.
+        verifyPromise.catch(() => undefined);
+
+        // Race the ACK against a hard timeout so a hung/slow replay can't keep the
+        // client waiting; the slot itself is bound to the real work via withReplaySlot,
+        // not to this timeout. The timer is cleared on settle so the loser never fires.
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Verification timed out after ${Math.round(VERIFY_FIX_TIMEOUT_MS / 1000)}s.`)),
+            VERIFY_FIX_TIMEOUT_MS,
+          );
+          timer.unref();
+        });
+        const result = await Promise.race([verifyPromise, timeout]);
         respond(result);
         // Persist the verdict so it survives a report refresh (non-fatal on failure).
-        await regressionVerifier.persistVerification(request.sessionId, request.bugId, userId, result);
+        await regressionVerifier.persistVerification(sessionId, bugId, userId, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        obsLog.error('[Socket] verify-fix failed:', message);
-        respond(verificationFailedAck(request, `Verification error: ${message}`));
+        // Capacity backpressure is not a verification failure of the target — surface it
+        // as a retryable busy signal, distinct from a replay that ran and errored.
+        if (isReplayBusyError(error)) {
+          obsLog.warn(`[Socket] verify-fix rejected — replay capacity full for user ${userId}`);
+          respond(verificationFailedAck(request, 'The verification service is busy right now. Please retry in a moment.'));
+        } else {
+          obsLog.error('[Socket] verify-fix failed:', message);
+          respond(verificationFailedAck(request, `Verification error: ${message}`));
+        }
       } finally {
+        if (timer) clearTimeout(timer);
         verificationsInFlight.delete(userId);
       }
     });

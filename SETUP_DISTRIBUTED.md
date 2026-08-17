@@ -194,7 +194,7 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "files before updating teh verify fix"
+git commit -m "Fix testing timer not stopping tests at zero"
 git checkout -b 8-17-Ayan-4
 git push --set-upstream origin 8-17-Ayan-4
 

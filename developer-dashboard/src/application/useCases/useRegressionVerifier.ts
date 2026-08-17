@@ -6,13 +6,21 @@
 // deterministic regression replay and receive its result via an ack callback.
 // While a replay runs, the engine streams VerifyFixProgress phases over a separate
 // event so each finding card can render a real replaying → validating → completed
-// flow. A per-bug status map keeps every finding's progress/verdict independent.
+// flow.
+//
+// Replays are serialized through a single-flight FIFO queue (verifyQueue) so the
+// client honors the backend's per-operator serialization: a second "Verify Fix"
+// click while one runs is QUEUED (not fired in parallel and rejected as a failure).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { VERIFY_FIX_EVENT, VERIFY_FIX_PROGRESS_EVENT } from '../../types';
-import type { VerifyFixRequest, VerifyFixResult, VerifyFixProgress, VerifyFixPhase } from '../../types';
+import type { VerifyFixRequest, VerifyFixResult, VerifyFixProgress } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { VerifyQueue, IDLE_VERIFY_STATUS, type VerifyStatus } from './verifyQueue';
+
+export type { VerifyStatus };
+export { IDLE_VERIFY_STATUS };
 
 // Same resolution as App.tsx: env override, else proxy-aware window origin.
 const SOCKET_URL =
@@ -20,23 +28,10 @@ const SOCKET_URL =
 // A replay drives a real browser end-to-end; give the ack a generous ceiling.
 const VERIFY_TIMEOUT_MS = 180_000;
 
-/**
- * Per-bug verification state as a discriminated union:
- *  - idle:    never verified (or reset).
- *  - running: replay in flight, carrying the live phase + step progress.
- *  - done:    terminal VerifyFixResult (RESOLVED / STILL_ACTIVE / INCONCLUSIVE / VERIFICATION_FAILED).
- */
-export type VerifyStatus =
-  | { state: 'idle' }
-  | { state: 'running'; phase: VerifyFixPhase; stepsReplayed: number; totalSteps: number }
-  | { state: 'done'; result: VerifyFixResult };
-
-const IDLE: VerifyStatus = { state: 'idle' };
-
 export interface RegressionVerifier {
   /** Live status keyed by bugId. */
   statuses: Record<string, VerifyStatus>;
-  /** Fire a verification for one finding; resolves with the same result stored in `statuses`. */
+  /** Queue a verification for one finding; resolves with the same result stored in `statuses`. */
   verify: (request: VerifyFixRequest) => Promise<VerifyFixResult>;
 }
 
@@ -46,23 +41,9 @@ export function useRegressionVerifier(): RegressionVerifier {
   const socketTokenRef = useRef<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, VerifyStatus>>({});
 
-  // Merge a streamed progress frame into the matching bug's status — but only while
-  // that bug is still running, so a late frame can't overwrite a settled verdict.
-  const applyProgress = useCallback((progress: VerifyFixProgress): void => {
-    setStatuses((prev) => {
-      const current = prev[progress.bugId];
-      if (!current || current.state !== 'running') return prev;
-      return {
-        ...prev,
-        [progress.bugId]: {
-          state: 'running',
-          phase: progress.phase,
-          stepsReplayed: progress.stepsReplayed,
-          totalSteps: progress.totalSteps,
-        },
-      };
-    });
-  }, []);
+  // Forward-declared so getSocket's progress subscription can reach the queue that is
+  // constructed just below (the queue's executor in turn reads socket state lazily).
+  const queueRef = useRef<VerifyQueue | null>(null);
 
   // Lazily open the socket on first use, carrying the JWT in the handshake so the
   // backend can scope the finding lookup to this user, and subscribe to progress.
@@ -74,11 +55,43 @@ export function useRegressionVerifier(): RegressionVerifier {
       reconnection: true,
       reconnectionAttempts: 5,
     });
-    socket.on(VERIFY_FIX_PROGRESS_EVENT, applyProgress);
+    socket.on(VERIFY_FIX_PROGRESS_EVENT, (progress: VerifyFixProgress) => queueRef.current?.applyProgress(progress));
     socketRef.current = socket;
     socketTokenRef.current = token;
     return socket;
-  }, [token, applyProgress]);
+  }, [token]);
+
+  // One replay attempt over the socket: emit the request and await its ack. Rejection
+  // (timeout / transport error) is turned into a terminal failed verdict by the queue.
+  const runOnSocket = useCallback(
+    (request: VerifyFixRequest): Promise<VerifyFixResult> => {
+      const socket = getSocket();
+      return new Promise<VerifyFixResult>((resolve, reject) => {
+        socket
+          .timeout(VERIFY_TIMEOUT_MS)
+          .emit(VERIFY_FIX_EVENT, request, (err: Error | null, response: VerifyFixResult) => {
+            if (err) reject(err);
+            else resolve(response);
+          });
+      });
+    },
+    [getSocket],
+  );
+
+  // The queue is created once and delegates each replay to the LATEST socket runner
+  // via a ref, so a token refresh (new socket) is picked up without rebuilding the
+  // queue or losing its in-flight/queued state.
+  const runRef = useRef(runOnSocket);
+  useEffect(() => {
+    runRef.current = runOnSocket;
+  }, [runOnSocket]);
+
+  if (!queueRef.current) {
+    queueRef.current = new VerifyQueue(
+      (request) => runRef.current(request),
+      (next) => setStatuses(next),
+    );
+  }
 
   // Re-read the token when auth state changes (login/logout/refresh) instead of
   // replaying whatever was cached at socket creation: tear down the existing
@@ -97,54 +110,9 @@ export function useRegressionVerifier(): RegressionVerifier {
     };
   }, []);
 
-  const verify = useCallback(
-    async (request: VerifyFixRequest): Promise<VerifyFixResult> => {
-      const { bugId } = request;
-      // Optimistically enter the replay phase so the card shows motion immediately;
-      // real per-step counts arrive over VERIFY_FIX_PROGRESS_EVENT.
-      setStatuses((prev) => ({
-        ...prev,
-        [bugId]: { state: 'running', phase: 'replaying', stepsReplayed: 0, totalSteps: 0 },
-      }));
-
-      try {
-        const socket = getSocket();
-        const result = await new Promise<VerifyFixResult>((resolve, reject) => {
-          socket
-            .timeout(VERIFY_TIMEOUT_MS)
-            .emit(VERIFY_FIX_EVENT, request, (err: Error | null, response: VerifyFixResult) => {
-              if (err) reject(err);
-              else resolve(response);
-            });
-        });
-        setStatuses((prev) => ({ ...prev, [bugId]: { state: 'done', result } }));
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const failed: VerifyFixResult = {
-          ok: false,
-          verdict: 'VERIFICATION_FAILED',
-          reason: 'REPLAY_ERROR',
-          sessionId: request.sessionId,
-          bugId,
-          bugClass: 'UNKNOWN',
-          stepsReplayed: 0,
-          stepStats: { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false },
-          matchedSignals: [],
-          otherSignals: [],
-          timelineSource: 'finding',
-          summary: `Verification request failed: ${message}`,
-          durationMs: 0,
-          error: message,
-        };
-        setStatuses((prev) => ({ ...prev, [bugId]: { state: 'done', result: failed } }));
-        return failed;
-      }
-    },
-    [getSocket],
-  );
+  const verify = useCallback((request: VerifyFixRequest): Promise<VerifyFixResult> => {
+    return queueRef.current!.enqueue(request);
+  }, []);
 
   return { statuses, verify };
 }
-
-export { IDLE as IDLE_VERIFY_STATUS };

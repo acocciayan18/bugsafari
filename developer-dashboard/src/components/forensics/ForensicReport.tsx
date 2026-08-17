@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Calendar, Hash, Sparkles, Network, Terminal } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Calendar, Clock, Hash, Sparkles, Network, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -518,6 +518,21 @@ function VerifyFixControl({
   onVerify: () => void;
   onOpenResult: () => void;
 }) {
+  // Waiting behind an in-flight replay — a distinct, non-spinning pill so it never
+  // reads as a running replay or (previously) a rejected VERIFICATION_FAILED verdict.
+  if (status.state === 'queued') {
+    return (
+      <span
+        className="inline-flex items-center gap-2 rounded-md bg-(--surface-inset) px-3 py-1.5 text-xs font-semibold uppercase text-(--text-tertiary)"
+        aria-live="polite"
+        title="Waiting for the current verification to finish"
+      >
+        <Clock className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+        Queued…
+      </span>
+    );
+  }
+
   if (status.state === 'running') {
     return (
       <span
@@ -739,8 +754,8 @@ function ReportFindingCard({
   const verdictMeta = settled ? metaForResult(settled) : null;
 
   const triggerVerify = (): void => {
-    // Guard duplicates: never fire while a replay for this finding is in flight.
-    if (!canVerify || !sessionId || status.state === 'running') return;
+    // Guard duplicates: never fire while a replay for this finding is queued or in flight.
+    if (!canVerify || !sessionId || status.state === 'running' || status.state === 'queued') return;
     awaitingResult.current = true;
     onVerify({ sessionId, bugId: bug.bugId });
   };
