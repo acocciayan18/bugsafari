@@ -95,7 +95,7 @@ const SEVERITY_TO_FORENSIC: Record<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', Foren
 const CONFIDENCE_RANK: Record<FaultConfidence, number> = { INFERRED: 0, SIGNAL: 1, CONFIRMED: 2 };
 
 // Runtime subtypes that make the tab unusable outright — escalated to CRITICAL over the
-// RUNTIME_STABILITY_EXCEPTION HIGH default.
+// RUNTIME_STABILITY_EXCEPTION MEDIUM default.
 const CRITICAL_RUNTIME_SUBTYPES: ReadonlySet<RuntimeSubtype> = new Set<RuntimeSubtype>(['RENDERER_CRASH', 'STACK_OVERFLOW']);
 
 /** Maps the resolved 5-tier FaultSeverity to the persisted forensic-error scale. */

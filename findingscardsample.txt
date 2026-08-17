@@ -1,0 +1,55 @@
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+Cannot read properties of null (reading 'role')
+Reproduction Playbook
+1
+open
+Navigate to /pages/13.C4FE_v5.0_User_Profile_Page.html
+2
+click
+Click the "Show/Hide Password" button
+Route
+/pages/13.C4FE_v5.0_User_Profile_Page.html
+·
+Element
+"Show/Hide Password" button
+3
+click
+Click the "themeToggle" button
+Route
+/pages/13.C4FE_v5.0_User_Profile_Page.html
+·
+Element
+"themeToggle" button
+4
+click
+Click the "Save Changes" button
+Route
+/pages/13.C4FE_v5.0_User_Profile_Page.html
+·
+Element
+"Save Changes" button
+5
+type
+Type "' AND 'a'='b" into the "Enter new password" field
+Route
+/pages/13.C4FE_v5.0_User_Profile_Page.html
+·
+Element
+"Enter new password" field
+6
+type
+Type "' AND (SELECT COUNT(*) FROM users)>1--" into the "Username" field
+Route
+/pages/13.C4FE_v5.0_User_Profile_Page.html
+·
+Element
+"Username" field
+
+
+
+

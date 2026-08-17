@@ -32,4 +32,13 @@ check('SEVERITY_BY_BUGCLASS has no stale keys', () => {
   }
 });
 
+// Pins the exact contract a runtime-exception finding card renders (Medium / CWE-248),
+// so an uncaught-JS-error finding can never silently drift to another tier or CWE. The
+// CRITICAL_RUNTIME_SUBTYPES escalation in StabilityMonitor is defined relative to this base.
+check('RUNTIME_STABILITY_EXCEPTION card contract is MEDIUM / CWE-248', () => {
+  const def = BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION;
+  assert.equal(def.defaultSeverity, 'MEDIUM', `runtime exception severity drifted: ${def.defaultSeverity}`);
+  assert.equal(def.cwe, 'CWE-248', `runtime exception CWE drifted: ${def.cwe}`);
+});
+
 console.log(`\nAll ${passed} assertions passed.`);
