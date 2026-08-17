@@ -101,6 +101,8 @@ interface ClinicalForensicsDashboardProps {
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
   onStartInitialization?: (url: string, profile: InfiltrationProfileId, boundaryMode: BoundaryLockMode, targetAuth?: TargetAuthConfig) => void;
+  /** Persists the operator's draft target so it survives reload, before any launch. */
+  onTargetUrlChange?: (url: string) => void;
   children?: ReactNode;
 }
 
@@ -128,6 +130,7 @@ function ClinicalForensicsDashboard({
   onStop,
   onSaveSessionToHistory,
   onStartInitialization,
+  onTargetUrlChange,
 }: ClinicalForensicsDashboardProps) {
 
   // ─────────────────────────────────────────────────────────────
@@ -444,6 +447,8 @@ function ClinicalForensicsDashboard({
               value={isActiveSession ? targetUrl : urlInput}
               onChange={(e) => {
                 setUrlInput(e.target.value);
+                // Persist the draft so a reload/stop keeps it, even before launch.
+                onTargetUrlChange?.(e.target.value);
                 // Re-arm the notice once the operator moves off a blocked (local or self) address.
                 if (noticeDismissed && !isPrivateTargetUrl(e.target.value) && !isSelfTargetUrl(e.target.value)) setNoticeDismissed(false);
               }}

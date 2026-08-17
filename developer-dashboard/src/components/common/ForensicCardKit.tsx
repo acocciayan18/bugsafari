@@ -54,7 +54,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[13px] font-medium transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[13px] font-normal transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={`Copy ${label || 'content'} to clipboard`}
     >
       <Copy className="h-3 w-3" />

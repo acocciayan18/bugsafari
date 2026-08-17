@@ -10,6 +10,7 @@ import { toast } from './infrastructure/notifications/ToastProvider';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { useRunNotifications } from './hooks/useRunNotifications';
 import { useSettingsStore } from './stores/settingsStore';
+import { readTargetUrlDraft, writeTargetUrlDraft } from './stores/targetUrlDraft';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import GuestSavePromptModal from './components/auth/GuestSavePromptModal';
@@ -59,7 +60,9 @@ interface WorkspaceProps {
  * only ever rendered once a session exists.
  */
 function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: WorkspaceProps) {
-  const [targetUrl, setTargetUrl] = useState('https://example.com/');
+  // Lazy-init from persisted storage so a reload restores the operator's last target
+  // instead of the hardcoded default. Kept separate from state.currentUrl (Live Feed).
+  const [targetUrl, setTargetUrl] = useState(readTargetUrlDraft);
   const [showGuestSavePrompt, setShowGuestSavePrompt] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -110,6 +113,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   useEffect(() => {
     if (state.targetUrl && (state.isTestRunning || state.isRestoring)) {
       setTargetUrl(state.targetUrl);
+      // Persist the recovered target so a subsequent reload keeps it too.
+      writeTargetUrlDraft(state.targetUrl);
     }
   }, [state.targetUrl, state.isTestRunning, state.isRestoring]);
 
@@ -168,8 +173,10 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   onResume={resumeTest}
                   onStop={stopTest}
                   onSaveSessionToHistory={handleSaveSessionToHistory}
+                  onTargetUrlChange={writeTargetUrlDraft}
                   onStartInitialization={(url, profile, boundaryMode, targetAuth) => {
                     setTargetUrl(url);
+                    writeTargetUrlDraft(url);
                     startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode) }, { profile }, targetAuth);
                   }}
                 />
