@@ -23,6 +23,7 @@ import { triggerFormSubmission, type SubmissionResult } from './formSubmitter.js
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
 import { trustedClick, type ClickOutcome } from './trustedClick.js';
+import { readComboState, pickAndTagOption, clearOptionTag, TAGGED_OPTION_SELECTOR } from './customDropdown.js';
 import {
   setFieldValue,
   setSelectValue,
@@ -84,6 +85,7 @@ const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {
   file: 'input',
   toggle: 'hover',
   dropdown: 'hover',
+  'combo-dropdown': 'hover',
   clickable: 'click',
   inert: 'click',
 };
@@ -181,6 +183,9 @@ export class ActionExecutor {
     }
     if (scope === 'dropdown') {
       return { interacted: await this.actuateDropdown(page, target) };
+    }
+    if (scope === 'combo-dropdown') {
+      return { interacted: await this.actuateCustomDropdown(page, target) };
     }
 
     // VALUE-CONTROLS (range/color) — set a boundary-sampled native value and commit
@@ -392,6 +397,78 @@ export class ActionExecutor {
       message: selected
         ? ` Selected option "${value}" on dropdown "${label}" to progress the form/workflow.`
         : `Dropdown "${label}" had no selectable option.`,
+    });
+    return selected;
+  }
+
+  /**
+   * Actuate a CUSTOM (non-<select>) dropdown — role=combobox / aria-haspopup=listbox.
+   * A single trigger click only opens the popup, so the engine used to leave the value
+   * unchanged and record a bare click. This opens the popup, waits for its options
+   * (covering click-loaded async lists), picks one deterministically via the per-selector
+   * cursor, highlights it and settles a beat so the Live Feed captures the open list, then
+   * trust-clicks the option and verifies the trigger's committed value actually changed.
+   */
+  private async actuateCustomDropdown(page: Page, target: InteractiveElement): Promise<boolean> {
+    const label = resolveElementLabel(target);
+
+    await page
+      .evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (!el) return;
+        el.removeAttribute('disabled');
+        el.removeAttribute('aria-disabled');
+      }, target.selector)
+      .catch(() => undefined);
+
+    const before = await readComboState(page, target.selector);
+    const opened = await this.actuateClick(page, target);
+
+    const idx = this.valueControlCursor.get(target.selector) ?? 0;
+    this.valueControlCursor.set(target.selector, idx + 1);
+    const tagged = opened.actuated ? await pickAndTagOption(page, target.selector, idx) : null;
+
+    let selected = false;
+    const optionLabel = tagged?.label ?? '';
+    if (tagged) {
+      // Highlight the option and hold a beat so the open popup + choice render into a frame.
+      await this.deps.highlighter.moveHighlight(page, TAGGED_OPTION_SELECTOR, 'input');
+      await page.waitForTimeout(160);
+      const click = await trustedClick(page, TAGGED_OPTION_SELECTOR);
+      await clearOptionTag(page);
+      if (click.actuated) {
+        // Value-change is the oracle: a committed selection moves the trigger's label /
+        // active option / inner value. A widget whose click didn't commit reports false.
+        const after = await readComboState(page, target.selector);
+        selected = after !== before && after.length > 0;
+      }
+    }
+
+    this.deps.recordActionTrace(
+      {
+        timestamp: new Date().toISOString(),
+        selector: target.selector,
+        action: 'select-option',
+        score: Number(target.riskScore.toFixed(4)),
+      },
+      {
+        actionType: 'INPUT',
+        humanIdentifier: label,
+        elementKind: 'dropdown',
+        value: selected && optionLabel ? optionLabel : undefined,
+        containerLabel: target.contextLabel,
+        containerKind: target.contextKind,
+      },
+    );
+
+    this.deps.telemetry.emit('ACTION', {
+      actionExecuted: 'form-control-actuated',
+      selector: target.selector,
+      message: selected
+        ? ` Opened dropdown "${label}" and selected option "${optionLabel}" to progress the form/workflow.`
+        : tagged
+          ? `Dropdown "${label}" opened but the option "${optionLabel}" did not commit a value.`
+          : `Dropdown "${label}" opened but exposed no selectable option.`,
     });
     return selected;
   }

@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5174,
-    strictPort: true,
+    strictPort: false,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true },

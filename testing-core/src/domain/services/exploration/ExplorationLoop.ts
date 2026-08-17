@@ -263,19 +263,10 @@ export class ExplorationLoop {
 
       if (this.checkBudgetGate(step, ctx) === 'break') break;
 
-      if (this.deps.isStopRequested()) {
-        return this.stopResult();
-      }
-
-      // ─────────────────────────────────────────────────────────────
-      // TIMEBOX CHECK - CRITICAL: Must check at each iteration
-      // Only terminates when elapsedActiveTimeMs reaches the configured limit AND NOT paused
-      // ─────────────────────────────────────────────────────────────
-      if (this.deps.checkTimebox()) {
-        const reason = `Time limit of ${this.deps.getTimeboxMs() / 60000} min reached.`;
-        // The authoritative terminal line is emitted once by StartExplorationUseCase.
-        return { completed: false, reason, outcome: 'timebox' };
-      }
+      // Stop / timebox terminal gate — checked here AND mid-step (around the action)
+      // so an expiry that lands during a step halts the run immediately.
+      const topGate = this.terminationGate();
+      if (topGate) return topGate;
 
       const pauseGate = await this.waitWhilePaused();
       if (pauseGate.kind === 'return') return pauseGate.result;
@@ -436,6 +427,11 @@ export class ExplorationLoop {
         );
         if (skip) continue;
 
+        // Timebox/stop that landed during parse/scoring/lookahead — never start a new
+        // interaction against the target after expiry.
+        const preActionGate = this.terminationGate();
+        if (preActionGate) return preActionGate;
+
         // Execute the action, then VERIFY the traversal before confirming it.
         // The edge stays 'traversing' in the navigator until we observe a new
         // stable DOM state; an unverified/failed click is isolated as unstable
@@ -450,6 +446,12 @@ export class ExplorationLoop {
           fingerprint.currentHash,
           decision.score,
         );
+
+        // Timebox/stop that landed DURING the action — halt before any further
+        // target-facing work (finder sweep, parent restore, novelty, live frame),
+        // so no new interaction or recovery runs after expiry.
+        const postActionGate = this.terminationGate();
+        if (postActionGate) return postActionGate;
 
         //  Navigation-defect observation BEFORE any parent restore, so the
         // post-action URL still reflects what the interaction actually did.
@@ -2043,6 +2045,24 @@ export class ExplorationLoop {
       score: Number(target.riskScore.toFixed(4)),
       message: `Target scored ${target.riskScore.toFixed(4)} (ML confidence ${(mlConfidence * 100).toFixed(1)}%) and executed.`,
     });
+  }
+
+  // Stop / timebox terminal gate. Returns the run's terminal result when a stop was
+  // requested or the timebox has expired, else null to proceed. isStopRequested wins
+  // first, so a timebox stop already latched by the engine's timing interval reports
+  // the same 'timebox' outcome via its stop reason; checkTimebox is the one-shot
+  // terminator for the case where the loop observes expiry before the interval does.
+  private terminationGate(): LoopResult | null {
+    if (this.deps.isStopRequested()) return this.stopResult();
+    if (this.deps.checkTimebox()) {
+      // The authoritative terminal line is emitted once by StartExplorationUseCase.
+      return {
+        completed: false,
+        reason: `Time limit of ${this.deps.getTimeboxMs() / 60000} min reached.`,
+        outcome: 'timebox',
+      };
+    }
+    return null;
   }
 
   // Terminal result for a requested stop, attributed to whoever requested it.

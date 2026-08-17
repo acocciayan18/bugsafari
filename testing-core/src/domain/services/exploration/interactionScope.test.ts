@@ -44,6 +44,25 @@ check('select is a dropdown, not a fuzz target', () => {
   assert.equal(classifyInteractionScope({ tagName: 'select', type: '' }), 'dropdown');
 });
 
+check('custom listbox triggers are combo-dropdowns, not bare clicks', () => {
+  // ARIA combobox pattern (Radix/MUI select trigger).
+  assert.equal(classifyInteractionScope({ tagName: 'button', type: '', role: 'combobox' }), 'combo-dropdown');
+  assert.equal(classifyInteractionScope({ tagName: 'div', type: '', role: 'combobox' }), 'combo-dropdown');
+  // aria-haspopup=listbox trigger (Headless UI / React-Select).
+  assert.equal(classifyInteractionScope({ tagName: 'button', type: '', ariaHasPopup: 'listbox' }), 'combo-dropdown');
+  // Case-insensitive.
+  assert.equal(classifyInteractionScope({ tagName: 'BUTTON', type: '', role: 'COMBOBOX' }), 'combo-dropdown');
+});
+
+check('a <select> and text/menu triggers are never combo-dropdowns', () => {
+  // Native select keeps its own path even if it somehow carries a combobox role.
+  assert.equal(classifyInteractionScope({ tagName: 'select', type: '', role: 'combobox' }), 'dropdown');
+  // An input[role=combobox] is an autocomplete text field — still a fuzzable vector.
+  assert.equal(classifyInteractionScope({ tagName: 'input', type: 'text', role: 'combobox' }), 'attack-vector');
+  // aria-haspopup=menu is a command menu, not a value selection — stays clickable.
+  assert.equal(classifyInteractionScope({ tagName: 'button', type: '', ariaHasPopup: 'menu' }), 'clickable');
+});
+
 check('submit/button/reset/image inputs are clickable, not fuzz targets', () => {
   for (const type of ['submit', 'button', 'reset', 'image']) {
     assert.equal(classifyInteractionScope({ tagName: 'input', type }), 'clickable', `input[type=${type}]`);

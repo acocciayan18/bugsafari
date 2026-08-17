@@ -9,6 +9,9 @@
  *    workflow so a payload can fully execute:
  *      · `toggle`    — checkbox / radio (must be checked, not typed into)
  *      · `dropdown`  — <select> (must pick a real option, not receive a payload)
+ *      · `combo-dropdown` — custom select (role=combobox / aria-haspopup=listbox on a
+ *        non-input): opened, then a real option in its popup is clicked, not just the
+ *        trigger — so the value changes and the popup is visible in the Live Feed
  *      · `value-control` — range/color (set a native clamped value, not typed into)
  *      · `clickable` — buttons, submit/reset/image inputs, anchors, role=button…
  *      · `file`      — file inputs, driven via setInputFiles with a synthetic file
@@ -18,7 +21,7 @@
  * reused identically wherever an element must be dispatched to its handler.
  */
 
-export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'value-control' | 'file' | 'clickable' | 'inert';
+export type InteractionScope = 'attack-vector' | 'toggle' | 'dropdown' | 'combo-dropdown' | 'value-control' | 'file' | 'clickable' | 'inert';
 
 /** input[type=…] values that are clicked, never typed into. */
 const CLICKABLE_INPUT_TYPES = new Set(['submit', 'button', 'reset', 'image']);
@@ -41,6 +44,15 @@ const INERT_INPUT_TYPES = new Set(['hidden']);
 export interface ScopeClassifiable {
   tagName: string;
   type: string;
+  role?: string;
+  ariaHasPopup?: string;
+}
+
+// A non-<select> control that opens a listbox popup: ARIA combobox, or any element
+// declaring aria-haspopup=listbox (Radix/MUI/Headless UI/React-Select triggers).
+function isComboDropdown(tag: string, role: string, hasPopup: string): boolean {
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+  return role === 'combobox' || hasPopup === 'listbox';
 }
 
 /**
@@ -53,9 +65,12 @@ export interface ScopeClassifiable {
 export function classifyInteractionScope(element: ScopeClassifiable): InteractionScope {
   const tag = element.tagName.toLowerCase();
   const type = (element.type ?? '').toLowerCase();
+  const role = (element.role ?? '').toLowerCase();
+  const hasPopup = (element.ariaHasPopup ?? '').toLowerCase();
 
   if (tag === 'textarea') return 'attack-vector';
   if (tag === 'select') return 'dropdown';
+  if (isComboDropdown(tag, role, hasPopup)) return 'combo-dropdown';
 
   if (tag === 'input') {
     if (TOGGLE_INPUT_TYPES.has(type)) return 'toggle';

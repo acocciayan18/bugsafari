@@ -41,6 +41,8 @@ export interface ParsedElement {
   step: string;
   /** Enabled <option> values of a <select> (capped), for boundary-sampled selection. */
   options: string[];
+  /** aria-haspopup value ('' when absent) — marks custom listbox-popup triggers. */
+  ariaHasPopup: string;
 }
 
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
@@ -122,6 +124,7 @@ export class RecursiveDomParser {
       max: element.max || undefined,
       step: element.step || undefined,
       options: element.options.length ? element.options : undefined,
+      ariaHasPopup: element.ariaHasPopup || undefined,
     }));
   }
 
@@ -227,6 +230,10 @@ export async function scanInteractiveElements(page: Page): Promise<RawScanResult
         'a[href]',
         '[role="button"]',
         '[role="link"]',
+        '[role="combobox"]',
+        '[aria-haspopup="listbox"]',
+        '[aria-haspopup="menu"]',
+        '[aria-haspopup="true"]',
         '[tabindex]:not([tabindex="-1"])'
       ].join(',');
 
@@ -748,6 +755,7 @@ const isDisabled = (element) => {
           opensLayer,
           inActiveLayer,
           isDismiss,
+          ariaHasPopup: (haspopup && haspopup !== 'false') ? haspopup : '',
           contextKind: container.kind,
           contextLabel: container.label,
           accessibleName: accessibleName(element),
@@ -814,7 +822,8 @@ const isDisabled = (element) => {
           min: data.min,
           max: data.max,
           step: data.step,
-          options: data.options
+          options: data.options,
+          ariaHasPopup: data.ariaHasPopup
         };
       });
 

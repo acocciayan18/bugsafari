@@ -50,4 +50,7 @@ export interface InteractiveElement {
   step?: string;
   // Enabled <option> values for a <select> (capped), for boundary-sampled selection.
   options?: string[];
+  // aria-haspopup value ('' when absent) — with role, marks a custom (non-<select>)
+  // dropdown trigger so it is opened and an option is selected, not just clicked.
+  ariaHasPopup?: string;
 }

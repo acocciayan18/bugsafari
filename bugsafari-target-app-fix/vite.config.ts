@@ -6,8 +6,8 @@ const apiTarget = process.env.TARGET_API_URL || 'http://localhost:5275';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5274,
-    strictPort: true,
+    port: 5174,
+    strictPort: false,
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/api': { target: apiTarget, changeOrigin: true },
