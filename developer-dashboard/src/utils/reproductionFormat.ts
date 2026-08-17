@@ -123,12 +123,12 @@ export function humanizeActionStep(
     // JSON payload reads as one value in one field, matching the backend narrative.
     : kind === 'input' ? describeInputInjection(label, step.payloadText, step.redactValue, noun)
     : kind === 'submit' ? describeFormSubmission(step.payloadText, label, noun)
-    : kind === 'bypass' ? describeConstraintBypass(label, step.strippedAttributes, step.affectedCount, noun)
+    : kind === 'bypass' ? describeConstraintBypass(label, step.strippedAttributes, step.affectedCount, noun, step.payloadText, step.redactValue)
     : `Click ${describeTarget(label, noun)}`;
   const repeats = step.repeatCount ?? 1;
   const repeated = repeats > 1 ? `${action}, repeated ${repeats} times in quick succession` : action;
-  // Value now lives inline in the input/submit sentence, so no separate value chip there.
-  const payloadDisplay = kind === 'input' || kind === 'submit' ? '' : maskPayload(step.payloadText, step.redactValue);
+  // Value now lives inline in the input/submit/bypass sentence, so no separate value chip.
+  const payloadDisplay = kind === 'input' || kind === 'submit' || kind === 'bypass' ? '' : maskPayload(step.payloadText, step.redactValue);
   return { kind, instruction: `${repeated}${observed}`, payloadDisplay, where };
 }
 

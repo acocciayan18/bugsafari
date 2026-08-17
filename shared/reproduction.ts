@@ -283,14 +283,20 @@ export function describeConstraintBypass(
   attributes?: string[],
   affectedCount?: number,
   kind?: string,
+  payload?: string,
+  redact?: boolean,
 ): string {
   const target = describeTarget(label, kind ?? 'field');
+  // Weave the bypassed value into the sentence so the step names WHAT to submit, not
+  // just that a guard was removed — the value used to render as a detached chip below.
+  const value = renderPayload(payload, redact);
+  const commit = value ? `enter "${value}", then submit the form` : 'then submit the form';
   const attrs = (attributes ?? []).filter(Boolean);
   if (attrs.length === 0) {
-    return `Remove the browser validation from ${target}, then submit the form`;
+    return `Remove the browser validation from ${target}, ${commit}`;
   }
   const scope = affectedCount && affectedCount > 1 ? ` (and ${affectedCount - 1} more field${affectedCount === 2 ? '' : 's'})` : '';
-  return `Remove the ${attrs.join(', ')} validation from ${target}${scope}, then submit the form`;
+  return `Remove the ${attrs.join(', ')} validation from ${target}${scope}, ${commit}`;
 }
 
 /** Everything the constraint-bypass reproduction playbook needs about the culprit field. */
@@ -742,7 +748,7 @@ function describeSingleAction(record: ActionRecord): string {
       return describeFormSubmission(record.payload, rawLabel, kind);
 
     case 'SUBMIT':
-      return describeConstraintBypass(rawLabel, record.strippedAttributes, record.affectedCount, kind);
+      return describeConstraintBypass(rawLabel, record.strippedAttributes, record.affectedCount, kind, record.payload, record.redactValue);
 
     case 'MACRO':
       return record.macro
