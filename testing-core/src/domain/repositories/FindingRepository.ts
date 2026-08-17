@@ -16,6 +16,9 @@ export interface CreateSessionInput {
   // that produced it. Derived from the gate, so it reflects what actually ran.
   infiltrationProfile?: InfiltrationProfileId;
   activeTestingTypes?: TestingTypeId[];
+  // Operator-selected execution timebox (ms) for this run, recorded so history
+  // reflects the duration the run was configured to explore for.
+  executionTimeboxMs?: number;
 }
 
 export interface SaveBrainConfigInput {

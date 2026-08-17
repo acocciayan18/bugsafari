@@ -83,6 +83,7 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       startedAt,
       infiltrationProfile: input.infiltrationProfile,
       activeTestingTypes: input.activeTestingTypes,
+      executionTimeboxMs: input.executionTimeboxMs,
     };
     return createWithRunCodeRetry((code) => SessionModel.create({ ...base, runId: code }), input.runId);
   }

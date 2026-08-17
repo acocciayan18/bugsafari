@@ -266,6 +266,11 @@ const sessionSchema = new Schema(
       required: false,
       default: undefined,
     },
+    executionTimeboxMs: {
+      type: Number,
+      required: false,
+      default: null,
+    },
     findingCount: {
       type: Number,
       required: true,
@@ -556,6 +561,8 @@ export interface ISession extends Document {
   infiltrationProfile?: InfiltrationProfileId;
   /** Testing-type categories the run's ScenarioGate enforced. */
   activeTestingTypes?: TestingTypeId[];
+  /** Operator-selected execution timebox (ms); absent on sessions predating the field. */
+  executionTimeboxMs?: number;
   findingCount: number;
   actionTraceCount: number;
   brainSnapshotCount: number;

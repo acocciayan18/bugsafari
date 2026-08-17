@@ -6,13 +6,13 @@
 // nothing is lost when the dialog closes; the caller keeps owning persistence.
 
 import { useState } from 'react';
-import { X, KeyRound, Crosshair, Route } from 'lucide-react';
+import { X, KeyRound, Crosshair, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import InfiltrationProfileSelector from './InfiltrationProfileSelector';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
-import type { BoundaryLockMode, InfiltrationProfileId } from '../../types';
+import { TEST_DURATION_PRESETS, type BoundaryLockMode, type InfiltrationProfileId, type TestDurationId } from '../../types';
 
-type ConfigTab = 'infiltration' | 'boundary' | 'auth';
+type ConfigTab = 'infiltration' | 'boundary' | 'duration' | 'auth';
 
 interface TestingConfigModalProps {
   isOpen: boolean;
@@ -21,6 +21,8 @@ interface TestingConfigModalProps {
   onProfileChange: (next: InfiltrationProfileId) => void;
   boundaryMode: BoundaryLockMode;
   onBoundaryModeChange: (next: BoundaryLockMode) => void;
+  duration: TestDurationId;
+  onDurationChange: (next: TestDurationId) => void;
   authDraft: TargetAuthDraft;
   onAuthDraftChange: (next: TargetAuthDraft) => void;
 }
@@ -28,6 +30,7 @@ interface TestingConfigModalProps {
 const TABS: { id: ConfigTab; label: string; icon: typeof Crosshair }[] = [
   { id: 'infiltration', label: 'Infiltration', icon: Crosshair },
   { id: 'boundary', label: 'Navigation', icon: Route },
+  { id: 'duration', label: 'Duration', icon: Timer },
   { id: 'auth', label: 'Target Auth', icon: KeyRound },
 ];
 
@@ -56,6 +59,8 @@ export default function TestingConfigModal({
   onProfileChange,
   boundaryMode,
   onBoundaryModeChange,
+  duration,
+  onDurationChange,
   authDraft,
   onAuthDraftChange,
 }: TestingConfigModalProps) {
@@ -155,6 +160,52 @@ export default function TestingConfigModal({
                         )}
                       </span>
                       <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">{description}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'duration' && (
+          <div role="tabpanel" id="config-panel-duration" aria-labelledby="config-tab-duration">
+            <div role="radiogroup" aria-label="Test duration" className="flex flex-col gap-2">
+              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                Test Duration
+              </span>
+              <span className="text-xs text-(--text-tertiary) font-sans -mt-1 mb-1">
+                Applies to this run only. The engine stops when the active time limit is reached.
+              </span>
+              {TEST_DURATION_PRESETS.map(({ id, label, sublabel }) => {
+                const selected = duration === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => onDurationChange(id)}
+                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
+                      selected
+                        ? 'border-(--text-primary) bg-(--surface-raised)'
+                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
+                      aria-hidden="true"
+                    >
+                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                        {label}
+                        {id === '10m' && (
+                          <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">{sublabel}</span>
                     </span>
                   </button>
                 );

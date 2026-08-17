@@ -75,4 +75,25 @@ check('settlePendingTasks on STOP disposes and drains the probe', async () => {
   assert.deepEqual(calls.sort(), ['async.settle', 'probe.dispose', 'probe.settle']);
 });
 
+// ── Timebox boundary: isTimeboxExceeded across every selectable duration ──────
+// Seeds only the fields the method reads (elapsedActiveTimeMs / timeboxMs / isPaused)
+// via the prototype-bypass, so each preset's exact boundary is exercised cheaply.
+function timeboxExceeded(timeboxMs: number, elapsed: number, isPaused = false): boolean {
+  const e = bareEngine({ elapsedActiveTimeMs: elapsed, timeboxMs, isPaused });
+  return (e as unknown as { isTimeboxExceeded(): boolean }).isTimeboxExceeded();
+}
+
+for (const minutes of [5, 10, 20, 30]) {
+  const timeboxMs = minutes * 60_000;
+  check(`${minutes}m: not exceeded one ms under the limit`, () => {
+    assert.equal(timeboxExceeded(timeboxMs, timeboxMs - 1), false);
+  });
+  check(`${minutes}m: exceeded exactly at the limit`, () => {
+    assert.equal(timeboxExceeded(timeboxMs, timeboxMs), true);
+  });
+  check(`${minutes}m: never exceeded while paused, even past the limit`, () => {
+    assert.equal(timeboxExceeded(timeboxMs, timeboxMs + 5_000, true), false);
+  });
+}
+
 setTimeout(() => console.log(`\n${passed} checks passed.`), 0);

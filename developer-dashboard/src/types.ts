@@ -34,6 +34,9 @@ export type {
   InfiltrationProfileOption,
   // Navigation boundary lock mode (operator-facing single choice)
   BoundaryLockMode,
+  // Execution time-limit (operator-selectable timebox presets)
+  TestDurationId,
+  TestDurationOption,
   // Automated Regression Verification (Verify Fix)
   RegressionVerdict,
   VerifyFixRequest,
@@ -74,6 +77,10 @@ export {
   DEFAULT_BOUNDARY_LOCK_MODE,
   boundaryModeToFlags,
   boundaryModeFromFlags,
+  TEST_DURATION_PRESETS,
+  DEFAULT_TEST_DURATION_ID,
+  durationIdToFlags,
+  durationIdFromFlags,
   VERIFY_FIX_EVENT,
   VERIFY_FIX_PROGRESS_EVENT,
   SESSION_ATTACH_EVENT,

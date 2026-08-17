@@ -29,7 +29,7 @@ import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPrese
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode } from '../../types';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, TEST_DURATION_PRESETS, DEFAULT_TEST_DURATION_ID, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // A Pause/Stop that settles within this window shows no transitional label — the
 // control locks instantly (status guards + backend idempotency), but "Pausing…"/
@@ -100,7 +100,7 @@ interface ClinicalForensicsDashboardProps {
   onStop?: () => void;
   onResume?: () => void;
   onSaveSessionToHistory?: () => void;
-  onStartInitialization?: (url: string, profile: InfiltrationProfileId, boundaryMode: BoundaryLockMode, targetAuth?: TargetAuthConfig) => void;
+  onStartInitialization?: (url: string, profile: InfiltrationProfileId, boundaryMode: BoundaryLockMode, duration: TestDurationId, targetAuth?: TargetAuthConfig) => void;
   /** Persists the operator's draft target so it survives reload, before any launch. */
   onTargetUrlChange?: (url: string) => void;
   children?: ReactNode;
@@ -161,6 +161,7 @@ function ClinicalForensicsDashboard({
   const [urlInput, setUrlInput] = useState(targetUrl);
   const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
   const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(DEFAULT_BOUNDARY_LOCK_MODE);
+  const [duration, setDuration] = useState<TestDurationId>(DEFAULT_TEST_DURATION_ID);
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
@@ -250,7 +251,7 @@ function ClinicalForensicsDashboard({
     // The draft is deliberately retained so reopening the config modal — or
     // re-running against the same target — shows what the operator entered.
     // It lives only in component state: never persisted, gone on page reload.
-    onStartInitialization(urlInput, selectedProfile, boundaryMode, toTargetAuthConfig(authDraft));
+    onStartInitialization(urlInput, selectedProfile, boundaryMode, duration, toTargetAuthConfig(authDraft));
   };
 
   // Job parked behind the worker fleet — hold the dashboard in standby (frozen
@@ -284,10 +285,15 @@ function ClinicalForensicsDashboard({
     INFILTRATION_PROFILE_CATALOG.find((p) => p.id === DEFAULT_INFILTRATION_PROFILE)?.label ??
     '';
 
+  // Duration label for the digest, resolved from the shared preset catalog so a
+  // renamed/added preset can never leave a stale string here.
+  const currentDurationLabel = TEST_DURATION_PRESETS.find((d) => d.id === duration)?.label ?? '';
+
   // Trigger-button digest so the collapsed settings stay discoverable at a glance.
   const configSummary = [
     currentProfileName,
     boundaryMode === 'exact' ? 'Exact lock' : boundaryMode === 'subtree' ? 'Sub-tree lock' : null,
+    currentDurationLabel,
     authDraft.enabled ? 'Auth on' : null,
   ]
     .filter(Boolean)
@@ -497,6 +503,8 @@ function ClinicalForensicsDashboard({
         onProfileChange={setSelectedProfile}
         boundaryMode={boundaryMode}
         onBoundaryModeChange={setBoundaryMode}
+        duration={duration}
+        onDurationChange={setDuration}
         authDraft={authDraft}
         onAuthDraftChange={setAuthDraft}
       />

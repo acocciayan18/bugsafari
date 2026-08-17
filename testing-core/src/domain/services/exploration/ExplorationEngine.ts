@@ -1637,6 +1637,7 @@ export class ExplorationEngine {
         runId: this.runCode,
         infiltrationProfile: resolveProfileFromTestingTypes(activeTestingTypes),
         activeTestingTypes,
+        executionTimeboxMs: this.timeboxMs,
       });
     } catch (error) {
       obsLog.error('[ExplorationEngine] Failed to create Safari session:', error);

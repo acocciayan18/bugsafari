@@ -21,4 +21,23 @@ assert.equal(interpolateElapsedMs('STARTING', true, base, at, at + 60_000), base
 // A stale anchor (now before the sync) never yields negative interpolation.
 assert.equal(interpolateElapsedMs('ACTIVE', true, base, at, at - 5_000), base, 'no negative interpolation');
 
+// ── Remaining-time math across every selectable duration ──────────────────────
+// The store derives remaining as max(0, timebox - elapsed); the timer never runs its
+// own clock, so this holds identically for 5/10/20/30 min. Verify the longer presets.
+const remaining = (timeboxMs: number, elapsed: number) => Math.max(0, timeboxMs - elapsed);
+
+for (const minutes of [5, 10, 20, 30]) {
+  const timeboxMs = minutes * 60_000;
+  assert.equal(remaining(timeboxMs, 0), timeboxMs, `${minutes}m: full at start`);
+  assert.equal(remaining(timeboxMs, timeboxMs / 2), timeboxMs / 2, `${minutes}m: half elapsed`);
+  assert.equal(remaining(timeboxMs, timeboxMs), 0, `${minutes}m: zero at limit`);
+  assert.equal(remaining(timeboxMs, timeboxMs + 10_000), 0, `${minutes}m: never negative past limit`);
+}
+
+// PAUSED freezes interpolation regardless of the configured duration — a 30-min run
+// paused mid-way stays pinned to its baseline elapsed just like the 10-min default.
+const thirty = 30 * 60_000;
+const halfElapsed = thirty / 2;
+assert.equal(interpolateElapsedMs('PAUSED', true, halfElapsed, at, at + 120_000), halfElapsed, '30m paused freezes elapsed');
+
 console.log('timebox.test.ts: all assertions passed');

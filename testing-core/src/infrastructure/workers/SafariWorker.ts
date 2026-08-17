@@ -13,6 +13,7 @@ import { RunRegistry } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
 import { admitTargetChain } from '../../serverUtils.js';
 import { validateJobPayload } from '../../validation/jobPayload.js';
+import { SAFARI_JOB_LOCK_DURATION_MS } from './workerLimits.js';
 
 import { createLogger } from '../observability/logger.js';
 
@@ -252,7 +253,7 @@ async (job) => {
         maxRetriesPerRequest: null,
       },
       concurrency: readWorkerConcurrency(),
-      lockDuration: 10 * 60 * 1_000,
+      lockDuration: SAFARI_JOB_LOCK_DURATION_MS,
       stalledInterval: 30_000,
     },
   );

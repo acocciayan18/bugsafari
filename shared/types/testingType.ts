@@ -90,6 +90,74 @@ export function boundaryModeFromFlags(settings?: Partial<OptimizationSettings>):
 }
 
 // ─────────────────────────────────────────────────────────────
+//  EXECUTION TIME-LIMIT (operator-selectable timebox presets)
+// ─────────────────────────────────────────────────────────────
+// A run holds a scarce fleet slot for its whole active duration, so the operator
+// picks ONE bounded preset instead of a free-form value. Each maps to an
+// `execution-timebox-ms`; the backend clamp (below) is the final authority.
+
+// Hard server-side bounds on the timebox (SEC-09.3): a free-form client value is a
+// DoS knob. Shared so the API clamp, the worker lock, and tests use one definition.
+export const MIN_TIMEBOX_MS = 10_000;
+export const MAX_TIMEBOX_MS = 1_800_000; // 30 minutes
+
+export type TestDurationId = '5m' | '10m' | '20m' | '30m';
+
+export interface TestDurationOption {
+  id: TestDurationId;
+  label: string;
+  sublabel: string;
+  minutes: number;
+}
+
+// Canonical preset catalog shared between the frontend selector and the mapping
+// helpers. Every entry's ms must sit within [MIN_TIMEBOX_MS, MAX_TIMEBOX_MS].
+export const TEST_DURATION_PRESETS: TestDurationOption[] = [
+  { id: '5m', label: '5 min', sublabel: 'Quick smoke', minutes: 5 },
+  { id: '10m', label: '10 min', sublabel: 'Standard', minutes: 10 },
+  { id: '20m', label: '20 min', sublabel: 'Deep', minutes: 20 },
+  { id: '30m', label: '30 min', sublabel: 'Thorough (max)', minutes: 30 },
+];
+
+export const DEFAULT_TEST_DURATION_ID: TestDurationId = '10m';
+
+// Resolve a preset id into the timebox flag the engine/store consume.
+export function durationIdToFlags(
+  id: TestDurationId,
+): Pick<OptimizationSettings, 'execution-timebox-ms'> {
+  const preset = TEST_DURATION_PRESETS.find((option) => option.id === id)
+    ?? TEST_DURATION_PRESETS.find((option) => option.id === DEFAULT_TEST_DURATION_ID)!;
+  return { 'execution-timebox-ms': preset.minutes * 60_000 };
+}
+
+// Inverse: map a settings timebox back to the nearest preset id (for hydration and
+// the pre-launch config summary). Falls back to the default when absent.
+export function durationIdFromFlags(settings?: Partial<OptimizationSettings>): TestDurationId {
+  const ms = settings?.['execution-timebox-ms'];
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return DEFAULT_TEST_DURATION_ID;
+  let nearest = TEST_DURATION_PRESETS[0];
+  for (const option of TEST_DURATION_PRESETS) {
+    if (Math.abs(option.minutes * 60_000 - ms) < Math.abs(nearest.minutes * 60_000 - ms)) {
+      nearest = option;
+    }
+  }
+  return nearest.id;
+}
+
+// Clamp/strip the client-supplied execution timebox in place so the queue path, the
+// synchronous path, and the worker all inherit the enforced ceiling. Backend authority.
+export function clampTimebox(settings: OptimizationSettings | undefined): void {
+  if (!settings) return;
+  const raw: unknown = settings['execution-timebox-ms'];
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isFinite(n)) {
+    settings['execution-timebox-ms'] = Math.min(MAX_TIMEBOX_MS, Math.max(MIN_TIMEBOX_MS, n));
+  } else if (raw !== undefined) {
+    delete settings['execution-timebox-ms'];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // ️ TESTING TYPE SELECTOR (Operator-gated scenario matrix)
 // ─────────────────────────────────────────────────────────────
 // Single source of truth shared between the frontend checklist and the

@@ -17,6 +17,14 @@ interface SessionTimerProps {
 
 const DEFAULT_TIMEBOX_MS = defaultOptimizationSettings['execution-timebox-ms'] ?? 600000;
 
+// MM:SS clock format shared by remaining + total labels.
+function formatClock(ms: number): string {
+    const clamped = Math.max(0, ms);
+    const minutes = Math.floor(clamped / 60000);
+    const seconds = Math.floor((clamped % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 // Compact version for inline display
 function CompactTimer({
     initialTimeMs = DEFAULT_TIMEBOX_MS,
@@ -24,9 +32,7 @@ function CompactTimer({
 }: SessionTimerProps) {
     const timeRemaining = remainingTimeMs ?? initialTimeMs;
 
-    const minutes = Math.floor(timeRemaining / 60000);
-    const seconds = Math.floor((timeRemaining % 60000) / 1000);
-    const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const formattedTime = formatClock(timeRemaining);
 
     const isUrgent = timeRemaining <= 30000;
 
@@ -35,6 +41,8 @@ function CompactTimer({
     <Clock className={`h-4 w-4 ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`} />
     <div className={`text-sm font-mono font-semibold ${isUrgent ? 'text-(--status-critical-fg) animate-pulse' : 'text-(--text-secondary)'}`}>
         {formattedTime}
+        {/* Selected duration stays visible so the operator knows this run's limit. */}
+        <span className="text-(--text-tertiary) font-normal"> / {formatClock(initialTimeMs)}</span>
     </div>
 </div>
 
@@ -50,9 +58,7 @@ function FullTimer({
 }: SessionTimerProps) {
     const timeRemaining = remainingTimeMs ?? initialTimeMs;
 
-    const minutes = Math.floor(timeRemaining / 60000);
-    const seconds = Math.floor((timeRemaining % 60000) / 1000);
-    const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const formattedTime = formatClock(timeRemaining);
 
     const progressPercent = (timeRemaining / initialTimeMs) * 100;
     const strokeDasharray = 2 * Math.PI * 40;  // radius = 40
@@ -141,8 +147,8 @@ function FullTimer({
 
             {/* Time Info */}
             <div className="flex w-full flex-wrap justify-between gap-x-3 gap-y-1 text-[13px] text-(--text-secondary)">
-                <span>Elapsed: {Math.floor((initialTimeMs - timeRemaining) / 1000)}s</span>
-                <span>Total: {initialTimeMs / 1000}s</span>
+                <span>Elapsed: {formatClock(initialTimeMs - timeRemaining)}</span>
+                <span>Total: {formatClock(initialTimeMs)}</span>
             </div>
         </div>
     );

@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Implement multi-tab handling in BugSafari"
+git commit -m "implement-selectable-timebox"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m " Files before we apply time limit extension"
+git commit -m "implement-selectable-timebox"
 git checkout -b 8-17-Ayan-2
 git push --set-upstream origin 8-17-Ayan-2
 

@@ -53,6 +53,8 @@ import {
   type SuggestInsightsRequest,
   type SuggestInsightsResponse,
   type TelemetryEvent,
+  clampTimebox,
+  defaultOptimizationSettings,
 } from '../../../../shared/types.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
@@ -63,23 +65,9 @@ const obsLog = createLogger('[API]');
 // Ceiling on the "recent sessions" window used to scope ownership lookups.
 const RECENT_SESSION_LOOKUP_LIMIT = 500;
 
-// Hard server-side bounds on the operator-settable timebox (SEC-09.3): a run holds a
+// Timebox bounds + clamp are the shared source of truth (SEC-09.3): a run holds a
 // scarce fleet slot for its whole duration, so an unbounded client value is a DoS knob.
-const MIN_TIMEBOX_MS = 10_000;
-const MAX_TIMEBOX_MS = 1_800_000; // 30 minutes
-
-// Clamp/strip the client-supplied execution timebox in place so the queue path, the
-// synchronous path, and the worker all inherit the enforced ceiling.
-function clampTimebox(settings: OptimizationSettings | undefined): void {
-  if (!settings) return;
-  const raw: unknown = settings['execution-timebox-ms'];
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  if (Number.isFinite(n)) {
-    settings['execution-timebox-ms'] = Math.min(MAX_TIMEBOX_MS, Math.max(MIN_TIMEBOX_MS, n));
-  } else if (raw !== undefined) {
-    delete settings['execution-timebox-ms'];
-  }
-}
+// clampTimebox is imported from shared and applied once before both start branches.
 
 // Event-loop delay sampler for the readiness probe. Enabled once at module load;
 // percentile is read (and the window reset) per health computation, so the figure
@@ -602,7 +590,7 @@ export function registerRoutes(
         // the sealed credentials both exist BEFORE a worker can possibly claim the job.
         const queuedRunToken = randomUUID();
         const queuedRunCode = generateRunCode();
-        const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
+        const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? defaultOptimizationSettings['execution-timebox-ms']!;
         const entry = {
           runToken: queuedRunToken,
           runCode: queuedRunCode,
@@ -691,7 +679,7 @@ export function registerRoutes(
     // attaches the instant it sees this response; without the reservation it
     // raced the engine's async boot, was told 'no-active-session', never joined
     // run:${runToken}, and stayed deaf for the whole run (the "stuck loading" bug).
-    const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? 600_000;
+    const timeboxMs = optimizationSettings?.['execution-timebox-ms'] ?? defaultOptimizationSettings['execution-timebox-ms']!;
     sessionManager.reserveRun({
       runToken,
       runCode,

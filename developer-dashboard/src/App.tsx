@@ -26,7 +26,7 @@ import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
-import { defaultOptimizationSettings, boundaryModeToFlags } from '../../shared/types.js';
+import { defaultOptimizationSettings, boundaryModeToFlags, durationIdToFlags } from '../../shared/types.js';
 
 // Split the authenticated workspace out of the entry bundle: none of these paint on
 // the landing/auth/info routes a first-time visitor hits, so they should not be in
@@ -174,10 +174,10 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   onStop={stopTest}
                   onSaveSessionToHistory={handleSaveSessionToHistory}
                   onTargetUrlChange={writeTargetUrlDraft}
-                  onStartInitialization={(url, profile, boundaryMode, targetAuth) => {
+                  onStartInitialization={(url, profile, boundaryMode, duration, targetAuth) => {
                     setTargetUrl(url);
                     writeTargetUrlDraft(url);
-                    startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode) }, { profile }, targetAuth);
+                    startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode), ...durationIdToFlags(duration) }, { profile }, targetAuth);
                   }}
                 />
                 </RouteErrorBoundary>
