@@ -123,7 +123,12 @@ export function buildInjectionEvidence(input: InjectionEvidenceInput): Injection
 
   // Reproduction: the real preceding action history + the injection step, so the
   // playbook carries the full sequence instead of "No earlier steps were recorded".
-  const history = minimizeActionRecords(ReproductionPlaybookStore.snapshot());
+  // Scope to the faulting page + culprit field, or unrelated cross-page exploration
+  // (the preamble that navigated here) and simultaneous burst siblings leak in as steps.
+  const history = minimizeActionRecords(ReproductionPlaybookStore.snapshot(), {
+    faultUrl,
+    culpritSelector: element.selector,
+  });
   const injectionInput: ActionRecord = {
     timestamp: new Date().toISOString(),
     type: 'INPUT',

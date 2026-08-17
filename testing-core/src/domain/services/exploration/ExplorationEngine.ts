@@ -591,6 +591,9 @@ export class ExplorationEngine {
     const bugClass = bug.attribution?.bugClass;
     // No class ⇒ nothing for the collector to match a replayed fault against.
     if (!this.reproductionProbe || !bugClass) return;
+    // Oracle-only findings (reflected XSS) can't be re-armed by the replay — skip so a
+    // forced "did not reproduce" never docks their oracle-confirmed verdict.
+    if (bug.skipReproduction) return;
     this.reproductionProbe.enqueue({
       bugId: bug.bugId,
       targetUrl: this.targetUrl,

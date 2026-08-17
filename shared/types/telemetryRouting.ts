@@ -370,7 +370,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
       'FINDING',
       'MEDIUM',
       'SOFT_FAIL_BODY',
-      `HTTP ${status ?? 200} with an error payload — a failure masked as success.`,
+      `HTTP ${status ?? 200} returned an error payload, indicating that the request reported success at the HTTP level but the application response indicates a failure.`,
     );
   }
 

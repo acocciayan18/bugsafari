@@ -43,6 +43,7 @@ import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
+import { scoreFinding } from '../verification/confidenceScore.js';
 import type { ActionRecord } from '../../../../../shared/types.js';
 import { OBSERVATION_PREFIX } from '../../../../../shared/types.js';
 import { resetExecutionWitness } from '../../../bugs/finders/reflectionOracle.js';
@@ -1293,12 +1294,23 @@ export class ActionExecutor {
       ...narrateActionRecords(reproductionActions),
       `${OBSERVATION_PREFIX}${finding.title}`,
     ];
+    // fuzzGuard fires ONLY on the reflection oracle's CONFIRMED verdict (payload executed /
+    // reflected unescaped) or an observed NoSQL/crash signal — hard, first-party evidence.
+    // Attach the verdict here the SAME way every other promotion path does, else the finding
+    // reaches persistence verdict-less and a non-replayable XSS reproduction pass re-grades it
+    // from a 0/UNKNOWN baseline to INCONCLUSIVE 0% (destroying the oracle confirmation).
+    const graded = scoreFinding({ confidence: 'CONFIRMED', origin: 'TARGET_APP', evidenceCompleteness: 1, corroborated: false });
     const attribution = {
       bugClass,
       cwe,
       scenario: classification.scenario,
       testingType: classification.testingType,
       stepIndex: classification.stepIndex,
+      origin: 'TARGET_APP' as const,
+      confidence: 'CONFIRMED' as const,
+      confidenceScore: graded.score,
+      verificationStatus: graded.status,
+      corroborated: false,
     };
     const ensured = ensureFindingEvidence({
       attribution,
@@ -1322,6 +1334,10 @@ export class ActionExecutor {
       timestamp: new Date(),
       stateFingerprint,
       attribution: ensured.attribution,
+      // Reflected XSS is confirmed by the live reflection oracle, which the reproduction
+      // probe cannot re-arm; skip its replay so a guaranteed "did not reproduce" can't dock
+      // the verdict. Datastore/crash leaks re-detect from their signals, so they still enqueue.
+      skipReproduction: isReflectedXss,
     });
     this.deps.telemetry.emit('EXCEPTION', {
       actionExecuted: 'fuzz-leak-confirmed',

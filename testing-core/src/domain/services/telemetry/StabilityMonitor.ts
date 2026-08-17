@@ -20,6 +20,7 @@ import {
 } from '../../../bugs/knowledgeBase/index.js';
 import { ChaosInjectionRegistry } from '../../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { scrubCredentials } from './credentialScrub.js';
+import { ContractResponseCorrelator, looksNonJsonBody } from './contractCorrelation.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
@@ -63,6 +64,9 @@ const MAX_PENDING = 300;
 const WATCHDOG_TICK_MS = 1000;
 const HANG_THRESHOLD_MS = 8000;
 const CONFIRM_MS = 2500;
+// A client JSON.parse contract fault is correlated back to the most recent non-JSON API
+// response that settled inside this window before it — that response is the likely body
+// the app tried to parse. Kept tight so an unrelated earlier fetch is never mis-blamed.
 // Re-probe policy for a still-pending request — see hangSweep for the rationale.
 const SWEEP_POLICY: SweepPolicy = { thresholdMs: HANG_THRESHOLD_MS, reSweepBaseMs: 10000, maxSweeps: 3 };
 
@@ -401,6 +405,9 @@ export class StabilityMonitor {
   private readonly requestStartTimes = new WeakMap<Request, number>();
   // One source-map resolver per page so its decoded-map cache survives across faults.
   private readonly resolvers = new WeakMap<Page, SourceMapResolver>();
+  // Correlates a client JSON.parse contract fault back to the non-JSON API response that
+  // caused it, so the finding's route names the offending endpoint, not the page it threw on.
+  private readonly contractCorrelator = new ContractResponseCorrelator();
 
   // Browser-view target-degradation streak: a run of consecutive target-origin
   // transport failures (cleared by any target-origin success) flips NetworkQuarantine
@@ -820,6 +827,13 @@ export class StabilityMonitor {
     }
 
     this.deps.setFreeze();
+    // For a JSON.parse contract fault the useful "where" is the endpoint that returned the
+    // non-JSON body, not the page the parse threw on. Correlate it; fall back to the page url.
+    let routeUrl = url;
+    if (attribution.bugClass === 'API_CONTRACT_VIOLATION') {
+      const contract = this.contractCorrelator.correlate(faultAtMs);
+      if (contract) routeUrl = contract.url;
+    }
     // Same evidence contract as every other promotion path: steps, CWE, remediation.
     const complete = ensureFindingEvidence({
       attribution,
@@ -874,7 +888,7 @@ export class StabilityMonitor {
       bugId: finding.bugId,
       timestamp,
       reason,
-      url,
+      url: routeUrl,
       stackTrace,
       steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
       reproductionActions: reproduction.actions,
@@ -891,7 +905,7 @@ export class StabilityMonitor {
     t.gateway.emitForensicReport({
       timestamp,
       reason,
-      url,
+      url: routeUrl,
       stackTrace,
       breadcrumbs,
       reproductionActions: reproduction.actions,
@@ -911,7 +925,7 @@ export class StabilityMonitor {
       severity: FAULT_TO_FORENSIC[faultSeverity],
       message: ` ${finding.message}`,
       stackTrace,
-      url,
+      url: routeUrl,
       bugClass: complete.attribution.bugClass,
       scenario: complete.attribution.scenario,
       cwe: complete.attribution.cwe,
@@ -1878,6 +1892,12 @@ export class StabilityMonitor {
           const expectedRejection = verdict.softFail && !serverSignature && isExpectedRejectionEnvelope(url, bodyContent);
           softFailBody = (verdict.softFail || serverSignature) && !expectedRejection;
           softFailEvidence = softFailBody ? (verdict.matched ?? (serverSignature ? 'server-error signature in body' : '')) : '';
+          // A 2xx API body that is HTML/non-JSON is the classic contract-mismatch source: the
+          // app's fetch().json() will throw on it. Park it so a later client JSON.parse fault
+          // can name this endpoint as its route (see correlateContractResponse).
+          if (looksNonJsonBody(bodyContent)) {
+            this.contractCorrelator.record(url, method, this.requestSettledAtMs(response.request()));
+          }
         } catch {
           // Ignore body parse errors
         }

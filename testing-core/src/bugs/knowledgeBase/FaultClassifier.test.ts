@@ -142,6 +142,8 @@ check('JSON-parse SyntaxError during ButtonSpammer → API_CONTRACT_VIOLATION (r
   assert.equal(c.cwe, 'CWE-754');
   assert.equal(c.confidence, 'SIGNAL');
   assert.equal(c.testingType, 'concurrency');
+  // No captured response corroborates the server-contract verdict; severity caps at MEDIUM.
+  assert.equal(c.severity, 'MEDIUM');
 });
 
 check('A 5xx NETWORK body echoing a JSON.parse frame stays SERVER_API_FAILURE (contract signal is client-only)', () => {

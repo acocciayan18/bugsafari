@@ -361,6 +361,18 @@ export function classifyFault(input: FaultInput): FaultClassification {
   if (confidence === 'INFERRED' && SEVERITY_RANK[severity] > SEVERITY_RANK.MEDIUM) {
     severity = 'MEDIUM';
   }
+  // A client-side JSON.parse SyntaxError (no captured HTTP response) proves the app threw,
+  // not that the SERVER broke the contract — the failing request's status/body were never
+  // captured. Only a soft-fail (a captured 2xx error body) is hard server-contract evidence,
+  // so an uncorroborated client contract fault caps at MEDIUM like the INFERRED tier above.
+  if (
+    bugClass === 'API_CONTRACT_VIOLATION' &&
+    !input.softFail &&
+    input.statusCode === undefined &&
+    SEVERITY_RANK[severity] > SEVERITY_RANK.MEDIUM
+  ) {
+    severity = 'MEDIUM';
+  }
   if (input.statusCode !== undefined && input.statusCode >= 500 && SEVERITY_RANK[severity] < SEVERITY_RANK.HIGH) {
     severity = 'HIGH';
   }

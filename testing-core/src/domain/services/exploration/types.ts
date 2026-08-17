@@ -97,6 +97,10 @@ export interface ConfirmedBug {
    *  (raw JS/console exceptions). Arsenal-discovered bugs leave it falsy so
    *  registerConfirmedBug bridges them to the live Errors tab. */
   streamed?: boolean;
+  /** True when this finding's verdict rests on a live oracle that the reproduction probe
+   *  cannot re-arm (reflected XSS: the exec/reflection witness). Its replay would always
+   *  read "did not reproduce" and wrongly dock the confidence, so it skips the repro queue. */
+  skipReproduction?: boolean;
 }
 
 /** Parameters for persisting a single forensic error row (sans forensicRunId). */
