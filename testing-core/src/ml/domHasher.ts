@@ -64,19 +64,19 @@ export function routeKey(url: string): string {
 // an infinite feed whose identical cards stream in and interleave with an occasional
 // promoted/ad card ([A,A,B,A,A], [A,A,A,B], [B,A,A,A,A]) all normalize to the SAME
 // 'A*B' — killing the structure-hash churn that minted a fresh state per scroll.
-// Pure and self-contained (ES5, no closures/helpers) so its runtime source is
-// injected verbatim into the browser evaluate pass via `.toString()`, keeping one
+// Pure and self-contained (no closures/helpers) so its runtime source is
+// injected verbatim into the browser evaluate pass via `.toString()` (ES2015+), keeping one
 // source of truth shared by production and unit tests.
 export function collapseChildSignatures(sigs: string[]): string {
-  var counts: Record<string, number> = Object.create(null);
-  var order: string[] = [];
-  for (var i = 0; i < sigs.length; i++) {
-    var s = sigs[i]!;
+  const counts: Record<string, number> = Object.create(null);
+  const order: string[] = [];
+  for (let i = 0; i < sigs.length; i++) {
+    const s = sigs[i]!;
     if (counts[s] === undefined) { counts[s] = 1; order.push(s); }
     else { counts[s]++; }
   }
-  var out = '';
-  for (var j = 0; j < order.length; j++) out += counts[order[j]!]! > 1 ? order[j] + '*' : order[j];
+  let out = '';
+  for (let j = 0; j < order.length; j++) out += counts[order[j]!]! > 1 ? order[j] + '*' : order[j];
   return out;
 }
 
