@@ -20,10 +20,10 @@ export interface CredentialVerifySignals {
 }
 
 // Operator-facing, credential-free, mutually distinct reason copy for every
-// verdict this classifier produces. MFA/CAPTCHA copy points to session-state mode.
+// verdict this classifier produces.
 const REASON = {
-  captcha: 'the login is protected by a CAPTCHA the engine cannot solve — re-run in session-state mode with an already-authenticated browser session',
-  mfa: 'the login requires a one-time verification code (MFA) a form fill cannot complete — re-run in session-state mode with an already-authenticated browser session',
+  captcha: 'the login is protected by a CAPTCHA the engine cannot solve with a form fill',
+  mfa: 'the login requires a one-time verification code (MFA) a form fill cannot complete',
   locked: 'the target reported the account is locked or has had too many sign-in attempts',
   invalidError: 'the login form reported invalid credentials',
   invalidRepeated: 'the login form is still present after submitting — the credentials appear to have been rejected',

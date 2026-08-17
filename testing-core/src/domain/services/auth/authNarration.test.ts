@@ -37,7 +37,7 @@ const APP = 'https://app.test/account/login';
 
 // One message per phase, in the order a credentials login emits them.
 const sequence = [
-  describeAuthStart('credentials'),
+  describeAuthStart(),
   describeNavigating(APP),
   describeDiscovering(APP),
   describeAffordanceClick('Sign In', APP),
@@ -111,8 +111,8 @@ check('no message carries a structural DOM path', () => {
   }
 });
 
-check('the two auth modes are told apart in the opening line', () => {
-  assert.notEqual(describeAuthStart('credentials'), describeAuthStart('storageState'));
+check('the opening line names the target sign-in', () => {
+  assert.match(describeAuthStart(), /signing in to the target/);
 });
 
 console.log('\nauthNarration — control naming');

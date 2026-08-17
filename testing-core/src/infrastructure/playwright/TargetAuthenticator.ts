@@ -3,7 +3,6 @@ import type {
   TargetAuthConfig,
   TargetAuthResult,
   TargetCredentialsAuth,
-  TargetStorageStateAuth,
 } from '../../../../shared/types.js';
 import { resolveControlName } from '../../../../shared/reproduction.js';
 import { isRetryableAuthFailure } from '../../../../shared/types.js';
@@ -51,10 +50,10 @@ const LOCKOUT_TEXT_RE = /\b(locked|too many (attempts|tries|sign[-\s]?ins?)|temp
  */
 export class TargetAuthenticator {
   /**
-   * Route to the form-login driver or the seeded-session probe, retrying once on a
-   * genuinely transient failure (a page-load error, or no decisive signal yet). A
-   * decisive rejection breaks the loop immediately, so credentials are never
-   * re-submitted into a form that already rejected them.
+   * Drive the form login, retrying once on a genuinely transient failure (a
+   * page-load error, or no decisive signal yet). A decisive rejection breaks the
+   * loop immediately, so credentials are never re-submitted into a form that
+   * already rejected them.
    */
   public async authenticate(
     page: Page,
@@ -62,14 +61,11 @@ export class TargetAuthenticator {
     targetUrl: string,
     narrator?: AuthNarrator,
   ): Promise<TargetAuthResult> {
-    narrator?.started(config.mode);
+    narrator?.started();
     let result!: TargetAuthResult;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const isFinalAttempt = attempt === MAX_ATTEMPTS;
-      result =
-        config.mode === 'storageState'
-          ? await this.verifySeededSession(page, config, targetUrl)
-          : await this.loginWithCredentials(page, config, targetUrl, narrator, isFinalAttempt);
+      result = await this.loginWithCredentials(page, config, targetUrl, narrator, isFinalAttempt);
 
       if (result.status === 'authenticated' || !isRetryableAuthFailure(result.category)) break;
       if (!isFinalAttempt) narrator?.retrying(result.reason);
@@ -78,39 +74,6 @@ export class TargetAuthenticator {
     if (result.status === 'authenticated') narrator?.succeeded(page.url());
     else narrator?.failed(result.reason);
     return result;
-  }
-
-  /**
-   * storageState mode: the context was already seeded with the operator's session,
-   * so there is nothing to submit — only to confirm the session survived. A stale
-   * state must fail loudly, otherwise the engine explores a login page and reports
-   * a clean run.
-   */
-  private async verifySeededSession(
-    page: Page,
-    config: TargetStorageStateAuth,
-    targetUrl: string,
-  ): Promise<TargetAuthResult> {
-    try {
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
-    } catch {
-      return { status: 'failed', category: 'page-load-error', reason: 'the target could not be loaded with the supplied session state' };
-    }
-
-    if (config.successIndicator) {
-      const seen = await page
-        .waitForSelector(config.successIndicator, { timeout: SUCCESS_TIMEOUT_MS, state: 'visible' })
-        .then(() => true)
-        .catch(() => false);
-      return seen
-        ? { status: 'authenticated', reason: 'session state accepted — success indicator present' }
-        : { status: 'failed', category: 'session-expired', reason: 'the configured success indicator never appeared; the session state is likely expired' };
-    }
-
-    // Default oracle: a login wall means the seeded session was rejected.
-    return (await this.hasVisiblePasswordField(page))
-      ? { status: 'failed', category: 'session-expired', reason: 'the target still presents a login form; the session state is likely expired' }
-      : { status: 'authenticated', reason: 'session state accepted — no login wall on the target' };
   }
 
   private async loginWithCredentials(
@@ -137,7 +100,7 @@ export class TargetAuthenticator {
         status: 'failed',
         category: 'form-not-found',
         reason:
-          'no login form was found on the target, behind any Login/Sign In control, or at a conventional auth route — supply loginUrl or usernameSelector/passwordSelector, or use session-state mode for SSO/MFA logins',
+          'no login form was found on the target, behind any Login/Sign In control, or at a conventional auth route — supply loginUrl or usernameSelector/passwordSelector',
       };
     }
 
@@ -299,11 +262,6 @@ export class TargetAuthenticator {
 
     const verdict = classifyCredentialVerdict(signals, isFinalAttempt);
     return verdict.status === 'authenticated' ? { ...verdict, resolution: resolved } : verdict;
-  }
-
-  /** Login-wall probe: a visible password input anywhere on the current page. */
-  private async hasVisiblePasswordField(page: Page): Promise<boolean> {
-    return this.hasVisibleElement(page, ['input[type="password"]']);
   }
 
   private hasAuthError(page: Page): Promise<boolean> {

@@ -47,7 +47,6 @@ import {
   type SessionHistoryState,
   isImportantSession,
   coerceClientStopReason,
-  parseStorageState,
   resolveSeverity,
   type SuggestFixRequest,
   type SuggestFixResponse,
@@ -172,27 +171,17 @@ function parseInfiltration(body: unknown): {
 /**
  * Extract ephemeral target-app authentication from the request body.
  *
- * Two modes: a form login (both username and password required — a partial
- * credential can only produce a failed login) or a pre-authenticated Playwright
- * storageState, structurally validated here so a malformed blob is rejected before
- * a browser is ever launched. Never log the returned object: it is the one value in
- * the request that must not reach a log line, a database, or the job queue.
+ * A single mode: a form login, with both username and password required — a partial
+ * credential can only produce a failed login. Never log the returned object: it is
+ * the one value in the request that must not reach a log line, a database, or the
+ * job queue.
  */
-function parseTargetAuth(body: unknown, targetHost?: string): TargetAuthConfig | 'invalid' | undefined {
+function parseTargetAuth(body: unknown): TargetAuthConfig | 'invalid' | undefined {
   const raw = (body as { targetAuth?: unknown })?.targetAuth as Record<string, unknown> | undefined;
   if (!raw || typeof raw !== 'object') return undefined;
 
   const optionalString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
-
-  if (raw.mode === 'storageState') {
-    const state = typeof raw.storageState === 'string' ? raw.storageState : '';
-    // Malformed state is rejected, never downgraded: an unauthenticated run against
-    // an authenticated target reports a clean result that is silently wrong. Scoped
-    // to the target host so a jar carrying cookies for another domain is refused (SEC-08).
-    if (!state || !parseStorageState(state, { targetHost })) return 'invalid';
-    return { mode: 'storageState', storageState: state, successIndicator: optionalString(raw.successIndicator) };
-  }
 
   // Enforce the union discriminant: an absent or unknown mode used to fall
   // through and be silently treated as a credentials login.
@@ -536,12 +525,11 @@ export function registerRoutes(
       : undefined;
 
     // Ephemeral target-app credentials. Never logged here or anywhere downstream.
-    // storageState cookies/origins are scoped to the admitted target's host (SEC-08).
-    const parsedAuth = parseTargetAuth(request.body, new URL(targetUrl).hostname);
+    const parsedAuth = parseTargetAuth(request.body);
     if (parsedAuth === 'invalid') {
       response.status(400).json({
         error: 'AUTH_CONFIG_INVALID',
-        message: 'Target authentication is incomplete: supply both a username and a password, or a valid Playwright storageState.',
+        message: 'Target authentication is incomplete: supply both a username and a password.',
       });
       return;
     }

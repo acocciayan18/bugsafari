@@ -54,11 +54,11 @@ for (const [label, over, category] of [
   });
 }
 
-check('CAPTCHA and MFA reasons point the operator at session-state mode', () => {
+check('CAPTCHA and MFA reasons name the blocking challenge', () => {
   const captcha = classifyCredentialVerdict(sig({ hasCaptcha: true }), true);
   const mfa = classifyCredentialVerdict(sig({ hasMfa: true }), true);
-  assert.ok(captcha.reason.includes('session-state'));
-  assert.ok(mfa.reason.includes('session-state'));
+  assert.ok(captcha.reason.includes('CAPTCHA'));
+  assert.ok(mfa.reason.includes('MFA'));
 });
 
 console.log('\nauthVerdict — the ambiguous case retries once, then reads as rejected');

@@ -1,8 +1,8 @@
-import { chromium, type Browser, type BrowserContextOptions } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import type { BrowserEngine } from '../../application/ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { OptimizationSettings, StopReason, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
-import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, describeTermination, parseStorageState } from '../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, describeTermination } from '../../../../shared/types.js';
 import { AutonomousExplorationEngine } from '../../domain/services/AutonomousExplorationEngine.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import type { RunResult } from '../../domain/services/exploration/types.js';
@@ -235,13 +235,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 
     // Diagnostic: Log viewport configuration
     if (VERBOSE) obsLog.info(`[PlaywrightBrowserEngine] Viewport configured: ${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`);
-    // seededState + attributionUserAgent are pure (no browser I/O), safe before the guard.
-    // storageState seeds a pre-authenticated session and MUST be applied at context
-    // creation — cookies/origins have to exist before the app's first boot. An
-    // unparseable state yields null here and the auth gate below rejects the run.
-    const seededState =
-      targetAuth?.mode === 'storageState' ? parseStorageState(targetAuth.storageState) : null;
-
+    // attributionUserAgent is pure (no browser I/O), safe before the guard.
     // Optional attribution User-Agent (SEC-01.6): identify BugSafari with a contact so
     // a scanned party can trace/report a run. Opt-in via env — default keeps the stock
     // Chromium UA, since a non-standard UA can change what a target serves.
@@ -261,9 +255,6 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         ignoreHTTPSErrors: true,
         deviceScaleFactor: 1,
         ...(attributionUserAgent ? { userAgent: attributionUserAgent } : {}),
-        // Structurally validated above; Playwright's own type is narrower than the
-        // shared contract, which cannot depend on the playwright package.
-        ...(seededState ? { storageState: seededState as BrowserContextOptions['storageState'] } : {}),
       });
       this.activePage = await this.activeContext.newPage();
 
@@ -390,7 +381,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
         // straight back to the real login instead of re-guessing conventional auth
         // routes — the guessing that could strand the page on a non-existent route.
         const restoreConfig: TargetAuthConfig =
-          authConfig.mode === 'credentials' && auth.resolution && auth.loginUrl
+          auth.resolution && auth.loginUrl
             ? {
                 ...authConfig,
                 loginUrl: auth.loginUrl,
@@ -401,14 +392,6 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
             : authConfig;
         restoreSession = async (restorePage): Promise<boolean> => {
           try {
-            // storageState mode: re-seed the operator's cookies before re-verifying,
-            // since a logout cleared them. ponytail: cookie-only re-seed — add a
-            // localStorage re-seed here if a target keeps its auth token there.
-            if (authConfig.mode === 'storageState' && seededState?.cookies?.length) {
-              await restorePage.context().addCookies(
-                seededState.cookies as Parameters<import('playwright').BrowserContext['addCookies']>[0],
-              );
-            }
             const result = await new TargetAuthenticator().authenticate(restorePage, restoreConfig, targetUrl, narrator);
             return result.status === 'authenticated';
           } catch {

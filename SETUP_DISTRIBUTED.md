@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Fix client-side email validation bypass"
+git commit -m "Remove Session from Target Auth settings and redesign"
 git push origin HEAD:dev --force
 
 

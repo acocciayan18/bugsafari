@@ -53,10 +53,8 @@ export function safeUrl(url: string): string {
   }
 }
 
-export function describeAuthStart(mode: 'credentials' | 'storageState'): string {
-  return mode === 'storageState'
-    ? 'Target authentication: verifying the supplied browser session state.'
-    : 'Target authentication: signing in to the target before exploration begins.';
+export function describeAuthStart(): string {
+  return 'Target authentication: signing in to the target before exploration begins.';
 }
 
 export function describeNavigating(url: string): string {

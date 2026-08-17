@@ -44,17 +44,8 @@ export class AuthNarrator {
     });
   }
 
-  public started(mode: 'credentials' | 'storageState'): void {
-    this.emit(AUTH_ACTION.started, describeAuthStart(mode));
-    // A seeded session submits nothing, so it produces no later step. Record the
-    // one thing a human would have to repeat: open the app already signed in.
-    if (mode === 'storageState') {
-      this.record?.({
-        action: 'authenticate-session-state',
-        actionType: 'NAVIGATION',
-        humanIdentifier: 'the target application, opened with a pre-authenticated browser session',
-      });
-    }
+  public started(): void {
+    this.emit(AUTH_ACTION.started, describeAuthStart());
   }
 
   public navigating(url: string): void {
