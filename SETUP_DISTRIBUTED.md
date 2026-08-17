@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-missing-submit-action"
+git commit -m "Fix client-side email validation bypass"
 git push origin HEAD:dev --force
 
 

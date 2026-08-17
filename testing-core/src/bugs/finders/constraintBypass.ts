@@ -92,20 +92,21 @@ async function resolveSubmissionTarget(page: Page, selector: string): Promise<Su
  * field's own name, or it went to the parent form's action. A response that
  * satisfies none of these is unrelated traffic and is ignored.
  */
-function correlatesToSubmission(body: string, url: string, payload: string, target: SubmissionTarget): boolean {
+export function correlatesToSubmission(body: string, url: string, payload: string, target: SubmissionTarget): boolean {
   if (payload !== '' && (body.includes(payload) || body.includes(encodeURIComponent(payload)))) return true;
   if (target.fieldName !== null && body.includes(target.fieldName)) return true;
   return target.actionPath !== null && safePathname(url) === target.actionPath;
 }
 
-// Type-based constraints (email/number/url) come from the element snapshot captured
-// at parse time, so they survive an earlier action stripping the live DOM attributes.
-function planFromType(element: InteractiveElement): ViolationPlan | null {
+// Data-type constraint from the parse-time snapshot, so it survives an earlier action
+// stripping the live DOM attributes. Only type=number qualifies: a data contract whose
+// non-numeric input probes backend type handling. Textual format hints (type=email,
+// type=url) are re-parsed server-side by design — a bad value drawing a 2xx error body
+// (e.g. a failed login) is indistinguishable from acceptance, so flagging them was a
+// CWE-602 false positive and they are excluded. Matches the catalog rule set
+// (required/disabled/maxlength), which never included browser format types.
+export function planFromType(element: InteractiveElement): ViolationPlan | null {
   switch ((element.type || '').toLowerCase()) {
-    case 'email':
-      return { violating: 'not-an-email', constraint: 'type=email' };
-    case 'url':
-      return { violating: 'not a url', constraint: 'type=url' };
     case 'number':
       return { violating: 'x-not-a-number', constraint: 'type=number' };
     default:
@@ -238,10 +239,10 @@ export const constraintBypassFinder: BugFinder = {
     const label = resolveElementLabel(element);
     const endpoint = relativeEndpoint(accepted.url);
     const message =
-      `The "${label}" field only checks ${plan.constraint} in the browser. ` +
+      `The "${label}" field enforces ${plan.constraint} only in the browser. ` +
       `After that check was removed and ${describePayload(plan.violating)} was submitted, ` +
-      `${accepted.method} ${endpoint} accepted the value (HTTP ${accepted.status}). ` +
-      `The server never re-checks this rule, so anyone can get around it.`;
+      `${accepted.method} ${endpoint} returned HTTP ${accepted.status} instead of rejecting it, ` +
+      `so the server did not re-apply this rule on this request.`;
 
     return [
       {
