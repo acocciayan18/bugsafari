@@ -29,7 +29,7 @@ import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPrese
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, TEST_DURATION_PRESETS, DEFAULT_TEST_DURATION_ID, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, DEFAULT_TEST_DURATION_ID, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // A Pause/Stop that settles within this window shows no transitional label — the
 // control locks instantly (status guards + backend idempotency), but "Pausing…"/
@@ -285,15 +285,10 @@ function ClinicalForensicsDashboard({
     INFILTRATION_PROFILE_CATALOG.find((p) => p.id === DEFAULT_INFILTRATION_PROFILE)?.label ??
     '';
 
-  // Duration label for the digest, resolved from the shared preset catalog so a
-  // renamed/added preset can never leave a stale string here.
-  const currentDurationLabel = TEST_DURATION_PRESETS.find((d) => d.id === duration)?.label ?? '';
-
   // Trigger-button digest so the collapsed settings stay discoverable at a glance.
   const configSummary = [
     currentProfileName,
     boundaryMode === 'exact' ? 'Exact lock' : boundaryMode === 'subtree' ? 'Sub-tree lock' : null,
-    currentDurationLabel,
     authDraft.enabled ? 'Auth on' : null,
   ]
     .filter(Boolean)
