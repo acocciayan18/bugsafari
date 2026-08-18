@@ -178,15 +178,24 @@ const RESOURCE_LOAD_CONSOLE_RE = /^Failed to load resource:/i;
 // swallowed.
 const REACT_DEV_WARNING_RE = /received nan for the \S+ attribute|prop on \S+ should not be null\. consider using an empty string|should not be null\. consider using an empty string to clear the component|each child in a (?:list|array) should have a unique ["']?key/i;
 
+// Browser CSP-violation reports ("… violates the following Content Security Policy directive …";
+// "Refused to apply inline style/execute inline script because it violates …"). These are the
+// browser's own security-policy blocks, not app JS exceptions — often the CSP correctly blocking
+// inline execution — so they must never become a RUNTIME_STABILITY_EXCEPTION (CWE-248) with
+// inapplicable "wrap in try/catch" advice. The full phrase is unique to these reports.
+const CSP_VIOLATION_RE = /content security policy/i;
+
 // Error-level console lines that must NOT become findings: network-stack errors (already
 // covered by response/requestfailed monitoring), browser resource-load errors (ditto, and
-// their "failed to load" text otherwise misclassifies a bare 4xx as a navigation loop), and
-// React development-only warnings (absent in production; here only provoked by fuzzed input).
+// their "failed to load" text otherwise misclassifies a bare 4xx as a navigation loop),
+// React development-only warnings (absent in production; here only provoked by fuzzed input),
+// and browser CSP-violation reports (a security-policy block, not an app JS exception).
 export function isIgnorableConsoleError(text: string): boolean {
   if (!text) return false;
   if (text.includes('net::ERR') || text.includes('ERR_')) return true;
   if (RESOURCE_LOAD_CONSOLE_RE.test(text)) return true;
   if (REACT_DEV_WARNING_RE.test(text)) return true;
+  if (CSP_VIOLATION_RE.test(text)) return true;
   return false;
 }
 
@@ -398,7 +407,7 @@ export class StabilityMonitor {
   // Infinite-loading detector + the impure edges that feed it: an in-flight fetch/XHR registry,
   // the watchdog interval sweeping it, and a per-endpoint guard against concurrent confirmations.
   private readonly apiHangFinder = new ApiHangFinder();
-  private readonly pending = new Map<Request, { url: string; method: string; startMs: number; sweeps: number; nextSweepAtMs: number }>();
+  private readonly pending = new Map<Request, { url: string; method: string; startMs: number; pageUrl: string; sweeps: number; nextSweepAtMs: number }>();
   private readonly confirming = new Set<string>();
   private watchdogTimer?: ReturnType<typeof setInterval>;
   // Wall-clock start per request, for duration when Playwright timing is unavailable.
@@ -1263,7 +1272,7 @@ export class StabilityMonitor {
   }
 
   // Register an in-flight fetch/XHR so the watchdog can later flag it if it never settles.
-  private trackPending(request: Request): void {
+  private trackPending(request: Request, pageUrl: string): void {
     const rt = request.resourceType();
     if (rt !== 'xhr' && rt !== 'fetch') return;
     // A fire-and-forget telemetry/analytics/beacon that never settles is not a UI hang —
@@ -1293,6 +1302,7 @@ export class StabilityMonitor {
       url: request.url(),
       method: request.method(),
       startMs,
+      pageUrl,
       ...initialSweepState(startMs, SWEEP_POLICY),
     });
   }
@@ -1316,6 +1326,7 @@ export class StabilityMonitor {
           method: meta.method,
           pendingMs: now - meta.startMs,
           startMs: meta.startMs,
+          pageUrl: meta.pageUrl,
         },
         request,
       );
@@ -1326,7 +1337,7 @@ export class StabilityMonitor {
   // gate) before the finder emits. Fire-and-forget; a page nav/close mid-probe simply drops the check.
   private async confirmStuckLoading(
     page: Page,
-    trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; startMs?: number; failureDetail?: string },
+    trigger: { trigger: HangTrigger; url: string; method: string; status?: number; pendingMs?: number; startMs?: number; failureDetail?: string; pageUrl?: string },
     request?: Request,
   ): Promise<void> {
     // Engine shutdown/pause aborts in-flight requests, so a spinner left up by teardown is
@@ -1359,6 +1370,7 @@ export class StabilityMonitor {
         scenarioActive: isStressScenarioActive(),
         stillPending,
         timestampMs: Date.now(),
+        pageUrl: trigger.pageUrl,
       });
       if (!result) return;
       if (result.isNew) {
@@ -1440,8 +1452,11 @@ export class StabilityMonitor {
     const breadcrumbs = this.deps.getBreadcrumbs();
     const stackTrace = defect.evidence.join('\n');
 
+    // Anchor the reproduction on the PAGE the hung request was issued from, never the API
+    // endpoint (url) — an endpoint matches no recorded page, so the minimizer would fall back
+    // to dumping the whole session tail (and two hangs swept together would share it verbatim).
     const reproduction = ActiveScenarioTracker.flushSnapshot({
-      faultUrl: url,
+      faultUrl: defect.pageUrl ?? page.url(),
       faultAtMs,
       culpritSelector: this.culpritSelectorAt(faultAtMs),
     });
@@ -1804,7 +1819,7 @@ export class StabilityMonitor {
       try {
         const startedAt = Date.now();
         this.requestStartTimes.set(request, startedAt);
-        this.trackPending(request);
+        this.trackPending(request, page.url());
         this.duplicateFinder.observeRequest({
           requestId: this.requestIdFor(request),
           method: request.method(),
@@ -1853,7 +1868,7 @@ export class StabilityMonitor {
       this.pending.delete(response.request());
       this.settleDuplicateCandidate(page, response.request(), status, false);
       if (status >= 500 && (resourceType === 'xhr' || resourceType === 'fetch')) {
-        void this.confirmStuckLoading(page, { trigger: 'SERVER_ERROR', url, method, status });
+        void this.confirmStuckLoading(page, { trigger: 'SERVER_ERROR', url, method, status, pageUrl: page.url(), startMs: this.requestStartTimes.get(response.request()) });
       }
 
       // Full network log (Network tab): record every meaningful request, any status.
@@ -2006,7 +2021,7 @@ export class StabilityMonitor {
       // that leaves the spinner up with no error fallback is exactly the fault we want to catch.
       const failedResource = request.resourceType();
       if (!isAborted && (failedResource === 'xhr' || failedResource === 'fetch')) {
-        void this.confirmStuckLoading(page, { trigger: 'REQUEST_FAILED', url, method, failureDetail: reason });
+        void this.confirmStuckLoading(page, { trigger: 'REQUEST_FAILED', url, method, failureDetail: reason, pageUrl: page.url(), startMs: this.requestStartTimes.get(request) });
       }
 
       const failedAtMs = this.requestSettledAtMs(request);

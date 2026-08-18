@@ -74,6 +74,9 @@ export interface HangObservation {
   // settled mid-probe is not a hang — the persisting spinner is unrelated.
   stillPending?: boolean;
   timestampMs: number;
+  // Document URL the hung request was issued from — anchors the reproduction on that page,
+  // never the API endpoint (which matches no recorded page and dumps the whole session tail).
+  pageUrl?: string;
 }
 
 // A confirmed API failure that left the UI stuck in a loading state with no recovery.
@@ -92,6 +95,8 @@ export interface ApiHangDefect {
   advice: string;
   occurrence: number;
   corroborated: boolean;
+  // Issuing document URL (never the API endpoint) — the reproduction anchor.
+  pageUrl?: string;
 }
 
 // Pure, event-fed infinite-loading detector. Holds no Playwright references and never
@@ -205,6 +210,7 @@ export class ApiHangFinder {
       advice: this.buildAdvice(),
       occurrence,
       corroborated,
+      pageUrl: o.pageUrl,
     };
   }
 

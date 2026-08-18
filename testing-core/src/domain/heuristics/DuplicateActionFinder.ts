@@ -8,6 +8,12 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // candidate inside this grace window; beyond it the operator intent is a fresh submission.
 const SETTLED_GRACE_MS = 1500;
 
+// A first request still pending past the hang threshold (StabilityMonitor's HANG_THRESHOLD_MS,
+// 8s) is a HANG, not a live peer — its own INFINITE_LOADING finding covers it. A later identical
+// request is then a fresh submission, not an unguarded double-submit, so the overlap oracle must
+// stop treating the stale in-flight request as an overlap beyond this window.
+const OVERLAP_WINDOW_MS = 8000;
+
 // Statuses proving the backend rejected the repeat — the client guard is still missing,
 // but no duplicate record was committed, so the finding is informational.
 const GUARD_STATUSES = new Set([409, 425, 429]);
@@ -152,8 +158,14 @@ export class DuplicateActionFinder {
     if (!prior) return;
 
     // Overlap is the strong oracle; a settled predecessor only qualifies inside the grace window.
+    // A still-pending predecessor qualifies only until the hang threshold — past that it is a hang,
+    // not a live peer, so a much-later identical request is a fresh submission, not a double-submit.
     const overlapped = prior.settledAtMs === undefined;
-    if (!overlapped && o.timestampMs - prior.settledAtMs! > SETTLED_GRACE_MS) return;
+    if (overlapped) {
+      if (o.timestampMs - prior.startedAtMs > OVERLAP_WINDOW_MS) return;
+    } else if (o.timestampMs - prior.settledAtMs! > SETTLED_GRACE_MS) {
+      return;
+    }
 
     // Distinct idempotency keys mean the client intended two separate operations.
     if (prior.idempotencyKey && record.idempotencyKey && prior.idempotencyKey !== record.idempotencyKey) return;

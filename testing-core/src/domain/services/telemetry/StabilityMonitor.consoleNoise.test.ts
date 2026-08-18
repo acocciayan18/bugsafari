@@ -29,6 +29,13 @@ check('value-prop-null warning is ignored', () =>
 // Existing network-stack skips still hold.
 check('net::ERR is ignored', () => assert.equal(isIgnorableConsoleError('net::ERR_FAILED loading x'), true));
 
+// Browser CSP-violation reports are security-policy blocks, not app JS exceptions — they must
+// never become a RUNTIME_STABILITY_EXCEPTION (CWE-248) with inapplicable try/catch advice.
+check('CSP inline-style violation is ignored', () =>
+  assert.equal(isIgnorableConsoleError("Applying inline style violates the following Content Security Policy directive 'default-src 'none''. Either the 'unsafe-inline' keyword, a hash, or a nonce is required. The action has been blocked."), true));
+check('CSP inline-script violation is ignored', () =>
+  assert.equal(isIgnorableConsoleError('Refused to execute inline script because it violates the following Content Security Policy directive: "script-src \'self\'".'), true));
+
 console.log('\nisIgnorableConsoleError — real faults pass through');
 
 check('a genuine app crash is NOT ignored', () =>
@@ -45,6 +52,8 @@ check('app error mentioning NaN is NOT ignored', () =>
   assert.equal(isIgnorableConsoleError('Computed total was NaN for the current order'), false));
 check('an API error whose body says "failed to load" mid-line is NOT ignored', () =>
   assert.equal(isIgnorableConsoleError('Checkout failed to load the saved address'), false));
+check('an app error merely mentioning "policy" is NOT ignored', () =>
+  assert.equal(isIgnorableConsoleError('Failed to load the privacy policy page'), false));
 
 // React 18 "Warning:"-prefixed variant of the same NaN warning is still caught.
 check('React 18 Warning-prefixed NaN warning is ignored', () =>

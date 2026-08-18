@@ -132,4 +132,28 @@ check('a timeline with no culprit match is left exactly as page/time scoping pro
   assert.deepEqual(withCulprit.map((r) => r.selector), without.map((r) => r.selector));
 });
 
+check('a hang anchored on its issuing PAGE cuts the earlier-page history; the API ENDPOINT dumps it', () => {
+  // A hung request is issued on /pageA after wandering /home. Anchoring the reproduction on the
+  // issuing page cuts the /home history to the request's own page; anchoring on the API endpoint
+  // (which matches no recorded page) falls back to keeping the whole tail — the bug this fixes.
+  const T = (ms: number): string => new Date(Date.parse('2020-01-01T00:00:00.000Z') + ms).toISOString();
+  const buffer = [
+    rec({ type: 'NAVIGATE', url: 'http://app.test/home', timestamp: T(100) }),
+    rec({ selector: '#a', url: 'http://app.test/home', timestamp: T(200) }),
+    rec({ selector: '#b', url: 'http://app.test/home', timestamp: T(300) }),
+    rec({ type: 'NAVIGATE', url: 'http://app.test/pageA', timestamp: T(400) }),
+    rec({ selector: '#trigger', url: 'http://app.test/pageA', timestamp: T(500) }), // issues the hung request
+  ];
+  const faultAtMs = Date.parse(T(500));
+
+  const byPage = minimizeActionRecords(buffer, { faultUrl: 'http://app.test/pageA', faultAtMs });
+  assert.equal(byPage.some((r) => r.url.includes('/home')), false, 'page anchor drops the /home history');
+  assert.equal(byPage.some((r) => r.selector === '#trigger'), true, 'the issuing action is kept');
+
+  const byEndpoint = minimizeActionRecords(buffer, { faultUrl: 'http://app.test/api/orders', faultAtMs });
+  assert.equal(byEndpoint.some((r) => r.url.includes('/home')), true, 'endpoint anchor matches no page and keeps the tail');
+
+  assert.notDeepEqual(byPage.map((r) => r.selector), byEndpoint.map((r) => r.selector), 'anchors must diverge');
+});
+
 console.log(`\n${passed} assertions passed.`);

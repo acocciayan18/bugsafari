@@ -190,6 +190,21 @@ check('distinct triggers on the same url are distinct findings', () => {
   assert.equal(f.totalFound(), 2);
 });
 
+check('the issuing page URL passes through to the defect (reproduction anchor, never the endpoint)', () => {
+  const f = new ApiHangFinder();
+  const r = f.evaluate(obs({ url: 'http://app.test/api/orders', pageUrl: 'http://app.test/network-errors' }));
+  assert.ok(r);
+  assert.equal(r!.defect.endpoint, 'http://app.test/api/orders');
+  assert.equal(r!.defect.pageUrl, 'http://app.test/network-errors');
+});
+
+check('two hangs on different endpoints/pages carry distinct pageUrls (no shared anchor)', () => {
+  const a = new ApiHangFinder().evaluate(obs({ url: 'http://app.test/api/orders', pageUrl: 'http://app.test/network-errors' }));
+  const b = new ApiHangFinder().evaluate(obs({ url: 'http://app.test/api/drop', pageUrl: 'http://app.test/api-hang' }));
+  assert.ok(a && b);
+  assert.notEqual(a!.defect.pageUrl, b!.defect.pageUrl);
+});
+
 console.log('\nApiHangFinder — evidence, corroboration & bounds');
 
 check('inputsBlocked adds a blocked-inputs evidence line', () => {

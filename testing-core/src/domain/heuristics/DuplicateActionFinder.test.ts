@@ -88,6 +88,26 @@ check('overlap holds on a slow network — a 3s gap still reports while the firs
   assert.equal(defect!.intervalMs, 3000);
 });
 
+check('a hung first request does not pair with an identical request 100s later (overlap cap)', () => {
+  // Regression: a first request that never settles must not stay a live "overlap" peer forever.
+  // A ~100s-later identical request is a fresh submission, not a double-submit while the first runs.
+  const h = new Harness();
+  const a = h.send(1000); // never settled — a hang
+  const b = h.send(1000 + 100631);
+  assert.equal(h.settle(b, 1000 + 100631 + 200, 201), null);
+  assert.equal(h.finder.totalFound(), 0);
+  void a;
+});
+
+check('an overlap just past the hang window (9s) is a fresh submission, not a double-submit', () => {
+  const h = new Harness();
+  const a = h.send(1000); // still pending
+  const b = h.send(10000); // +9000ms, past OVERLAP_WINDOW_MS
+  assert.equal(h.settle(b, 10200, 201), null);
+  assert.equal(h.settle(a, 10300, 201), null);
+  assert.equal(h.finder.totalFound(), 0);
+});
+
 check('a repeat just after the first settled is still a candidate (grace window)', () => {
   const h = new Harness();
   const a = h.send(1000);
