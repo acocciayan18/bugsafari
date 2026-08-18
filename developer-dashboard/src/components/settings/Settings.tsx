@@ -14,6 +14,7 @@ import {
   Moon,
   Sun,
   User,
+  Mail,
   Lock,
   Eye,
   EyeOff,
@@ -38,8 +39,8 @@ import { useTour } from '../../tour/useTour';
 import { buildSettingsTourSteps } from '../../tour/tourSteps';
 import type { ThemeMode } from '../../types';
 
-const ICON_SIZE = 'h-5 w-5';
-const ICON_STROKE = 1.75;
+const ICON_SIZE = 'h-4 w-4';
+const ICON_STROKE = 1;
 
 function Spinner() {
   return <LoaderCircle className={`${ICON_SIZE} animate-spin`} strokeWidth={ICON_STROKE} aria-hidden="true" />;
@@ -652,7 +653,7 @@ function AccountSection() {
     <div className="space-y-5">
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
-          <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <Mail className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-(--text-primary)">
@@ -697,7 +698,7 @@ function AccountSection() {
         ) : (
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) px-4 py-2 text-sm font-semibold text-(--status-critical-fg) hover:opacity-90 transition-colors"
+            className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-strong) bg-(--surface-raised) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors"
           >
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Sign Out
