@@ -355,6 +355,18 @@ check('dead-end / broken route → CWE-670, never CWE-835', () => {
   assert.notEqual(c.cwe, 'CWE-835');
 });
 
+check('ChunkLoadError → RUNTIME_STABILITY_EXCEPTION / CWE-248, never a navigation loop (CWE-835)', () => {
+  // A failed bundle download is a client resource fault, not a redirect/route loop. It must
+  // agree with RuntimeStabilityFinder's CHUNK_LOAD_FAILURE subtype, never read as CWE-835.
+  for (const message of ['ChunkLoadError: Loading chunk 12 failed', 'Loading chunk 5 failed.', 'chunk vendors not found']) {
+    const c = classifyFault({ faultType: 'EXCEPTION', message, scenario: 'ButtonSpammer' });
+    assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION', message);
+    assert.equal(c.cwe, 'CWE-248', message);
+    assert.notEqual(c.bugClass, 'STRUCTURAL_NAVIGATION_LOGIC', message);
+    assert.notEqual(c.cwe, 'CWE-835', message);
+  }
+});
+
 check('a leaked SQL error reads CWE-89, never CWE-79', () => {
   // Whether this resolves to SQL_INJECTION or the secondary FUZZ_VULNERABILITY_LEAK
   // candidate, the CWE must reflect the actual SQL leak — never the XSS default.

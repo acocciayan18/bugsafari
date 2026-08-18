@@ -18,6 +18,8 @@ The engine's SSRF guard (`testing-core/src/serverUtils.ts` → `assertPublicTarg
 | `npm run serve` | build if needed, then Express serves `dist` **and** `/api` on one origin (`:5174`) |
 | `npm run tunnel` | `serve` + cloudflared quick-tunnel; prints the public URL to paste into BugSafari |
 
+npx cloudflared tunnel --url http://localhost:5174
+
 cloudflared is an external binary (not an npm dep). Install: `winget install --id Cloudflare.cloudflared` (Windows) / `brew install cloudflared` (macOS).
 
 ## Routes

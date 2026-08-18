@@ -47,7 +47,11 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /network error/i,
     /page not found/i,
   ],
-  // Client-side JavaScript crashes (error message + content).
+  // Client-side JavaScript crashes (error message + content). A ChunkLoadError /
+  // "Loading chunk N failed" is a client resource-load fault (a one-shot dynamic-import
+  // download failure), NOT a navigation loop — it lives here so it classifies as
+  // RUNTIME_STABILITY_EXCEPTION, matching RuntimeStabilityFinder's CHUNK_LOAD_FAILURE
+  // subtype, never STRUCTURAL_NAVIGATION_LOGIC / CWE-835.
   CLIENT_CRASH: [
     /cannot read propert(y|ies)/i,
     /is not defined/i,
@@ -55,19 +59,20 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /null is not (a|an) (function|object)/i,
     /is not a function/i,
     /script error/i,
+    /chunkloaderror/i,
+    /loading chunk .* failed/i,
     /chunk.*not found/i,
     /maximum call stack/i,
   ],
   // SPA component/module resolution failures (content). NOTE: "is not a function"
   // is deliberately NOT here — it is a runtime crash signature (see CLIENT_CRASH),
   // not a module-resolution one, and its presence here mislabelled plain client
-  // crashes as navigation/component failures.
+  // crashes as navigation/component failures. Chunk-LOAD failures moved to CLIENT_CRASH
+  // for the same reason: a failed bundle download is a runtime fault, not a route loop.
   COMPONENT_FAIL: [
     /cannot read propert(y|ies) .* of undefined/i,
     /failed to resolve/i,
     /module not found/i,
-    /chunk.*not found/i,
-    /loading (chunk|failed)/i,
   ],
   // Leaked server internals in an error/response body — a stack frame, an internal
   // filesystem path, a node-runtime path, or a datastore connection string. Distinct
