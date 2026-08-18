@@ -299,15 +299,18 @@ function resolveBugClass(
     return { bugClass: expectedBugs[0], confidence: 'CONFIRMED' };
   }
   // 4. No signal, no confirmation: NEVER promote a security/injection class from
-  //    scenario expectation alone. For a NETWORK response fault the HTTP semantics
-  //    are a stronger prior than a stress scenario's nominal expected bug, so use the
-  //    fault-type default directly rather than inheriting a client/navigation class
-  //    the scenario merely lists. Other fault kinds prefer the scenario's first
-  //    non-security expected bug, else the raw fault-type default. Confidence INFERRED.
+  //    scenario expectation alone. For a NETWORK response fault the HTTP semantics are a
+  //    stronger prior than a stress scenario's nominal expected bug; a client runtime fault
+  //    (EXCEPTION/CONSOLE) likewise has its OWN strong prior — it is a stability exception —
+  //    so a no-signal caught JS error must not inherit the active scenario's expected
+  //    race/nav/boundary class (a genuine race is proven separately by the duplicate-action
+  //    heuristic, with real "sent again Nms" evidence). All three use the fault-type default
+  //    directly. Only FREEZE keeps the scenario-bias path (its attribution is settled
+  //    upstream). Confidence INFERRED.
   // A NETWORK fault with no matched signal: a 4xx status was already resolved above (0c),
   // so only transport aborts (no status) and 408/429 resource pressure reach here.
-  if (input.faultType === 'NETWORK') {
-    return { bugClass: FAULT_TYPE_DEFAULT.NETWORK, confidence: 'INFERRED' };
+  if (input.faultType === 'NETWORK' || input.faultType === 'EXCEPTION' || input.faultType === 'CONSOLE') {
+    return { bugClass: FAULT_TYPE_DEFAULT[input.faultType], confidence: 'INFERRED' };
   }
   const nonSecurityExpected = expectedBugs.find((bug) => !SECURITY_BUGCLASSES.has(bug));
   if (nonSecurityExpected) return { bugClass: nonSecurityExpected, confidence: 'INFERRED' };

@@ -355,6 +355,21 @@ check('dead-end / broken route → CWE-670, never CWE-835', () => {
   assert.notEqual(c.cwe, 'CWE-835');
 });
 
+check('no-signal client EXCEPTION under a concurrency scenario → RUNTIME_STABILITY_EXCEPTION, never a race', () => {
+  // "Failed to fetch" carries no race evidence; it must not inherit ButtonSpammer's expected
+  // SPA_STATE_RACE_CONDITION. A genuine race is proven separately by the duplicate-action heuristic.
+  const c = classifyFault({ faultType: 'EXCEPTION', message: 'Failed to fetch', scenario: 'ButtonSpammer' });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+  assert.equal(c.confidence, 'INFERRED');
+  assert.notEqual(c.bugClass, 'SPA_STATE_RACE_CONDITION');
+});
+
+check('no-signal CONSOLE fault under CoordinateBombing → RUNTIME_STABILITY_EXCEPTION', () => {
+  const c = classifyFault({ faultType: 'CONSOLE', message: 'silent fetch failed', scenario: 'CoordinateBombing' });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+  assert.notEqual(c.bugClass, 'SPA_STATE_RACE_CONDITION');
+});
+
 check('ChunkLoadError → RUNTIME_STABILITY_EXCEPTION / CWE-248, never a navigation loop (CWE-835)', () => {
   // A failed bundle download is a client resource fault, not a redirect/route loop. It must
   // agree with RuntimeStabilityFinder's CHUNK_LOAD_FAILURE subtype, never read as CWE-835.

@@ -64,6 +64,11 @@ const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['CHUNK_LOAD_FAILURE', /chunkloaderror|loading chunk .* failed|chunk.*not found/i],
 ];
 
+// Subtypes assigned only when no message pattern matched — they differ purely by source
+// (a throw vs an unhandled rejection). Dedup treats them as one bucket so the same message
+// on both channels collapses to a single finding.
+const FALLBACK_SUBTYPES: ReadonlySet<RuntimeSubtype> = new Set(['GENERIC_EXCEPTION', 'UNHANDLED_REJECTION']);
+
 // Human title shown as the finding message prefix.
 const SUBTYPE_LABEL: Record<RuntimeSubtype, string> = {
   UNDEFINED_PROPERTY: 'Read a field on a value that was undefined',
@@ -185,7 +190,12 @@ export class RuntimeStabilityFinder {
       .replace(/\b\d+\b/g, '#')
       .replace(/\s+/g, ' ')
       .trim();
-    return `${subtype}|${core}`;
+    // The two source-fallback subtypes (a generic throw vs a generic rejection) are the same
+    // logical error surfaced on different channels — a failed fetch fires both. Bucket them so
+    // one message collapses to one finding; specific subtypes keep their own key so genuinely
+    // different errors never merge.
+    const key = FALLBACK_SUBTYPES.has(subtype) ? 'GENERIC' : subtype;
+    return `${key}|${core}`;
   }
 
   private bugIdFor(subtype: RuntimeSubtype, signature: string): string {

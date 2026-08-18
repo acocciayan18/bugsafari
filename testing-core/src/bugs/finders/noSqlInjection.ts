@@ -20,6 +20,16 @@ const OBSERVE_WINDOW_MS = 1200;
 // Cap on the extracted driver-error snippet — the real error line, not the whole page.
 const MAX_ERROR_SNIPPET = 200;
 
+// Name an injected payload by its SHAPE (not a vuln class) so the finding message states
+// what was actually submitted — a bare `'` is a SQL metacharacter, not a NoSQL operator.
+export function describeInjectedValue(payload: string): string {
+  const p = payload ?? '';
+  if (/\$(?:ne|gt|gte|lt|lte|in|nin|where|regex|exists|or|and)\b/i.test(p) || /^\s*[{[]/.test(p)) return 'a NoSQL operator';
+  if (/['"]|--|;|\b(?:or|union|select)\b/i.test(p)) return 'a SQL metacharacter';
+  if (/<\s*(?:script|svg|img)\b|on\w+\s*=|javascript:|<</i.test(p)) return 'an HTML/script fragment';
+  return 'an unexpected value';
+}
+
 // Fields already probed this run — one injection attempt per field is enough. Lets the
 // finder run 'transactional' (every step the field is the acted element) without
 // re-fuzzing a field it already tested. Mirrors the differential oracle's guard.
@@ -181,7 +191,7 @@ export const noSqlInjectionFinder: BugFinder = {
         severity: evidence.operatorLeak ? 'CRITICAL' : 'HIGH',
         title: 'Database operator was not handled safely by the server',
         evidence: {
-          message: `${describeTarget(parts.label, parts.noun)} accepted a NoSQL operator value the server did not treat as plain text. Injected value: ${payload}`,
+          message: `${describeTarget(parts.label, parts.noun)} accepted ${describeInjectedValue(payload)} the server did not treat as plain text. Injected value: ${payload}`,
           selector: parts.displaySelector,
           actionExecuted: 'fuzz-nosql-injection',
           stateHash: ctx.stateHash,

@@ -61,6 +61,18 @@ check('same logical error collapses to one finding, isNew true only once', () =>
   assert.equal(f.totalOccurrences(), 2);
 });
 
+check('same generic message across EXCEPTION + REJECTION sources collapses to one finding', () => {
+  // A failed fetch surfaces both as a thrown error and as an unhandled rejection; the two
+  // source-fallback subtypes must dedup together, not double-count.
+  const f = new RuntimeStabilityFinder();
+  const thrown = f.classify(obs({ message: 'Failed to fetch', source: 'EXCEPTION' }));
+  const rejected = f.classify(obs({ message: 'Failed to fetch', source: 'REJECTION' }));
+  assert.equal(thrown.isNew, true);
+  assert.equal(rejected.isNew, false);
+  assert.equal(rejected.finding.bugId, thrown.finding.bugId);
+  assert.equal(f.totalFindings(), 1);
+});
+
 check('line/column and address noise still collapse to one signature', () => {
   const f = new RuntimeStabilityFinder();
   f.classify(obs({ message: "TypeError: null is not an object at http://app.test/x.js:12:5" }));
