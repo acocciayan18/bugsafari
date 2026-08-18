@@ -736,7 +736,7 @@ export default function Settings() {
       className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)"
     >
       {/* Breadcrumb duplicates the compact top bar — desktop only. */}
-      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-4 sm:px-6 lg:flex">
+      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
         <div className="flex min-w-0 items-center">
           <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>

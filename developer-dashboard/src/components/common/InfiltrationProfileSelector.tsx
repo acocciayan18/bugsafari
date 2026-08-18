@@ -28,17 +28,21 @@ function InfiltrationProfileSelectorImpl({
       <div className="flex flex-col gap-2" role="radiogroup" aria-label="Infiltration Matrix">
         {INFILTRATION_PROFILE_CATALOG.map((option) => {
           const isSelected = option.id === profile;
+          // Only Chaos Infiltration is selectable; other profiles stay visible but locked.
+          const isLocked = option.id !== 'CHAOS_INFILTRATION';
+          const isDisabled = disabled || isLocked;
           return (
             <button
               key={option.id}
               type="button"
               role="radio"
               aria-checked={isSelected}
-              disabled={disabled}
-              title={option.description}
-              onClick={() => !disabled && onProfileChange(option.id)}
+              disabled={isDisabled}
+              aria-disabled={isDisabled}
+              title={isLocked ? 'Temporarily unavailable' : option.description}
+              onClick={() => !isDisabled && onProfileChange(option.id)}
               className={`flex items-start gap-2.5 text-left rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
-                disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+                isDisabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
               } ${
                 isSelected
                   ? 'border-(--text-primary) bg-(--surface-raised)'
