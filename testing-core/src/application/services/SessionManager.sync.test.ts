@@ -269,5 +269,42 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   assert.strictEqual(sm.getSnapshotFor(null, 'r12')?.status, 'RUNNING', 'S12: the new run stays RUNNING');
 }
 
+// ── S13: queue-mode slot release — a wedged stop frees the worker's concurrency-1
+// slot so the NEXT start runs immediately instead of queuing behind it. The BullMQ
+// processor awaits execute() but races the activation releaser SafariWorker wires;
+// forceRelease() fires it, letting the processor return even when execute() never
+// resolves (Start → Stop → settle → Start-again, no real 5s sleep).
+{
+  const { sm } = newManager();
+  let fireRelease = (): void => { /* set when the processor registers */ };
+  const slotReleased = new Promise<'released'>((res) => { fireRelease = () => res('released'); });
+  sm.setActivationReleaser(() => fireRelease());
+
+  const wedged: EngineControl = {
+    stop() { return new Promise<void>(() => { /* never settles */ }); },
+    async settlePendingTasks() { /* no-op */ },
+    getElapsedActiveTimeMs() { return 0; },
+    getLastSessionId() { return null; },
+  };
+  sm.beginRun({ runToken: 'r13', runCode: 'RUN-0000D3', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: wedged });
+
+  // Model the processor: await execute() (never resolves, wedged) OR the release signal.
+  const execute = new Promise<void>(() => { /* wedged run() never unwinds */ });
+  let slotFreed = false;
+  const processor = Promise.race([execute.then(() => 'completed' as const), slotReleased])
+    .then((outcome) => { slotFreed = outcome === 'released'; });
+
+  await sm.stopByOperator('operator'); // returns within STOP_TIMEOUT despite the hung stop
+  await delay(80);                     // > BUGSAFARI_STOP_TIMEOUT_MS (40ms) — watchdog fires
+  await processor;
+
+  assert.strictEqual(slotFreed, true, 'S13: force-release freed the worker slot despite a wedged teardown');
+  assert.strictEqual(sm.hasActiveRun(), false, 'S13: the stopped run was torn down');
+
+  // Start-again: a fresh run begins immediately — nothing queues behind the old slot.
+  sm.beginRun({ runToken: 'r13b', runCode: 'RUN-0000D4', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: fakeEngine() });
+  assert.strictEqual(sm.getSnapshotFor(null, 'r13b')?.status, 'RUNNING', 'S13: the next start runs immediately, not queued');
+}
+
 console.log('SessionManager.sync.test.ts passed');
 process.exit(0);

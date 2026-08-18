@@ -59,6 +59,12 @@ export interface FaultInput {
    * violation (an input/exception fault) on hard evidence, never resource exhaustion.
    */
   softFail?: boolean;
+  /**
+   * A captured non-JSON response was correlated to this client parse fault. Only then is a
+   * "not valid JSON" EXCEPTION real API-contract evidence; without it the parse is a local
+   * runtime crash, not a server-contract break.
+   */
+  contractCorrelated?: boolean;
 }
 
 /**
@@ -204,6 +210,19 @@ function matchedCategories(input: FaultInput): SignalCategory[] {
     // echoed one. Skip the client-render categories so the server/leak/boundary
     // verdict wins instead of a spurious RUNTIME_STABILITY_EXCEPTION.
     if (input.faultType === 'NETWORK' && CLIENT_RENDER_CATEGORIES.has(category)) return false;
+    // "not valid JSON" / "Unexpected token '<'" is a server-contract break only when a
+    // captured non-JSON response backs it. A client EXCEPTION/CONSOLE with no such evidence
+    // is a local JSON.parse crash — a plain runtime stability exception, not an API contract
+    // violation. Requires positive evidence (correlated response, soft-fail, or an HTTP status).
+    if (
+      category === 'API_CONTRACT' &&
+      input.faultType !== 'NETWORK' &&
+      !input.softFail &&
+      input.statusCode === undefined &&
+      !input.contractCorrelated
+    ) {
+      return false;
+    }
     // XSS via raw tag-presence is only trustworthy when the execution oracle CONFIRMED
     // it — a <script> echoed in a 5xx body is not proof of an executable reflection, so
     // it must not read as XSS on a NETWORK fault either (leaked SQL/Mongo/info errors,

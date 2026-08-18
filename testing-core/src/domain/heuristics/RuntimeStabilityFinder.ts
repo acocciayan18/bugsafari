@@ -22,6 +22,9 @@ export interface RuntimeObservation {
   stack?: string;
   url: string;
   timestampMs: number;
+  // A captured non-JSON response was correlated to this parse fault — the evidence that makes
+  // a "not valid JSON" error a real API-contract break rather than a local parse crash.
+  contractCorrelated?: boolean;
 }
 
 // A classified, deduplicated runtime finding ready for telemetry + confirmed-bug registration.
@@ -129,7 +132,7 @@ export class RuntimeStabilityFinder {
   // repeats return the same bugId with an incremented occurrence so the caller can suppress them.
   public classify(o: RuntimeObservation): { finding: RuntimeFinding; isNew: boolean } {
     const message = (o.message ?? '').toString().trim() || 'Unknown runtime error';
-    const subtype = this.detectSubtype(o.source, message, o.stack);
+    const subtype = this.detectSubtype(o.source, message, o.stack, o.contractCorrelated);
     const signature = this.normalizeSignature(subtype, message);
 
     const existing = this.tracked.get(signature);
@@ -160,11 +163,15 @@ export class RuntimeStabilityFinder {
     return sum;
   }
 
-  private detectSubtype(source: RuntimeObservation['source'], message: string, stack?: string): RuntimeSubtype {
+  private detectSubtype(source: RuntimeObservation['source'], message: string, stack?: string, contractCorrelated?: boolean): RuntimeSubtype {
     if (source === 'CRASH') return 'RENDERER_CRASH';
     const haystack = `${message}\n${stack ?? ''}`;
     for (const [subtype, pattern] of SUBTYPE_PATTERNS) {
-      if (pattern.test(haystack)) return subtype;
+      if (!pattern.test(haystack)) continue;
+      // A JSON.parse failure is an API-contract break only when a captured non-JSON response
+      // backs it; otherwise it is a local parse crash → fall through to SYNTAX_ERROR.
+      if (subtype === 'API_CONTRACT_VIOLATION' && !contractCorrelated) continue;
+      return subtype;
     }
     if (source === 'REJECTION') return 'UNHANDLED_REJECTION';
     return 'GENERIC_EXCEPTION';

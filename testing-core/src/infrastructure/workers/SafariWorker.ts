@@ -14,6 +14,7 @@ import { AuthVault } from '../queue/AuthVault.js';
 import { admitTargetChain } from '../../serverUtils.js';
 import { validateJobPayload } from '../../validation/jobPayload.js';
 import { SAFARI_JOB_LOCK_DURATION_MS } from './workerLimits.js';
+import { raceSlotRelease } from './slotRelease.js';
 
 import { createLogger } from '../observability/logger.js';
 
@@ -101,6 +102,13 @@ export async function createSafariWorker(
   const publisher = new RedisTelemetryPublisher(redisUrl);
   const telemetry = new SocketTelemetryGateway(publisher);
   sessionManager.initialize(telemetry);
+
+  // Worker-side force-release escape hatch, mirroring index.ts's API-process wiring.
+  // The slot here is the BullMQ processor, not a boolean, so "release" means "let the
+  // processor stop awaiting a wedged execute() and return." The stop-watchdog's
+  // forceRelease() fires this; the processor sets it per-job and nulls it on return.
+  let releaseActiveSlot: (() => void) | null = null;
+  sessionManager.setActivationReleaser(() => releaseActiveSlot?.());
 
   // Reverse of the telemetry bridge: apply operator pause/resume/stop clicks that
   // the API process publishes to this worker's live run.
@@ -204,6 +212,11 @@ async (job) => {
       // unref so a teardown-bypass path can't leave this interval pinning the event loop.
       snapshotTimer.unref();
       claimsByJobId.set(String(job.id ?? ''), { runToken: payload.runToken, userId: payload.requestedBy ?? null });
+      // Per-job release signal: the stop-watchdog's forceRelease() resolves this so a
+      // wedged execute() can't pin the concurrency-1 slot past STOP_TIMEOUT_MS.
+      let fireRelease: () => void = () => undefined;
+      const slotReleased = new Promise<'released'>((resolve) => { fireRelease = () => resolve('released'); });
+      releaseActiveSlot = fireRelease;
       let succeeded = false;
       try {
         // Open the sealed credentials exactly once. A miss means the vault entry
@@ -222,9 +235,18 @@ async (job) => {
         // job payload; undefined would default the gate to all testing types and
         // the timebox to 600s regardless of what the operator configured. runCode is
         // threaded so the worker-created session doc reuses the enqueue-minted code.
-        await useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runToken, targetAuth ?? undefined, payload.runCode);
+        const executeDone = useCase.execute(engineUrl, payload.optimizationSettings, payload.selectedScenarios, payload.runToken, targetAuth ?? undefined, payload.runCode);
+        const outcome = await raceSlotRelease(executeDone, slotReleased);
+        // Both branches are terminal: a stopped run must never be retried, and a
+        // force-release already ran endRun() → a terminal snapshot the finally settles.
+        // Returning on 'released' frees the slot now; the wedged run's residual
+        // browser.close() finishes on the detached executeDone (its .catch is armed).
         succeeded = true;
+        if (outcome === 'released') {
+          obsLog.warn(`[SafariWorker] slot force-released while execute() still unwinding id=${job.id ?? 'unknown'} — returning to free the concurrency slot; residual teardown detached.`);
+        }
       } finally {
+        releaseActiveSlot = null;
         clearInterval(snapshotTimer);
         claimsByJobId.delete(String(job.id ?? ''));
         // Ciphertext outlives neither success nor failure.

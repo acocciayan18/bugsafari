@@ -39,8 +39,8 @@ import { useTour } from '../../tour/useTour';
 import { buildSettingsTourSteps } from '../../tour/tourSteps';
 import type { ThemeMode } from '../../types';
 
-const ICON_SIZE = 'h-4 w-4';
-const ICON_STROKE = 1;
+const ICON_SIZE = 'h-4.5 w-4.5';
+const ICON_STROKE = 1.75;
 
 function Spinner() {
   return <LoaderCircle className={`${ICON_SIZE} animate-spin`} strokeWidth={ICON_STROKE} aria-hidden="true" />;

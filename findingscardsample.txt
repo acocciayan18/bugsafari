@@ -1,55 +1,233 @@
 Runtime Stability Exception
+Critical
+CWE-248
+Status
+CONFIRMED 100%
+Message
+Maximum call stack size exceeded
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+
+
+
+API Contract Violation
+High
+CWE-754
+Status
+CONFIRMED 100%
+Message
+Unexpected token '<', "<not json>" is not valid JSON
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "ReferenceError" button, the "Stack overflow" button, the "Not a function" button, the "Chunk load failure" button and the "SyntaxError (bad JSON)" button
+Route
+/js-runtime-errors
+
+
+
+
+Runtime Stability Exception
 Medium
 CWE-248
 Status
 CONFIRMED 100%
 Message
-Cannot read properties of null (reading 'role')
+users is not iterable
 Reproduction Playbook
 1
 open
-Navigate to /pages/13.C4FE_v5.0_User_Profile_Page.html
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "ReferenceError" button, the "Stack overflow" button, the "Not a function" button and the "Not iterable" button
+Route
+/js-runtime-errors
+
+
+
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+Invalid array length
+Element
+RangeError
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
 2
 click
-Click the "Show/Hide Password" button
+Click the "Null property" button, repeated 2 times in quick succession
 Route
-/pages/13.C4FE_v5.0_User_Profile_Page.html
+/js-runtime-errors
+·
+Panel
+"Throw a runtime fault"
 ·
 Element
-"Show/Hide Password" button
+"Null property" button
 3
-click
-Click the "themeToggle" button
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
 Route
-/pages/13.C4FE_v5.0_User_Profile_Page.html
-·
-Element
-"themeToggle" button
+/js-runtime-errors
 4
 click
-Click the "Save Changes" button
+Click the "Undefined property" button, repeated 2 times in quick succession
 Route
-/pages/13.C4FE_v5.0_User_Profile_Page.html
+/js-runtime-errors
+·
+Panel
+"Throw a runtime fault"
 ·
 Element
-"Save Changes" button
+"Undefined property" button
 5
-type
-Type "' AND 'a'='b" into the "Enter new password" field
+rapid
+Click 5 controls at the same time: the "Unhandled rejection" button, the "Chunk load failure" button, the "Undefined property" button, the "ReferenceError" button and the "Stack overflow" button
 Route
-/pages/13.C4FE_v5.0_User_Profile_Page.html
-·
-Element
-"Enter new password" field
+/js-runtime-errors
 6
-type
-Type "' AND (SELECT COUNT(*) FROM users)>1--" into the "Username" field
+click
+Click the "Unhandled rejection" button, repeated 2 times in quick succession
 Route
-/pages/13.C4FE_v5.0_User_Profile_Page.html
+/js-runtime-errors
+·
+Panel
+"Throw a runtime fault"
 ·
 Element
-"Username" field
+"Unhandled rejection" button
+7
+rapid
+Click 5 controls at the same time: the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button, the "Stack overflow" button and the "Not a function" button
+Route
+/js-runtime-errors
 
 
 
 
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+onClose is not a function
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button, the "Stack overflow" button and the "Not a function" button
+Route
+/js-runtime-errors
+
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+silent fetch failed
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+handleSubmitMissing is not defined
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+
+
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+ChunkLoadError: Loading chunk 12 failed
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+Cannot read properties of undefined (reading 'name')
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Undefined property" button, the "Unhandled rejection" button, the "Chunk load failure" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+CONFIRMED 100%
+Message
+Cannot read properties of null (reading 'value')
+Element
+Null property
+Reproduction Playbook
+1
+open
+Navigate to /js-runtime-errors

@@ -130,20 +130,34 @@ check('Client crash message during ButtonSpammer → RUNTIME_STABILITY_EXCEPTION
   assert.equal(c.testingType, 'concurrency');
 });
 
-check('JSON-parse SyntaxError during ButtonSpammer → API_CONTRACT_VIOLATION (runtime signal beats scenario default)', () => {
-  // The backend returned an HTML error page; the app's JSON.parse threw. The runtime
-  // contract signal must own the verdict, not the concurrency scenario's default class.
+check('JSON-parse SyntaxError with NO captured response → RUNTIME_STABILITY_EXCEPTION (a local parse crash, not a contract break)', () => {
+  // A "not valid JSON" message alone does not prove a server call — a local JSON.parse of a
+  // literal throws the same text. Without a correlated non-JSON response it is a plain runtime
+  // stability exception, consistent with its sibling uncaught errors.
   const c = classifyFault({
     faultType: 'EXCEPTION',
     message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    scenario: 'ButtonSpammer',
+  });
+  assert.equal(c.bugClass, 'RUNTIME_STABILITY_EXCEPTION');
+  assert.equal(c.cwe, 'CWE-248');
+  assert.equal(c.severity, 'MEDIUM');
+  assert.equal(c.testingType, 'concurrency');
+});
+
+check('JSON-parse SyntaxError WITH a correlated non-JSON response → API_CONTRACT_VIOLATION', () => {
+  // The backend returned an HTML error page and the client fetch().json() threw on it. The
+  // correlated response is the evidence that promotes the parse to a real contract break.
+  const c = classifyFault({
+    faultType: 'EXCEPTION',
+    message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    contractCorrelated: true,
     scenario: 'ButtonSpammer',
   });
   assert.equal(c.bugClass, 'API_CONTRACT_VIOLATION');
   assert.equal(c.cwe, 'CWE-754');
   assert.equal(c.confidence, 'SIGNAL');
   assert.equal(c.testingType, 'concurrency');
-  // No captured response corroborates the server-contract verdict; severity caps at MEDIUM.
-  assert.equal(c.severity, 'MEDIUM');
 });
 
 check('A 5xx NETWORK body echoing a JSON.parse frame stays SERVER_API_FAILURE (contract signal is client-only)', () => {

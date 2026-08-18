@@ -1955,7 +1955,7 @@ export class ExplorationLoop {
       } else {
         // Restore targets currentUrl (the in-boundary page we are on), so it is safe
         // under sub-tree and site alike — no out-of-boundary transition is issued.
-        this.deps.telemetry.emitMilestone(` Edge unstable — restoring parent locally (no false exhaustion).`);
+        this.deps.telemetry.emitMilestone(` Edge unstable. Restoring the parent state locally without marking the path as exhausted.`);
         this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
       }

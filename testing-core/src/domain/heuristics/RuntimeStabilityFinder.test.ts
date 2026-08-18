@@ -24,9 +24,9 @@ const obs = (over: Partial<RuntimeObservation> = {}): RuntimeObservation => ({
 
 console.log('RuntimeStabilityFinder — subtype detection');
 
-const detects = (message: string, expected: string, source: RuntimeObservation['source'] = 'EXCEPTION') => {
+const detects = (message: string, expected: string, source: RuntimeObservation['source'] = 'EXCEPTION', contractCorrelated = false) => {
   const f = new RuntimeStabilityFinder();
-  assert.equal(f.classify(obs({ message, source })).finding.subtype, expected);
+  assert.equal(f.classify(obs({ message, source, contractCorrelated })).finding.subtype, expected);
 };
 
 check('undefined property access', () => detects("Cannot read properties of undefined (reading 'name')", 'UNDEFINED_PROPERTY'));
@@ -38,8 +38,9 @@ check('not a function', () => detects('x.doThing is not a function', 'NOT_A_FUNC
 check('stack overflow', () => detects('Maximum call stack size exceeded', 'STACK_OVERFLOW'));
 check('range error', () => detects('RangeError: Invalid array length', 'RANGE_ERROR'));
 check('generic syntax error (no JSON signature)', () => detects('SyntaxError: Unexpected end of input', 'SYNTAX_ERROR'));
-check('JSON-parse of HTML → API_CONTRACT_VIOLATION', () => detects(`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, 'API_CONTRACT_VIOLATION'));
-check('JSON.parse stack frame → API_CONTRACT_VIOLATION', () => detects('SyntaxError at JSON.parse (<anonymous>)', 'API_CONTRACT_VIOLATION'));
+check('JSON-parse of HTML with NO correlated response → SYNTAX_ERROR (local parse crash)', () => detects(`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, 'SYNTAX_ERROR'));
+check('JSON-parse of HTML WITH a correlated response → API_CONTRACT_VIOLATION', () => detects(`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, 'API_CONTRACT_VIOLATION', 'EXCEPTION', true));
+check('JSON.parse stack frame with a correlated response → API_CONTRACT_VIOLATION', () => detects('SyntaxError at JSON.parse (<anonymous>)', 'API_CONTRACT_VIOLATION', 'EXCEPTION', true));
 check('chunk load failure', () => detects('Loading chunk 42 failed', 'CHUNK_LOAD_FAILURE'));
 check('rejection falls back to UNHANDLED_REJECTION when message is generic', () => detects('request failed', 'UNHANDLED_REJECTION', 'REJECTION'));
 check('crash source always classifies as RENDERER_CRASH', () => detects('anything', 'RENDERER_CRASH', 'CRASH'));
@@ -129,7 +130,7 @@ check('student advice is one consolidated Suggested Fix with no duplicated guida
 
 check('API contract violation advice is also one consolidated Suggested Fix', () => {
   const f = new RuntimeStabilityFinder();
-  const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` }));
+  const { finding } = f.classify(obs({ message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, contractCorrelated: true }));
   const fixBlocks = finding.studentAdvice.split('Suggested fix:').length - 1;
   assert.equal(fixBlocks, 1, 'exactly one Suggested fix block');
   assert.ok(finding.studentAdvice.includes('Apply that guard at the failing line'));

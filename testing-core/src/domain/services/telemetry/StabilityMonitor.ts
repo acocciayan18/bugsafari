@@ -21,6 +21,7 @@ import {
 import { ChaosInjectionRegistry } from '../../../infrastructure/monitoring/chaosInjectionRegistry.js';
 import { scrubCredentials } from './credentialScrub.js';
 import { ContractResponseCorrelator, looksNonJsonBody } from './contractCorrelation.js';
+import { resolveRuntimeCulprit } from './runtimeCulprit.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
@@ -654,6 +655,9 @@ export class StabilityMonitor {
       confidenceFloor?: FaultConfidence;
       // A 2xx whose body declared a failure — classify as an API contract violation.
       softFail?: boolean;
+      // A captured non-JSON response was correlated to this client parse fault — the only
+      // evidence that turns a "not valid JSON" EXCEPTION into a real API-contract break.
+      contractCorrelated?: boolean;
     },
   ): { report: boolean; advice: string; severity: ForensicErrorSeverity; attribution: FindingAttribution; reason: string } {
     const classification = classifyFault({
@@ -663,6 +667,7 @@ export class StabilityMonitor {
       url: opts?.url,
       content: opts?.content,
       softFail: opts?.softFail,
+      contractCorrelated: opts?.contractCorrelated,
       scenario: ActiveScenarioTracker.getActiveScenarioName(),
       stepIndex: ActiveScenarioTracker.getCurrentStepIndex(),
     });
@@ -779,13 +784,20 @@ export class StabilityMonitor {
     const faultType: FaultType = source === 'CONSOLE' ? 'CONSOLE' : 'EXCEPTION';
     const forensicType = source === 'CONSOLE' ? ForensicErrorType.CONSOLE_ERROR : ForensicErrorType.JS_EXCEPTION;
 
+    // Two-or-more distinct controls acted at the fault instant → the thrower can't be isolated;
+    // decline single-control attribution and let the burst macro narrate the repro (mirrors the
+    // network path's culpritForRequest). A captured non-JSON response is the only evidence that
+    // turns a "not valid JSON" parse into a real API-contract break — resolve both once here.
+    const burstAmbiguous = this.deps.isConcurrentBurstAt?.(faultAtMs) ?? false;
+    const contract = this.contractCorrelator.correlate(faultAtMs);
+
     // Freeze the rolling buffer and minimize it to the steps causally required to reach
     // this fault before anything else can advance it (see the network handlers). faultAtMs
     // is the true in-page instant for rejections (async event → node hook adds latency).
     const reproduction = ActiveScenarioTracker.flushSnapshot({
       faultUrl: url,
       faultAtMs,
-      culpritSelector: this.culpritSelectorAt(faultAtMs),
+      culpritSelector: burstAmbiguous ? undefined : this.culpritSelectorAt(faultAtMs),
     });
     const reproductionPlaybook = reproduction.narrative;
     // Snapshot client state so cross-page-state faults reproduce during replay.
@@ -806,6 +818,7 @@ export class StabilityMonitor {
       content: stackTrace,
       evidence: { hasMessage: true, hasStackTrace: Boolean(stack), hasReproductionSteps: reproductionPlaybook.length > 0 },
       confidenceFloor: source === 'CONSOLE' ? 'SIGNAL' : 'CONFIRMED',
+      contractCorrelated: Boolean(contract),
     });
     const { severity, attribution } = verdict;
     if (!verdict.report) {
@@ -822,14 +835,15 @@ export class StabilityMonitor {
     await this.promotePendingNetworkFaults(faultAtMs);
 
     // Classify into a subtype + student-friendly remediation and dedup by signature.
-    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack: stackTrace || stack, url, timestampMs: faultAtMs });
+    const { finding, isNew } = this.runtimeFinder.classify({ source, message, stack: stackTrace || stack, url, timestampMs: faultAtMs, contractCorrelated: Boolean(contract) });
 
     // Collapse: a repeat of an already-reported signature never re-registers a bug.
     // Surface it as a throttled informational note so the recurrence stays visible.
     if (!isNew) {
       // If the first sighting was off-target collateral (no selector), let this better-
-      // attributed recurrence name the culprit the dedup would otherwise keep blank.
-      const culprit = this.culpritSelectorAt(faultAtMs);
+      // attributed recurrence name the culprit the dedup would otherwise keep blank — but never
+      // during a burst, where naming one sibling would backfill a wrong culprit.
+      const culprit = burstAmbiguous ? undefined : this.culpritSelectorAt(faultAtMs);
       if (culprit) this.deps.upgradeFindingCulprit(finding.bugId, culprit);
       if (finding.occurrence === 2 || finding.occurrence % 25 === 0) {
         t.emit('ACTION', {
@@ -844,10 +858,7 @@ export class StabilityMonitor {
     // For a JSON.parse contract fault the useful "where" is the endpoint that returned the
     // non-JSON body, not the page the parse threw on. Correlate it; fall back to the page url.
     let routeUrl = url;
-    if (attribution.bugClass === 'API_CONTRACT_VIOLATION') {
-      const contract = this.contractCorrelator.correlate(faultAtMs);
-      if (contract) routeUrl = contract.url;
-    }
+    if (attribution.bugClass === 'API_CONTRACT_VIOLATION' && contract) routeUrl = contract.url;
     // Same evidence contract as every other promotion path: steps, CWE, remediation.
     const complete = ensureFindingEvidence({
       attribution,
@@ -855,6 +866,9 @@ export class StabilityMonitor {
       reproductionPlaybook,
       context: url,
     });
+    // Record that this fault was attributed to a concurrent burst, not a single control, so the
+    // card can show the burst provenance instead of implying one button was proven the culprit.
+    if (burstAmbiguous) complete.attribution.routingReason = 'concurrent-burst';
     const remediation = complete.advice;
     const reason = finding.message;
     // Best-effort source-map resolution of the raw stack's top frames (undefined
@@ -895,9 +909,13 @@ export class StabilityMonitor {
     // handler from the stack, never a wrong last-clicked control. Selector stays empty
     // for a stack attribution — a frame is not a DOM selector.
     const rawCulpritLabel = this.culpritLabelAt(faultAtMs);
-    const hasCulprit = isDescriptiveControlName(rawCulpritLabel);
-    const culpritLabel = hasCulprit ? rawCulpritLabel : stackCulprit;
-    const culpritSelector = hasCulprit ? this.culpritSelectorAt(faultAtMs) : undefined;
+    const descriptiveLabel = isDescriptiveControlName(rawCulpritLabel) ? rawCulpritLabel : undefined;
+    const { culpritLabel, culpritSelector } = resolveRuntimeCulprit({
+      burstAmbiguous,
+      descriptiveLabel,
+      selector: this.culpritSelectorAt(faultAtMs),
+      stackCulprit,
+    });
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,
       timestamp,
