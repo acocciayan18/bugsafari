@@ -54,6 +54,10 @@ x-shared-env: &shared-env
   BUGSAFARI_SCREENCAST_QUALITY: ${BUGSAFARI_SCREENCAST_QUALITY:-30}
   BUGSAFARI_SCREENCAST_MAX_WIDTH: ${BUGSAFARI_SCREENCAST_MAX_WIDTH:-960}
   BUGSAFARI_SCREENCAST_MAX_HEIGHT: ${BUGSAFARI_SCREENCAST_MAX_HEIGHT:-600}
+  # Freeze-detector timeout (ms). A worker capped at 0.6 vCPU can legitimately block
+  # the renderer for several seconds on a heavy in-page parse, tripping a false client
+  # render freeze against the 5s default; widen it here so only a genuine lock-up fires.
+  BUGSAFARI_FREEZE_TIMEOUT_MS: ${BUGSAFARI_FREEZE_TIMEOUT_MS:-8000}
 
 x-logging: &default-logging
   driver: json-file

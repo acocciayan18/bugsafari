@@ -248,12 +248,22 @@ export class TelemetryEmitter {
     // release. A failed ack means the target/session is gone; safe to ignore.
     session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined);
     if (this.flags.isStopRequested() || this.flags.isPaused()) return;
+    // Suppress the pre-goto about:blank paint (a white frame) so the dashboard keeps
+    // its init overlay until the target actually renders, instead of flashing blank.
+    if (this.isBlankPage(this.page)) return;
     this.noteFrameEmitted();
     if (this.gateway.emitLiveFrameBinary) {
       this.gateway.emitLiveFrameBinary(Buffer.from(frame.data, 'base64'));
     } else {
       this.gateway.emitLiveFrame(frame.data); // CDP frame.data is already base64 JPEG
     }
+  }
+
+  // True while the page sits on the pre-navigation blank document, whose paint is a
+  // white frame — never a real target view worth streaming.
+  private isBlankPage(page: Page | null): boolean {
+    const url = page?.url() ?? '';
+    return url === '' || url === 'about:blank';
   }
 
   // Log the first frame handed to the gateway so a white feed is trivially bisected.
@@ -314,6 +324,10 @@ export class TelemetryEmitter {
       return;
     }
     if (page.isClosed()) {
+      return;
+    }
+    // Don't screenshot/stream the pre-goto blank page — it's a white frame.
+    if (this.isBlankPage(page)) {
       return;
     }
     this.isFrameBroadcastInFlight = true;

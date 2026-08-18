@@ -6,8 +6,18 @@ import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 import { captureStateFingerprint } from './stateFingerprint.js';
 
+// Env-tunable positive integer with a safe fallback (mirrors TelemetryEmitter.readEnvInt).
+function readEnvInt(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const HEARTBEAT_INTERVAL_MS = 2_000;
-const HEARTBEAT_TIMEOUT_MS = 5_000;
+// Freeze threshold. Env-tunable so a CPU-starved box (a worker capped at a fraction
+// of a vCPU) can widen it: a legit heavy in-page parse there can occupy the renderer
+// for several seconds, tripping a false freeze against a tight fixed 5s bar. Scales
+// BOTH the outside heartbeat timeout and the in-page block threshold from one knob.
+const HEARTBEAT_TIMEOUT_MS = readEnvInt('BUGSAFARI_FREEZE_TIMEOUT_MS', 5_000);
 // After a heartbeat timeout, let the browser thread settle then re-probe
 // its responsiveness a bounded number of times before declaring a real UI freeze.
 const RECOVERY_SETTLE_MS = 500;
@@ -21,7 +31,7 @@ const RECOVERY_PROBE_TIMEOUT_MS = 750;
 // the outside-in heartbeat, so a timer ticking INSIDE the page — itself blocked by the
 // frozen main thread — measures the true block duration from the gap between ticks.
 const WATCHDOG_TICK_MS = 1_000;
-// A measured main-thread block at/above this is a client render freeze (CWE-835).
+// A measured main-thread block at/above this is a client render freeze (CWE-834).
 const FREEZE_BLOCK_THRESHOLD_MS = HEARTBEAT_TIMEOUT_MS;
 // Collapse the outside-in heartbeat and the in-page watchdog (which can both fire for
 // one freeze) into a single finding within this window.
@@ -131,7 +141,7 @@ export function setupStabilityMonitoring(
     const stackTrace = blockMs
       ? `In-page watchdog measured a ${Math.round(blockMs)}ms main-thread tick gap (threshold ${FREEZE_BLOCK_THRESHOLD_MS}ms).`
       : `Heartbeat evaluate call exceeded ${HEARTBEAT_TIMEOUT_MS}ms timeout.`;
-    // A sustained, measured main-thread lock-up IS a client render freeze (CWE-835),
+    // A sustained, measured main-thread lock-up IS a client render freeze (CWE-834),
     // not a generic stability exception — attribute it explicitly (bug class + CWE +
     // remediation from the catalog) while keeping scenario/step from the classifier.
     const { attribution: scenarioAttribution } = classify(faultType, reason, { url });
@@ -197,16 +207,6 @@ export function setupStabilityMonitoring(
     }
   };
 
-  // Informational-only: a browser freeze was seen and recovery is being attempted.
-  // No finding, no forensic record — just operator signal.
-  const emitInfo = (message: string): void => {
-    telemetry.emitTelemetry({
-      timestamp: new Date().toISOString(),
-      type: 'ACTION',
-      meta: { actionExecuted: 'browser-freeze-recovery', url: page.url(), message },
-    });
-  };
-
   // A failed probe during intentional teardown (disposed, page closed, or engine
   // stopping/paused) is an expected shutdown artifact — never a target-app freeze.
   const isTeardown = (): boolean => disposed || page.isClosed() || isEngineStopping();
@@ -245,23 +245,21 @@ export function setupStabilityMonitoring(
     return false;
   };
 
-  // Heartbeat timeout handler. A blocked browser thread is a local freeze — give
-  // it a brief window to recover before declaring a sustained UI lock-up. Real
-  // server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
+  // Heartbeat timeout handler. A single blocked probe is most often a transient
+  // renderer-busy window from BugSafari's own in-page scans on a CPU-starved host,
+  // NOT a target freeze — so it emits NO operator-facing "stalled/recovered" signal.
+  // Finite freezes are reported (with a measured block) by the in-page watchdog; this
+  // heartbeat only escalates to a finding for a SUSTAINED lock-up that never recovers
+  // (a permanently wedged thread the watchdog can't observe, since its timer can't run).
+  // Real server outages are caught by the primary StabilityMonitor's 5xx/requestfailed
   // /pageerror listeners, not this heartbeat.
   const handleHeartbeatTimeout = async (faultAtMs: number): Promise<void> => {
     if (isTeardown()) return;
-    emitInfo(' Browser thread stalled — attempting local recovery...');
     const recovered = await validatePageStability();
     // Re-check after the recovery window: a stop/close that landed mid-probe makes the
     // stall an expected shutdown artifact, so suppress the finding entirely.
     if (isTeardown()) return;
-
-    if (recovered) {
-      emitInfo('Browser thread recovered — resuming exploration.');
-    } else {
-      await emitFreezeFinding(faultAtMs);
-    }
+    if (!recovered) await emitFreezeFinding(faultAtMs);
   };
 
   const runHeartbeat = async (): Promise<void> => {

@@ -1081,7 +1081,7 @@ export class ExplorationEngine {
     if (this.boundaryScope === 'exact') {
       emitter.emitMilestone(` Strict Page Boundary Lock enabled — exploration confined to ${targetUrl}`);
     } else if (this.boundaryScope === 'subtree') {
-      emitter.emitMilestone(` Sub-Tree Lock enabled — exploration confined to the launch route and its child pages (${targetUrl})`);
+      emitter.emitMilestone(` Sub-tree lock enabled. Exploration is limited to the launch route and its child pages. (${targetUrl})`);
     }
 
     // Warm-start the perceptron from the latest brain for this URL BEFORE creating the

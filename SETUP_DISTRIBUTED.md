@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "fix-js-runtime-errors-findings-card"
-git checkout -b 8-18-Ayan
-git push --set-upstream origin 8-18-Ayan
+git commit -m "Debug BugSafari browser stall and Live Feed white screen"
+git checkout -b 8-18-Ayan-1
+git push --set-upstream origin 8-18-Ayan-1
 
 
 

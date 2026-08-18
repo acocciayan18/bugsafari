@@ -41,6 +41,11 @@ function frameToBlob(frame: string): Blob {
   return new Blob([bytes], { type: 'image/jpeg' });
 }
 
+// Close a retained frame if it is an ImageBitmap (fallback Images need no close).
+function closeIfBitmap(source: CanvasImageSource | null): void {
+  if (source && typeof (source as ImageBitmap).close === 'function') (source as ImageBitmap).close();
+}
+
 function LiveFeed({
   frame,
   currentUrl,
@@ -64,6 +69,9 @@ function LiveFeed({
   // never paint over a newer one, and a pending decode is dropped on unmount.
   const imageRef = useRef<HTMLImageElement | null>(null);
   const frameGenRef = useRef(0);
+  // Last painted frame (ImageBitmap fast path or the reused Image), kept so a
+  // resize/layout shift repaints it instead of clearing the canvas to white.
+  const lastPaintedRef = useRef<CanvasImageSource | null>(null);
 
   // Status determination — QUEUED holds a dedicated standby screen and suppresses
   // the initializing/idle states so the viewport never reads as "streaming" while
@@ -126,13 +134,14 @@ function LiveFeed({
     }
 
     // Repaint the last decoded frame after a resize/layout shift so the viewport is
-    // self-healing — it never stays white while frames are momentarily not arriving.
-    const img = imageRef.current;
-    if (img && img.complete && img.naturalWidth > 0) {
+    // self-healing and never stays white while frames are momentarily not arriving.
+    // Covers BOTH decode paths: the fast path retains an ImageBitmap, the fallback an Image.
+    const last = lastPaintedRef.current;
+    if (last) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(last, 0, 0, canvas.width, canvas.height);
       }
     }
   }, [calculateCoverDimensions]);
@@ -155,6 +164,12 @@ function LiveFeed({
       resizeObserver.disconnect();
     };
   }, [updateCanvasSize]);
+
+  // Release the retained bitmap on unmount so a decoded frame can't leak GPU memory.
+  useEffect(() => () => {
+    closeIfBitmap(lastPaintedRef.current);
+    lastPaintedRef.current = null;
+  }, []);
 
 // Frame rendering - uses object-fit: cover (fills canvas, cropped if needed)
   const renderFrame = liveFrame || frame;
@@ -179,21 +194,22 @@ function LiveFeed({
 
     // Fast path: decode off the main thread so it never blocks a React commit.
     if (canDecodeOffThread) {
-      let bitmap: ImageBitmap | null = null;
+      let cancelled = false;
       createImageBitmap(frameToBlob(renderFrame))
         .then((bmp) => {
-          bitmap = bmp;
-          if (generation !== frameGenRef.current) { bmp.close(); return; }
+          if (cancelled || generation !== frameGenRef.current) { bmp.close(); return; }
           paint(bmp);
-          bmp.close();
+          // Retain this bitmap for self-heal repaint; retire the previous one.
+          if (lastPaintedRef.current !== bmp) closeIfBitmap(lastPaintedRef.current);
+          lastPaintedRef.current = bmp;
         })
         .catch(() => { /* malformed frame — the next one repaints */ });
-      return () => { bitmap?.close(); };
+      return () => { cancelled = true; };
     }
 
     // Fallback: reused Image + onload for browsers without createImageBitmap.
     const img = imageRef.current ?? (imageRef.current = new Image());
-    img.onload = () => paint(img);
+    img.onload = () => { paint(img); lastPaintedRef.current = img; };
     img.src = renderFrame.startsWith('data:') ? renderFrame : `data:image/jpeg;base64,${renderFrame}`;
 
     return () => { img.onload = null; };

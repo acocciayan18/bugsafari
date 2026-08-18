@@ -488,6 +488,7 @@ export class ExplorationLoop {
           childHash,
           step,
           landedInvalid,
+          actionThrew,
         );
 
         // Task 3: Observe novelty and fire Perceptron Delta Rule if state is highly novel
@@ -713,7 +714,8 @@ export class ExplorationLoop {
       actionExecuted: 'page-saturated-skip',
       url,
       stateHash: combined,
-      message: `Structural shell already saturated — page skipped and pruned from the frontier; unwinding to unexplored branch.`,
+      message: `Page structure already explored. Page skipped, and exploration moved to another unexplored branch.
+`,
     });
 
     // Reuse the shared dead-end unwind: mark this node skipped in the graph and
@@ -1885,6 +1887,7 @@ export class ExplorationLoop {
     childHash: string,
     step: number,
     landedInvalid = false,
+    actionThrew = false,
   ): Promise<void> {
     if (traversalOk) {
       // Verified transition — record the REAL child hash (fixes the prior
@@ -1955,7 +1958,13 @@ export class ExplorationLoop {
       } else {
         // Restore targets currentUrl (the in-boundary page we are on), so it is safe
         // under sub-tree and site alike — no out-of-boundary transition is issued.
-        this.deps.telemetry.emitMilestone(` Edge unstable. Restoring the parent state locally without marking the path as exhausted.`);
+        // Routine per-no-op recovery: system-status, not a milestone, so it does not
+        // flood the progress feed. Wording is operator-facing (no "exhausted" jargon).
+        this.deps.telemetry.emitSystemStatus(
+          actionThrew
+            ? `${humanizeElement(target)} did not respond (detached or blocked) — returned to the previous state, still exploring.`
+            : `${humanizeElement(target)} produced no change — returned to the previous state, still exploring.`,
+        );
         this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
       }

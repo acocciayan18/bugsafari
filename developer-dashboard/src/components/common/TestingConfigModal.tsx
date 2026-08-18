@@ -98,7 +98,7 @@ export default function TestingConfigModal({
             aria-selected={activeTab === id}
             aria-controls={`config-panel-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase r transition-colors font-sans ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase cursor-pointer transition-colors font-sans ${
               activeTab === id
                 ? 'border-(--text-primary) text-(--text-primary)'
                 : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
