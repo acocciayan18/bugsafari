@@ -73,6 +73,17 @@ check('an endpoint label is surfaced as endpoint, never as the UI element', () =
   assert.equal(resolveCulpritLabel('Place Order', undefined, undefined), 'Place Order');
 });
 
+check('a non-descriptive bare-tag fallback is dropped, never shown as the Element', () => {
+  // An async fault during a burst has no resolved culprit; the last-timeline selector is a nav
+  // link, so its semantic fallback is a bare <a>/<button>/<element> — misleading, so dropped.
+  assert.equal(resolveCulpritLabel(undefined, 'a', []), undefined);
+  assert.equal(resolveCulpritLabel(undefined, 'button', []), undefined);
+  // A qualified selector still distils a real control name.
+  assert.equal(resolveCulpritLabel(undefined, 'button#place-order', []), '<button#place-order>');
+  // A matched step label always wins over the fallback.
+  assert.equal(resolveCulpritLabel(undefined, '#x', [{ selector: '#x', elementLabel: 'Compute' }]), 'Compute');
+});
+
 check('a network fault maps its endpoint to endpointLabel, not elementLabel', () => {
   const inc = {
     timestamp: '2026-08-15T00:00:00.000Z',

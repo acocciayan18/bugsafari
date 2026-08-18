@@ -180,6 +180,9 @@ export interface StabilityMonitorDeps {
   recordNetworkFailure(): void;
   /** Interaction the engine was executing at `atMs`, correlating a request to its triggering control. */
   getInteractionContext(atMs: number): InteractionContext | null;
+  /** True when two-or-more DISTINCT controls were acted near `atMs` (a concurrent burst), so a
+   *  network fault at that instant cannot be blamed on one control. Optional: absent ⇒ never ambiguous. */
+  isConcurrentBurstAt?(atMs: number): boolean;
   /** Origin of the app under test — provenance uses it to separate first- from third-party failures. */
   getTargetOrigin(): string;
   /** Operator escape hatch: cancel every native dialog instead of confirming it, so a

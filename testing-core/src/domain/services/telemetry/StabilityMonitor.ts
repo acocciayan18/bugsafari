@@ -509,9 +509,13 @@ export class StabilityMonitor {
 
   // Culprit for a network fault, resolved at the request's START — when the control
   // that fired it was active — not its settle time (which may land on a later action).
+  // Declines when the request fired during a concurrent burst (two-or-more distinct controls
+  // acted at once): the issuing control can't be identified, so naming one sibling is a guess —
+  // the finding falls back to the endpoint instead.
   private culpritForRequest(request: Request): string | undefined {
-    const start = this.requestStartTimes.get(request);
-    return this.culpritSelectorAt(start ?? this.requestSettledAtMs(request));
+    const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
+    if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
+    return this.culpritSelectorAt(start);
   }
 
   // Human label of the control that FIRED a network request, resolved at the request's
@@ -519,8 +523,9 @@ export class StabilityMonitor {
   // time lands on a LATER, unrelated click; resolving at start keeps the finding focused
   // on the element that actually triggered the failure, not a combined/adjacent action.
   private triggeringActionForRequest(request: Request): string | undefined {
-    const start = this.requestStartTimes.get(request);
-    return this.triggeringActionFor(start ?? this.requestSettledAtMs(request));
+    const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
+    if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
+    return this.triggeringActionFor(start);
   }
 
   // Wall-clock duration of a settled request; prefers Playwright's precise timing.

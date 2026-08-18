@@ -9,6 +9,7 @@ import { DomHasher, normalizeRoutePath } from '../../../ml/domHasher.js';
 import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
+import { isConcurrentBurstAt } from './culpritAmbiguity.js';
 import type { DefectCulprit, NavHop, NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
@@ -1043,6 +1044,7 @@ export class ExplorationEngine {
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
+      isConcurrentBurstAt: (atMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs),
       getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
       isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,

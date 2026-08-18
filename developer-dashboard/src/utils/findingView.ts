@@ -14,7 +14,7 @@ import type {
 } from '../types';
 import type { BugCategory, ConstraintBypassDetail, FindingAttribution } from '../../../shared/types.js';
 import { resolveCategory, resolveSeverity } from '../../../shared/types.js';
-import { actionRecordsToSteps, isApiEndpointLabel, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
+import { actionRecordsToSteps, isApiEndpointLabel, isDescriptiveControlName, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
 import { splitObservations, toMarkdownChecklist } from './reproductionFormat';
 import { formatReportDateTime } from './datetime';
@@ -152,7 +152,12 @@ export function resolveCulpritLabel(
   if (named && !isSelectorLike(named) && !isApiEndpointLabel(named)) return named;
   if (selector) {
     const matched = stepLabel(steps?.find((s) => s.selector === selector));
-    return matched ?? semanticFallbackFromSelector(selector);
+    if (matched) return matched;
+    // A bare structural tag (<a>, <button>, <element>) is not a real control name — for an
+    // async fault during a burst it is the last-timeline nav link, not the culprit. Drop it so
+    // the card shows no Element (or falls through to the endpoint) rather than a misleading tag.
+    const semantic = semanticFallbackFromSelector(selector);
+    return isDescriptiveControlName(semantic) ? semantic : undefined;
   }
   return undefined;
 }
