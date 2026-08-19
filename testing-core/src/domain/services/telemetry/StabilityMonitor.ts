@@ -24,7 +24,7 @@ import { ContractResponseCorrelator, looksNonJsonBody } from './contractCorrelat
 import { resolveRuntimeCulprit } from './runtimeCulprit.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
-import { DuplicateActionFinder, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
+import { DuplicateActionFinder, buildDuplicateReplaySteps, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
@@ -1152,10 +1152,7 @@ export class StabilityMonitor {
     // burst-polluted rolling-buffer snapshot. Snapshot is the fallback only when no
     // culprit selector exists to anchor the deterministic trace.
     const reproductionActions = defect.selector
-      ? [
-          { timestamp, type: 'NAVIGATE' as const, selector: defect.pageUrl ?? page.url(), url: defect.pageUrl ?? page.url() },
-          { timestamp, type: 'CLICK' as const, selector: defect.selector, url: defect.pageUrl ?? page.url(), elementLabel: defect.elementLabel, repeatCount: 2 },
-        ]
+      ? buildDuplicateReplaySteps(defect, defect.pageUrl ?? page.url(), timestamp)
       : reproduction.actions;
     const stateFingerprint = await captureStateFingerprint(page);
 

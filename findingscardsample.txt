@@ -5,7 +5,7 @@ CWE-362
 Status
 NEEDS VERIFICATION 75%
 Message
-POST /api/checkout was sent again 975ms later, and both requests succeeded, so the action ran twice.
+POST /api/checkout was sent again 1305ms later, and both requests succeeded, so the action ran twice.
 Element
 Pay now (unguarded)
 button.danger
@@ -29,5 +29,3 @@ Suggested fix: guard against overlapping actions
 1. Disable or debounce the control after the first interaction until it finishes
 2. Make each state change safe to run more than once under overlapping events
 3. Add a test that fires a fast burst and confirms only one result is committed
-
-

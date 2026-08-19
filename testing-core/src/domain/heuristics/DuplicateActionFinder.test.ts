@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import {
   DuplicateActionFinder,
+  buildDuplicateReplaySteps,
   type DuplicateActionDefect,
   type InteractionContext,
   type RequestObservation,
@@ -141,6 +142,59 @@ check('a suspected pair upgrades to CONFIRMED when the pending first request suc
   assert.equal(upgraded!.defect.verdict, 'CONFIRMED_DUPLICATE');
   assert.equal(upgraded!.isNew, false);
   assert.equal(h.finder.totalFound(), 1);
+});
+
+check('the message frames a non-overlap repeat as sequential (after the first completed)', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  h.settle(a, 1100, 200);
+  const b = h.send(1600);
+  const defect = h.settle(b, 1700, 201)!;
+  assert.equal(defect.overlapped, false);
+  assert.ok(defect.message.includes('after the first had already completed'));
+  assert.ok(!defect.message.includes('while the first was still running'));
+});
+
+check('the message frames an overlapping repeat as concurrent (while the first was running)', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1150);
+  h.settle(b, 1400, 201);
+  const defect = h.settle(a, 1500, 201)!;
+  assert.equal(defect.overlapped, true);
+  assert.ok(defect.message.includes('while the first was still running'));
+});
+
+console.log('\nDuplicateActionFinder — structured replay steps');
+
+check('an overlapping duplicate replays as one rapid burst step (repeatCount 2)', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1150);
+  h.settle(b, 1400, 201);
+  const defect = h.settle(a, 1500, 201)!;
+  assert.equal(defect.overlapped, true);
+  const steps = buildDuplicateReplaySteps(defect, 'http://app.test/checkout', 't0');
+  assert.equal(steps.length, 2, 'nav + one burst click');
+  assert.equal(steps[0].type, 'NAVIGATE');
+  assert.equal(steps[1].type, 'CLICK');
+  assert.equal(steps[1].repeatCount, 2, 'a true overlap replays as a rapid burst');
+});
+
+check('a sequential (non-overlap) duplicate replays as two distinct committed clicks, not a burst', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  h.settle(a, 1100, 200);
+  const b = h.send(1600);
+  const defect = h.settle(b, 1700, 201)!;
+  assert.equal(defect.overlapped, false);
+  const steps = buildDuplicateReplaySteps(defect, 'http://app.test/checkout', 't0');
+  assert.equal(steps.length, 3, 'nav + two distinct clicks');
+  assert.equal(steps[1].type, 'CLICK');
+  assert.equal(steps[2].type, 'CLICK');
+  assert.ok(steps.every((s) => s.repeatCount === undefined), 'a sequential repeat is never a "quick succession" burst');
+  assert.equal(steps[1].outcome?.httpStatus, 200, 'first click shows its commit');
+  assert.equal(steps[2].outcome?.httpStatus, 201, 'second click shows its commit');
 });
 
 console.log('\nDuplicateActionFinder — false-positive suppression');

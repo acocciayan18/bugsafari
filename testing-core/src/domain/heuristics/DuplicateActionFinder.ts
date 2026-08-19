@@ -1,5 +1,6 @@
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { resolveControlName, describeRouteStep } from '../../../../shared/reproduction.js';
+import type { ActionRecord } from '../../../../shared/types.js';
 
 // State-changing verbs only; reads (GET/HEAD/OPTIONS) can repeat safely and are ignored.
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -312,7 +313,9 @@ export class DuplicateActionFinder {
   }
 
   private messageFor(verdict: DuplicateVerdict, method: string, endpoint: string, intervalMs: number, overlapped: boolean): string {
-    const timing = overlapped ? `sent again ${intervalMs}ms later while the first was still running` : `sent again ${intervalMs}ms later`;
+    const timing = overlapped
+      ? `sent again ${intervalMs}ms later while the first was still running`
+      : `sent again ${intervalMs}ms later, after the first had already completed`;
     if (verdict === 'GUARDED') {
       return `[Duplicate request, no browser guard] ${method} ${endpoint} was ${timing}. The server rejected the repeat, but nothing in the browser stopped it.`;
     }
@@ -490,4 +493,21 @@ export class DuplicateActionFinder {
     for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) | 0;
     return (h >>> 0).toString(36);
   }
+}
+
+// Deterministic replay trace for a judged duplicate — the exact pair a developer re-fires,
+// framed to match the defect's own overlap finding. An overlapping repeat replays as ONE
+// rapid burst (repeatCount 2, narrated "in quick succession"); a sequential one (the repeat
+// fired only AFTER the first settled) replays as TWO distinct clicks, each showing the commit
+// it caused, so the card never implies a simultaneity that did not happen.
+export function buildDuplicateReplaySteps(
+  defect: DuplicateActionDefect,
+  pageUrl: string,
+  timestamp: string,
+): ActionRecord[] {
+  const nav: ActionRecord = { timestamp, type: 'NAVIGATE', selector: pageUrl, url: pageUrl };
+  const click = { timestamp, type: 'CLICK' as const, selector: defect.selector, url: pageUrl, elementLabel: defect.elementLabel };
+  if (defect.overlapped) return [nav, { ...click, repeatCount: 2 }];
+  const outcome = (status?: number): ActionRecord['outcome'] => (status === undefined ? undefined : { httpStatus: status });
+  return [nav, { ...click, outcome: outcome(defect.firstStatus) }, { ...click, outcome: outcome(defect.secondStatus) }];
 }
