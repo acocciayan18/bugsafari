@@ -23,6 +23,13 @@ const GUARD_STATUSES = new Set([409, 425, 429]);
 // two genuinely distinct operations, an identical value means the server can dedupe.
 const IDEMPOTENCY_HEADERS = ['idempotency-key', 'x-idempotency-key', 'x-request-id', 'x-correlation-id'];
 
+// Optimistic-concurrency guards. A write carrying one of these IS guarded against a
+// lost update: the server rejects a stale racer (compare-and-set / ETag precondition),
+// so an overlapping repeat is telemetry, not an unguarded double-submit — even when the
+// losing peer aborts before its 409 is observed.
+const CONCURRENCY_GUARD_HEADERS = ['if-match', 'if-unmodified-since'];
+const CONCURRENCY_GUARD_BODY_KEYS = ['version', 'rev', 'expectedversion', 'etag'];
+
 const MAX_TRACKED = 400;
 const MAX_REPORTED = 100;
 
@@ -99,6 +106,7 @@ interface TrackedRequest {
   status?: number;
   failed?: boolean;
   idempotencyKey?: string;
+  concurrencyGuarded?: boolean;
   interaction?: InteractionContext;
   raceScenarioActive: boolean;
   pageUrl?: string;
@@ -142,6 +150,7 @@ export class DuplicateActionFinder {
       url: o.url ?? '',
       startedAtMs: o.timestampMs,
       idempotencyKey: this.idempotencyKeyOf(o.headers),
+      concurrencyGuarded: this.isConcurrencyGuarded(o.headers, o.body),
       interaction: o.interaction,
       raceScenarioActive: o.raceScenarioActive,
       pageUrl: o.pageUrl,
@@ -257,12 +266,16 @@ export class DuplicateActionFinder {
     // Host-stripped path so the message reads `POST /api/checkout`, never a tunnel/proxy URL.
     const endpoint = this.pathOf(second.url);
     const label = interaction?.label || 'the control';
-    // The backend guarded the repeat (rejected it) or both requests shared an
-    // idempotency key the server can dedupe — the app behaved correctly, so this is
-    // telemetry, not a defect.
+    // The backend guarded the repeat (rejected it), both requests shared an idempotency
+    // key the server can dedupe, or the write carries an optimistic-concurrency token
+    // (compare-and-set version / ETag precondition) that makes a lost update impossible —
+    // the app behaved correctly, so this is telemetry, not a defect. The token check does
+    // not depend on the loser's terminal status, so a peer aborted mid-race stays protected.
     const protectedDuplicate =
       verdict === 'GUARDED' ||
-      Boolean(first.idempotencyKey && second.idempotencyKey && first.idempotencyKey === second.idempotencyKey);
+      Boolean(first.idempotencyKey && second.idempotencyKey && first.idempotencyKey === second.idempotencyKey) ||
+      first.concurrencyGuarded === true ||
+      second.concurrencyGuarded === true;
 
     return {
       bugId,
@@ -434,6 +447,29 @@ export class DuplicateActionFinder {
     return undefined;
   }
 
+  // True when the write carries an optimistic-concurrency token (compare-and-set version
+  // or an ETag precondition header) — the client-side guard against a lost update.
+  private isConcurrencyGuarded(headers?: Record<string, string>, body?: string): boolean {
+    if (headers) {
+      for (const [name, value] of Object.entries(headers)) {
+        if (CONCURRENCY_GUARD_HEADERS.includes(name.toLowerCase()) && value) return true;
+      }
+    }
+    if (!body) return false;
+    try {
+      const parsed = JSON.parse(body) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object') return false;
+      for (const key of Object.keys(parsed)) {
+        if (CONCURRENCY_GUARD_BODY_KEYS.includes(key.toLowerCase()) && parsed[key] != null && parsed[key] !== '') {
+          return true;
+        }
+      }
+    } catch {
+      // Non-JSON body carries no recognizable concurrency token.
+    }
+    return false;
+  }
+
   // Bound the tracked-request map so a long run can never grow without limit.
   private track(record: TrackedRequest): void {
     if (this.byId.size >= MAX_TRACKED) {
@@ -506,8 +542,20 @@ export function buildDuplicateReplaySteps(
   timestamp: string,
 ): ActionRecord[] {
   const nav: ActionRecord = { timestamp, type: 'NAVIGATE', selector: pageUrl, url: pageUrl };
+  const outcome = (status?: number): ActionRecord['outcome'] => (status === undefined ? undefined : { httpStatus: status });
+
+  // No correlated culprit (the duplicate fired inside an ambiguous concurrent burst): anchor
+  // the replay to the repeated ENDPOINT instead of a wrong control or the multi-control burst
+  // snapshot. The label carries the request so the step reads "the control that sends
+  // POST /api/counter", never a sibling or an unrelated nav link.
+  if (!defect.selector) {
+    const endpointLabel = `the control that sends ${defect.method} ${defect.endpoint}`;
+    const endpointStep = { timestamp, type: 'CLICK' as const, selector: '', url: pageUrl, elementLabel: endpointLabel };
+    if (defect.overlapped) return [nav, { ...endpointStep, repeatCount: 2 }];
+    return [nav, { ...endpointStep, outcome: outcome(defect.firstStatus) }, { ...endpointStep, outcome: outcome(defect.secondStatus) }];
+  }
+
   const click = { timestamp, type: 'CLICK' as const, selector: defect.selector, url: pageUrl, elementLabel: defect.elementLabel };
   if (defect.overlapped) return [nav, { ...click, repeatCount: 2 }];
-  const outcome = (status?: number): ActionRecord['outcome'] => (status === undefined ? undefined : { httpStatus: status });
   return [nav, { ...click, outcome: outcome(defect.firstStatus) }, { ...click, outcome: outcome(defect.secondStatus) }];
 }

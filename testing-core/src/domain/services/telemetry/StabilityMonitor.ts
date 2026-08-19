@@ -1147,13 +1147,12 @@ export class StabilityMonitor {
     // The scenario narrative is a multi-control spam burst ("Click 5 controls at once")
     // that a human can't replay, so it is deliberately NOT woven into a duplicate finding.
     const reproductionPlaybook = defect.reproductionHint;
-    // Prefer the defect-built deterministic pair (open page, double-fire ONE control)
-    // whenever the culprit is known, so the replay is the exact double-submit — never the
-    // burst-polluted rolling-buffer snapshot. Snapshot is the fallback only when no
-    // culprit selector exists to anchor the deterministic trace.
-    const reproductionActions = defect.selector
-      ? buildDuplicateReplaySteps(defect, defect.pageUrl ?? page.url(), timestamp)
-      : reproduction.actions;
+    // Always use the defect-built deterministic replay — never the burst-polluted
+    // rolling-buffer snapshot, which lists co-clicked distinct controls (incl. nav links)
+    // that cannot reproduce a single-endpoint duplicate. With a known culprit it double-fires
+    // that ONE control; with no culprit (ambiguous concurrent burst) it anchors to the
+    // repeated endpoint instead. Either way the replay stays consistent with the Message.
+    const reproductionActions = buildDuplicateReplaySteps(defect, defect.pageUrl ?? page.url(), timestamp);
     const stateFingerprint = await captureStateFingerprint(page);
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
@@ -1849,7 +1848,13 @@ export class StabilityMonitor {
           headers: this.safeHeaders(request),
           raceScenarioActive: isRaceScenarioActive(),
           timestampMs: startedAt,
-          interaction: this.deps.getInteractionContext(startedAt) ?? undefined,
+          // Decline attribution during a concurrent DISTINCT-control burst — the click→request
+          // link is not captured, so naming one sibling would be a guess (mirrors the
+          // network-fault culprit path). An empty culprit then routes the finding to an
+          // endpoint-anchored reproduction instead of a wrong/whole-burst snapshot.
+          interaction: this.deps.isConcurrentBurstAt?.(startedAt)
+            ? undefined
+            : this.deps.getInteractionContext(startedAt) ?? undefined,
           pageUrl: page.url(),
         });
       } catch {

@@ -11,6 +11,7 @@ import {
   type InteractionContext,
   type RequestObservation,
 } from './DuplicateActionFinder.js';
+import { narrateActionRecords } from '../../../../shared/reproduction.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -564,6 +565,87 @@ check('MAX_REPORTED caps the ledger at 100 distinct findings', () => {
     h.settle(a, base + 5, 201);
   }
   assert.equal(h.finder.totalFound(), 100);
+});
+
+console.log('\nDuplicateActionFinder — concurrency-guarded writes are protected');
+
+const CAS_BODY = '{"value":1,"version":0}';
+
+check('an aborted peer of a version-guarded (CAS) write is protected, never a finding', () => {
+  // The exact leak from the /state-races card: two overlapping compare-and-set writes read
+  // the same version; the losing racer is aborted mid-burst and settles with NO status, so
+  // the 409-only GUARDED check misses it. The version token IS the guard → protected.
+  const h = new Harness();
+  const a = h.send(1000, { body: CAS_BODY });
+  const b = h.send(1100, { body: CAS_BODY });
+  const defect = h.settle(b, 1300, undefined, true); // peer aborted: no terminal status
+  assert.ok(defect, 'the overlapping pair is still judged');
+  assert.equal(defect!.protected, true, 'a version-guarded write is telemetry, not a defect');
+});
+
+check('an If-Match precondition header marks an overlapping duplicate protected', () => {
+  const h = new Harness();
+  const headers = { 'if-match': '"v1"' };
+  const a = h.send(1000, { body: '{"value":1}', headers });
+  const b = h.send(1100, { body: '{"value":1}', headers });
+  h.settle(b, 1300, 200);
+  const defect = h.settle(a, 1400, 200);
+  assert.ok(defect);
+  assert.equal(defect!.verdict, 'CONFIRMED_DUPLICATE');
+  assert.equal(defect!.protected, true, 'an ETag precondition is a concurrency guard');
+});
+
+check('an unguarded overlapping write with no token is still an unprotected finding', () => {
+  // Regression guard: the genuine lost-update path must keep reporting.
+  const h = new Harness();
+  const a = h.send(1000, { body: '{"value":1}' });
+  const b = h.send(1100, { body: '{"value":1}' });
+  h.settle(b, 1300, 200);
+  const defect = h.settle(a, 1400, 200);
+  assert.ok(defect);
+  assert.equal(defect!.protected, false);
+});
+
+console.log('\nbuildDuplicateReplaySteps — endpoint-anchored fallback (no burst snapshot)');
+
+// A defect fixture for the pure replay builder; only the fields the builder reads matter.
+const dupDefect = (over: Partial<DuplicateActionDefect>): DuplicateActionDefect =>
+  ({
+    method: 'POST',
+    endpoint: '/api/counter',
+    selector: '',
+    elementLabel: 'the control',
+    overlapped: true,
+    firstStatus: 200,
+    secondStatus: 200,
+    ...over,
+  } as DuplicateActionDefect);
+
+check('an empty culprit anchors the replay to the endpoint, not a control or nav links', () => {
+  const steps = buildDuplicateReplaySteps(dupDefect({ selector: '' }), 'http://app.test/state-races', 'ts');
+  assert.equal(steps[0].type, 'NAVIGATE');
+  assert.match(steps[0].url, /\/state-races$/);
+  const actions = steps.slice(1);
+  assert.equal(actions.length, 1, 'overlapping ⇒ one repeat-2 step');
+  assert.equal(actions[0].repeatCount, 2);
+  assert.equal(actions[0].selector, '', 'no control selector is invented');
+  assert.ok(actions[0].elementLabel?.includes('POST /api/counter'), 'the step names the repeated endpoint');
+  // No unrelated co-clicked control (the burst-snapshot pollution the card showed).
+  assert.ok(!steps.some((s) => /BugSafari Target|all scenarios/i.test(s.elementLabel ?? '')));
+  const narrated = narrateActionRecords(steps);
+  assert.ok(narrated.some((line) => line.includes('POST /api/counter')));
+  assert.ok(!narrated.some((line) => /BugSafari Target|all scenarios/i.test(line)));
+});
+
+check('a known culprit still double-fires that ONE control (unchanged behavior)', () => {
+  const steps = buildDuplicateReplaySteps(
+    dupDefect({ selector: '#inc', elementLabel: 'Increment (unguarded)' }),
+    'http://app.test/state-races',
+    'ts',
+  );
+  assert.equal(steps[1].selector, '#inc');
+  assert.equal(steps[1].repeatCount, 2);
+  assert.equal(steps[1].elementLabel, 'Increment (unguarded)');
 });
 
 console.log(`\n${passed} passed`);

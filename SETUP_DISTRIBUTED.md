@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m " Review findings card content for duplicate-actions page"
+git commit -m "fix-findings-card-spa-race-condition"
 git push origin HEAD:dev --force
 
 
