@@ -75,8 +75,12 @@ interface FormSibling {
 // Left-anchored on a word boundary and matched against human-facing text only:
 // an unanchored substring over className would read Tailwind's `border` as
 // "order" and promote the burst on essentially every button.
+// Also matches read-modify-write verbs (increment/vote/like…): a counter-style
+// control commits state too, so the overlapping-write burst that surfaces a
+// lost-update race must lead there. vote/like are \b-anchored so "voter"/"likely"
+// (and "country") never masquerade as commit controls.
 const COMMIT_CONTROL =
-  /\b(submit|log[\s_-]?in|sign[\s_-]?in|sign[\s_-]?up|register|pay|checkout|order|purchase|save|send|confirm|apply|transfer|delete|remove|update)/i;
+  /\b(submit|log[\s_-]?in|sign[\s_-]?in|sign[\s_-]?up|register|pay|checkout|order|purchase|save|send|confirm|apply|transfer|delete|remove|update|increment|decrement|upvote|downvote|vote\b|like\b)/i;
 
 // Interaction scope → active-indicator color group.
 const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {

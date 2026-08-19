@@ -1,11 +1,11 @@
 SPA State Race Condition
-Medium
+High
 
 CWE-362
 Status
-NEEDS VERIFICATION 75%
+CONFIRMED 85%
 Message
-POST /api/checkout was sent again 1305ms later, and both requests succeeded, so the action ran twice.
+POST /api/checkout was sent again 290ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
 Element
 Pay now (unguarded)
 button.danger
@@ -16,16 +16,17 @@ open
 Navigate to /duplicate-actions
 2
 click
-Click the "Pay now (unguarded)" control, repeated 2 times in quick succession
+Click the "Pay now (unguarded)" control. Result: the server responded HTTP 201
 Route
 /duplicate-actions
 ·
 Element
 "Pay now (unguarded)" control
-Suggested Fix
-
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
+3
+click
+Click the "Pay now (unguarded)" control. Result: the server responded HTTP 201
+Route
+/duplicate-actions
+·
+Element
+"Pay now (unguarded)" control

@@ -134,6 +134,23 @@ check('a non-committing control keeps its original scenario order', () => {
   assert.notEqual(pick(exec, buttonLike('#toggle-theme', 'Toggle theme')), 'ButtonSpammer');
 });
 
+check('a read-modify-write control leads with the burst so a lost-update race is reached', () => {
+  // Regression: /state-races' unguarded increment produced no finding because the
+  // burst (the only probe that overlaps writes into an identical POST the
+  // DuplicateActionFinder flags) was never aimed at a counter-style control.
+  const exec = makeExecutor(new ScenarioGate());
+  assert.equal(pick(exec, buttonLike('#inc', 'Increment (unguarded)')), 'ButtonSpammer');
+  assert.equal(pick(exec, buttonLike('#up', 'Upvote')), 'ButtonSpammer');
+  assert.equal(pick(exec, buttonLike('#like', 'Like')), 'ButtonSpammer');
+});
+
+check('a lookalike of a commit verb does not masquerade as one', () => {
+  // vote/like are \b-anchored: "voter"/"likely"/"country" must not promote the burst.
+  const exec = makeExecutor(new ScenarioGate());
+  assert.notEqual(pick(exec, buttonLike('#voters', 'Voter list')), 'ButtonSpammer');
+  assert.notEqual(pick(exec, buttonLike('#country', 'Select country')), 'ButtonSpammer');
+});
+
 check('a utility class name cannot masquerade as a commit control', () => {
   // Unanchored substring matching over className reads Tailwind's `border` as
   // "order" — that would promote the burst on nearly every button and quietly
