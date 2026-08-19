@@ -39,8 +39,7 @@ export function registerInjection(app) {
     let badJson = false;
     try { JSON.parse(config); } catch { badJson = true; }
     if (badQty || badEmail || badJson) {
-      const err = new Error('compute pipeline crashed on malformed input');
-      return res.status(500).json({ error: err.message, stack: err.stack });
+      return res.status(500).json({ error: 'compute pipeline crashed on malformed input' });
     }
     res.status(200).json({ ok: true, total: qty });
   });

@@ -1,89 +1,38 @@
-SPA State Race Condition
-Medium
+Security Vulnerability Leak
+High
 
-CWE-362
+CWE-200
 Status
-NEEDS VERIFICATION 70%
+CONFIRMED 100%
 Message
-POST /api/counter/cas was sent again 1ms later while the first was still running.
-API Endpoint
-POST /api/counter/cas
+HTTP 500 POST /api/compute — HTTP 500 server error. The backend failed to process the request.
+Element
+config
+textarea[name="config"]
 Reproduction Playbook
 
 1
 open
-Navigate to /state-races
+Navigate to /input-fuzzing
 2
-rapid
-Click 3 controls at the same time: the "🦁 BugSafari Target" link, the "← all scenarios" link and the "Increment (unguarded)" button
+type
+Type "{"a": [}" into the "config" text box
 Route
-/state-races
+/input-fuzzing
+·
+Element
+"config" text box
+3
+submit
+Click the "Compute" button to submit the form
+Route
+/input-fuzzing
 Suggested Fix
 
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
+For this finding
+• Address: POST /api/compute (HTTP 500)
 
-
-
-SPA State Race Condition
-Medium
-
-CWE-362
-Status
-NEEDS VERIFICATION 70%
-Message
-POST /api/counter was sent again 1ms later while the first was still running.
-API Endpoint
-POST /api/counter
-Reproduction Playbook
-
-1
-open
-Navigate to /state-races
-2
-rapid
-Click 3 controls at the same time: the "Increment (compare-and-set 409)" button, the "🦁 BugSafari Target" link and the "← all scenarios" link
-Route
-/state-races
-Suggested Fix
-
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
-
-
-
-SPA State Race Condition
-Medium
-
-CWE-362
-Status
-NEEDS VERIFICATION 70%
-Message
-POST /api/counter was sent again 0ms later while the first was still running.
-API Endpoint
-POST /api/counter
-Reproduction Playbook
-
-1
-open
-Navigate to /state-races
-2
-rapid
-Click 3 controls at the same time: the "Increment (compare-and-set 409)" button, the "🦁 BugSafari Target" link and the "← all scenarios" link
-Route
-/state-races
-Suggested Fix
-
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
-
-
+Suggested fix: keep internal detail on the server
+1. Return a generic error message and log the details on the server only
+2. Remove stack traces, file paths, and secrets from anything sent to the browser
+3. Add a test confirming error replies contain no internal detail
