@@ -408,7 +408,7 @@ export class ExplorationLoop {
           this.deps.pathNavigator.markEdgeCyclic(fingerprint.currentHash, target.selector);
           this.deps.clusterRegistry.markTriggered(fingerprint.compound.structure, target.selector, step);
           this.deps.telemetry.emitMilestone(
-            ` Session preserved: suppressed ${humanizeElement(target)} — a session-destroying control on an authenticated run.`,
+            ` Session preserved. Suppressed ${humanizeElement(target)} because it can end the authenticated session.`,
           );
           this.deps.telemetry.emit('ACTION', {
             actionExecuted: 'session-control-suppressed',
@@ -479,7 +479,7 @@ export class ExplorationLoop {
           this.deps.telemetry.emit('ACTION', {
             actionExecuted: 'finder-sweep-skipped-no-interaction',
             selector: target.selector,
-            message: `Skipped bug-finder sweep on ${humanizeElement(target)} — the control was not successfully actuated this step (no interaction to attribute a finding to).`,
+            message: `Skipped the bug-finder sweep on ${humanizeElement(target)} because the control was not successfully actuated during this step. No interaction was available to attribute a finding to.`,
           });
         }
 
@@ -535,7 +535,7 @@ export class ExplorationLoop {
         ctx.budgetExtensions++;
         const remaining = this.deps.clusterRegistry.unexploredControlCount();
         this.deps.telemetry.emitMilestone(
-          ` ${remaining} unexplored control(s) remain — extending budget to ${ctx.budget} steps (extension ${ctx.budgetExtensions}).`,
+          ` ${remaining} unexplored control(s) remain. Extending the budget to ${ctx.budget} steps (extension ${ctx.budgetExtensions}).`,
         );
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'budget-extended',
@@ -580,7 +580,7 @@ export class ExplorationLoop {
     const armed = await armNetworkSabotage(page, this.deps.telemetry.gateway);
     this.deps.telemetry.emit('ACTION', {
       actionExecuted: 'network-sabotage',
-      message: ` Network sabotage armed (${armed.mode}) — the next API call this step is intercepted.`,
+      message: ` Network sabotage armed (${armed.mode}). The next API call this step is intercepted.`,
     });
     return armed;
   }
@@ -712,7 +712,7 @@ export class ExplorationLoop {
     if (!ctx.saturatedLogged.has(structure)) {
       ctx.saturatedLogged.add(structure);
       this.deps.telemetry.emitMilestone(
-        ` Page fully explored (${url}) — skipping re-parse/re-test; advancing to the nearest unexplored branch.`,
+        ` Page fully explored (${url}). Skipping re-parse and re-test, then advancing to the nearest unexplored branch.`,
       );
     }
     this.deps.telemetry.emit('ACTION', {
@@ -743,7 +743,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'render-freeze-suppressed-teardown',
         url: page.url(),
-        message: `Scan ended ${health} during session termination — expected interruption, not a client render freeze.`,
+        message: `Scan ended ${health} during session termination. This was an expected interruption, not a client render freeze.`,
       });
       return;
     }
@@ -759,7 +759,7 @@ export class ExplorationLoop {
       this.deps.telemetry.emit('ACTION', {
         actionExecuted: 'render-freeze-suppressed-uncorroborated',
         url: page.url(),
-        message: `Script evaluation timed out at ${safeRoutePath(page)} with no successful interaction yet this run — treating as a driver/environment wait timeout, not a client render freeze.`,
+        message: `Script evaluation timed out at ${safeRoutePath(page)} before any successful interaction occurred. Treating it as a driver or environment wait timeout, not a client render freeze.`,
       });
       return;
     }
@@ -774,7 +774,7 @@ export class ExplorationLoop {
       health === 'timeout'
         ? 'the page stopped responding to script evaluation entirely'
         : 'the DOM node count never stopped changing';
-    const message = `Client render freeze at ${safeRoutePath(page)} — ${detail}, so the view never reached a stable state.`;
+    const message = `Client render freeze at ${safeRoutePath(page)}. ${detail}. The view did not reach a stable state.`;
 
     this.deps.telemetry.emitMilestone(` ${message}`);
     this.deps.registerConfirmedBug({
@@ -841,14 +841,14 @@ export class ExplorationLoop {
       // Up to EMPTY_RETRY_LIMIT retries for delayed SPA rendering — wait and retry.
       if (ctx.emptyCheckCount <= EMPTY_RETRY_LIMIT) {
         this.deps.telemetry.emitMilestone(
-          ` No interactive elements (check ${ctx.emptyCheckCount}/${EMPTY_RETRY_LIMIT + 1}) — waiting for delayed render...`,
+          ` No interactive elements found (check ${ctx.emptyCheckCount}/${EMPTY_RETRY_LIMIT + 1}). Waiting for delayed content to render.`,
         );
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
         return { kind: 'continue' };
       }
       // Still empty on the third consecutive check — classify as Structural Dead-End.
       this.deps.telemetry.emitMilestone(
-        `️ Structural Dead-End: no interactive elements after ${ctx.emptyCheckCount} checks — skipping page and backtracking.`,
+        `️ Structural dead end. No interactive elements found after ${ctx.emptyCheckCount} checks. Skipping the page and backtracking.`,
       );
       return { kind: 'deadend' };
     }
@@ -863,7 +863,7 @@ export class ExplorationLoop {
     if (ctx.deadEndUrls.delete(revivedKey)) {
       this.deps.pathNavigator.clearRouteDeadEnd(revivedKey);
       this.deps.telemetry.emitMilestone(
-        ` Dead-end route now renders content — re-admitting ${page.url()} to exploration.`,
+        ` Dead-end route now renders content. Re-admitting ${page.url()} to exploration.`,
       );
     }
 
@@ -886,11 +886,11 @@ export class ExplorationLoop {
     if (elements.every((el) => triggered(el.selector))) {
       const revealed = await this.scrollToRevealNewControls(page, elements, shell);
       if (revealed) {
-        this.deps.telemetry.emitMilestone(' Frontier spent — adaptive scroll revealed new off-screen controls.');
+        this.deps.telemetry.emitMilestone(' Frontier exhausted. Adaptive scrolling revealed new off-screen controls.');
         elements = revealed;
       } else {
         this.deps.telemetry.emitMilestone(
-          ' Page fully explored (frontier spent, nothing new on scroll) — backtracking to nearest unexplored branch.',
+          ' Page fully explored with no new elements found while scrolling. Backtracking to the nearest unexplored branch.',
         );
       }
     }
@@ -1865,8 +1865,8 @@ export class ExplorationLoop {
       childHash = currentHash;
       this.deps.telemetry.emitMilestone(
         leftSite
-          ? ` ${humanTarget} tried to leave the app under test (${page.url()}) — blocking edge.`
-          : ` ${humanTarget} navigated to an invalid context (${page.url()}) — blocking edge.`,
+          ? ` ${humanTarget} attempted to leave the app under test (${page.url()}). Blocking the navigation.`
+          : ` ${humanTarget} navigated to an invalid context (${page.url()}). Blocking the navigation.`,
       );
     }
 
@@ -1970,8 +1970,8 @@ export class ExplorationLoop {
         // flood the progress feed. Wording is operator-facing (no "exhausted" jargon).
         this.deps.telemetry.emitSystemStatus(
           actionThrew
-            ? `${humanizeElement(target)} did not respond (detached or blocked) — returned to the previous state, still exploring.`
-            : `${humanizeElement(target)} produced no change — returned to the previous state, still exploring.`,
+            ? `${humanizeElement(target)} did not respond because it was detached or blocked. Returned to the previous state and continued exploring.`
+            : `${humanizeElement(target)} produced no change. Returned to the previous state and continued exploring.`,
         );
         this.deps.navigationFinder.noteEngineNavigation();
         await this.deps.stateRestorer.restoreToState(page, previousHashBeforeAction, currentUrl);
@@ -2153,7 +2153,7 @@ export class ExplorationLoop {
       completed: true,
       reason:
         cov.unexploredControls === 0
-          ? 'Exploration budget reached — cluster coverage saturated.'
+          ? 'Exploration budget reached. Cluster coverage is saturated.'
           : 'Exploration budget reached (hard cap or timebox).',
       outcome: 'completed',
     };

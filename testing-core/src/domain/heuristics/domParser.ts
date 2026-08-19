@@ -40,6 +40,11 @@ export interface ParsedElement {
   min: string;
   max: string;
   step: string;
+  /** Raw maxlength/pattern ('' when absent) + required flag, captured at parse time so the
+   *  constraint-bypass finder can plan a violation even after a fuzz action strips the live DOM. */
+  maxLength: string;
+  pattern: string;
+  required: boolean;
   /** Enabled <option> values of a <select> (capped), for boundary-sampled selection. */
   options: string[];
   /** aria-haspopup value ('' when absent) — marks custom listbox-popup triggers. */
@@ -128,6 +133,10 @@ export class RecursiveDomParser {
       min: element.min || undefined,
       max: element.max || undefined,
       step: element.step || undefined,
+      // Parse-time client constraints for the bypass finder (survive a later DOM strip).
+      maxLength: (() => { const n = parseInt(element.maxLength, 10); return Number.isFinite(n) && n > 0 ? n : undefined; })(),
+      pattern: element.pattern || undefined,
+      required: element.required || undefined,
       options: element.options.length ? element.options : undefined,
       ariaHasPopup: element.ariaHasPopup || undefined,
       // Hand-rolled div/span control (onclick or focusable tabindex, no semantic tag/role).
@@ -749,6 +758,11 @@ const isDisabled = (element) => {
         const min = element.getAttribute('min') || '';
         const max = element.getAttribute('max') || '';
         const step = element.getAttribute('step') || '';
+        // Client-enforced constraints the constraint-bypass finder probes. Captured now
+        // because a preceding fuzz action strips these off the live DOM before the sweep.
+        const maxLength = element.getAttribute('maxlength') || '';
+        const pattern = element.getAttribute('pattern') || '';
+        const required = element.hasAttribute('required') || element.getAttribute('aria-required') === 'true';
         // Only <select> pays the option scan; cap to bound the snapshot payload.
         // In-page string: plain JS only (no TS casts) or the browser SyntaxErrors.
         const options = tagName === 'select'
@@ -784,6 +798,9 @@ const isDisabled = (element) => {
           min,
           max,
           step,
+          maxLength,
+          pattern,
+          required,
           options,
           boundingBox: {
             x: rect.x,
@@ -842,6 +859,9 @@ const isDisabled = (element) => {
           min: data.min,
           max: data.max,
           step: data.step,
+          maxLength: data.maxLength,
+          pattern: data.pattern,
+          required: data.required,
           options: data.options,
           ariaHasPopup: data.ariaHasPopup,
           hasOnClick: data.hasOnClick,

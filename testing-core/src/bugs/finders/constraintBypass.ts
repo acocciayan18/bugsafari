@@ -141,6 +141,17 @@ async function readConstraintSnapshot(page: Page, selector: string): Promise<Con
     .catch(() => null);
 }
 
+// Parse-time constraints captured on the element, so a violation can be planned from the
+// value the field HAD even after a preceding fuzz action strips the live DOM (the sweep
+// runs post-action). Returns null when the element carries no such constraint.
+export function snapshotFromElement(element: InteractiveElement): ConstraintSnapshot | null {
+  const maxLength = typeof element.maxLength === 'number' && element.maxLength > 0 ? element.maxLength : null;
+  const pattern = element.pattern && element.pattern !== '' ? element.pattern : null;
+  const required = element.required === true;
+  if (maxLength === null && pattern === null && !required) return null;
+  return { maxLength, pattern, required };
+}
+
 // Pure violation planner: picks the first constraint whose violation is PROVABLE without
 // the browser. Priority pattern → maxlength → required (first applicable wins).
 export function planFromSnapshot(snapshot: ConstraintSnapshot | null): ViolationPlan | null {
@@ -233,7 +244,10 @@ export const constraintBypassFinder: BugFinder = {
     if (!element) return [];
     attemptedSelectors.add(element.selector); // one probe per field per run
 
-    const plan = planFromType(element) ?? planFromSnapshot(await readConstraintSnapshot(ctx.page, element.selector));
+    // Parse-time snapshot first (survives a fuzz action that stripped the live DOM before
+    // this sweep); live DOM read only when the element carried no captured constraint.
+    const snapshot = snapshotFromElement(element) ?? (await readConstraintSnapshot(ctx.page, element.selector));
+    const plan = planFromType(element) ?? planFromSnapshot(snapshot);
     if (!plan) return []; // no enforceable client constraint → nothing to bypass
 
     const origin = safeOrigin(ctx.targetUrl);

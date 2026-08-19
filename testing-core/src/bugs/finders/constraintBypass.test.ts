@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { planFromType, planFromSnapshot, correlatesToSubmission } from './constraintBypass.js';
+import { planFromType, planFromSnapshot, snapshotFromElement, correlatesToSubmission } from './constraintBypass.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 let passed = 0;
@@ -113,6 +113,37 @@ function main(): void {
       violating: '!bypass 123!',
       constraint: 'pattern=[0-9]+',
     });
+  });
+
+  // snapshotFromElement reads the PARSE-TIME constraints, so a plan survives a fuzz action
+  // that stripped the live DOM before the post-action sweep ran (the real-world miss).
+  const withConstraints = (c: Partial<InteractiveElement>): InteractiveElement => c as InteractiveElement;
+
+  check('a parse-time maxlength yields a snapshot even when the live DOM is stripped', () => {
+    const snap = snapshotFromElement(withConstraints({ maxLength: 8 }));
+    assert.deepEqual(snap, { maxLength: 8, pattern: null, required: false });
+    assert.deepEqual(planFromSnapshot(snap), { violating: 'A'.repeat(40), constraint: 'maxlength=8' });
+  });
+
+  check('a parse-time required flag yields a required snapshot', () => {
+    assert.deepEqual(snapshotFromElement(withConstraints({ required: true })), {
+      maxLength: null,
+      pattern: null,
+      required: true,
+    });
+  });
+
+  check('a parse-time pattern yields a pattern snapshot', () => {
+    assert.deepEqual(snapshotFromElement(withConstraints({ pattern: '[0-9]+' })), {
+      maxLength: null,
+      pattern: '[0-9]+',
+      required: false,
+    });
+  });
+
+  check('an element with no captured constraint yields null (falls back to live DOM)', () => {
+    assert.equal(snapshotFromElement(withConstraints({})), null);
+    assert.equal(snapshotFromElement(withConstraints({ maxLength: 0, pattern: '', required: false })), null);
   });
 
   console.log(`\nconstraintBypass: ${passed} checks passed.`);

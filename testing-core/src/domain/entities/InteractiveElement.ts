@@ -48,6 +48,11 @@ export interface InteractiveElement {
   min?: string;
   max?: string;
   step?: string;
+  // Client-enforced constraints, parser-captured so the constraint-bypass finder can plan a
+  // violation from the value the field HAD, even after a fuzz action strips the live DOM.
+  maxLength?: number;
+  required?: boolean;
+  pattern?: string;
   // Enabled <option> values for a <select> (capped), for boundary-sampled selection.
   options?: string[];
   // aria-haspopup value ('' when absent) — with role, marks a custom (non-<select>)
