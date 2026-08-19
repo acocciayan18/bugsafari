@@ -36,3 +36,44 @@ Suggested fix: keep internal detail on the server
 1. Return a generic error message and log the details on the server only
 2. Remove stack traces, file paths, and secrets from anything sent to the browser
 3. Add a test confirming error replies contain no internal detail
+
+Stack Trace
+Click to expand
+SPA State Race Condition
+Medium
+
+CWE-362
+Status
+NEEDS VERIFICATION 75%
+Message
+POST /api/compute was sent again 1302ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
+Element
+Compute
+Reproduction Playbook
+
+1
+open
+Navigate to /input-fuzzing
+2
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+3
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+Suggested Fix
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed

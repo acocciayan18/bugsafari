@@ -3,17 +3,24 @@ import ScenarioLayout from '../components/ScenarioLayout';
 
 export default function InputFuzzing() {
   const [out, setOut] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (busy) return; // disable-on-submit guard: one in-flight compute at a time
+    setBusy(true);
     const form = e.currentTarget;
     const body = {
       quantity: (form.elements.namedItem('quantity') as HTMLInputElement).value,
       email: (form.elements.namedItem('email') as HTMLInputElement).value,
       config: (form.elements.namedItem('config') as HTMLTextAreaElement).value
     };
-    const r = await fetch('/api/compute', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    setOut(`HTTP ${r.status} — ${await r.text()}`);
+    try {
+      const r = await fetch('/api/compute', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      setOut(`HTTP ${r.status} — ${await r.text()}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -29,7 +36,7 @@ export default function InputFuzzing() {
           <label>Config (JSON)</label>
           <textarea name="config" defaultValue='{"ok":true}' />
           <div className="row" style={{ marginTop: 14 }}>
-            <button type="submit">Compute</button>
+            <button type="submit" disabled={busy}>Compute</button>
           </div>
         </form>
         {out && <div className="out">{out}</div>}

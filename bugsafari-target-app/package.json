@@ -9,7 +9,8 @@
     "build": "vite build",
     "serve": "node scripts/serve.mjs",
     "tunnel": "node scripts/tunnel.mjs",
-    "preview": "vite preview --port 5174"
+    "preview": "vite preview --port 5174",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.21.2",
