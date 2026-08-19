@@ -56,7 +56,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center justify-center p-1.5 rounded transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
+      className="inline-flex items-center justify-center p-1.5 rounded cursor-pointer transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={copied ? 'Copied!' : actionLabel}
       aria-label={copied ? 'Copied!' : actionLabel}
     >

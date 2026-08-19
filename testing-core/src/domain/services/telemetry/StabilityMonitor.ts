@@ -47,6 +47,7 @@ import {
   detectSoftFailBody,
   isBodyReadableResourceType,
   isExpectedRejectionEnvelope,
+  isProxyGatewayArtifact,
   statusForScore,
   type VerificationCandidate,
 } from '../verification/index.js';
@@ -1949,6 +1950,23 @@ export class StabilityMonitor {
       // A clean success with no soft-fail body is not actionable — never emitted,
       // stored, or persisted. Only failures reach the Network tab (below).
       if (status < 400 && !softFailBody) {
+        return;
+      }
+
+      // A tunnel/proxy EDGE gateway error (a Cloudflare 502/503/504 error page or a 520–527
+      // synthesized when the origin dropped/was unreachable) is infrastructure noise, not an
+      // app fault — the proxy in front of the target emitted it, never the target's backend.
+      // Runs that explore through a tunnel (SSRF guard) would otherwise report every origin
+      // connection-drop as a phantom "Server API Failure". Demote to a Network-tab row; a
+      // genuine origin 5xx (the app's own body) has no edge signature and still promotes.
+      if (isProxyGatewayArtifact(status, bodyContent)) {
+        t.emit('NETWORK', {
+          statusCode: status,
+          url,
+          method,
+          durationMs: this.computeRequestDuration(response.request()),
+          message: `HTTP ${status} ${method} ${url} — tunnel/proxy gateway error (origin unreachable); not an application fault`,
+        });
         return;
       }
 

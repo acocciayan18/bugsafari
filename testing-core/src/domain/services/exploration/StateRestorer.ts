@@ -4,6 +4,12 @@ import { shouldExitNoOp } from './pacing.js';
 import type { StateRestorerDeps } from './types.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import type { NavigationStep } from '../DIrectedPathFinder.js';
+import {
+  resolveElementLabel,
+  elementNoun,
+  genericElementLabel,
+  type ElementLabelSource,
+} from '../forensics/narration.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -198,13 +204,17 @@ export class StateRestorer {
   public async replayPath(page: Page, steps: NavigationStep[]): Promise<boolean> {
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
+      // Name the hop by the control it actually clicks so the playbook reads
+      // `Click the "Settings" link`, never the internal `path replay N/M` jargon.
+      const control = await this.resolveReplayControl(page, step.selector);
       // Trace BEFORE clicking (matches ActionExecutor): if the replayed click
       // crashes the app, the causal action must already be in the breadcrumbs.
       this.deps.recordActionTrace(
         { timestamp: new Date().toISOString(), selector: step.selector, action: 'restore-path-replay' },
         {
           actionType: 'CLICK',
-          humanIdentifier: `path replay ${i + 1}/${steps.length}`,
+          humanIdentifier: control.label,
+          elementKind: control.kind,
           url: page.url(),
         },
       );
@@ -226,6 +236,45 @@ export class StateRestorer {
     }
     this.deps.telemetry.emitSystemStatus('Restored via shortest-path replay.');
     return true;
+  }
+
+  /**
+   * Resolve a replay hop's REAL control name + noun from the live DOM, mirroring how a
+   * normal click is named (resolveElementLabel/elementNoun). Returns an undefined label
+   * when the control has no specific name (narration then reads the bare noun, e.g.
+   * "Click the link") or the element cannot be read — never the "path replay N/M"
+   * placeholder that used to leak engine jargon into user-facing playbooks. Never throws.
+   */
+  private async resolveReplayControl(page: Page, selector: string): Promise<{ label?: string; kind?: string }> {
+    try {
+      const source = await page.evaluate((sel): (ElementLabelSource & { role?: string; href?: string }) | null => {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (!el) return null;
+        const attr = (name: string): string | undefined => el.getAttribute(name) || undefined;
+        const anchor = el.closest('a') as HTMLAnchorElement | null;
+        return {
+          accessibleName: attr('aria-label') || attr('title'),
+          innerText: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() || undefined,
+          ariaLabel: attr('aria-label'),
+          placeholder: attr('placeholder'),
+          name: attr('name'),
+          id: el.id || undefined,
+          tagName: el.tagName,
+          type: attr('type'),
+          role: attr('role'),
+          href: anchor?.href,
+        };
+      }, selector);
+      if (!source) return {};
+      const resolved = resolveElementLabel(source);
+      // Drop a non-identifying tag-noun fallback ("button"/"link") so the step reads the
+      // bare noun rather than `the "button" button`; a real name always survives.
+      const label = resolved && resolved !== genericElementLabel(source.tagName, source.type) ? resolved : undefined;
+      const kind = elementNoun(source.tagName, source.type, { role: source.role, href: source.href });
+      return { label, kind };
+    } catch {
+      return {};
+    }
   }
 
   /**

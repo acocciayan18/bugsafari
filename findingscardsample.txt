@@ -1,21 +1,236 @@
-Client Render Freeze
+Server API Failure
 High
 
-
-CWE-835
+CWE-755
+Status
+CONFIRMED 100%
 Message
-Client render freeze: the main thread was blocked, so the page could not respond to input or repaint.
+HTTP 502 GET /api/drop — HTTP 502 server error. The backend failed to process the request.
+Element
+Soft-fail 200 body
 Reproduction Playbook
+
 1
+open
+Navigate to /network-errors
+2
 click
-Click 2 controls at the same time: the "← all scenarios" link and the "Freeze UI (9s)" button
-Observed result
-1 of 2 clicks registered in 1001ms
-Suggested Fix
+Click the "Place order (500)" button, repeated 17 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Place order (500)" button
+3
+click
+Click the "Dropped connection" button
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Dropped connection" button
+4
+click
+Click the "Soft-fail 200 body" button, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Soft-fail 200 body" button
+5
+click
+Click the "Soft-fail 200 body" button, repeated 17 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Soft-fail 200 body" button
+6
+click
+Click the "Dropped connection" button, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Dropped connection" button
+7
+click
+Click the "Place order (500)" button, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Place order (500)" button
+8
+click
+Click the "🦁 BugSafari Target" home link, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Element
+"🦁 BugSafari Target" home link
+9
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/network-errors
+10
+click
+Click the "← all scenarios" home link, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Element
+"← all scenarios" home link
+11
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/network-errors
+12
+click
+Click the "← all scenarios" home link, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Element
+"← all scenarios" home link
+13
+click
+Click the "path replay 1/1" control
+Route
+/network-errors
+·
+Element
+"path replay 1/1" control
+14
+click
+Click the "🦁 BugSafari Target" home link, repeated 2 times in quick succession
+Route
+/network-errors
+·
+Element
+"🦁 BugSafari Target" home link
+15
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/network-errors
+16
+bypass
+Remove the browser validation from the "Aborted" network request, enter "https://roy-neighborhood-ship-anytime.trycloudflare.com/api/drop", then submit the form
+Route
+/network-errors
+·
+Element
+"Aborted" network request
+17
+click
+Click the "Soft-fail 200 body" button
+Route
+/network-errors
+·
+Element
+"Soft-fail 200 body" button
+18
+open
+Navigate to /network-errors, repeated 9 times in quick succession
 
 
-Suggested fix: break the redraw loop
-1. Look for a state update inside render or useEffect with no dependency guard (setState triggers render, which triggers setState again)
-2. Look for a subscription or observer that re-adds nodes on every change (toasts, live feeds, infinite scroll)
-3. Memoize derived values so a new object each render cannot keep retriggering the effect
-4. Move long synchronous work off the main thread so the view can paint
+
+API Contract Violation
+High
+×2
+
+CWE
+CWE-754
+Status
+CONFIRMED 100%
+Message
+HTTP 200 GET /api/soft-fail — HTTP 200 returned an error payload, indicating that the request reported success at the HTTP level but the application response indicates a failure.
+API Endpoint
+GET /api/soft-fail
+Reproduction Playbook
+
+1
+open
+Navigate to /network-errors
+2
+rapid
+Click 4 controls at the same time: the "Soft-fail 200 body" button, the "Place order (500)" button, the "🦁 BugSafari Target" link and the "← all scenarios" link
+Route
+/network-errors
+
+
+
+Server API Failure
+High
+×2
+
+CWE
+CWE-755
+Status
+CONFIRMED 100%
+Message
+HTTP 500 POST /api/orders — HTTP 500 server error. The backend failed to process the request.
+Element
+Place order (500)
+Reproduction Playbook
+
+1
+open
+Navigate to /network-errors
+2
+click
+Click the "Place order (500)" button, repeated 17 times in quick succession
+Route
+/network-errors
+·
+Panel
+"Backend failures"
+·
+Element
+"Place order (500)" button
+
+
+
+Boundary Stress Failure
+Medium
+×2
+
+CWE
+CWE-400
+Status
+NEEDS VERIFICATION 44%
+Message
+Network request failed: GET /api/drop (net::ERR_FAILED) — Injected network fault. The application failed to handle the simulated failure properly.
+API Endpoint
+GET /api/drop
+Reproduction Playbook
+
+1
+open
+Navigate to /network-errors
+2
+rapid
+Click 4 controls at the same time: the "← all scenarios" link, the "Dropped connection" button, the "Soft-fail 200 body" button and the "Place order (500)" button
+Route
+/network-errors

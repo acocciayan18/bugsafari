@@ -67,3 +67,29 @@ export function isExpectedRejectionEnvelope(url: string, body: string): boolean 
   if (AUTH_ENDPOINT.test(url) && OUTCOME_FALSE.test(body)) return true;
   return OUTCOME_FALSE.test(body) && VALIDATION_REJECTION.test(body);
 }
+
+// A reverse-proxy / tunnel EDGE emits 502/503/504 when it cannot complete with the
+// origin; Cloudflare's 520–527 range is emitted EXCLUSIVELY by its edge (origin dropped,
+// timed out, or unreachable) — an origin application never returns 520–527.
+function isGatewayStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504 || (status >= 520 && status <= 527);
+}
+
+// Signatures of an EDGE-generated error page (Cloudflare / cloudflared quick tunnel /
+// generic gateway), distinct from an origin app's own error body. Matched ONLY against a
+// gateway-status response, so an app 500 carrying the app's JSON body is never suppressed.
+const EDGE_GATEWAY_BODY =
+  /\bcloudflare\b|\bcf-ray\b|\bray id\b|\bbad gateway\b|\bgateway time-?out\b|\berror\s+10\d\d\b|web server is (?:down|returning)|origin (?:is unreachable|web server)|argo tunnel|trycloudflare|cloudflared|this tunnel is/i;
+
+// True when a 5xx was synthesized by the reverse proxy / tunnel EDGE in front of the
+// target (Cloudflare / cloudflared quick tunnel), not returned by the target's own
+// backend — infrastructure noise, never an application fault. A Cloudflare 520–527 is
+// always edge-generated; a 502/503/504 qualifies only when its body is a recognizable
+// edge error page, so a genuine origin 5xx (the app's own error body, a bare 500) still
+// promotes. Explored-through-a-tunnel runs (SSRF guard) would otherwise report every
+// origin connection-drop as a phantom "Server API Failure" on the app.
+export function isProxyGatewayArtifact(status: number | undefined, body?: string): boolean {
+  if (status === undefined || !isGatewayStatus(status)) return false;
+  if (status >= 520 && status <= 527) return true;
+  return EDGE_GATEWAY_BODY.test(body ?? '');
+}

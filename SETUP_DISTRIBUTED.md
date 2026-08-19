@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Replace copy button text with icon"
+git commit -m "Review Findings card content for network-errors page"
 git push origin HEAD:dev --force
 
 
