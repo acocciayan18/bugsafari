@@ -12,6 +12,7 @@ import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, whereSegments } from '../../utils/reproductionFormat';
 import ReproductionChecklist from '../telemetry/ReproductionChecklist';
+import ReproNotice from './ReproNotice';
 import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
 
 // Per-step WHERE context — labeled segments (Route / container kind / Element) so a
@@ -83,7 +84,10 @@ export function ActionStepList({ steps, perStepContext = false }: { steps: Foren
 function StructuredReproductionPlaybook({ steps }: { steps: ForensicActionStep[] }) {
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
-      <div className="mb-2 text-xs font-bold uppercase text-(--text-secondary)">Reproduction Playbook</div>
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase text-(--text-secondary)">
+        Reproduction Playbook
+        <ReproNotice />
+      </div>
       <ActionStepList steps={steps} perStepContext />
     </div>
   );

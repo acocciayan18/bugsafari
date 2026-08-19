@@ -4,6 +4,7 @@ import {
   classifyNarrativeLine,
   splitObservations,
 } from '../../utils/reproductionFormat';
+import ReproNotice from '../common/ReproNotice';
 
 /**
  *  Reproduction Playbook — a high-contrast, numbered checklist of the
@@ -19,8 +20,9 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
 
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
-      <div className="mb-2 text-xs font-bold uppercase text-(--text-secondary)">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase text-(--text-secondary)">
         Reproduction Playbook
+        <ReproNotice />
       </div>
       {actions.length > 0 ? (
         <ol className="space-y-1.5">

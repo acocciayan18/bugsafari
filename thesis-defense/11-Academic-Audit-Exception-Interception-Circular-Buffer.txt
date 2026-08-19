@@ -1,0 +1,146 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 11: ACADEMIC HONESTY AUDIT
+         "Multi-Channel Exception Interception & Circular Action Buffer"
+================================================================
+
+PURPOSE OF THIS FILE
+--------------------
+Integrity check for the defense. Did we invent these mechanisms, or are
+they standard building blocks? The honest answer must be stated plainly
+so we never claim invention we cannot defend.
+
+NOTE ON CITATIONS: references below are real, recognized works. Lines to
+double-check before the bibliography are marked [verify]. Nothing here is
+a fabricated author or title.
+
+
+ONE-LINE VERDICT
+----------------
+NOT novel algorithms. These are two STANDARD building blocks plus an
+integration. In particular the circular buffer is a textbook data
+structure with NO single inventor, and multi-channel error interception
+uses standard browser APIs that existing tools (Sentry, Bugsnag) already
+use. Our contribution is the integration into an autonomous explorer.
+
+
+WHAT THE FEATURE ACTUALLY DOES (from the code)
+----------------------------------------------
+Files: testing-core/src/domain/services/telemetry/StabilityMonitor.ts,
+       testing-core/src/lib/circularBuffer.ts,
+       testing-core/src/infrastructure/monitoring/actionBuffer.ts
+  - Attaches listeners to SIX fault channels: uncaught JS exceptions
+    (pageerror), error-level console output, unhandled promise rejections,
+    failed / 4xx-5xx network responses, native dialogs, and renderer
+    crashes.
+  - Routes every fault through ONE pipeline: classify -> provenance-gate
+    (is it the target app's fault, or the harness/browser/network?) ->
+    deduplicate by signature with an occurrence count.
+  - A fixed-capacity ring buffer (capacity 60) continuously records the
+    last N actions; on a fault the snapshot is minimized into human
+    reproduction steps.
+
+
+THE ESTABLISHED CONCEPTS IT IS BASED ON
+---------------------------------------
+1. CIRCULAR / RING BUFFER (the "Circular Action Buffer").
+   A fundamental data structure: fixed-size FIFO with head/tail
+   wraparound, O(1) push, oldest overwritten when full. NO single
+   inventor - it is textbook computer science. Cite a general reference
+   (Cormen, Leiserson, Rivest, Stein, "Introduction to Algorithms";
+   or Knuth, "The Art of Computer Programming," Vol. 1) or simply state
+   it is standard. DO NOT present it as invented.
+   The "keep the last N events before a crash" use is the recognized
+   FLIGHT-RECORDER / BLACK-BOX logging pattern (prior system example:
+   Java Flight Recorder). [confident these exist]
+
+2. GLOBAL EXCEPTION / ERROR INTERCEPTION.
+   window.onerror, the 'error' event, and 'unhandledrejection' are
+   W3C/WHATWG HTML standard browser events. Instrumenting them for
+   monitoring is exactly what error-monitoring products already do
+   (Sentry, Bugsnag are prior systems). Not novel. [confident]
+
+3. MULTI-SOURCE BROWSER OBSERVABILITY.
+   Aggregating console + network + exceptions + dialogs + crashes is
+   standard practice in Playwright/Puppeteer-based tooling. The events are
+   exposed by the automation framework; capturing them all is common.
+
+4. REPRODUCTION-TRACE MINIMIZATION.
+   Reducing the recorded action trace to the steps that actually cause the
+   fault is conceptually TEST-CASE REDUCTION / DELTA DEBUGGING.
+   Reference: Andreas Zeller and Ralf Hildebrandt, "Simplifying and
+   Isolating Failure-Inducing Input," IEEE Transactions on Software
+   Engineering, 28(2), 2002. [confident]
+   Our version is a heuristic causal filter, so say "inspired by / related
+   to" delta debugging, NOT "implements ddmin".
+
+5. RECORD-AND-REPLAY.
+   Capturing an action trace to replay it is a long-established technique
+   (capture-replay testing tools). Our buffer + Verify Fix replay is a
+   bounded record-replay recorder.
+
+
+WHICH PARTS ARE STANDARD, WHICH ARE OURS
+----------------------------------------
+STANDARD (cite, do not claim):
+  - The ring buffer data structure.
+  - Global browser error/event interception (standard APIs + prior tools).
+  - Multi-source observability capture.
+  - The flight-recorder logging pattern.
+  - Test-case minimization / delta debugging (as inspiration).
+  - Record-and-replay.
+
+BUGSAFARI'S OWN (our engineering integration):
+  - Funneling SIX heterogeneous browser fault channels into ONE pipeline.
+  - PROVENANCE GATING: deciding whether a fault is truly the target app's
+    (vs harness / Playwright / browser / network) before reporting it.
+  - SIGNATURE-BASED DEDUP with occurrence counting so a per-render error
+    flood collapses into one finding.
+  - Coupling the bounded action recorder to a minimized REPRODUCTION
+    PLAYBOOK that feeds Verify Fix, all inside an autonomous explorer.
+
+
+IS THE NAME APPROPRIATE?
+------------------------
+Fine as a MODULE / FEATURE label, but the name describes standard
+mechanisms, so do not call either half a novel algorithm.
+  - "Circular Action Buffer" = a circular/ring buffer applied to actions.
+    Standard data structure; keep the name but never claim we invented it.
+  - "Multi-Channel Exception Interception" = standard error interception
+    across several channels.
+Academically neutral framing if needed:
+  "multi-source runtime fault interception with a bounded action-history
+   recorder (flight-recorder pattern)."
+
+
+HOW TO DESCRIBE AND CITE IT IN THE THESIS
+-----------------------------------------
+Describe it as an INTEGRATION built on standard parts. Example wording:
+
+  "Fault capture uses standard browser error interception (window error
+   and unhandledrejection events; cf. established monitoring tools) across
+   multiple channels, backed by a fixed-size ring buffer used as a
+   flight-recorder of recent actions. On a fault the recorded trace is
+   reduced to the causally relevant steps, an approach related to delta
+   debugging (Zeller and Hildebrandt, 2002). BugSafari's contribution is
+   the unified pipeline: multi-channel capture, provenance gating,
+   signature-based deduplication, and a minimized reproduction playbook
+   feeding automated replay verification."
+
+
+IF A PANELIST ASKS "DID YOU INVENT THIS?"
+-----------------------------------------
+"No. The ring buffer is a standard data structure, browser error
+interception uses standard APIs that tools like Sentry already use, and
+trace minimization relates to delta debugging (Zeller, 2002). What is ours
+is the integration: routing six fault channels through one pipeline with
+provenance gating and dedup, tied to a bounded recorder that produces a
+minimized reproduction for automated replay."
+
+IF THEY ASK "SO WHAT IS NEW?"
+-----------------------------
+"The unified fault pipeline and its provenance gating - deciding a fault
+is truly the target app's and not the harness or network - plus the
+signature dedup and the minimized reproduction playbook, all wired into an
+autonomous exploration engine. The primitives are standard; the
+integration and the provenance discipline are ours."

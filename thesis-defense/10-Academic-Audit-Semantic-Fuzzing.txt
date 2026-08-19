@@ -1,0 +1,142 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 10: ACADEMIC HONESTY AUDIT
+         "Semantic Classification & Payload Fuzzing"
+================================================================
+
+PURPOSE OF THIS FILE
+--------------------
+This is an integrity check. It answers one question for the defense:
+did we INVENT this algorithm, or is it a combination of existing,
+recognized techniques? The honest answer must be clear so we never
+claim invention we cannot defend.
+
+NOTE ON CITATIONS: the references below are real, well-known works.
+Where the exact year or venue should be double-checked before it goes
+into a bibliography, the line is marked [verify]. Nothing here is a
+fabricated author or title. Confirm each in the real source.
+
+
+ONE-LINE VERDICT
+----------------
+NOT a novel algorithm we invented. It is an engineering INTEGRATION of
+established techniques: fuzz testing, boundary value analysis, known
+public attack-vector corpora, mutation layering, and a lightweight
+feedback loop. Our contribution is the integration and application, not
+the invention of the primitives.
+
+
+WHAT THE FEATURE ACTUALLY DOES (from the code)
+----------------------------------------------
+Files: testing-core/src/domain/scenarios/fuzzing/*
+  - Classifies each input field into one of 7 categories by token/keyword
+    matching (elementClassifier.ts).
+  - Selects a payload family targeted to that category (numeric boundary,
+    XSS, SQL/NoSQL, email, date, JSON, chaos).
+  - Escalates payload complexity over 5 levels (payloadEscalator.ts),
+    stopping early once the app reacts (DOM structural-hash state change).
+  - Generates every payload deterministically from an FNV-1a seed so
+    findings replay byte-for-byte.
+
+
+THE ESTABLISHED CONCEPTS IT IS BASED ON
+---------------------------------------
+1. FUZZ TESTING (the core idea).
+   Origin: Barton P. Miller, Lars Fredriksen, Bryan So (1990),
+   "An Empirical Study of the Reliability of UNIX Utilities,"
+   Communications of the ACM, 33(12). [confident]
+   This is the canonical origin-of-fuzzing citation.
+
+2. BOUNDARY VALUE ANALYSIS (our numeric/date payloads).
+   Our min/max +/- step and maxlength+1 payloads are textbook BVA.
+   Reference: Glenford J. Myers, "The Art of Software Testing," Wiley,
+   1979. [confident]
+
+3. MUTATION-BASED FUZZING + FEEDBACK-DRIVEN ESCALATION.
+   Our 5-level ladder is mutation layering; escalating only on a state
+   change is a lightweight feedback loop, conceptually related to (but
+   NOT the same as) coverage-guided fuzzing.
+   - Coverage-guided fuzzer prior art: AFL (American Fuzzy Lop),
+     Michal Zalewski. [confident it exists; it is a tool, cite as such]
+   - Survey/taxonomy anchor: Manes, V.J.M. et al., "The Art, Science,
+     and Engineering of Fuzzing: A Survey," IEEE Transactions on
+     Software Engineering, Vol. 47, No. 11, pp. 2312-2331, Nov 2021
+     (preprint arXiv:1812.00140, 2018). [CONFIRMED]
+   - Book: Sutton, Greene, Amini, "Fuzzing: Brute Force Vulnerability
+     Discovery," Addison-Wesley, 2007. [confident it exists]
+
+4. KNOWN ATTACK-VECTOR CORPORA (the payload strings themselves).
+   These are community knowledge, NOT our invention:
+   - OWASP Web Security Testing Guide (WSTG) for XSS/SQLi test patterns.
+   - FuzzDB: open-source attack payload database, created by Adam Muntner
+     (github.com/fuzzdb-project/fuzzdb; New BSD + CC-BY). [CONFIRMED]
+   - Template-injection probe ({{7*7}} / ${{7*7}}): James Kettle
+     (PortSwigger), "Server-Side Template Injection: RCE for the Modern
+     Web App," Black Hat USA 2015 (whitepaper on portswigger.net/research).
+     [CONFIRMED]
+   - The `' OR '1'='1` tautology is community folklore (no single author).
+
+5. DETERMINISTIC / SEEDED PAYLOAD GENERATION.
+   Standard reproducibility practice in fuzzers. Our hash is FNV-1a
+   (Fowler-Noll-Vo). Not novel.
+
+
+WHICH PARTS ARE STANDARD, WHICH ARE OURS
+----------------------------------------
+STANDARD (cite, do not claim):
+  - Fuzzing as a method.
+  - Boundary value analysis.
+  - The XSS/SQLi/NoSQL/polyglot vectors.
+  - Mutation layering and deterministic seeding.
+
+BUGSAFARI'S OWN (our engineering integration):
+  - Heuristic field classification (token sets -> 7 categories) driving
+    TYPE-DIRECTED payload-family selection.
+  - A bounded 5-level escalation ladder whose escalation trigger is a
+    DOM STRUCTURAL-HASH state change (start gentle, get harsher only when
+    the app stays silent).
+  - Wiring all of this into a LIVE autonomous SPA exploration engine,
+    with per-field seeding for byte-for-byte replay.
+  These specific choices (the classifier token sets, the layer ordering,
+  the state-change trigger) are our implementation, not from a paper.
+
+
+IS THE NAME APPROPRIATE?
+------------------------
+"Semantic Classification" oversells it. The code does heuristic
+TOKEN/KEYWORD field-type classification, not semantic analysis in the
+NLP/embedding sense. Recommended academically-safer name:
+  "Heuristic context-aware, type-directed adaptive fuzzing"
+  (or "field-type-directed mutation fuzzing").
+Keep the current name as a product label if you like, but in the thesis
+body describe it with the safer term.
+
+
+HOW TO DESCRIBE AND CITE IT IN THE THESIS
+-----------------------------------------
+Describe it as an INTEGRATION, not an invention. Example wording:
+
+  "BugSafari's input-testing module applies fuzz testing (Miller et al.,
+   1990) using boundary value analysis (Myers, 1979) and established
+   public attack-vector corpora (OWASP WSTG; FuzzDB). Its contribution is
+   a heuristic field-type classifier that directs type-appropriate
+   payloads, combined with a bounded, deterministic escalation ladder
+   whose progression is gated on observed DOM state change - a lightweight
+   feedback-driven mutation scheme applied to live single-page
+   applications."
+
+
+IF A PANELIST ASKS "DID YOU INVENT THIS?"
+-----------------------------------------
+"No. Fuzzing, boundary value analysis, and the attack vectors are
+established and cited. What is ours is the integration: classifying each
+field and directing type-appropriate payloads, and an adaptive escalation
+ladder that stops as soon as the application reacts, all inside an
+autonomous SPA explorer with reproducible seeded payloads."
+
+IF THEY ASK "SO WHAT IS NEW?"
+-----------------------------
+"The combination and application: type-directed payload selection driven
+by field classification, DOM-state-change-gated escalation, and full
+per-field determinism for replay - packaged into a live autonomous
+testing engine."
