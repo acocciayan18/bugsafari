@@ -49,6 +49,13 @@ interface InjectionEvidence {
   statusCode?: number;
 }
 
+// Fire ONLY on a genuine datastore-error signature. A bare 5xx (input-validation crash on a
+// malformed payload) is NOT injection evidence — it stays a SERVER_API_FAILURE — so serverFault
+// alone never confirms NoSQL injection. Prevents a false positive on any endpoint that 500s on bad input.
+export function isNosqlInjectionConfirmed(evidence: Pick<InjectionEvidence, 'operatorLeak'>): boolean {
+  return Boolean(evidence.operatorLeak);
+}
+
 // Remove every occurrence of the injected value so a payload reflected back into the
 // response can never be mistaken for a driver error, then return the first line that
 // carries a genuine NoSQL signature. undefined when only the reflection matched.
@@ -168,7 +175,7 @@ export const noSqlInjectionFinder: BugFinder = {
       return value;
     });
 
-    if (!evidence.serverFault && !evidence.operatorLeak) return [];
+    if (!isNosqlInjectionConfirmed(evidence)) return [];
 
     const responseUrl = evidence.responseUrl ?? evidence.serverFault?.url;
     const method = evidence.method ?? evidence.serverFault?.method;
@@ -177,18 +184,16 @@ export const noSqlInjectionFinder: BugFinder = {
     const at = path ? ` at ${path}` : '';
 
     // Server response goes in a separate Observed Result, not the message.
-    const observation = evidence.operatorLeak
-      ? `The server returned a NoSQL database error: "${evidence.operatorLeak}"${at}. The operator reached the query engine instead of being treated as text.`
-      : `The server returned HTTP ${evidence.serverFault?.status}${at} when the operator value was submitted, instead of rejecting it as plain text.`;
+    const observation = `The server returned a NoSQL database error: "${evidence.operatorLeak}"${at}. The operator reached the query engine instead of being treated as text.`;
 
     const parts = buildInjectionEvidence({ element, payload, faultUrl: ctx.page.url(), observation, method, responseUrl, statusCode });
 
     return [
       {
         bugClass: 'NOSQL_INJECTION',
-        // A leaked operator error is direct evidence the fragment reached the query;
-        // a 5xx alone only proves the input was not handled safely.
-        severity: evidence.operatorLeak ? 'CRITICAL' : 'HIGH',
+        // Only a leaked operator error fires this finder — direct evidence the fragment
+        // reached the query engine; a bare 5xx is left to SERVER_API_FAILURE.
+        severity: 'CRITICAL',
         title: 'Database operator was not handled safely by the server',
         evidence: {
           message: `${describeTarget(parts.label, parts.noun)} accepted ${describeInjectedValue(payload)} the server did not treat as plain text. Injected value: ${payload}`,

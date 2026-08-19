@@ -4,7 +4,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { describeInjectedValue } from './noSqlInjection.js';
+import { describeInjectedValue, isNosqlInjectionConfirmed } from './noSqlInjection.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -32,6 +32,17 @@ check('a genuine Mongo operator is a NoSQL operator', () => {
 
 check('a plain value is an unexpected value', () => {
   assert.equal(describeInjectedValue('9999999'), 'an unexpected value');
+});
+
+console.log('\nnoSqlInjection — only a genuine driver-error confirms injection, never a bare 5xx');
+
+check('a leaked Mongo driver error confirms the injection', () => {
+  assert.equal(isNosqlInjectionConfirmed({ operatorLeak: 'MongoError: unknown operator: $where' }), true);
+});
+
+check('a bare 5xx with no driver error is NOT injection (leaves it to SERVER_API_FAILURE)', () => {
+  assert.equal(isNosqlInjectionConfirmed({ operatorLeak: undefined }), false);
+  assert.equal(isNosqlInjectionConfirmed({}), false);
 });
 
 console.log(`\nAll ${passed} assertions passed.`);
