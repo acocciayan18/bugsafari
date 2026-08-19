@@ -145,6 +145,7 @@ export class RiskScorer {
         role: element.role ?? '',
         name: element.name ?? '',
         opensLayer: element.opensLayer ?? false,
+        nonSemanticInteractive: element.nonSemanticInteractive ?? false,
       });
 
       // Compute ML score using perceptron

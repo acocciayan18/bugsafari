@@ -734,7 +734,8 @@ export class ActionExecutor {
       tag === 'button' ||
       role === 'button' ||
       type === 'button' ||
-      type === 'submit';
+      type === 'submit' ||
+      target.nonSemanticInteractive === true;
 
     // Check for text input fields (input[type="text"], textarea, input[type="password"])
     const isTextInput = tag === 'textarea' || target.type.toLowerCase() === 'text' || target.type.toLowerCase() === 'password';

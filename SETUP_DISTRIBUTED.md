@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "files before adding semantic button-like element detection"
-git checkout -b 8-18-Ayan-2
-git push --set-upstream origin 8-18-Ayan-2
+git commit -m "support-onclick-div-buttons"
+git checkout -b 8-19-Ayan
+git push --set-upstream origin 8-19-Ayan
 
 
 

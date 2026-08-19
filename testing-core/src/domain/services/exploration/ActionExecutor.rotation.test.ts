@@ -48,6 +48,33 @@ function buttonLike(selector: string, innerText = 'Do it'): InteractiveElement {
   } as unknown as InteractiveElement;
 }
 
+// A hand-rolled <div> control (onclick/tabindex) surfaced by the parser flag.
+function nonSemanticDiv(selector: string, innerText = 'Do it'): InteractiveElement {
+  return {
+    tagName: 'div',
+    id: '',
+    className: '',
+    innerText,
+    selector,
+    type: '',
+    role: '',
+    nonSemanticInteractive: true,
+  } as unknown as InteractiveElement;
+}
+
+// A plain container <div> — not flagged interactive; must never be buttonLike.
+function plainDiv(selector: string, innerText = 'Do it'): InteractiveElement {
+  return {
+    tagName: 'div',
+    id: '',
+    className: '',
+    innerText,
+    selector,
+    type: '',
+    role: '',
+  } as unknown as InteractiveElement;
+}
+
 // Private-method access for the rotation under test.
 function pick(exec: ActionExecutor, el: InteractiveElement, page: Page = fakePage()): string | null {
   const scenario = (exec as unknown as {
@@ -154,6 +181,22 @@ await checkAsync('a spent route does not starve the other scenarios under full-s
   const page = fakePage('https://app.test/account');
   await run(exec, buttonLike('#login-btn', 'Log in'), page);
   assert.ok(pick(exec, buttonLike('#other', 'Toggle theme'), page), 'other families stay available');
+});
+
+check('a non-semantic clickable div is treated as buttonLike (gets button stress scenarios)', () => {
+  const exec = makeExecutor(new ScenarioGate());
+  // A generic control gets a button scenario, not coordinate-bombing only.
+  assert.notEqual(pick(exec, nonSemanticDiv('#card', 'View more')), 'CoordinateBombing');
+  // A commit-labelled one leads with the double-submit burst, exactly like a <button>.
+  assert.equal(pick(exec, nonSemanticDiv('#fake-login', 'Log in')), 'ButtonSpammer');
+});
+
+check('a plain container div is not buttonLike', () => {
+  const exec = makeExecutor(new ScenarioGate());
+  const el = plainDiv('#wrap', 'Log in');
+  const result = pick(exec, el);
+  assert.ok(result, 'a plain div is still coordinate-bombed, not skipped');
+  assert.notEqual(result, 'ButtonSpammer', 'no onclick/tabindex flag → never a button scenario');
 });
 
 console.log(`\nAll ${passed} checks passed.`);

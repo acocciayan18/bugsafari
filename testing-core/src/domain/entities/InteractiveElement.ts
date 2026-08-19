@@ -53,4 +53,7 @@ export interface InteractiveElement {
   // aria-haspopup value ('' when absent) — with role, marks a custom (non-<select>)
   // dropdown trigger so it is opened and an option is selected, not just clicked.
   ariaHasPopup?: string;
+  // Hand-rolled clickable (div/span with onclick or focusable tabindex, no semantic
+  // tag/role) — ranked and stress-tested like a button downstream.
+  nonSemanticInteractive?: boolean;
 }

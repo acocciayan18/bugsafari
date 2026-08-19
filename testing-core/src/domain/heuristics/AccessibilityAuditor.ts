@@ -193,6 +193,37 @@ export class AccessibilityAuditor {
         }
       });
 
+      // 2.1.1 Keyboard: a generic element wired to click (inline onclick) but not
+      // natively interactive, given no button/link role, and not keyboard-focusable —
+      // mouse users can operate it, keyboard and switch users cannot. Only the inline
+      // onclick attribute is statically visible (addEventListener handlers are not),
+      // which keeps this rule near-zero false positive.
+      const nativeInteractive = 'a[href],button,input,select,textarea,summary';
+      const keyboardRoles = new Set([
+        'button', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab',
+        'checkbox', 'switch', 'radio', 'option', 'combobox', 'slider', 'spinbutton',
+        'textbox', 'searchbox',
+      ]);
+      document.querySelectorAll('[onclick]').forEach((el) => {
+        if (el.matches(nativeInteractive)) return;
+        const role = (el.getAttribute('role') || '').toLowerCase();
+        if (keyboardRoles.has(role)) return;
+        const tiAttr = el.getAttribute('tabindex');
+        const ti = tiAttr === null ? null : Number(tiAttr);
+        const focusable = ti !== null && Number.isFinite(ti) && ti >= 0;
+        if (focusable) return;
+        const tag = el.tagName.toLowerCase();
+        out.push({
+          rule: 'clickable-noninteractive',
+          wcag: '2.1.1',
+          impact: 'serious',
+          selector: selectorFor(el),
+          elementName: nameFor(el),
+          description: `This <${tag}> responds to mouse clicks but has no button/link role and cannot receive keyboard focus, so keyboard and screen-reader users cannot operate it.`,
+          suggestedFix: 'Use a <button>, or add role="button", tabindex="0", and an Enter/Space keydown handler.',
+        });
+      });
+
       // 2.4.3: positive tabindex breaks natural focus order.
       document.querySelectorAll('[tabindex]').forEach((el) => {
         const ti = Number(el.getAttribute('tabindex'));

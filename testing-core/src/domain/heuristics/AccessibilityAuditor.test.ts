@@ -64,4 +64,13 @@ check('within one batch, duplicates collapse to a single record', () => {
   assert.equal(a.totalFound(), 1);
 });
 
+check('clickable-noninteractive violations dedup by (rule, selector) like every other rule', () => {
+  const a = new AccessibilityAuditor();
+  const first = a.recordNew([v('clickable-noninteractive', '#card'), v('clickable-noninteractive', '#card')]);
+  assert.equal(first.length, 1, 'duplicates within a batch collapse');
+  const second = a.recordNew([v('clickable-noninteractive', '#card'), v('clickable-noninteractive', '#other')]);
+  assert.equal(second.length, 1, 'a new selector is fresh; the seen one is suppressed');
+  assert.equal(a.totalFound(), 2);
+});
+
 console.log(`\n${passed} passed`);

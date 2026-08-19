@@ -201,6 +201,7 @@ export function buildFeatureVectorFromElement(input: {
   role?: string;
   name?: string;
   opensLayer?: boolean;
+  nonSemanticInteractive?: boolean;
 }): FeatureVector {
   // Robust fallbacks: coerce every optional string field to '' so incomplete
   // element data never throws or produces non-finite features.
@@ -223,7 +224,7 @@ export function buildFeatureVectorFromElement(input: {
     hasId: (input.id ?? '').length > 0 ? 1 : 0,
     hasClass: (input.className ?? '').length > 0 ? 1 : 0,
     isInput: tagName === 'input' || tagName === 'textarea' ? 1 : 0,
-    isButton: tagName === 'button' || type === 'button' || type === 'submit' ? 1 : 0,
+    isButton: tagName === 'button' || type === 'button' || type === 'submit' || input.nonSemanticInteractive === true ? 1 : 0,
     isLink: tagName === 'a' ? 1 : 0,
     isSelect: tagName === 'select' ? 1 : 0,
     isDisabled: input.disabled ? 1 : 0,

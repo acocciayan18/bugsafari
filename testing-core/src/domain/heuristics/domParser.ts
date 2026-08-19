@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { BoundingBox } from '@bugsafari/shared';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
+import { isNonSemanticInteractive } from './nonSemanticInteractive.js';
 
 export interface ParsedElement {
   tagName: string;
@@ -43,6 +44,10 @@ export interface ParsedElement {
   options: string[];
   /** aria-haspopup value ('' when absent) — marks custom listbox-popup triggers. */
   ariaHasPopup: string;
+  /** Inline onclick attribute present — a generic node wired to behave as a control. */
+  hasOnClick: boolean;
+  /** tabindex as a number (null when absent) — >=0 marks a focusable non-semantic control. */
+  tabIndex: number | null;
 }
 
 // Caps new triggers hovered per parse() call so a menu-dense page can't stall a step; rest probed on later calls.
@@ -125,6 +130,13 @@ export class RecursiveDomParser {
       step: element.step || undefined,
       options: element.options.length ? element.options : undefined,
       ariaHasPopup: element.ariaHasPopup || undefined,
+      // Hand-rolled div/span control (onclick or focusable tabindex, no semantic tag/role).
+      nonSemanticInteractive: isNonSemanticInteractive({
+        tagName: element.tagName,
+        role: element.role,
+        hasOnClick: element.hasOnClick,
+        tabIndex: element.tabIndex,
+      }),
     }));
   }
 
@@ -234,7 +246,8 @@ export async function scanInteractiveElements(page: Page): Promise<RawScanResult
         '[aria-haspopup="listbox"]',
         '[aria-haspopup="menu"]',
         '[aria-haspopup="true"]',
-        '[tabindex]:not([tabindex="-1"])'
+        '[tabindex]:not([tabindex="-1"])',
+        '[onclick]'
       ].join(',');
 
       // BugSafari injects its own UI into the TARGET page (the highlight overlay, and
@@ -727,6 +740,11 @@ const isDisabled = (element) => {
           DISMISS_RE.test([className, id, ariaLabel, name].join(' ')) ||
           /^\\s*(×|✕||╳|x|close|cancel|dismiss)\\s*$/i.test(fullText);
 
+        // Non-semantic interaction hooks: raw facts derived to nonSemanticInteractive in Node.
+        const hasOnClick = element.hasAttribute('onclick');
+        const tabIndexAttr = element.getAttribute('tabindex');
+        const tabIndex = tabIndexAttr === null ? null : Number(tabIndexAttr);
+
         // Constraint metadata: cheap attribute reads for value-control/boundary sampling.
         const min = element.getAttribute('min') || '';
         const max = element.getAttribute('max') || '';
@@ -756,6 +774,8 @@ const isDisabled = (element) => {
           inActiveLayer,
           isDismiss,
           ariaHasPopup: (haspopup && haspopup !== 'false') ? haspopup : '',
+          hasOnClick,
+          tabIndex,
           contextKind: container.kind,
           contextLabel: container.label,
           accessibleName: accessibleName(element),
@@ -823,7 +843,9 @@ const isDisabled = (element) => {
           max: data.max,
           step: data.step,
           options: data.options,
-          ariaHasPopup: data.ariaHasPopup
+          ariaHasPopup: data.ariaHasPopup,
+          hasOnClick: data.hasOnClick,
+          tabIndex: data.tabIndex
         };
       });
 

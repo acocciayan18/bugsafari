@@ -313,7 +313,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
     input.kind === 'TRANSPORT_FAILURE' || (status !== undefined && status >= 400) || Boolean(input.softFailBody);
 
   if (isStaticAssetRequest(input.url, input.resourceType) && (status === undefined || status >= 400)) {
-    return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'ASSET_NOISE', 'Static asset load failed — ordinary page chatter.');
+    return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'ASSET_NOISE', 'Static asset failed to load. This is normal page activity and not a finding.');
   }
 
   if (input.chaosInjected && failed) {
@@ -321,7 +321,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
       'FINDING',
       'MEDIUM',
       'CHAOS_INJECTED',
-      'Injected network fault — the application had to handle this failure and did not.',
+      'Injected network fault. The application failed to handle the simulated failure properly.',
     );
   }
 
@@ -339,7 +339,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
   }
 
   if (isCorsBlocked(text)) {
-    return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'CORS_BLOCKED', 'Blocked by the browser cross-origin policy — a configuration issue.');
+    return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'CORS_BLOCKED', 'Blocked by the browser’s cross-origin policy. This is a configuration issue, not an application defect.');
   }
 
   if (isHarnessArtifact(text, url) || (input.origin !== undefined && isHarnessOrigin(input.origin))) {
@@ -358,11 +358,11 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
   // A redirect loop resolves to no status — classify it explicitly so the Network row
   // reads "redirect loop" instead of a raw net:: string, consistently on every surface.
   if (isRedirectError(text)) {
-    return verdict('NETWORK_ONLY', 'MEDIUM', 'REDIRECT_ERROR', 'Redirect loop — the server bounced the request between locations without resolving.');
+    return verdict('NETWORK_ONLY', 'MEDIUM', 'REDIRECT_ERROR', 'Redirect loop. The server repeatedly redirected the request without reaching a final destination.');
   }
 
   if (status !== undefined && status >= 500) {
-    return verdict('FINDING', 'MEDIUM', 'SERVER_ERROR', `HTTP ${status} server error — the backend failed to handle the request.`);
+    return verdict('FINDING', 'MEDIUM', 'SERVER_ERROR', `HTTP ${status} server error. The backend failed to process the request.`);
   }
 
   if (input.softFailBody) {
@@ -379,7 +379,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
       'NETWORK_ONLY',
       'INFORMATIONAL',
       'DEFENSIVE_CLIENT_ERROR',
-      `HTTP ${status} — the request was rejected as designed.`,
+      `HTTP ${status}. The request was rejected as expected by the application.`,
     );
   }
 
@@ -392,7 +392,7 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
     );
   }
 
-  return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'SUCCESS', `HTTP ${status ?? 200} — normal response.`);
+  return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'SUCCESS', `HTTP ${status ?? 200}. Normal response.`);
 }
 
 /** True for a provenance origin that is a harness/browser artifact. */
@@ -441,7 +441,7 @@ export function routeFindingPayload(payload: {
   const type = (payload.type ?? '').toUpperCase();
   const isNetworkFinding = type.includes('NETWORK') || type.includes('API') || type.includes('HTTP');
   if (!isNetworkFinding || payload.hasRuntimeEvidence) {
-    return verdict('FINDING', 'MEDIUM', 'BROKE_UI', 'Application-level fault — always a finding.');
+    return verdict('FINDING', 'MEDIUM', 'BROKE_UI', 'Application-level fault. Always treated as a finding.');
   }
   return routeNetworkEvent({
     kind: payload.statusCode === undefined ? 'TRANSPORT_FAILURE' : 'HTTP_RESPONSE',

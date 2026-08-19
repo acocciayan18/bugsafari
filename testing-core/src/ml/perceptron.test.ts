@@ -140,6 +140,22 @@ check('missing geometry yields zeroed layout features (no NaN)', () => {
   assert.equal(v.yNorm, 0);
 });
 
+check('a non-semantic interactive div scores as a button (isButton fires on the parser flag)', () => {
+  const v = buildFeatureVectorFromElement({
+    tagName: 'div', id: '', className: '', type: '', text: 'View more', disabled: false,
+    nonSemanticInteractive: true,
+  });
+  assert.equal(v.isButton, 1);
+  assert.ok(Number.isFinite(v.isButton), 'isButton must be finite');
+});
+
+check('a plain div without the flag does not score as a button', () => {
+  const v = buildFeatureVectorFromElement({
+    tagName: 'div', id: '', className: '', type: '', text: 'wrapper', disabled: false,
+  });
+  assert.equal(v.isButton, 0);
+});
+
 check('loadState overrides saved keys + bias and reflects them in the score', () => {
   const p = new SingleLayerPerceptron();
   const v = buildFeatureVectorFromElement({
