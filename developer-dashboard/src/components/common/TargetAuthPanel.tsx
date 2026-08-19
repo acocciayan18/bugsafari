@@ -1,7 +1,7 @@
-// TargetAuthPanel.tsx - EPHEMERAL TARGET-APP CREDENTIALS
+// TargetAuthPanel.tsx - TARGET-APP CREDENTIALS
 // Collects login details for the application UNDER TEST so exploration can reach
-// authenticated surface. Values live in component state for one launch and are
-// cleared by the parent immediately after submission. autoComplete is off so the
+// authenticated surface. The structural fields persist across runs (launchConfigDraft);
+// the password is memory-only and re-entered each run. autoComplete is off so the
 // browser never offers to save them.
 
 import { useId, useState } from 'react';
@@ -143,7 +143,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
                 Add custom selectors under Advanced only when auto-detection cannot find the fields, such as
                 a multi-step form or one built from custom components.
               </p>
-              <p>Credentials are used once for this run and held in memory only. Use a dedicated test account.</p>
+              <p>The password is held in memory only and re-entered each run; other fields are remembered. Use a dedicated test account.</p>
             </div>
           </motion.div>
         )}
@@ -203,8 +203,9 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-(--text-tertiary) font-sans">
           <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
           <span>
-            Used once for this run and held in memory only, never saved to your history, reports, logs, or
-            the job queue. Re-enter them for each run. Use a dedicated test account.
+            The password is held in memory only, never saved to your history, reports, logs, or the job
+            queue, and is re-entered each run. Other fields are remembered on this device. Use a dedicated
+            test account.
           </span>
         </p>
 

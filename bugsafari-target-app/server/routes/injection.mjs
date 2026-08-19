@@ -44,4 +44,7 @@ export function registerInjection(app) {
     }
     res.status(200).json({ ok: true, total: qty });
   });
+
+  // vulnerable: no server-side re-validation; accepts whatever the client sends (CWE-602)
+  app.post('/api/profile', (_req, res) => res.status(200).json({ ok: true }));
 }

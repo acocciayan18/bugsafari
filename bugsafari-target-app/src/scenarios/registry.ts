@@ -4,7 +4,6 @@ import NetworkErrors from '../pages/NetworkErrors';
 import ApiHang from '../pages/ApiHang';
 import DuplicateActions from '../pages/DuplicateActions';
 import StateRaces from '../pages/StateRaces';
-import NavigationDefects from '../pages/NavigationDefects';
 import UiFreeze from '../pages/UiFreeze';
 import ConstraintBypass from '../pages/ConstraintBypass';
 import InputFuzzing from '../pages/InputFuzzing';
@@ -101,19 +100,6 @@ export const SCENARIOS: Scenario[] = [
     reproduction: 'Rapidly click "Increment (unguarded)"; overlapping POST /api/counter writes collide and one increment is lost.',
     detected: true,
     component: StateRaces
-  },
-  {
-    slug: 'navigation-defects',
-    title: 'Navigation & Routing Defects',
-    category: 'Navigation',
-    bugClass: 'STRUCTURAL_NAVIGATION_LOGIC',
-    cwe: 'CWE-835',
-    expectedSeverity: 'MEDIUM',
-    detector: 'BrokenNavigationFinder',
-    summary: 'Dead interaction, a broken route to a server 404, and SPA + HTTP redirect loops.',
-    reproduction: 'Click each link; the dead link no-ops, the broken link lands on HTTP 404, the loops oscillate.',
-    detected: true,
-    component: NavigationDefects
   },
   {
     slug: 'ui-freeze',

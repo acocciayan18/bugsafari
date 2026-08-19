@@ -6,7 +6,6 @@ import { registerHang } from './routes/hang.mjs';
 import { registerDuplicate } from './routes/duplicate.mjs';
 import { registerInjection } from './routes/injection.mjs';
 import { registerAuth } from './routes/auth.mjs';
-import { registerNav } from './routes/nav.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const distDir = join(here, '..', 'dist');
@@ -20,7 +19,6 @@ export function createApp({ serveStatic = false } = {}) {
   registerDuplicate(app);
   registerInjection(app);
   registerAuth(app);
-  registerNav(app);
 
   if (serveStatic) {
     app.use(express.static(distDir));

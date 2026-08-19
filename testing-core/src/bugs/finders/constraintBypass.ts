@@ -114,33 +114,52 @@ export function planFromType(element: InteractiveElement): ViolationPlan | null 
   }
 }
 
-// Attribute-based fallback: read the LIVE DOM and keep only a value the browser
-// itself rejects (checkValidity). Fires only when the constraints are still present
-// (an unfuzzed field), so it never guesses a gate that isn't there.
-async function planFromAttributes(page: Page, selector: string): Promise<ViolationPlan | null> {
+// A field's still-present client constraints, read as plain data so the plan can be
+// derived in Node. maxLength is null when absent/invalid; pattern null when absent.
+export interface ConstraintSnapshot {
+  maxLength: number | null;
+  pattern: string | null;
+  required: boolean;
+}
+
+// Reads the LIVE DOM. Fires only when the constraints are still present (an unfuzzed
+// field), so it never guesses a gate that isn't there. No checkValidity: maxlength
+// (tooLong) only trips on USER-edited values, so a scripted over-length value passes
+// checkValidity and the browser can't confirm the violation — the snapshot lets Node
+// prove it instead.
+async function readConstraintSnapshot(page: Page, selector: string): Promise<ConstraintSnapshot | null> {
   return page
     .$eval(selector, (node) => {
       if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) return null;
-      const el = node;
-      const maxLen = parseInt(el.getAttribute('maxlength') || '', 10);
-      const candidates: Array<{ v: string; c: string }> = [];
-      const pattern = el.getAttribute('pattern');
-      if (pattern) candidates.push({ v: '!bypass 123!', c: `pattern=${pattern}` });
-      if (Number.isFinite(maxLen) && maxLen > 0) candidates.push({ v: 'A'.repeat(maxLen + 32), c: `maxlength=${maxLen}` });
-      if (el.hasAttribute('required')) candidates.push({ v: '', c: 'required' });
-      const original = el.value;
-      for (const cand of candidates) {
-        el.value = cand.v;
-        const rejected = typeof el.checkValidity === 'function' ? !el.checkValidity() : false;
-        if (rejected) {
-          el.value = original;
-          return { violating: cand.v, constraint: cand.c };
-        }
-      }
-      el.value = original;
-      return null;
+      const maxLen = parseInt(node.getAttribute('maxlength') || '', 10);
+      return {
+        maxLength: Number.isFinite(maxLen) && maxLen > 0 ? maxLen : null,
+        pattern: node.getAttribute('pattern'),
+        required: node.hasAttribute('required'),
+      };
     })
     .catch(() => null);
+}
+
+// Pure violation planner: picks the first constraint whose violation is PROVABLE without
+// the browser. Priority pattern → maxlength → required (first applicable wins).
+export function planFromSnapshot(snapshot: ConstraintSnapshot | null): ViolationPlan | null {
+  if (!snapshot) return null;
+  if (snapshot.pattern) {
+    const candidate = '!bypass 123!';
+    let violatesPattern = false;
+    try {
+      violatesPattern = !new RegExp(`^(?:${snapshot.pattern})$`).test(candidate);
+    } catch {
+      violatesPattern = true; // unparseable pattern — the browser would still gate it client-side
+    }
+    if (violatesPattern) return { violating: candidate, constraint: `pattern=${snapshot.pattern}` };
+  }
+  if (snapshot.maxLength !== null) {
+    return { violating: 'A'.repeat(snapshot.maxLength + 32), constraint: `maxlength=${snapshot.maxLength}` };
+  }
+  if (snapshot.required) return { violating: '', constraint: 'required' };
+  return null;
 }
 
 // Strip the client constraints so the violating value can leave the browser, then set it.
@@ -153,6 +172,19 @@ async function stripAndInject(page: Page, selector: string, violating: string): 
         for (const a of ['required', 'maxlength', 'minlength', 'pattern', 'min', 'max']) el.removeAttribute(a);
         const type = (el.getAttribute('type') || '').toLowerCase();
         if (type === 'email' || type === 'number') el.setAttribute('type', 'text');
+        // Sibling required fields left empty would block native submission (Enter / submit
+        // click), forcing the fragile synthetic-dispatch rung. Fill each with a benign valid
+        // value so the enclosing form passes browser validation — the probed field's own
+        // violating value is untouched.
+        const form = el.closest('form');
+        if (form) {
+          for (const other of Array.from(form.querySelectorAll('input, textarea, select')) as Array<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+            if (other === el || !other.hasAttribute('required') || other.value !== '') continue;
+            other.value = other instanceof HTMLInputElement && other.type === 'email' ? 'a@b.co' : 'x';
+            other.dispatchEvent(new Event('input', { bubbles: true }));
+            other.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
         el.value = v;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -201,7 +233,7 @@ export const constraintBypassFinder: BugFinder = {
     if (!element) return [];
     attemptedSelectors.add(element.selector); // one probe per field per run
 
-    const plan = planFromType(element) ?? (await planFromAttributes(ctx.page, element.selector));
+    const plan = planFromType(element) ?? planFromSnapshot(await readConstraintSnapshot(ctx.page, element.selector));
     if (!plan) return []; // no enforceable client constraint → nothing to bypass
 
     const origin = safeOrigin(ctx.targetUrl);

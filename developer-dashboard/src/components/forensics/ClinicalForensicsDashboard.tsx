@@ -6,7 +6,6 @@ import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type Re
 import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
-  emptyTargetAuthDraft,
   isTargetAuthIncomplete,
   toTargetAuthConfig,
   type TargetAuthDraft,
@@ -20,6 +19,7 @@ import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import LongOperationProgressCard from '../common/LongOperationProgressCard';
+import { readLaunchConfigDraft, writeLaunchConfigDraft } from '../../stores/launchConfigDraft';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
@@ -29,7 +29,7 @@ import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPrese
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, DEFAULT_BOUNDARY_LOCK_MODE, DEFAULT_TEST_DURATION_ID, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
+import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, TEST_DURATION_PRESETS, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // A Pause/Stop that settles within this window shows no transitional label — the
 // control locks instantly (status guards + backend idempotency), but "Pausing…"/
@@ -159,12 +159,21 @@ function ClinicalForensicsDashboard({
   // Off by default: hide per-step execution trace; flip to reveal the full log for debugging.
   const [showVerbose, setShowVerbose] = useState(false);
   const [urlInput, setUrlInput] = useState(targetUrl);
-  const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(DEFAULT_INFILTRATION_PROFILE);
-  const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(DEFAULT_BOUNDARY_LOCK_MODE);
-  const [duration, setDuration] = useState<TestDurationId>(DEFAULT_TEST_DURATION_ID);
-  const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(emptyTargetAuthDraft);
+  // Profile, Duration, Navigation, and the auth structure hydrate from the persisted
+  // draft so operator choices survive runs, reloads, and restarts. First run falls back
+  // to sensible defaults. The auth password is never restored — it stays memory-only.
+  const [initialConfig] = useState(readLaunchConfigDraft);
+  const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(initialConfig.profile);
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(initialConfig.boundaryMode);
+  const [duration, setDuration] = useState<TestDurationId>(initialConfig.duration);
+  const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(initialConfig.auth);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
+
+  // Persist launch choices on every change (password stripped inside the store).
+  useEffect(() => {
+    writeLaunchConfigDraft({ profile: selectedProfile, duration, boundaryMode, auth: authDraft });
+  }, [selectedProfile, duration, boundaryMode, authDraft]);
 
   // The engine dials the typed address verbatim, so a local target can never
   // resolve to the operator's machine — block launch and explain why.
@@ -248,9 +257,8 @@ function ClinicalForensicsDashboard({
 
   const handleInitialize = () => {
     if (!onStartInitialization || authIncomplete || isBlockedTarget) return;
-    // The draft is deliberately retained so reopening the config modal — or
-    // re-running against the same target — shows what the operator entered.
-    // It lives only in component state: never persisted, gone on page reload.
+    // Duration, Navigation, and the auth structure persist across runs; the auth
+    // password stays in component state only and is re-entered each run.
     onStartInitialization(urlInput, selectedProfile, boundaryMode, duration, toTargetAuthConfig(authDraft));
   };
 
@@ -285,10 +293,12 @@ function ClinicalForensicsDashboard({
     INFILTRATION_PROFILE_CATALOG.find((p) => p.id === DEFAULT_INFILTRATION_PROFILE)?.label ??
     '';
 
-  // Trigger-button digest so the collapsed settings stay discoverable at a glance.
+  // Trigger-button digest so the collapsed (persisted) settings stay discoverable at a glance.
+  const durationLabel = TEST_DURATION_PRESETS.find((p) => p.id === duration)?.label ?? null;
   const configSummary = [
     currentProfileName,
     boundaryMode === 'exact' ? 'Exact lock' : boundaryMode === 'subtree' ? 'Sub-tree lock' : null,
+    durationLabel,
     authDraft.enabled ? 'Auth on' : null,
   ]
     .filter(Boolean)

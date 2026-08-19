@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-findings-card-spa-race-condition"
+git commit -m "fix-constraint-bypass-detection-target"
 git push origin HEAD:dev --force
 
 

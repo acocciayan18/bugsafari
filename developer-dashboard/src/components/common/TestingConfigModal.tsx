@@ -175,7 +175,7 @@ export default function TestingConfigModal({
                 Test Duration
               </span>
               <span className="text-xs text-(--text-tertiary) font-sans -mt-1 mb-1">
-                Applies to this run only. The engine stops when the active time limit is reached.
+                Saved for future runs. The engine stops when the active time limit is reached.
               </span>
               {TEST_DURATION_PRESETS.map(({ id, label, sublabel }) => {
                 const selected = duration === id;

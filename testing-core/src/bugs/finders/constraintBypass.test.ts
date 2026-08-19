@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { planFromType, correlatesToSubmission } from './constraintBypass.js';
+import { planFromType, planFromSnapshot, correlatesToSubmission } from './constraintBypass.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 let passed = 0;
@@ -71,6 +71,48 @@ function main(): void {
 
   check('an empty payload never correlates by payload alone', () => {
     assert.equal(correlatesToSubmission('', 'https://t/api', '', noTarget), false);
+  });
+
+  // planFromSnapshot derives the violation without the browser — maxlength no longer
+  // depends on checkValidity (which never trips tooLong on a scripted value).
+
+  // Regression: a maxlength-only field must yield a plan. checkValidity dropped it before.
+  check('maxlength-only field yields an over-length maxlength plan', () => {
+    const plan = planFromSnapshot({ maxLength: 8, pattern: null, required: false });
+    assert.deepEqual(plan, { violating: 'A'.repeat(40), constraint: 'maxlength=8' });
+    assert.equal(plan?.violating.length, 8 + 32);
+  });
+
+  check('required-only field yields an empty-value required plan', () => {
+    assert.deepEqual(planFromSnapshot({ maxLength: null, pattern: null, required: true }), {
+      violating: '',
+      constraint: 'required',
+    });
+  });
+
+  check('a pattern the canned value violates yields a pattern plan', () => {
+    assert.deepEqual(planFromSnapshot({ maxLength: null, pattern: '[0-9]+', required: false }), {
+      violating: '!bypass 123!',
+      constraint: 'pattern=[0-9]+',
+    });
+  });
+
+  // A pattern the canned value satisfies must NOT manufacture a false plan.
+  check('a pattern the canned value satisfies falls through', () => {
+    assert.equal(planFromSnapshot({ maxLength: null, pattern: '.*', required: false }), null);
+  });
+
+  check('no constraints yields no plan', () => {
+    assert.equal(planFromSnapshot({ maxLength: null, pattern: null, required: false }), null);
+    assert.equal(planFromSnapshot(null), null);
+  });
+
+  // Priority: pattern outranks maxlength outranks required.
+  check('pattern wins when pattern + maxlength + required all present', () => {
+    assert.deepEqual(planFromSnapshot({ maxLength: 8, pattern: '[0-9]+', required: true }), {
+      violating: '!bypass 123!',
+      constraint: 'pattern=[0-9]+',
+    });
   });
 
   console.log(`\nconstraintBypass: ${passed} checks passed.`);
