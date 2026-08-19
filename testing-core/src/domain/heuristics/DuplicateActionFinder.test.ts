@@ -376,6 +376,27 @@ check('without a page URL the opening step frames the control, not a route', () 
   assert.ok(!steps[0].includes('/api'), 'the opening step never references the API endpoint');
 });
 
+check('a NON-overlapping grace-window repeat reproduces as re-click AFTER the first settles', () => {
+  // The first request settles (1100) before the repeat fires (1600), inside the grace
+  // window — overlapped=false. The repeat step must not tell the developer to click
+  // "before the first finishes", which would contradict the message and evidence.
+  const h = new Harness();
+  const a = h.send(1000, { interaction });
+  h.settle(a, 1100, 201);
+  const b = h.send(1600, { interaction });
+  const defect = h.settle(b, 1700, 201)!;
+  assert.equal(defect.overlapped, false);
+  assert.equal(defect.verdict, 'CONFIRMED_DUPLICATE');
+  assert.ok(
+    defect.reproductionHint.some((s) => s.includes('right after the first finishes')),
+    'the settled-first case re-clicks after the first finishes',
+  );
+  assert.ok(
+    !defect.reproductionHint.some((s) => s.includes('before the first request finishes')),
+    'a settled-first repeat never says to click before the first finishes',
+  );
+});
+
 check('evidence carries both requests, their statuses, and the interval', () => {
   const h = new Harness();
   const a = h.send(1000);

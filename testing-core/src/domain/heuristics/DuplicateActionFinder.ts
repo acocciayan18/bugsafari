@@ -280,7 +280,7 @@ export class DuplicateActionFinder {
       // never `endpoint` (an API path). Drives the fallback reproduction trace.
       pageUrl: second.pageUrl ?? first.pageUrl,
       evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, interaction),
-      reproductionHint: this.reproductionFor(first, second, verdict, label),
+      reproductionHint: this.reproductionFor(first, second, verdict, overlapped, label),
       advice: this.adviceFor(verdict),
       occurrence,
       corroborated,
@@ -368,6 +368,7 @@ export class DuplicateActionFinder {
     first: TrackedRequest,
     second: TrackedRequest,
     verdict: DuplicateVerdict,
+    overlapped: boolean,
     label: string,
   ): string[] {
     // The control lives on the PAGE the requests fired from — never the API endpoint
@@ -377,10 +378,17 @@ export class DuplicateActionFinder {
     const openStep = pageUrl
       ? `${describeRouteStep(pageUrl)}, then bring ${label} into view`
       : `Bring ${label} into view on the page under test`;
+    // Match the finding's own overlap determination: an overlapping repeat fired WHILE the
+    // first was in flight; a non-overlapping one fired just AFTER it settled (the grace
+    // window), so telling the developer to re-click "before the first finishes" would
+    // contradict the message and evidence, which already read the first as settled.
+    const repeatStep = overlapped
+      ? `Use ${label} again before the first request finishes`
+      : `Use ${label} again right after the first finishes, before the control re-enables`;
     const steps = [
       openStep,
       `Use ${label} once. The app sends ${first.method} ${this.pathOf(first.url)}`,
-      `Use ${label} again before the first request finishes`,
+      repeatStep,
       `Watch a second ${second.method} ${this.pathOf(second.url)} go out with the same value`,
     ];
     steps.push(

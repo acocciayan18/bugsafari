@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Review Findings card content for network-errors page"
+git commit -m " Review findings card content for duplicate-actions page"
 git push origin HEAD:dev --force
 
 
